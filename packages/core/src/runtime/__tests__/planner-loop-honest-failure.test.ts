@@ -40,6 +40,83 @@ function loopComposedInstructionText(
 }
 
 describe("honest failed-turn replies (#17948)", () => {
+	it.each([
+		"Got it — the charger and water are for the train trip. I recorded the correction and left the note unchanged.",
+		"Okay — the first attempt failed, but I recorded the correction on the retry and left the note unchanged.",
+	])("preserves a completed failure-aware model reply: %s", async (reply) => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "wrong-action",
+						name: "SEARCH_EXPERIENCES",
+						arguments: { action: "create", learning: "QA train trip" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "correct-action",
+						name: "MEMORY",
+						arguments: { action: "create", text: "QA train trip" },
+					},
+				],
+			})
+			// The final synthesis is grounded in both recorded action results.
+			.mockResolvedValue({ text: reply, toolCalls: [] });
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				text: "Unexpected argument 'action'; Unexpected argument 'learning'",
+				data: { invalidParameterNames: ["action", "learning"] },
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "Stored memory qa-correction.",
+				data: { id: "qa-correction", text: "QA train trip" },
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE",
+				thought: "Retry with the memory action; the note must stay unchanged.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "The correction is stored; no note mutation was requested.",
+				messageToUser:
+					"The correction is recorded; the note remains unchanged.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "SEARCH_EXPERIENCES", description: "Search experiences." },
+				{ name: "MEMORY", description: "Manage memory." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(reply);
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(
+			result.trajectory.steps
+				.filter((step) => step.toolCall !== undefined)
+				.map((step) => step.result?.success),
+		).toEqual([false, true]);
+	});
+
 	it("exec failure then REPLY: ships a failure-aware synthesis primed with the scrubbed cause, not the canned sentence", async () => {
 		const useModel = vi
 			.fn()
@@ -335,6 +412,76 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(useModel).toHaveBeenCalledTimes(1);
 		expect(result.finalMessage).toBe(
 			"I pulled the view list, but the follow-up search failed — nothing matched that pattern.",
+		);
+	});
+
+	it("failed step then a VERIFIED action-owned success: the verified reply ships with no synthesis call", async () => {
+		// Live 2026-09-05 (tj-fa46a02f106185): VIEWS/interact failed, then
+		// CALENDAR create succeeded with its own verified text; the fallback
+		// replaced it and a forced synthesis pass produced an apology.
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "VIEWS",
+						arguments: { action: "interact", view: "calendar" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "CALENDAR",
+						arguments: { action: "create_event", title: "Gym session" },
+					},
+				],
+			});
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				text: 'Cannot invoke capability "create-event" on view "calendar".',
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "Done. Gym session is set for Tuesday at 7 AM.",
+				userFacingText: "Done. Gym session is set for Tuesday at 7 AM.",
+				verifiedUserFacing: true,
+				turnComplete: true,
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE" as const,
+				thought: "The panel interaction failed; create the event directly.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The event was created and confirmed.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "VIEWS", description: "Interact with views." },
+				{ name: "CALENDAR", description: "Calendar operations." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe(
+			"Done. Gym session is set for Tuesday at 7 AM.",
 		);
 	});
 

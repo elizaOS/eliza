@@ -40,6 +40,10 @@ const getModelsConfig = vi.hoisted(() =>
     },
   })),
 );
+const bootstrapState = vi.hoisted(() => ({ routingConfigResolved: true }));
+const persistedRuntime = vi.hoisted(() => ({
+  kind: null as "local" | "cloud" | "remote" | null,
+}));
 
 vi.mock("../../hooks/useDefaultProviderPresets", () => ({
   useDefaultProviderPresets: vi.fn(),
@@ -66,6 +70,16 @@ vi.mock("../../api", () => ({
     ),
     getModelsConfig,
   },
+}));
+vi.mock("../../state/persistence", () => ({
+  loadPersistedActiveServer: () =>
+    persistedRuntime.kind
+      ? {
+          id: `test-${persistedRuntime.kind}`,
+          kind: persistedRuntime.kind,
+          label: persistedRuntime.kind,
+        }
+      : null,
 }));
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (
@@ -99,6 +113,7 @@ vi.mock("./useCloudModelConfig", () => ({
 }));
 vi.mock("./useProviderBootstrap", () => ({
   useProviderBootstrap: () => ({
+    routingConfigResolved: bootstrapState.routingConfigResolved,
     subscriptionStatus: {},
     anthropicCliDetected: false,
   }),
@@ -154,19 +169,29 @@ vi.mock("./useProviderEntries", () => ({
 vi.mock("./ProviderCard", () => ({
   ProviderCard: ({
     label,
+    description,
     onSelect,
     id,
   }: {
     label: string;
+    description?: string;
     id: string;
     onSelect: (id: string) => void;
   }) => (
-    <button type="button" onClick={() => onSelect(id)}>
-      {label}
-    </button>
+    <div>
+      <button type="button" aria-label={label} onClick={() => onSelect(id)}>
+        {label}
+      </button>
+      {description ? <p>{description}</p> : null}
+    </div>
   ),
 }));
 vi.mock("./ProviderPanels", () => ({
+  describeUnsignedCloudChat: (
+    axes: { inference: string; activeChatProvider: string | null },
+    _t: unknown,
+    surface: string,
+  ) => `${surface}:${axes.inference}:${axes.activeChatProvider ?? "unknown"}`,
   LocalProviderPanel: ({
     onSelectLocalOnly,
   }: {
@@ -207,6 +232,8 @@ describe("ProviderSwitcher", () => {
     vi.clearAllMocks();
     selection.visibleProviderPanelId = "__local__";
     selection.cloudRuntimeLocked = false;
+    bootstrapState.routingConfigResolved = true;
+    persistedRuntime.kind = null;
   });
 
   it("states both serving axes above the intelligence tiles", async () => {
@@ -244,6 +271,51 @@ describe("ProviderSwitcher", () => {
     expect(selection.handleProviderPanelSelect).toHaveBeenCalledWith(
       "__cloud__",
     );
+  });
+
+  it("shows Cartesia as configured when the realtime QA build flag is on", async () => {
+    render(<ProviderSwitcher realtimeVoiceConfigured />);
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "This device",
+      );
+    });
+    expect(screen.getByText("Cartesia (realtime)")).toBeTruthy();
+    expect(
+      screen.getByText(/when the configured voice gateway is available/),
+    ).toBeTruthy();
+    expect(screen.getByText("Configured")).toBeTruthy();
+    expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
+  });
+
+  it("keeps local-model and Cartesia copy relative to a selected remote host", async () => {
+    persistedRuntime.kind = "remote";
+    render(<ProviderSwitcher realtimeVoiceConfigured />);
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
+        "Remote host",
+      );
+    });
+    expect(screen.getByText(/Runs with your remote agent/)).toBeTruthy();
+    expect(
+      screen.getByText(/Your agent stays on the remote host/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/stays on this device/)).toBeNull();
+  });
+
+  it("withholds provider detail panels until saved routing is resolved", async () => {
+    bootstrapState.routingConfigResolved = false;
+    render(<ProviderSwitcher />);
+    expect(screen.queryByRole("button", { name: "local panel" })).toBeNull();
+    expect(screen.queryByText("model config")).toBeNull();
+    expect(screen.queryByText("accounts panel")).toBeNull();
+    expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
+    expect(screen.getByRole("button", { name: "Local" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "This device",
+      );
+    });
   });
 
   it("renders the cloud panel and activates cloud routing", async () => {
@@ -296,6 +368,27 @@ describe("ProviderSwitcher", () => {
     expect(displayed.find((entry) => entry.id === "cerebras")?.current).toBe(
       true,
     );
+  });
+
+  it("keeps unsigned Cloud tile copy aligned with external inference", async () => {
+    getModelsConfig.mockResolvedValueOnce({
+      targets: { small: {}, large: {}, coding: {} },
+      activeChat: {
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "api.cerebras.ai",
+      },
+    });
+
+    render(<ProviderSwitcher />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "Cerebras",
+      );
+    });
+    expect(screen.getByText("tile:external:cerebras")).toBeTruthy();
+    expect(screen.queryByText(/replies use Local until then/)).toBeNull();
   });
 
   it("preserves a non-serving provider warning under external routing", () => {

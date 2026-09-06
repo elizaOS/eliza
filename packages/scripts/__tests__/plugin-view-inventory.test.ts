@@ -182,6 +182,35 @@ describe("first-party runtime view inventory", () => {
     expect(() => discover(root, [source])).toThrow(/repeats modality gui/);
   });
 
+  test("only permits a declared built-in fallback paired with its exact plugin view", () => {
+    const root = makeRoot();
+    const source = addPlugin(root, "plugin-wallet", view("wallet"));
+    const builtin = addBuiltin(
+      root,
+      view("wallet").replace(
+        'id: "wallet",',
+        'id: "wallet", fallbackFor: "@fixture/plugin-wallet",',
+      ),
+    );
+    const scan = (files: string[]) =>
+      discoverPluginViewInventory({ repoRoot: root, files });
+    expect(scan([builtin, source]).views).toHaveLength(2);
+    expect(scan([source, builtin]).views).toHaveLength(2);
+    const impostor = addPlugin(root, "plugin-other", view("wallet"));
+    expect(() => scan([builtin, source, impostor])).toThrow(/duplicate id/);
+    addPlugin(root, "plugin-wallet", view("wallet", "/elsewhere"));
+    expect(() => scan([builtin, source])).toThrow(/duplicate id/);
+    addPlugin(
+      root,
+      "plugin-wallet",
+      view("wallet").replace(
+        'id: "wallet",',
+        'id: "wallet", fallbackFor: "@fixture/plugin-other",',
+      ),
+    );
+    expect(() => scan([builtin, source])).toThrow(/only built-in views/);
+  });
+
   test("allows one id and path to serve distinct modalities", () => {
     const root = makeRoot();
     const alpha = addPlugin(
@@ -608,6 +637,62 @@ export const plugin: Plugin = {
       "builtin",
       "runtime-reachable",
     ]);
+  });
+
+  test("counts a runtime views declaration once through a public composition barrel", () => {
+    const root = makeRoot();
+    const directory = "plugins/plugin-composed-entry";
+    const index = `${directory}/src/index.ts`;
+    const runtime = `${directory}/src/plugin.ts`;
+    write(
+      root,
+      `${directory}/package.json`,
+      JSON.stringify({
+        name: "@fixture/plugin-composed-entry",
+        source: "./src/index.ts",
+      }),
+    );
+    write(
+      root,
+      runtime,
+      `export const runtimePlugin: Plugin = {
+      name: "runtime", description: "fixture", views: [${view("composed")}],
+    };`,
+    );
+    write(
+      root,
+      index,
+      `import { runtimePlugin } from "./plugin.js";
+      export const publicPlugin: Plugin = { ...runtimePlugin };`,
+    );
+    for (const files of [
+      [index, runtime],
+      [runtime, index],
+    ]) {
+      const inventory = discover(root, files);
+      expect(inventory.views.map((entry) => entry.id)).toEqual([
+        "builtin",
+        "composed",
+      ]);
+      expect(
+        inventory.sources.filter((entry) => entry.kind === "plugin-manifest"),
+      ).toHaveLength(1);
+    }
+    write(
+      root,
+      index,
+      `import { runtimePlugin } from "./plugin.js";
+      export const publicPlugin: Plugin = { ...runtimePlugin, views: [${view("composed")}] };`,
+    );
+    expect(() => discover(root, [index, runtime])).toThrow(/duplicate id/);
+    write(
+      root,
+      runtime,
+      `export const runtimePlugin: Plugin = {
+      name: "runtime", description: "fixture", views: [${view("composed")}, ${view("composed")}],
+    };`,
+    );
+    expect(() => discover(root, [index, runtime])).toThrow(/duplicate id/);
   });
 
   test("does not follow type-only edges into runtime-unreachable plugin modules", () => {

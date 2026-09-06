@@ -54,7 +54,8 @@ beforeEach(() => {
   }
 });
 
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
   generateText: aiMocks.generateText,
   streamText: aiMocks.streamText,
   // Mirror AI SDK v6's accessor-backed schema wrapper. The provider transport
@@ -116,6 +117,7 @@ interface CapturedLlmCall {
   cacheCreationInputTokens?: number;
   finishReason?: string;
   toolCalls?: unknown;
+  temperature?: number;
 }
 
 function createRuntime(options?: { trajectoryCalls?: CapturedLlmCall[] }) {
@@ -981,6 +983,47 @@ describe("OpenAI native text plumbing", () => {
     });
   });
 
+  it.each([false, true])("records only caller-supplied temperature (stream=%s)", async (stream) => {
+    const trajectoryCalls: CapturedLlmCall[] = [];
+    const runtime = createRuntime({ trajectoryCalls });
+    const { handleTextSmall } = await import("../models/text");
+    for (const temperature of [undefined, 0, 0.4]) {
+      const result = {
+        text: "ok",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+      aiMocks.generateText.mockResolvedValue(result);
+      aiMocks.streamText.mockResolvedValue({
+        textStream: (async function* () {
+          yield "ok";
+        })(),
+        text: Promise.resolve(result.text),
+        toolCalls: Promise.resolve(result.toolCalls),
+        finishReason: Promise.resolve(result.finishReason),
+        usage: Promise.resolve(result.usage),
+      });
+      await runWithTrajectoryContext({ trajectoryStepId: "sampling-metadata" }, async () => {
+        const value = await handleTextSmall(runtime, {
+          prompt: "sampling",
+          stream,
+          ...(temperature !== undefined ? { temperature } : {}),
+        });
+        if (typeof value !== "string" && value.textStream) {
+          for await (const _chunk of value.textStream) {
+            /* Finish trajectory capture. */
+          }
+        }
+      });
+      const recorded = trajectoryCalls.at(-1);
+      expect(recorded).toBeDefined();
+      if (temperature === undefined) expect(recorded).not.toHaveProperty("temperature");
+      else expect(recorded?.temperature).toBe(temperature);
+    }
+    expect(trajectoryCalls).toHaveLength(3);
+  });
+
   it("records completed buffered-stream output and usage before returning", async () => {
     vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
     const trajectoryCalls: CapturedLlmCall[] = [];
@@ -1121,32 +1164,36 @@ describe("OpenAI native text plumbing", () => {
     ).resolves.toEqual({ type: "json" });
   });
 
-  it("keeps Cerebras JSON mode schema-free at the provider boundary", async () => {
-    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
-    vi.stubEnv("CEREBRAS_API_KEY", "test-cerebras-key");
-    aiMocks.generateText.mockResolvedValue({
-      text: '{"answer":"ok"}',
-      finishReason: "stop",
-      usage: { inputTokens: 3, outputTokens: 3 },
-    });
+  it.each([undefined, { type: "json_object" }])(
+    "retains legacy Cerebras JSON mode with responseFormat=%j",
+    async (responseFormat) => {
+      vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+      vi.stubEnv("CEREBRAS_API_KEY", "test-cerebras-key");
+      aiMocks.generateText.mockResolvedValue({
+        text: '{"answer":"ok"}',
+        finishReason: "stop",
+        usage: { inputTokens: 3, outputTokens: 3 },
+      });
 
-    const { handleTextSmall } = await import("../models/text");
-    await handleTextSmall(createRuntime(), {
-      prompt: "json",
-      responseFormat: { type: "json_object" },
-      responseSchema: {
-        type: "object",
-        properties: { answer: { type: "string" } },
-        required: ["answer"],
-      },
-    } as never);
+      const { handleTextSmall } = await import("../models/text");
+      await handleTextSmall(createRuntime(), {
+        model: "gpt-oss-120b",
+        prompt: "json",
+        ...(responseFormat ? { responseFormat } : {}),
+        responseSchema: {
+          type: "object",
+          properties: { answer: { type: "string" } },
+          required: ["answer"],
+        },
+      } as never);
 
-    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
-    expect((call.output as { name: string }).name).toBe("json");
-    await expect(
-      (call.output as { responseFormat: Promise<unknown> }).responseFormat
-    ).resolves.toEqual({ type: "json" });
-  });
+      const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+      expect((call.output as { name: string }).name).toBe("json");
+      await expect(
+        (call.output as { responseFormat: Promise<unknown> }).responseFormat
+      ).resolves.toEqual({ type: "json" });
+    }
+  );
 
   it("marks unconsumed streaming companion promises as handled", async () => {
     const noOutputError = Object.assign(

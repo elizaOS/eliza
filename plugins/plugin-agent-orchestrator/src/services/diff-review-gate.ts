@@ -503,6 +503,8 @@ function hasSensitiveLiteralAssignment(line: string): boolean {
     if (isSensitiveKeyName(match[1])) return true;
   }
 
+  // Dotenv names are not member-access paths, and `==`, `===`, and `=>` are
+  // source operators rather than assignments of unquoted dotenv scalars.
   const dotenvKey =
     /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*=(?![=>])\s*\S+/;
   const dotenvMatch = dotenvKey.exec(line);

@@ -9,6 +9,7 @@ import {
   type ServingAxesInput,
   servingAxesDescription,
   servingAxesHeadline,
+  servingProviderLabel,
 } from "./resolveServingAxes";
 
 const CLOUD = {
@@ -35,6 +36,14 @@ const base: ServingAxesInput = {
 };
 
 describe("resolveServingAxes", () => {
+  it("turns serving wire ids into stable product labels", () => {
+    expect(servingProviderLabel("cerebras")).toBe("Cerebras");
+    expect(servingProviderLabel("openai")).toBe("OpenAI");
+    expect(servingProviderLabel("claude-chat")).toBe("Claude");
+    expect(servingProviderLabel("custom-provider")).toBe("custom-provider");
+    expect(servingProviderLabel("  ")).toBeNull();
+  });
+
   it("marks everything local on an unsigned loopback agent", () => {
     const axes = resolveServingAxes({
       ...base,
@@ -164,6 +173,17 @@ describe("resolveServingAxes", () => {
     expect(axes.combination).toBe("both");
   });
 
+  it("keeps a selected remote host remote when that server calls itself local", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      clientRuntime: "remote",
+      deploymentRuntime: "local",
+      startupTarget: "embedded-local",
+    });
+    expect(axes.runtime).toBe("remote");
+    expect(axes.combination).toBe("remote");
+  });
+
   it("keeps hybrid local when the server also reports a local deployment runtime", () => {
     // buildDeploymentTarget persists elizacloud-hybrid as runtime "local",
     // so the authoritative snapshot must agree with the hybrid rule below it.
@@ -193,8 +213,8 @@ describe("resolveServingAxes", () => {
     expect(axes.inference).toBe("external");
     expect(axes.combination).toBe("external-inference");
     expect(axes.activeChatProvider).toBe("cerebras");
-    expect(servingAxesHeadline(axes)).toBe("Inference on cerebras");
-    expect(servingAxesDescription(axes)).toContain("cerebras");
+    expect(servingAxesHeadline(axes)).toBe("Inference on Cerebras");
+    expect(servingAxesDescription(axes)).toContain("Cerebras");
     // The exact falsehood the review caught.
     expect(axes.inference).not.toBe("local");
     expect(axes.inferenceFallback).toBe(false);

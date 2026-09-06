@@ -294,7 +294,7 @@ describe("anti-larp test discovery", () => {
     `;
     expect(findViolations("fixture.test.mjs", runtimeOption)).toEqual([]);
     expect(findConditionalSkipSites("fixture.test.mjs", runtimeOption)).toEqual(
-      [expect.objectContaining({ form: "conditional-options-skip", line: 3 })],
+      [expect.objectContaining({ form: "conditional-option-skip", line: 3 })],
     );
 
     const namedRuntimeGate = `
@@ -307,7 +307,7 @@ describe("anti-larp test discovery", () => {
     expect(
       findConditionalSkipSites("fixture.test.mjs", namedRuntimeGate),
     ).toEqual([
-      expect.objectContaining({ form: "conditional-options-skip", line: 5 }),
+      expect.objectContaining({ form: "conditional-option-skip", line: 5 }),
     ]);
 
     const deceptiveNames = `
@@ -651,10 +651,13 @@ describe("anti-larp test discovery", () => {
       "skipIf",
     ]);
     expect(
-      forms(
-        'test("Windows only", { skip: process.platform !== "win32" ? "Windows contract" : false }, () => {});',
-      ),
-    ).toEqual(["conditional-options-skip"]);
+      forms(`
+        test("Windows cleanup", {
+          skip: process.platform !== "win32" ? "Windows cleanup contract" : false,
+        }, () => {});
+        test("optional contract", { todo: !featureEnabled }, () => {});
+      `),
+    ).toEqual(["conditional-option-skip", "conditional-option-todo"]);
     // Documented-but-unconditional skips pass the gate yet never bless a file.
     expect(
       forms('it.skip("[live] requires OPENAI_API_KEY", () => {});'),
@@ -663,10 +666,17 @@ describe("anti-larp test discovery", () => {
       [],
     );
     expect(
-      forms(
-        'test("always skipped", { skip: "requires external hardware" }, () => {});',
-      ),
+      forms(`
+        const skip = process.platform !== "win32";
+        test("shorthand", { skip }, () => {});
+      `),
     ).toEqual([]);
+    expect(
+      forms('test("getter", { get skip() { return condition; } }, () => {});'),
+    ).toEqual([]);
+    expect(forms('test("spread", { ...runtimeOptions }, () => {});')).toEqual(
+      [],
+    );
     // A file with any gate violation yields zero sites.
     expect(
       forms(
@@ -676,6 +686,26 @@ describe("anti-larp test discovery", () => {
     expect(() => findConditionalSkipSites("broken.test.ts", "test(")).toThrow(
       /could not be parsed/,
     );
+  });
+
+  test("fails closed on option forms that can hide focused or skipped tests", () => {
+    const kinds = (source: string) =>
+      findViolations("fixture.test.ts", source).map(({ kind }) => kind);
+    expect(
+      kinds(`
+        const skip = process.platform !== "win32";
+        test("shorthand", { skip }, () => {});
+      `),
+    ).toEqual(["orphaned-skip"]);
+    expect(
+      kinds('test("getter", { get skip() { return condition; } }, () => {});'),
+    ).toEqual(["orphaned-skip"]);
+    expect(kinds('test("spread", { ...runtimeOptions }, () => {});')).toEqual([
+      "focused",
+    ]);
+    expect(kinds('test("computed", { ["skip"]: true }, () => {});')).toEqual([
+      "orphaned-skip",
+    ]);
   });
 
   test("returns the conditional-skip-bearing subset and fails closed on bad sources", () => {

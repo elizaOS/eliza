@@ -30,10 +30,21 @@ export interface EvaluatorRunContext {
 	options: EvaluatorRunOptions;
 }
 
+/**
+ * Facts the merged post-turn prompt already renders once in its shared
+ * context. A section that would otherwise embed its own copy refers to the
+ * shared rendering instead, so the merged call carries each fact one time.
+ */
+export interface EvaluatorSharedPromptContext {
+	/** The complete room transcript is rendered in the shared context. */
+	roomTranscriptRendered: boolean;
+}
+
 export interface EvaluatorPromptContext<TPrepared = unknown>
 	extends EvaluatorRunContext {
 	state: State;
 	prepared: TPrepared;
+	shared?: EvaluatorSharedPromptContext;
 }
 
 export interface EvaluatorProcessorContext<

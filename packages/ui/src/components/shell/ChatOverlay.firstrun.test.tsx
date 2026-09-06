@@ -252,9 +252,8 @@ describe("ChatOverlay first-run gating", () => {
     expect(grabber.getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
     expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
-    // Onboarding owns the first card at the top of the transcript, so the
-    // ordinary-chat dissolve must not obscure its choice controls. Once the
-    // gate clears, the regular transcript owns that decorative fade again.
+    // The decorative transcript fade was removed; first-run still pins the
+    // grabber, and leaving setup must return it to ordinary chat interaction.
     expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
     rerender(
       <ChatOverlay
@@ -264,7 +263,8 @@ describe("ChatOverlay first-run gating", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("chat-thread-top-fade")).toBeTruthy();
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    expect(grabber.getAttribute("aria-disabled")).not.toBe("true");
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
@@ -960,7 +960,7 @@ describe("ChatOverlay first-run gating", () => {
     // The composer unlocks.
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Message Eliza");
+    expect(input.placeholder).toBe("Hey Eliza…");
     input.focus();
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "What should I do next?" } });

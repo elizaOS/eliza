@@ -19,7 +19,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -97,23 +96,16 @@ afterEach(() => {
 });
 
 describe("TasksPageView", () => {
-  it("renders the shared ViewHeader with a centered 'Projects' title", () => {
+  it("shows one section switcher without a redundant title or launcher back button", () => {
     seedAppValue();
     render(<TasksPageView />);
-    const header = screen.getByTestId("view-header");
-    expect(header).toBeTruthy();
-    // The heading text lives in the ViewHeader's <h1>, not the panel.
-    const heading = within(header).getByRole("heading", { level: 1 });
-    expect(heading.textContent).toBe("Projects");
-  });
-
-  it("exposes the icon-only launcher back control from the header", () => {
-    seedAppValue();
-    render(<TasksPageView />);
-    // ViewBackButton is aria-labeled and icon-only (no visible text label).
-    const back = screen.getByRole("button", { name: /back to launcher/i });
-    expect(back).toBeTruthy();
-    expect(back.textContent?.trim()).toBe("");
+    expect(
+      screen.getAllByRole("tablist", { name: "Projects sections" }),
+    ).toHaveLength(1);
+    expect(screen.queryByTestId("view-header")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /back to launcher/i }),
+    ).toBeNull();
   });
 
   it("mounts the tasks panel in fullPage mode (panel suppresses its own header)", () => {

@@ -17,6 +17,7 @@ export {
 } from "../utils";
 export * from "./access-context";
 export * from "./action-failure";
+export * from "./action-reply";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";

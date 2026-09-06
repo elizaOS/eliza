@@ -120,11 +120,12 @@ const ContradictOpSchema = z.object({
 	op: z.literal("contradict"),
 	factId: z.string().min(1),
 	/**
-	 * The replacement claim, when the user supplied one inline (e.g. "actually
-	 * I moved to Tokyo"). Optional — `contradict` without a replacement just
-	 * queues the existing fact for review.
+	 * Complete model-authored correction supported by the user, including
+	 * unchanged details. It is proposed for review, not applied to the fact.
 	 */
-	proposedText: z.string().optional(),
+	proposedText: z.string().refine((text) => text.trim().length > 0, {
+		message: "proposedText must contain the complete corrected claim",
+	}),
 	reason: z.string().min(1),
 });
 

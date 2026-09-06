@@ -8,11 +8,28 @@
  * the runtime; batch APIs reduce DB round-trips. Safe to use from both Node and edge entry points.
  */
 
+import { worldMetadataValueEquals } from "./database/world-metadata-cas";
+import { ElizaError } from "./errors";
 import { logger } from "./logger";
 import type { Entity, JsonValue, Metadata, Room, UUID, World } from "./types";
 import { ChannelType } from "./types";
 import type { IDatabaseAdapter } from "./types/database";
 import { stringToUuid } from "./utils";
+
+/** Re-read + re-merge attempts for a world upsert that hits a stale revision. */
+const WORLD_UPSERT_STALE_ATTEMPTS = 3;
+
+function worldUnchangedByMerge(
+	existing: World,
+	merged: { name?: string; messageServerId?: UUID; metadata?: unknown },
+): boolean {
+	return (
+		(merged.name ?? existing.name) === existing.name &&
+		(merged.messageServerId ?? existing.messageServerId) ===
+			existing.messageServerId &&
+		worldMetadataValueEquals(existing.metadata ?? {}, merged.metadata ?? {})
+	);
+}
 
 export interface EnsureConnectionParams {
 	agentId: UUID;
@@ -340,27 +357,59 @@ export async function ensureConnections(
 		adapter,
 		worldIds.map((id) => `world:${id}`),
 		async () => {
-			const existingWorlds =
-				worldIds.length > 0 ? await adapter.getWorldsByIds(worldIds) : [];
-			const existingWorldsById = new Map(
-				existingWorlds.map((world) => [world.id, world]),
-			);
-			const worlds = [...worldMap.values()].map((world) => {
-				const existing = existingWorldsById.get(world.id);
-				return {
-					...existing,
-					...world,
-					agentId,
-					// Connection establishment contributes metadata; it does not own the
-					// full world document. Replacing this object erases durable role grants
-					// every time another participant connects to the shared world.
-					metadata: {
-						...(existing?.metadata ?? {}),
-						...(world.metadata ?? {}),
-					},
-				};
-			});
-			if (worlds.length) await adapter.upsertWorlds(worlds);
+			// The record lock serializes this process; writers outside it (deferred
+			// boot maintenance, another API request's bootstrap for the same world)
+			// can still move the stored revision between the read and the
+			// compare-and-swap. Re-read and re-merge on a stale write, bounded —
+			// live 2026-09-06: the first owner request after every restart failed
+			// with WORLD_METADATA_STALE_WRITE and the turn returned 500.
+			for (let attempt = 0; ; attempt += 1) {
+				const existingWorlds =
+					worldIds.length > 0 ? await adapter.getWorldsByIds(worldIds) : [];
+				const existingWorldsById = new Map(
+					existingWorlds.map((world) => [world.id, world]),
+				);
+				const worlds = [...worldMap.values()]
+					.map((world) => {
+						const existing = existingWorldsById.get(world.id);
+						return {
+							existing,
+							merged: {
+								...existing,
+								...world,
+								agentId,
+								metadata: {
+									...(existing?.metadata ?? {}),
+									...(world.metadata ?? {}),
+								},
+							},
+						};
+					})
+					// A connection that changes nothing must not rewrite the world:
+					// every upsert bumps the metadata revision and rewrites the whole
+					// blob (live 2026-09-06: +1 revision per owner turn on a 1.5 MB
+					// world), which is what concurrent writers then collide with.
+					.filter(
+						({ existing, merged }) =>
+							!existing || !worldUnchangedByMerge(existing, merged),
+					)
+					.map(({ merged }) => merged);
+				if (worlds.length === 0) break;
+				try {
+					await adapter.upsertWorlds(worlds);
+					break;
+				} catch (error) {
+					// error-policy:J2 Only a revision conflict is retried against a
+					// fresh read; the final conflict and every other failure propagate.
+					if (
+						!(error instanceof ElizaError) ||
+						error.code !== "WORLD_METADATA_STALE_WRITE" ||
+						attempt + 1 >= WORLD_UPSERT_STALE_ATTEMPTS
+					) {
+						throw error;
+					}
+				}
+			}
 		},
 	);
 

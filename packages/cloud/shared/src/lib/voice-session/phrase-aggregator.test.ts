@@ -17,4 +17,10 @@ describe("phrase-aggregator", () => {
     const flushed = agg.flush();
     expect(flushed.length).toBeGreaterThan(0);
   });
+  it("keeps ordinary comma phrasing in one spoken sentence", () => {
+    const agg = new PhraseAggregator();
+    expect(
+      agg.push("These tiny particles drift into the air and create that clean, earthy scent."),
+    ).toEqual(["These tiny particles drift into the air and create that clean, earthy scent."]);
+  });
 });

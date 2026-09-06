@@ -118,7 +118,7 @@ export function isMaintainedSource(file) {
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
     !/(^|\/)\.eliza(\/|$)/.test(rel) &&
-    !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
+    !/(^|\/)(node_modules|\.vite|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
     ) &&
     !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
@@ -145,6 +145,7 @@ function* walk(directory) {
     if (
       [
         "node_modules",
+        ".vite",
         "dist",
         "build",
         "coverage",

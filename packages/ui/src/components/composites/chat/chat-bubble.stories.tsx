@@ -3,6 +3,7 @@
  * conversation and composer surfaces.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Card } from "../../ui/card";
 import { ChatBubble } from "./chat-bubble";
 
 const meta = {
@@ -12,6 +13,10 @@ const meta = {
   argTypes: {
     tone: { control: "select", options: ["assistant", "user"] },
     variant: { control: "select", options: ["panel", "glass"] },
+    appearance: {
+      control: "select",
+      options: ["default", "firstRun", "game", "gameTyping", "suggestion"],
+    },
     bare: { control: "boolean" },
     source: {
       control: "select",
@@ -58,6 +63,78 @@ export const BareGlass: Story = {
     variant: "glass",
     bare: true,
     children: "Ready when you are.",
+  },
+};
+
+export const FirstRun: Story = {
+  args: {
+    appearance: "firstRun",
+    variant: "glass",
+    children: "Hi, I'm Eliza. What would you like to do first?",
+  },
+  render: (args) => (
+    <div className="flex flex-col gap-6">
+      <ChatBubble {...args} data-testid="first-run-bubble" />
+      <Card
+        variant="panel"
+        padding="comfortable"
+        radius="xlarge"
+        className="w-fit max-w-full"
+        data-testid="first-run-reference"
+      >
+        Canonical panel reference
+      </Card>
+    </div>
+  ),
+  decorators: [
+    (Story) => (
+      <div className="w-[22rem] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const surface = canvasElement.querySelector<HTMLElement>(
+      '[data-testid="first-run-bubble"]',
+    );
+    const reference = canvasElement.querySelector<HTMLElement>(
+      '[data-testid="first-run-reference"]',
+    );
+    if (!surface || !reference)
+      throw new Error("The first-run bubble and canonical panel must render.");
+    const computed = getComputedStyle(surface);
+    const canonical = getComputedStyle(reference);
+    for (const property of [
+      "backgroundColor",
+      "color",
+      "borderTopColor",
+      "borderTopWidth",
+      "borderTopLeftRadius",
+      "borderBottomLeftRadius",
+      "paddingLeft",
+      "paddingTop",
+      "backdropFilter",
+      "textShadow",
+    ] as const) {
+      if (computed[property] !== canonical[property]) {
+        throw new Error(
+          `First-run ${property} must come from its canonical panel.`,
+        );
+      }
+    }
+    const box = surface.getBoundingClientRect();
+    const column = surface.parentElement?.getBoundingClientRect();
+    if (
+      box.width <= 0 ||
+      !column ||
+      box.width > column.width + 0.5 ||
+      surface.scrollWidth > surface.clientWidth ||
+      Number.parseFloat(computed.paddingLeft) <= 0
+    ) {
+      throw new Error(
+        "First-run bubble must fit its rendered conversation column.",
+      );
+    }
   },
 };
 

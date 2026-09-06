@@ -29,7 +29,6 @@ import {
   FormSelect,
   FormSelectItem,
   Input,
-  ListSkeleton,
 } from "@elizaos/ui/components";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { SettingsGroup } from "@elizaos/ui/components/composites/settings";
@@ -396,6 +395,8 @@ function KnowledgeDocumentsViewForAuthority({
 }: KnowledgeDocumentsViewProps & { authority: string }) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const chatSending = useAppSelector((s) => s.chatSending);
+  const wasChatSending = useRef(chatSending);
   const authorityRef = useRef(authority);
   authorityRef.current = authority;
   const runCapabilityWarmup = useAbortableCapabilityWarmup();
@@ -627,6 +628,14 @@ function KnowledgeDocumentsViewForAuthority({
       setLoading(false);
     });
   }, [documentsCacheKey, loadData]);
+  // Agent document actions write through the runtime store, outside this view.
+  // Revalidate after an overlay turn so their effects appear without a reload.
+  useEffect(() => {
+    const completed = wasChatSending.current && !chatSending;
+    wasChatSending.current = chatSending;
+    if (completed) void loadData({ silent: true });
+  }, [chatSending, loadData]);
+
   useEffect(() => {
     if (!isServiceLoading) {
       serviceRetryRef.current = 0;
@@ -1283,13 +1292,10 @@ function KnowledgeDocumentsViewForAuthority({
       );
   } else if (loading && documents.length === 0) {
     listBody = (
-      <div role="status" aria-label="Loading Knowledge">
-        <ListSkeleton
-          rows={6}
-          className="gap-0 p-0"
-          rowClassName="h-16 rounded-none border-b border-[color:var(--settings-hairline)] bg-[var(--settings-fill)] last:border-b-0"
-        />
-      </div>
+      <PagePanel.Loading
+        heading={t("common.loading", { defaultValue: "Loading…" })}
+        aria-label="Loading Knowledge"
+      />
     );
   } else if (documents.length === 0 && facet !== "all") {
     // Facet-empty (#13594): the list is server-filtered to this facet, so an
@@ -1385,7 +1391,7 @@ function KnowledgeDocumentsViewForAuthority({
       <label
         htmlFor={fileInputId}
         data-testid="knowledge-add"
-        className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] bg-accent/12 px-3 text-[13px] font-semibold text-accent transition-colors hover:bg-accent/20 ${
+        className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-medium text-muted-strong transition-colors hover:text-txt-strong ${
           uploading ? "pointer-events-none opacity-60" : ""
         }`}
       >
@@ -1411,7 +1417,7 @@ function KnowledgeDocumentsViewForAuthority({
         />
       ) : null}
       {hiddenFileInput}
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pb-4">
+      <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-4">
         <SettingsGroup
           title={
             hasSearchQuery
@@ -1422,7 +1428,10 @@ function KnowledgeDocumentsViewForAuthority({
           }
           action={addControl}
         >
-          {!documentsUnavailable && !loadIssue && !hasSearchQuery ? (
+          {!documentsUnavailable &&
+          !loadIssue &&
+          !hasSearchQuery &&
+          (visibleFacets.length > 1 || showScopeFilter) ? (
             <div
               data-slot="settings-row"
               className="flex min-h-14 w-full items-center justify-between gap-2 px-3 py-2"

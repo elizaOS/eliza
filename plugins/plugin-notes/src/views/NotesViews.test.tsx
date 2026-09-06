@@ -102,7 +102,7 @@ afterEach(() => {
 });
 
 describe("Notes state labels", () => {
-  it("can render the shared route header when used standalone", () => {
+  it("keeps standalone Notes accessible without a repeated title or launcher button", () => {
     const notesSnapshot = snapshot(4);
     notesSnapshot.notes = [stickyNote()];
     stateHook.mockReturnValue(hookState({ snapshot: notesSnapshot }));
@@ -113,10 +113,12 @@ describe("Notes state labels", () => {
       }),
     ).toBeTruthy();
     expect(
-      screen.getAllByRole("heading", { level: 1, name: "Notes" }),
-    ).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
-    expect(window.location.pathname).toBe("/views");
+      screen.queryByRole("heading", { level: 1, name: "Notes" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
+    expect(screen.getByText("Verify the signed build")).toBeTruthy();
     expect(screen.getByRole("region", { name: "Notes" })).toBeTruthy();
     notes.unmount();
   });

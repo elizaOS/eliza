@@ -188,8 +188,102 @@ async function runCase(
 }
 
 describe("VIEWS show/home with Notes foreground (#17299)", () => {
+	it("does not claim navigation to a registered but unavailable view", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const callback = vi.fn();
+		const result = await runViewsShow({
+			client: {
+				listViews: vi.fn(async () => [{ ...notesView(), available: false }]),
+			} as unknown as ViewsClient,
+			message: message("Open Notes") as never,
+			options: { view: "notes" },
+			callback,
+		});
+		expect(result).toMatchObject({
+			success: false,
+			modelReplyRequired: true,
+			data: { navigationAttempted: false },
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	const fullRegistry = () => [chatView(), notesView(), calendarView()];
 	const noHomeRegistry = () => [notesView(), calendarView()];
+
+	it("resolves the canonical Home alias before a fuzzy Home Budget match", async () => {
+		const homeBudget = {
+			...chatView(),
+			id: "home-budget",
+			label: "Home Budget",
+			path: "/home-budget",
+		};
+		const { result, fetchMock, callback } = await runCase(
+			"Read my note, then go home.",
+			{ action: "show", view: "Home" },
+			[homeBudget, ...fullRegistry()],
+		);
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			values: { viewId: "chat", viewPath: "/" },
+		});
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+			"/api/views/chat/navigate",
+		);
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it.each(["id", "label"])(
+		"preserves an exact registered %s before the canonical Home alias",
+		async (field) => {
+			const exactHome = {
+				...chatView(),
+				id: "custom-home",
+				label: "Custom Home",
+				path: "/custom-home",
+				[field]: "Home",
+			};
+			const { result, fetchMock } = await runCase(
+				"Open the supplied destination.",
+				{ action: "show", view: "Home" },
+				[exactHome, ...fullRegistry()],
+			);
+			expect(result).toMatchObject({
+				success: true,
+				values: { viewId: exactHome.id, viewPath: "/custom-home" },
+			});
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+				`/api/views/${exactHome.id}/navigate`,
+			);
+		},
+	);
+
+	it("does not replace an unavailable canonical Home with fuzzy Home Budget", async () => {
+		const { result, fetchMock, callback } = await runCase(
+			"Go home.",
+			{ action: "show", view: "Home" },
+			[
+				{
+					...chatView(),
+					id: "home-budget",
+					label: "Home Budget",
+					path: "/home-budget",
+				},
+				...noHomeRegistry(),
+			],
+		);
+		expect(result).toMatchObject({
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+	});
 
 	const cases: Array<{
 		name: string;
@@ -224,12 +318,6 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 			name: "'go home' with explicit show/home target",
 			text: "go home",
 			options: { action: "show", view: "home" },
-			views: fullRegistry,
-		},
-		{
-			name: "'go home' with inferred target",
-			text: "go home",
-			options: { action: "show" },
 			views: fullRegistry,
 		},
 		{
@@ -282,7 +370,7 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
 		});
-		expect(result).not.toHaveProperty("turnComplete");
+		expect(result.turnComplete).toBe(false);
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(result).not.toHaveProperty("verifiedUserFacing");
 		expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
@@ -293,6 +381,96 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		});
 		expect(fetchMock).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+	});
+
+	describe.each([false, true])(
+		"compound request with nested options=%s",
+		(nested) => {
+			it.each(["view", "viewId", "id", "target", "name"])(
+				"honors the explicit %s destination after a note read",
+				async (targetKey) => {
+					const parameters = { action: "show", [targetKey]: "chat" };
+					const { result, fetchMock, callback } = await runCase(
+						"Read my Continuity check 2145 note, then go home and tell me its text. Do not change the note.",
+						nested ? { parameters } : parameters,
+						fullRegistry(),
+					);
+
+					expect(result).toMatchObject({
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyRequired: true,
+						values: { mode: "show", viewId: "chat", viewPath: "/" },
+					});
+					expect(JSON.parse(result.text ?? "{}")).toMatchObject({
+						effect: "view_navigation",
+						status: "accepted",
+						viewId: "chat",
+						path: "/",
+					});
+					expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+						"http://127.0.0.1:3456/api/views/chat/navigate",
+						expect.objectContaining({ method: "POST" }),
+					);
+					expect(callback).not.toHaveBeenCalled();
+					expect(result).not.toHaveProperty("verifiedUserFacing");
+				},
+			);
+		},
+	);
+
+	it("does not replace an unavailable explicit destination with the note-read surface", async () => {
+		const { result, fetchMock, callback } = await runCase(
+			"Read my note, then go to the requested view.",
+			{ action: "show", view: "missing-destination" },
+			fullRegistry(),
+		);
+		expect(result).toMatchObject({
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it.each(["go home", "Read my note.", "open my calendar", "打开笔记"])(
+		"requires a structured destination instead of inferring one from %s",
+		async (text) => {
+			const { result, fetchMock, callback } = await runCase(
+				text,
+				{ parameters: { action: "show" } },
+				fullRegistry(),
+			);
+			expect(result).toMatchObject({
+				success: false,
+				transcriptVisibility: "internal",
+				turnComplete: false,
+			});
+			expect(fetchMock).not.toHaveBeenCalled();
+			expect(callback).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not replace explicit Documents with a note mentioned elsewhere in the request", async () => {
+		const { result, fetchMock } = await runCase(
+			"Read my note, then open the requested destination.",
+			{ action: "show", view: "documents" },
+			[
+				...fullRegistry(),
+				{
+					...notesView(),
+					id: "documents",
+					label: "Documents",
+					path: "/documents",
+				},
+			],
+		);
+		expect(result.values).toMatchObject({ viewId: "documents" });
+		expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+			"http://127.0.0.1:3456/api/views/documents/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
 	});

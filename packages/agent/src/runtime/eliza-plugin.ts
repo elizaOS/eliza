@@ -217,7 +217,67 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       connectAccountAction,
       pairOwnerAccountAction,
       notifyAction,
-      ...promoteSubactionsToActions(memoryAction),
+      ...promoteSubactionsToActions(memoryAction, {
+        overrides: {
+          create: { description: "Store a memory. Supply text to save." },
+          update: {
+            description:
+              "Correct saved knowledge. Search the subject's existing facts first and reconcile every record affected by the user's correction, preserving unrelated facts in each full replacement text. Every update call MUST include its target memoryId from the search (or a unique query), replacement text, and confirm:true. Updating one record does not correct other contradictory records; verify the saved facts before reporting completion.",
+          },
+          delete: {
+            description:
+              "Delete saved knowledge the user asked to forget. Supply confirm:true and either memoryId or a unique query. If the tool returns candidates, review their full text and delete only records expressing the requested claim by memoryId. Shared source messages can contain unrelated facts; preserve those. Verify the requested claim is gone before reporting completion.",
+          },
+        },
+      }).map((action) => {
+        // The umbrella keeps its conditional parameters; each promoted tool
+        // must expose the requirements of the operation it actually executes.
+        // Otherwise planners can repeatedly call UPDATE without replacement text.
+        const fields: Record<string, readonly string[]> = {
+          MEMORY_CREATE: ["action", "text", "kind", "tags"],
+          MEMORY_SEARCH: [
+            "action",
+            "type",
+            "entityId",
+            "roomId",
+            "query",
+            "limit",
+            "offset",
+            "snapshot",
+          ],
+          MEMORY_UPDATE: [
+            "action",
+            "text",
+            "memoryId",
+            "query",
+            "type",
+            "entityId",
+            "roomId",
+            "confirm",
+          ],
+          MEMORY_DELETE: [
+            "action",
+            "memoryId",
+            "query",
+            "type",
+            "entityId",
+            "roomId",
+            "confirm",
+          ],
+        };
+        const allowed = fields[action.name];
+        if (!allowed) return action;
+        action.parameters = action.parameters
+          ?.filter((parameter) => allowed.includes(parameter.name))
+          .map((parameter) => ({
+            ...parameter,
+            required:
+              parameter.name === "text" || parameter.name === "confirm"
+                ? true
+                : parameter.required,
+          }));
+        return action;
+      }),
       filesAction,
       // Global knowledge-hub actions (#13595): search + attach-to-chat +
       // send-to-someone, callable from any view.

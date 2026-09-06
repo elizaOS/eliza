@@ -105,6 +105,7 @@ const appMock = vi.hoisted(() => ({
     // flag (clear / swipe). Default to instant resolution; the watchdog tests
     // override handleNewConversation with a controllable promise.
     handleNewConversation: vi.fn(() => Promise.resolve()),
+    ensureActiveConversation: vi.fn(async (): Promise<string | null> => null),
     handleSelectConversation: vi.fn(() => Promise.resolve()),
     conversations: [] as Array<{ id: string }>,
     setTab: vi.fn(),
@@ -357,6 +358,9 @@ afterEach(() => {
   authStatusMock.revalidate.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
   appMock.value.handleNewConversation = vi.fn(() => Promise.resolve());
+  appMock.value.ensureActiveConversation = vi.fn(
+    async () => appMock.value.activeConversationId ?? null,
+  );
   appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
   appMock.value.activeConversationId = null;
   appMock.value.conversations = [];
@@ -428,6 +432,10 @@ describe("useShellController", () => {
     appMock.value.elizaCloudVoiceProxyAvailable = true;
     rerender();
     expect(voiceOutputMock.cloudConnectedSeen).toBe(true);
+
+    authGateMock.value = { gated: true, phase: "needs-auth" };
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
   });
 
   it("opens the shared chat state even while startup is still booting", () => {
@@ -2598,13 +2606,38 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     );
   });
 
-  it("uses the newly committed conversation UUID before a slow greeting finishes", async () => {
+  it("surfaces the precise browser microphone setup timeout from realtime voice", async () => {
+    realtimeVoiceMock.startOutcome = {
+      kind: "fallback-to-batch",
+      reason: "transport",
+      message:
+        "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry.",
+    };
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.realtimeVoice?.error).toContain(
+      "Microphone setup timed out",
+    );
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry.",
+      "error",
+      6000,
+    );
+  });
+
+  it("waits for recovered history before using a provisional conversation UUID", async () => {
     appMock.value.activeConversationId = null;
     let finishGreeting: (() => void) | null = null;
-    appMock.value.handleNewConversation = vi.fn(
+    appMock.value.ensureActiveConversation = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          finishGreeting = resolve;
+        new Promise<string | null>((resolve) => {
+          finishGreeting = () => resolve(conversationId);
         }),
     );
     const { result, rerender } = renderHook(() => useShellController());
@@ -2612,26 +2645,50 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     act(() => result.current.toggleHandsFree());
     expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
 
-    // AppContext publishes the new conversation before greeting generation
-    // resolves. This render is the exact identity boundary the realtime hook
-    // consumes; no timer or polling is involved.
+    // The list can publish a provisional selection while its history is still
+    // loading. Its committed render alone must not start the voice session.
     appMock.value.activeConversationId = conversationId;
     rerender();
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
-    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
     expect(createVoiceCaptureMock).not.toHaveBeenCalled();
 
     await act(async () => {
       finishGreeting?.();
       await Promise.resolve();
     });
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(appMock.value.ensureActiveConversation).toHaveBeenCalledTimes(1);
+    expect(appMock.value.handleNewConversation).not.toHaveBeenCalled();
+  });
+
+  it("keeps failed voice identity recovery retryable without creating a chat or opening the microphone", async () => {
+    appMock.value.activeConversationId = null;
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(appMock.value.ensureActiveConversation).toHaveBeenCalledTimes(1);
+    expect(appMock.value.handleNewConversation).not.toHaveBeenCalled();
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.realtimeVoice?.error).toContain("Tap Talk to retry");
   });
 
   it("waits for startup hydration instead of creating an orphan conversation", async () => {
+    let finishRecovery!: (id: string) => void;
+    appMock.value.ensureActiveConversation = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finishRecovery = resolve;
+        }),
+    );
     appMock.value.startupCoordinator.phase = "hydrating";
     appMock.value.activeConversationId = null;
     appMock.value.conversations = [{ id: conversationId }];
@@ -2660,6 +2717,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     appMock.value.activeConversationId = conversationId;
     rerender();
     await act(async () => {
+      finishRecovery(conversationId);
       await Promise.resolve();
     });
 
@@ -2669,10 +2727,11 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(createVoiceCaptureMock).not.toHaveBeenCalled();
   });
 
-  it("projects realtime phase, playback, and unlock state", () => {
+  it("clears the committed transcript while projecting realtime playback state", () => {
     realtimeVoiceMock.state.active = true;
     realtimeVoiceMock.state.status = "speaking";
     realtimeVoiceMock.state.transcriptPartial = "stale partial";
+    realtimeVoiceMock.state.transcriptFinal = "show me the weather";
     realtimeVoiceMock.state.agentSpeaking = true;
     realtimeVoiceMock.state.needsUnlock = true;
     realtimeVoiceMock.state.microphoneMuted = true;
@@ -2723,12 +2782,20 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "trace-voice-turn",
         });
       });
-      expect(resyncEvents).toHaveLength(0);
+      expect(resyncEvents[0]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-progress",
+      });
 
       act(() => {
         onServerEvent?.({ t: "llm_first_text", traceId: "trace-voice-turn" });
       });
-      expect(resyncEvents[0]?.detail).toEqual({
+      expect(resyncEvents).toHaveLength(1);
+
+      act(() => {
+        onServerEvent?.({ t: "speaking_start", traceId: "trace-voice-turn" });
+      });
+      expect(resyncEvents[1]?.detail).toEqual({
         conversationId,
         reason: "voice-turn-progress",
       });
@@ -2741,7 +2808,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "trace-voice-turn",
         });
       });
-      expect(resyncEvents[1]?.detail).toEqual({
+      expect(resyncEvents[2]?.detail).toEqual({
         conversationId,
         reason: "voice-turn-complete",
       });
@@ -2908,6 +2975,30 @@ describe("useShellController cloud-only auth gate", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("always lets an active hands-free user stop during an auth transition", () => {
+    const login = appMock.value.handleInteractiveCloudLogin;
+    login.mockClear();
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.toggleHandsFree());
+    expect(result.current.handsFree).toBe(true);
+    expect(result.current.recording).toBe(true);
+
+    // Model the narrow interval after the auth store closes its gate but before
+    // React commits the gate effect. The button must remain a stop action in
+    // that interval, never a sign-in/retry action that leaves the mic latched.
+    authGateMock.value.gated = true;
+    authGateMock.value.phase = "needs-auth";
+    act(() => result.current.toggleHandsFree());
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.recording).toBe(false);
+    expect(login).not.toHaveBeenCalled();
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).not.toBe("always-on");
   });
 
   it("always-on boot restore aborts when the gate closes during the permission probe", async () => {

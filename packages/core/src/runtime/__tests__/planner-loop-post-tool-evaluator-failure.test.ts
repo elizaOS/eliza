@@ -32,6 +32,36 @@ function providerHttpError(status: number, message: string): Error {
 }
 
 describe("planner-loop — post-tool evaluator failure recovery", () => {
+	it("never delivers a fake reply action or replays the write after failed evaluator recovery", async () => {
+		const runtime = plannerEmitsToolCall("NOTES");
+		const leakedEnvelope =
+			'{"action":"messageToUser","args":{"message":"Done. The note is updated."}}';
+		runtime.useModel.mockResolvedValue({ text: leakedEnvelope, toolCalls: [] });
+		const noteResult =
+			"updated the note: Manifest handoff QA 1725 — Bring a map and a silver bottle.";
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: noteResult,
+			modelReplyRequired: true,
+			modelReplyFallback: noteResult,
+		}));
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate: vi.fn(async () => {
+				throw providerHttpError(400, "Invalid response schema");
+			}),
+		});
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		for (const [, params] of runtime.useModel.mock.calls.slice(1)) {
+			expect(params).not.toHaveProperty("tools");
+		}
+		expect(result.finalMessage).not.toContain(leakedEnvelope);
+		expect(result.finalMessage).not.toContain("Done. The note is updated.");
+	});
+
 	it("relays the successful tool result when the evaluator provider call fails (HTTP 400)", async () => {
 		// The real FILE write action marks its confirmation user-facing
 		// (`userFacingSuccessResult`); mirror that opt-in here.

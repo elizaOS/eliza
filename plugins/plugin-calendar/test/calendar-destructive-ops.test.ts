@@ -10,11 +10,11 @@
  *   - no match                    → not-found reply, no approval
  *
  * The CalendarService is stubbed (feed fixtures + spied mutations); the fake
- * runtime has no `useModel`, so replies deterministically use the handler's
- * canonical fallback strings.
+ * runtime has no `useModel`; ordinary outcomes preserve internal evidence for
+ * the evaluator. Exact approval previews remain interactive controls.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -68,6 +68,11 @@ function event(args: {
 }
 
 const LUNCH_MAYA = event({ externalId: "evt-1", title: "Lunch with Maya" });
+const STANDUP_FRIDAY = event({
+  externalId: "evt-3",
+  title: "Standup",
+  startAt: "2026-07-10T15:00:00.000Z",
+});
 const LUNCH_GRANDMA = event({
   externalId: "evt-2",
   title: "Lunch with Grandma",
@@ -133,8 +138,6 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
 type StubService = ReturnType<typeof stubService>;
 
 function fakeRuntime(service: StubService): IAgentRuntime {
-  // No `useModel` on purpose: the handler returns its canonical grounded
-  // fallback strings verbatim.
   return {
     agentId: "agent-1",
     logger: {
@@ -162,13 +165,62 @@ async function runHandler(args: {
   parameters: Record<string, unknown>;
 }) {
   const action = createCalendarActionRunner(fakeDeps(args.service));
-  return (await action.handler(
+  const callback = vi.fn(async () => []);
+  const result = await action.handler(
     fakeRuntime(args.service),
     message(args.text),
     undefined,
     { parameters: args.parameters },
-    undefined,
-  )) as { success: boolean; text: string };
+    callback,
+  );
+  if (!result) throw new Error("Expected a Calendar action result");
+  expect(result.effectReceipts).toHaveLength(1);
+  if (result.transcriptVisibility === "internal") {
+    expectInternalHandoff(result, callback);
+  } else {
+    expect(result.turnComplete).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+    expect(result.userFacingEffectReceiptIds).toEqual([
+      result.effectReceipts?.[0]?.receiptId,
+    ]);
+    expect(callback).toHaveBeenCalledExactlyOnceWith({
+      text: result.text,
+      source: "action",
+      action: "CALENDAR",
+    });
+  }
+  return result;
+}
+
+function expectInternalHandoff(
+  result: ActionResult,
+  callback: ReturnType<typeof vi.fn>,
+): void {
+  expect(callback).not.toHaveBeenCalled();
+  // Settled internal results omit turnComplete (evaluation delegated); pauses keep false.
+  expect(result.turnComplete).not.toBe(true);
+  expect(result).not.toHaveProperty("text");
+  expect(result).not.toHaveProperty("userFacingText");
+  expect(result.data?.replyContext).toMatchObject({
+    domain: "calendar",
+    intent: expect.any(String),
+    scenario: expect.any(String),
+    facts: expect.stringMatching(/\S/),
+    context: expect.any(Object),
+  });
+}
+
+function replyFacts(result: ActionResult): string {
+  const replyContext = result.data?.replyContext;
+  if (
+    !replyContext ||
+    typeof replyContext !== "object" ||
+    Array.isArray(replyContext) ||
+    typeof replyContext.facts !== "string"
+  ) {
+    throw new Error("Expected Calendar internal reply facts");
+  }
+  return replyContext.facts;
 }
 
 describe("CALENDAR delete_event disambiguation", () => {
@@ -178,6 +230,76 @@ describe("CALENDAR delete_event disambiguation", () => {
     service = stubService([LUNCH_MAYA, LUNCH_GRANDMA]);
   });
 
+  it.each(["title", "details.title"])(
+    "uses %s as the deletion target without a redundant query",
+    async (field) => {
+      const result = await runHandler({
+        service,
+        text: "delete lunch with grandma",
+        parameters: {
+          subaction: "delete_event",
+          ...(field === "title"
+            ? { title: "Lunch with Grandma" }
+            : {
+                details: { title: "Lunch with Grandma", calendarId: "primary" },
+              }),
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(service.cancelApproval).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+      );
+      expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not choose between duplicate supplied titles", async () => {
+    service = stubService([
+      LUNCH_GRANDMA,
+      event({ externalId: "evt-duplicate", title: LUNCH_GRANDMA.title }),
+    ]);
+    const result = await runHandler({
+      service,
+      text: "delete lunch with grandma",
+      parameters: {
+        subaction: "delete_event",
+        details: { title: LUNCH_GRANDMA.title },
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(replyFacts(result)).toContain("multiple");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not mutate when the supplied title has no match", async () => {
+    const result = await runHandler({
+      service,
+      text: "delete standup",
+      parameters: { subaction: "delete_event", title: "Standup" },
+    });
+    expect(result.success).toBe(false);
+    expect(replyFacts(result)).toContain("couldn't find");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicit query ahead of the title fallback", async () => {
+    const result = await runHandler({
+      service,
+      text: "delete lunch with maya",
+      parameters: {
+        subaction: "delete_event",
+        query: "Maya",
+        title: "Lunch with Grandma",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.cancelApproval).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ targetEvent: LUNCH_MAYA }),
+    );
+  });
+
   it("ambiguous fuzzy title → clarification, and nothing is deleted", async () => {
     const result = await runHandler({
       service,
@@ -185,9 +307,9 @@ describe("CALENDAR delete_event disambiguation", () => {
       parameters: { subaction: "delete_event", query: "lunch" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("multiple");
-    expect(result.text).toContain("Lunch with Maya");
-    expect(result.text).toContain("Lunch with Grandma");
+    expect(replyFacts(result)).toContain("multiple");
+    expect(replyFacts(result)).toContain("Lunch with Maya");
+    expect(replyFacts(result)).toContain("Lunch with Grandma");
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
@@ -211,6 +333,84 @@ describe("CALENDAR delete_event disambiguation", () => {
       }),
     );
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("a multi-target message lets the per-target intent pick the day instead of the message's first date", async () => {
+    // Live 2026-09-05 22:44: three deletes in one message were all constrained
+    // to the first stated day, so two existing events came back "not found".
+    const multi = stubService([LUNCH_MAYA, LUNCH_GRANDMA, STANDUP_FRIDAY]);
+    const result = await runHandler({
+      service: multi,
+      text: "delete lunch with maya on 2026-07-08 and the standup on 2026-07-10 from my calendar",
+      parameters: {
+        subaction: "delete_event",
+        query: "standup",
+        intent: "delete the standup on 2026-07-10 from my calendar",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(multi.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: STANDUP_FRIDAY }),
+    );
+  });
+
+  it("the user's stated day outranks a wrong planner date detail", async () => {
+    // Live 2026-09-05 23:33: "delete the haircut on sunday" came with
+    // details.date for the Monday, so the lookup missed the Sunday event.
+    const result = await runHandler({
+      service,
+      text: "delete lunch with grandma on 2026-07-08",
+      parameters: {
+        subaction: "delete_event",
+        query: "grandma",
+        details: { date: "2026-07-09", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
+  it("a multi-target message with no per-target intent uses the planner's date detail, not the message's first day", async () => {
+    // Live 2026-09-06 00:16: "delete the yoga class on thursday and the dentist
+    // visit on friday" — the dentist call carried date=Friday but no intent, and
+    // the lookup was constrained to Thursday, so the Friday event was missed.
+    const multi = stubService([LUNCH_MAYA, LUNCH_GRANDMA, STANDUP_FRIDAY]);
+    const result = await runHandler({
+      service: multi,
+      text: "delete lunch with maya on 2026-07-08 and the standup on 2026-07-10 from my calendar",
+      parameters: {
+        subaction: "delete_event",
+        title: "Standup",
+        query: "standup friday",
+        details: { date: "2026-07-10", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(multi.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: STANDUP_FRIDAY }),
+    );
+  });
+
+  it("typed delete_event + title (no query) → reads the feed and targets that event", async () => {
+    // ROOT trace step-1788648925553-vzj6rq (2026-09-05): the planner sent
+    // subaction=delete_event with the exact title and a date; the handler
+    // discarded the title and asked which event, without any lookup.
+    const result = await runHandler({
+      service,
+      text: "clean up the two QA events",
+      parameters: {
+        subaction: "delete_event",
+        title: "Lunch with Grandma",
+        details: { date: "2026-07-08", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
+    expect(service.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
   });
 
   it("explicit eventId → proceeds directly without a feed lookup", async () => {
@@ -245,39 +445,49 @@ describe("CALENDAR delete_event disambiguation", () => {
       parameters: { subaction: "delete_event", query: "standup" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("couldn't find");
+    expect(replyFacts(result)).toContain("couldn't find");
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
-  it("delegates presentation without changing the grounded action result", async () => {
+  it("hands off grounded facts without invoking the action reply renderer", async () => {
     const renderGroundedReply = vi.fn(
-      async ({ fallback }) => `Human-readable: ${fallback}`,
+      async ({ fallback }: { fallback: string }) => ({
+        kind: "model" as const,
+        text: `Human-readable: ${fallback}`,
+      }),
     );
     const action = createCalendarActionRunner({
       ...fakeDeps(service),
       renderGroundedReply,
     });
 
-    const result = (await action.handler(
+    const callback = vi.fn(async () => []);
+    const result = await action.handler(
       fakeRuntime(service),
       message("delete the standup"),
       undefined,
       {
         parameters: { subaction: "delete_event", query: "standup" },
       },
-      undefined,
-    )) as { success: boolean; text: string };
-
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("Human-readable:");
-    expect(renderGroundedReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        intent: "delete the standup",
-        scenario: "delete_event_not_found",
-        fallback: expect.stringContaining("couldn't find"),
-      }),
+      callback,
     );
+    if (!result) throw new Error("Expected a Calendar action result");
+    expect(result.success).toBe(false);
+    expectInternalHandoff(result, callback);
+    expect(result.effectReceipts).toEqual([
+      expect.objectContaining({
+        operation: "calendar.event.delete",
+        outcome: "noop",
+      }),
+    ]);
+    expect(result.data?.replyContext).toMatchObject({
+      intent: "delete the standup",
+      scenario: "delete_event_not_found",
+      facts: expect.stringContaining("couldn't find"),
+      context: { titleHint: "standup" },
+    });
+    expect(renderGroundedReply).not.toHaveBeenCalled();
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
@@ -297,7 +507,7 @@ describe("CALENDAR update_event disambiguation", () => {
       parameters: { subaction: "update_event", query: "lunch" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("multiple");
+    expect(replyFacts(result)).toContain("multiple");
     expect(service.modifyApproval).not.toHaveBeenCalled();
     expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });

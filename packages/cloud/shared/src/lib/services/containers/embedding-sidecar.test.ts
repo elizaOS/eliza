@@ -21,6 +21,10 @@ const SIDECAR_ENV_KEYS = [
   "ELIZA_EMBEDDING_SIDECAR_MODEL_ID",
   "CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT",
   "ELIZA_EMBEDDING_SIDECAR_HOST_PORT",
+  "CONTAINERS_EMBEDDING_SIDECAR_MODEL_REVISION",
+  "ELIZA_EMBEDDING_SIDECAR_MODEL_REVISION",
+  "CONTAINERS_EMBEDDING_SIDECAR_POOLING",
+  "ELIZA_EMBEDDING_SIDECAR_POOLING",
 ];
 
 afterEach(() => {
@@ -52,11 +56,16 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     expect(cmd).toContain("--label ai.elizaos.managed-by=eliza-cloud");
   });
 
-  test("serves gte-small on the shared bridge network with a loopback-only publish", () => {
+  test("serves the pinned CLS-pooled bge-small on the shared bridge network with a loopback-only publish", () => {
     const cmd = buildEnsureEmbeddingSidecarCmd();
     expect(cmd).toContain("--network containers-isolated");
     expect(cmd).toContain("-p 127.0.0.1:8290:80");
-    expect(cmd).toContain("--model-id thenlper/gte-small");
+    expect(cmd).toContain("--model-id BAAI/bge-small-en-v1.5");
+    // Same width is not the same space: revision and pooling are explicit so a
+    // fresh node never drifts onto mean-pooled or re-trained vectors.
+    expect(cmd).toContain("--revision 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a");
+    expect(cmd).toContain("--pooling cls");
+    expect(cmd).toContain("--auto-truncate");
     expect(cmd).toContain("ghcr.io/huggingface/text-embeddings-inference:cpu-1.8");
     // Model cache persists across container replacement.
     expect(cmd).toContain("-v /data/embedding-models:/data");
@@ -74,6 +83,18 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     expect(cmd).toContain("ghcr.io/example/tei:cpu-9.9");
     expect(cmd).toContain("--model-id example/gte-small-v2");
     expect(cmd).toContain("-p 127.0.0.1:9411:80");
+    // A non-default model gets no implicit revision or pooling: TEI reads the
+    // model's own config unless the operator pins one.
+    expect(cmd).not.toContain("--revision");
+    expect(cmd).not.toContain("--pooling");
+  });
+
+  test("honors explicit revision and pooling overrides for a non-default model", () => {
+    process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID = "thenlper/gte-small";
+    process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_REVISION = "abc123def";
+    process.env.CONTAINERS_EMBEDDING_SIDECAR_POOLING = "mean";
+    const cmd = buildEnsureEmbeddingSidecarCmd();
+    expect(cmd).toContain("--model-id thenlper/gte-small --revision abc123def --pooling mean");
   });
 
   test("refuses shell-unsafe config instead of quoting around it", () => {

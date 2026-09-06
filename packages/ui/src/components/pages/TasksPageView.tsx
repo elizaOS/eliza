@@ -158,6 +158,7 @@ export function TasksPageView() {
         }))}
         role="tablist"
         aria-label="Projects sections"
+        buttonClassName="min-h-11 rounded-full px-4"
       />
       {segments.map((entry) => (
         <ProjectsSegmentButton
@@ -174,7 +175,7 @@ export function TasksPageView() {
     <ShellViewAgentSurface viewId="tasks">
       <FramedPage gutterOwner="framed-page" data-testid="tasks-view">
         <FramedPageHeader title="Projects" />
-        <FramedPageNavigation className="flex items-center justify-between gap-2">
+        <FramedPageNavigation className="flex items-center justify-between gap-2 pt-4 pb-2">
           {segmentControl}
           {segment === "apps" ? (
             <AppsManagementActions

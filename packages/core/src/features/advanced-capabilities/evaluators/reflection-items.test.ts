@@ -2,10 +2,22 @@
  * Deterministic unit tests for the reflection evaluators (reflection-items.ts):
  * fact keyword dedupe / strengthen without embeddings, the strict-structured-output
  * schema invariant across every reflection schema, and the tolerant per-op
- * factExtractor parse. Runtime and model are vi.fn stubs — no live model, no DB.
+ * factExtractor parse. Runtime/model collaborators are stubbed; pending correction
+ * tests exercise the real parser, processor and SQL helper against in-memory PGlite.
  */
-import { describe, expect, it, vi } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { logger } from "../../../logger.ts";
+import { parseAndValidate } from "../../../runtime/validated-model-call.ts";
 import type {
 	Entity,
 	EvaluatorProcessorContext,
@@ -65,12 +77,13 @@ function processFactOps(
 	runtime: ReturnType<typeof makeRuntime>,
 	knownFacts: Memory[],
 	output: unknown,
+	currentMessage = message(),
 ) {
 	const processor = factMemoryEvaluator.processors?.[0];
 	if (!processor) throw new Error("missing fact processor");
 	return processor.process({
 		runtime,
-		message: message(),
+		message: currentMessage,
 		state: { values: {}, data: {}, text: "" },
 		options: {},
 		evaluatorName: "factMemory",
@@ -83,6 +96,220 @@ function processFactOps(
 		output,
 	} as EvaluatorProcessorContext);
 }
+
+describe("factMemoryEvaluator pending corrections", () => {
+	let client: PGlite;
+	const originalFact: Memory = {
+		id: "00000000-0000-0000-0000-0000000000ff" as UUID,
+		entityId,
+		agentId,
+		roomId,
+		content: {
+			text: "The packing list is a green notebook and a charger, with no water.",
+		},
+		metadata: { kind: "current", category: "working_on", confidence: 0.6 },
+	};
+	const replacement =
+		"The packing list is an orange notebook and a charger, with no water.";
+	const correction = message(
+		"Change the notebook to orange; keep the charger and no water.",
+	);
+	const reason = "The user corrected the notebook color from green to orange.";
+
+	beforeAll(async () => {
+		client = new PGlite();
+		await client.exec(`CREATE TABLE fact_candidates (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			agent_id uuid NOT NULL, entity_id uuid NOT NULL, kind text NOT NULL,
+			existing_fact_id uuid, proposed_text text NOT NULL,
+			confidence real NOT NULL, evidence jsonb, status text NOT NULL
+		)`);
+	});
+	afterEach(async () => {
+		await client.exec("DELETE FROM fact_candidates");
+	});
+	afterAll(async () => {
+		await client.close();
+	});
+
+	function parseCorrection(proposedText: string | undefined) {
+		return factMemoryEvaluator.parse?.(
+			JSON.stringify({
+				ops: [
+					{
+						op: "contradict",
+						factId: originalFact.id,
+						proposedText,
+						reason,
+					},
+				],
+			}),
+		);
+	}
+
+	it("persists the model's complete orange proposal and leaves the green fact unchanged", async () => {
+		const runtime = makeRuntime();
+		Object.assign(runtime, { adapter: { db: drizzle(client) } });
+		const knownFacts = [
+			originalFact,
+			{
+				...originalFact,
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				content: { text: "The user's bike is red." },
+			},
+		];
+		const before = structuredClone(knownFacts);
+		const parsed = parseCorrection(replacement);
+		expect(parsed?.ops).toHaveLength(1);
+
+		const result = await processFactOps(
+			runtime,
+			knownFacts,
+			parsed,
+			correction,
+		);
+
+		const stored = await client.query("SELECT * FROM fact_candidates");
+		expect(stored.rows).toHaveLength(1);
+		expect(stored.rows[0]).toMatchObject({
+			agent_id: agentId,
+			entity_id: entityId,
+			kind: "contradict",
+			existing_fact_id: originalFact.id,
+			proposed_text: replacement,
+			status: "pending",
+			evidence: { reason, evidenceMessageId: correction.id },
+		});
+		expect(result?.data).toMatchObject({ contradicted: 1 });
+		expect(knownFacts).toEqual(before);
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
+		expect(runtime.deleteMemory).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it.each([originalFact.content.text, ` \t${originalFact.content.text}\n `])(
+		"skips an unchanged proposal without dropping another valid correction (%j)",
+		async (proposedText) => {
+			const runtime = makeRuntime();
+			Object.assign(runtime, { adapter: { db: drizzle(client) } });
+			const parsed = factMemoryEvaluator.parse?.({
+				ops: [
+					{ op: "contradict", factId: originalFact.id, proposedText, reason },
+					{
+						op: "contradict",
+						factId: originalFact.id,
+						proposedText: replacement,
+						reason,
+					},
+				],
+			});
+
+			const result = await processFactOps(
+				runtime,
+				[originalFact],
+				parsed,
+				correction,
+			);
+
+			expect(result?.data).toMatchObject({ contradicted: 1 });
+			expect(
+				(await client.query("SELECT proposed_text FROM fact_candidates")).rows,
+			).toEqual([{ proposed_text: replacement }]);
+			expect(runtime.updateMemory).not.toHaveBeenCalled();
+			expect(runtime.deleteMemory).not.toHaveBeenCalled();
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not save or count a proposal that repeats the existing claim", async () => {
+		const runtime = makeRuntime();
+		Object.assign(runtime, { adapter: { db: drizzle(client) } });
+		const parsed = parseCorrection(originalFact.content.text);
+
+		const result = await processFactOps(
+			runtime,
+			[originalFact],
+			parsed,
+			correction,
+		);
+
+		expect(result?.data).toMatchObject({ contradicted: 0 });
+		expect((await client.query("SELECT * FROM fact_candidates")).rows).toEqual(
+			[],
+		);
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
+		expect(runtime.deleteMemory).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it.each([undefined, "", " \t\n "])(
+		"does not persist an omitted/blank correction (%j)",
+		async (proposedText) => {
+			const runtime = makeRuntime();
+			Object.assign(runtime, { adapter: { db: drizzle(client) } });
+			const parsed = parseCorrection(proposedText);
+			expect(parsed?.ops).toEqual([]);
+
+			const result = await processFactOps(
+				runtime,
+				[originalFact],
+				parsed,
+				correction,
+			);
+
+			expect(result?.data).toMatchObject({ contradicted: 0 });
+			expect(
+				(await client.query("SELECT * FROM fact_candidates")).rows,
+			).toEqual([]);
+			expect(runtime.updateMemory).not.toHaveBeenCalled();
+			expect(runtime.deleteMemory).not.toHaveBeenCalled();
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not count a saved proposal when the executor is unavailable", async () => {
+		const runtime = makeRuntime();
+		Object.assign(runtime, { adapter: { db: undefined } });
+		await expect(
+			processFactOps(
+				runtime,
+				[originalFact],
+				parseCorrection(replacement),
+				correction,
+			),
+		).rejects.toMatchObject({ code: "FACT_CANDIDATE_STORAGE_UNAVAILABLE" });
+		expect((await client.query("SELECT * FROM fact_candidates")).rows).toEqual(
+			[],
+		);
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
+	});
+
+	it("propagates storage failure instead of returning a committed count", async () => {
+		const runtime = makeRuntime();
+		const failure = new Error("candidate storage failed");
+		Object.assign(runtime, {
+			adapter: {
+				db: {
+					execute: async () => {
+						throw failure;
+					},
+				},
+			},
+		});
+		await expect(
+			processFactOps(
+				runtime,
+				[originalFact],
+				parseCorrection(replacement),
+				correction,
+			),
+		).rejects.toBe(failure);
+		expect((await client.query("SELECT * FROM fact_candidates")).rows).toEqual(
+			[],
+		);
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
+	});
+});
 
 describe("factMemoryEvaluator keyword dedupe", () => {
 	it("stores extracted keywords and does not queue fact embeddings", async () => {
@@ -218,33 +445,32 @@ describe("reflection evaluator schemas are strict-structured-output safe", () =>
 		}
 	});
 
-	it("fact extraction advertises structured fields consumed by LifeOps projections", () => {
-		const schema = factMemoryEvaluator.schema as {
-			properties?: {
-				ops?: {
-					items?: {
-						properties?: {
-							structured_fields?: {
-								properties?: Record<string, unknown>;
-								additionalProperties?: boolean;
-							};
-						};
-					};
-				};
-			};
+	it("fact extraction preserves structured fields consumed by LifeOps projections", () => {
+		const structuredFields = {
+			preferredName: "Camille",
+			person: "Sam",
+			relationshipType: "friend",
+			platform: "discord",
+			handle: "camille",
+			travelBookingPreferences: "Window seat",
+			timezone: "Europe/Paris",
 		};
-		const structured =
-			schema.properties?.ops?.items?.properties?.structured_fields;
-		expect(structured?.additionalProperties).toBe(false);
-		expect(structured?.properties).toMatchObject({
-			preferredName: { type: "string" },
-			person: { type: "string" },
-			relationshipType: { type: "string" },
-			platform: { type: "string" },
-			handle: { type: "string" },
-			travelBookingPreferences: { type: "string" },
-			timezone: { type: "string" },
-		});
+		const output = {
+			ops: [
+				{
+					op: "add_durable",
+					claim: "The user's preferred name is Camille.",
+					category: "identity",
+					structured_fields: structuredFields,
+				},
+			],
+		};
+		const validation = parseAndValidate(
+			JSON.stringify(output),
+			factMemoryEvaluator.schema,
+		);
+		expect(validation.valid).toBe(true);
+		expect(factMemoryEvaluator.parse?.(validation.parsed)).toEqual(output);
 	});
 
 	it("fact extraction prompt names structured fields on the production evaluator path", () => {

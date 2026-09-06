@@ -28,6 +28,7 @@ import {
 	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
+	getInferenceTimer,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
@@ -41,6 +42,7 @@ import {
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
+	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
@@ -85,6 +87,11 @@ import {
 } from "../services/vision/image-input";
 import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import {
+	ELIZA_POOLING_CLS,
+	ELIZA_POOLING_LAST,
+	ELIZA_POOLING_MEAN,
+} from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
@@ -798,10 +805,16 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
-	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
+	// Pooling is part of the vector space: BGE uses CLS, GTE uses MEAN.
+	// Retain the legacy default for existing stores until explicitly migrated.
+	const requestedPooling =
+		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase();
 	const pooling =
-		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last" ? 3 : 1;
+		requestedPooling === "cls"
+			? ELIZA_POOLING_CLS
+			: requestedPooling === "last"
+				? ELIZA_POOLING_LAST
+				: ELIZA_POOLING_MEAN;
 	return {
 		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
 	};
@@ -826,7 +839,9 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 		// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
 		// Log WHY so a broken probe on an accelerated box is visible, not silent
 		// (#10727) — the tier is then chosen without hardware evidence.
-		const hardware = await probeHardware().catch((error) => {
+		const hardware = await timeInferenceSpan("embedding:hardware-probe", () =>
+			probeHardware(),
+		).catch((error) => {
 			logger.warn(
 				`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (performance preset, gpuLayers: auto): ${
 					error instanceof Error ? error.message : String(error)
@@ -835,7 +850,9 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 			return undefined;
 		});
 		const cfg = resolveDesktopEmbeddingConfig(hardware);
-		const fused = await getFusedEmbeddingHandle(cfg);
+		const fused = await timeInferenceSpan("embedding:handle", () =>
+			getFusedEmbeddingHandle(cfg),
+		);
 		if (!fused) {
 			throw new LocalInferenceUnavailableError(
 				ModelType.TEXT_EMBEDDING,
@@ -846,7 +863,12 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 					`to the next embedding provider.`,
 			);
 		}
-		return Array.from(fused.embed(text));
+		const close = getInferenceTimer()?.openSpan("embedding:native");
+		try {
+			return Array.from(fused.embed(text));
+		} finally {
+			close?.();
+		}
 	};
 }
 

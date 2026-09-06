@@ -57,6 +57,12 @@ const spec = requireProviderSpec("FACTS");
  */
 const CURRENT_DECAY_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/**
+ * Older room observations receive a separate heading so the model does not
+ * mistake them for current events. Their complete text stays available;
+ * age changes the label, not the amount of context sent to the model.
+ */
+const ROOM_CURRENT_LAPSE_MS = CURRENT_DECAY_DAYS * MS_PER_DAY;
 
 const DEFAULT_FACT_CONFIDENCE = 0.6;
 
@@ -436,10 +442,19 @@ const factsProvider: Provider = {
 					worldId: message.worldId,
 					unique: false,
 				}),
+				// `entityId` is only the RLS principal; the author filter is what
+				// scopes the pool to this identity's own facts. Live 2026-09-05 on a
+				// database without RLS policies, the principal-only query returned
+				// the entire facts table (127 rows from every Discord channel) for
+				// each cluster member, and all of it rendered on every turn.
 				...relatedEntityIds.map((entityId) =>
 					runtime.getMemories({
 						tableName: "facts",
 						entityId,
+						authorEntityIds: [entityId],
+						// The owner entity is shared across this owner's agents; the
+						// pool must be this agent's own facts.
+						agentId: runtime.agentId,
 						unique: false,
 					}),
 				),
@@ -516,7 +531,13 @@ const factsProvider: Provider = {
 			);
 			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
 			const senderCurrent = currentFacts.filter(isAboutSender);
-			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
+			const roomCurrentAll = currentFacts.filter((m) => !isAboutSender(m));
+			const isLapsedRoomCurrent = (memory: Memory): boolean => {
+				const ts = readEffectiveTimestampMs(memory);
+				return ts !== null && nowMs - ts > ROOM_CURRENT_LAPSE_MS;
+			};
+			const roomCurrent = roomCurrentAll.filter((m) => !isLapsedRoomCurrent(m));
+			const roomCurrentLapsed = roomCurrentAll.filter(isLapsedRoomCurrent);
 
 			const sections: string[] = [];
 			if (senderPreferences.length > 0) {
@@ -544,6 +565,11 @@ const factsProvider: Provider = {
 			if (roomCurrent.length > 0) {
 				sections.push(
 					`What's currently happening in this room:\n${formatLines(roomCurrent, "current")}`,
+				);
+			}
+			if (roomCurrentLapsed.length > 0) {
+				sections.push(
+					`Older observations about other participants (do not assume these are still current):\n${formatLines(roomCurrentLapsed, "current")}`,
 				);
 			}
 

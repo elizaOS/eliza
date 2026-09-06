@@ -325,6 +325,20 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 });
 
 describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
+	test("language-augmented and clean prompts share the clean user-text embedding", async () => {
+		const embed = vi.fn(async () => [1, 2, 3]);
+		const { runtime, calls } = makeRuntime({ embed });
+		runtime.startRun();
+		const text = "The picnic bag contains an apple and a blue flask.";
+		await embedRecallQuery(
+			runtime,
+			`${text}\n\n[Language instruction: Reply in natural English.]`,
+		);
+		await embedRecallQuery(runtime, text);
+		expect(embed).toHaveBeenCalledWith(expect.objectContaining({ text }));
+		expect(calls.count).toBe(1);
+	});
+
 	test("repeated normalized text within a turn hits the cache (one embed call)", async () => {
 		const { runtime, calls } = makeRuntime({
 			embed: async () => [0.5],

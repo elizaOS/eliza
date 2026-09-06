@@ -11,6 +11,7 @@ import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
+import { detailString } from "../src/internal/detail.js";
 
 const CREATED_EVENT: LifeOpsCalendarEvent = {
   id: "agent-1:google:owner:calendar:primary:event-1",
@@ -41,6 +42,8 @@ function message(): Memory {
     id: "00000000-0000-0000-0000-000000000301",
     entityId: "00000000-0000-0000-0000-000000000302",
     roomId: "00000000-0000-0000-0000-000000000303",
+    // The fixtures live in July 2026; the request time anchors the past-start check.
+    createdAt: Date.parse("2026-07-27T11:55:00.000Z"),
     content: { text: "Add soccer practice with travel from home" },
   } as Memory;
 }
@@ -49,17 +52,24 @@ async function runCreate(
   computeTravelBuffer: NonNullable<
     CalendarActionDeps["travelBuffer"]
   >["computeTravelBuffer"],
+  options: { title?: string; details?: Record<string, unknown> } = {},
 ) {
   const reserveTravelBuffer = vi.fn(async () => undefined);
-  const scheduleApproval = vi.fn(async () => ({
-    requestId: "approval-travel",
-    action: "schedule_event" as const,
-    state: "pending" as const,
-    acceptedAt: "2026-07-27T12:00:00.000Z",
-    idempotencyKey: "calendar-approval:travel",
-    replayed: false,
-    text: "travel schedule approval queued",
-  }));
+  const scheduleApproval = vi.fn(
+    async (
+      _args: Parameters<
+        NonNullable<CalendarActionDeps["mutationGateway"]>["schedule"]
+      >[0],
+    ) => ({
+      requestId: "approval-travel",
+      action: "schedule_event" as const,
+      state: "pending" as const,
+      acceptedAt: "2026-07-27T12:00:00.000Z",
+      idempotencyKey: "calendar-approval:travel",
+      replayed: false,
+      text: "travel schedule approval queued",
+    }),
+  );
   const service = {
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "primary",
@@ -105,7 +115,12 @@ async function runCreate(
       cancel: vi.fn(),
     },
     travelBuffer: {
-      resolveTravelIntent: () => ({ originAddress: "1 Home Road" }),
+      resolveTravelIntent: ({ details, extractedDetails }) => {
+        const originAddress =
+          detailString(extractedDetails, "travelOriginAddress") ??
+          detailString(details, "travelOriginAddress");
+        return originAddress ? { originAddress } : null;
+      },
       computeTravelBuffer,
       reserveTravelBuffer,
       isTravelTimeUnavailable: (
@@ -117,6 +132,7 @@ async function runCreate(
     },
   };
   const action = createCalendarActionRunner(deps);
+  const callback = vi.fn(async () => []);
   const result = await action.handler(
     runtime,
     message(),
@@ -124,31 +140,132 @@ async function runCreate(
     {
       parameters: {
         subaction: "create_event",
-        title: CREATED_EVENT.title,
+        title: options.title ?? CREATED_EVENT.title,
         details: {
           startAt: CREATED_EVENT.startAt,
           endAt: CREATED_EVENT.endAt,
           timeZone: "UTC",
-          location: CREATED_EVENT.location,
-          travelOriginAddress: "1 Home Road",
+          ...(options.details ?? {
+            location: CREATED_EVENT.location,
+            travelOriginAddress: "1 Home Road",
+          }),
         },
       },
     },
-    undefined,
+    callback,
   );
+  if (!result) throw new Error("Expected a Calendar action result");
+  expect(result.effectReceipts).toHaveLength(1);
+  if (result.transcriptVisibility === "internal") {
+    expect(callback).not.toHaveBeenCalled();
+    // Settled internal results omit turnComplete (evaluation delegated); pauses keep false.
+    expect(result.turnComplete).not.toBe(true);
+    expect(result).not.toHaveProperty("text");
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result.data?.replyContext).toMatchObject({
+      domain: "calendar",
+      intent: message().content.text,
+      scenario: expect.any(String),
+      facts: expect.stringMatching(/\S/),
+      context: expect.any(Object),
+    });
+  } else {
+    expect(result.turnComplete).toBe(true);
+    expect(result.userFacingText).toBe("travel schedule approval queued");
+    expect(result.userFacingEffectReceiptIds).toEqual([
+      result.effectReceipts?.[0]?.receiptId,
+    ]);
+    expect(callback).toHaveBeenCalledExactlyOnceWith({
+      text: "travel schedule approval queued",
+      source: "action",
+      action: "CALENDAR",
+    });
+  }
   return {
-    result: result as {
-      success: boolean;
-      text: string;
-      data: Record<string, unknown>;
-    },
+    result,
     reserveTravelBuffer,
     scheduleApproval,
     service,
+    runJsonModel: deps.runJsonModel,
   };
 }
 
 describe("calendar travel reservation truth", () => {
+  it("does not invent travel intent when native arguments omit origin and location", async () => {
+    const computeTravelBuffer = vi.fn(async () => {
+      throw new Error(
+        "an event without travel must not call the route provider",
+      );
+    });
+    const { result, scheduleApproval, service, runJsonModel } = await runCreate(
+      computeTravelBuffer,
+      { details: {} },
+    );
+
+    expect(result.success).toBe(true);
+    expect(scheduleApproval).toHaveBeenCalledOnce();
+    const approval = scheduleApproval.mock.calls[0]?.[0];
+    expect(approval).not.toHaveProperty("travelBuffer");
+    expect(
+      service.prepareCalendarEventCreate.mock.calls[0]?.[1],
+    ).not.toHaveProperty("travelOriginAddress");
+    expect(computeTravelBuffer).not.toHaveBeenCalled();
+    expect(runJsonModel).not.toHaveBeenCalled();
+    expect(service.createCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it.each(["Unknown", "None", "n/a", "location_missing"])(
+    "preserves literal %s titles, descriptions, locations, and explicit travel origins",
+    async (literal) => {
+      const computeTravelBuffer = vi.fn(async () => ({
+        originAddress: literal,
+        destinationAddress: literal,
+        bufferMinutes: 25,
+        method: "driving",
+      }));
+      const { result, scheduleApproval, service } = await runCreate(
+        computeTravelBuffer,
+        {
+          title: literal,
+          details: {
+            description: literal,
+            location: literal,
+            travelOriginAddress: literal,
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(service.prepareCalendarEventCreate).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          title: literal,
+          description: literal,
+          location: literal,
+        }),
+      );
+      expect(computeTravelBuffer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          travelIntent: { originAddress: literal },
+          event: expect.objectContaining({ location: literal }),
+        }),
+      );
+      expect(scheduleApproval).toHaveBeenCalledWith(
+        expect.objectContaining({
+          request: expect.objectContaining({
+            title: literal,
+            description: literal,
+            location: literal,
+          }),
+          travelBuffer: expect.objectContaining({
+            originAddress: literal,
+            destinationAddress: literal,
+          }),
+        }),
+      );
+    },
+  );
+
   it("binds the computed travel buffer into approval without mutating", async () => {
     const computeTravelBuffer = vi.fn(async () => ({
       originAddress: "1 Home Road",
@@ -174,7 +291,7 @@ describe("calendar travel reservation truth", () => {
     expect(reserveTravelBuffer).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.text).toContain("approval queued");
-    expect(result.data.travelBuffer).toMatchObject({ bufferMinutes: 25 });
+    expect(result.data?.travelBuffer).toMatchObject({ bufferMinutes: 25 });
   });
 
   it("blocks approval and provider mutation when travel cannot be prepared", async () => {
@@ -188,7 +305,9 @@ describe("calendar travel reservation truth", () => {
       await runCreate(computeTravelBuffer);
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("did not queue or create");
+    expect(result.data?.replyContext).toMatchObject({
+      facts: expect.stringContaining("did not queue or create"),
+    });
     expect(result.data).toMatchObject({
       error: "TRAVEL_TIME_UNAVAILABLE",
     });

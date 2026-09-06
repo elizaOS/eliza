@@ -76,6 +76,53 @@ async function withCodingFullSurface<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe("planner-loop failed-operation correlation", () => {
+	it.each([true, false])(
+		"does not revive a recovered failure when the final evaluator success is %s",
+		async (evaluatorSuccess) => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+					.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+					.mockResolvedValueOnce({ text: "", toolCalls: [] })
+					.mockResolvedValueOnce("The note is now titled A."),
+			};
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi
+					.fn()
+					.mockResolvedValueOnce({ success: false, error: "revision conflict" })
+					.mockResolvedValueOnce({ success: true, text: "Saved title A." }),
+				evaluate: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: false,
+						decision: "CONTINUE",
+						thought: "Retry the same operation.",
+					})
+					.mockResolvedValueOnce({
+						success: evaluatorSuccess,
+						decision: "FINISH",
+						thought: "The retry succeeded.",
+						messageToUser: "call:VIEWS{action:show}",
+					}),
+			});
+
+			expect(result.finalMessage).toBe("The note is now titled A.");
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			const rescue = runtime.useModel.mock.calls[3]?.[1];
+			expect(JSON.stringify(rescue)).toContain("Saved title A.");
+			expect(JSON.stringify(rescue)).not.toContain("did not complete");
+			expect(JSON.stringify(rescue)).not.toContain("revision conflict");
+			expect(
+				result.trajectory.steps.filter(
+					(step) => step.result?.success === false,
+				),
+			).toHaveLength(1);
+		},
+	);
+
 	it("finishes with the just-failed action when its evaluator violates protocol", async () => {
 		const runtime = {
 			useModel: vi.fn().mockResolvedValueOnce(

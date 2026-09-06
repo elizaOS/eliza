@@ -11,6 +11,7 @@ import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ChatActionResultSummary,
   ChatToolCallEvent,
   ChatTurnStatus,
   CodingAgentSession,
@@ -19,14 +20,21 @@ import type {
   ImageAttachment,
 } from "../api";
 import { StreamGenerationError } from "../api/client-base";
+import { createNavigateViewHandler } from "../app-navigate-view";
 import {
   markPendingCapabilityReady,
   readPendingCapabilityReadyAgentId,
   rememberPendingCapabilityHandoff,
 } from "../capability-handoff";
+import {
+  dispatchCompletedActionNavigation,
+  markCompletedActionNavigationHandled,
+  resetCompletedActionNavigationForTests,
+} from "../completed-action-navigation";
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
+import { readChatDraft, writeChatDraft } from "./ChatComposerContext.hooks";
 import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
@@ -233,6 +241,327 @@ function mockStreamingUntilAbort(started: Deferred<void>) {
   );
 }
 
+describe("useChatSend reply-ready view handoff", () => {
+  const actionResults: ChatActionResultSummary[] = [
+    {
+      actionName: "BROWSER_NAVIGATE",
+      success: true,
+      values: {
+        targetId: "workspace",
+        subaction: "navigate",
+        viewId: "browser",
+        viewPath: "/browser",
+        tabId: "btab_1",
+        url: "https://example.com/",
+      },
+    },
+    {
+      actionName: "BROWSER",
+      success: true,
+      values: {
+        targetId: "workspace",
+        subaction: "get",
+        text: "Example Domain",
+      },
+    },
+  ];
+  const terminal = {
+    text: "The main heading is Example Domain.",
+    completed: true,
+    userMessageId: "persisted-user",
+    messageId: "persisted-assistant",
+    actionResults,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.sendConversationMessageStream.mockReset();
+    mocks.client.abortConversationTurn.mockResolvedValue({ aborted: true });
+    mocks.client.createConversation.mockResolvedValue({
+      conversation: conversation("conv-new", "room-new"),
+    });
+    window.localStorage.clear();
+    window.history.replaceState({}, "", "/notes");
+    resetCompletedActionNavigationForTests();
+  });
+
+  afterEach(() => {
+    resetCompletedActionNavigationForTests();
+    window.history.replaceState({}, "", "/chat");
+  });
+
+  async function startSend(
+    kind: "main" | "action" | "replay" | "cold" | "strict" = "strict",
+  ) {
+    const started = deferred();
+    const done = deferred<typeof terminal>();
+    let onReplyReady:
+      | ((results: ChatActionResultSummary[]) => void)
+      | undefined;
+    if (kind === "replay") {
+      mocks.client.sendConversationMessageStream.mockRejectedValueOnce(
+        http404(),
+      );
+    }
+    mocks.client.sendConversationMessageStream.mockImplementationOnce(
+      (...args) => {
+        onReplyReady = args[10];
+        started.resolve();
+        return done.promise;
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: kind === "cold" ? null : "conv-1",
+      conversations: kind === "cold" ? [] : [conversation("conv-1", "room-1")],
+    });
+    const hook = renderHook(() => useChatSend(deps), {
+      reactStrictMode: kind === "strict",
+    });
+    let send: Promise<void> | undefined;
+    await act(async () => {
+      send =
+        kind === "action"
+          ? hook.result.current.sendActionMessage(
+              "Open the browser and read its heading.",
+            )
+          : hook.result.current.sendChatText(
+              "Open the browser and read its heading.",
+            );
+      await started.promise;
+    });
+    return {
+      deps,
+      hook,
+      ready: (results = actionResults) => act(() => onReplyReady?.(results)),
+      finish: async (results = actionResults) => {
+        await act(async () => {
+          done.resolve({ ...terminal, actionResults: results });
+          await send;
+        });
+      },
+    };
+  }
+
+  it.each(["main", "action", "replay", "cold", "strict"] as const)(
+    "hands off the %s Browser receipt before done and deduplicates terminal delivery",
+    async (kind) => {
+      const navigate = vi.fn((event: Event) => event.preventDefault());
+      window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      const refresh = vi.fn();
+      const unsubscribe = onViewEvent(VIEW_EVENTS.VIEW_REFRESH, refresh);
+      const send = await startSend(kind);
+      try {
+        send.ready();
+        expect(navigate).toHaveBeenCalledTimes(1);
+        expect((navigate.mock.calls[0][0] as CustomEvent).detail).toMatchObject(
+          {
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Fexample.com%2F",
+            source: "agent",
+            completedActionHandoffId: expect.any(String),
+          },
+        );
+        expect(refresh).not.toHaveBeenCalled();
+        expect(send.deps.chatSendBusyRef.current).toBe(true);
+        if (kind === "main" || kind === "strict") {
+          expect(listPendingChatTurns("conv-1")).toHaveLength(1);
+        }
+        send.ready();
+        expect(navigate).toHaveBeenCalledTimes(1);
+      } finally {
+        await send.finish();
+        window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+        unsubscribe();
+        send.hook.unmount();
+      }
+      expect(navigate).toHaveBeenCalledTimes(1);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      if (kind === "main" || kind === "strict") {
+        expect(listPendingChatTurns("conv-1")).toHaveLength(0);
+      }
+    },
+  );
+
+  it("opens the actual Browser route at ready and does not pull the user back at done", async () => {
+    const handleNavigate = createNavigateViewHandler({
+      availableViewsForDesktopTabs: [],
+      invokeDesktopBridgeRequest: async () => null,
+      openDesktopTab: vi.fn(),
+      setActiveDesktopTabId: vi.fn(),
+      setTab: vi.fn(),
+    });
+    const navigate = vi.fn((event: Event) => {
+      if (handleNavigate(event)) {
+        markCompletedActionNavigationHandled(
+          event,
+          (event as CustomEvent).detail,
+        );
+      }
+    });
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+    const send = await startSend();
+    try {
+      send.ready();
+      expect(window.location.pathname).toBe("/browser");
+      expect(new URLSearchParams(window.location.search).get("browse")).toBe(
+        "https://example.com/",
+      );
+      expect(send.deps.chatSendBusyRef.current).toBe(true);
+      window.history.pushState({}, "", "/calendar");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      await send.finish();
+      expect(window.location.pathname).toBe("/calendar");
+      expect(navigate).toHaveBeenCalledTimes(1);
+    } finally {
+      await send.finish();
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      send.hook.unmount();
+    }
+  });
+
+  it.each(["websocket-first", "ready-first"])(
+    "deduplicates %s VIEWS delivery across ready and done",
+    async (order) => {
+      const results: ChatActionResultSummary[] = [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: {
+            mode: "show",
+            viewId: "calendar",
+            completedActionHandoffId: "views-handoff",
+            completedActionDelivered: true,
+          },
+        },
+      ];
+      const navigate = vi.fn((event: Event) => event.preventDefault());
+      window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      const send = await startSend();
+      const websocket = () =>
+        dispatchCompletedActionNavigation({
+          viewId: "calendar",
+          completedActionHandoffId: "views-handoff",
+        });
+      try {
+        if (order === "websocket-first") websocket();
+        send.ready(results);
+        if (order === "ready-first") websocket();
+        await send.finish(results);
+        expect(navigate).toHaveBeenCalledTimes(1);
+      } finally {
+        await send.finish(results);
+        window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+        send.hook.unmount();
+      }
+    },
+  );
+
+  it("offers an unhandled early receipt again at done with the same handoff id", async () => {
+    const navigate = vi.fn();
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+    const send = await startSend();
+    try {
+      send.ready();
+      expect(navigate).toHaveBeenCalledTimes(1);
+      await send.finish();
+      expect(navigate).toHaveBeenCalledTimes(2);
+      expect(
+        (navigate.mock.calls[0][0] as CustomEvent).detail
+          .completedActionHandoffId,
+      ).toEqual(
+        (navigate.mock.calls[1][0] as CustomEvent).detail
+          .completedActionHandoffId,
+      );
+    } finally {
+      await send.finish();
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      send.hook.unmount();
+    }
+  });
+
+  it.each([
+    "conversation",
+    "generation",
+    "base",
+    "abort",
+    "unmount",
+    "navigation",
+    "navigation-aba",
+  ])(
+    "rejects early and terminal navigation after %s ownership changes",
+    async (change) => {
+      const navigate = vi.fn();
+      window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      const send = await startSend();
+      try {
+        if (change === "conversation")
+          send.deps.activeConversationIdRef.current = "conv-other";
+        if (change === "generation")
+          vi.mocked(
+            send.deps.isConversationMessagesOwnershipCurrent,
+          ).mockReturnValue(false);
+        if (change === "base")
+          mocks.client.getBaseUrl.mockReturnValue("https://other.example");
+        if (change === "abort")
+          act(() => send.hook.result.current.handleChatStop());
+        if (change === "unmount") send.hook.unmount();
+        if (change.startsWith("navigation")) {
+          window.history.pushState({}, "", "/calendar");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+          if (change === "navigation-aba") {
+            window.history.pushState({}, "", "/notes");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }
+        }
+        send.ready();
+        expect(navigate).not.toHaveBeenCalled();
+        await send.finish();
+        expect(navigate).not.toHaveBeenCalled();
+      } finally {
+        await send.finish();
+        window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+        send.hook.unmount();
+      }
+    },
+  );
+
+  it("does not run workflow, DoorDash, failed navigation, or refresh handoffs early", async () => {
+    const navigate = vi.fn();
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+    const refresh = vi.fn();
+    const unsubscribe = onViewEvent(VIEW_EVENTS.VIEW_REFRESH, refresh);
+    const send = await startSend();
+    try {
+      send.ready([
+        {
+          actionName: "WORKFLOW",
+          success: true,
+          values: { workflowId: "workflow-1" },
+        },
+        {
+          actionName: "DOORDASH",
+          success: true,
+          values: {
+            provider: "doordash",
+            humanInterventionRequired: true,
+            humanInterventionKind: "cloudflare-browser-run",
+            liveViewUrl: "https://live.browser.run/session-1",
+          },
+        },
+        { ...actionResults[0], success: false },
+      ]);
+      expect(navigate).not.toHaveBeenCalled();
+      expect(refresh).not.toHaveBeenCalled();
+    } finally {
+      await send.finish();
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      unsubscribe();
+      send.hook.unmount();
+    }
+  });
+});
+
 describe("useChatSend stop handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -349,7 +678,7 @@ describe("useChatSend stop handling", () => {
       completed: true,
     });
     const deps = makeDeps() as UseChatSendDeps & {
-      settleConversationHydrationForSend: () => Promise<void>;
+      settleConversationHydrationForSend: () => Promise<boolean>;
     };
     deps.settleConversationHydrationForSend = vi.fn(async () => {
       await hydration.promise;
@@ -357,6 +686,7 @@ describe("useChatSend stop handling", () => {
       deps.conversationsRef.current = [
         conversation("conv-restored", "room-restored"),
       ];
+      return true;
     });
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -381,6 +711,92 @@ describe("useChatSend stop handling", () => {
     expect(
       mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
     ).toEqual(["conv-restored", "hello"]);
+  });
+
+  it("preserves the draft, attachments and reply when recovery is unavailable", async () => {
+    const deps: UseChatSendDeps = makeDeps({ activeConversationId: "conv-1" });
+    deps.settleConversationHydrationForSend = vi.fn(async () => false);
+    deps.chatInputRef.current = "Keep this draft";
+    const images: ImageAttachment[] = [
+      {
+        data: "aGVsbG8=",
+        mimeType: "image/png",
+        name: "draft.png",
+      },
+    ];
+    deps.chatPendingImagesRef.current = images;
+    deps.chatReplyTargetRef.current = {
+      messageId: "earlier-message",
+      snippet: "Earlier",
+      senderName: "Eliza",
+    };
+    writeChatDraft("conv-1", "Keep this draft");
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatSend();
+    });
+
+    expect(deps.chatInputRef.current).toBe("Keep this draft");
+    expect(readChatDraft("conv-1")).toBe("Keep this draft");
+    expect(deps.chatPendingImagesRef.current).toBe(images);
+    expect(deps.chatReplyTargetRef.current?.messageId).toBe("earlier-message");
+    expect(deps.setChatInput).not.toHaveBeenCalled();
+    expect(deps.setChatPendingImages).not.toHaveBeenCalled();
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("keeps text and action sends unsent when recovery cannot identify a conversation", async () => {
+    const deps: UseChatSendDeps = makeDeps();
+    deps.settleConversationHydrationForSend = vi.fn(async () => false);
+    const { result } = renderHook(() => useChatSend(deps));
+    await act(async () => {
+      await result.current.sendChatText("Remember this");
+      await result.current.sendActionMessage("Continue that action");
+    });
+    expect(deps.conversationMessagesRef.current).toEqual([]);
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("claims a waiting composer draft once and enqueues it without another recovery gap", async () => {
+    const deps: UseChatSendDeps = makeDeps({ activeConversationId: "conv-1" });
+    const hydration = deferred<boolean>();
+    deps.settleConversationHydrationForSend = vi.fn(() => hydration.promise);
+    deps.chatInputRef.current = "Send this once";
+    const images: ImageAttachment[] = [
+      {
+        data: "aGVsbG8=",
+        mimeType: "image/png",
+        name: "draft.png",
+      },
+    ];
+    deps.chatPendingImagesRef.current = images;
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Received",
+      completed: true,
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.handleChatSend();
+      second = result.current.handleChatSend();
+    });
+    expect(deps.chatInputRef.current).toBe("Send this once");
+    expect(deps.chatPendingImagesRef.current).toBe(images);
+    await act(async () => {
+      hydration.resolve(true);
+      await Promise.all([first, second]);
+    });
+    expect(deps.settleConversationHydrationForSend).toHaveBeenCalledTimes(2);
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
+    ).toEqual(["conv-1", "Send this once"]);
+    expect(deps.chatInputRef.current).toBe("");
+    expect(deps.chatPendingImagesRef.current).toEqual([]);
   });
 
   it("does NOT surface an error notice when the send is aborted by the user", async () => {
@@ -1041,6 +1457,7 @@ describe("useChatSend action handoff", () => {
     expect(navigations[0]?.detail).toEqual({
       viewId: "calendar",
       source: "agent",
+      completedActionHandoffId: expect.any(String),
     });
     expect(deps.setActionNotice).not.toHaveBeenCalled();
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);

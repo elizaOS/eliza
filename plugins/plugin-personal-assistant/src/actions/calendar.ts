@@ -1557,6 +1557,8 @@ export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
+  // Keep optional operation-specific details optional in provider tool schemas.
+  toolSchemaStrict: false,
   similes: [
     "CALENDAR",
     "SCHEDULE",
@@ -1739,12 +1741,16 @@ export const calendarAction: Action & {
     {
       name: "title",
       description:
-        "Event title for create_event. TOP-LEVEL flat. " +
+        "Event title for create_event; for update_event/delete_event the exact title of the target event when no eventId is known. TOP-LEVEL flat. " +
         "NEVER inside `details`. " +
         "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
       descriptionCompressed:
-        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end",
+        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end; delete/update: target title",
       required: false,
+      // Live 2026-09-05 23:32: the promoted CALENDAR_DELETE_EVENT child rejected
+      // a top-level title ("Unexpected argument 'title'") that the parent
+      // accepts, so a valid structured delete failed before any lookup.
+      subactions: ["create_event", "update_event", "delete_event"],
       schema: { type: "string" as const },
     },
     {
@@ -1752,12 +1758,22 @@ export const calendarAction: Action & {
       description:
         "Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
       required: false,
+      subactions: [
+        "feed",
+        "next_event",
+        "search_events",
+        "update_event",
+        "delete_event",
+        "trip_window",
+        "bulk_reschedule",
+      ],
       schema: { type: "string" as const },
     },
     {
       name: "queries",
       description: "Optional search_events phrases array. Combined/deduped.",
       required: false,
+      subactions: ["search_events", "trip_window"],
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
@@ -1771,6 +1787,15 @@ export const calendarAction: Action & {
       descriptionCompressed:
         "details create|update|delete: calendarId,start/end,eventId,location; title/window TOP",
       required: false,
+      subactions: [
+        "feed",
+        "next_event",
+        "search_events",
+        "create_event",
+        "update_event",
+        "delete_event",
+        "trip_window",
+      ],
       schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
     },
     {
@@ -1780,6 +1805,7 @@ export const calendarAction: Action & {
         "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
         "Do NOT wrap propose_times args in `details`.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
@@ -1787,24 +1813,28 @@ export const calendarAction: Action & {
       description:
         "propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
       name: "slotCount",
       description: "propose_times slot count. Default 3.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
       name: "windowStart",
       description: "propose_times window earliest start. ISO-8601.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "string" as const },
     },
     {
       name: "windowEnd",
       description: "propose_times window latest end. ISO-8601.",
       required: false,
+      subactions: ["propose_times"],
       schema: { type: "string" as const },
     },
     {
@@ -1814,6 +1844,7 @@ export const calendarAction: Action & {
         "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
         "Do NOT wrap check_availability args in `details`.",
       required: false,
+      subactions: ["check_availability"],
       schema: { type: "string" as const },
     },
     {
@@ -1821,12 +1852,14 @@ export const calendarAction: Action & {
       description:
         "TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
       required: false,
+      subactions: ["check_availability"],
       schema: { type: "string" as const },
     },
     {
       name: "timeZone",
       description: "IANA timeZone for update_preferences hours.",
       required: false,
+      subactions: ["check_availability", "propose_times", "update_preferences"],
       schema: { type: "string" as const },
     },
     {
@@ -1836,6 +1869,7 @@ export const calendarAction: Action & {
         "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
         "Do NOT wrap update_preferences args in `details`.",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "string" as const },
     },
     {
@@ -1843,18 +1877,21 @@ export const calendarAction: Action & {
       description:
         "TOP-LEVEL flat for update_preferences. Latest end local HH:MM 24h. See `preferredStartLocal`.",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "string" as const },
     },
     {
       name: "defaultDurationMinutes",
       description: "Default duration minutes (5–480).",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "number" as const },
     },
     {
       name: "travelBufferMinutes",
       description: "Buffer minutes before/after meetings (0–240).",
       required: false,
+      subactions: ["update_preferences"],
       schema: { type: "number" as const },
     },
     {
@@ -1864,20 +1901,21 @@ export const calendarAction: Action & {
       descriptionCompressed:
         "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
       required: false,
+      subactions: ["update_preferences"],
+      // Shape is documented, not schema-enforced: the planner fills every key
+      // it sees, and a strict item schema rejected a whole `search_events`
+      // call over junk it invented here (live: startLocal "00"). The handler's
+      // normalizeLifeOpsMeetingPreferencesPatch strictly validates the entire
+      // requested array before update_preferences writes anything. Read
+      // operations do not consume this operation-specific field.
       schema: {
         type: "array" as const,
         items: {
           type: "object" as const,
           properties: {
             label: { type: "string" as const },
-            startLocal: {
-              type: "string" as const,
-              pattern: "^[0-2][0-9]:[0-5][0-9]$",
-            },
-            endLocal: {
-              type: "string" as const,
-              pattern: "^[0-2][0-9]:[0-5][0-9]$",
-            },
+            startLocal: { type: "string" as const },
+            endLocal: { type: "string" as const },
             daysOfWeek: {
               type: "array" as const,
               items: {
@@ -1887,7 +1925,6 @@ export const calendarAction: Action & {
               },
             },
           },
-          required: ["label", "startLocal", "endLocal"],
         },
       },
     },

@@ -1020,6 +1020,14 @@ export const ChatMessage = memo(function ChatMessage({
     const handleBubbleClick = (e: MouseEvent<HTMLDivElement>) => {
       if (!bubbleInteractive) return;
       if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
+      // Hover already reveals desktop actions. Treat the following click as an
+      // idempotent reveal so it cannot hide and immediately recreate the row or
+      // resemble a Copy activation. Touch has no hover reveal, so it keeps the
+      // explicit toggle used to dismiss the row.
+      if (supportsHover) {
+        setShowActions(true);
+        return;
+      }
       toggleRevealed();
     };
     const handleBubbleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -1081,7 +1089,7 @@ export const ChatMessage = memo(function ChatMessage({
             data-chat-selectable="true"
             className={cn(
               isFirstRun &&
-                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead text-white",
+                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead",
             )}
           >
             {renderContent?.(message, renderContext) ??
@@ -1094,12 +1102,8 @@ export const ChatMessage = memo(function ChatMessage({
     const bubbleExtraClassName = cn(
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
-      // Give first-run the same conversational bubble structure as chat, with
-      // enough room and contrast for its next-step action. Intrinsic width keeps
-      // short greetings from stretching across the full onboarding column;
-      // longer copy still wraps at the row's existing 22rem maximum.
-      isFirstRun &&
-        "w-fit max-w-full px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
+      // Intrinsic width keeps short greetings within the onboarding column.
+      isFirstRun && "w-fit max-w-full",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
       // Align the user bubble's bordered text edge with the flat assistant

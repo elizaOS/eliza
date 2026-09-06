@@ -13,6 +13,7 @@
  *     reach the snooze handler instead of being discarded.
  */
 
+import * as agent from "@elizaos/agent";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -110,7 +111,9 @@ vi.mock("../lifeops/service.js", () => {
               ? `${ownerType}_deleted`
               : ownerType === "goal"
                 ? "goal_created"
-                : "definition_created",
+                : serviceState.updateCalls.some((entry) => entry.id === ownerId)
+                  ? "definition_updated"
+                  : "definition_created",
             ownerType,
             ownerId,
             decision: {},
@@ -774,8 +777,68 @@ describe("runLifeOperationHandler definition update targeting", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
+
+  it.each(["provider_issue", "rate_limited", "no_provider"] as const)(
+    "retains a completed update and receipt when the reply is unavailable: %s",
+    async (kind) => {
+      serviceState.extraDefinitions.push({
+        definition: {
+          id: "def-reply",
+          title: "Reply target",
+          cadence: { kind: "daily", windows: ["morning"] },
+          windowPolicy: { timezone: "UTC", windows: [] },
+          updatedAt: "2026-07-01T18:00:00.000Z",
+        },
+      });
+      const failure = {
+        kind,
+        code: "REPLY_UNAVAILABLE",
+        message: "Reply generation unavailable.",
+        transient: false as const,
+      };
+      const renderReply = vi
+        .spyOn(agent, "renderGroundedActionReply")
+        .mockResolvedValue({ kind: "unavailable", failure });
+      const callback = vi.fn(async () => []);
+      const result = await runLifeOperationHandler(
+        makeRuntime(() => ""),
+        makeMessage('Rename "Reply target" to "Evening session"'),
+        undefined,
+        {
+          parameters: {
+            action: "update",
+            kind: "definition",
+            target: "Reply target",
+            title: "Evening session",
+            details: { cadence: { kind: "daily", windows: ["evening"] } },
+            intent: 'Rename "Reply target" to "Evening session"',
+          },
+        },
+        callback,
+      );
+
+      expect(serviceState.updateCalls).toHaveLength(1);
+      expect(result).toMatchObject({
+        success: true,
+        data: { definition: { id: "def-reply", title: "Evening session" } },
+        effectReceipts: [
+          { outcome: "applied", operation: "lifeops.definition.update" },
+        ],
+        replyFailure: failure,
+        transcriptVisibility: "internal",
+        turnComplete: false,
+      });
+      expect(result.text).toBeUndefined();
+      expect(result.userFacingText).toBeUndefined();
+      expect(result.verifiedUserFacing).toBeUndefined();
+      expect(result.userFacingEffectReceiptIds).toBeUndefined();
+      expect(callback).not.toHaveBeenCalled();
+      expect(renderReply).toHaveBeenCalledOnce();
+    },
+  );
 
   it("persists an explicit destination timezone and resolves the local clock in that zone", async () => {
     vi.useFakeTimers();

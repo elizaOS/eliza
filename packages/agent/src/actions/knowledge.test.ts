@@ -180,7 +180,7 @@ describe("SEARCH_KNOWLEDGE", () => {
     expect((res.data as { count: number }).count).toBeGreaterThan(0);
   });
 
-  it("a non-empty result settles the snippet list verbatim (verifiedUserFacing)", async () => {
+  it("returns exact snippets as model evidence without posting a canned list", async () => {
     const runtime = makeRuntime({ service: makeService() });
     const res = await call(
       searchKnowledgeAction,
@@ -189,8 +189,10 @@ describe("SEARCH_KNOWLEDGE", () => {
       { query: "body" },
     );
     expect(res.success).toBe(true);
-    expect(res.verifiedUserFacing).toBe(true);
-    expect(res.userFacingText).toBe(res.text);
+    expect(res.verifiedUserFacing).toBeUndefined();
+    expect(res.userFacingText).toBeUndefined();
+    expect(res.modelReplyRequired).toBe(true);
+    expect(res.data).toMatchObject({ count: 2 });
   });
 
   it("an empty result stays diagnostic — never settled as verified user-facing text", async () => {

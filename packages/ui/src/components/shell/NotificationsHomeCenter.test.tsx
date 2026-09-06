@@ -17,6 +17,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mutations are optimistic writes through the API client - mock the transport,
@@ -78,6 +79,7 @@ import {
   __resetNotificationStoreForTests,
   __setHydratedForTests,
   __setHydrationFailureForTests,
+  removeNotification,
 } from "../../state/notifications/notification-store";
 import {
   dampenPull,
@@ -87,7 +89,6 @@ import {
   notificationGroupKey,
   notificationGroupLabel,
   notificationPullRevealProgress,
-  notificationScrollFadeEdges,
   orderDashboardNotifications,
   PULL_COMMIT_PX,
   STACK_FOLD_SETTLE_MS,
@@ -129,39 +130,6 @@ function PendingActionRenderProbe({
   });
   return null;
 }
-
-describe("notificationScrollFadeEdges", () => {
-  it("reports only edges with hidden content across the full scroll range", () => {
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 0,
-        scrollHeight: 100,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: false, top: false, bottom: false });
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 0,
-        scrollHeight: 300,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: true, top: false, bottom: true });
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 80,
-        scrollHeight: 300,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: true, top: true, bottom: true });
-    expect(
-      notificationScrollFadeEdges({
-        scrollTop: 199.5,
-        scrollHeight: 300,
-        clientHeight: 100,
-      }),
-    ).toEqual({ overflow: true, top: true, bottom: false });
-  });
-});
 
 function staticMediaQuery(media: string, matches: boolean): MediaQueryList {
   return {
@@ -729,6 +697,43 @@ describe("notificationPullRevealProgress", () => {
 });
 
 describe("NotificationsHomeCenter", () => {
+  it("renders late hydration and removes replaced groups", async () => {
+    const { unmount } = renderRestedNotifications();
+    expect(screen.queryByTestId("home-notification-list")).toBeNull();
+    const first = makeNotification({
+      source: "calendar",
+      title: "Calendar item",
+    });
+    try {
+      await act(async () => {
+        __setHydratedForTests(true);
+        __ingestNotificationForTests(first);
+        await Promise.resolve();
+      });
+      const list = screen.getByTestId("home-notification-list");
+      const oldGroup = list.firstElementChild;
+      if (!oldGroup) throw new Error("Notification group was not rendered");
+      expect(screen.getByText("Calendar item")).not.toBeNull();
+
+      await act(async () => {
+        await removeNotification(first.id);
+        __ingestNotificationForTests(
+          makeNotification({ source: "browser", title: "Browser item" }),
+        );
+      });
+      expect(oldGroup.isConnected).toBe(false);
+      const newGroup = list.firstElementChild;
+      if (!newGroup)
+        throw new Error("Replacement notification group was not rendered");
+      expect(screen.getByText("Browser item")).not.toBeNull();
+      expect(screen.queryByText("Calendar item")).toBeNull();
+      unmount();
+      expect(newGroup.isConnected).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
   it("renders nothing while the empty inbox is still hydrating", () => {
     const { container } = renderRestedNotifications();
     expect(container.firstChild).toBeNull();
@@ -801,42 +806,6 @@ describe("NotificationsHomeCenter", () => {
     expect(client.getBaseUrl).toHaveBeenCalled();
     expect(client.listNotifications).not.toHaveBeenCalled();
     expect(screen.queryByTestId("notifications-empty")).toBeNull();
-  });
-
-  it("applies directional fades only where notification content is hidden", () => {
-    __ingestNotificationForTests(makeNotification());
-    render(<NotificationsHomeCenter />);
-    const list = screen.getByTestId("home-notification-list");
-    Object.defineProperties(list, {
-      clientHeight: { configurable: true, value: 100 },
-      scrollHeight: { configurable: true, value: 300 },
-    });
-
-    list.scrollTop = 0;
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-overflow")).toBe(true);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
-    expect(list.className).not.toContain("scroll-fade");
-
-    list.scrollTop = 80;
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
-
-    list.scrollTop = 200;
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
-
-    Object.defineProperty(list, "scrollHeight", {
-      configurable: true,
-      value: 100,
-    });
-    fireEvent.scroll(list);
-    expect(list.hasAttribute("data-scroll-overflow")).toBe(false);
-    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
-    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
   });
 
   it("reveals a subtle empty status through the normal pull gesture", () => {
@@ -2164,6 +2133,36 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(onOpenRequestHandled).toHaveBeenCalledTimes(2);
   });
 
+  it("preserves the shade for pager-consumed clicks and other pages", () => {
+    seedTriage();
+    const homeRef = createRef<HTMLDivElement>();
+    render(
+      <>
+        <div ref={homeRef}>
+          <NotificationsHomeCenter emptyGestureTargetRef={homeRef} />
+          <button
+            type="button"
+            onClickCapture={(event) => event.stopPropagation()}
+          >
+            Swipe release
+          </button>
+          <button type="button">Home background</button>
+        </div>
+        <button type="button">Views</button>
+      </>,
+    );
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.click(screen.getByText("Swipe release"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByText("Views"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByText("Home background"));
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    fireEvent.click(screen.getByText("Views"));
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
   it("ignores a chat pull release over the notification area", () => {
     seedTriage();
     render(
@@ -2549,14 +2548,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     // must never move an already-visible priority stack to compensate for them.
     expect(mailGroup?.style.transform).toBe("translate3d(0, 0px, 0)");
     const css = list.parentElement?.querySelector("style")?.textContent ?? "";
-    const activeDragRule = css.match(
-      /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(activeDragRule).not.toContain("mask-image");
-    const releaseSettleRule = css.match(
-      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(releaseSettleRule).not.toContain("mask-image");
     // A pull may animate compositor properties, but changing which element
     // paints the fill produces a visible first-frame color/rim discontinuity.
     const gestureMaterialRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
@@ -3371,11 +3362,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       true,
     );
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
-    const shadeCss = center.querySelector("style")?.textContent ?? "";
-    const previewRowAnimationGuard = shadeCss.match(
-      /\.eliza-notif-scroll \[data-notification-pull-reveal\] \.eliza-notif-row,[^{]+\{([^}]*)\}/,
-    )?.[1];
-    expect(previewRowAnimationGuard).toContain("animation: none !important");
     expect(
       previewGroups.every((group) => {
         const content = group.querySelector<HTMLElement>(

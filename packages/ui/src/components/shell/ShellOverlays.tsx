@@ -8,6 +8,7 @@
  * when the chat tab is active or surfacing it as a toast otherwise. Mounts the
  * layout-shift + frame-budget monitors that feed the perf HUD.
  */
+import { X } from "lucide-react";
 import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
 import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";
@@ -19,6 +20,7 @@ import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelector } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
+import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
@@ -121,32 +123,48 @@ export function ShellOverlays({
       <ComputerUseApprovalOverlay />
       <ShortcutsOverlay />
       {actionNotice && (
-        <div
-          // A `role="status"` toast is a passive announcement with no
-          // interactive controls (spinner + text only); at `z-[10000]` it sits
-          // above the whole shell, so without `pointer-events-none` it silently
-          // eats clicks on whatever it overlaps (e.g. the bottom-center chat
-          // pill) while it lingers. Let pointer events fall through to the UI
-          // beneath it.
-          className={`pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-sm text-sm font-medium z-[10000] flex items-center gap-2.5 max-w-[min(92vw,28rem)] ${
-            actionNotice.tone === "error"
-              ? "bg-danger text-white"
-              : actionNotice.tone === "success"
-                ? "bg-ok text-white"
-                : "bg-accent text-accent-fg"
-          }`}
-          role="status"
-          aria-live="polite"
-          aria-busy={actionNotice.busy ? true : undefined}
-          data-testid="shell-action-notice"
-          data-tone={actionNotice.tone}
-        >
-          {actionNotice.busy ? (
-            <Spinner size={16} className="shrink-0 opacity-95" aria-hidden />
-          ) : null}
-          <span className="text-left leading-snug">{actionNotice.text}</span>
-        </div>
+        <ActionNoticeToast
+          notice={actionNotice}
+          onDismiss={() => setState("actionNotice", null)}
+        />
       )}
     </>
+  );
+}
+
+export function ActionNoticeToast({
+  notice: actionNotice,
+  onDismiss,
+}: {
+  notice: ActionNotice;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className="pointer-events-none fixed bottom-24 left-1/2 z-[10000] flex w-max max-w-[min(92vw,28rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-border bg-card py-2 pl-4 pr-1 text-sm text-card-fg shadow-lg"
+      role="status"
+      aria-live="polite"
+      aria-busy={actionNotice.busy ? true : undefined}
+      data-testid="shell-action-notice"
+      data-tone={actionNotice.tone}
+    >
+      {actionNotice.busy ? (
+        <Spinner size={16} className="shrink-0 opacity-95" aria-hidden />
+      ) : null}
+      <span className="min-w-0 text-left leading-snug">
+        {actionNotice.text}
+      </span>
+      <Button
+        type="button"
+        variant="ghostMuted"
+        size="icon-lg"
+        shape="circle"
+        aria-label="Dismiss notification"
+        className="pointer-events-auto shrink-0"
+        onClick={onDismiss}
+      >
+        <X size={16} aria-hidden="true" />
+      </Button>
+    </div>
   );
 }

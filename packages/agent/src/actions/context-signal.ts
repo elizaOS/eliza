@@ -20,6 +20,10 @@ import {
 } from "@elizaos/core";
 import {
   collectKeywordTermMatches,
+  collectPreparedKeywordTermMatches,
+  normalizeCharacterLanguage,
+  type PreparedKeywordTerm,
+  prepareKeywordTerms,
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
 import {
@@ -112,6 +116,17 @@ export function hasContextSignalSync(
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
 ): boolean {
+  return hasPreparedContextSignalSync(message, state, {
+    strong: prepareKeywordTerms(strongTerms),
+    weak: prepareKeywordTerms(weakTerms),
+  });
+}
+
+function hasPreparedContextSignalSync(
+  message: Memory,
+  state: State | undefined,
+  terms: PreparedContextSignalTerms,
+): boolean {
   const texts = [
     ...recentConversationTextsFromState(state),
     messageText(message).trim(),
@@ -120,15 +135,15 @@ export function hasContextSignalSync(
   if (texts.length === 0) return false;
 
   if (
-    strongTerms.length > 0 &&
-    collectKeywordTermMatches(texts, strongTerms).size > 0
+    terms.strong.length > 0 &&
+    collectPreparedKeywordTermMatches(texts, terms.strong).size > 0
   ) {
     return true;
   }
 
   if (
-    weakTerms.length > 0 &&
-    collectKeywordTermMatches(texts, weakTerms).size > 0
+    terms.weak.length > 0 &&
+    collectPreparedKeywordTermMatches(texts, terms.weak).size > 0
   ) {
     return true;
   }
@@ -146,10 +161,49 @@ export function hasContextSignalSyncForKey(
   },
 ): boolean {
   const locale = resolveContextSignalLocale(null, state, options?.locale);
-  const spec = resolveContextSignalSpec(key, locale, {
-    includeAllLocales: options?.includeAllLocales ?? true,
+  const includeAllLocales = options?.includeAllLocales ?? true;
+  return hasPreparedContextSignalSync(
+    message,
+    state,
+    preparedContextSignalTerms(key, locale, includeAllLocales),
+  );
+}
+
+type PreparedContextSignalTerms = {
+  strong: PreparedKeywordTerm[];
+  weak: PreparedKeywordTerm[];
+};
+
+/**
+ * Only static vocabulary is cached, never conversation text or match results.
+ * Canonical locale keys keep this cache finite; all-locale catalogs are shared
+ * regardless of the caller's preferred language.
+ */
+const preparedContextSignalTermCache = new Map<
+  string,
+  PreparedContextSignalTerms
+>();
+
+function preparedContextSignalTerms(
+  key: ContextSignalKey,
+  locale: string | undefined,
+  includeAllLocales: boolean,
+): PreparedContextSignalTerms {
+  const canonicalLocale = includeAllLocales
+    ? undefined
+    : normalizeCharacterLanguage(locale);
+  const cacheKey = `${key}|${canonicalLocale ?? "all"}`;
+  const cached = preparedContextSignalTermCache.get(cacheKey);
+  if (cached) return cached;
+  const spec = resolveContextSignalSpec(key, canonicalLocale, {
+    includeAllLocales,
   });
-  return hasContextSignalSync(message, state, spec.strongTerms, spec.weakTerms);
+  const prepared = {
+    strong: prepareKeywordTerms(spec.strongTerms),
+    weak: prepareKeywordTerms(spec.weakTerms),
+  };
+  preparedContextSignalTermCache.set(cacheKey, prepared);
+  return prepared;
 }
 
 export function hasSelectedActionContext(

@@ -2003,7 +2003,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
     await page.setContent(`
       <section data-view-lifecycle-slot="camera" data-view-hidden="false">
-        <div data-testid="home-screen">Settings Wallet Projects</div>
+        <div>View unavailable This app is unavailable here Install or enable it App: camera Retry Back to views</div>
       </section>
       <div data-test-overlay>Ask Eliza</div>
     `);

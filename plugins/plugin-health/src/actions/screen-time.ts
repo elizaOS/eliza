@@ -7,6 +7,7 @@ import type {
   Action,
   ActionParameter,
   ActionResult,
+  GroundedActionReply,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -14,6 +15,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
@@ -155,7 +157,7 @@ export interface CreateScreenTimeActionRunnerOptions {
     fallback: string;
     context?: Record<string, unknown>;
     additionalRules?: string[];
-  }) => Promise<string>;
+  }) => Promise<GroundedActionReply>;
   resolveActionArgs: <TSubaction extends string, TParams>(input: {
     runtime: IAgentRuntime;
     message: Memory;
@@ -528,7 +530,7 @@ export function createScreenTimeActionRunner(
     >(
       payload: RespondPayload<T>,
     ): Promise<ActionResult> => {
-      const text = await runWithTrajectoryPurpose("screentime_recap", () =>
+      const reply = await runWithTrajectoryPurpose("screentime_recap", () =>
         adapters.renderReply({
           runtime,
           message,
@@ -540,12 +542,20 @@ export function createScreenTimeActionRunner(
           additionalRules: buildScreenTimeRecapRules(runtime),
         }),
       );
-      await callback?.({ text, source: "action", action: ACTION_NAME });
-      return {
-        text,
-        success: payload.success,
-        ...(payload.data ? { data: payload.data } : {}),
-      };
+      if (reply.kind === "model") {
+        await callback?.({
+          text: reply.text,
+          source: "action",
+          action: ACTION_NAME,
+        });
+      }
+      return applyGroundedActionReply(
+        {
+          success: payload.success,
+          ...(payload.data ? { data: payload.data } : {}),
+        },
+        reply,
+      );
     };
 
     const resolved = await adapters.resolveActionArgs<

@@ -62,6 +62,14 @@ describe("ContentState", () => {
     );
 
     expect(screen.getByText("Loading workspace")).toBeTruthy();
+    expect(screen.getByRole("status").getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
+    expect(
+      screen
+        .getByRole("status")
+        .querySelector("svg")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
     expect(
       screen.getByText("Fetching your agents.").classList.contains("sr-only"),
     ).toBe(true);

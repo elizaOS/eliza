@@ -12,6 +12,15 @@ import {
   runInfraMaintenanceCycle,
 } from "./provisioning-worker";
 
+// The heartbeat repository is outside this unit boundary. Loading its real
+// PGlite adapter sets Bun's process exit code even when every assertion passes.
+mock.module(
+  "@elizaos/cloud-shared/lib/services/cloud-api-db-heartbeat",
+  () => ({
+    readCloudApiDbHeartbeatAt: async () => null,
+  }),
+);
+
 type WorkerLogger = Parameters<typeof runInfraMaintenanceCycle>[0];
 type WorkerDeps = Parameters<typeof __setDepsForTests>[0];
 

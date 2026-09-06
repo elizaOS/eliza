@@ -106,7 +106,7 @@ describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
 	});
 
 	it("prices the pinned Cerebras default from the authoritative snapshot", () => {
-		expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe("gemma-4-31b");
+		expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe("qwen-3.8-27b");
 		expect(DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL).toBe(
 			DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 		);

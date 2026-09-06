@@ -39,7 +39,11 @@ export class PostgresConnectionManager {
       max: envInt("POSTGRES_POOL_MAX", 20, 1),
       min: envInt("POSTGRES_POOL_MIN", 2),
       idleTimeoutMillis: envInt("POSTGRES_POOL_IDLE_TIMEOUT_MS", 30000),
-      connectionTimeoutMillis: 5000,
+      // Boot starts ~100 services concurrently with the relationships-graph
+      // rebuild; on a saturated pool the 5 s default rejected two services'
+      // schema DDL and marked them failed for the process lifetime (live
+      // 2026-09-05). Deployments size this to their boot fan-out.
+      connectionTimeoutMillis: envInt("POSTGRES_POOL_CONNECT_TIMEOUT_MS", 5000, 1),
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
     };

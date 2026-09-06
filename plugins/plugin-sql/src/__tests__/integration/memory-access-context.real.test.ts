@@ -206,4 +206,56 @@ describe("memory access-context enforcement", () => {
 
     expect(rows).toEqual([]);
   });
+
+  it("scopes reads to the adapter's agent when no agentId is given (other agents' facts about the same entity stay invisible)", async () => {
+    // Live 2026-09-06: a second agent's facts about the same owner entity
+    // rendered in the first agent's FACTS block on a database without RLS.
+    const otherAgentId = v4() as UUID;
+    await adapter.createAgent({
+      id: otherAgentId,
+      name: "Other agent",
+      bio: ["second agent sharing the owner entity"],
+    } as never);
+    await adapter.createMemory(
+      {
+        id: v4() as UUID,
+        agentId,
+        entityId: requester,
+        roomId: allowedRoom,
+        worldId: allowedWorld,
+        content: { text: "user's dog is named Biscuit" },
+        metadata: { type: "custom", scope: "global" },
+        createdAt: Date.now(),
+      } as Memory,
+      "facts"
+    );
+    await adapter.createMemory(
+      {
+        id: v4() as UUID,
+        agentId: otherAgentId,
+        entityId: requester,
+        roomId: allowedRoom,
+        worldId: allowedWorld,
+        content: { text: "user's cat is named Momo" },
+        metadata: { type: "custom", scope: "global" },
+        createdAt: Date.now(),
+      } as Memory,
+      "facts"
+    );
+    const own = await adapter.getMemories({
+      tableName: "facts",
+      entityId: requester,
+      authorEntityIds: [requester],
+      unique: false,
+    });
+    expect(own.map((m) => m.content.text)).toContain("user's dog is named Biscuit");
+    expect(own.map((m) => m.content.text)).not.toContain("user's cat is named Momo");
+    const other = await adapter.getMemories({
+      tableName: "facts",
+      agentId: otherAgentId,
+      authorEntityIds: [requester],
+      unique: false,
+    });
+    expect(other.map((m) => m.content.text)).toEqual(["user's cat is named Momo"]);
+  });
 });

@@ -21,6 +21,15 @@ describe("routed shell layout", () => {
     "calendar",
     "memories",
     "trajectories",
+    "automations",
+    "character",
+    "tasks",
+    "database",
+    "vault",
+    "phone",
+    "messages",
+    "camera",
+    "desktop",
   ])("keeps the %s canvas flush with the shell", expectFlushCanvas);
 
   it.each([

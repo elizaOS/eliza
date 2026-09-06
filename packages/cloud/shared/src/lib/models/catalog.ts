@@ -43,19 +43,20 @@ export interface SelectorModel {
 
 export const BITROUTER_NITRO_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
 export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
-export const CEREBRAS_DEFAULT_TEXT_MODEL = "gemma-4-31b";
+export const CEREBRAS_DEFAULT_TEXT_MODEL = "qwen-3.8-27b";
 export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
-// Both managed text tiers are pinned to the supported Cerebras-native Gemma
+// Both managed text tiers are pinned to the supported Cerebras-native Qwen
 // model. Existing agents heal on the next blue/green fleet upgrade (#8434).
 export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 export const CEREBRAS_NATIVE_TEXT_MODELS = [
   CEREBRAS_DEFAULT_TEXT_MODEL,
+  "gemma-4-31b",
   "gpt-oss-120b",
   "zai-glm-4.7",
 ] as const;
 
 // The default served text model (drives PRO_MODEL_ID / the new-user default).
-// This is the Cerebras-direct bare id "gemma-4-31b", NOT a gateway id like
+// This is a Cerebras-direct bare id, NOT a gateway id like
 // "openai/gpt-oss-120b:nitro". Bare ids make getLanguageModel()'s
 // isCerebrasNativeModel() short-circuit straight to the Cerebras client.
 export const BITROUTER_DEFAULT_TEXT_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
@@ -72,16 +73,17 @@ const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([CEREBRAS_DEFAULT_TEXT_M
 // - Groq docs: https://console.groq.com/docs/models
 // - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
 const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
+  // Paid-tier limits verified against the Cerebras Qwen model docs on 2026-09-04.
   {
     id: CEREBRAS_DEFAULT_TEXT_MODEL,
     object: "model",
-    created: 1782864000,
+    created: 0,
     owned_by: "cerebras",
-    name: "Gemma 4 31B",
+    name: "Qwen 3.8 27B",
     description: "Default TEXT_SMALL and TEXT_LARGE model on Cerebras for fast cloud inference",
     type: "language",
     context_window: 131072,
-    max_tokens: 40000,
+    max_tokens: 40960,
     tags: ["recommended", "cerebras"],
     supported_parameters: ["reasoning_effort"],
     recommended: true,
@@ -151,6 +153,19 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
 ];
 
 const CEREBRAS_TEXT_CATALOG_MODELS: CatalogModel[] = [
+  {
+    id: `cerebras:${CEREBRAS_DEFAULT_TEXT_MODEL}`,
+    object: "model",
+    created: 0,
+    owned_by: "cerebras",
+    name: "Qwen 3.8 27B",
+    description: "Cerebras-hosted Qwen model",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    supported_parameters: ["reasoning_effort"],
+    tags: ["byok"],
+  },
   {
     id: "cerebras:gemma-4-31b",
     object: "model",

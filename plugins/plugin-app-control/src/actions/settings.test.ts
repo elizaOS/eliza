@@ -61,6 +61,7 @@ async function invoke(
 		{ parameters: options },
 		cb,
 	);
+	expect(texts).toEqual([]);
 	return { result, texts };
 }
 
@@ -324,9 +325,9 @@ describe("SETTINGS action: list", () => {
 	it("lists writable sections with how each is written", async () => {
 		const { result } = await invoke({ action: "list" });
 		expect(result?.success).toBe(true);
-		expect(result?.userFacingText).toBe(result?.text);
-		expect(result?.verifiedUserFacing).toBe(true);
-		expect(result?.turnComplete).toBe(true);
+		expect(result?.userFacingText).toBeUndefined();
+		expect(result?.verifiedUserFacing).toBeUndefined();
+		expect(result?.turnComplete).toBeUndefined();
 		expect(result?.continueChain).toBeUndefined();
 		if (!result) throw new Error("Expected SETTINGS list result");
 		const sections = (
@@ -393,7 +394,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("dispatches appearance theme mode through the view event broadcast route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "appearance", key: "theme", value: "dark" },
 			routeFetch,
 		);
@@ -406,15 +407,15 @@ describe("SETTINGS action: set on an owned route section", () => {
 			},
 		});
 		expect(result?.success).toBe(true);
-		expect(result?.userFacingText).toBe(result?.text);
-		expect(result?.verifiedUserFacing).toBe(true);
-		expect(result?.turnComplete).toBe(true);
+		expect(result?.userFacingText).toBeUndefined();
+		expect(result?.verifiedUserFacing).toBeUndefined();
+		expect(result?.turnComplete).toBeUndefined();
 		expect(result?.continueChain).toBeUndefined();
 		expect(result?.values).toMatchObject({
 			section: "appearance",
 			key: "theme",
 		});
-		expect(texts.join(" ")).toContain("Theme mode is dark");
+		expect(result?.text).toContain("Theme mode is dark");
 	});
 
 	it("dispatches appearance accent aliases through the view event broadcast route", async () => {
@@ -480,13 +481,13 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("rejects unsupported appearance values without broadcasting", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "appearance", key: "theme", value: "sepia" },
 			routeFetch,
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("supported appearance value");
+		expect(result?.text).toContain("supported appearance value");
 	});
 
 	it("updates voice continuous-chat mode through the config route", async () => {
@@ -510,7 +511,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: true };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "voice",
@@ -546,7 +547,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			section: "voice",
 			key: "continuous",
 		});
-		expect(texts.join(" ")).toContain("continuous chat is always-on");
+		expect(result?.text).toContain("continuous chat is always-on");
 	});
 
 	it("ignores generic namespace noise and canonicalizes composed voice keys", async () => {
@@ -684,7 +685,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			ok: true,
 			data: { messages: { voice: { continuous: "off" } } },
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "voice",
@@ -695,7 +696,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(1);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("between 0.001 and 0.02");
+		expect(result?.text).toContain("between 0.001 and 0.02");
 	});
 
 	it("surfaces voice config backend failures instead of fabricating success", async () => {
@@ -705,7 +706,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: false, detail: "config save failed" };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "voice",
@@ -716,7 +717,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(2);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("config save failed");
+		expect(result?.text).toContain("config save failed");
 	});
 
 	// #14910: the SETTINGS voice write is the semantic twin of the Voice UI. Its
@@ -779,7 +780,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: true };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "voice", key: "rms", value: "0.01" },
 			routeFetch,
 		);
@@ -801,7 +802,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			},
 		});
 		expect(result?.success).toBe(true);
-		expect(texts.join(" ")).toContain("speech threshold is 0.01");
+		expect(result?.text).toContain("speech threshold is 0.01");
 	});
 
 	it("broadcasts voice-settings:apply so the running shell mirrors update", async () => {
@@ -866,13 +867,13 @@ describe("SETTINGS action: set on an owned route section", () => {
 			if (request.method === "PUT") return { ok: true };
 			return { ok: false, detail: "view broadcast failed" };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "voice", key: "continuous", value: "vad" },
 			routeFetch,
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(3);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("view broadcast failed");
+		expect(result?.text).toContain("view broadcast failed");
 	});
 
 	it("does not broadcast when the voice config write fails", async () => {
@@ -902,7 +903,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("dispatches permissions shell off through the backend route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "permissions", key: "shell", value: "off" },
 			routeFetch,
 		);
@@ -917,7 +918,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			key: "shell",
 			value: false,
 		});
-		expect(texts.join(" ")).toContain("off");
+		expect(result?.text).toContain("off");
 	});
 
 	it("requests an OS permission then opens the permissions section when handoff is needed", async () => {
@@ -934,7 +935,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: true };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "permissions",
@@ -963,7 +964,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			key: "request",
 			permission: "microphone",
 		});
-		expect(texts.join(" ")).toContain("Settings > Permissions");
+		expect(result?.text).toContain("Settings > Permissions");
 	});
 
 	it("accepts common OS permission aliases as keys", async () => {
@@ -991,7 +992,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			ok: true,
 			data: { id: "camera", status: "granted" },
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "permissions",
@@ -1006,7 +1007,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			path: "/api/permissions/camera/request",
 		});
 		expect(result?.success).toBe(true);
-		expect(texts.join(" ")).not.toContain("Settings > Permissions");
+		expect(result?.text).not.toContain("Settings > Permissions");
 	});
 
 	it("uses permission=<id> as an implicit request key", async () => {
@@ -1040,7 +1041,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("rejects unknown OS permission requests without calling a route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "permissions",
@@ -1051,7 +1052,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("provide permission=<id>");
+		expect(result?.text).toContain("provide permission=<id>");
 	});
 
 	it("defaults to the section's primary key when key is omitted", async () => {
@@ -1082,7 +1083,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("dispatches capabilities wallet through the config route (#14703 residual)", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "capabilities", key: "wallet", value: "false" },
 			routeFetch,
 		);
@@ -1097,7 +1098,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			key: "wallet",
 			value: false,
 		});
-		expect(texts.join(" ")).toContain("wallet capability is off");
+		expect(result?.text).toContain("wallet capability is off");
 	});
 
 	it("dispatches capabilities browser on through the config route", async () => {
@@ -1149,7 +1150,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: true };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "wallet-rpc",
@@ -1180,8 +1181,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 			section: "wallet-rpc",
 			key: "evm",
 		});
-		expect(texts.join(" ")).toContain("EVM=alchemy");
-		expect(texts.join(" ")).toContain("Secrets/Vault");
+		expect(result?.text).toContain("EVM=alchemy");
+		expect(result?.text).toContain("Secrets/Vault");
 	});
 
 	it("scopes chain/provider wallet RPC requests to the requested chain", async () => {
@@ -1339,7 +1340,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: true };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "wallet-rpc",
@@ -1350,7 +1351,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(1);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("not a supported evm RPC provider");
+		expect(result?.text).toContain("not a supported evm RPC provider");
 	});
 
 	it("surfaces wallet RPC backend failures instead of fabricating success", async () => {
@@ -1371,7 +1372,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: false, detail: "wallet config save failed" };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "wallet-rpc",
@@ -1382,7 +1383,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(2);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("wallet config save failed");
+		expect(result?.text).toContain("wallet config save failed");
 	});
 
 	/** GET returns the given wallet config; every write succeeds. */
@@ -1536,24 +1537,24 @@ describe("SETTINGS action: set on an owned route section", () => {
 	// the caller asked for.
 	it("refuses a keyless provider value instead of resetting every chain", async () => {
 		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ section: "wallet-rpc", value: "alchemy" },
 			routeFetch,
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(1);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("chain=evm|bsc|solana provider=alchemy");
+		expect(result?.text).toContain("chain=evm|bsc|solana provider=alchemy");
 	});
 
 	it("refuses key=cloud with a non-cloud value instead of discarding it", async () => {
 		const routeFetch = walletConfigRouteFetch(MIXED_PROVIDER_CONFIG);
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "wallet-rpc", key: "cloud", value: "alchemy" },
 			routeFetch,
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(1);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("resets every chain");
+		expect(result?.text).toContain("resets every chain");
 	});
 
 	it("accepts a keyless eliza-cloud value as the all-chains cloud reset", async () => {
@@ -1630,7 +1631,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("names the unknown chain token in the wallet-rpc key error", async () => {
 		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "wallet-rpc",
@@ -1641,7 +1642,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain('"polygon"');
+		expect(result?.text).toContain('"polygon"');
 	});
 
 	it("applies per-chain batch options to exactly the named chains", async () => {
@@ -1667,7 +1668,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("names the chain and its valid providers in the invalid-provider error", async () => {
 		const routeFetch = walletConfigRouteFetch(ALL_CLOUD_CONFIG);
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "wallet-rpc",
@@ -1678,7 +1679,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).toHaveBeenCalledTimes(1);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain(
+		expect(result?.text).toContain(
 			"infura is not a supported solana RPC provider (valid: eliza-cloud, helius-birdeye)",
 		);
 	});
@@ -1688,12 +1689,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 			ok: false,
 			detail: "runtime restart refused",
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "permissions", key: "shell", value: "off" },
 			routeFetch,
 		);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("runtime restart refused");
+		expect(result?.text).toContain("runtime restart refused");
 	});
 
 	it("creates a local agent backup through the backup route", async () => {
@@ -1701,7 +1702,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			ok: true,
 			data: { backup: { fileName: "agent-2026.agent-backup.json" } },
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "advanced", key: "create-backup" },
 			routeFetch,
 		);
@@ -1715,12 +1716,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 			section: "advanced",
 			key: "create-backup",
 		});
-		expect(texts.join(" ")).toContain("agent-2026.agent-backup.json");
+		expect(result?.text).toContain("agent-2026.agent-backup.json");
 	});
 
 	it("restores a local agent backup only with fileName and confirmation", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "advanced",
@@ -1741,12 +1742,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 			key: "restore-backup",
 			fileName: "agent-2026.agent-backup.json",
 		});
-		expect(texts.join(" ")).toContain("Restart the agent");
+		expect(result?.text).toContain("Restart the agent");
 	});
 
 	it("refuses restore without explicit confirmation", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "advanced",
@@ -1757,12 +1758,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("confirm=true");
+		expect(result?.text).toContain("confirm=true");
 	});
 
 	it("refuses restore without a backup file name", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "advanced",
@@ -1773,7 +1774,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("fileName");
+		expect(result?.text).toContain("fileName");
 	});
 
 	it("read-modify-writes app permission namespace grants through the app route", async () => {
@@ -1797,7 +1798,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			}
 			return { ok: true };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "app-permissions",
@@ -1823,7 +1824,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			value: false,
 			app: "weather",
 		});
-		expect(texts.join(" ")).toContain("weather net permission is revoked");
+		expect(result?.text).toContain("weather net permission is revoked");
 	});
 
 	it("accepts namespace aliases for app permissions", async () => {
@@ -1867,7 +1868,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("refuses app permission writes without an app slug", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "app-permissions",
@@ -1878,7 +1879,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("app=<slug>");
+		expect(result?.text).toContain("app=<slug>");
 	});
 
 	it("refuses app permission writes when the route shape is invalid", async () => {
@@ -1886,7 +1887,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			ok: true,
 			data: { slug: "weather" },
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{
 				action: "set",
 				section: "app-permissions",
@@ -1897,7 +1898,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			routeFetch,
 		);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("invalid permission view");
+		expect(result?.text).toContain("invalid permission view");
 	});
 
 	it("rejects a non-boolean value without calling the route", async () => {
@@ -1917,13 +1918,13 @@ describe("SETTINGS action: set on an owned route section", () => {
 
 	it("rejects an unknown key on an owned section", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "permissions", key: "bogus", value: "off" },
 			routeFetch,
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("shell");
+		expect(result?.text).toContain("shell");
 	});
 
 	it("reads update status through the Release Center backend status route", async () => {
@@ -1936,7 +1937,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 				latestVersion: "1.0.0",
 			},
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "status" },
 			routeFetch,
 		);
@@ -1945,7 +1946,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			path: "/api/update/status",
 		});
 		expect(result?.success).toBe(true);
-		expect(texts.join(" ")).toContain("Current: 1.0.0 on stable");
+		expect(result?.text).toContain("Current: 1.0.0 on stable");
 	});
 
 	it("forces an update check through the update status route", async () => {
@@ -1958,7 +1959,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 				latestVersion: "1.1.0-beta.1",
 			},
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "check" },
 			routeFetch,
 		);
@@ -1967,7 +1968,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 			path: "/api/update/status?force=true",
 		});
 		expect(result?.success).toBe(true);
-		expect(texts.join(" ")).toContain("Update available: 1.0.0");
+		expect(result?.text).toContain("Update available: 1.0.0");
 	});
 
 	it("changes the update channel then refreshes status", async () => {
@@ -1984,7 +1985,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 				},
 			};
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "channel", value: "beta" },
 			routeFetch,
 		);
@@ -1998,18 +1999,18 @@ describe("SETTINGS action: set on an owned route section", () => {
 			path: "/api/update/status?force=true",
 		});
 		expect(result?.success).toBe(true);
-		expect(texts.join(" ")).toContain("Update channel is beta");
+		expect(result?.text).toContain("Update channel is beta");
 	});
 
 	it("rejects invalid update channels before calling the route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "channel", value: "canary" },
 			routeFetch,
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("stable, beta, or nightly");
+		expect(result?.text).toContain("stable, beta, or nightly");
 	});
 
 	it("reports the update apply plan without fabricating a remote installer job", async () => {
@@ -2025,7 +2026,7 @@ describe("SETTINGS action: set on an owned route section", () => {
 					'This is a remote status view. Run "npm install -g elizaos@latest" on the host; no remote execution endpoint is exposed.',
 			},
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "apply" },
 			routeFetch,
 		);
@@ -2034,8 +2035,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 			path: "/api/update/status?force=true",
 		});
 		expect(result?.success).toBe(true);
-		expect(texts.join(" ")).toContain("chat cannot apply it directly");
-		expect(texts.join(" ")).toContain("no remote execution endpoint");
+		expect(result?.text).toContain("chat cannot apply it directly");
+		expect(result?.text).toContain("no remote execution endpoint");
 	});
 
 	it("fails the status read when the update check returned an error", async () => {
@@ -2051,12 +2052,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 				error: "registry unreachable: ETIMEDOUT",
 			},
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "status" },
 			routeFetch,
 		);
 		expect(result?.success).toBe(false);
-		const joined = texts.join(" ");
+		const joined = result?.text ?? "";
 		expect(joined).toContain("registry unreachable");
 		expect(joined).not.toContain("unknown");
 	});
@@ -2068,12 +2069,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 			// version/channel pair.
 			data: { channel: "stable" },
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "status" },
 			routeFetch,
 		);
 		expect(result?.success).toBe(false);
-		const joined = texts.join(" ");
+		const joined = result?.text ?? "";
 		expect(joined).toContain("unrecognized payload");
 		expect(joined).not.toContain("unknown on unknown");
 	});
@@ -2083,12 +2084,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 			ok: true,
 			data: "not a status object",
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "check" },
 			routeFetch,
 		);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).not.toContain("unknown");
+		expect(result?.text).not.toContain("unknown");
 	});
 
 	it("fails the apply plan when the update check errored", async () => {
@@ -2102,12 +2103,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 				error: "registry unreachable",
 			},
 		}));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "apply" },
 			routeFetch,
 		);
 		expect(result?.success).toBe(false);
-		const joined = texts.join(" ");
+		const joined = result?.text ?? "";
 		expect(joined).toContain("the update check failed");
 		expect(joined).not.toContain("unknown");
 	});
@@ -2127,14 +2128,14 @@ describe("SETTINGS action: set on an owned route section", () => {
 				},
 			};
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "channel", value: "beta" },
 			routeFetch,
 		);
 		// The channel write landed, so the operation succeeded — but the failed
 		// refresh is surfaced, never masked by the channel-write echo.
 		expect(result?.success).toBe(true);
-		const joined = texts.join(" ");
+		const joined = result?.text ?? "";
 		expect(joined).toContain("Update channel is beta");
 		expect(joined).toContain("couldn't refresh the release status");
 		expect(joined).toContain("registry unreachable while refreshing");
@@ -2150,12 +2151,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 				detail: "route /api/update/status?force=true returned 503",
 			};
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "channel", value: "nightly" },
 			routeFetch,
 		);
 		expect(result?.success).toBe(true);
-		const joined = texts.join(" ");
+		const joined = result?.text ?? "";
 		expect(joined).toContain("Update channel is nightly");
 		expect(joined).toContain("couldn't refresh the release status");
 		expect(joined).toContain("503");
@@ -2168,12 +2169,12 @@ describe("SETTINGS action: set on an owned route section", () => {
 				return { ok: false, detail: "channel write rejected" };
 			return { ok: true, data: {} };
 		});
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "updates", key: "channel", value: "beta" },
 			routeFetch,
 		);
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("channel write rejected");
+		expect(result?.text).toContain("channel write rejected");
 		expect(routeFetch).toHaveBeenCalledTimes(1);
 	});
 });
@@ -2192,7 +2193,7 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 
 	it("delegates connector settings to the default PLUGIN action", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "connectors", value: "telegram" },
 			routeFetch,
 		);
@@ -2200,31 +2201,28 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(result?.success).toBe(false);
 		expect(result?.data).toMatchObject({ delegateTo: "PLUGIN" });
 		// Planner-facing contract: routing guidance never posts to chat.
-		expect(texts).toHaveLength(0);
 		expect(result?.text).toContain("PLUGIN");
 	});
 
 	it("delegates vault settings to SECRETS, not the browser credential action", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
+		const { result } = await invoke(
 			{ action: "set", section: "secrets", value: "openai" },
 			routeFetch,
 		);
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(result?.data).toMatchObject({ delegateTo: "SECRETS" });
-		expect(texts).toHaveLength(0);
 		expect(result?.text).toContain("SECRETS");
 	});
 
 	it("refuses to write a read-only section", async () => {
-		const { result, texts } = await invoke({
+		const { result } = await invoke({
 			action: "set",
 			section: "runtime",
 			value: "on",
 		});
 		expect(result?.success).toBe(false);
-		expect(texts).toHaveLength(0);
 		expect(result?.text).toContain("read-only");
 	});
 
@@ -2243,13 +2241,13 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(unwiredEntries.length).toBeGreaterThan(0);
 
 		for (const [section, cap] of unwiredEntries) {
-			const { result, texts } = await invoke({
+			const { result } = await invoke({
 				action: "set",
 				section,
 				value: "on",
 			});
 			expect(result?.success).toBe(false);
-			expect(texts.join(" ")).toContain(cap.reason);
+			expect(result?.text).toContain(cap.reason);
 		}
 	});
 });
@@ -2326,7 +2324,7 @@ describe("humanizeSettingsRouteFailure: user-facing route failure copy", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const { result, texts } = await invoke({
+		const { result } = await invoke({
 			action: "set",
 			section: "appearance",
 			key: "theme",
@@ -2334,7 +2332,7 @@ describe("humanizeSettingsRouteFailure: user-facing route failure copy", () => {
 		});
 
 		expect(result?.success).toBe(false);
-		const joined = texts.join(" ");
+		const joined = result?.text ?? "";
 		expect(joined).toContain("isn't authenticated right now");
 		expect(joined).toContain("try that again");
 		expect(joined).not.toContain("returned 401");
@@ -2376,8 +2374,8 @@ describe("SETTINGS action: get and validate", () => {
 	});
 
 	it("handler asks for clarification on an unparseable request (no verb/section)", async () => {
-		const { result, texts } = await invoke({ value: "off" });
+		const { result } = await invoke({ value: "off" });
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ").toLowerCase()).toContain("settings");
+		expect((result?.text ?? "").toLowerCase()).toContain("settings");
 	});
 });

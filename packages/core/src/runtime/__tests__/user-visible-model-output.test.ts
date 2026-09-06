@@ -9,6 +9,31 @@ import {
 } from "../user-visible-model-output";
 
 describe("sanitizeUserVisibleModelOutput", () => {
+	it.each([
+		'{"plannerCompleted":true,"turnScope":"final"}',
+		'```json\n{"plannerCompleted":true,"turnScope":"final"}\n```',
+		'{"response":{"plannerCompleted":false,"turnScope":"more_work_pending"}}',
+		'{"plannerCompleted":true,"turnScope":"final",',
+	])("keeps completion-control records out of chat: %s", (candidate) => {
+		expect(sanitizeUserVisibleModelOutput(candidate)).toMatchObject({
+			kind: "control",
+			envelope: "planner",
+		});
+	});
+
+	it.each([
+		'{"action":"messageToUser","args":{"message":"Done."}}',
+		'```json\n{"action":"messageToUser","args":{"message":"Done."}}\n```',
+		'{"response":{"action":"messageToUser","args":{"message":"Done."}}}',
+		'{"action":"messageToUser","args":{"message":',
+		'{"action":"messageToUser"}',
+	])("rejects a reply field serialized as a fake action: %s", (candidate) => {
+		expect(sanitizeUserVisibleModelOutput(candidate)).toMatchObject({
+			kind: "control",
+			envelope: "planner",
+		});
+	});
+
 	it("rejects a fenced action envelope even when foreign metadata keys are present", () => {
 		const output = sanitizeUserVisibleModelOutput(
 			'```json\n{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry","toolCallId":"call-1"}\n```',
@@ -156,6 +181,13 @@ describe("sanitizeUserVisibleModelOutput", () => {
 			text: documentedExample,
 			format: "json",
 			fieldPath: [],
+		});
+		const replyActionExample =
+			'{"example":{"action":"messageToUser","args":{"message":"Done."}},"description":"invalid planner example"}';
+		expect(sanitizeUserVisibleModelOutput(replyActionExample)).toMatchObject({
+			kind: "text",
+			text: replyActionExample,
+			format: "json",
 		});
 	});
 

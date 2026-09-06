@@ -72,6 +72,8 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 						id: "t1",
 						status: "completed",
 						llmCallCount: 3,
+						totalPromptTokens: 120,
+						totalCompletionTokens: 0,
 						source: "discord",
 						roomId: "room-1",
 						entityId: "entity-1",
@@ -102,6 +104,8 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			id: "t1",
 			status: "completed",
 			llmCallCount: 3,
+			totalPromptTokens: 120,
+			totalCompletionTokens: 0,
 		});
 		// timeout collapses to the viewer's tri-state "error"
 		expect(b.trajectories[1]).toMatchObject({ id: "t2", status: "error" });
@@ -205,6 +209,12 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 						llmCalls: [
 							{
 								callId: "c0",
+								timestamp: 501,
+								systemPrompt: "system context",
+								userPrompt: "user question",
+								promptTokens: 12,
+								completionTokens: 0,
+								latencyMs: 80,
 								model: "m",
 								response: "RESPOND",
 								stepType: "should_respond",
@@ -267,6 +277,16 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			metadata: { source: "discord", roomId: "room-1", entityId: "entity-1" },
 			llmCallCount: 2,
 		});
+		expect(b.llmCalls[0]).toMatchObject({
+			stepId: "s0",
+			timestamp: 501,
+			systemPrompt: "system context",
+			userPrompt: "user question",
+			promptTokens: 12,
+			completionTokens: 0,
+			latencyMs: 80,
+		});
+		expect(b.llmCalls[1]).not.toHaveProperty("promptTokens");
 		expect(b.llmCalls.map((c) => c.stepType)).toEqual([
 			"should_respond",
 			"reasoning",

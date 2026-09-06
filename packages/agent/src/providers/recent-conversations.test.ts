@@ -235,6 +235,76 @@ describe("recentConversationsProvider", () => {
     expect(result.text).toContain("remote-only context");
   });
 
+  it("collapses connector record-of-send echoes per room while keeping distinct repeated turns", async () => {
+    // Live 2026-09-05: every Discord reply is persisted by core and again by the
+    // connector (~100 ms later, metadata.platformMessageId); the eager form
+    // rendered both copies for every room.
+    const otherRoom = "00000000-0000-0000-0000-0000000000d1" as UUID;
+    const rows = [
+      {
+        ...message(),
+        id: "00000000-0000-0000-0000-000000000101" as UUID,
+        roomId: otherRoom,
+        entityId: ENTITY_ID,
+        content: { text: "go home" },
+        createdAt: 10,
+      },
+      {
+        ...message(),
+        id: "00000000-0000-0000-0000-000000000102" as UUID,
+        roomId: otherRoom,
+        entityId: AGENT_ID,
+        content: { text: "done — you're on Home." },
+        createdAt: 20,
+      },
+      {
+        ...message(),
+        id: "00000000-0000-0000-0000-000000000103" as UUID,
+        roomId: otherRoom,
+        entityId: AGENT_ID,
+        content: { text: "done — you're on Home.", source: "discord" },
+        createdAt: 21,
+        metadata: { type: "message", platformMessageId: "p1" },
+      },
+      {
+        ...message(),
+        id: "00000000-0000-0000-0000-000000000104" as UUID,
+        roomId: otherRoom,
+        entityId: ENTITY_ID,
+        content: { text: "go home" },
+        createdAt: 30,
+      },
+      {
+        ...message(),
+        id: "00000000-0000-0000-0000-000000000105" as UUID,
+        roomId: otherRoom,
+        entityId: AGENT_ID,
+        content: { text: "done — you're on Home." },
+        createdAt: 40,
+      },
+    ] as Memory[];
+    const runtime = makeRuntime({
+      getRoomsForParticipants: vi.fn(async () => [ROOM_ID, otherRoom]),
+      getRoomsForParticipant: vi.fn(async () => [ROOM_ID, otherRoom]),
+      getMemoriesByRoomIds: vi.fn(async () => rows),
+      getRoomsByIds: vi.fn(async () => [
+        { id: ROOM_ID, source: "discord", name: "general" },
+        { id: otherRoom, source: "discord", name: "ops" },
+      ]),
+    });
+    const result = await recentConversationsProvider.get(
+      runtime,
+      message(),
+      EMPTY_STATE,
+    );
+    const agentLines = (result.text ?? "")
+      .split("\n")
+      .filter((line) => line.includes("done — you're on Home."));
+    expect(agentLines).toHaveLength(2);
+    expect((result.text ?? "").split("go home")).toHaveLength(3);
+    expect(result.values?.recentConversationCount).toBe(4);
+  });
+
   it("keeps safe attachment recall while excluding capability URLs", async () => {
     const runtime = makeRuntime({
       getMemoriesByRoomIds: vi.fn(async () => [
@@ -262,9 +332,9 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain("receipt.png");
-    expect(result.text).toContain("dinner reservation");
-    expect(result.text).not.toContain("private.example");
+    expect(result.text ?? "").toContain("receipt.png");
+    expect(result.text ?? "").toContain("dinner reservation");
+    expect(result.text ?? "").not.toContain("private.example");
     expect(result.overflowText).not.toContain("receipt.png");
     expect(result.values?.recentConversationCount).toBe(1);
     expect(result.data?.rooms).toHaveLength(1);

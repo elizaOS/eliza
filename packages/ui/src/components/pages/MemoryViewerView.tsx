@@ -71,7 +71,6 @@ import {
 import { Input } from "../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { SegmentedControl } from "../ui/segmented-control";
-import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -518,7 +517,9 @@ function MemoryFeedPanel({
     return (
       <MemoryStateSurface>
         <div className="p-4 min-[700px]:p-5">
-          <ListSkeleton rows={6} />
+          <PagePanel.Loading
+            heading={t("memoryviewer.loading", { defaultValue: "Loading…" })}
+          />
         </div>
       </MemoryStateSurface>
     );
@@ -755,7 +756,9 @@ function MemoryBrowserPanel({
       {loading && !result ? (
         <MemoryStateSurface>
           <div className="p-4 min-[700px]:p-5">
-            <ListSkeleton rows={6} />
+            <PagePanel.Loading
+              heading={t("memoryviewer.loading", { defaultValue: "Loading…" })}
+            />
           </div>
         </MemoryStateSurface>
       ) : error ? (
@@ -1447,7 +1450,7 @@ function MemoryViewerViewForAuthority({
             >
               <div
                 data-testid="memory-content-scroll-region"
-                className="settings-canvas min-h-0 flex-1 overflow-y-auto"
+                className="settings-canvas eliza-chat-scroll min-h-0 flex-1 overflow-y-auto"
               >
                 <PagePanel.ContentRail
                   width="standard"

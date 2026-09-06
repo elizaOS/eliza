@@ -25,7 +25,6 @@ import {
 } from "@elizaos/core";
 
 import { getNotesService } from "./service.js";
-import type { StickyNote } from "./types.js";
 import { parseNoteContent } from "./validation.js";
 
 const NOTES_OPS = ["create", "list", "update", "delete"] as const;
@@ -64,27 +63,35 @@ function readOp(params: Record<string, unknown>): NotesOpParse | undefined {
     : { recognized: false, requested: raw };
 }
 
-/** One-line rendering; the body is the user's own text, already user-safe. */
-function describe(note: StickyNote): string {
-  const body = note.body.trim();
-  return body.length > 0 ? `${note.title} — ${body}` : note.title;
-}
-
-function failure(text: string, code: string): ActionResult {
+function failure(
+  text: string,
+  code: string,
+  missingParameter?: "content" | "body",
+): ActionResult {
   return {
     success: false,
     text,
     error: code,
-    data: { actionName: "NOTES", error: code },
+    data: {
+      actionName: "NOTES",
+      error: code,
+      ...(missingParameter
+        ? {
+            parameterErrors: [
+              `Missing required argument '${missingParameter}'`,
+            ],
+          }
+        : {}),
+    },
   };
 }
 
 /**
- * Notes return settled facts to the planner, then require one model-authored
- * closing reply. The fallback is deliberately short and truthful so a model
- * outage never turns an already-completed operation into a generic failure.
+ * Notes return structured facts, not prose that could be mistaken for the
+ * model-authored closing reply. Durable receipts remain available if reply
+ * generation fails.
  */
-function committed(text: string, data: Record<string, unknown>): ActionResult {
+function committed(data: Record<string, unknown>): ActionResult {
   // Bind the mutation to an applied effect receipt so the reply-egress
   // grounding contract (completed_side_effect claims require a committed
   // receipt from this turn) can verify the claim instead of failing closed to
@@ -110,9 +117,8 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
     : undefined;
   return {
     success: true,
-    text,
+    transcriptVisibility: "internal",
     modelReplyRequired: true,
-    modelReplyFallback: text,
     ...(effectReceipts
       ? {
           effectReceipts,
@@ -147,11 +153,11 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=list reads them, narrowed by content when supplied; action=update replaces one found by its text; action=delete removes one found by its text. These are the same notes shown in the Notes view.",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=list reads them, narrowed by content when supplied; action=update replaces the complete note found by its text; action=delete removes one found by its text. The first line is the note's label and later lines are its body. For a partial edit, preserve the other content, including the existing label, in the replacement. NOTES changes data, not the visible view: an explicit request to also open Notes needs VIEWS navigation.",
   descriptionCompressed:
-    "notes: create (write a note / jot down / write down), list (read/search/find any note), update, delete — same store as the Notes view",
+    "notes: create, list/search, update full content (preserve unedited label/body), delete; opening the Notes view separately needs VIEWS",
   routingHint:
-    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES action=create. ANY read over the user's notes -> NOTES action=list. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content only when the owner asks for every note. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES action=delete with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES action=update with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with action=list. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call action=list before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
+    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES_CREATE with content. ANY read over the user's notes -> NOTES_LIST. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content when the owner asks for all notes, counts, or a recency comparison without a topic. Recency is determined from returned createdAt/updatedAt fields, never by searching for words such as 'latest' or 'most recently updated'. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES_DELETE with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES_UPDATE with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with NOTES_LIST. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call NOTES_LIST before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -190,50 +196,53 @@ export const notesAction: Action = {
               .includes(normalizedTopic),
           )
         : notes;
-      const fallback = topic
-        ? matches.length === 0
-          ? "I couldn't find a matching note."
-          : `I found ${matches.length} matching ${matches.length === 1 ? "note" : "notes"}.`
-        : notes.length === 0
-          ? "You don't have any notes yet."
-          : `You have ${notes.length} ${notes.length === 1 ? "note" : "notes"}.`;
-      return committed(fallback, {
+      return committed({
         op,
         count: matches.length,
         total: notes.length,
         filterApplied: topic !== undefined,
         ...(topic ? { topic } : {}),
-        notes: matches.map(({ title, body, color }) => ({
-          title,
-          body,
-          color,
-        })),
+        notes: matches,
       });
     }
 
-    // ONE user-authored field, per the package contract: the label is derived
-    // deterministically from the first line by `parseNoteContent`, never
-    // invented by a model. `text`/`note`/`title` are planner aliases for it.
+    // The service still receives one user-authored content value. Providers
+    // may preserve an explicitly requested title and body as separate tool
+    // arguments, so normalize that losslessly before deriving the label.
+    // `text`/`note`/`title` remain planner aliases for `content`.
     const content =
       readString(params.content) ??
       readString(params.text) ??
       readString(params.note) ??
       readString(params.title);
     if (!content) {
-      return failure("Tell me what the note should say.", "NOTES_MISSING_TEXT");
+      return failure(
+        "Tell me what the note should say.",
+        "NOTES_MISSING_TEXT",
+        "content",
+      );
     }
 
     if (op === "create") {
-      const created = await service.createNoteWithCommit(
-        parseNoteContent(content),
+      const body = readString(params.body);
+      const separateBody = body !== undefined && !content.includes("\n");
+      const noteContent = parseNoteContent(
+        separateBody ? `${content}\n${body}` : content,
       );
+      if (body && !separateBody && noteContent.body !== body) {
+        // Two different complete bodies are ambiguous; reject before writing
+        // rather than appending them or silently selecting one.
+        return failure(
+          "The create arguments contain different note bodies. Pass the complete note in content only, or a title in content and its body in body.",
+          "NOTES_CONFLICTING_BODY",
+        );
+      }
+      const created = await service.createNoteWithCommit(noteContent);
       const note = created.value;
-      const text = created.replayed
-        ? `that note was already saved: ${describe(note)}`
-        : `saved a note: ${describe(note)}`;
-      return committed(text, {
+      return committed({
         op,
         noteId: note.id,
+        note,
         replayed: created.replayed,
       });
     }
@@ -243,13 +252,10 @@ export const notesAction: Action = {
         "query",
         content,
       );
-      const text =
-        removed.removedCount > 1
-          ? `deleted the note: ${describe(removed.value)} (removed ${removed.removedCount} identical copies)`
-          : `deleted the note: ${describe(removed.value)}`;
-      return committed(text, {
+      return committed({
         op,
         noteId: removed.value.id,
+        note: removed.value,
         removedCount: removed.removedCount,
       });
     }
@@ -259,6 +265,7 @@ export const notesAction: Action = {
       return failure(
         "Tell me what the note should say after the change.",
         "NOTES_MISSING_PATCH",
+        "body",
       );
     }
     const updated = await service.updateNoteByLookupWithCommit(
@@ -266,13 +273,10 @@ export const notesAction: Action = {
       content,
       parseNoteContent(replacement),
     );
-    const text =
-      updated.consolidatedCount > 0
-        ? `updated the note: ${describe(updated.value)} (consolidated ${updated.consolidatedCount + 1} identical copies)`
-        : `updated the note: ${describe(updated.value)}`;
-    return committed(text, {
+    return committed({
       op,
       noteId: updated.value.id,
+      note: updated.value,
       consolidatedCount: updated.consolidatedCount,
     });
   },
@@ -286,8 +290,9 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "The note's text as the user said it. Required for create/update/delete; on update and delete it identifies the existing note. On list, pass the requested topic to return only matching notes; omit it entirely when listing or counting every note.",
+        "For create, the complete new note: title on the first line and body on subsequent lines. When the user specifies a title and body, preserve both exactly with a newline between them; do not join them with a dash into one title. Prefer this single field and omit body. Alternatively, pass only the title in content and the requested body in body. For update/delete, this identifies the EXISTING note, not its replacement. On list, pass only a requested topic to filter note text. Omit it for all notes, counts, or recency questions without a topic; use the returned createdAt/updatedAt timestamps to compare recency, not a text filter such as 'most recently updated'.",
       required: false,
+      requiredForSubactions: ["create", "update", "delete"],
       // Strict providers may serialize an omitted optional string as "". The
       // empty string is never valid note content (minLength is 1), so normalize
       // that provider sentinel back to omission before schema validation. This
@@ -298,8 +303,10 @@ export const notesAction: Action = {
     },
     {
       name: "body",
-      description: "On update only: the note's replacement text.",
+      description:
+        "For update, COMPLETE replacement note content: first line is the label, remaining lines are the body. To edit only the body, include the unchanged label followed by a newline and the new body. Preserve unedited content; list the matching note first if unknown. For create, OMIT this field when content already holds the full note. If content holds ONLY a title, body may contain ONLY the requested body, never repeat the title.",
       required: false,
+      requiredForSubactions: ["update"],
       schema: { type: "string" },
     },
   ],

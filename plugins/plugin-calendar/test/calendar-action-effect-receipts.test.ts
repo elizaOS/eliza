@@ -1,11 +1,13 @@
 /**
- * Exercises CALENDAR through the canonical executor so read, durable approval,
- * replay, and failure callbacks are delivered only after exact receipt binding.
+ * Exercises CALENDAR through the canonical executor: ordinary outcomes carry
+ * complete internal evidence and receipts, while interactive approval controls
+ * retain their exact receipt-bound callback. No live model or calendar runs.
  */
 
 import {
   type Action,
   type Content,
+  createUnavailableGroundedActionReply,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
@@ -129,6 +131,11 @@ function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    // Deterministic presentation fixture, not evidence of a live model reply.
+    renderGroundedReply: async ({ fallback }) => ({
+      kind: "model",
+      text: fallback,
+    }),
     ...overrides,
   };
 }
@@ -196,7 +203,205 @@ function expectBoundDelivery(
   );
 }
 
+function expectInternalHandoff(
+  delivered: Content[],
+  result: Awaited<ReturnType<typeof execute>>,
+): void {
+  expect(delivered).toEqual([]);
+  expect(result).toMatchObject({
+    transcriptVisibility: "internal",
+    data: {
+      replyContext: {
+        domain: "calendar",
+        intent: expect.any(String),
+        scenario: expect.any(String),
+        facts: expect.stringMatching(/\S/),
+        context: expect.any(Object),
+      },
+    },
+  });
+  expect(result.effectReceipts).toHaveLength(1);
+  for (const field of [
+    "text",
+    "userFacingText",
+    "verifiedUserFacing",
+    "userFacingEffectReceiptIds",
+    "replyFailure",
+  ]) {
+    expect(result).not.toHaveProperty(field);
+  }
+}
+
 describe("CALENDAR effect receipt settlement", () => {
+  it.each(["Unknown", "None", "n/a", "location_missing"])(
+    "searches for the literal detail query %s",
+    async (title) => {
+      const matchingEvent = { ...EVENT, title };
+      const action = createCalendarActionRunner(deps());
+      const delivered: Content[] = [];
+      const result = await execute({
+        action,
+        service: { getCalendarFeed: vi.fn(async () => feed([matchingEvent])) },
+        actor: message(`Find the event titled ${title}.`),
+        delivered,
+        parameters: {
+          subaction: "search_events",
+          details: {
+            query: title,
+            timeMin: "2026-07-27T00:00:00.000Z",
+            timeMax: "2026-08-03T00:00:00.000Z",
+          },
+        },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        data: { events: [matchingEvent] },
+        effectReceipts: [{ operation: "calendar.event.search" }],
+      });
+      expectInternalHandoff(delivered, result);
+    },
+  );
+
+  it.each(["missing", "unavailable"] as const)(
+    "hands off complete evidence without needing a %s renderer",
+    async (mode) => {
+      const renderGroundedReply = vi.fn(async () =>
+        createUnavailableGroundedActionReply({
+          kind: "no_provider",
+          code: "GROUNDED_REPLY_NO_PROVIDER",
+        }),
+      );
+      const action = createCalendarActionRunner(
+        deps({
+          renderGroundedReply:
+            mode === "missing" ? undefined : renderGroundedReply,
+        }),
+      );
+      const delivered: Content[] = [];
+      const result = await execute({
+        action,
+        service: { getCalendarFeed: vi.fn(async () => feed()) },
+        actor: message("Read this week’s calendar."),
+        delivered,
+        parameters: {
+          subaction: "feed",
+          details: {
+            timeMin: "2026-07-27T00:00:00.000Z",
+            timeMax: "2026-08-03T00:00:00.000Z",
+          },
+        },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        effectReceipts: [{ operation: "calendar.feed.read", outcome: "noop" }],
+      });
+      expectInternalHandoff(delivered, result);
+      expect(result.data?.replyContext).toMatchObject({
+        scenario: "feed_results",
+        context: { events: [EVENT] },
+      });
+      expect(renderGroundedReply).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["feed", "calendar.feed.read", "noop"],
+    ["create_event", "calendar.event.create", "applied"],
+    ["update_event", "calendar.event.update", "applied"],
+    ["delete_event", "calendar.event.delete", "applied"],
+  ] as const)(
+    "preserves %s settlement and never invokes the redundant reply renderer",
+    async (subaction, operation, outcome) => {
+      const providerError = Object.assign(
+        new Error("reply provider unavailable"),
+        { statusCode: 429 },
+      );
+      const renderGroundedReply = vi.fn(async () => {
+        throw providerError;
+      });
+      const service = {
+        getCalendarFeed: vi.fn(async () => feed([ELIZA_EVENT])),
+        getConditionalCalendarMutationTarget: vi.fn(async () => ELIZA_EVENT),
+        prepareCalendarEventCreate: vi.fn(
+          async (_url: URL, request: Record<string, unknown>) => ({
+            ...request,
+            side: "owner",
+            grantId: "eliza-calendar",
+            calendarId: "primary",
+            startAt: ELIZA_EVENT.startAt,
+            endAt: ELIZA_EVENT.endAt,
+            timeZone: "UTC",
+          }),
+        ),
+        createCalendarEvent: vi.fn(async () => ELIZA_EVENT),
+        updateCalendarEvent: vi.fn(async () => ({
+          ...ELIZA_EVENT,
+          title: "Updated title",
+        })),
+        deleteCalendarEvent: vi.fn(async () => undefined),
+      };
+      const action = createCalendarActionRunner(deps({ renderGroundedReply }));
+      const delivered: Content[] = [];
+      const result = await execute({
+        action,
+        service,
+        actor: message("Use the requested calendar operation."),
+        delivered,
+        parameters: {
+          subaction,
+          title:
+            subaction === "update_event" ? "Updated title" : ELIZA_EVENT.title,
+          details:
+            subaction === "feed"
+              ? {
+                  timeMin: "2026-07-27T00:00:00.000Z",
+                  timeMax: "2026-08-03T00:00:00.000Z",
+                }
+              : subaction === "create_event"
+                ? {
+                    startAt: ELIZA_EVENT.startAt,
+                    endAt: ELIZA_EVENT.endAt,
+                    timeZone: "UTC",
+                  }
+                : {
+                    eventId: ELIZA_EVENT.externalId,
+                    calendarId: ELIZA_EVENT.calendarId,
+                  },
+        },
+      });
+
+      expect(result).toMatchObject({
+        success: true,
+        effectReceipts: [{ operation, outcome }],
+        transcriptVisibility: "internal",
+      });
+      expectInternalHandoff(delivered, result);
+      expect(result.data?.replyContext).toMatchObject({
+        scenario:
+          subaction === "feed" ? "feed_results" : `${subaction}_completed`,
+        context:
+          subaction === "feed"
+            ? { events: [ELIZA_EVENT] }
+            : {
+                event:
+                  subaction === "update_event"
+                    ? { ...ELIZA_EVENT, title: "Updated title" }
+                    : ELIZA_EVENT,
+              },
+      });
+      expect(renderGroundedReply).not.toHaveBeenCalled();
+      expect(service.createCalendarEvent).toHaveBeenCalledTimes(
+        subaction === "create_event" ? 1 : 0,
+      );
+      expect(service.updateCalendarEvent).toHaveBeenCalledTimes(
+        subaction === "update_event" ? 1 : 0,
+      );
+      expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(
+        subaction === "delete_event" ? 1 : 0,
+      );
+    },
+  );
+
   it("opts the complete mixed read/write surface into strict settlement", () => {
     const action = createCalendarActionRunner(deps());
     expect(action.tags).toContain("effect:receipt-required");
@@ -225,11 +430,16 @@ describe("CALENDAR effect receipt settlement", () => {
 
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
-      verifiedUserFacing: true,
-      // The delivered feed text IS the turn's answer: the read declares the
-      // turn complete so the evaluator cannot paraphrase it into a second
-      // user-facing message (the "clear tomorrow." double-speak).
-      turnComplete: true,
+      transcriptVisibility: "internal",
+      data: {
+        events: [EVENT],
+        replyContext: {
+          domain: "calendar",
+          intent: "What is on my calendar this week?",
+          scenario: "feed_results",
+          context: { events: [EVENT] },
+        },
+      },
       effectReceipts: [
         {
           operation: "calendar.feed.read",
@@ -241,7 +451,7 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       ],
     });
-    expectBoundDelivery(delivered, result);
+    expectInternalHandoff(delivered, result);
   });
 
   it("binds a newly persisted approval to its exact queue proof", async () => {
@@ -329,6 +539,7 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       }),
     ]);
+    expect(result.userFacingText).toBe(approval.text);
     expectBoundDelivery(delivered, result);
   });
 
@@ -400,8 +611,96 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       ],
     });
-    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
-    expectBoundDelivery(delivered, result);
+    expectInternalHandoff(delivered, result);
+  });
+
+  it("re-extracts a natural-language planner timestamp before creating an event", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-04T18:00:00.000Z"));
+    try {
+      const runJsonModel = vi.fn(async (args: { prompt: string }) => {
+        if (!args.prompt.includes("Extract calendar event creation fields")) {
+          return null;
+        }
+        return {
+          rawResponse: JSON.stringify({
+            title: "Full QA Event",
+            startAt: "2026-09-05T16:00:00-04:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          }),
+          parsed: {
+            title: "Full QA Event",
+            startAt: "2026-09-05T16:00:00-04:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        };
+      });
+      const createdEvent: LifeOpsCalendarEvent = {
+        ...ELIZA_EVENT,
+        title: "Full QA Event",
+        startAt: "2026-09-05T20:00:00.000Z",
+        endAt: "2026-09-05T20:30:00.000Z",
+        timezone: "America/New_York",
+      };
+      const createCalendarEvent = vi.fn(async () => createdEvent);
+      const prepareCalendarEventCreate = vi.fn(
+        async (_url: URL, request: Record<string, unknown>) => ({
+          ...request,
+          side: "owner" as const,
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          endAt: "2026-09-05T16:30:00-04:00",
+        }),
+      );
+      const service = {
+        getCalendarFeed: vi.fn(async () => feed([])),
+        prepareCalendarEventCreate,
+        createCalendarEvent,
+      };
+      const action = createCalendarActionRunner(deps({ runJsonModel }));
+      const delivered: Content[] = [];
+
+      const result = await execute({
+        action,
+        service,
+        actor: message(
+          "Create a calendar event titled Full QA Event tomorrow at 4 PM for 30 minutes.",
+        ),
+        parameters: {
+          subaction: "create_event",
+          title: "Full QA Event",
+          details: {
+            startAt: "tomorrow at 4 PM",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        },
+        delivered,
+      });
+
+      expect(runJsonModel).toHaveBeenCalledOnce();
+      expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          // The handler anchors the request to its zone before the service
+          // call: the extracted 4 PM Eastern offset string arrives as the
+          // same instant, with the zone pinned on the request.
+          startAt: "2026-09-05T20:00:00.000Z",
+          durationMinutes: 30,
+          timeZone: "America/New_York",
+        }),
+      );
+      expect(createCalendarEvent).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({
+        success: true,
+        data: { approvalRequired: false, event: createdEvent },
+      });
+      expectInternalHandoff(delivered, result);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("updates a built-in event directly with its optimistic version", async () => {
@@ -463,8 +762,7 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       ],
     });
-    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
-    expectBoundDelivery(delivered, result);
+    expectInternalHandoff(delivered, result);
   });
 
   it("treats model placeholder identifiers as absent when resolving a built-in update by title", async () => {
@@ -538,8 +836,7 @@ describe("CALENDAR effect receipt settlement", () => {
       success: true,
       data: { approvalRequired: false, event: updatedEvent },
     });
-    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
-    expectBoundDelivery(delivered, result);
+    expectInternalHandoff(delivered, result);
   });
 
   it("deletes a built-in event directly with its optimistic version", async () => {
@@ -594,8 +891,7 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       ],
     });
-    expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
-    expectBoundDelivery(delivered, result);
+    expectInternalHandoff(delivered, result);
   });
 
   it("drops a partial planner window before resolving a built-in delete by title", async () => {
@@ -651,7 +947,7 @@ describe("CALENDAR effect receipt settlement", () => {
       success: true,
       data: { approvalRequired: false, deleted: true },
     });
-    expectBoundDelivery(delivered, result);
+    expectInternalHandoff(delivered, result);
   });
 
   it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
@@ -740,11 +1036,12 @@ describe("CALENDAR effect receipt settlement", () => {
       expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
         expect.any(URL),
         expect.objectContaining({
-          startAt: "2026-08-05T09:00:00-07:00",
-          endAt: "2026-08-05T10:00:00-07:00",
+          startAt: "2026-08-05T16:00:00.000Z",
+          endAt: "2026-08-05T17:00:00.000Z",
           timeZone: "America/Los_Angeles",
         }),
       );
+      expect(result.userFacingText).toBe(approval.text);
       expectBoundDelivery(delivered, result);
     } finally {
       vi.useRealTimers();
@@ -811,6 +1108,7 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       }),
     ]);
+    expect(result.userFacingText).toBe(approval.text);
     expectBoundDelivery(delivered, result);
   });
 
@@ -849,11 +1147,66 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       ],
     });
-    // The delivered failure text is the turn's complete honest outcome: the
-    // stamp routes it through the same single-message gate as successes so
-    // the evaluator cannot append a paraphrase bubble.
-    expect(result.turnComplete).toBe(true);
+    // Typed failure proof and full diagnostic facts belong to the evaluator;
+    // the action must not publish its own failure prose.
+    expect(result.turnComplete).toBe(false);
+    expectInternalHandoff(delivered, result);
+  });
+
+  it("preserves the exact Apple permission card and its failed receipt binding", async () => {
+    const renderGroundedReply = vi.fn(async () => {
+      throw new Error("Permission controls must not invoke a reply model");
+    });
+    const action = createCalendarActionRunner(deps({ renderGroundedReply }));
+    const delivered: Content[] = [];
+    const getCalendarFeed = vi.fn(async () => {
+      throw new CalendarServiceError(
+        403,
+        "Apple Calendar permission is required.",
+        "APPLE_CALENDAR_PERMISSION_REQUIRED",
+      );
+    });
+    const result = await execute({
+      action,
+      service: { getCalendarFeed },
+      actor: message("Read my Apple calendar."),
+      parameters: { subaction: "feed" },
+      delivered,
+    });
+    const permissionText = [
+      "I need Apple Calendar access to read your schedule.",
+      "```json",
+      JSON.stringify({
+        action: "permission_request",
+        reasoning:
+          "native Apple Calendar access is required for this LifeOps calendar action",
+        permission: "calendar",
+        reason: "I need Apple Calendar access to read your schedule.",
+        feature: "lifeops.calendar.read",
+        fallback_offered: false,
+      }),
+      "```",
+    ].join("\n");
+    expect(result).toMatchObject({
+      success: false,
+      text: permissionText,
+      userFacingText: permissionText,
+      verifiedUserFacing: true,
+      turnComplete: true,
+      effectReceipts: [
+        {
+          operation: "calendar.feed",
+          outcome: "failed",
+          failure: {
+            code: "APPLE_CALENDAR_PERMISSION_REQUIRED",
+            retryable: false,
+          },
+        },
+      ],
+    });
     expectBoundDelivery(delivered, result);
+    expect(getCalendarFeed).toHaveBeenCalledOnce();
+    expect(renderGroundedReply).not.toHaveBeenCalled();
   });
 
   it("sanitizes planner junk connector hints instead of rejecting the read", async () => {
@@ -889,9 +1242,9 @@ describe("CALENDAR effect receipt settlement", () => {
 
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
-      verifiedUserFacing: true,
-      turnComplete: true,
+      transcriptVisibility: "internal",
     });
+    expectInternalHandoff(delivered, result);
     expect(getCalendarFeed).toHaveBeenCalledOnce();
     const request = getCalendarFeed.mock.calls[0]?.[1] as Record<
       string,
@@ -1046,7 +1399,11 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(result.success, JSON.stringify(result)).toBe(true);
-    expect(result.userFacingText).toContain('"query"');
+    expect(result.data?.replyContext).toMatchObject({
+      scenario: "search_results",
+      facts: expect.stringContaining('"query"'),
+      context: { query: "query", queries: ["query"] },
+    });
   });
 
   it("preserves event content literally equal to its field names", async () => {

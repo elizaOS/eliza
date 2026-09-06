@@ -67,7 +67,7 @@ describe("ELIZAOS_CLOUD_REASONING_EFFORT user pin", () => {
     vi.restoreAllMocks();
   });
 
-  it.each(["gemma-4-31b", "zai-glm-4.7", "gpt-oss-120b", "openai/gpt-oss-120b"])(
+  it.each(["qwen-3.8-27b", "gemma-4-31b", "zai-glm-4.7", "gpt-oss-120b", "openai/gpt-oss-120b"])(
     "forwards a valid pin as reasoning_effort for %s",
     async (modelName) => {
       const body = await captureBody(modelName, {
@@ -81,6 +81,37 @@ describe("ELIZAOS_CLOUD_REASONING_EFFORT user pin", () => {
     const body = await captureBody("zai-glm-4.7", {});
     expect(body?.reasoning_effort).toBeUndefined();
   });
+
+  it.each(["qwen-3.8-27b", "cerebras/qwen-3.8-27b", "cerebras:qwen-3.8-27b"])(
+    "defaults %s to non-reasoning for interactive latency",
+    async (modelName) => {
+      const body = await captureBody(modelName, {});
+      expect(body?.reasoning_effort).toBe("none");
+    }
+  );
+
+  it("accepts an explicit Qwen none pin and suppresses high for thinking-off calls", async () => {
+    expect(
+      (await captureBody("qwen-3.8-27b", { ELIZAOS_CLOUD_REASONING_EFFORT: "none" }))
+        ?.reasoning_effort
+    ).toBe("none");
+    expect(
+      (
+        await captureBody(
+          "qwen-3.8-27b",
+          { ELIZAOS_CLOUD_REASONING_EFFORT: "high" },
+          { providerOptions: { eliza: { thinking: "off" } } }
+        )
+      )?.reasoning_effort
+    ).toBe("none");
+  });
+
+  it.each(["qwen-3.8-27b-preview", "qwen-3.8-27b:free"])(
+    "does not guess reasoning support for %s",
+    async (modelName) => {
+      expect((await captureBody(modelName, {}))?.reasoning_effort).toBeUndefined();
+    }
+  );
 
   it("does not override an explicit pin when the caller supplies a small output budget", async () => {
     const body = await captureBody(

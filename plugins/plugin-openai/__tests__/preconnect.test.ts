@@ -59,7 +59,7 @@ describe("provider connection warming on ingress", () => {
     ]);
   });
 
-  it("reports connection failure without rejecting ingress or issuing HTTP", async () => {
+  it("keeps speculative failure out of agent errors without rejecting ingress or issuing HTTP", async () => {
     const cause = new Error("connection unavailable");
     const request = installPreconnect(() => {
       throw cause;
@@ -67,10 +67,7 @@ describe("provider connection warming on ingress", () => {
     const runtime = await createRuntime("https://failure.example/v1");
     const report = vi.spyOn(runtime, "reportError");
     await expect(runtime.emitEvent(EventType.MESSAGE_RECEIVED, {})).resolves.toBeUndefined();
-    expect(report).toHaveBeenCalledWith(
-      "openai:preconnect",
-      expect.objectContaining({ code: "OPENAI_PRECONNECT_FAILED", cause })
-    );
+    expect(report).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
   });
 

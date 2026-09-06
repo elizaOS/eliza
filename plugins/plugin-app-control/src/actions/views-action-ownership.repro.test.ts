@@ -11,6 +11,7 @@ import {
 	ModelType,
 	runV5MessageRuntimeStage1,
 	type State,
+	type Task,
 	wrapSingleTurnVisibleCallback,
 } from "@elizaos/core";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "@elizaos/core/runtime/builtin-field-evaluators.js";
@@ -126,6 +127,36 @@ function makeAction(owner = true) {
 	return { action, listViews };
 }
 
+function installPendingViewTask(
+	runtime: IAgentRuntime,
+	kind: "create" | "delete",
+	roomId = message("").roomId,
+) {
+	const task = {
+		id: "00000000-0000-0000-0000-000000000105",
+		agentId: runtime.agentId,
+		tags: [kind === "create" ? "views-create-intent" : "views-delete-confirm"],
+		metadata: {
+			roomId,
+			intent: "Create a ledger view",
+			choices: [{ key: "cancel", label: "Cancel" }],
+			viewId: "ledger",
+			viewLabel: "Ledger",
+			pluginName: "plugin-ledger",
+			intentCreatedAt: "2026-09-05T00:00:00.000Z",
+		},
+	} as Task;
+	runtime.getTasks = vi.fn<IAgentRuntime["getTasks"]>(
+		async ({ tags, agentIds }) =>
+			(!tags || tags.every((tag) => task.tags?.includes(tag))) &&
+			(!agentIds || agentIds.includes(runtime.agentId))
+				? [task]
+				: [],
+	);
+	runtime.deleteTask = vi.fn(async () => undefined);
+	return task;
+}
+
 async function executeViews(
 	runtime: IAgentRuntime,
 	inbound: Memory,
@@ -181,6 +212,166 @@ describe("VIEWS action ownership after planner selection", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
+	});
+
+	it.each(["new", "edit-1", "cancel"])(
+		"requires owner validation for pending create choice %s",
+		async (choice) => {
+			for (const owner of [false, true]) {
+				const { action, listViews } = makeAction(owner);
+				const runtime = makeRuntime(action);
+				installPendingViewTask(runtime, "create");
+				expect(await action.validate(runtime, message(choice))).toBe(owner);
+				expect(listViews).not.toHaveBeenCalled();
+				expect(runtime.deleteTask).not.toHaveBeenCalled();
+			}
+		},
+	);
+
+	it("requires owner validation for pending create on a viewless connector", async () => {
+		for (const owner of [false, true]) {
+			const { action } = makeAction(owner);
+			const runtime = makeRuntime(action);
+			installPendingViewTask(runtime, "create");
+			const inbound = message("the last option please");
+			inbound.content.source = "discord";
+			expect(await action.validate(runtime, inbound)).toBe(owner);
+		}
+	});
+
+	it.each([
+		{ text: "new", choice: "new" },
+		{ text: "edit-1", choice: "edit-1" },
+		{ text: "cancel", choice: "cancel" },
+		{ text: "the last option please", choice: "cancel" },
+	])(
+		"denies a direct USER pending-create handler call for $text before any side effect",
+		async ({ text, choice }) => {
+			const { action, listViews } = makeAction(false);
+			const runtime = makeRuntime(action);
+			installPendingViewTask(runtime, "create");
+			listViews.mockRejectedValue(
+				new Error("Unauthorized continuation reached listViews"),
+			);
+			const callback = vi.fn(async () => []);
+			const result = await action.handler(
+				runtime,
+				message(text),
+				undefined,
+				{ action: "create", choice },
+				callback,
+			);
+			expect(result).toMatchObject({
+				success: false,
+				transcriptVisibility: "internal",
+				values: { error: "FORBIDDEN", mode: "create" },
+			});
+			expect(result).not.toHaveProperty("userFacingText");
+			expect(result).not.toHaveProperty("verifiedUserFacing");
+			expect(callback).not.toHaveBeenCalled();
+			expect(listViews).not.toHaveBeenCalled();
+			expect(runtime.deleteTask).not.toHaveBeenCalled();
+			expect(fetch).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([true, false])(
+		"denies a direct USER pending-delete confirmation=%s before any side effect",
+		async (confirm) => {
+			const { action, listViews } = makeAction(false);
+			const runtime = makeRuntime(action);
+			installPendingViewTask(runtime, "delete");
+			listViews.mockRejectedValue(
+				new Error("Unauthorized continuation reached listViews"),
+			);
+			const callback = vi.fn(async () => []);
+			const inbound = message("continue");
+			const options = { action: "delete", confirm };
+			expect(await action.validate(runtime, inbound, undefined, options)).toBe(
+				false,
+			);
+			const result = await action.handler(
+				runtime,
+				inbound,
+				undefined,
+				options,
+				callback,
+			);
+			expect(result).toMatchObject({
+				success: false,
+				transcriptVisibility: "internal",
+				values: { error: "FORBIDDEN", mode: "delete" },
+			});
+			expect(result).not.toHaveProperty("userFacingText");
+			expect(callback).not.toHaveBeenCalled();
+			expect(listViews).not.toHaveBeenCalled();
+			expect(runtime.deleteTask).not.toHaveBeenCalled();
+			expect(fetch).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each(["create", "delete"] as const)(
+		"lets the OWNER cancel a pending %s without changing room scoping",
+		async (kind) => {
+			const { action, listViews } = makeAction(true);
+			const runtime = makeRuntime(action);
+			// The continuation handler independently verifies the canonical owner;
+			// the aggregate action's injected permission seam is not authority.
+			runtime.getSetting = vi.fn((key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? message("").entityId : undefined,
+			);
+			const task = installPendingViewTask(runtime, kind);
+			const options =
+				kind === "create"
+					? { action: "create", choice: "cancel" }
+					: { action: "delete", confirm: false };
+			const result = await action.handler(
+				runtime,
+				message("cancel"),
+				undefined,
+				options,
+			);
+			expect(result).toMatchObject({
+				success: true,
+				values: { mode: kind, subMode: "cancel" },
+			});
+			expect(listViews).toHaveBeenCalledTimes(1);
+			expect(runtime.deleteTask).toHaveBeenCalledExactlyOnceWith(task.id);
+			expect(fetch).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not authorize a viewless continuation from another room's pending task", async () => {
+		const { action, listViews } = makeAction(true);
+		const runtime = makeRuntime(action);
+		installPendingViewTask(
+			runtime,
+			"create",
+			"00000000-0000-0000-0000-000000000199",
+		);
+		const inbound = message("cancel");
+		inbound.content.source = "discord";
+		expect(await action.validate(runtime, inbound)).toBe(false);
+		expect(runtime.deleteTask).not.toHaveBeenCalled();
+		expect(listViews).not.toHaveBeenCalled();
+	});
+
+	it("keeps non-owner read navigation available", async () => {
+		const { action, listViews } = makeAction(false);
+		const runtime = makeRuntime(action);
+		const inbound = message("open the notes view");
+		expect(
+			await action.validate(runtime, inbound, undefined, {
+				action: "show",
+				view: "notes",
+			}),
+		).toBe(true);
+		const result = await executeViews(runtime, inbound, {
+			action: "show",
+			view: "notes",
+		});
+		expect(result?.success).toBe(true);
+		expect(listViews).toHaveBeenCalledTimes(1);
 	});
 
 	it.each([
@@ -271,7 +462,12 @@ describe("VIEWS action ownership after planner selection", () => {
 					],
 				})
 				.mockResolvedValue(
-					'```json\n{"response":"You\'re in Notes now."}\n```',
+					JSON.stringify({
+						thought: "The requested Notes navigation succeeded.",
+						success: true,
+						decision: "FINISH",
+						messageToUser: "You're in Notes now.",
+					}),
 				);
 			const runtime = makeRuntime(action, useModel);
 			const delivered = vi.fn(async () => []);
@@ -308,9 +504,7 @@ describe("VIEWS action ownership after planner selection", () => {
 					values: { mode: "show", viewId: "notes" },
 				},
 			]);
-			expect(result.result.actionResults?.[0]).not.toHaveProperty(
-				"turnComplete",
-			);
+			expect(result.result.actionResults?.[0]?.turnComplete).toBe(false);
 			expect(result.result.actionResults?.[0]).not.toHaveProperty(
 				"userFacingText",
 			);
@@ -341,6 +535,69 @@ describe("VIEWS action ownership after planner selection", () => {
 			expect(listViews).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("preserves the planner's Home destination after the same request reads Notes", async () => {
+		const { action, listViews } = makeAction();
+		listViews.mockResolvedValue([
+			NOTES_VIEW,
+			{
+				...NOTES_VIEW,
+				id: "chat",
+				label: "Home",
+				path: "/views",
+				capabilities: [],
+			},
+		]);
+		const runtime = makeRuntime(action);
+		const callback = vi.fn(async () => []);
+		const result = await executeViews(
+			runtime,
+			message(
+				"Read my Continuity check 2145 note, then go home and tell me its text. Do not change the note.",
+			),
+			{ action: "show", view: "chat" },
+			callback,
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			values: { mode: "show", viewId: "chat", viewPath: "/views" },
+		});
+		expect(JSON.parse(result.text ?? "{}")).toMatchObject({
+			effect: "view_navigation",
+			status: "accepted",
+			viewId: "chat",
+			path: "/views",
+		});
+		expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledExactlyOnceWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+		expect(callback).not.toHaveBeenCalled();
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
+
+	it("returns a missing navigation target to the planner without reading foreground Notes", async () => {
+		const { action } = makeAction();
+		const runtime = makeRuntime(action);
+		const callback = vi.fn(async () => []);
+		const result = await executeViews(
+			runtime,
+			message("Read my note, then go home."),
+			{ action: "show" },
+			callback,
+		);
+		expect(result).toMatchObject({
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+		});
+		expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
 
 	it("keeps an unknown explicit show target on the typed navigation failure path", async () => {
 		const { action, listViews } = makeAction();

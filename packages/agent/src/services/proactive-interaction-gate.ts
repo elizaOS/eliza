@@ -35,7 +35,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TEST_GLOBAL_COOLDOWN_KEY =
   "ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS";
 
-/** Tuning per chattiness level. `subtle` is the recommended default for new users. */
+/** Tuning per chattiness level. Suggestions are opt-in; new users default to `off`. */
 export function configForChattiness(
   chattiness: ProactiveChattiness,
 ): ProactiveGateConfig {
@@ -71,7 +71,7 @@ export function configForChattiness(
 }
 
 export const DEFAULT_PROACTIVE_GATE_CONFIG: ProactiveGateConfig =
-  configForChattiness("subtle");
+  configForChattiness("off");
 
 /** Read the kill-switch + chattiness setting from env / user setting. */
 export function resolveProactiveChattiness(
@@ -83,13 +83,11 @@ export function resolveProactiveChattiness(
   if (disabled === "1" || disabled === "true" || disabled === "yes") {
     return "off";
   }
-  const raw = (
-    userSetting ??
-    env.ELIZA_PROACTIVE_INTERACTIONS ??
-    ""
-  ).toLowerCase();
+  const raw = (userSetting ?? env.ELIZA_PROACTIVE_INTERACTIONS ?? "")
+    .trim()
+    .toLowerCase();
   if (raw === "off" || raw === "subtle" || raw === "chatty") return raw;
-  return "subtle";
+  return "off";
 }
 
 export function resolveProactiveGateConfig(

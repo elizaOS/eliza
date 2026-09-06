@@ -994,7 +994,7 @@ async function handleUpdate(
 async function handleUpdateContactInfo(
   runtime: IAgentRuntime,
   params: ContactParams,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const relationships = getRelationshipsService(runtime);
   if (!relationships?.searchContacts || !relationships.updateContact) {
@@ -1113,26 +1113,10 @@ async function handleUpdateContactInfo(
   }
 
   const responseText = `I've updated ${contactName}'s contact information.`;
-  if (callback) {
-    await callback({
-      text: responseText,
-      action: CONTACT_ACTION,
-      metadata: {
-        contactId: contact.entityId,
-        updatedFields: Object.keys(updateData),
-      },
-    });
-  }
-
-  // The update confirmation is the complete answer to a single-operation
-  // turn: verified + turnComplete make the callback the sole delivery instead
-  // of double-messaging with the evaluator.
   return {
     success: true,
     text: responseText,
-    userFacingText: responseText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     values: {
       contactId: contact.entityId,
       updatedFieldsStr: Object.keys(updateData).join(","),
@@ -1152,7 +1136,7 @@ async function handleUpdateComponent(
   state: State,
   source: string,
   data: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const sourceEntityId = message.entityId;
   const agentId = runtime.agentId;
@@ -1197,17 +1181,10 @@ async function handleUpdateComponent(
     });
 
     const updatedText = `I've updated the ${componentType} information for ${entityName}.`;
-    if (callback) {
-      await callback({ text: updatedText, action: CONTACT_ACTION });
-    }
-    // Same single-delivery contract as handleUpdate: the confirmation is the
-    // complete answer to the turn.
     return {
       success: true,
       text: updatedText,
-      userFacingText: updatedText,
-      verifiedUserFacing: true,
-      turnComplete: true,
+      modelReplyRequired: true,
       values: {
         success: true,
         entityId,
@@ -1242,15 +1219,10 @@ async function handleUpdateComponent(
   });
 
   const addedText = `I've added new ${componentType} information for ${entityName}.`;
-  if (callback) {
-    await callback({ text: addedText, action: CONTACT_ACTION });
-  }
   return {
     success: true,
     text: addedText,
-    userFacingText: addedText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     values: {
       success: true,
       entityId,
@@ -1347,17 +1319,10 @@ async function handleDelete(
       );
     }
     const removedText = `I've removed ${contactName} from your contacts.`;
-    if (callback) {
-      await callback({ text: removedText, action: CONTACT_ACTION });
-    }
-    // The removal confirmation is the complete answer to a single-operation
-    // turn: verified + turnComplete make the callback the sole delivery.
     return {
       success: true,
       text: removedText,
-      userFacingText: removedText,
-      verifiedUserFacing: true,
-      turnComplete: true,
+      modelReplyRequired: true,
       values: { contactId: contact.entityId },
       data: {
         actionName: CONTACT_ACTION,

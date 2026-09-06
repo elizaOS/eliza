@@ -57,6 +57,10 @@ export default defineConfig({
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
       },
+      {
+        find: /^@elizaos\/core\/errors$/,
+        replacement: path.resolve(here, "../../packages/core/src/errors.ts"),
+      },
       ...baseAliases,
     ],
   },

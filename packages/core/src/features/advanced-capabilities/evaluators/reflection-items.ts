@@ -24,6 +24,11 @@ import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import {
+	formatRecentMessages,
+	getRoomTranscript,
+	recentMessagesSection,
+} from "../../../services/evaluator-transcript.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	ActionResult,
@@ -60,11 +65,14 @@ import {
 	type AddCurrentOp,
 	type AddDurableOp,
 	type ContradictOp,
+	CurrentCategoryEnum,
 	type DecayOp,
+	DurableCategoryEnum,
 	type ExtractorOp,
 	type ExtractorOutput,
 	parseExtractorOutputTolerant,
 	type StrengthenOp,
+	VerificationStatusEnum,
 } from "./factExtractor.schema.ts";
 import {
 	formatTaskCompletionStatus,
@@ -142,49 +150,73 @@ const structuredFieldsSchema: JSONSchema = {
 	additionalProperties: false,
 };
 
+const newFactProperties: Record<string, JSONSchema> = {
+	claim: { type: "string" },
+	structured_fields: structuredFieldsSchema,
+	keywords: { type: "array", items: { type: "string" } },
+	reason: { type: "string" },
+};
+
 const factOpsSchema: JSONSchema = {
 	type: "object",
 	properties: {
 		ops: {
 			type: "array",
 			items: {
-				type: "object",
-				properties: {
-					op: {
-						type: "string",
-						enum: [
-							"add_durable",
-							"add_current",
-							"strengthen",
-							"decay",
-							"contradict",
-						],
+				// Required fields belong to each operation; a shared optional-field
+				// object permits outputs that the extractor cannot process.
+				anyOf: [
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["add_durable"] },
+							...newFactProperties,
+							category: { type: "string", enum: DurableCategoryEnum.options },
+							verification_status: {
+								type: "string",
+								enum: VerificationStatusEnum.options,
+							},
+						},
+						required: ["op", "claim", "category"],
+						additionalProperties: false,
 					},
-					claim: { type: "string" },
-					category: { type: "string" },
-					// Strict-mode JSON schema validators require every object node to
-					// be closed. The prompt maps category-specific values into this
-					// finite key set so downstream projections can consume structured
-					// facts without reparsing language-specific claim text.
-					structured_fields: structuredFieldsSchema,
-					// No maxItems: strict structured-output validators (Cerebras, OpenAI
-					// strict) reject array length constraints outright — the whole
-					// extraction request 400s. The 16-keyword cap is enforced in code
-					// (zod trim + MAX_KEYWORDS at storage) instead of on the wire.
-					keywords: {
-						type: "array",
-						items: { type: "string" },
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["add_current"] },
+							...newFactProperties,
+							category: { type: "string", enum: CurrentCategoryEnum.options },
+							valid_at: { type: "string" },
+						},
+						required: ["op", "claim", "category"],
+						additionalProperties: false,
 					},
-					verification_status: { type: "string" },
-					valid_at: { type: "string" },
-					factId: { type: "string" },
-					proposedText: { type: "string" },
-					reason: { type: "string" },
-				},
-				required: ["op"],
-				// Strict structured-output mode (Groq/Cerebras/OpenAI strict)
-				// requires every object to set additionalProperties: false.
-				additionalProperties: false,
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["strengthen", "decay"] },
+							factId: { type: "string" },
+							reason: { type: "string" },
+						},
+						required: ["op", "factId"],
+						additionalProperties: false,
+					},
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["contradict"] },
+							factId: { type: "string" },
+							proposedText: {
+								type: "string",
+								description:
+									"Required and nonblank for contradict: the complete corrected claim supported by the user's correction, preserving unchanged details. Proposes a replacement for review; never copy the old contradicted claim or invent missing details.",
+							},
+							reason: { type: "string" },
+						},
+						required: ["op", "factId", "reason", "proposedText"],
+						additionalProperties: false,
+					},
+				],
 			},
 		},
 	},
@@ -409,22 +441,7 @@ function formatKnownLines(memories: Memory[], kind: FactKind): string {
 	return lines.length > 0 ? lines.join("\n") : "(none)";
 }
 
-export function formatRecentMessages(memories: Memory[]): string {
-	const lines: string[] = [];
-	for (const memory of memories) {
-		if (isSyntheticConversationArtifactMemory(memory)) continue;
-		const text = memory.content.text;
-		if (typeof text !== "string" || !text.trim()) continue;
-		const senderName =
-			(typeof memory.content.senderName === "string" &&
-				memory.content.senderName) ||
-			(typeof memory.content.name === "string" && memory.content.name) ||
-			memory.entityId ||
-			"someone";
-		lines.push(`- ${senderName}: ${text}`);
-	}
-	return lines.length > 0 ? lines.join("\n") : "(none)";
-}
+export { formatRecentMessages };
 
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
@@ -477,20 +494,14 @@ async function prepareReflectionContext(
 	if (existing) return existing;
 	const prepared = (async () => {
 		const agentId = message.agentId ?? runtime.agentId;
-		const [recentMessagesRaw, existingRelationships, entities] =
-			await Promise.all([
-				runtime.getMemories({
-					tableName: "messages",
-					roomId: message.roomId,
-					unique: false,
-				}),
+		const [recentMessages, existingRelationships, entities] = await Promise.all(
+			[
+				getRoomTranscript(runtime, message),
 				runtime.getRelationships({
 					entityIds: message.entityId ? [message.entityId, agentId] : [agentId],
 				}),
 				getEntityDetails({ runtime, roomId: message.roomId }),
-			]);
-		const recentMessages = recentMessagesRaw.filter(
-			(memory) => !isSyntheticConversationArtifactMemory(memory),
+			],
 		);
 		return {
 			recentMessages,
@@ -526,6 +537,7 @@ async function prepareFacts(
 					tableName: "facts",
 					roomId: message.roomId,
 					entityId: message.entityId,
+					authorEntityIds: [message.entityId],
 					unique: false,
 				})
 			: Promise.resolve([]),
@@ -779,11 +791,12 @@ async function applyContradict(
 ): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
 	if (!fact || !ctx.message.entityId) return false;
+	if (op.proposedText.trim() === (fact.content.text ?? "").trim()) return false;
 	await recordFactCandidate(ctx.runtime, {
 		entityId: ctx.message.entityId,
 		kind: "contradict",
 		existingFactId: asUuidOrNull(fact.id) ?? undefined,
-		proposedText: op.proposedText ?? fact.content.text ?? "",
+		proposedText: op.proposedText,
 		reason: op.reason,
 		evidenceMessageId: asUuidOrNull(ctx.message.id) ?? undefined,
 	});
@@ -979,7 +992,7 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	async prepare({ runtime, message }) {
 		return prepareFacts(runtime, message);
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
 		const { durable, current } = partitionByKind(prepared.knownFacts);
 		return `Find stable/current facts about speaker.
 
@@ -990,7 +1003,7 @@ Fact stores:
 Rules:
 - No meaningful new/changed fact -> {"ops":[]}.
 - Existing meaning -> strengthen with factId.
-- Contradiction -> contradict with factId + reason.
+- Contradiction -> contradict with factId + reason + proposedText. proposedText must be a nonblank, complete corrected claim grounded in the user's correction, preserving unchanged details. Do not copy the old contradicted claim or invent a missing replacement; omit the op when a complete corrected claim is not supported. This queues a pending review proposal, not an applied fact replacement.
 - Use only fact IDs shown below for strengthen, decay, and contradict.
 - add_durable/add_current keywords: 3-8 lowercase retrieval terms from claim/category/nouns/places/dates/projects/symptoms/preferences. Omit stopwords/generic.
 - add_durable/add_current structured_fields: flat string values from the claim. Use English key names even when the message is in another language.
@@ -1002,8 +1015,7 @@ Rules:
   life_event/goal: event, to, goal, domain.
   Omit unknown fields; do not invent values.
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Known durable facts:
 ${formatKnownLines(durable, "durable")}
@@ -1094,7 +1106,7 @@ export const relationshipEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
 		return `Find semantic relationship changes between participants.
 
 Rules:
@@ -1103,8 +1115,7 @@ Rules:
 - Directional: sourceEntityId initiates, targetEntityId receives.
 - Nothing changed -> {"relationships":[]}.
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Entities in Room:
 ${formatEntities(prepared.entities)}
@@ -1149,7 +1160,7 @@ export const identityEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
 		return `Find explicit platform identity claims for known room participants.
 
 Rules:
@@ -1160,8 +1171,7 @@ Rules:
 - confidence 0-1: higher for self-claims, lower for second-hand.
 - Nothing mentioned -> {"identities":[]}.
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Entities in Room:
 ${formatEntities(prepared.entities)}`;
@@ -1210,7 +1220,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 					: actionResultsFromState(state),
 		};
 	},
-	prompt({ prepared, options }) {
+	prompt({ prepared, options, shared }) {
 		return `Evaluate if current user task is complete after agent response.
 
 Rules:
@@ -1220,8 +1230,7 @@ Rules:
 
 Did respond: ${options.didRespond === true ? "true" : "false"}
 
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Action results:
 ${renderActionResultsForModel(prepared.actionResults).text}`;

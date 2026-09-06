@@ -612,7 +612,7 @@ export function withBuiltinShellViews(
   return mergeViewRegistryEntries(views, [BUILTIN_SHELL_VIEW_ENTRIES]);
 }
 
-function useDefaultViewsNetworkEnabled(): boolean {
+export function useDefaultViewsNetworkEnabled(): boolean {
   const phase = useAppSelector((s) => s.startupCoordinator?.phase);
   // `authority` is deliberately an opaque cache key (profile + base +
   // credential epoch), not a URL. Capability classification must use the

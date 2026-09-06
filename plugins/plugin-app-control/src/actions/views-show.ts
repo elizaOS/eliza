@@ -15,116 +15,34 @@ import { logger } from "@elizaos/core";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import { getAppControlApiBase } from "../loopback-api.js";
-import {
-	describeTargetReference,
-	targetReferenceLogView,
-	userRequestMessageText,
-} from "../params.js";
+import { describeTargetReference, targetReferenceLogView } from "../params.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import { isRealtimeVoiceTurn } from "./view-delivery.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { scoreView } from "./views-search.js";
 
-const SHOW_VERBS = [
-	"show",
-	"open",
-	"navigate to",
-	"go to",
-	"switch to",
-	"view",
-	"launch",
-	"display",
-	"bring up",
-	"pull up",
-];
-
-const FILLER_WORDS = new Set([
-	"the",
-	"view",
-	"app",
-	"page",
-	"please",
-	"pls",
-	"now",
-	"my",
-	"me",
-	"us",
-	"a",
-	"an",
-]);
-
 const DOCUMENT_SURFACE_WORDS =
 	/\b(?:documents?|docs?|files?|knowledge|uploads?|retrieval|papers?)\b/i;
 
 const NOTES_SURFACE_WORD = /\bnotes?\b/i;
-
-// Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
-// Anchoring with \b stops the bare verb "view" from firing inside words like
-// "overview"/"preview"/"review"/"interview" (which an unanchored indexOf scan
-// did, mis-parsing "give me an overview of my wallet"). Longest-first so a
-// multi-word verb ("navigate to") wins over any shorter prefix.
-const SHOW_VERB_PATTERN = new RegExp(
-	`\\b(?:${[...SHOW_VERBS]
-		.sort((a, b) => b.length - a.length)
-		.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-		.join("|")})\\b`,
-	"i",
-);
 
 export function isStandaloneNotesSurfaceRequest(text: string): boolean {
 	return NOTES_SURFACE_WORD.test(text) && !DOCUMENT_SURFACE_WORDS.test(text);
 }
 
 function extractViewTarget(
-	message: Memory | undefined,
 	options: Record<string, unknown> | undefined,
 ): string | null {
-	// Explicit option wins. Accept every alias the VIEWS schema + the other
-	// sub-modes accept (view/viewId/id/target/name) so a planner-supplied
-	// `{ action: "show", target: "settings" }` or `{ viewId: "settings" }`
-	// resolves instead of dead-ending on the text scan.
-	const explicit =
+	// Only structured options select navigation. Accept the same target aliases
+	// as the VIEWS schema and other sub-modes; never infer one from user text.
+	return (
 		readStringOpt(options, "view") ??
 		readStringOpt(options, "viewId") ??
 		readStringOpt(options, "id") ??
 		readStringOpt(options, "target") ??
-		readStringOpt(options, "name");
-	if (explicit) return explicit;
-
-	// Security-unwrapped user words: the raw content.text on a hardened
-	// connector is the whole external-content envelope, and its warning text
-	// contains show-verbs ("view", …) that would send the envelope remainder
-	// through the token scan.
-	const text = userRequestMessageText(message);
-
-	const match = SHOW_VERB_PATTERN.exec(text);
-	if (match) {
-		const rest = text.slice(match.index + match[0].length).trim();
-		if (rest) {
-			const tokens = rest
-				.split(/[\s,!.?]+/)
-				.map((t) => t.trim())
-				.filter((t) => t.length > 0);
-			// Strip filler from both ends: "the wallet view" / "wallet page" /
-			// "settings view please" should all resolve to the bare view name.
-			let start = 0;
-			while (
-				start < tokens.length &&
-				FILLER_WORDS.has(tokens[start].toLowerCase())
-			) {
-				start++;
-			}
-			let end = tokens.length;
-			while (end > start && FILLER_WORDS.has(tokens[end - 1].toLowerCase())) {
-				end--;
-			}
-			const candidate = tokens.slice(start, end).join(" ").toLowerCase();
-			if (candidate && !FILLER_WORDS.has(candidate)) return candidate;
-		}
-	}
-
-	return null;
+		readStringOpt(options, "name")
+	);
 }
 
 function readStringOpt(
@@ -138,15 +56,8 @@ function readStringOpt(
 	return t.length > 0 ? t : null;
 }
 
-// Deterministic intent -> view safety net. Passive utterances ("what's on my
-// calendar", "I want to add a new feature to my app") carry no explicit view
-// name, so the verb scan + keyword scorer return nothing. These rules map a
-// recognized DOMAIN intent straight to a concrete view id. Kept deliberately
-// specific (anchored on "my <surface>" / explicit intent phrases) so it only
-// fires as a fallback once a normal target resolution has already failed — it
-// never overrides an explicit navigation. Owner-decided mappings: "messages"
-// and "email" both route to the cross-channel inbox; app/feature/coding intent
-// routes to the task-coordinator (coding-agent) view.
+// Legacy classification rules used by compatibility exports and context hints.
+// Navigation does not use these rules to supply or override a structured target.
 const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 	{
 		re: /\b(add (a |an )?(new )?feature|build (me )?(an? )?(new )?app|app builder|work on my app|coding view|code something|write some code|ship (a |an )?feature)\b/i,
@@ -256,26 +167,9 @@ export const INTENT_VIEW_IDS: readonly string[] = [
 
 /**
  * Map a passive domain intent to a concrete view id, or null when no rule
- * matches. Used both as a `runViewsShow` fallback (when normal resolution
- * fails) and by `inferMode` to route intent-only utterances to `show`.
- *
- * #10471 boundary — RETAINED, INTENTIONAL FAST-PATH ALLOW-LIST (not a smell).
- * This deterministic matcher is deliberately kept out of the string-smell
- * cleanup for three reasons, documented here as the required written
- * justification:
- *   1. It is *multilingual by construction* — `matchViewCommand` covers explicit
- *      "open X" navigation in every language, and `INTENT_VIEW_RULES` carries
- *      parallel English + ES/FR/DE/ZH/JA/KO rules — so it is the opposite of the
- *      i18n-hostile English-only matching #10471 targets.
- *   2. It is a *fallback that never decides against the model*: it fires only
- *      after normal id/label/fuzzy resolution returns nothing, and never
- *      overrides an explicit navigation the planner already produced.
- *   3. Eliza is local-first; a small/on-device planner cannot be relied on to
- *      route navigation across languages, so this pre-LLM safety net is a
- *      correctness requirement, not a shortcut. Removing it would regress
- *      weak-local-model multilingual navigation.
- * Keep the rules anchored on a possessive / navigation verb around a surface
- * noun (as below) so they only fire on genuine navigation intent.
+ * matches. Retained for existing compatibility exports, context hints, and
+ * legacy operation classification. `runViewsShow` never consumes this result:
+ * the real planner must select a structured destination in every language.
  */
 export function resolveIntentView(text: string | undefined): string | null {
 	const t = (text ?? "").toLowerCase();
@@ -294,6 +188,7 @@ export function resolveIntentView(text: string | undefined): string | null {
 function resolveView(
 	target: string,
 	views: readonly ViewSummary[],
+	canonicalViewId?: string,
 ):
 	| { kind: "match"; view: ViewSummary }
 	| { kind: "ambiguous"; candidates: ViewSummary[] }
@@ -307,6 +202,14 @@ function resolveView(
 	// Exact label match.
 	const byLabel = views.find((v) => v.label.toLowerCase() === q);
 	if (byLabel) return { kind: "match", view: byLabel };
+
+	// A canonical alias names a specific destination, not a fuzzy search query.
+	if (canonicalViewId) {
+		const canonicalView = views.find((view) => view.id === canonicalViewId);
+		return canonicalView
+			? { kind: "match", view: canonicalView }
+			: { kind: "none" };
+	}
 
 	// Scored fuzzy — reuse search scoring.
 	const scored = views
@@ -323,41 +226,6 @@ function resolveView(
 	if (topTied.length === 1) return { kind: "match", view: topTied[0].view };
 
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
-}
-
-/**
- * Resolve a semantic intent to the view that owns the connector-independent
- * experience in the current registry. The connected Calendar remains
- * addressable by its exact id and is the fallback when Simple Calendar is not
- * installed; when both exist, a generic spoken calendar request should open the
- * durable view that works without a connector.
- */
-function resolveIntentViewInRegistry(
-	intentViewId: string,
-	views: readonly ViewSummary[],
-):
-	| { kind: "match"; view: ViewSummary }
-	| { kind: "ambiguous"; candidates: ViewSummary[] }
-	| { kind: "none" } {
-	if (intentViewId === "calendar") {
-		const simpleCalendar = views.find(
-			(view) =>
-				view.id.toLowerCase() === "simple-calendar" && view.available !== false,
-		);
-		if (simpleCalendar) return { kind: "match", view: simpleCalendar };
-	}
-	return resolveView(intentViewId, views);
-}
-
-function resolveRegisteredNotesView(
-	views: readonly ViewSummary[],
-):
-	| { kind: "match"; view: ViewSummary }
-	| { kind: "ambiguous"; candidates: ViewSummary[] }
-	| { kind: "none" } {
-	const resolution = resolveView("notes", views);
-	if (resolution.kind !== "match") return resolution;
-	return resolution.view.id === "documents" ? { kind: "none" } : resolution;
 }
 
 export interface NavigateResult {
@@ -587,14 +455,7 @@ export async function runViewsShow({
 	viewType,
 	originatingClientId,
 }: RunViewsShowInput): Promise<ActionResult> {
-	const messageText = userRequestMessageText(message);
-	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
-	// no explicit view name, so the verb scan yields nothing — the domain intent
-	// supplies the view id. Either source is enough to proceed.
-	const rigidIntentViewId = matchViewCommand(messageText);
-	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
-	const extractedTarget = extractViewTarget(message, options);
-	let target = extractedTarget ?? intentViewId;
+	const target = extractViewTarget(options);
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
@@ -607,50 +468,14 @@ export async function runViewsShow({
 	}
 
 	const views = await client.listViews({ viewType });
-	let resolution = resolveView(target, views);
-	let explicitAliasViewId: string | null = null;
-	if (resolution.kind === "none" && extractedTarget) {
-		explicitAliasViewId = matchViewCommand(extractedTarget);
-		if (explicitAliasViewId) {
-			target = explicitAliasViewId;
-			resolution = resolveView(target, views);
-		}
-	}
-	if (
-		isStandaloneNotesSurfaceRequest(messageText) &&
-		resolution.kind === "match" &&
-		resolution.view.id === "documents"
-	) {
-		target = "notes";
-		resolution = resolveRegisteredNotesView(views);
-	}
-
-	// The user's own words are authoritative: when the message names a known
-	// domain surface, prefer that deterministic intent view over a (possibly
-	// hallucinated) model-supplied `view` param — but ONLY when the intent view
-	// is actually registered in this deployment. A weak/local planner emitting
-	// view:"wallet" for "open my calendar" is corrected here; an intent that maps
-	// to a surface this build doesn't have (e.g. task-coordinator without the
-	// coding plugin loaded) leaves the planner's explicit, registered target in
-	// place. So the model never needs to correctly GUESS the surface.
-	if (intentViewId) {
-		const intentResolution = resolveIntentViewInRegistry(intentViewId, views);
-		const intentRegistered =
-			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
-		const intentTarget =
-			intentResolution.kind === "match"
-				? intentResolution.view.id
-				: intentViewId;
-		const resolvedTarget =
-			resolution.kind === "match" ? resolution.view.id : target;
-		if (
-			intentTarget !== resolvedTarget &&
-			(intentRegistered || resolution.kind === "none")
-		) {
-			resolution = intentResolution;
-			target = intentTarget;
-		}
-	}
+	// Normalize a canonical ID/label such as Home from the explicit parameter
+	// only. Other clauses in a compound request cannot replace the planned target.
+	const canonicalTarget = Object.entries(SHARED_NAV_TARGETS).find(
+		([id, entry]) =>
+			id.toLowerCase() === target.toLowerCase() ||
+			entry.label.toLowerCase() === target.toLowerCase(),
+	)?.[1];
+	const resolution = resolveView(target, views, canonicalTarget?.viewId);
 
 	if (resolution.kind === "none") {
 		const text = `No view matches ${describeTargetReference(target)}. Try \`action=list\` to see available views.`;
@@ -677,12 +502,17 @@ export async function runViewsShow({
 	}
 
 	const view = resolution.view;
+	if (view.available === false) {
+		return {
+			success: false,
+			text: `The ${view.label} view is currently unavailable. Navigation was not attempted.`,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			data: { view, navigationAttempted: false },
+		};
+	}
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const canonicalViewId = rigidIntentViewId ?? explicitAliasViewId;
-	const canonicalTarget = canonicalViewId
-		? SHARED_NAV_TARGETS[canonicalViewId]
-		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
 	const completedActionDelivery =

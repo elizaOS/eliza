@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
-import { evaluatorTemplate } from "../../prompts/evaluator";
+import { evaluatorSchema, evaluatorTemplate } from "../../prompts/evaluator";
 import {
 	type ChatMessage,
 	ModelType,
@@ -16,6 +16,40 @@ import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
+	it("keeps receipt selection compatible with provider structured-output schemas", () => {
+		// Cerebras rejected uniqueItems in the live post-tool evaluator request.
+		// The parser below, not provider-specific grammar, validates these IDs.
+		const receiptSchema = evaluatorSchema.properties?.effectReceiptIds;
+		expect(receiptSchema).toMatchObject({
+			type: "array",
+			items: { type: "string" },
+		});
+		expect(receiptSchema).not.toHaveProperty("uniqueItems");
+		expect(receiptSchema).not.toHaveProperty("items.minLength");
+	});
+
+	it.each([
+		"note-proof",
+		[42],
+		[""],
+		["  "],
+		["note-proof", "note-proof"],
+		null,
+	])("rejects malformed effect receipt selection: %j", (effectReceiptIds) => {
+		const output = parseEvaluatorOutput(
+			JSON.stringify({
+				thought: "The note write succeeded.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "I've created the picnic note.",
+				effectReceiptIds,
+			}),
+		);
+		expect(output.protocolFailure).toBe(true);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.effectReceiptIds).toBeUndefined();
+	});
+
 	it("keeps synthesized replies human-readable unless raw output was requested", () => {
 		expect(evaluatorTemplate).toContain(
 			"natural conversation, not a database or debug log",
@@ -1179,6 +1213,110 @@ describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", (
 		expect(result.decision).toBe("CONTINUE");
 		expect(result.success).toBe(false);
 		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("preserves a CONTINUE decision after a natural-language preamble instead of finishing on the preamble", async () => {
+		const raw = `The first operation completed, but another requested action remains.\n\n${JSON.stringify(
+			{
+				thought:
+					"The note changed, but the requested navigation is still pending.",
+				success: false,
+				decision: "CONTINUE",
+			},
+		)}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.thought).toContain("navigation is still pending");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("does not equate structured outcome count with required tool-call count", async () => {
+		const params = harness(
+			JSON.stringify({
+				thought:
+					"The body was updated and its title preserved by the same operation.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Your note is updated.",
+			}),
+		);
+		const result = await runEvaluator({
+			...params,
+			context: {
+				...params.context,
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: {
+							plan: { intents: ["update note body", "preserve title"] },
+						},
+					},
+				],
+			},
+			trajectory: {
+				...params.trajectory,
+				steps: [
+					{
+						iteration: 0,
+						toolCall: { name: "NOTES", params: { action: "update" } },
+						result: { success: true, text: "Note updated." },
+					},
+				],
+			},
+		});
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe("Your note is updated.");
+	});
+
+	it("replans (not a protocol failure) on prose plus a trailing fenced non-terminal envelope with unlicensed fields", async () => {
+		// Live 2026-09-05 (tj-103a1bfb93f2e1): after a successful calendar lookup
+		// the model wrote prose, then a fenced NEXT_RECOMMENDED envelope carrying
+		// invented `nextTool`/`nextParams`; the protocol failure relayed the
+		// lookup text as the final answer and the requested delete never ran.
+		const raw = [
+			"There are two Gym session entries on Tuesday. I will delete the 7 AM event.",
+			"```json",
+			JSON.stringify({
+				thought: "Delete the confirmed 7 AM event next.",
+				success: true,
+				decision: "NEXT_RECOMMENDED",
+				nextTool: "CALENDAR_DELETE_EVENT",
+				nextParams: { event_id: "event-96120c00" },
+			}),
+			"```",
+		].join("\n");
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.protocolFailure).toBeUndefined();
+		expect(result.messageToUser).toBeUndefined();
+		expect(
+			(result.raw as { recoverySource?: string } | undefined)?.recoverySource,
+		).toBe("unlicensed_envelope_nonterminal");
+	});
+
+	it("recovers a valid FINISH verdict from a trailing fenced envelope after prose", async () => {
+		const raw = [
+			"Checked the search results.",
+			"```json",
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The answer is grounded in the search results.",
+				messageToUser: "The repo has 42 open issues, mostly about connectors.",
+			}),
+			"```",
+		].join("\n");
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			"The repo has 42 open issues, mostly about connectors.",
+		);
+		expect(
+			(result.raw as { recoverySource?: string } | undefined)?.recoverySource,
+		).toBe("trailing_evaluator_envelope");
 	});
 
 	it("replans instead of shipping debris when a terminal envelope has no answer", async () => {

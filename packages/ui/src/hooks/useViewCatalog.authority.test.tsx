@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   return {
     authority,
     appShellRoutesSupported: { value: true },
+    networkReady: { value: true },
     client: {
       getBaseUrl: vi.fn(() => authority.value),
       onBaseUrlChange: vi.fn((onChange: () => void) => {
@@ -48,6 +49,7 @@ vi.mock("../state/useViewKinds", () => ({
   useEnabledViewKinds: () => ({ developer: true, preview: true }),
 }));
 vi.mock("./useAvailableViews", () => ({
+  useDefaultViewsNetworkEnabled: () => mocks.networkReady.value,
   useRoutableViews: () => ({
     ...mocks.routableViews,
     refresh: mocks.refreshViews,
@@ -98,6 +100,7 @@ beforeEach(() => {
   __resetResourceCache();
   mocks.authority.value = "https://agent-a.test";
   mocks.appShellRoutesSupported.value = true;
+  mocks.networkReady.value = true;
   mocks.authority.listeners.clear();
   mocks.routableViews.views = [];
   mocks.routableViews.loading = false;
@@ -553,4 +556,17 @@ describe("useViewCatalog authority isolation", () => {
     });
     expect(mocks.refreshViews).not.toHaveBeenCalled();
   });
+});
+
+it("waits for startup readiness before requesting optional app sources", async () => {
+  mocks.networkReady.value = false;
+  mocks.loadAppsCatalog.mockResolvedValue([]);
+  mocks.client.listInstalledApps.mockResolvedValue([]);
+  const { rerender } = renderHook(() => useViewCatalog());
+  expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
+  expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
+  mocks.networkReady.value = true;
+  rerender();
+  await waitFor(() => expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1));
+  expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
 });

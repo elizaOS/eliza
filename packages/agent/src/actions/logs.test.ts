@@ -481,7 +481,7 @@ describe("logsAction set_level", () => {
     expect(result.text).toContain("not supported by this runtime version");
   });
 
-  it("stores a per-room override from the message room and confirms via callback", async () => {
+  it("stores a per-room override and leaves the confirmation to the model", async () => {
     const overrides = new Map<string, string>();
     const rt = {
       agentId: "agent-1",
@@ -505,9 +505,9 @@ describe("logsAction set_level", () => {
       expect(result.success).toBe(true);
       expect(overrides.get("room-default")).toBe("debug");
       expect(result.text).toBe("Log level changed to **DEBUG** for this room.");
-      expect(result.userFacingText).toBe(result.text);
-      expect(result.verifiedUserFacing).toBe(true);
-      expect(result.turnComplete).toBe(true);
+      expect(result.userFacingText).toBeUndefined();
+      expect(result.verifiedUserFacing).toBeUndefined();
+      expect(result.modelReplyRequired).toBe(true);
       expect(result.values).toEqual({ level: "debug" });
       expect(result.data).toMatchObject({
         actionName: "LOGS",
@@ -515,12 +515,7 @@ describe("logsAction set_level", () => {
         level: "debug",
         roomId: "room-default",
       });
-      expect(calls).toEqual([
-        {
-          text: "Log level changed to **DEBUG** for this room.",
-          action: "LOGS_SET_LEVEL",
-        },
-      ]);
+      expect(calls).toEqual([]);
       if (previousLevel !== undefined) {
         expect((logger as typeof logger & { level: string }).level).toBe(
           "debug",

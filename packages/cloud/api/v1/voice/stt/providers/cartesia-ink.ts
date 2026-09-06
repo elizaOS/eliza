@@ -16,11 +16,12 @@ export const CARTESIA_INK_CHUNK_BYTES = 3_200;
 // Lowest supported semantic start threshold: phone callers must get the floor
 // before buffered TTS can talk over the beginning of their interruption.
 export const CARTESIA_INK_TURN_START_THRESHOLD = 0.5;
-export const CARTESIA_INK_TURN_EAGER_END_THRESHOLD = 0.4;
-export const CARTESIA_INK_TURN_END_THRESHOLD = 0.3;
-// Cartesia's documented minimum bounds uncertain end-of-turn detection without
-// delaying every short phone reply by another half-second beyond necessity.
-export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 640;
+// Patient end-of-turn tuning keeps a speaker's natural pauses inside one turn.
+// Start remains at the supported floor so barge-in still reacts immediately;
+// these end values match Cartesia's documented patient profile.
+export const CARTESIA_INK_TURN_EAGER_END_THRESHOLD = 0.3;
+export const CARTESIA_INK_TURN_END_THRESHOLD = 0.1;
+export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 8_000;
 
 const DEFAULT_CLOSE_CODE = 1000;
 

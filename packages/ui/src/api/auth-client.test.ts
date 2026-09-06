@@ -591,9 +591,13 @@ describe("authMe over plain HTTP boundaries", () => {
       passwordConfigured: false,
       ownerConfigured: true,
     };
-    fetchWithCsrfMock.mockResolvedValueOnce(
-      jsonResponse({ reason: "remote_auth_required", access }, 401),
-    );
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(
+        jsonResponse({ reason: "remote_auth_required", access }, 401),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: false }),
+      );
 
     const result = await authMe();
 
@@ -602,6 +606,37 @@ describe("authMe over plain HTTP boundaries", () => {
       status: 401,
       reason: "remote_auth_required",
       access,
+    });
+  });
+
+  it("prefers pairing when a rich remote 401 reports pairing is enabled", async () => {
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            reason: "remote_auth_required",
+            access: {
+              mode: "remote",
+              passwordConfigured: true,
+              ownerConfigured: true,
+            },
+          },
+          401,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: true }),
+      );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 401,
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: false,
+      },
     });
   });
 

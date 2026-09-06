@@ -75,6 +75,7 @@ class IncludeProcessor {
     private basePath: string,
     private resolver: IncludeResolver,
     private readonly budget = { files: 0, bytes: 0 },
+    private readonly onReadFile?: (filePath: string) => void,
   ) {
     this.visited.add(path.normalize(basePath));
   }
@@ -166,6 +167,7 @@ class IncludeProcessor {
 
     let raw: string;
     try {
+      this.onReadFile?.(normalized);
       raw = this.resolver.readFile(normalized);
     } catch (err) {
       // error-policy:J2 preserve the filesystem failure at the include boundary.
@@ -207,7 +209,12 @@ class IncludeProcessor {
       );
     }
 
-    const nested = new IncludeProcessor(normalized, this.resolver, this.budget);
+    const nested = new IncludeProcessor(
+      normalized,
+      this.resolver,
+      this.budget,
+      this.onReadFile,
+    );
     nested.visited = new Set([...this.visited, normalized]);
     nested.depth = this.depth + 1;
     return nested.process(parsed);
@@ -259,6 +266,12 @@ export function resolveConfigIncludes(
   obj: unknown,
   configPath: string,
   resolver: IncludeResolver = defaultResolver,
+  onReadFile?: (filePath: string) => void,
 ): unknown {
-  return new IncludeProcessor(configPath, resolver).process(obj);
+  return new IncludeProcessor(
+    configPath,
+    resolver,
+    undefined,
+    onReadFile,
+  ).process(obj);
 }

@@ -30,12 +30,17 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  createUnavailableGroundedActionReply,
   getInferenceTimer,
+  InferenceTurnTimer,
   logger,
   type Memory,
   ModelType,
+  quarantinePostDeliveryTasks,
   RoomHandlerQueue,
+  runWithInferenceTiming,
   stringToUuid,
+  trackPostDeliveryTask,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -154,6 +159,7 @@ import {
   persistConversationMemory,
   persistExactConversationMemoryResult,
   persistInterruptedAssistantReceipt,
+  readChatRequestPayload,
 } from "../chat-routes.ts";
 import { serializeConversationConnectionRoomDeletion } from "../conversation-connection-readiness.ts";
 import type {
@@ -1490,6 +1496,130 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
   });
 
+  it.each(["stream", "non-stream"] as const)(
+    "includes inbound preparation and room lease wait once in %s inference timing",
+    async (transport) => {
+      const { ctx, record, state, useModel } = createCtx();
+      if (transport === "non-stream") {
+        ctx.pathname = "/api/conversations/conv-1/messages";
+      }
+      const runtime = state.runtime;
+      if (!runtime) throw new Error("runtime fixture missing");
+      const heldLease = await runtime.roomHandlerQueue.acquire(ROOM_ID);
+      const startedAt = Date.now();
+      let now = startedAt;
+      const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+      let timer: ReturnType<typeof getInferenceTimer>;
+      let leaseTimer: ReturnType<typeof getInferenceTimer>;
+      const unsubscribe = runtime.roomHandlerQueue.onEvent((event) => {
+        if (event.type === "enqueued") leaseTimer = getInferenceTimer();
+      });
+      const modelImpl = useModel.getMockImplementation();
+      const payloadImpl = vi
+        .mocked(readChatRequestPayload)
+        .getMockImplementation();
+      if (!modelImpl || !payloadImpl)
+        throw new Error("fixture implementation missing");
+      vi.mocked(readChatRequestPayload).mockImplementationOnce(
+        async (...args) => {
+          now += 100;
+          return payloadImpl(...args);
+        },
+      );
+      useModel.mockImplementation(async (...args) => {
+        timer = getInferenceTimer();
+        now += 200;
+        return modelImpl(...args);
+      });
+      const request = handleConversationRoutes(ctx);
+      try {
+        await vi.waitFor(() =>
+          expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2),
+        );
+        expect(useModel).not.toHaveBeenCalled();
+        now += 3_000;
+        await heldLease.release();
+        await request;
+
+        if (!timer)
+          throw new Error("generation did not receive an inference timer");
+        const summary = timer.summary();
+        expect(timer).toBe(leaseTimer);
+        if (transport === "stream") {
+          expect(record.headers["X-Eliza-Trace-Id"]).toBe(timer.traceId);
+        }
+        expect(summary.t0EpochMs).toBe(startedAt);
+        expect(summary.timeToFirstVisibleMs).toBe(3_300);
+        expect(summary.totalMs).toBe(3_300);
+        expect(
+          summary.spans.filter((span) => span.name === "chat:room-lease-wait"),
+        ).toEqual([
+          {
+            name: "chat:room-lease-wait",
+            startMs: 100,
+            endMs: 3_100,
+            durationMs: 3_000,
+          },
+        ]);
+        expect(summary.anomalies).toEqual([]);
+        expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+        expect(
+          vi
+            .mocked(runtime.createLogs)
+            .mock.calls.flatMap(([rows]) => rows)
+            .filter((row) => row.type === "inference_timing"),
+        ).toHaveLength(1);
+      } finally {
+        await heldLease.release();
+        await request;
+        unsubscribe();
+        clock.mockRestore();
+      }
+    },
+  );
+
+  it("preserves an inherited caller-owned timer across lease admission without closing or emitting it", async () => {
+    const { ctx, state, useModel } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const timer = new InferenceTurnTimer({
+      turnId: "caller-owned-conversation",
+      traceId: "0123456789abcdef0123456789abcdef",
+      label: "caller-owned",
+      roomId: ROOM_ID,
+    });
+    let leaseTimer: ReturnType<typeof getInferenceTimer>;
+    let modelTimer: ReturnType<typeof getInferenceTimer>;
+    const unsubscribe = runtime.roomHandlerQueue.onEvent((event) => {
+      if (event.type === "enqueued") leaseTimer = getInferenceTimer();
+    });
+    const modelImpl = useModel.getMockImplementation();
+    if (!modelImpl) throw new Error("useModel fixture lost implementation");
+    useModel.mockImplementation(async (...args) => {
+      modelTimer = getInferenceTimer();
+      return modelImpl(...args);
+    });
+    try {
+      await runWithInferenceTiming(timer, () => handleConversationRoutes(ctx));
+      expect(leaseTimer).toBe(timer);
+      expect(modelTimer).toBe(timer);
+      expect(timer.summary().closedAtEpochMs).toBeNull();
+      expect(
+        timer
+          .summary()
+          .spans.filter((span) => span.name === "chat:room-lease-wait"),
+      ).toHaveLength(1);
+      expect(
+        vi
+          .mocked(runtime.createLogs)
+          .mock.calls.flatMap(([rows]) => rows)
+          .filter((row) => row.type === "inference_timing"),
+      ).toHaveLength(0);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("adopts and echoes a valid inbound trace through the inference timer", async () => {
     const { ctx, record, useModel } = createCtx();
     const inboundTrace = "0123456789abcdef0123456789abcdef";
@@ -1886,10 +2016,24 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect.objectContaining({ type: "error" }),
     );
     expect(second.record.ended).toBe(true);
+    expect(second.ctx.req.listenerCount("aborted")).toBe(0);
+    // Admission cancellation has no completed generation timing to publish.
+    expect(
+      vi
+        .mocked(runtime.createLogs)
+        .mock.calls.flatMap(([rows]) => rows)
+        .filter((row) => row.type === "inference_timing"),
+    ).toHaveLength(0);
 
     firstGate.resolve();
     await firstTurn;
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    expect(
+      vi
+        .mocked(runtime.createLogs)
+        .mock.calls.flatMap(([rows]) => rows)
+        .filter((row) => row.type === "inference_timing"),
+    ).toHaveLength(1);
   });
 
   it("releases an undelivered connection failure for retry with the same id", async () => {
@@ -2073,6 +2217,297 @@ describe("conversation stream SSE contract (#10712)", () => {
     );
     expect(payloads.some((payload) => payload.type === "done")).toBe(false);
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it.each(["legacy", "delta-v2"] as const)(
+    "publishes finalized action receipts before room bookkeeping and done (%s)",
+    async (protocol) => {
+      requestStreamProtocol = protocol === "delta-v2" ? protocol : undefined;
+      const provisionalDelivered = createDeferred();
+      const actionsFinished = createDeferred();
+      const bookkeepingGate = createDeferred();
+      const finalText = "Browser is open. The page heading is Example Domain.";
+      const finalReceipt = {
+        success: true,
+        text: finalText,
+        data: { actionName: "BROWSER_NAVIGATE" },
+        values: {
+          viewId: "browser",
+          viewType: "gui",
+          viewPath: "/apps/browser",
+          completedActionHandoffId: "final-browser-handoff",
+          browser: { url: "https://example.com/" },
+        },
+      };
+      const expectedReceipts = [
+        {
+          actionName: "BROWSER_NAVIGATE",
+          success: true,
+          text: finalText,
+          values: {
+            viewId: "browser",
+            viewType: "gui",
+            viewPath: "/apps/browser",
+            completedActionHandoffId: "final-browser-handoff",
+            browser: { url: "https://example.com/" },
+          },
+        },
+      ];
+      const messageService = createViewShortcutMessageService();
+      messageService.handleMessage = async (runtime, _message, callback) => {
+        await callback?.(
+          { text: "Opening Browser.", actionStatus: "running" },
+          "BROWSER_NAVIGATE",
+        );
+        provisionalDelivered.resolve();
+        await actionsFinished.promise;
+        void trackPostDeliveryTask(
+          runtime,
+          "receipt-bookkeeping-test",
+          async () => {
+            await bookkeepingGate.promise;
+            // Late room work can mutate its original result, but the final client
+            // projection must already be a detached, recursively copied snapshot.
+            finalReceipt.values.viewId = "settings";
+            finalReceipt.values.browser.url = "https://example.org/";
+          },
+        );
+        return {
+          didRespond: true,
+          responseContent: { text: finalText },
+          responseMessages: [],
+          actionResults: [finalReceipt],
+        };
+      };
+      const { ctx, record, useModel } = createCtx(messageService);
+      vi.mocked(persistAssistantConversationMemory).mockClear();
+      const turn = handleConversationRoutes(ctx);
+      try {
+        await provisionalDelivered.promise;
+        const provisionalPayloads = parseSsePayloads(record.writes);
+        expect(provisionalPayloads).toContainEqual(
+          expect.objectContaining({ type: "token", provisional: true }),
+        );
+        expect(
+          provisionalPayloads.some(
+            (payload) =>
+              payload.type === "reply_ready" || payload.type === "done",
+          ),
+        ).toBe(false);
+        expect(
+          provisionalPayloads.some((payload) => "actionResults" in payload),
+        ).toBe(false);
+
+        actionsFinished.resolve();
+        await vi.waitFor(() => {
+          expect(parseSsePayloads(record.writes)).toContainEqual({
+            type: "reply_ready",
+            fullText: finalText,
+            actionResults: expectedReceipts,
+          });
+        });
+        await vi.waitFor(() => {
+          expect(record.ended).toBe(true);
+          expect(
+            parseSsePayloads(record.writes).some(
+              (payload) => payload.type === "done",
+            ),
+          ).toBe(true);
+        });
+        expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+        expect(ctx.state.runtime?.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(1);
+      } finally {
+        actionsFinished.resolve();
+        bookkeepingGate.resolve();
+        await turn;
+      }
+
+      const payloads = parseSsePayloads(record.writes);
+      const ready = payloads.filter(
+        (payload) => payload.type === "reply_ready",
+      );
+      const done = payloads.find((payload) => payload.type === "done");
+      expect(ready).toHaveLength(1);
+      expect(done?.actionResults).toEqual(expectedReceipts);
+      expect(done?.actionResults).toEqual(ready[0]?.actionResults);
+      expect(
+        payloads.findIndex((payload) => payload.type === "reply_ready"),
+      ).toBeLessThan(payloads.findIndex((payload) => payload.type === "done"));
+      expect(finalReceipt.values.viewId).toBe("settings");
+      expect(finalReceipt.values.browser.url).toBe("https://example.org/");
+      expect(record.ended).toBe(true);
+      expect(useModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("finishes durable SSE while post-delivery work keeps the next room turn fenced", async () => {
+    const postDeliveryGate = createDeferred();
+    const handled: string[] = [];
+    let roomState = "before reflection";
+    let firstReplyId: string | undefined;
+    let firstTimer: ReturnType<typeof getInferenceTimer>;
+    const messageService = createViewShortcutMessageService();
+    messageService.handleMessage = async (runtime, message) => {
+      const text = String(message.content.text);
+      handled.push(text);
+      if (text === "first fenced turn") {
+        firstTimer = getInferenceTimer();
+        void trackPostDeliveryTask(
+          runtime,
+          "deferred-room-reflection",
+          async () => {
+            await postDeliveryGate.promise;
+            const lease = runtime.roomHandlerQueue.currentLease(ROOM_ID);
+            expect(runtime.roomHandlerQueue.ownsLease(ROOM_ID, lease)).toBe(
+              true,
+            );
+            roomState = "after reflection";
+          },
+        );
+      } else {
+        expect(roomState).toBe("after reflection");
+        const memories = await runtime.getMemories({
+          roomId: ROOM_ID,
+          tableName: "messages",
+        });
+        expect(memories).toContainEqual(
+          expect.objectContaining({
+            id: firstReplyId,
+            content: expect.objectContaining({
+              text: "Completed first fenced turn.",
+            }),
+          }),
+        );
+      }
+      return {
+        didRespond: true,
+        responseContent: { text: `Completed ${text}.` },
+        responseMessages: [],
+      };
+    };
+    requestPromptQueue.push("first fenced turn", "second fenced turn");
+    const first = createCtx(messageService);
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const firstTurn = handleConversationRoutes(first.ctx);
+    let secondTurn: Promise<boolean> | undefined;
+    try {
+      await vi.waitFor(() => expect(first.record.ended).toBe(true));
+      const done = parseSsePayloads(first.record.writes).filter(
+        (payload) => payload.type === "done",
+      );
+      expect(done).toHaveLength(1);
+      expect(done[0]).toMatchObject({
+        fullText: "Completed first fenced turn.",
+        messageId: expect.any(String),
+      });
+      firstReplyId = done[0].messageId as string;
+      if (!firstTimer) throw new Error("first turn has no inference timer");
+      const deliveredTiming = firstTimer.summary();
+      expect(deliveredTiming.closedAtEpochMs).not.toBeNull();
+      expect(roomState).toBe("before reflection");
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(1);
+      // Server background suppression stays active; the browser receives done.
+      expect(first.state.activeChatTurnCount).toBe(1);
+
+      const second = createFollowupCtx(first.ctx, first.state);
+      secondTurn = handleConversationRoutes(second.ctx);
+      await vi.waitFor(() =>
+        expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2),
+      );
+      expect(handled).toEqual(["first fenced turn"]);
+      expect(
+        parseSsePayloads(second.record.writes).some(
+          (payload) => payload.type === "done",
+        ),
+      ).toBe(false);
+      expect(persistConversationMemory).toHaveBeenCalledTimes(1);
+
+      postDeliveryGate.resolve();
+      await Promise.all([firstTurn, secondTurn]);
+      expect(firstTimer.summary().closedAtEpochMs).toBe(
+        deliveredTiming.closedAtEpochMs,
+      );
+      expect(firstTimer.summary().totalMs).toBe(deliveredTiming.totalMs);
+      expect(handled).toEqual(["first fenced turn", "second fenced turn"]);
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+      expect(first.state.activeChatTurnCount).toBe(0);
+      expect(runtime.reportError).not.toHaveBeenCalled();
+      expect(
+        parseSsePayloads(first.record.writes).filter(
+          (payload) => payload.type === "done",
+        ),
+      ).toHaveLength(1);
+      expect(
+        parseSsePayloads(second.record.writes).filter(
+          (payload) => payload.type === "done",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      postDeliveryGate.resolve();
+      await Promise.all([firstTurn, secondTurn]);
+    }
+  });
+
+  it("preserves delivered SSE and idempotency when the later room drain fails", async () => {
+    const messageService = createViewShortcutMessageService();
+    const handleMessage = vi.fn<
+      NonNullable<AgentRuntime["messageService"]>["handleMessage"]
+    >(async (runtime, _message, callback) => {
+      await callback?.({ text: "The action completed." });
+      // Quarantine is checked by the real post-delivery drain, after the route's
+      // onReplyReady callback has durably settled and delivered this result.
+      quarantinePostDeliveryTasks(runtime, new Error("reflection cancelled"));
+      return {
+        didRespond: true,
+        responseContent: { text: "The action completed." },
+        responseMessages: [],
+      };
+    });
+    messageService.handleMessage = handleMessage;
+    requestClientMessageId = crypto.randomUUID();
+    const { ctx, state, record } = createCtx(messageService);
+
+    const failure = await handleConversationRoutes(ctx).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    const payloads = parseSsePayloads(record.writes);
+    const done = payloads.filter((payload) => payload.type === "done");
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ fullText: "The action completed." });
+    expect(payloads.some((payload) => payload.type === "error")).toBe(false);
+    expect(record.ended).toBe(true);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+    expect(failure).toMatchObject({ code: "POST_DELIVERY_DRAIN_CANCELLED" });
+    expect(state.activeChatTurnCount).toBe(0);
+    expect(state.runtime?.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+
+    const replay = createFollowupCtx(ctx, state);
+    await handleConversationRoutes(replay.ctx);
+    expect(
+      parseSsePayloads(replay.record.writes).find(
+        (payload) => payload.type === "done",
+      ),
+    ).toEqual(done[0]);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps legacy reply_ready text-only when there are no action receipts", async () => {
+    const { ctx, record } = createCtx();
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.find((payload) => payload.type === "reply_ready")).toEqual({
+      type: "reply_ready",
+      fullText: FINAL_TEXT,
+    });
+    expect(
+      payloads.find((payload) => payload.type === "done"),
+    ).not.toHaveProperty("actionResults");
   });
 
   it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {
@@ -2716,6 +3151,117 @@ describe("conversation stream SSE contract (#10712)", () => {
           },
         },
       });
+    },
+  );
+
+  it.each([
+    ["provider_issue", undefined, false],
+    ["rate_limited", undefined, false],
+    ["no_provider", undefined, false],
+    ["provider_issue", "delta-v2", false],
+    ["rate_limited", "delta-v2", false],
+    ["no_provider", "delta-v2", false],
+    ["provider_issue", "delta-v2", true],
+  ] as const)(
+    "preserves a completed action with %s reply status (%s; interrupted=%s) and replays its stream without another mutation",
+    async (kind, protocol, interrupted) => {
+      requestStreamProtocol = protocol;
+      const unavailable = createUnavailableGroundedActionReply({
+        kind,
+        code: "GROUNDED_REPLY_GENERATION_FAILED",
+      });
+      const receipt = {
+        receiptId: "receipt-1",
+        operation: "lifeops.reminder.create",
+        resource: { kind: "lifeops.reminder", id: "reminder-1" },
+        artifacts: [],
+        idempotency: { key: "request-1", replayed: false },
+        observedAt: "2026-07-27T18:00:00.000Z",
+        outcome: "applied" as const,
+        commit: {
+          kind: "durable" as const,
+          id: "txn-1",
+          committedAt: "2026-07-27T18:00:00.000Z",
+        },
+      };
+      const actionResult = {
+        success: true,
+        text: "Internal action receipt.",
+        transcriptVisibility: "internal" as const,
+        data: { actionName: "SAVE" },
+        effectReceipts: [receipt],
+        replyFailure: unavailable.failure,
+      };
+      const messageService = createViewShortcutMessageService();
+      const handleMessage = vi.fn<
+        NonNullable<AgentRuntime["messageService"]>["handleMessage"]
+      >(async (_runtime, _message, _callback, options) => {
+        if (interrupted) {
+          options?.onSettledActionResult?.(actionResult);
+          throw new Error(
+            "Message processing interrupted after committed unavailable reply.",
+          );
+        }
+        return {
+          didRespond: false,
+          responseContent: null,
+          responseMessages: [],
+          mode: "none" as const,
+          terminalFailure: unavailable.failure,
+          actionResults: [actionResult],
+        };
+      });
+      messageService.handleMessage = handleMessage;
+      requestClientMessageId = crypto.randomUUID();
+      const { ctx, record, state, useModel } = createCtx(messageService);
+      const emitEvent = vi.mocked(
+        state.runtime?.emitEvent as NonNullable<AgentRuntime["emitEvent"]>,
+      );
+      await handleConversationRoutes(ctx);
+      const done = parseSsePayloads(record.writes).find(
+        (payload) => payload.type === "done",
+      );
+      expect(
+        parseSsePayloads(record.writes).filter(
+          (payload) =>
+            payload.type === "token" || payload.type === "reply_ready",
+        ),
+      ).toEqual([]);
+      expect(done).toMatchObject({
+        type: "done",
+        fullText: unavailable.failure.message,
+        failureKind: kind,
+        terminalFailure: unavailable.failure,
+        actionResults: [{ actionName: "SAVE", success: true }],
+      });
+      expect(record.writes.join("")).not.toContain("Canned success");
+      expect(actionResult.effectReceipts).toEqual([receipt]);
+      const emitted = emitEvent.mock.calls.find(
+        ([event]) => event === "MESSAGE_SENT",
+      );
+      expect(emitted?.[1]).toMatchObject({
+        message: {
+          content: {
+            text: unavailable.failure.message,
+            elizaSyntheticFailure: true,
+            agentVoiced: false,
+            replyFailure: unavailable.failure,
+            terminalFailure: unavailable.failure,
+          },
+        },
+      });
+      const replay = createFollowupCtx(ctx, state);
+      await handleConversationRoutes(replay.ctx);
+      expect(
+        parseSsePayloads(replay.record.writes).find(
+          (payload) => payload.type === "done",
+        ),
+      ).toMatchObject({
+        fullText: unavailable.failure.message,
+        terminalFailure: unavailable.failure,
+      });
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(useModel).not.toHaveBeenCalled();
     },
   );
 

@@ -52,6 +52,7 @@ import {
   createVoiceSessionPlayback,
   type PlaybackAudioContextLike,
   type VoiceSessionPlayback,
+  type VoiceSessionPlaybackStatsEvent,
 } from "./voice-session-playback";
 import {
   DEFAULT_DOWNLINK_CODEC,
@@ -184,6 +185,8 @@ export interface VoiceSessionClientOptions {
   onMinted?: (minted: VoiceSessionMintResponse) => void;
   /** Fired when browser autoplay requires (or no longer requires) a tap. */
   onPlaybackUnlockChange?: (needsUnlock: boolean) => void;
+  /** Sanitized playout queue/timing counters; never audio or transcript data. */
+  onPlaybackStats?: (event: VoiceSessionPlaybackStatsEvent) => void;
   /** Fired on a fatal client error (mic/permission/transport). */
   onError?: (error: Error) => void;
   /** Monotonic clock for trace marks (tests inject). */
@@ -585,12 +588,33 @@ export function createVoiceSessionClient(
         mark("llm_first_text", event.traceId);
         break;
       case "speaking_start":
+        playback?.beginInput();
         mark("speaking_start", event.traceId);
         break;
       case "speaking_end":
+        playback?.finishInput();
         mark("speaking_end", event.traceId);
         // Turn complete → loop back to listening once emitted.
         setState(loopToListening(state));
+        break;
+      case "handoff_requested":
+        playback?.beginHandoff(event.crossfadeMs);
+        mark("handoff_requested", event.toTraceId);
+        break;
+      case "handoff_completed":
+        mark("handoff_completed", event.toTraceId);
+        break;
+      case "assistant_playing":
+        mark(
+          event.active ? "assistant_playing" : "assistant_playing_end",
+          event.traceId,
+        );
+        break;
+      case "human_double_talk":
+      case "echo_rejected":
+      case "user_eos":
+      case "next_reply_ready":
+        mark(event.t, event.traceId);
         break;
       case "interrupted":
         // Reconcile: the server confirms the interruption. Ensure local audio is
@@ -669,6 +693,14 @@ export function createVoiceSessionClient(
         return;
       }
       mic = createdMic;
+      sendControl({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: createdMic.audioProcessing.echoCancellation,
+        noiseSuppression: createdMic.audioProcessing.noiseSuppression,
+        autoGainControl: createdMic.audioProcessing.autoGainControl,
+        referenceAwarePlayback: true,
+      });
       // Now genuinely listening.
       setState(beginListening(state));
     } catch (err) {
@@ -1050,6 +1082,13 @@ export function createVoiceSessionClient(
               mark("playback_drained", state.traceId);
             }
           },
+          onHandoffComplete: () => {
+            if (isLifecycleCurrent(generation)) {
+              mark("handoff_crossfade_complete", state.traceId);
+            }
+          },
+          now,
+          onStats: options.onPlaybackStats,
         });
         if (!isLifecycleCurrent(generation)) {
           // error-policy:J6 best-effort release of a playback sink whose lifecycle was superseded mid-create.

@@ -631,8 +631,8 @@ export async function handleConversationRouteGroup(
 export async function handleDatabaseRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleDatabaseRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleDatabaseRouteGroup"]> {
-  const ctx = routeContext(args);
-  if (!ctx?.pathname.startsWith("/api/database/")) return false;
+  // This route group receives pathname and req, not a separate method field.
+  if (!args[0]?.pathname.startsWith("/api/database/")) return false;
   return (await import("./server-route-dispatch.ts")).handleDatabaseRouteGroup(
     ...args,
   );

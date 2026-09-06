@@ -45,6 +45,9 @@ const authSpies = vi.hoisted(() => ({
 
 const sessionSpies = vi.hoisted(() => ({
   storedToken: null as string | null,
+  hasAuthedCookie: false,
+  clear: vi.fn(),
+  recover: vi.fn(),
   write: vi.fn(),
   sync: vi.fn(),
 }));
@@ -53,24 +56,42 @@ const returnToSpies = vi.hoisted(() => ({
   resolve: vi.fn(),
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  STEWARD_TOKEN_KEY: "steward_session_token",
-  registerStewardTokenPersistence: vi.fn(),
-  registerStewardTokenRemoval: vi.fn(),
-  hasStewardAuthedCookie: () => false,
-  readStoredStewardToken: () => sessionSpies.storedToken,
-  writeStoredStewardToken: (token: string) => {
-    sessionSpies.storedToken = token;
-    sessionSpies.write(token);
-  },
-  StewardSessionError: class StewardSessionError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
+// Keep this focused login test on the Alert primitive the section actually
+// uses; evaluating the broad primitives barrel pulls in unrelated optional
+// controls and their peer dependencies.
+vi.mock("../../../../components/primitives", async () => {
+  const { Alert, AlertDescription } = await import(
+    "../../../../components/ui/alert"
+  );
+  return { Alert, AlertDescription };
+});
+
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@elizaos/shared/steward-session-client")
+    >();
+  return {
+    ...actual,
+    hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
+    readStoredStewardToken: () => sessionSpies.storedToken,
+    clearStoredStewardToken: async () => {
+      sessionSpies.storedToken = null;
+      sessionSpies.clear();
+    },
+    writeStoredStewardToken: (token: string) => {
+      sessionSpies.storedToken = token;
+      sessionSpies.write(token);
+    },
+    StewardSessionError: class StewardSessionError extends Error {
+      status: number;
+      constructor(message: string, status: number) {
+        super(message);
+        this.status = status;
+      }
+    },
+  };
+});
 
 vi.mock("@stwd/sdk", () => ({
   StewardAuth: class {
@@ -133,7 +154,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
   stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: vi.fn(),
-  recoverStewardSessionViaCookie: vi.fn(),
+  recoverStewardSessionViaCookie: sessionSpies.recover,
   refreshStewardSessionViaCookie: vi.fn(),
   syncStewardSessionCookie: sessionSpies.sync,
 }));
@@ -149,6 +170,15 @@ vi.mock("sonner", () => ({
 }));
 
 import StewardLoginSection from "./steward-login-section";
+
+function makeJwt(payload: Record<string, unknown>): string {
+  const encode = (value: object) =>
+    btoa(JSON.stringify(value))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.sig`;
+}
 
 function renderSection(initialEntry = "/login") {
   return render(
@@ -194,6 +224,8 @@ describe("StewardLoginSection phone login", () => {
     });
     window.localStorage.clear();
     sessionSpies.storedToken = null;
+    sessionSpies.hasAuthedCookie = false;
+    sessionSpies.recover.mockResolvedValue(null);
     sessionSpies.sync.mockResolvedValue(undefined);
     returnToSpies.resolve.mockReturnValue("/dashboard/agents");
   });
@@ -205,17 +237,62 @@ describe("StewardLoginSection phone login", () => {
   });
 
   it("restores an existing browser token through the Cloud session boundary", async () => {
-    sessionSpies.storedToken = "existing-session-token";
+    const existingToken = makeJwt({
+      userId: "existing-user",
+      exp: Math.floor(Date.now() / 1000) + 600,
+    });
+    sessionSpies.storedToken = existingToken;
 
     renderSection();
 
     await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(
-        "existing-session-token",
-        null,
-      ),
+      expect(sessionSpies.sync).toHaveBeenCalledWith(existingToken, null),
     );
     expect(authSpies.refreshSession).not.toHaveBeenCalled();
+  });
+
+  it("clears an expired local token without sending it to session sync", async () => {
+    sessionSpies.storedToken = makeJwt({
+      userId: "stale-user",
+      exp: Math.floor(Date.now() / 1000) - 60,
+    });
+
+    renderSection();
+
+    await waitFor(() => expect(sessionSpies.clear).toHaveBeenCalledTimes(1));
+    expect(sessionSpies.sync).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("button", { name: "Magic Link" }),
+    ).toBeTruthy();
+  });
+
+  it("clears a malformed local token without sending it to session sync", async () => {
+    sessionSpies.storedToken = "not-a-steward-jwt";
+
+    renderSection();
+
+    await waitFor(() => expect(sessionSpies.clear).toHaveBeenCalledTimes(1));
+    expect(sessionSpies.sync).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("button", { name: "Magic Link" }),
+    ).toBeTruthy();
+  });
+
+  it("recovers through a valid HttpOnly cookie after clearing an expired local token", async () => {
+    const expiredToken = makeJwt({
+      userId: "stale-user",
+      exp: Math.floor(Date.now() / 1000) - 60,
+    });
+    sessionSpies.storedToken = expiredToken;
+    sessionSpies.hasAuthedCookie = true;
+    sessionSpies.recover.mockResolvedValue({ token: "renewed-session-token" });
+
+    renderSection();
+
+    await waitFor(() => expect(sessionSpies.recover).toHaveBeenCalledTimes(1));
+    expect(sessionSpies.clear).toHaveBeenCalledTimes(1);
+    expect(sessionSpies.sync).not.toHaveBeenCalledWith(expiredToken, null);
+    expect(sessionSpies.write).toHaveBeenCalledWith("renewed-session-token");
   });
 
   it("renders only one method divider when phone and OAuth are available", async () => {
@@ -334,7 +411,11 @@ describe("StewardLoginSection phone login", () => {
 
   it("does not expose phone login while an older session is still recovering", async () => {
     let failRecovery: ((error: Error) => void) | undefined;
-    sessionSpies.storedToken = "older-session-token";
+    const olderToken = makeJwt({
+      userId: "older-user",
+      exp: Math.floor(Date.now() / 1000) + 600,
+    });
+    sessionSpies.storedToken = olderToken;
     sessionSpies.sync.mockReturnValueOnce(
       new Promise<void>((_resolve, reject) => {
         failRecovery = reject;
@@ -343,10 +424,7 @@ describe("StewardLoginSection phone login", () => {
     renderSection();
 
     await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(
-        "older-session-token",
-        null,
-      ),
+      expect(sessionSpies.sync).toHaveBeenCalledWith(olderToken, null),
     );
     expect(screen.queryByLabelText("Phone number")).toBeNull();
     expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();
@@ -362,16 +440,17 @@ describe("StewardLoginSection phone login", () => {
   });
 
   it("keeps login hidden when callback-error cleanup starts session recovery", async () => {
-    sessionSpies.storedToken = "older-session-token";
+    const olderToken = makeJwt({
+      userId: "older-user",
+      exp: Math.floor(Date.now() / 1000) + 600,
+    });
+    sessionSpies.storedToken = olderToken;
     sessionSpies.sync.mockReturnValueOnce(new Promise<void>(() => undefined));
 
     renderSection("/login?error=oauth_failed&reason=server_error");
 
     await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(
-        "older-session-token",
-        null,
-      ),
+      expect(sessionSpies.sync).toHaveBeenCalledWith(olderToken, null),
     );
     expect(screen.queryByLabelText("Phone number")).toBeNull();
     expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();

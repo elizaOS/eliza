@@ -41,6 +41,17 @@ bun run --cwd packages/app-core lint         # Biome
 
 This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
 
+## Isolated local development
+
+Give each concurrent instance distinct `ELIZA_UI_PORT`, `ELIZA_API_PORT`,
+`ELIZA_STATE_DIR`, and `ELIZA_WORKSPACE_DIR` values. The development launcher
+rejects occupied ports; it never terminates existing services or processes
+from another workspace. Stop an old instance explicitly before reusing its ports.
+
+Startup checks optional camera tools without installing them. To install those
+tools intentionally, run `node packages/app-core/scripts/ensure-vision-deps.mjs --install` from the repository root. Ollama is a separately managed, optional
+provider; Eliza does not need its daemon for in-process local inference.
+
 ## Native inference setup
 
 A normal root `bun install` initializes the pinned fused inference submodule,

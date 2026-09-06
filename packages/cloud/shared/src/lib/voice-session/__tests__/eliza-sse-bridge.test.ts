@@ -171,6 +171,80 @@ describe("eliza sse bridge", () => {
     expect(result).toEqual({ completed: true, aborted: false });
   });
 
+  test("marks authoritative text ready while continuing to await terminal metadata", async () => {
+    const encoder = new TextEncoder();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const fetchImpl = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      )) as unknown as typeof fetch;
+    const deltas: string[] = [];
+    let replyReadyCount = 0;
+    let settled = false;
+    const resultPromise = streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "open notes",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-reply-ready",
+        signal: new AbortController().signal,
+        fetchImpl,
+        onReplyReady: () => {
+          replyReadyCount += 1;
+        },
+      },
+      (delta) => deltas.push(delta),
+    ).finally(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    streamController?.enqueue(
+      encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk: "Opened Notes." })}\n\n`),
+    );
+    streamController?.enqueue(
+      encoder.encode(
+        `event: reply_ready\ndata: ${JSON.stringify({ type: "reply_ready", fullText: "Opened Notes." })}\n\n`,
+      ),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deltas).toEqual(["Opened Notes."]);
+    expect(replyReadyCount).toBe(1);
+    expect(settled).toBe(false);
+
+    streamController?.enqueue(
+      encoder.encode(
+        `event: done\ndata: ${JSON.stringify({
+          fullText: "Opened Notes.",
+          actionResults: [
+            {
+              actionName: "VIEWS",
+              success: true,
+              values: { mode: "show", viewId: "notes", viewPath: "/notes" },
+            },
+          ],
+        })}\n\n`,
+      ),
+    );
+    streamController?.close();
+
+    await expect(resultPromise).resolves.toEqual({
+      completed: true,
+      aborted: false,
+      viewHandoff: { viewId: "notes", viewPath: "/notes" },
+    });
+  });
+
   test("buffers provisional chunks and snapshots before an authoritative replacement", async () => {
     const deltas: string[] = [];
     const fetchImpl = (async () =>
@@ -739,6 +813,7 @@ describe("eliza sse bridge", () => {
     );
     expect(seenBody).toEqual({
       text: "hi",
+      channelType: "VOICE_DM",
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },

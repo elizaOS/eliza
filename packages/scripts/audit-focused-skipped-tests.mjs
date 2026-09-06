@@ -1313,9 +1313,20 @@ function classifiedOptionCalls(node, sourceFile) {
     spreadEvidenceDocumented = false,
   ) => {
     for (const property of object.properties) {
+      const propertyName =
+        property.name &&
+        (ts.isIdentifier(property.name) ||
+          ts.isStringLiteralLike(property.name))
+          ? property.name.text
+          : property.name &&
+              ts.isComputedPropertyName(property.name) &&
+              ts.isStringLiteralLike(unwrapExpression(property.name.expression))
+            ? unwrapExpression(property.name.expression).text
+            : undefined;
       if (ts.isShorthandPropertyAssignment(property)) {
-        if (!["only", "skip", "todo"].includes(property.name.text)) continue;
-        if (property.name.text === "only") {
+        if (!propertyName || !["only", "skip", "todo"].includes(propertyName))
+          continue;
+        if (propertyName === "only") {
           options.push({ modifier: "only", documented: false });
           continue;
         }
@@ -1323,16 +1334,15 @@ function classifiedOptionCalls(node, sourceFile) {
         const initializer = declaration?.initializer;
         const truthy = initializer ? staticTruthiness(initializer) : undefined;
         const skipDisposition =
-          property.name.text === "skip" && initializer
+          propertyName === "skip" && initializer
             ? nodeOptionDisposition(initializer)
             : undefined;
         if (
-          (property.name.text === "only" && truthy !== false) ||
-          (property.name.text === "todo" && truthy !== false) ||
-          (property.name.text === "skip" && skipDisposition !== NODE_OPTION_RUN)
+          (propertyName === "todo" && truthy !== false) ||
+          (propertyName === "skip" && skipDisposition !== NODE_OPTION_RUN)
         ) {
           options.push({
-            modifier: property.name.text,
+            modifier: propertyName,
             conditional: skipDisposition === NODE_OPTION_CONDITIONAL,
             documented: propertyEvidenceIsDocumented(property),
           });
@@ -1344,18 +1354,11 @@ function classifiedOptionCalls(node, sourceFile) {
         ts.isGetAccessorDeclaration(property) ||
         ts.isMethodDeclaration(property)
       ) {
-        if (
-          !property.name ||
-          !(
-            ts.isIdentifier(property.name) ||
-            ts.isStringLiteralLike(property.name)
-          ) ||
-          !["only", "skip", "todo"].includes(property.name.text)
-        ) {
+        if (!propertyName || !["only", "skip", "todo"].includes(propertyName)) {
           continue;
         }
         options.push({
-          modifier: property.name.text,
+          modifier: propertyName,
           conditional: false,
           documented: propertyEvidenceIsDocumented(property),
         });
@@ -1393,43 +1396,35 @@ function classifiedOptionCalls(node, sourceFile) {
           activeSpreadDeclarations.delete(declaration);
           continue;
         }
-        options.push({
-          modifier: "opaque-options-spread",
-          conditional: false,
-          documented: propertyEvidenceIsDocumented(property),
-        });
+        const documented = propertyEvidenceIsDocumented(property);
+        options.push(
+          { modifier: "only", conditional: false, documented },
+          { modifier: "skip", conditional: false, documented },
+        );
         continue;
       }
 
-      if (
-        !ts.isPropertyAssignment(property) ||
-        !(
-          ts.isIdentifier(property.name) ||
-          ts.isStringLiteralLike(property.name)
-        )
-      ) {
+      if (!ts.isPropertyAssignment(property) || !propertyName) {
         continue;
       }
-      if (!["only", "skip", "todo"].includes(property.name.text)) continue;
+      if (!["only", "skip", "todo"].includes(propertyName)) continue;
       const truthy = staticTruthiness(property.initializer);
       const skipDisposition =
-        property.name.text === "skip"
+        propertyName === "skip"
           ? nodeOptionDisposition(property.initializer)
           : undefined;
       if (
-        (property.name.text === "only" && truthy !== false) ||
-        (property.name.text !== "only" &&
-          (truthy === true ||
-            (property.name.text === "skip" &&
-              skipDisposition !== NODE_OPTION_RUN)))
+        (propertyName === "only" && truthy !== false) ||
+        (propertyName === "todo" && truthy !== false) ||
+        (propertyName === "skip" && skipDisposition !== NODE_OPTION_RUN)
       ) {
         const reason = unwrapExpression(property.initializer);
         const conditional =
-          property.name.text === "skip"
+          propertyName === "skip"
             ? skipDisposition === NODE_OPTION_CONDITIONAL
             : truthy === undefined;
         options.push({
-          modifier: property.name.text,
+          modifier: propertyName,
           conditional,
           documented: fromSpread
             ? spreadEvidenceDocumented || propertyEvidenceIsDocumented(property)
@@ -1773,12 +1768,16 @@ export function findConditionalSkipSites(filePath, content) {
         RUNNER_ROOTS.has(chain[0]) &&
         RUNNER_ROOTS.has(chain.at(-1))
       ) {
-        const conditionalOption = classifiedOptionCalls(node, sourceFile).find(
-          ({ modifier: optionModifier, conditional }) =>
-            optionModifier === "skip" && conditional,
-        );
-        if (conditionalOption) {
-          record(node, "conditional-options-skip");
+        for (const {
+          modifier: optionModifier,
+          conditional,
+        } of classifiedOptionCalls(node, sourceFile)) {
+          if (
+            conditional &&
+            (optionModifier === "skip" || optionModifier === "todo")
+          ) {
+            record(node, `conditional-option-${optionModifier}`);
+          }
         }
       }
     }
@@ -2038,7 +2037,7 @@ function selfTest() {
     {
       name: "conditional: documented Node option skip is a site",
       src: 'test("Windows contract", { skip: process.platform !== "win32" ? "Windows contract" : false }, () => {});',
-      expect: ["conditional-options-skip"],
+      expect: ["conditional-option-skip"],
     },
     {
       name: "conditional: undocumented Node option skip does not bless",

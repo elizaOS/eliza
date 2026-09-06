@@ -604,6 +604,18 @@ test("raw flat and outlined card recipes are independently order-normalized", ()
 });
 
 test("token roles reject raw colors, wrong channels, and unconstrained transitions", () => {
+  for (const role of ["action", "field", "surface"]) {
+    assert.deepEqual(
+      analyzeTokenRoleClasses({
+        className: "rounded-search hover:bg-bg-card-hover",
+        role,
+      }),
+      [],
+    );
+    assert.ok(
+      analyzeTokenRoleClasses({ className: "rounded-[1rem]", role }).length,
+    );
+  }
   assert.deepEqual(
     analyzeTokenRoleClasses({
       className:

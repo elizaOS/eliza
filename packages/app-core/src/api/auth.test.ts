@@ -735,6 +735,50 @@ describe("resolveAuthorizedRouteRole", () => {
     });
   });
 
+  it("does not lock out a valid paired-device session after earlier failures", async () => {
+    const ip = "198.51.100.51";
+    for (let i = 0; i < AUTH_RATE_LIMIT_MAX; i += 1) {
+      await resolveAuthorizedRouteRole(remoteReq({ remoteAddress: ip }), {
+        state: { current: null },
+      });
+    }
+
+    const session = sessionRow({
+      id: "paired-session-after-failures",
+      identityId: "paired-owner",
+      kind: "machine",
+    });
+    const store = memoryStore({
+      sessions: { [session.id]: session },
+      identities: { "paired-owner": { id: "paired-owner", kind: "owner" } },
+    });
+
+    await expect(
+      resolveAuthorizedRouteRole(
+        remoteReq({
+          remoteAddress: ip,
+          headers: { authorization: `Bearer ${session.id}` },
+        }),
+        { store, now: EMBED_NOW },
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      role: "OWNER",
+      identityId: "paired-owner",
+    });
+
+    await expect(
+      resolveAuthorizedRouteRole(remoteReq({ remoteAddress: ip }), {
+        store,
+        now: EMBED_NOW,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      status: 429,
+      reason: "Too many authentication attempts",
+    });
+  });
+
   it("grants OWNER from a matching API token when no store is available", async () => {
     process.env.ELIZA_API_TOKEN = TOKEN;
     await expect(

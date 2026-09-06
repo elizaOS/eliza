@@ -1,9 +1,9 @@
 /**
  * Exercises the v5 tiered action surface through `runV5MessageRuntimeStage1`:
  * Stage-1 hints promoting a parent to Tier A, sub-actions surfaced as
- * first-class planner tools, hot-parent child capping, role-gated tool omission,
- * and Tier-B sub-planner execution. Deterministic: a canned-response stub
- * runtime, no live model.
+ * first-class planner tools, lossless umbrella fallback under provider input
+ * budgets, role-gated tool omission, and sub-planner execution. Deterministic:
+ * a canned-response stub runtime, no live model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
@@ -15,6 +15,7 @@ import type {
 	ActionResult,
 	HandlerCallback,
 	HandlerOptions,
+	Provider,
 } from "../types/components";
 import type { AgentContext, ContextGate, RoleGate } from "../types/contexts";
 import type { Memory } from "../types/memory";
@@ -69,6 +70,9 @@ function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
 function makeRuntime(opts: {
 	actions: Action[];
 	responses: CannedResponse[];
+	plannerState?: State;
+	plannerContextWindowTokens?: number;
+	providers?: Provider[];
 }): IAgentRuntime {
 	const queue = [...opts.responses];
 	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
@@ -85,18 +89,29 @@ function makeRuntime(opts: {
 			bio: "I route actions.",
 		},
 		actions: opts.actions,
-		providers: [],
+		providers: opts.providers ?? [],
 		getRoom: vi.fn(async () => null),
 		// Stage 1 reads the response-bypass channel/source settings before it can
 		// classify a turn as ambient; the fixture configures none of them.
 		getSetting: vi.fn(() => undefined),
-		getModelRegistrations: vi.fn(() => []),
+		getModelRegistrations: vi.fn(() =>
+			opts.plannerContextWindowTokens
+				? [
+						{
+							modelType: ModelType.ACTION_PLANNER,
+							metadata: {
+								contextWindowTokens: opts.plannerContextWindowTokens,
+							},
+						},
+					]
+				: [],
+		),
 		reportError: vi.fn(),
 		responseHandlerFieldRegistry,
 		responseHandlerFieldEvaluators: [
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 		],
-		composeState: vi.fn(async () => makeState()),
+		composeState: vi.fn(async () => opts.plannerState ?? makeState()),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
 		useModel: vi.fn(
@@ -185,6 +200,7 @@ function stage1Response(fields: {
 	intents?: string[];
 	candidateActionNames?: string[];
 	replyText?: string;
+	replyEffectStatus?: unknown;
 }): CannedResponse {
 	return {
 		body: {
@@ -199,6 +215,9 @@ function stage1Response(fields: {
 						intents: fields.intents ?? [],
 						candidateActionNames: fields.candidateActionNames ?? [],
 						replyText: fields.replyText ?? "",
+						...(fields.replyEffectStatus !== undefined
+							? { replyEffectStatus: fields.replyEffectStatus }
+							: {}),
 						facts: [],
 						relationships: [],
 						addressedTo: [],
@@ -303,6 +322,316 @@ describe("v5 tiered action surface", () => {
 		_resetActionRolePolicyCacheForTests();
 	});
 
+	it.each(["none", " NONE "])(
+		"keeps a completed conversational correction out of Calendar planning with %j",
+		async (replyEffectStatus) => {
+			const answer =
+				"Corrected for this conversation: orange notebook, charger, and no water. No notes or calendar events changed.";
+			const handler = vi.fn(async () => ({ success: true }));
+			const runtime = makeRuntime({
+				actions: [makeAction({ name: "CALENDAR", handler })],
+				responses: [
+					stage1Response({
+						contexts: ["simple"],
+						replyEffectStatus,
+						replyText: answer,
+					}),
+					plannerToolResponse("CALENDAR"),
+					finishEvaluatorResponse(answer),
+				],
+			});
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(
+					"For our temporary walk QA, please correct the old packing detail: I am bringing the orange notebook, not green or blue. Keep the charger and no water. Do not change any notes or calendar events.",
+				),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind !== "direct_reply")
+				throw new Error("Expected direct reply");
+			expect(result.result.responseContent?.text).toBe(answer);
+			expect(handler).not.toHaveBeenCalled();
+			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it.each([
+		{
+			name: "model-selected Calendar action",
+			fields: { candidateActionNames: ["CALENDAR"] },
+		},
+		{ name: "declared mutation intent", fields: { intents: ["move lunch"] } },
+		{ name: "pending work", fields: { replyEffectStatus: "pending" as const } },
+		{
+			name: "claimed effect",
+			fields: { replyEffectStatus: "applied" as const },
+		},
+		{
+			name: "unapplied effect",
+			fields: { replyEffectStatus: "non_applied" as const },
+		},
+		{ name: "progress-only acknowledgment", fields: { replyText: "On it." } },
+		{
+			name: "legacy incomplete envelope",
+			fields: { replyEffectStatus: undefined },
+		},
+		{ name: "null effect status", fields: { replyEffectStatus: null } },
+		{
+			name: "unrecognized effect status",
+			fields: { replyEffectStatus: "unknown" },
+		},
+		{ name: "malformed effect status", fields: { replyEffectStatus: {} } },
+	])("preserves Calendar planning for $name", async ({ fields }) => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const runtime = makeRuntime({
+			actions: [makeAction({ name: "CALENDAR", handler })],
+			responses: [
+				stage1Response({
+					contexts: ["simple"],
+					replyEffectStatus: "none",
+					replyText: "The requested time is Friday at 1 PM.",
+					...fields,
+				}),
+				plannerToolResponse("CALENDAR"),
+				finishEvaluatorResponse("The Calendar tool returned."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("Move the lunch with Dana to Friday at 1 PM."),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it.each([
+		{ name: "mutation intent", fields: { intents: ["move lunch"] } },
+		{ name: "tool requirement", fields: { requiresTool: true } },
+	])("preserves nested legacy $name", async ({ fields }) => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const runtime = makeRuntime({
+			actions: [makeAction({ name: "CALENDAR", handler })],
+			responses: [
+				{
+					body: JSON.stringify({
+						processMessage: "RESPOND",
+						plan: {
+							contexts: ["simple"],
+							intents: [],
+							candidateActions: [],
+							replyEffectStatus: "none",
+							reply: "The requested time is Friday at 1 PM.",
+							...fields,
+						},
+					}),
+				},
+				plannerToolResponse("CALENDAR"),
+				finishEvaluatorResponse("The Calendar tool returned."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("Move the lunch with Dana to Friday at 1 PM."),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it.each([
+		{ replyEffectStatus: undefined, shouldPlan: true },
+		{ replyEffectStatus: "unknown", shouldPlan: true },
+		{ replyEffectStatus: "pending", shouldPlan: true },
+		{ replyEffectStatus: "none", shouldPlan: false },
+	])(
+		"preserves keyed-transcript effect status $replyEffectStatus at the planning boundary",
+		async ({ replyEffectStatus, shouldPlan }) => {
+			const answer =
+				"Corrected for this conversation: orange notebook, charger, and no water. No notes or calendar events changed.";
+			const handler = vi.fn(async () => ({ success: true }));
+			const runtime = makeRuntime({
+				actions: [makeAction({ name: "CALENDAR", handler })],
+				responses: [
+					{
+						body: [
+							"shouldRespond: RESPOND",
+							"contexts: simple",
+							...(replyEffectStatus === undefined
+								? []
+								: [`replyEffectStatus: ${replyEffectStatus}`]),
+							`replyText: ${answer}`,
+						].join("\n"),
+					},
+					plannerToolResponse("CALENDAR"),
+					finishEvaluatorResponse(answer),
+				],
+			});
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(
+					"For our temporary walk QA, please correct the old packing detail: I am bringing the orange notebook, not green or blue. Keep the charger and no water. Do not change any notes or calendar events.",
+				),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+
+			expect(result.kind).toBe(shouldPlan ? "planned_reply" : "direct_reply");
+			expect(handler).toHaveBeenCalledTimes(shouldPlan ? 1 : 0);
+			expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
+				shouldPlan
+					? [
+							ModelType.RESPONSE_HANDLER,
+							ModelType.ACTION_PLANNER,
+							ModelType.RESPONSE_HANDLER,
+						]
+					: [ModelType.RESPONSE_HANDLER],
+			);
+		},
+	);
+
+	it("uses a provider's lossless retrieval projection before an oversized planner dispatch", async () => {
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Calendar event created",
+			data: { title: "Budget-safe event" },
+		}));
+		const calendar = makeAction({
+			name: "CALENDAR_CREATE_EVENT",
+			description: "Create a calendar event.",
+			contexts: ["calendar" as AgentContext],
+			handler,
+		});
+		const eagerText = `EAGER_CALENDAR_SENTINEL${"x".repeat(160_000)}`;
+		const plannerState: State = {
+			values: { providers: eagerText },
+			data: {
+				providers: {
+					CALENDAR_CONTEXT: {
+						text: eagerText,
+						overflowText:
+							"CALENDAR_RETRIEVE_SENTINEL: use the complete calendar tools for the requested range.",
+					},
+				},
+				providerOrder: ["CALENDAR_CONTEXT"],
+			},
+			text: eagerText,
+		};
+		const runtime = makeRuntime({
+			actions: [calendar],
+			plannerState,
+			providers: [
+				{
+					name: "CALENDAR_CONTEXT",
+					description: "Calendar context with a lossless retrieval form.",
+					contextGate: { anyOf: ["calendar" as AgentContext] },
+					get: async () => plannerState.data.providers?.CALENDAR_CONTEXT ?? {},
+				},
+			],
+			responses: [
+				stage1Response({
+					contexts: ["calendar"],
+					candidateActionNames: ["CALENDAR_CREATE_EVENT"],
+				}),
+				plannerToolResponse("CALENDAR_CREATE_EVENT"),
+				finishEvaluatorResponse("Calendar event created."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("create a calendar event"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const serializedPlannerRequest = JSON.stringify(plannerCall?.params);
+		expect(serializedPlannerRequest).toContain("CALENDAR_RETRIEVE_SENTINEL");
+		expect(serializedPlannerRequest).not.toContain("EAGER_CALENDAR_SENTINEL");
+		expect(plannerToolNames(runtime)).toContain("CALENDAR_CREATE_EVENT");
+		expect(handler).toHaveBeenCalledOnce();
+	});
+
+	it("uses the model-authored Stage 1 candidate when promoted child schemas exceed the planner budget", async () => {
+		const childHandler = vi.fn(async () => ({
+			success: true,
+			text: "Calendar event created",
+			data: { title: "Umbrella event" },
+		}));
+		const children = Array.from({ length: 28 }, (_, index) =>
+			makeAction({
+				name: `CALENDAR_OP_${String(index + 1).padStart(2, "0")}`,
+				description: `Promoted Calendar operation ${index + 1}. ${"schema detail ".repeat(1_200)}`,
+				contexts: ["calendar" as AgentContext],
+				...(index === 0 ? { handler: childHandler } : {}),
+			}),
+		);
+		const calendar = makeAction({
+			name: "CALENDAR",
+			description:
+				"Calendar umbrella. Route every operation through the subaction parameter.",
+			contexts: ["calendar" as AgentContext],
+			subActions: children.map((child) => child.name),
+		});
+		const runtime = makeRuntime({
+			actions: [calendar, ...children],
+			responses: [
+				stage1Response({
+					contexts: ["calendar"],
+					candidateActionNames: ["CALENDAR"],
+				}),
+				plannerToolResponse("CALENDAR"),
+				plannerToolResponse("CALENDAR_OP_01"),
+				finishEvaluatorResponse("Calendar event created."),
+				finishEvaluatorResponse("Calendar event created."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("schedule a calendar event"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const toolNames = plannerToolNames(runtime);
+		expect(toolNames).toContain("CALENDAR");
+		expect(toolNames).not.toContain("CALENDAR_OP_01");
+		expect(toolNames).not.toContain("CALENDAR_OP_28");
+		expect(childHandler).toHaveBeenCalledOnce();
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				authorizedActionCount: 29,
+				candidateToolCount: 4,
+			}),
+			"[SERVICE:MESSAGE] Planner used the model-authored Stage 1 candidate surface to fit the dispatch budget",
+		);
+	});
+
 	it("uses Stage 1 hints to promote a parent to Tier A and expose children", async () => {
 		const playMusic = makeAction({
 			name: "PLAY_MUSIC",
@@ -351,11 +680,28 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
-	it("starts app turns from the focused view and expands an explicitly requested action", async () => {
+	it("executes the model-selected app action while retaining authorized focused-view tools", async () => {
+		const notesHandler = vi.fn(async () => ({
+			success: true,
+			text: "Unrelated Notes content.",
+		}));
+		const emailHandler = vi.fn(async () => ({
+			success: true,
+			text: "Latest email: Dana — Renewal call moved to Thursday.",
+			data: {
+				actionName: "MESSAGE",
+				messages: [
+					{ sender: "Dana", subject: "Renewal call moved to Thursday" },
+				],
+			},
+		}));
+		const answer =
+			"Your latest email is from Dana: the renewal call moved to Thursday.";
 		const notes = makeAction({
 			name: "NOTES",
 			description: "Read or update the notes shown in the open Notes view.",
 			contexts: ["notes" as AgentContext, "general"],
+			handler: notesHandler,
 		});
 		const views = makeAction({
 			name: "VIEWS",
@@ -366,6 +712,7 @@ describe("v5 tiered action surface", () => {
 			name: "MESSAGE",
 			description: "Read or send email.",
 			contexts: ["general"],
+			handler: emailHandler,
 		});
 		const runtime = makeRuntime({
 			actions: [notes, views, email],
@@ -375,11 +722,11 @@ describe("v5 tiered action surface", () => {
 					candidateActionNames: ["MESSAGE"],
 				}),
 				plannerToolResponse("MESSAGE"),
-				finishEvaluatorResponse("Checked email."),
+				finishEvaluatorResponse(answer),
 			],
 		});
 
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage("check my email from here", "test", {
 				uiView: "notes",
@@ -397,11 +744,121 @@ describe("v5 tiered action surface", () => {
 		const tools = plannerToolNames(runtime);
 		expect(tools).toContain("NOTES");
 		expect(tools).not.toContain("VIEWS");
-		// Stage 1 may expand beyond the open view when the user explicitly asks.
 		expect(tools).toContain("MESSAGE");
+		expect(emailHandler).toHaveBeenCalledTimes(1);
+		expect(notesHandler).not.toHaveBeenCalled();
+		const calls = getCalls(runtime);
+		expect(calls.map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(JSON.stringify(calls[2]?.params)).toContain(
+			"Renewal call moved to Thursday",
+		);
+		expect(JSON.stringify(calls[2]?.params)).not.toContain(
+			"Unrelated Notes content.",
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(answer);
+		}
 	});
 
-	it("retains unrelated context-authorized actions while promoting the focused view", async () => {
+	it.each([
+		{
+			name: "compound navigation and data hints",
+			candidateActionNames: ["CALENDAR_OPEN", "CALENDAR_LIST_EVENTS_BY_DATE"],
+			completeSurface: false,
+		},
+		{
+			name: "an unresolved unary hint",
+			candidateActionNames: ["MISSING_CAPABILITY"],
+			completeSurface: true,
+		},
+		{
+			name: "unresolved and denied hints",
+			candidateActionNames: [
+				"MISSING_CAPABILITY",
+				"PRIVATE_CALENDAR_REPAIR",
+				"CALENDAR_ADMIN_ONLY",
+			],
+			completeSurface: true,
+		},
+	])(
+		"preserves $name for authorized app action discovery",
+		async ({ candidateActionNames, completeSurface }) => {
+			const privateHandler = vi.fn(async () => ({ success: true }));
+			const adminHandler = vi.fn(async () => ({ success: true }));
+			const runtime = makeRuntime({
+				actions: [
+					makeAction({ name: "CALENDAR", contexts: ["calendar"] }),
+					makeAction({ name: "VIEWS", contexts: ["calendar", "general"] }),
+					makeAction({ name: "UNRELATED", contexts: ["calendar"] }),
+					{
+						...makeAction({
+							name: "PRIVATE_CALENDAR_REPAIR",
+							contexts: ["calendar"],
+							description: "Private calendar repair implementation.",
+							handler: privateHandler,
+						}),
+						private: true,
+					},
+					makeAction({
+						name: "CALENDAR_ADMIN_ONLY",
+						contexts: ["calendar"],
+						roleGate: { minRole: "OWNER" },
+						description: "Restricted calendar administration implementation.",
+						handler: adminHandler,
+					}),
+				],
+				responses: [
+					stage1Response({
+						contexts: ["calendar"],
+						intents: [
+							"open calendar",
+							"list calendar events for September 7 2026",
+						],
+						candidateActionNames,
+						replyEffectStatus: "pending",
+						replyText:
+							"Opening Calendar and checking what's on for September 7, 2026. I'll leave all events unchanged.",
+					}),
+					plannerToolResponse("CALENDAR"),
+					finishEvaluatorResponse("The calendar lookup returned."),
+				],
+			});
+
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(
+					"Open Calendar and show me what I have on September 7, 2026. Do not change any events.",
+					"test",
+					{ uiView: "notes", uiViewPath: "/notes" },
+				),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+
+			const tools = plannerToolNames(runtime);
+			expect(tools).toContain("CALENDAR");
+			expect(tools).toContain("VIEWS");
+			expect(tools.includes("UNRELATED")).toBe(completeSurface);
+			expect(tools).not.toContain("MISSING_CAPABILITY");
+			expect(tools).not.toContain("PRIVATE_CALENDAR_REPAIR");
+			expect(tools).not.toContain("CALENDAR_ADMIN_ONLY");
+			expect(availableActionsSection(runtime)).not.toContain(
+				"Private calendar repair implementation.",
+			);
+			expect(availableActionsSection(runtime)).not.toContain(
+				"Restricted calendar administration implementation.",
+			);
+			expect(privateHandler).not.toHaveBeenCalled();
+			expect(adminHandler).not.toHaveBeenCalled();
+		},
+	);
+
+	it("keeps an app planner turn on the model-selected focused-view action", async () => {
 		const notes = makeAction({
 			name: "NOTES",
 			description: "Read the notes shown in the open Notes view.",
@@ -447,10 +904,8 @@ describe("v5 tiered action surface", () => {
 
 		const tools = plannerToolNames(runtime);
 		expect(tools).toContain("NOTES");
-		expect(tools).toContain("VIEWS");
-		expect(tools).toContain("MESSAGE");
-		expect(tools.indexOf("NOTES")).toBeLessThan(tools.indexOf("MESSAGE"));
-		expect(tools.indexOf("NOTES")).toBeLessThan(tools.indexOf("VIEWS"));
+		expect(tools).not.toContain("VIEWS");
+		expect(tools).not.toContain("MESSAGE");
 	});
 
 	it("does not let focused-view metadata widen action context admission", async () => {

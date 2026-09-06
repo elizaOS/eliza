@@ -1104,7 +1104,8 @@ function radiusFamily(utility) {
   if (match[1].startsWith("[")) return "raw";
   if (match[1] === "none") return "none";
   if (["xs", "sm", "md"].includes(match[1])) return "control";
-  if (["lg", "xl", "2xl", "3xl"].includes(match[1])) return "container";
+  if (["lg", "xl", "2xl", "3xl", "search"].includes(match[1]))
+    return "container";
   if (match[1] === "full") return "pill";
   return "raw";
 }

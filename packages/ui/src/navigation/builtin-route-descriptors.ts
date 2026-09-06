@@ -126,6 +126,7 @@ const AMBIENT_IMMERSIVE_LAYOUT: PageLayoutManifest = Object.freeze({
 export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   chat: {
     path: "/chat",
+    legacyPaths: ["/home"],
     layout: AMBIENT_IMMERSIVE_LAYOUT,
     surface: IMMERSIVE_WALLPAPER_SURFACE,
   },
@@ -182,7 +183,11 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     path: "/character/skills",
     layout: FRAMED_PAGE_LAYOUT,
   },
-  memories: { path: "/apps/memories", layout: FRAMED_PAGE_LAYOUT },
+  memories: {
+    path: "/apps/memories",
+    layout: FRAMED_PAGE_LAYOUT,
+    surface: { background: "opaque" },
+  },
   rolodex: { path: "/rolodex", layout: CONTENT_LAYOUT },
   runtime: { path: "/apps/runtime", layout: WORKSPACE_LAYOUT },
   database: { path: "/apps/database", layout: FRAMED_PAGE_LAYOUT },

@@ -8,6 +8,7 @@ import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
 } from "../types/action-failure";
+import type { ActionReplyFailure } from "../types/action-reply";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -86,6 +87,8 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
+	effectReceiptIds?: readonly string[];
 	nextTool?: PlannerToolCall;
 	/** The model response violated the evaluator protocol. */
 	protocolFailure?: true;
@@ -130,6 +133,17 @@ export interface PlannerRuntime {
 
 export interface PlannerToolResult {
 	success: boolean;
+	/**
+	 * Verdict the sub-planner's own evaluator reached over this umbrella
+	 * action's recorded child results (same planner context, same declared
+	 * intents). A FINISH here is a completed intent evaluation; the outer loop
+	 * may adopt it instead of judging the same results a second time.
+	 */
+	subPlannerEvaluation?: {
+		decision: "FINISH";
+		success: boolean;
+		messageToUser?: string;
+	};
 	/**
 	 * Diagnostic / log-shaped projection of the tool's output. Goes into
 	 * the trajectory and the planner's tool-result message. Used by the
@@ -195,6 +209,8 @@ export interface PlannerToolResult {
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
+	/** Reply unavailable is independent of the completed tool outcome. */
+	replyFailure?: ActionReplyFailure;
 	/**
 	 * Action-owned completion signal that is honored only for a single executed
 	 * tool after the plan queue drains and the successful result carries verified
@@ -246,6 +262,7 @@ export interface PlannerTerminalFailure {
 		| "coding_mutation_unverified"
 		| "coding_verification_failed"
 		| "coding_tool_failure"
+		| ActionReplyFailure["kind"]
 		| ActionFailureKind;
 	transient: boolean;
 	message: string;

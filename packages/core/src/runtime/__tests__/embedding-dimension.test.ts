@@ -22,10 +22,12 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import type { ElizaError } from "../../errors";
+import { ElizaError } from "../../errors";
 import {
 	AgentRuntime,
+	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
 	EmbeddingDimensionProbeError,
+	type EmbeddingStoreIdentity,
 	NoModelProviderConfiguredError,
 } from "../../runtime";
 import { type Character, type Memory, ModelType, type UUID } from "../../types";
@@ -36,6 +38,8 @@ function makeRuntime(
 	options: {
 		embeddingProvider?: string;
 		ELIZA_EMBEDDING_PROVIDER?: string;
+		settings?: Record<string, string>;
+		adapter?: InMemoryDatabaseAdapter;
 	} = {},
 ): AgentRuntime {
 	return new AgentRuntime({
@@ -46,11 +50,14 @@ function makeRuntime(
 				? { EMBEDDING_PROVIDER: options.embeddingProvider }
 				: {},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
+		adapter: options.adapter ?? new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
-		settings: options.ELIZA_EMBEDDING_PROVIDER
-			? { ELIZA_EMBEDDING_PROVIDER: options.ELIZA_EMBEDDING_PROVIDER }
-			: {},
+		settings: {
+			...(options.ELIZA_EMBEDDING_PROVIDER
+				? { ELIZA_EMBEDDING_PROVIDER: options.ELIZA_EMBEDDING_PROVIDER }
+				: {}),
+			...(options.settings ?? {}),
+		},
 	});
 }
 
@@ -511,5 +518,174 @@ describe("AgentRuntime.initialize with a broken TEXT_EMBEDDING provider (#10702)
 		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
 		const memory = await runtime.addEmbeddingToMemory(makeMemory("post-boot"));
 		expect(memory.embedding).toBeUndefined();
+	});
+});
+
+describe("AgentRuntime.ensureEmbeddingDimension configured provider that registers late", () => {
+	it("defers instead of failing when the configured provider has no handler yet, then pins it on the re-probe", async () => {
+		// Live 2026-09-05: ELIZA_EMBEDDING_PROVIDER=embeddings aborted bootstrap in
+		// a retry loop because plugin-embeddings registered after the first probe.
+		const runtime = makeRuntime({ ELIZA_EMBEDDING_PROVIDER: "embeddings" });
+		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));
+		runtime.registerModel(ModelType.TEXT_EMBEDDING, cloudHandler, "openai", 50);
+		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
+
+		await expect(runtime.ensureEmbeddingDimension()).rejects.toBeInstanceOf(
+			EmbeddingDimensionProbeError,
+		);
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+		expect(cloudHandler).not.toHaveBeenCalled();
+		expect(ensureDim).not.toHaveBeenCalled();
+
+		const byoHandler = vi.fn(async () => new Array(384).fill(0));
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			byoHandler,
+			"embeddings",
+			1,
+		);
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+		expect(ensureDim).toHaveBeenCalledWith(384);
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(false);
+		expect(cloudHandler).not.toHaveBeenCalled();
+	});
+});
+
+describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
+	const BGE = "BAAI/bge-small-en-v1.5";
+	const GTE = "thenlper/gte-small";
+
+	async function seedIdentity(
+		adapter: InMemoryDatabaseAdapter,
+		identity: Omit<EmbeddingStoreIdentity, "recordedAt">,
+	) {
+		const runtime = makeRuntime({ adapter });
+		await runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, {
+			...identity,
+			recordedAt: "2026-09-01T00:00:00.000Z",
+		});
+	}
+
+	it("records the active embedder on the first pin and accepts the same model afterwards", async () => {
+		const runtime = makeRuntime({ settings: { EMBEDDING_MODEL: BGE } });
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			vi.fn(async () => new Array(384).fill(0)),
+			"embeddings",
+			1,
+		);
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+		const stored = await runtime.getCache<EmbeddingStoreIdentity>(
+			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+		);
+		expect(stored).toMatchObject({
+			provider: "embeddings",
+			modelLabel: BGE,
+			dimension: 384,
+		});
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+	});
+
+	it("refuses to pin a different model at the same width until the operator acknowledges the cutover", async () => {
+		// gte-small and bge-small are both 384-dim and live in different spaces.
+		const adapter = new InMemoryDatabaseAdapter();
+		await seedIdentity(adapter, {
+			provider: "embeddings",
+			modelLabel: GTE,
+			dimension: 384,
+		});
+		const runtime = makeRuntime({
+			adapter,
+			settings: { EMBEDDING_MODEL: BGE },
+		});
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			vi.fn(async () => new Array(384).fill(0)),
+			"embeddings",
+			1,
+		);
+		await expect(runtime.ensureEmbeddingDimension()).rejects.toMatchObject({
+			code: "EMBEDDING_STORE_MODEL_MISMATCH",
+		});
+		await expect(runtime.ensureEmbeddingDimension()).rejects.toBeInstanceOf(
+			ElizaError,
+		);
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+		const untouched = await runtime.getCache<EmbeddingStoreIdentity>(
+			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+		);
+		expect(untouched?.modelLabel).toBe(GTE);
+
+		const acknowledged = makeRuntime({
+			adapter,
+			settings: {
+				EMBEDDING_MODEL: BGE,
+				ELIZA_EMBEDDING_STORE_ACCEPT_MODEL: BGE,
+			},
+		});
+		acknowledged.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			vi.fn(async () => new Array(384).fill(0)),
+			"embeddings",
+			1,
+		);
+		await expect(
+			acknowledged.ensureEmbeddingDimension(),
+		).resolves.toBeUndefined();
+		const updated = await acknowledged.getCache<EmbeddingStoreIdentity>(
+			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+		);
+		expect(updated?.modelLabel).toBe(BGE);
+		expect(acknowledged.isEmbeddingGenerationDisabled()).toBe(false);
+	});
+
+	it("tolerates a provider swap that serves the same model", async () => {
+		// VPS 2026-09-05: plugin-openai's slot and plugin-embeddings both point at
+		// the same local BGE sidecar; whichever wins the probe writes the same vectors.
+		const adapter = new InMemoryDatabaseAdapter();
+		await seedIdentity(adapter, {
+			provider: "openai",
+			modelLabel: BGE,
+			dimension: 384,
+		});
+		const runtime = makeRuntime({
+			adapter,
+			settings: { EMBEDDING_MODEL: BGE },
+		});
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			vi.fn(async () => new Array(384).fill(0)),
+			"embeddings",
+			1,
+		);
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+		const updated = await runtime.getCache<EmbeddingStoreIdentity>(
+			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+		);
+		expect(updated).toMatchObject({ provider: "embeddings", modelLabel: BGE });
+	});
+
+	it("follows a width change without blocking (the stale-dimension reconcile owns those vectors)", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await seedIdentity(adapter, {
+			provider: "openai",
+			modelLabel: "text-embedding-3-small",
+			dimension: 1536,
+		});
+		const runtime = makeRuntime({
+			adapter,
+			settings: { EMBEDDING_MODEL: BGE },
+		});
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			vi.fn(async () => new Array(384).fill(0)),
+			"embeddings",
+			1,
+		);
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+		const updated = await runtime.getCache<EmbeddingStoreIdentity>(
+			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+		);
+		expect(updated).toMatchObject({ modelLabel: BGE, dimension: 384 });
 	});
 });

@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
 
 const stubUrl = new URL("./playwright-ui-smoke-api-stub.mjs", import.meta.url);
 let child;
@@ -120,9 +121,6 @@ it("serves truthful designed-empty local inference and owner surfaces", async ()
     },
   });
 
-  assert.deepEqual(await jsonGet("/api/local-inference/voice-models"), {
-    installations: [],
-  });
   assert.deepEqual(
     await jsonGet("/api/local-inference/voice-models/preferences"),
     {
@@ -159,6 +157,24 @@ it("serves truthful designed-empty local inference and owner surfaces", async ()
     logins: [],
     failures: [],
   });
+});
+
+it("lists every known voice model as uninstalled without fabricating readiness", async () => {
+  const { installations } = await jsonGet("/api/local-inference/voice-models");
+  const ids = installations.map((installation) => installation.id);
+  expect(ids).toContain("kokoro");
+  expect(ids).toContain("asr");
+  expect(ids).toEqual(
+    [...new Set(VOICE_MODEL_VERSIONS.map((version) => version.id))].sort(),
+  );
+  for (const installation of installations) {
+    expect(installation).toEqual({
+      id: installation.id,
+      installedVersion: null,
+      pinned: false,
+      lastError: null,
+    });
+  }
 });
 
 it("does not fabricate write or item-route authority", async () => {

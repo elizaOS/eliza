@@ -22,7 +22,10 @@ export const PHRASE_MAX_BUFFER_CHARS = 180;
 export const PHRASE_MIN_EMIT_CHARS = 2;
 
 const TERMINATORS = new Set([".", "!", "?", "…", "。", "！", "？", "\n"]);
-const CLAUSE_BREAKS = new Set([",", ";", ":", "—"]);
+// Let the TTS provider own ordinary comma prosody. Splitting on every comma
+// creates audible mid-sentence seams; reserve eager clause emission for hard
+// punctuation and let the bounded word-safe ceiling handle long soft clauses.
+const CLAUSE_BREAKS = new Set([";", ":", "—"]);
 
 export interface PhraseAggregatorOptions {
   maxBufferChars?: number;

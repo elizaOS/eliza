@@ -16,6 +16,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import {
+  ArrowLeft,
   ArrowRight,
   EllipsisVertical,
   ExternalLink,
@@ -34,7 +35,11 @@ import {
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
-import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import {
+  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
+} from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -52,7 +57,6 @@ import {
 } from "../../utils/browser-tabs-renderer-registry";
 import { BrowserSessionPolicyPanel } from "../browser/BrowserSessionPolicyPanel";
 import { PagePanel } from "../composites/page-panel";
-import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
@@ -1485,6 +1489,44 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     ],
   );
 
+  // Remote browser actions mutate the server workspace. Native mobile tabs are
+  // deliberately local, so mirror the completed action's verified deep-link
+  // URL into the currently mounted secure WebView instead of leaving it on the
+  // previous page. The same deep link handles the first navigation on mount;
+  // this listener covers subsequent actions while /browser is already active.
+  useEffect(() => {
+    if (!browserWorkspaceUsesLocalTabs) return;
+    const handleAgentBrowserNavigation = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      if (detail?.viewId !== "browser" || !detail.viewPath) return;
+      const query = detail.viewPath.split("?", 2)[1];
+      const rawUrl = query
+        ? new URLSearchParams(query).get("browse")?.trim()
+        : null;
+      if (!rawUrl) return;
+      void runBrowserWorkspaceAction(
+        "agent:navigate",
+        async () => {
+          await navigateSelectedBrowserWorkspaceTab(rawUrl);
+        },
+        t("browserworkspace.NavigationFailed", {
+          defaultValue: "Couldn’t open that page.",
+        }),
+      );
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, handleAgentBrowserNavigation);
+    return () =>
+      window.removeEventListener(
+        NAVIGATE_VIEW_EVENT,
+        handleAgentBrowserNavigation,
+      );
+  }, [
+    browserWorkspaceUsesLocalTabs,
+    navigateSelectedBrowserWorkspaceTab,
+    runBrowserWorkspaceAction,
+    t,
+  ]);
+
   const registerBrowserWorkspaceIframe = useCallback(
     (tabId: string, iframe: HTMLIFrameElement | null) => {
       if (!iframe) {
@@ -2175,10 +2217,17 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   // Electrobun's OverlaySyncController only fires onSync when the rect
   // *changes* — a small-but-stable rect persists.
   const browserSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const [iframeScale, setIframeScale] = useState(1);
   useEffect(() => {
     const surface = browserSurfaceRef.current;
     if (!surface || typeof ResizeObserver === "undefined") return;
     const pokeAll = (): void => {
+      // Cross-origin frames cannot inherit a mobile viewport policy from the
+      // host. Give narrow panels a compact 400px layout viewport and fit it
+      // into the surface, rather than clipping sites with that minimum width.
+      // Grow the logical height by the same ratio so no blank strip remains.
+      const width = surface.getBoundingClientRect().width;
+      setIframeScale(width > 0 ? Math.min(1, width / 400) : 1);
       for (const element of electrobunWebviewRefs.current.values()) {
         try {
           element?.syncDimensions(true);
@@ -2189,6 +2238,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     };
     const observer = new ResizeObserver(() => pokeAll());
     observer.observe(surface);
+    pokeAll();
     return () => {
       observer.disconnect();
     };
@@ -2509,6 +2559,27 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     workspace.mode,
   ]);
 
+  const backSelectedBrowserWorkspaceTab = useCallback(async () => {
+    if (!selectedTab) return;
+    const nativeTag = electrobunWebviewRefs.current.get(selectedTab.id);
+    if (nativeTag) {
+      nativeTag.executeJavascript("history.back()");
+      return;
+    }
+    const result = await client.fetch<{ tab?: BrowserWorkspaceTab }>(
+      "/api/browser-workspace/command",
+      {
+        method: "POST",
+        body: JSON.stringify({ subaction: "back", id: selectedTab.id }),
+      },
+    );
+    if (result.tab) {
+      setLocationInput(result.tab.url);
+      setLocationDirty(false);
+      await loadWorkspace({ preferTabId: result.tab.id, silent: true });
+    }
+  }, [selectedTab, loadWorkspace]);
+
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
   });
@@ -2581,18 +2652,37 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   }, []);
 
   const navNode = (
-    <div className="flex items-center gap-1 p-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-x-2 md:gap-y-1 md:px-2 md:py-0.5">
+    <div className="flex items-center gap-0 px-0.5 py-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-x-2 md:gap-y-1 md:px-2 md:py-0.5">
       <TooltipHint
-        content={t("common.backToLauncher", {
-          defaultValue: "Back to launcher",
+        content={t("browserworkspace.Back", {
+          defaultValue: "Back",
         })}
       >
-        <ViewBackButton
-          label={t("common.backToLauncher", {
-            defaultValue: "Back to launcher",
-          })}
-          className="shrink-0"
-        />
+        <BrowserNavButton
+          agentId="back"
+          agentLabel="Back"
+          agentDescription="Go back in the active browser tab"
+          group="browser-nav"
+          onActivate={() =>
+            void runBrowserWorkspaceAction(
+              "navigate:back",
+              backSelectedBrowserWorkspaceTab,
+            )
+          }
+          onClick={() =>
+            void runBrowserWorkspaceAction(
+              "navigate:back",
+              backSelectedBrowserWorkspaceTab,
+            )
+          }
+          aria-label={t("browserworkspace.Back", { defaultValue: "Back" })}
+          disabled={!selectedTab || busyAction !== null}
+          variant="ghost"
+          size="icon"
+          className="size-11 shrink-0"
+        >
+          <ArrowLeft className="size-4" aria-hidden />
+        </BrowserNavButton>
       </TooltipHint>
       {/* Folded tabs (#13596): one compact count control opens the switcher —
           no permanent tab strip. It names the active tab so the user always
@@ -2744,7 +2834,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11 shrink-0"
+        className="hidden size-11 shrink-0 md:inline-flex"
         aria-label={goLabel}
         disabled={
           busyAction !== null ||
@@ -2874,27 +2964,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           </DropdownMenuContent>
         </DropdownMenu>
       </span>
-    </div>
-  );
-
-  const minimalNavNode = (
-    <div className="grid h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center px-2">
-      <TooltipHint
-        content={t("common.backToLauncher", {
-          defaultValue: "Back to launcher",
-        })}
-      >
-        <ViewBackButton
-          label={t("common.backToLauncher", {
-            defaultValue: "Back to launcher",
-          })}
-          className="shrink-0"
-        />
-      </TooltipHint>
-      <h1 className="truncate text-center text-sm font-semibold text-txt">
-        {t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
-      </h1>
-      <span aria-hidden />
     </div>
   );
 
@@ -3176,7 +3245,13 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
               // own theme based on the OS prefers-color-scheme; we can't force
               // that cross-origin without an extension content script.
               className={`absolute inset-0 h-full w-full border-0 bg-bg transition-opacity ${visibilityClass}`}
-              style={{ colorScheme: uiTheme }}
+              style={{
+                colorScheme: uiTheme,
+                width: `${100 / iframeScale}%`,
+                height: `${100 / iframeScale}%`,
+                transform: `scale(${iframeScale})`,
+                transformOrigin: "top left",
+              }}
               onPointerDownCapture={(event) => {
                 releaseBrowserWorkspaceIframeFocusReturn(event.currentTarget);
               }}
@@ -3284,14 +3359,16 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       data-chat-clearance-aware="true"
       aria-busy={loading || busyAction !== null}
       tabIndex={-1}
-      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(0.75rem+var(--safe-area-top,0px))] pb-[calc(1rem+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(1.5rem+var(--safe-area-top,0px))] lg:pb-[calc(1.5rem+var(--eliza-chat-clearance,5.25rem))]"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(var(--safe-area-top,0px)+0.75rem)] pb-[calc(1rem+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(var(--safe-area-top,0px)+1.5rem)] lg:pb-[calc(1.5rem+var(--eliza-chat-clearance,5.25rem))]"
     >
-      <div
-        data-testid="browser-workspace-toolbar"
-        className="shrink-0 overflow-hidden rounded-2xl border border-border bg-card"
-      >
-        {showMinimalToolbar ? minimalNavNode : navNode}
-      </div>
+      {!showMinimalToolbar && (
+        <div
+          data-testid="browser-workspace-toolbar"
+          className="shrink-0 overflow-hidden rounded-2xl border border-border bg-card"
+        >
+          {navNode}
+        </div>
+      )}
       <div
         data-testid="browser-workspace-surface-panel"
         className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card"

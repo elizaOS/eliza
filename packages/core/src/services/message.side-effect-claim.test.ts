@@ -38,6 +38,7 @@ import {
 	plannedReplyHasClaimGroundingReceipt,
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
 	resolveEligibleDirectActionRoutes,
 } from "./message";
 
@@ -998,10 +999,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(decision.verdict).toBe("reject");
 		if (decision.verdict !== "reject") throw new Error("expected rejection");
 		expect(decision.kind).toBe("completed_side_effect");
-		expect(replyClaimsCompletedSideEffect(decision.fallbackReply)).toBe(false);
-		expect(replyClaimsEmptyTrackedWorkState(decision.fallbackReply)).toBe(
-			false,
-		);
+		expect(decision).not.toHaveProperty("fallbackReply");
 	});
 
 	it("allows a completion claim only for an exact active applied receipt", () => {
@@ -1022,7 +1020,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		).toEqual({ verdict: "allow" });
 	});
 
-	it("uses the unique receipt-owned action reply when the planner paraphrases a completed effect", () => {
+	it("rejects a paraphrased completion without manufacturing replacement prose", () => {
 		const canonical = "Updated “Local calendar proof” for tomorrow at 9:10 PM.";
 		const updated: ActionResult = {
 			success: true,
@@ -1040,7 +1038,6 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(decision).toEqual({
 			verdict: "reject",
 			kind: "completed_side_effect",
-			fallbackReply: canonical,
 		});
 	});
 
@@ -1196,9 +1193,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(ungrounded.verdict).toBe("reject");
 		if (ungrounded.verdict !== "reject") throw new Error("expected rejection");
 		expect(ungrounded.kind).toBe("empty_tracked_state");
-		expect(replyClaimsEmptyTrackedWorkState(ungrounded.fallbackReply)).toBe(
-			false,
-		);
+		expect(ungrounded).not.toHaveProperty("fallbackReply");
 		const read: ActionResult = {
 			success: true,
 			userFacingText: FABRICATED_EMPTY_DAY_REPLY,
@@ -1691,5 +1686,81 @@ describe("locale clause scoping through the real consumer paths", () => {
 			actions: [scheduledItemSurface],
 		});
 		expect(decision.verdict).not.toBe("reject");
+	});
+});
+describe("replyClaimsInProgressWork", () => {
+	it.each([
+		"On it.",
+		"on it!",
+		"Checking your list now.",
+		"Checking now",
+		"Looking into it.",
+		"I'll check your calendar",
+		"Let me pull that up",
+		"One sec.",
+		"Working on it 👍",
+	])("matches a bare progress promise: %s", (reply) => {
+		expect(replyClaimsInProgressWork(reply)).toBe(true);
+	});
+
+	it.each([
+		// Questions and consent-seeking pass through.
+		"Want me to check your list?",
+		"Should I look into it?",
+		// Substantive replies that merely contain a forward-looking clause.
+		"I'll be honest — the plan has a hole in it.",
+		"I'll check tomorrow, but today you have three events: standup, lunch, and the demo.",
+		// Real answers and confirmations.
+		"You have 3 todos: rent, demo prep, and groceries.",
+		"done — you're on Notes.",
+		"31,283",
+		"",
+	])("passes substantive or interrogative replies: %s", (reply) => {
+		expect(replyClaimsInProgressWork(reply)).toBe(false);
+	});
+});
+
+describe("core.simple_progress_promise", () => {
+	function getProgressEvaluator() {
+		const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(candidate) => candidate.name === "core.simple_progress_promise",
+		);
+		if (!evaluator) {
+			throw new Error("core.simple_progress_promise is not registered");
+		}
+		return evaluator;
+	}
+
+	it("fires only on simple-path bare promises (live: 'On it.' with zero tools)", async () => {
+		const evaluator = getProgressEvaluator();
+		expect(
+			await evaluator.shouldRun(makeContext(simpleReplyHandler("On it."))),
+		).toBe(true);
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("Checking your list now.")),
+			),
+		).toBe(true);
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("You have 3 todos: rent, demo, food.")),
+			),
+		).toBe(false);
+		// A turn that will actually run a tool keeps its ack (fork/delegate acks).
+		const planning = simpleReplyHandler("On it.");
+		planning.plan.requiresTool = true;
+		expect(await evaluator.shouldRun(makeContext(planning))).toBe(false);
+		const nonSimple = simpleReplyHandler("On it.");
+		nonSimple.plan.contexts = ["simple", "general"];
+		expect(await evaluator.shouldRun(makeContext(nonSimple))).toBe(false);
+	});
+
+	it("reroutes to the planner and clears the fabricated promise", async () => {
+		const evaluator = getProgressEvaluator();
+		const patch = (await evaluator.evaluate(
+			makeContext(simpleReplyHandler("Checking your list now.")),
+		)) as ResponseHandlerPatch;
+		expect(patch.requiresTool).toBe(true);
+		expect(patch.clearReply).toBe(true);
 	});
 });

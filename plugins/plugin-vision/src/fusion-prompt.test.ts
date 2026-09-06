@@ -1,8 +1,8 @@
 /**
  * Prompt-fusion coverage for injecting detector output into VLM scene descriptions.
  *
- * OCR text, YOLO objects, and recognized faces are added as complete context
- * while the detection-off path remains byte-for-byte unchanged.
+ * OCR text, YOLO objects, and recognized faces are added as complete normalized
+ * context while the detection-off path remains byte-for-byte unchanged.
  */
 
 import { describe, expect, it } from "vitest";
@@ -86,7 +86,7 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
     expect(JSON.parse(withoutDetectors).detectedText).toBe("ocr only");
   });
 
-  it("preserves every object ordered by confidence descending", () => {
+  it("preserves every object in descending confidence order", () => {
     const objects: DetectedObject[] = Array.from({ length: 25 }, (_, i) =>
       makeObject(`o${i}`, `type-${i}`, i / 100),
     );
@@ -96,14 +96,22 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
     ) as { detectedObjects: Array<{ type: string; confidence: number }> };
 
     expect(payload.detectedObjects).toHaveLength(25);
-    expect(payload.detectedObjects[0].type).toBe("type-24");
-    expect(payload.detectedObjects.at(-1)?.type).toBe("type-0");
+    expect(payload.detectedObjects.map((object) => object.type)).toEqual(
+      Array.from({ length: 25 }, (_, index) => `type-${24 - index}`),
+    );
+    expect(
+      payload.detectedObjects.every(
+        (object, index, all) =>
+          index === 0 || all[index - 1].confidence >= object.confidence,
+      ),
+    ).toBe(true);
   });
 
-  it("dedupes faces by label without dropping unique faces", () => {
+  it("preserves every unique nonblank face label", () => {
     const faces: RecognizedFace[] = [
       { label: "Alice", bbox: bbox(0, 0) },
       { label: "Alice", bbox: bbox(1, 1) },
+      { label: "   ", bbox: bbox(2, 2) },
       ...Array.from({ length: 15 }, (_, i) => ({
         label: `Person-${i}`,
         bbox: bbox(i, i),
@@ -116,10 +124,14 @@ describe("buildSceneDescriptionPrompt — detector fusion", () => {
 
     expect(payload.recognizedFaces).toHaveLength(16);
     const labels = payload.recognizedFaces.map((f) => f.label);
-    // First Alice kept, duplicate dropped.
+    expect(labels).toEqual([
+      "Alice",
+      ...Array.from({ length: 15 }, (_, index) => `Person-${index}`),
+    ]);
     expect(labels.filter((l) => l === "Alice")).toHaveLength(1);
     expect(labels[0]).toBe("Alice");
     expect(labels.at(-1)).toBe("Person-14");
+    expect(labels.some((label) => label.trim().length === 0)).toBe(false);
   });
 
   it("skips blank face labels", () => {

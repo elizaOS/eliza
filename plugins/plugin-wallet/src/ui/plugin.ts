@@ -27,8 +27,8 @@ export const walletAppPlugin: Plugin = {
         group: "wallet",
         order: 50,
         surface: {
-          background: "shared",
-          capabilities: ["wallpaper"],
+          background: "opaque",
+          capabilities: [],
         },
         componentExport: "@elizaos/plugin-wallet/ui#InventoryView",
       },
@@ -51,8 +51,8 @@ export const walletAppPlugin: Plugin = {
       // agent-surface capability so the view broker admits agent-driven
       // fills/clicks (#13452 manifest gate).
       surface: {
-        background: "shared",
-        capabilities: ["agent-surface", "wallpaper"],
+        background: "opaque",
+        capabilities: ["agent-surface"],
       },
       componentExport: "InventoryView",
       tags: ["finance", "crypto", "wallet"],

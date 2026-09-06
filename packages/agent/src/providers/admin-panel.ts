@@ -92,8 +92,12 @@ export function createAdminPanelProvider(): Provider {
       "surface owner recent Eliza app chat agent context across platform",
     dynamic: true,
     position: 14,
-    contexts: ["admin", "settings"],
-    contextGate: { anyOf: ["admin", "settings"] },
+    // `admin` only: this is the complete owner app conversation (64K chars
+    // live on 2026-09-05). A settings turn ("remember I prefer…", "change my
+    // response style") does not need it, and RECENT_CONVERSATIONS already
+    // carries cross-room continuity in manifest form.
+    contexts: ["admin"],
+    contextGate: { anyOf: ["admin"] },
     cacheStable: false,
     cacheScope: "turn",
     roleGate: { minRole: "ADMIN" },

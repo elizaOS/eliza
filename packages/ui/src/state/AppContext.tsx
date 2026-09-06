@@ -49,7 +49,6 @@ import {
   tryHandleTutorialText,
 } from "../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../utils";
-import { dispatchConversationResync } from "./AppContext.hooks";
 import { applyAgentProfileConnection } from "./agent-profile-connection";
 import {
   activeServerIdForAgentProfile,
@@ -1125,6 +1124,7 @@ function AppProviderInner({
     fetchGreeting,
     requestGreetingWhenRunning,
     hydrateInitialConversationState,
+    ensureActiveConversation,
     handleStartDraftConversation,
     handleStart,
     handleStop,
@@ -1270,30 +1270,10 @@ function AppProviderInner({
     tabSync.publishPrefs({ language: uiLanguage });
   }, [uiLanguage, tabSync]);
 
-  // Reconnect reconciliation: when the socket comes back after a drop, re-arm
-  // this window's per-connection active conversation on the server (the fresh
-  // connection has no memory of it) and ask conversation views to refetch their
-  // recent messages so the UI repairs state lost during the gap. Fires once per
-  // reconnect — no polling.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once on mount; the current conversation is read through a ref, and `client` is module-stable.
-  useEffect(() => {
-    return client.onReconnect(() => {
-      const convId = activeConversationIdRef.current;
-      client.sendWsMessage({
-        type: "active-conversation",
-        conversationId: convId,
-      });
-      dispatchConversationResync({
-        conversationId: convId,
-        reason: "connection-recovered",
-      });
-    });
-  }, []);
-
-  // Live consumer of the RESYNC_EVENT dispatched above. Without this the resync
-  // signal had no listener, so a reconnect never reconciled messages the agent
-  // emitted while the socket was down. This reloads the active conversation from
-  // the server on resync so those missed messages appear without a refresh.
+  // Live consumer of canonical resync events. The ready-phase WebSocket bridge
+  // emits connection recovery only after the restarted agent reports running,
+  // so a half-booted server cannot replace a healthy transcript with an empty
+  // response. Realtime voice uses the same reconciliation boundary.
   useResyncReconcile({ activeConversationIdRef, loadConversationMessages });
 
   // ── Pairing ────────────────────────────────────────────────────────
@@ -2054,6 +2034,7 @@ function AppProviderInner({
       handleChatClear,
       handleStartDraftConversation,
       handleNewConversation,
+      ensureActiveConversation,
       setChatPendingImages,
       handleSelectConversation,
       loadConversationMessagesAround,
@@ -2418,6 +2399,7 @@ function AppProviderInner({
       handleChatClear,
       handleStartDraftConversation,
       handleNewConversation,
+      ensureActiveConversation,
       handleSelectConversation,
       loadConversationMessagesAround,
       handleDeleteConversation,

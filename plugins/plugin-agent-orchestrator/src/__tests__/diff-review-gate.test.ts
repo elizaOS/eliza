@@ -294,6 +294,30 @@ describe("reviewDiff — case-insensitive secret matching (parity with core)", (
   });
 
   it.each([
+    ["credential member assignment", "this.apiKey = config.apiKey;"],
+    [
+      "token budget member assignment",
+      "this.maxTokens = config.maxTokens ?? 1024;",
+    ],
+    ["token count member assignment", "this.tokenCount = tokens.length;"],
+    ["semicolon-free member assignment", "this.apiKey = config.apiKey"],
+    ["equality", "password == null"],
+    ["strict equality", "password === expected"],
+    ["arrow parameter", "secret => handler(secret)"],
+    ["inequality", "apiKey !== expected"],
+    ["compound assignment", "token += chunk"],
+    ["nullish assignment", "password ??= fallback"],
+    ["quoted token metadata", '  this.maxTokens = "2048";'],
+  ])("allows %s without a credential literal", (_case, addedLine) => {
+    const result = reviewDiff({
+      diff: addedFileDiff("src/credential-service.ts", [addedLine]),
+      changedFiles: ["src/credential-service.ts"],
+    });
+    expect(result.passed).toBe(true);
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it.each([
     [
       "indented object field",
       (value: string) => `  serviceCredential: "${value}",`,

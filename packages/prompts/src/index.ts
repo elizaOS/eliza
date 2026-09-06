@@ -678,6 +678,12 @@ export const registerResponsePolicy = `register_response_policy:
 
 export const REGISTER_RESPONSE_POLICY = registerResponsePolicy;
 
+export const navigationReplyPolicy = `navigation_reply:
+- UI navigation still belongs to Eliza: mention the requested destination in your own concise wording
+- never use a generic bare acknowledgement such as "On it." as the whole navigation reply`;
+
+export const NAVIGATION_REPLY_POLICY = navigationReplyPolicy;
+
 export const messageHandlerTemplate = `task: {{#if directMessage}}Plan this direct message{{else}}Decide shouldRespond + plan{{/if}}.
 
 available_contexts:
@@ -692,6 +698,7 @@ ${groupResponsePrecedencePolicy}
 Group restraint: not every group message deserves a reply; a message the agent could answer is not a message it should answer. IGNORE casual banter between other participants. When other assistants/bots are present, one speaker per human message: if another assistant already answered the human and nobody named this agent, IGNORE; when bot replies are stacking without directly addressing this agent, IGNORE and wait for a human to advance the conversation.
 {{/if}}
 ${registerResponsePolicy}
+${navigationReplyPolicy}
 replyText: user-facing text. Always write. Simple path = whole answer. Planning path = brief interim ack ("On it.", "Spawning the sub-agent now."); planner gives final. The runtime delivers that interim ack ahead of the final reply only when the routed work is a long-running async handoff (e.g. a sub-agent spawn); on synchronous tool turns (searches, lookups, in-turn actions) the user gets just the final reply, so never treat the ack as the answer. NEVER refuse the user's request in replyText when contexts/candidateActions != "simple": tools run later; ack only. Ban planning-path refusal openings: "I cannot...", "I am unable...", "I don't have the ability...", "Sorry, I can't...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, ...). If truly no tool can attempt, use contexts=["simple"] and explain.
 
 All user-visible replyText must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
@@ -735,7 +742,7 @@ Never simple when message:
 - searches/browses/current facts; runs shell; inspects files/logs/repos/services/disk; builds/deploys apps; creates PRs; spawns coding/task agents; sends messages; schedules tasks
 - benefits from tool call even if plausible answer exists
 - owner life-management: todos/habits/routines/goals/reminders/alarms/check-ins/blocks/calls/travel/device delivery/desktop actions/approvals; route owner context, action asks missing detail. Goal phrases like "I want a goal", "track this goal", and "count it if" route to tasks + OWNER_GOALS; do not create work threads for owner goals.
-- changes/persists/updates/remembers settings/preferences/identity/persona/response style/future behavior; select settings + relevant context
+- explicitly asks to change/persist/update/remember/forget settings, preferences, identity, persona, response style, or future behavior ("remember that…", "don't forget…", "note that…", "keep in mind…", "save this", "from now on…", "forget X"). An explicit remember/save/note directive is NEVER simple, even when what follows is an ordinary preference or personal fact ("remember that I prefer sparkling water"): route memory with the promoted child, never the umbrella: candidateActions=["MEMORY_CREATE"] for remember/save/note, ["MEMORY_DELETE"] for forget/remove, ["MEMORY_UPDATE"] for correcting a stored fact, ["MEMORY_SEARCH"] for recall — the children carry the required fields (text for create, confirm for delete) that the umbrella cannot; add settings only when the request changes how the agent behaves or is configured (persona, response style, "from now on…", forget/update a setting). Only a message that merely states the user's own preference, habit, or personal fact with no such directive ("I prefer oat milk in my coffee", "my cat is named Momo") IS simple: answer it directly and list the fact in extract.facts — durable memory extraction runs after every turn, so never route a bare statement to a memory tool.
 
 Domain routing (when context is available):
 - explicit workflow lifecycle (create/list/show/get/edit/activate/deactivate/run/delete/revisions/executions) -> automation + candidateActions=["WORKFLOW"] + parentActionHints=["WORKFLOW"]. WORKFLOW is the canonical direct action; never hint PAGE_DELEGATE, WORKFLOW_CREATE, or CREATE_WORKFLOW for these requests.
@@ -752,7 +759,8 @@ Domain routing (when context is available):
 - X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors
 - desktop/native-app/browser/Finder/window screenshots/control -> browser or automation
 - LifeOps browser bridge/companion/extension/tab/settings -> browser; add settings/connectors for config/connection
-- durable owner facts/preferences, esp travel/booking ("remember aisle seats") -> memory + settings; documents only create/search/edit document/file
+- calendar reads -> calendar. When exposed on the current executable action surface, CALENDAR_NEXT_EVENT reads the next event, CALENDAR_FEED reads a date range, and CALENDAR_SEARCH_EVENTS finds matching events; CALENDAR_CREATE_EVENT / CALENDAR_UPDATE_EVENT / CALENDAR_DELETE_EVENT perform the corresponding writes. These names are guidance, not proof of availability: never invent a handler or assume an unavailable child exists. Reading calendar data and opening the Calendar view are separate outcomes. When both are requested, preserve both intents; use an available navigation action for opening the view, not as a substitute for the calendar read. A calendar data receipt alone does not prove navigation.
+- explicit requests to remember/save/note durable owner facts/preferences ("remember that I…", "remember aisle seats", "don't forget my…") -> memory + candidateActions=["MEMORY_CREATE"] (forget -> ["MEMORY_DELETE"], correct -> ["MEMORY_UPDATE"], recall -> ["MEMORY_SEARCH"]), never simple (settings only when the request also changes behaviour/configuration); a bare statement of a preference or fact with no remember directive stays simple (extract.facts persists it); documents only create/search/edit document/file
 
 Otherwise: list relevant context ids. If only general exists and tool needed, use contexts=["general"].
 

@@ -83,6 +83,36 @@ describe("withSemanticStageFanOut", () => {
 		expect(recorded).toHaveLength(2);
 	});
 
+	it("does not block the planner on a queued file flush", async () => {
+		let releaseFlush: (() => void) | undefined;
+		let stageEnqueued = false;
+		const inner: TrajectoryRecorder = {
+			startTrajectory: () => "tj-1",
+			recordStage: async () => {
+				stageEnqueued = true;
+				await new Promise<void>((resolve) => {
+					releaseFlush = resolve;
+				});
+			},
+			endTrajectory: async () => undefined,
+			load: async () => null,
+			list: async () => [],
+		};
+		const recorder = withSemanticStageFanOut(inner, {
+			getService: () => null,
+			reportError: () => {
+				throw new Error("unexpected reportError");
+			},
+			logger: {},
+		});
+
+		await recorder.recordStage("tj-1", stage);
+
+		expect(stageEnqueued).toBe(true);
+		expect(releaseFlush).toBeTypeOf("function");
+		releaseFlush?.();
+	});
+
 	it("reports mirror failures as J7 diagnostics without failing the record call", async () => {
 		const recorded: RecordedStage[] = [];
 		const warned: unknown[] = [];

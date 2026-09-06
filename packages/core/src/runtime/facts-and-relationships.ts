@@ -22,8 +22,10 @@ import { getEntityDetails } from "../entities.ts";
 import { ElizaError } from "../errors.ts";
 import {
 	buildFactKeywordsForStorage,
+	factClaimsEquivalent,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { resolveCanonicalOwnerId } from "../roles.ts";
 import { isMobilePlatform } from "../runtime-env";
 import type {
 	MessageHandlerExtract,
@@ -109,6 +111,7 @@ rules:
 - drop credentials, API keys, passwords, raw tokens, and other secrets; never persist their values
 - drop synthetic summaries, compaction artifacts, generic chat filler, and one-off task requests
 - each kept fact is an object { subject, fact }: subject names WHO the fact is about
+- current_message_author and agent_identity are trusted role bindings, independent of display names and aliases in room_entities; an entity with an alias "User" is not necessarily the current author
 - subject must be the speaker who stated the fact about themselves — use their name exactly as shown in recent_conversation or room_entities, preferring the UUID when room_entities shows one; use "user" ONLY when the fact is about the author of current_message
 - never attribute one speaker's fact to a different speaker; if the speaker cannot be identified, drop the fact
 - normalize entity names to match the names already used in existing relationships or room entities when possible (do not invent new aliases)
@@ -267,7 +270,10 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 		.filter(Boolean)
 		.join("\n\n");
 
-	const userBlocks: string[] = [];
+	const userBlocks: string[] = [
+		`current_message_author: user (id: ${args.message.entityId})`,
+		`agent_identity: agent (id: ${args.runtime.agentId})`,
+	];
 
 	// Label each line with the actual speaker so the model can attribute facts
 	// to the right participant. Collapsing every human to "user" made facts
@@ -629,6 +635,51 @@ interface PersistArgs {
 	parsed: FactsAndRelationshipsResult;
 }
 
+/**
+ * The explicit MEMORY tool may store the same user statement as a durable row
+ * while this stage is still deduplicating (both run off one Stage-1 response,
+ * so the model-side dedupe cannot see it). A durable row stamped with this
+ * message's id, about the same subject entity, carrying the identical claim
+ * (same content words, same polarity) makes the lapsing Stage-1 copy
+ * redundant. Paraphrases stay as separate rows, rows from other messages stay
+ * with the model-side dedupe, and a fact about another participant ("Bob
+ * prefers oat milk too") is never suppressed by the author's own durable row.
+ */
+
+async function readSameMessageDurableFacts(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<Memory[]> {
+	if (!message.id || typeof runtime.getMemories !== "function") return [];
+	const rows = await runtime.getMemories({
+		tableName: "facts",
+		roomId: message.roomId,
+		entityId: message.entityId,
+		unique: false,
+	});
+	return rows.filter((row) => {
+		const meta = row.metadata as Record<string, unknown> | undefined;
+		return (
+			row.roomId === message.roomId &&
+			meta?.messageId === message.id &&
+			meta?.kind !== "current"
+		);
+	});
+}
+
+function coveredBySameMessageDurableFact(
+	fact: string,
+	factEntityId: UUID,
+	durableFacts: readonly Memory[],
+): boolean {
+	return durableFacts.some((row) => {
+		if (row.entityId !== factEntityId) return false;
+		const rowText =
+			typeof row.content.text === "string" ? row.content.text : "";
+		return factClaimsEquivalent(fact, rowText);
+	});
+}
+
 async function persistFactsAndRelationships(
 	args: PersistArgs,
 ): Promise<{ facts: number; relationships: number }> {
@@ -638,6 +689,10 @@ async function persistFactsAndRelationships(
 	let relationshipsWritten = 0;
 
 	if (parsed.facts.length > 0 && typeof runtime.createMemory === "function") {
+		const sameMessageDurableFacts = await readSameMessageDurableFacts(
+			runtime,
+			message,
+		);
 		for (const factEntry of parsed.facts) {
 			const sanitized = sanitizePersistedFact(runtime, factEntry.fact);
 			if (!sanitized) continue;
@@ -646,13 +701,29 @@ async function persistFactsAndRelationships(
 			// through the same room-entity grounding relationships use. Stamping
 			// message.entityId unconditionally credited every extracted fact to
 			// the current speaker, crossing facts between users in shared rooms.
-			const factEntityId =
-				resolveRelationshipEntityId(
-					factEntry.subject,
-					roomEntities,
-					runtime,
-					message,
-				) ?? message.entityId;
+			const resolvedSubjectEntityId = resolveRelationshipEntityId(
+				factEntry.subject,
+				roomEntities,
+				runtime,
+				message,
+			);
+			const factEntityId = resolvedSubjectEntityId ?? message.entityId;
+			// An unresolved subject sits under the author only as a fallback, so the
+			// author's own durable row must never be taken as covering it.
+			if (
+				resolvedSubjectEntityId !== undefined &&
+				coveredBySameMessageDurableFact(
+					sanitized,
+					factEntityId,
+					sameMessageDurableFacts,
+				)
+			) {
+				runtime.logger.debug(
+					{ messageId: message.id, fact: sanitized, factEntityId },
+					"[FactsStage] skipped a Stage-1 fact already stored durably for this message",
+				);
+				continue;
+			}
 			await runtime.createMemory(
 				{
 					entityId: factEntityId,
@@ -663,6 +734,10 @@ async function persistFactsAndRelationships(
 						type: MemoryType.CUSTOM,
 						source: "facts_and_relationships_stage",
 						messageId: message.id,
+						subject: factEntry.subject,
+						// False means the subject named someone this room could not
+						// resolve, so the row sits under the author only as a fallback.
+						subjectResolved: resolvedSubjectEntityId !== undefined,
 						tags: ["fact", "extracted", "stage1"],
 						keywords,
 						extractedAt: Date.now(),
@@ -691,20 +766,18 @@ async function persistFactsAndRelationships(
 		typeof runtime.createMemory === "function"
 	) {
 		for (const rel of parsed.relationships) {
-			const normalized = normalizeRelationshipForPersistence(rel);
+			const normalized = humanizeRelationshipEnds(
+				resolveRedactedRelationshipEnds(
+					normalizeRelationshipForPersistence(rel),
+					runtime,
+					message,
+				),
+				roomEntities,
+				runtime,
+				message,
+			);
 			if (!normalized) continue;
-			const sourceEntityId = resolveRelationshipEntityId(
-				normalized.subject,
-				roomEntities,
-				runtime,
-				message,
-			);
-			const targetEntityId = resolveRelationshipEntityId(
-				normalized.object,
-				roomEntities,
-				runtime,
-				message,
-			);
+			const { sourceEntityId, targetEntityId } = normalized;
 			const echoText = `${normalized.subject} ${normalized.predicate} ${normalized.object}`;
 			await runtime.createMemory(
 				{
@@ -818,6 +891,104 @@ function normalizeRelationshipForPersistence(
 	if (isLowSignalCandidate(subject) || isLowSignalCandidate(object))
 		return null;
 	return { subject, predicate, object };
+}
+
+const REDACTION_PLACEHOLDER_PATTERN = /^\[REDACTED:[A-Z0-9_]+\]$/;
+
+/**
+ * A redaction marker is not identity evidence. Only the canonical owner marker
+ * can resolve to the speaker, and only when trusted runtime configuration
+ * identifies that same speaker as the owner. Other redacted ends are unresolved.
+ */
+function resolveRedactedRelationshipEnds(
+	normalized: MessageHandlerExtractedRelationship | null,
+	runtime: IAgentRuntime,
+	message: Memory,
+): MessageHandlerExtractedRelationship | null {
+	if (!normalized) return null;
+	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.object)) return null;
+	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.subject)) {
+		if (normalized.subject !== "[REDACTED:ELIZA_ADMIN_ENTITY_ID]") return null;
+		const ownerId = asUuidOrNull(resolveCanonicalOwnerId(runtime) ?? "");
+		return ownerId && ownerId === message.entityId
+			? { ...normalized, subject: "User" }
+			: null;
+	}
+	return normalized;
+}
+
+/**
+ * Render known IDs as human labels while retaining their identity separately.
+ * Display names may collide with role aliases or other participants' names;
+ * resolving them again would attach the relationship to a different person.
+ */
+function humanizeRelationshipEnds(
+	normalized: MessageHandlerExtractedRelationship | null,
+	entities: readonly RoomEntityRef[],
+	runtime: IAgentRuntime,
+	message: Memory,
+):
+	| (MessageHandlerExtractedRelationship & {
+			sourceEntityId?: UUID;
+			targetEntityId?: UUID;
+	  })
+	| null {
+	if (!normalized) return null;
+	const safeLabel = (value: string): string | null => {
+		const label = cleanText(value);
+		return label &&
+			!asUuidOrNull(label) &&
+			!/\[REDACTED(?::[A-Z0-9_]+)?\]/i.test(label) &&
+			!containsSecretSignal(label) &&
+			runtime.redactSecrets(label) === label
+			? label
+			: null;
+	};
+	const humanize = (
+		value: string,
+	): { value: string; entityId?: UUID; fromId: boolean } | null => {
+		const uuid = asUuidOrNull(value);
+		if (!uuid) {
+			return {
+				value,
+				entityId: resolveRelationshipEntityId(
+					value,
+					entities,
+					runtime,
+					message,
+				),
+				fromId: false,
+			};
+		}
+		if (uuid === message.entityId) {
+			return { value: "User", entityId: uuid, fromId: true };
+		}
+		if (uuid === runtime.agentId) {
+			const name = safeLabel(runtime.character.name ?? "Agent");
+			return name ? { value: name, entityId: uuid, fromId: true } : null;
+		}
+		const entity = entities.find((candidate) => candidate.id === uuid);
+		const name = entity?.names.map(safeLabel).find((candidate) => candidate);
+		return name ? { value: name, entityId: uuid, fromId: true } : null;
+	};
+	const subject = humanize(normalized.subject);
+	const object = humanize(normalized.object);
+	if (!subject || !object) return null;
+	// Two people can share a display name; only proven identity makes a self-loop.
+	if (
+		object.fromId &&
+		object.entityId &&
+		subject.entityId === object.entityId
+	) {
+		return null;
+	}
+	return {
+		...normalized,
+		subject: subject.value,
+		object: object.value,
+		sourceEntityId: subject.entityId,
+		targetEntityId: object.entityId,
+	};
 }
 
 function sanitizePersistedFact(runtime: IAgentRuntime, value: string): string {

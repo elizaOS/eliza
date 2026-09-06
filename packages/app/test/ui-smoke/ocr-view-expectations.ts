@@ -52,8 +52,13 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 };
 
 const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
-  requireAll: ["View unavailable"],
-  requireAny: ["View ID", "Retry", "Back to views"],
+  requireAll: [
+    "View unavailable",
+    "This app is unavailable here",
+    "Install or enable it",
+    "App",
+  ],
+  requireAny: ["Retry", "Back to views"],
 };
 
 export const VIEW_OCR_POLICIES = {
@@ -66,7 +71,7 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-camera": exempt(
     "native-platform-gated",
-    "The camera is an AOSP-native surface, so the browser audit intentionally renders the unavailable-view boundary.",
+    "The camera is an AOSP-native surface, so the browser audit intentionally renders the truthful unavailable state.",
     VIEW_UNAVAILABLE_FALLBACK,
   ),
   "builtin-tasks": expected({
@@ -267,9 +272,10 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Family Operations", "Private owner workspace"],
   }),
   "plugin-computer-use-sessions-gui": expected({
-    requireAll: ["Computer sessions", "Research", "browser"],
+    requireAll: ["Computer sessions", "Linux sandbox"],
     requireAny: [
-      "Linux sandbox",
+      "Research",
+      "Browser",
       "Sequence 12",
       "Cursor 640, 360",
       "Open floating",
@@ -331,7 +337,7 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-cockpit-gui": exempt(
     "unregistered-remote-bundle",
-    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the unavailable-view boundary is the only observable surface.",
+    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the truthful unavailable state is the only observable surface.",
     VIEW_UNAVAILABLE_FALLBACK,
   ),
   "plugin-trajectory-logger-gui": expected({

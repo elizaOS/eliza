@@ -26,6 +26,19 @@ export default defineConfig({
 				replacement: loggerSource,
 			},
 			{
+				// Core's src re-exports `@elizaos/prompts`, which ships no dist in
+				// this lane — anchor it to source so suites importing core prompts
+				// load (same fix the agent and plugin-app-control configs carry).
+				find: /^@elizaos\/prompts$/,
+				replacement: path.join(
+					getElizaWorkspaceRoot(repoRoot),
+					"packages",
+					"prompts",
+					"src",
+					"index.ts",
+				),
+			},
+			{
 				find: /^@elizaos\/plugin-sql$/,
 				replacement: path.join(pluginSqlRoot, "index.node.ts"),
 			},

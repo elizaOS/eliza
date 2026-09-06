@@ -117,6 +117,12 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-app-control", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-notes", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-calendar", viewEveryPlatform: true },
+  // todos: the UI-free runtime (loaded via @elizaos/plugin-todos/plugin) now
+  // declares the /todos view, so it must load wherever notes/calendar do or
+  // the view never reaches the registry (full profile seeded it from nowhere:
+  // it was only in LEAN_CHAT_PLUGINS, so "what are my todos?" had no backing
+  // plugin on desktop/VPS installs).
+  { plugin: "@elizaos/plugin-todos", viewEveryPlatform: true },
   // Privileged ElizaOS-Android overlay app plugins (system surfaces).
   { plugin: "@elizaos/plugin-wifi", aospCore: true },
   { plugin: "@elizaos/plugin-contacts", aospCore: true },

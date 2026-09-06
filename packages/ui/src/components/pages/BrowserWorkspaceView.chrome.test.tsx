@@ -286,30 +286,40 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(
       toolbar.contains(screen.getByTestId("browser-workspace-address-input")),
     ).toBe(true);
-    const back = screen.getByRole("button", { name: "Back to launcher" });
+    const back = screen.getByRole("button", { name: "Back" });
     expect(toolbar.contains(back)).toBe(true);
     expect(back.className).toMatch(/(?:^|\s)(?:h-11|size-11)(?:\s|$)/);
   });
 
-  it("invokes launcher navigation once from the toolbar back button", async () => {
-    const pushState = vi
-      .spyOn(shellHistory, "pushState")
-      .mockImplementation(() => {});
+  it("uses browser history without navigating the shell home", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
+    vi.mocked(client.fetch).mockResolvedValue({
+      tab: GOOGLE_WORKSPACE.tabs[0],
+    });
+    const pushState = vi.spyOn(shellHistory, "pushState");
     try {
       render(<BrowserWorkspaceView />);
-      expect(await screen.findByText("No page open")).not.toBeNull();
-      const toolbar = screen.getByTestId("browser-workspace-toolbar");
-      const back = screen.getByRole("button", { name: "Back to launcher" });
-      expect(toolbar.contains(back)).toBe(true);
-      fireEvent.click(back);
-      expect(pushState).toHaveBeenCalledTimes(1);
-      expect(pushState).toHaveBeenCalledWith(null, "", "/views");
+      await screen.findByTitle("Google");
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      await waitFor(() =>
+        expect(client.fetch).toHaveBeenCalledWith(
+          "/api/browser-workspace/command",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              subaction: "back",
+              id: GOOGLE_WORKSPACE.tabs[0].id,
+            }),
+          },
+        ),
+      );
+      expect(pushState).not.toHaveBeenCalled();
     } finally {
       pushState.mockRestore();
     }
   });
 
-  it("reserves the measured resting chat footprint without duplicating the workspace safe-area floor", async () => {
+  it("reserves the resting chat footprint without reapplying bottom insets", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
 
@@ -433,6 +443,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(await screen.findByText("No page open")).not.toBeNull();
 
     const trigger = screen.getByTestId("browser-workspace-tab-fold-control");
+    expect(trigger.className).toContain("min-w-11");
     trigger.focus();
     fireEvent.click(trigger);
 
@@ -653,9 +664,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("browser-workspace-nav-new-tab")).toBeNull();
     expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
     expect(screen.queryByRole("button", { name: "Go" })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Back to launcher" }),
-    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 

@@ -218,6 +218,9 @@ export function formatActionResultsForPrompt(
 			if (errorText) {
 				lines.push(`Error: ${formatCompleteActionResultText(errorText, 0)}`);
 			}
+			if (result.replyFailure) {
+				lines.push(`Reply unavailable: ${JSON.stringify(result.replyFailure)}`);
+			}
 
 			const modelData = result.promptData ?? result.data;
 			if (includeData && modelData && Object.keys(modelData).length > 0) {

@@ -263,6 +263,61 @@ describe("composeMomentJudgeContext", () => {
 });
 
 describe("makeModelMomentCheckGate", () => {
+  it("blocks an existing first-run morning brief outside the owner morning window", async () => {
+    const fake = makeFakeRuntime({
+      modelOutput: '{"decision":"send","reason":"owner active"}',
+    });
+    const gate = makeModelMomentCheckGate(fake.runtime);
+    const task = makeTask({
+      kind: "watcher",
+      trigger: {
+        kind: "relative_to_anchor",
+        anchorKey: "wake.confirmed",
+        offsetMinutes: 0,
+      },
+      metadata: { firstRunPack: "defaults", slot: "morningBrief" },
+    });
+    const decision = await gate.evaluate(
+      task,
+      makeGateContext(task, {
+        nowIso: "2026-09-02T18:41:15.117Z",
+        ownerFacts: {
+          timezone: "America/New_York",
+          morningWindow: { start: "06:00", end: "11:00" },
+        },
+      }),
+    );
+    expect(decision).toEqual({
+      kind: "deny",
+      reason:
+        "model_moment_check: morning brief is outside the owner morning window",
+    });
+    expect(fake.prompts).toHaveLength(0);
+  });
+
+  it("still asks the model to judge a morning brief inside the owner window", async () => {
+    const fake = makeFakeRuntime({
+      modelOutput: '{"decision":"send","reason":"right time"}',
+    });
+    const gate = makeModelMomentCheckGate(fake.runtime);
+    const task = makeTask({
+      kind: "recap",
+      metadata: { packKey: "morning-brief", recordKey: "morning-brief" },
+    });
+    const decision = await gate.evaluate(
+      task,
+      makeGateContext(task, {
+        nowIso: "2026-09-02T12:15:00.000Z",
+        ownerFacts: {
+          timezone: "America/New_York",
+          morningWindow: { start: "06:00", end: "11:00" },
+        },
+      }),
+    );
+    expect(decision).toEqual({ kind: "allow" });
+    expect(fake.prompts).toHaveLength(1);
+  });
+
   it("honors a send verdict with allow", async () => {
     const fake = makeFakeRuntime({
       modelOutput: '{"decision":"send","reason":"owner just active"}',

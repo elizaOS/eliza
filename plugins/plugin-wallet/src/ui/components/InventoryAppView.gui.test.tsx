@@ -171,6 +171,19 @@ vi.mock("@elizaos/ui", () => {
               : null,
             actions,
           ),
+        Loading: ({
+          heading,
+          variant: _variant,
+          ...props
+        }: React.HTMLAttributes<HTMLDivElement> & {
+          heading?: React.ReactNode;
+          variant?: string;
+        }) =>
+          React.createElement(
+            "div",
+            { role: "status", "aria-busy": true, ...props },
+            heading,
+          ),
         Notice: ({
           tone: _tone,
           actions,
@@ -953,7 +966,8 @@ describe("InventoryView GUI — loading hierarchy", () => {
     const loading = await screen.findByTestId("wallet-balances-loading");
 
     expect(loading.getAttribute("aria-label")).toBe("Loading wallet balances");
-    expect(loading.className).toContain("min-h-40");
+    expect(loading.getAttribute("aria-busy")).toBe("true");
+    expect(loading.textContent).toBe("Loading wallet…");
     expect(screen.queryByTestId("wallets-sidebar")).toBeNull();
     expect(screen.queryByText("No visible tokens.")).toBeNull();
     expect(screen.queryByText("Your wallet is empty.")).toBeNull();

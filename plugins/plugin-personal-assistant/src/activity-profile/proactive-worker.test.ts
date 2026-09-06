@@ -53,8 +53,8 @@ const gmFavorableProfile = {
   screenContextConfidence: null,
 } as unknown as ActivityProfile;
 
-// Mock ONLY the profile I/O boundary; everything else in the module under
-// test (and, on the retired code path, the pure planners) runs for real.
+// Mock profile I/O; keep the planner and dispatch logic real. The approval
+// persistence boundary below records any unintended enqueue without sending.
 vi.mock("./service.js", () => ({
   resolveOwnerEntityId: vi.fn(
     async () => "owner-entity-0000-0000-0000-000000000001",
@@ -64,6 +64,13 @@ vi.mock("./service.js", () => ({
   profileNeedsRebuild: vi.fn(() => false),
   buildActivityProfile: vi.fn(async () => gmFavorableProfile),
   refreshCurrentState: vi.fn(async () => gmFavorableProfile),
+}));
+
+const approvalEnqueue = vi.hoisted(() =>
+  vi.fn(async () => ({ id: "unexpected-maintenance-approval" })),
+);
+vi.mock("../lifeops/approval-queue.js", () => ({
+  createApprovalQueue: vi.fn(() => ({ enqueue: approvalEnqueue })),
 }));
 
 // Boundary guard on the parallel planner: the retired worker consulted
@@ -92,6 +99,8 @@ vi.mock("./proactive-planner.js", async (importOriginal) => {
   };
 });
 
+import { planJob } from "../lifeops/background-planner.js";
+import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 import * as workerModule from "./proactive-worker.js";
 import {
   executeProactiveTask,
@@ -116,6 +125,8 @@ describe("proactive-worker no longer fires outside the runner (grep-level)", () 
     "planGoalCheckIns",
     "planSocialOveruseCheck",
     "recordFiredAction",
+    "planJob",
+    "enqueueIfSensitive",
   ])("source contains no dispatch surface: %s", (token) => {
     expect(workerSource).not.toContain(token);
   });
@@ -189,8 +200,21 @@ function createTripwireRuntime(): {
     async deleteCache(key: string): Promise<boolean> {
       return cache.delete(key);
     },
-    // No useModel → the WS5 planner throws BackgroundPlannerError, which the
-    // tick catches and logs; nothing else may depend on a model.
+    // A functioning model is essential: a missing model hid the unsolicited
+    // daily-brief planning path behind its caught BackgroundPlannerError.
+    useModel: vi.fn(async () =>
+      JSON.stringify({
+        action: "send_email",
+        payload: {
+          to: ["owner@example.test"],
+          subject: "Morning brief",
+          body: "Your calendar is clear today.",
+        },
+        requiresApproval: true,
+        channel: "email",
+        reason: "Offer a morning brief",
+      }),
+    ),
     getService: (type: string) =>
       type === "agent_event" || type === "AGENT_EVENT"
         ? agentEventService
@@ -216,17 +240,49 @@ function createTripwireRuntime(): {
 describe("proactive-worker behavioral tripwire", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    parallelPlannerInvocations.length = 0;
   });
 
-  it("a GM-favorable tick plans nothing, sends nothing, and emits nothing", async () => {
-    const { runtime, sent, emitted } = createTripwireRuntime();
-    parallelPlannerInvocations.length = 0;
+  it("the model fixture reaches the real sensitive-plan dispatch boundary", async () => {
+    const { runtime } = createTripwireRuntime();
+    const context = {
+      jobKind: "daily_brief" as const,
+      subjectUserId: "owner-entity-0000-0000-0000-000000000001",
+      snapshot: {},
+      availableChannels: ["email" as const],
+      trigger: "test-approved-job",
+    };
+    const plan = await planJob(runtime, context);
+    const result = await enqueueIfSensitive(runtime, context, plan);
 
-    const result = await executeProactiveTask(runtime, {
-      now: GM_FAVORABLE_NOW,
-    });
+    expect(runtime.useModel).toHaveBeenCalledOnce();
+    expect(approvalEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedBy: "background-job:daily_brief",
+        action: "send_email",
+      }),
+    );
+    expect(result.skipped).toBe(false);
+  });
 
-    expect(result.nextInterval).toBeGreaterThan(0);
+  it("repeated GM-favorable ticks maintain the profile without planning, approvals, or delivery", async () => {
+    const { runtime, sent, emitted, updates } = createTripwireRuntime();
+
+    for (let tick = 0; tick < 2; tick++) {
+      const result = await executeProactiveTask(runtime, {
+        now: new Date(GM_FAVORABLE_NOW.getTime() + tick * 60_000),
+      });
+      expect(result.nextInterval).toBeGreaterThan(0);
+    }
+
+    expect(updates).toHaveLength(2);
+    for (const update of updates) {
+      expect(update.patch.metadata?.activityProfile).toEqual(
+        gmFavorableProfile,
+      );
+    }
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(approvalEnqueue).not.toHaveBeenCalled();
     // The retired path consulted the parallel planner on every tick and, at
     // 09:00 local with an active owner and an empty fired log, produced a
     // pending GM for direct delivery. The single scheduler owns that now:

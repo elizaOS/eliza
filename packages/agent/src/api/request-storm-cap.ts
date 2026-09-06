@@ -7,18 +7,25 @@
  * beyond it receives 429 + Retry-After before auth resolution and route
  * handlers spend anything. Requests without a bearer (cookie-auth pages,
  * internal loopback service calls) and long-lived streaming endpoints are
- * exempt — this cap targets high-frequency polling, never conversations,
- * sockets, or media.
+ * exempt. This is a politeness cap for authenticated polling loops, never a
+ * substitute for edge rate limiting against adversarial traffic.
  */
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
+import { isLoopbackRemoteAddress } from "@elizaos/shared";
 import { resolveSelfApiCredential } from "@elizaos/shared/runtime-env";
 
-const BUCKET_CAPACITY = 30;
+// One cold dashboard hydration fans out across the independent product
+// surfaces (chat, views, plugins, approvals, notifications, and settings).
+// Leave room for two complete hydration bursts so a reconnect or immediate
+// reload cannot throttle its own recovery. The 10 req/s refill still caps the
+// observed 20 req/s runaway poller after a short sustained interval.
+const BUCKET_CAPACITY = 80;
 const REFILL_PER_SECOND = 10;
 const RETRY_AFTER_SECONDS = 3;
 const IDLE_EVICT_MS = 10 * 60 * 1000;
+const EVICT_SCAN_INTERVAL_MS = 60 * 1000;
 const WARN_INTERVAL_MS = 60 * 1000;
 
 interface Bucket {
@@ -29,14 +36,17 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 
-const EXEMPT_PATH_MARKERS = [
-  "/messages/stream",
-  "/ws",
-  "/api/voice",
-  "/api/media/",
-] as const;
+let nextEvictScanAt = 0;
 
-let selfCredential: string | null | undefined;
+function isExemptPath(pathname: string): boolean {
+  return (
+    pathname === "/ws" ||
+    pathname.endsWith("/messages/stream") ||
+    pathname === "/api/voice" ||
+    pathname.startsWith("/api/voice/") ||
+    pathname.startsWith("/api/media/")
+  );
+}
 
 function bearerKey(req: IncomingMessage): string | null {
   const header = req.headers.authorization;
@@ -47,15 +57,24 @@ function bearerKey(req: IncomingMessage): string | null {
   // status frames) authenticate with the shared self-API credential. Capping
   // that shared identity throttles the agent's own actions — observed live as
   // hung turns — so it is exempt; the cap exists for per-device sessions.
-  if (selfCredential === undefined) {
-    selfCredential = resolveSelfApiCredential(process.env) ?? null;
+  // Bind the exemption to the actual loopback transport. Token equality alone
+  // would let a remote caller test a suspected credential by observing whether
+  // sustained traffic is capped before authentication runs.
+  const selfCredential = resolveSelfApiCredential(process.env);
+  if (
+    selfCredential !== null &&
+    token === selfCredential &&
+    isLoopbackRemoteAddress(req.socket?.remoteAddress)
+  ) {
+    return null;
   }
-  if (selfCredential !== null && token === selfCredential) return null;
   return createHash("sha256").update(token).digest("hex").slice(0, 16);
 }
 
 function evictIdle(now: number): void {
   if (buckets.size < 512) return;
+  if (now < nextEvictScanAt) return;
+  nextEvictScanAt = now + EVICT_SCAN_INTERVAL_MS;
   for (const [key, bucket] of buckets) {
     if (now - bucket.updatedAt > IDLE_EVICT_MS) buckets.delete(key);
   }
@@ -70,9 +89,7 @@ export function maybeCapRequestStorm(
   pathname: string,
 ): boolean {
   if (req.method === "OPTIONS") return false;
-  if (EXEMPT_PATH_MARKERS.some((marker) => pathname.includes(marker))) {
-    return false;
-  }
+  if (isExemptPath(pathname)) return false;
   const key = bearerKey(req);
   if (!key) return false;
 
@@ -116,8 +133,13 @@ export function maybeCapRequestStorm(
   return true;
 }
 
-/** Test-only: reset all buckets and re-resolve the self credential. */
+/** Test-only: reset all request-budget state. */
 export function __resetRequestStormCapForTests(): void {
   buckets.clear();
-  selfCredential = undefined;
+  nextEvictScanAt = 0;
+}
+
+/** Test-only: inspect bounded in-memory state without exposing session keys. */
+export function __requestStormCapBucketCountForTests(): number {
+  return buckets.size;
 }

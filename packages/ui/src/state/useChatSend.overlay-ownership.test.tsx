@@ -5,12 +5,15 @@ import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ChatActionResultSummary,
   ChatToolCallEvent,
   CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { resetCompletedActionNavigationForTests } from "../completed-action-navigation";
+import { NAVIGATE_VIEW_EVENT } from "../events";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
@@ -216,6 +219,75 @@ beforeEach(() => {
 });
 
 describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
+  it.each(["main", "action"])(
+    "rejects a %s ready receipt after a real A to B to A ownership change",
+    async (kind) => {
+      const actionResults: ChatActionResultSummary[] = [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ];
+      const terminal = { text: "Completed", completed: true, actionResults };
+      let finish: ((value: typeof terminal) => void) | undefined;
+      let ready: ((value: ChatActionResultSummary[]) => void) | undefined;
+      mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        (...args: unknown[]) => {
+          ready = args[10] as typeof ready;
+          return new Promise((resolve) => {
+            finish = resolve;
+          });
+        },
+      );
+      const harness = makeHarness();
+      harness.activeConversationIdRef.current = "conv-a";
+      const hook = mountComposed(harness);
+      const navigate = vi.fn();
+      window.addEventListener(NAVIGATE_VIEW_EVENT, navigate);
+      let send: Promise<void> | undefined;
+      try {
+        act(() => {
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-a",
+          );
+          send =
+            kind === "action"
+              ? hook.result.current.send.sendActionMessage("Open Calendar")
+              : hook.result.current.send.sendChatText("Open Calendar");
+        });
+        await flushPendingWork();
+        expect(ready).toEqual(expect.any(Function));
+        act(() => {
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-b",
+          );
+          harness.activeConversationIdRef.current = "conv-b";
+          hook.result.current.loaders.claimConversationMessagesOwnership(
+            "conv-a",
+          );
+          harness.activeConversationIdRef.current = "conv-a";
+          ready?.(actionResults);
+        });
+        expect(navigate).not.toHaveBeenCalled();
+        await act(async () => {
+          finish?.(terminal);
+          await send;
+        });
+        expect(navigate).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => {
+          finish?.(terminal);
+          await send;
+        });
+        window.removeEventListener(NAVIGATE_VIEW_EVENT, navigate);
+        hook.unmount();
+        resetCompletedActionNavigationForTests();
+      }
+    },
+  );
+
   it("performs a true cold first-send handoff without assigning loadedConversationIdRef in the test", async () => {
     mocks.client.createConversation.mockResolvedValue({
       conversation: conversation("conv-a"),
@@ -939,6 +1011,122 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       { id: "temp-resp-partial-a", text: "A partial survives" },
     ]);
   });
+
+  it.each([false, true])(
+    "reconciles a persisted user after pre-done abort and scheduled delivery (earlier identical turn: %s)",
+    async (earlierIdenticalTurn) => {
+      const text = "Go home. Which website did we read earlier?";
+      const startedAt = Date.now();
+      const previousUser: ConversationMessage = {
+        id: "previous-user",
+        role: "user",
+        text: earlierIdenticalTurn ? text : "Read Example Domain",
+        timestamp: startedAt - 2_000,
+      };
+      const previousAssistant: ConversationMessage = {
+        id: "previous-assistant",
+        role: "assistant",
+        text: "We read Example Domain.",
+        timestamp: startedAt - 1_000,
+      };
+      const serverMessages = [previousUser, previousAssistant];
+      mocks.client.getConversationMessages.mockImplementation(async () => ({
+        messages: [...serverMessages],
+      }));
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        (...args: unknown[]) => {
+          serverMessages.push({
+            id: "persisted-interrupted-user",
+            role: "user",
+            text: args[1] as string,
+            timestamp: Date.now(),
+          });
+          const signal = args[4] as AbortSignal;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        },
+      );
+      const harness = makeHarness();
+      harness.activeConversationIdRef.current = "conv-a";
+      const hook = mountComposed(harness);
+      let send: Promise<void> | undefined;
+      try {
+        await act(async () => {
+          await hook.result.current.loaders.loadConversationMessages("conv-a");
+        });
+        act(() => {
+          send = hook.result.current.send.sendChatText(text, {
+            conversationId: "conv-a",
+            clientMessageId: "interrupted-user",
+          });
+        });
+        await flushPendingWork();
+        expect(
+          mocks.client.sendConversationMessageStream,
+        ).toHaveBeenCalledTimes(1);
+        expect(
+          serverMessages.filter(
+            (message) => message.id === "persisted-interrupted-user",
+          ),
+        ).toHaveLength(1);
+        const controller = harness.sendDepsBase.chatAbortRef.current;
+        expect(controller).not.toBeNull();
+        await act(async () => {
+          controller?.abort();
+          await send;
+        });
+        expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
+          "conv-a",
+          "ui-chat-abort",
+        );
+
+        const scheduled: ConversationMessage = {
+          id: "independent-scheduled-assistant",
+          role: "assistant",
+          text: "Your independently scheduled brief is ready.",
+          timestamp: Date.now() + 1,
+          source: "lifeops-scheduled-task",
+        };
+        serverMessages.push(scheduled);
+        // The ready-phase proactive-message consumer appends this independent
+        // durable row; it does not rekey or otherwise settle the chat user row.
+        act(() => {
+          harness.setConversationMessages((previous) => [
+            ...previous,
+            scheduled,
+          ]);
+        });
+        // First resume: cached old history plus the interrupted overlay, then
+        // canonical newest history. Repeat to exercise the newly warmed cache.
+        for (let reload = 0; reload < 2; reload += 1) {
+          await act(async () => {
+            await hook.result.current.loaders.loadConversationMessages(
+              "conv-a",
+            );
+          });
+          expect(
+            harness.conversationMessagesRef.current.map(
+              (message) => message.id,
+            ),
+          ).toEqual([
+            "previous-user",
+            "previous-assistant",
+            "persisted-interrupted-user",
+            "independent-scheduled-assistant",
+          ]);
+        }
+      } finally {
+        harness.sendDepsBase.chatAbortRef.current?.abort();
+        await send;
+        hook.unmount();
+      }
+    },
+  );
 
   it("keeps an async local command valid across a same-id reload", async () => {
     let resolveCommands: ((value: never[]) => void) | undefined;

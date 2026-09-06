@@ -449,6 +449,7 @@ describe("authenticated view loopback requests", () => {
 		};
 		const result = await runViewsShow({
 			client,
+			options: { action: "show", view: "settings" },
 			message: {
 				entityId: "user-1",
 				roomId: "room-1",

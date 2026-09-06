@@ -53,7 +53,8 @@ function useDelayElapsed(active: boolean, delayMs: number): boolean {
 }
 
 function brandName(): string {
-  return getBootConfig().branding?.appName ?? "elizaOS";
+  const name = getBootConfig().branding?.appName;
+  return !name || name === "Eliza" ? "elizaOS" : name;
 }
 
 function isManagedDesktopStartupSurface(): boolean {
@@ -145,17 +146,23 @@ function StartupLoading(props: { phase: string; status: string }) {
       aria-live="polite"
       aria-busy="true"
       className={`fixed inset-0 flex items-center justify-center overflow-hidden ${LAUNCH_SURFACE}`}
-      style={{ fontFamily: "var(--font-sans)" }}
+      style={{ fontFamily: "system-ui, sans-serif" }}
     >
-      <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
-        <div className="flex items-center justify-center gap-3">
-          <BrandMark className="size-12" />
-          <span className="text-4xl font-medium leading-none tracking-normal">
+      <div className="relative z-10 flex w-full max-w-[384px] flex-col items-center gap-[20px] px-[24px] text-center">
+        <div className="flex items-center justify-center gap-[12px]">
+          <BrandMark className="size-[48px]" />
+          <span
+            className="font-medium leading-none tracking-normal"
+            style={{ fontSize: 36 }}
+          >
             {brandName()}
           </span>
         </div>
 
-        <p className="min-h-5 text-sm opacity-80 animate-pulse motion-reduce:animate-none">
+        <p
+          className="opacity-80 animate-pulse motion-reduce:animate-none"
+          style={{ minHeight: 20, fontSize: 14, lineHeight: "20px", margin: 0 }}
+        >
           {props.status}
         </p>
       </div>

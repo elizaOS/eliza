@@ -20,6 +20,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const paramsRef = vi.hoisted(() => ({
   current: { appId: "app-test-1", chargeId: "charge-test-1" },
 }));
+const locationRef = vi.hoisted(() => ({
+  current: {
+    pathname: "/pay/app-test-1/charge-test-1",
+    search: "",
+  },
+}));
 const apiMock = vi.hoisted(() => vi.fn());
 // A stable translator: an unstable `t` identity would re-arm the load effect
 // every render and consume the checkout mock as a load response.
@@ -43,10 +49,7 @@ vi.mock("react-router-dom", () => ({
   Link: ({ children, ...props }: { children: ReactNode }) => (
     <a {...props}>{children}</a>
   ),
-  useLocation: () => ({
-    pathname: "/pay/app-test-1/charge-test-1",
-    search: "",
-  }),
+  useLocation: () => locationRef.current,
   useNavigate: () => vi.fn(),
   useParams: () => paramsRef.current,
 }));
@@ -99,10 +102,12 @@ function appChargeDetails() {
 describe("AppChargePaymentPage checkout navigation guard", () => {
   beforeEach(() => {
     apiMock.mockReset();
+    locationRef.current.search = "";
   });
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -165,5 +170,28 @@ describe("AppChargePaymentPage checkout navigation guard", () => {
       ),
     ).toBeTruthy();
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the charge expiration is malformed", async () => {
+    const details = appChargeDetails();
+    details.charge.expiresAt = "not-a-date";
+    locationRef.current.search = "?payment=success";
+    const timeoutSpy = vi.spyOn(window, "setTimeout");
+    apiMock.mockResolvedValue(details);
+
+    render(<AppChargePaymentPage />);
+
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: /pay with card/i })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: /pay with crypto/i })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(timeoutSpy).not.toHaveBeenCalledWith(expect.any(Function), 3000);
   });
 });

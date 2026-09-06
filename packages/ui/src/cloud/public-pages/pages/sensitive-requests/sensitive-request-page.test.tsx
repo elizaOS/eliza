@@ -1,12 +1,10 @@
-/** Verifies SensitiveRequestPage — image/file upload (#8910) through the package's configured test harness. */
+/** Verifies SensitiveRequestPage token hygiene and image/file upload behavior. */
 // @vitest-environment jsdom
 
 /**
- * `SensitiveRequestPage` image/file upload (#8910): an image field renders as a
- * file input with camera capture (not filtered out) and delivers the upload as
- * a base64 data URL through the existing submit path, an over-`maxBytes` upload
- * is rejected and never submitted, and a non-image field renders without
- * forcing the camera. The router and api-client are doubled; the page is real.
+ * The URL credential is removed from browser history before form loading while
+ * the captured query still reaches load/submit. Image fields keep their camera,
+ * base64, size-limit, and generic-file behavior. Router and API are doubled.
  */
 
 import {
@@ -16,6 +14,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // --- collaborator doubles (hoisted so vi.mock factories can close over them) ---
@@ -44,6 +48,29 @@ vi.mock("../../../lib/api-client", () => {
 });
 
 vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+
+vi.mock("../../../../components/primitives", () => {
+  const Container = ({ children }: { children?: ReactNode }) => (
+    <div>{children}</div>
+  );
+  return {
+    Alert: Container,
+    AlertDescription: Container,
+    AlertTitle: Container,
+    Button: ({
+      children,
+      ...props
+    }: ButtonHTMLAttributes<HTMLButtonElement>) => (
+      <button {...props}>{children}</button>
+    ),
+    Input: (props: InputHTMLAttributes<HTMLInputElement>) => (
+      <input {...props} />
+    ),
+    Textarea: (props: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+      <textarea {...props} />
+    ),
+  };
+});
 
 import SensitiveRequestPage from "./sensitive-request-page";
 
@@ -94,8 +121,12 @@ function primeApi(request: unknown) {
   return submits;
 }
 
-describe("SensitiveRequestPage — image/file upload (#8910)", () => {
-  afterEach(() => cleanup());
+describe("SensitiveRequestPage", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    window.history.replaceState(null, "", "/");
+  });
   beforeEach(() => {
     apiMock.mockReset();
     paramsRef.current = { requestId: "req_img_1" };
@@ -112,6 +143,31 @@ describe("SensitiveRequestPage — image/file upload (#8910)", () => {
     expect(input.type).toBe("file");
     expect(input.accept).toBe("image/png");
     expect(input.getAttribute("capture")).toBe("environment");
+  });
+
+  it("removes the request token from browser history before loading the form", async () => {
+    const path =
+      "/sensitive-requests/req_img_1?token=tok-secret&source=chat#form";
+    window.history.replaceState(null, "", path);
+    locationRef.current = { search: "?token=tok-secret&source=chat" };
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+    primeApi(imageRequest());
+
+    render(<SensitiveRequestPage />);
+
+    await screen.findByTestId("sensitive-request-file-seed_photo");
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      window.history.state,
+      "",
+      "/sensitive-requests/req_img_1?source=chat#form",
+    );
+    expect(replaceStateSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      apiMock.mock.invocationCallOrder[0],
+    );
+    expect(apiMock).toHaveBeenCalledWith(
+      "/api/v1/sensitive-requests/req_img_1?token=tok-secret&source=chat",
+      { skipAuth: true },
+    );
   });
 
   it("delivers the uploaded image as a base64 data URL through the existing submit path", async () => {

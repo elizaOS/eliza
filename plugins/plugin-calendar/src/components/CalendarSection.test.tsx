@@ -143,18 +143,6 @@ vi.mock("./EventEditorDrawer.js", () => ({
     ) : null,
 }));
 
-vi.mock("./CalendarSourceManager.js", () => ({
-  CalendarSourceManager: ({
-    sourceHealth,
-  }: {
-    sourceHealth: LifeOpsCalendarSourceHealth[];
-  }) => (
-    <div data-testid="calendar-source-manager">
-      {sourceHealth.length} managed sources
-    </div>
-  ),
-}));
-
 import { CalendarSection } from "./CalendarSection.js";
 
 // ---------------------------------------------------------------------------
@@ -483,7 +471,7 @@ describe("CalendarSection", () => {
     expect(screen.getByText("Calendar failed to load.")).toBeTruthy();
   });
 
-  it("shows complete source provenance and freshness without copying event titles into the health strip", () => {
+  it("keeps provider diagnostics out of the owner calendar", () => {
     calendarState.current = makeResult({
       events: [
         evt({
@@ -497,72 +485,13 @@ describe("CalendarSection", () => {
 
     render(<CalendarSection {...noopProps} />);
 
-    const health = screen.getByRole("region", { name: "Calendar sources" });
-    expect(within(health).getByText("1 source current")).toBeTruthy();
-    expect(within(health).getByText("Google · Family")).toBeTruthy();
-    expect(within(health).getByText(/just now/i)).toBeTruthy();
     expect(
-      within(health).queryByText("Private pediatric appointment"),
+      screen.queryByRole("region", { name: "Calendar sources" }),
     ).toBeNull();
+    expect(screen.queryByText("1 source current")).toBeNull();
+    expect(screen.queryByText("Google · Family")).toBeNull();
+    expect(screen.queryByText(/managed sources/i)).toBeNull();
     expect(screen.getByText("Private pediatric appointment")).toBeTruthy();
-  });
-
-  it("renders partial coverage with stale and failed source freshness", () => {
-    calendarState.current = makeResult({
-      feedState: "partial",
-      status: "partial",
-      sources: [
-        calendarSource(),
-        calendarSource({
-          key: {
-            provider: "microsoft",
-            side: "owner",
-            grantId: "grant-family",
-            connectorAccountId: "account-family",
-            calendarId: "family",
-          },
-          summary: "Family",
-          status: "stale",
-          syncedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-          error: {
-            code: "CALENDAR_REFRESH_FAILED",
-            message: "Provider returned a private diagnostic.",
-            retryable: true,
-          },
-        }),
-        calendarSource({
-          key: {
-            provider: "ics",
-            side: "owner",
-            grantId: "grant-school",
-            connectorAccountId: "account-school",
-            calendarId: "school",
-          },
-          summary: "School",
-          status: "error",
-          syncedAt: null,
-          error: {
-            code: "ICS_FETCH_FAILED",
-            message: "Secret source URL failed.",
-            retryable: true,
-          },
-        }),
-      ],
-    });
-
-    render(<CalendarSection {...noopProps} />);
-
-    const health = screen.getByRole("region", { name: "Calendar sources" });
-    expect(
-      within(health).getByText("Partial calendar · 2 sources need attention"),
-    ).toBeTruthy();
-    expect(within(health).getByText("Outlook · Family")).toBeTruthy();
-    expect(within(health).getByText(/stale · 3h ago/i)).toBeTruthy();
-    expect(within(health).getByText("Subscription · School")).toBeTruthy();
-    expect(within(health).getByText(/failed · no cache/i)).toBeTruthy();
-    expect(
-      within(health).queryByText(/private diagnostic|secret source/i),
-    ).toBeNull();
   });
 
   it("distinguishes a revoked disconnected source from a healthy empty calendar", () => {
@@ -584,37 +513,16 @@ describe("CalendarSection", () => {
 
     render(<CalendarSection {...noopProps} />);
 
-    const health = screen.getByRole("region", { name: "Calendar sources" });
     expect(
-      within(health).getByText("Calendar sources unavailable"),
-    ).toBeTruthy();
-    expect(within(health).getByText("disconnected")).toBeTruthy();
+      screen.queryByRole("region", { name: "Calendar sources" }),
+    ).toBeNull();
+    expect(screen.queryByText("disconnected")).toBeNull();
     expect(
       screen.getByRole("status", { name: "Calendar unavailable" }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("status", { name: "No events in this range" }),
     ).toBeNull();
-  });
-
-  it("refreshes source truth from the accessible strip control", () => {
-    render(<CalendarSection {...noopProps} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Refresh calendar" }));
-
-    expect(refresh).toHaveBeenCalledTimes(1);
-  });
-
-  it("disables the refresh control while source refresh is in flight", () => {
-    calendarState.current = makeResult({ loading: true, refreshing: true });
-
-    render(<CalendarSection {...noopProps} />);
-
-    const button = screen.getByRole("button", {
-      name: "Refreshing calendar sources",
-    });
-    expect(button.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("Refreshing calendar sources")).toBeTruthy();
   });
 
   it("surfaces the next upcoming event as one quiet proactive line", () => {

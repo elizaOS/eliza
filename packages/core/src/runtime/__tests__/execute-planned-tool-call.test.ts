@@ -114,6 +114,61 @@ function appliedEffectReceipt(): EffectReceipt {
 }
 
 describe("executePlannedToolCall", () => {
+	it("starts the handler without waiting for ACTION_STARTED subscribers and keeps the lifecycle order", async () => {
+		// Live 2026-09-05: 30-145 ms of ACTION_STARTED subscriber work ran in
+		// front of every tool handler.
+		let releaseStarted!: () => void;
+		const startedGate = new Promise<void>((resolve) => {
+			releaseStarted = resolve;
+		});
+		const events: string[] = [];
+		const emitEvent = vi.fn(async (eventType: string) => {
+			if (eventType === EventType.ACTION_STARTED) {
+				await startedGate;
+			}
+			events.push(eventType);
+		});
+		let handlerStarted!: () => void;
+		const handlerRan = new Promise<void>((resolve) => {
+			handlerStarted = resolve;
+		});
+		const handler = vi.fn(async () => {
+			handlerStarted();
+			return { success: true, text: "done" };
+		});
+		const runtime = makeRuntime(
+			[makeAction({ name: "TEST_ACTION", handler })],
+			{
+				emitEvent,
+			},
+		);
+
+		const pending = executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "TEST_ACTION", params: {} },
+		);
+		// The handler runs while the ACTION_STARTED dispatch is still blocked.
+		await Promise.race([
+			handlerRan,
+			new Promise<never>((_, reject) =>
+				setTimeout(
+					() => reject(new Error("handler waited for ACTION_STARTED")),
+					250,
+				),
+			),
+		]);
+		expect(events).not.toContain(EventType.ACTION_COMPLETED);
+
+		releaseStarted();
+		const result = await pending;
+		expect(result.success).toBe(true);
+		expect(events).toEqual([
+			EventType.ACTION_STARTED,
+			EventType.ACTION_COMPLETED,
+		]);
+	});
+
 	it("matches action names exactly only", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const runtime = makeRuntime([makeAction({ name: "DOCUMENT", handler })]);

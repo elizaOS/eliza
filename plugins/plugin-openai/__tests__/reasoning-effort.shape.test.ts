@@ -109,7 +109,7 @@ describe("Cerebras default reasoning effort", () => {
     ).toBe("low");
   });
 
-  it("defaults to 'low' for zai-glm-4.7 (hybrid reasoning; the Cerebras default is gemma-4-31b)", () => {
+  it("defaults to 'low' for zai-glm-4.7 (hybrid reasoning)", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
     const opts = __INTERNAL_resolveProviderOptions(
       { prompt: "hi" } as never,
@@ -299,6 +299,63 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
     const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "zai-glm-4.7");
     const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
     expect(openai?.reasoningEffort).toBeUndefined();
+  });
+});
+
+describe("Cerebras Qwen 3.8 reasoning contract", () => {
+  it("accepts an explicit none effort for the supported Qwen endpoint", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "none" });
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      "qwen-3.8-27b"
+    );
+    expect(opts?.openai).toMatchObject({ reasoningEffort: "none" });
+  });
+  it.each([
+    "qwen-3.8-27b",
+    "cerebras:qwen-3.8-27b",
+    "cerebras/qwen-3.8-27b",
+    "openai/qwen-3.8-27b",
+  ])("defaults interactive calls to no reasoning for %s", (modelName) => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime, modelName);
+    expect(opts?.openai).toMatchObject({ reasoningEffort: "none" });
+  });
+
+  it("preserves explicit reasoning but honors Eliza thinking-off for planner calls", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "high" });
+    const normal = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      "qwen-3.8-27b"
+    );
+    const planner = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi", providerOptions: { eliza: { thinking: "off" } } } as never,
+      runtime,
+      "qwen-3.8-27b"
+    );
+    expect(normal?.openai).toMatchObject({ reasoningEffort: "high" });
+    expect(planner?.openai).toMatchObject({ reasoningEffort: "none" });
+  });
+
+  it.each(["qwen-3.8-27b-preview", "qwen-3.8-35b"])(
+    "does not infer support for %s",
+    (modelName) => {
+      const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+      const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime, modelName);
+      expect(opts?.openai).toBeUndefined();
+    }
+  );
+
+  it("does not set a Cerebras default on another endpoint", () => {
+    const runtime = buildRuntime({ OPENAI_API_KEY: "sk-test" });
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      "qwen-3.8-27b"
+    );
+    expect(opts?.openai).toBeUndefined();
   });
 });
 

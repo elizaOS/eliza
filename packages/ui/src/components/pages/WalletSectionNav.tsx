@@ -91,10 +91,7 @@ export function WalletSectionNav({
       <div className="flex shrink-0 flex-col">
         <div
           data-testid="wallet-section-header-inset"
-          className={cn(
-            isNativeWallet &&
-              "pt-[max(calc(var(--safe-area-top,0px)-2rem),0.75rem)]",
-          )}
+          className={cn(isNativeWallet && "pt-[var(--safe-area-top,0px)]")}
         >
           <ViewHeader title="Wallet" />
         </div>

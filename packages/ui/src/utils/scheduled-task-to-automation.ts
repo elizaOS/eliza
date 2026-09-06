@@ -101,7 +101,9 @@ export function scheduledTaskScheduleLabel(
     case "once":
       return "Once";
     case "relative_to_anchor":
-      return `On ${trigger.anchorKey}`;
+      return trigger.anchorKey === "wake.confirmed"
+        ? "When you wake up"
+        : `On ${trigger.anchorKey}`;
     case "during_window":
       return `During ${trigger.windowKey}`;
     case "event":

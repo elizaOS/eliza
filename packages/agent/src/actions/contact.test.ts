@@ -194,6 +194,44 @@ describe("CONTACT exports and dispatch", () => {
     ).resolves.toBe(false);
   });
 
+  it("rechecks changed messages and conversation data when a state object is reused", async () => {
+    const { runtime } = makeRuntime();
+    const signalState: State = { values: {}, data: {}, text: "" };
+    const currentMessage = message("weather");
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+    currentMessage.content.text = "find contact Alice";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(true);
+    currentMessage.content.text = "weather";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+
+    signalState.values.recentMessages = "Please find contact Alice.";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(true);
+    signalState.values.recentMessages = "The weather is pleasant.";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage, signalState),
+    ).resolves.toBe(false);
+  });
+
+  it("rechecks a changed message when no composed state is supplied", async () => {
+    const { runtime } = makeRuntime();
+    const currentMessage = message("find contact Alice");
+    await expect(
+      contactAction.validate?.(runtime, currentMessage),
+    ).resolves.toBe(true);
+    currentMessage.content.text = "weather";
+    await expect(
+      contactAction.validate?.(runtime, currentMessage),
+    ).resolves.toBe(false);
+  });
+
   it("prefers action over subaction and op, while rejecting unknown operations", async () => {
     const { runtime, createEntity } = makeRuntime();
     const created = await invoke(runtime, {
@@ -538,8 +576,9 @@ describe("CONTACT update", () => {
       { callback },
     );
     expect(added.success).toBe(true);
-    expect(added.turnComplete).toBe(true);
-    expect(callback).toHaveBeenCalledOnce();
+    expect(added.modelReplyRequired).toBe(true);
+    expect(added.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
     expect(updateContact).toHaveBeenLastCalledWith(contactId, {
       categories: ["friend", "founder"],
       tags: ["vip", "investor"],

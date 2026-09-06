@@ -20,7 +20,7 @@ function chatClearanceOwners(container: HTMLElement): HTMLElement[] {
 describe("AppWorkspaceContent", () => {
   afterEach(cleanup);
 
-  it("keeps a fixed header inside the contained view boundary and reserves clearance once", () => {
+  it("keeps contained views full height and delegates clearance to their scrollers", () => {
     const { container } = render(
       <AppWorkspaceContent
         header={<div data-testid="workspace-header">Header</div>}
@@ -39,6 +39,8 @@ describe("AppWorkspaceContent", () => {
       container.querySelector('[data-shell-scroll-region="true"]'),
     ).toBeNull();
     expect(chatClearanceOwners(container)).toEqual([region]);
+    expect(region?.classList.contains(CHAT_CLEARANCE)).toBe(false);
+    expect(region?.className).toContain("[&_.eliza-chat-scroll]:");
   });
 
   it("keeps a fixed header outside the router-owned scroller and moves clearance onto that scroller", () => {

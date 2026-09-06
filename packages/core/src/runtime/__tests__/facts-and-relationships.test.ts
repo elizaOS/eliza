@@ -45,12 +45,16 @@ function makeState(): State {
 	};
 }
 
-function makeRuntime(modelResponse: unknown): FactsRuntime {
+function makeRuntime(
+	modelResponse: unknown,
+	settings: Record<string, string> = {},
+): FactsRuntime {
 	const runtime = {
 		agentId: "00000000-0000-0000-0000-000000000002" as UUID,
 		character: { name: "Eliza", system: "You are concise.", bio: "" },
 		actions: [],
 		providers: [],
+		getSetting: vi.fn((key: string) => settings[key]),
 		redactSecrets: vi.fn((text: string) =>
 			text.replace(/\b(?:sk|csk)-[A-Za-z0-9_-]+/g, "[REDACTED]"),
 		),
@@ -335,6 +339,264 @@ describe("runFactsAndRelationshipsStage", () => {
 		);
 	});
 
+	it("skips a Stage-1 fact an explicit MEMORY create already stored durably for the same message", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["prefers oat milk in coffee"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb1" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: {
+					text: "User prefers oat milk in coffee.",
+					source: "MEMORY",
+				},
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					category: "preference",
+					messageId: message.id,
+					keywords: ["preference"],
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["prefers oat milk in coffee"] },
+		});
+
+		expect(result.parsed.facts).toEqual([
+			{ subject: "user", fact: "prefers oat milk in coffee" },
+		]);
+		expect(result.written.facts).toBe(0);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it("suppresses only the author's own fact: a third-person fact in the same message persists under that participant", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [
+					{ subject: "user", fact: "prefers oat milk" },
+					{ subject: "Bob", fact: "prefers oat milk too" },
+				],
+				relationships: [],
+				thought: "two subjects",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb5" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User prefers oat milk.", source: "MEMORY" },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					category: "preference",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: {
+				facts: ["prefers oat milk", "Bob prefers oat milk too"],
+			},
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-0000000000b2",
+				content: expect.objectContaining({ text: "prefers oat milk too" }),
+				metadata: expect.objectContaining({
+					subject: "Bob",
+					subjectResolved: true,
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("never suppresses a fact whose subject the room could not resolve, even when the author's durable row matches", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [{ subject: "Carol", fact: "prefers oat milk" }],
+				relationships: [],
+				thought: "unresolved subject",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb6" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User prefers oat milk.", source: "MEMORY" },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["Carol prefers oat milk"] },
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: message.entityId,
+				metadata: expect.objectContaining({
+					subject: "Carol",
+					subjectResolved: false,
+					kind: "current",
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("still persists a Stage-1 fact when the same-message durable row has the opposite polarity", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["likes oat milk"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb3" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User does not like oat milk." },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["likes oat milk"] },
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores a same-message durable row authored by another participant", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["prefers oat milk in coffee"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb4" as UUID,
+				entityId: "00000000-0000-0000-0000-0000000000b2" as UUID,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: { text: "User prefers oat milk in their coffee." },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					messageId: message.id,
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["prefers oat milk in coffee"] },
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("still persists a Stage-1 fact when the durable row belongs to another message", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["prefers oat milk in coffee"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb2" as UUID,
+				entityId: "00000000-0000-0000-0000-000000000001" as UUID,
+				agentId: runtime.agentId,
+				roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+				content: { text: "User prefers oat milk in their coffee." },
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					messageId: "00000000-0000-0000-0000-00000000a0a0",
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { facts: ["prefers oat milk in coffee"] },
+		});
+
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
 	it("carries the provider that served THIS TEXT_LARGE call on the result (#13623)", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({ facts: ["a fact"], relationships: [], thought: "t" }),
@@ -546,6 +808,335 @@ describe("runFactsAndRelationshipsStage", () => {
 		};
 		expect(params.messages?.[1]?.content).not.toContain("room_entities:");
 	});
+
+	it("renders uuid relationship ends as names: the speaker's own id becomes User, a room entity its name", async () => {
+		const speaker = makeMessage().entityId as string;
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: speaker, predicate: "has_dog", object: "Biscuit" },
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "00000000-0000-0000-0000-0000000000a1",
+					},
+					{
+						subject: "user",
+						predicate: "knows",
+						object: "99999999-0000-0000-0000-000000000000",
+					},
+				],
+				thought: "three rels",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				relationships: [
+					{ subject: speaker, predicate: "has_dog", object: "Biscuit" },
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "00000000-0000-0000-0000-0000000000a1",
+					},
+					{
+						subject: "user",
+						predicate: "knows",
+						object: "99999999-0000-0000-0000-000000000000",
+					},
+				],
+			},
+		});
+		expect(result.written.relationships).toBe(2);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({ text: "User has_dog Biscuit" }),
+			}),
+			"facts",
+			true,
+		);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({ text: "user works_with Alice" }),
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("renders the agent and another owner's raw UUIDs without assigning either to the speaker", async () => {
+		const ownerId = "00000000-0000-0000-0000-000000000009" as UUID;
+		const agentId = makeMessage().agentId;
+		const relationships = [
+			{ subject: agentId, predicate: "works_with", object: "Alice" },
+			{ subject: ownerId, predicate: "works_with", object: "Alice" },
+		];
+		const runtime = makeRuntime(
+			JSON.stringify({ facts: [], relationships, thought: "named identities" }),
+			{ ELIZA_ADMIN_ENTITY_ID: ownerId },
+		);
+		vi.mocked(runtime.getEntitiesForRoom).mockResolvedValueOnce([
+			{ id: ownerId, names: ["Morgan"], agentId },
+			{
+				id: "00000000-0000-0000-0000-0000000000a1" as UUID,
+				names: ["Alice"],
+				agentId,
+			},
+		]);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { relationships },
+		});
+		expect(result.written.relationships).toBe(2);
+		for (const [subject, sourceEntityId] of [
+			["Eliza", agentId],
+			["Morgan", ownerId],
+		]) {
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({
+						text: `${subject} works_with Alice`,
+					}),
+					metadata: expect.objectContaining({ sourceEntityId }),
+				}),
+				"facts",
+				true,
+			);
+		}
+	});
+
+	it.each(["User", "Eliza", "Bob"])(
+		"preserves raw UUID identity when a room participant is named %s",
+		async (name) => {
+			const subjectId = "00000000-0000-0000-0000-0000000000b2" as UUID;
+			const objectId = "00000000-0000-0000-0000-0000000000a1" as UUID;
+			const relationships = [
+				{ subject: subjectId, predicate: "works_with", object: objectId },
+			];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "validated relationship",
+				}),
+			);
+			vi.mocked(runtime.getEntitiesForRoom).mockResolvedValueOnce([
+				{ id: subjectId, names: ["Bob"], agentId: runtime.agentId },
+				{ id: objectId, names: [name], agentId: runtime.agentId },
+			]);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(1);
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({ text: `Bob works_with ${name}` }),
+					metadata: expect.objectContaining({
+						sourceEntityId: subjectId,
+						targetEntityId: objectId,
+					}),
+				}),
+				"facts",
+				true,
+			);
+			expect(runtime.createRelationship).toHaveBeenCalledWith(
+				expect.objectContaining({
+					sourceEntityId: subjectId,
+					targetEntityId: objectId,
+				}),
+			);
+		},
+	);
+
+	it.each(["[REDACTED:ELIZA_ADMIN_ENTITY_ID]", "[REDACTED:OTHER_ENTITY_ID]"])(
+		"rejects the placeholder object %s without assigning it to the speaker",
+		async (object) => {
+			const message = makeMessage();
+			const relationships = [{ subject: "Alice", predicate: "knows", object }];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "validated relationship",
+				}),
+				{
+					ELIZA_ADMIN_ENTITY_ID: message.entityId,
+				},
+			);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message,
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(0);
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+			expect(runtime.createRelationship).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		"[REDACTED:OTHER_ENTITY_ID]",
+		"99999999-0000-0000-0000-000000000000",
+		"api key: private value",
+	])(
+		"does not reintroduce an unsafe relationship label from a room name: %s",
+		async (name) => {
+			const objectId = "00000000-0000-0000-0000-0000000000a1" as UUID;
+			const relationships = [
+				{ subject: "user", predicate: "knows", object: objectId },
+			];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "validated relationship",
+				}),
+			);
+			vi.mocked(runtime.getEntitiesForRoom).mockResolvedValueOnce([
+				{ id: objectId, names: [name], agentId: runtime.agentId },
+			]);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(0);
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+			expect(runtime.createRelationship).not.toHaveBeenCalled();
+		},
+	);
+
+	it("drops actual identity self-loops after humanizing a raw UUID", async () => {
+		const relationships = [
+			{ subject: "user", predicate: "knows", object: makeMessage().entityId },
+		];
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships,
+				thought: "validated relationship",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { relationships },
+		});
+		expect(result.written.relationships).toBe(0);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
+	});
+
+	it("resolves the redacted canonical owner only when that owner is speaking and drops a placeholder object", async () => {
+		const message = makeMessage();
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{
+						subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+						predicate: "has_dog",
+						object: "Biscuit",
+					},
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+					},
+				],
+				thought: "two rels",
+			}),
+			{ ELIZA_ADMIN_ENTITY_ID: message.entityId },
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: {
+				relationships: [
+					{
+						subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+						predicate: "has_dog",
+						object: "Biscuit",
+					},
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+					},
+				],
+			},
+		});
+		expect(result.written.relationships).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({
+					type: "relationship",
+					text: "User has_dog Biscuit",
+					subject: "User",
+				}),
+				metadata: expect.objectContaining({
+					sourceEntityId: message.entityId,
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it.each([
+		{
+			name: "another speaker quoting the canonical owner",
+			subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+			ownerId: "00000000-0000-0000-0000-000000000009",
+		},
+		{
+			name: "an unknown redacted identity even in the owner's turn",
+			subject: "[REDACTED:OTHER_ENTITY_ID]",
+			ownerId: "00000000-0000-0000-0000-000000000001",
+		},
+		{
+			name: "a redacted owner without configured identity",
+			subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+			ownerId: "",
+		},
+	])(
+		"never assigns $name to the current speaker",
+		async ({ subject, ownerId }) => {
+			const relationships = [
+				{ subject, predicate: "works_with", object: "Alice" },
+			];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "one relationship",
+				}),
+				{ ELIZA_ADMIN_ENTITY_ID: ownerId },
+			);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(0);
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+			expect(runtime.createRelationship).not.toHaveBeenCalled();
+		},
+	);
 
 	it("persists relationships under the facts table and upserts resolved entity edges when kept", async () => {
 		const runtime = makeRuntime(

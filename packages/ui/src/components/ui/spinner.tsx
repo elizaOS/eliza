@@ -8,15 +8,18 @@ import { Loader2 } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";
 
-const spinnerVariants = cva("animate-spin text-muted", {
-  variants: {
-    variant: {
-      default: "",
-      search: "size-3.5 text-accent",
+const spinnerVariants = cva(
+  "animate-spin text-muted motion-reduce:animate-none",
+  {
+    variants: {
+      variant: {
+        default: "",
+        search: "size-3.5 text-accent",
+      },
     },
+    defaultVariants: { variant: "default" },
   },
-  defaultVariants: { variant: "default" },
-});
+);
 
 export interface SpinnerProps
   extends React.SVGAttributes<SVGSVGElement>,

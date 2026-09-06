@@ -131,7 +131,7 @@ export function MessageSearchPanel({
       placeholder="Search messages…"
       aria-label="Search messages"
       data-testid="message-search-input"
-      variant={keyboardAnchored ? "surface" : "default"}
+      variant={keyboardAnchored ? "messageSearchSurface" : "messageSearch"}
       // In the keyboard-anchored layout the input is the flex item pinned at
       // the panel bottom (right above the soft keyboard); it must never shrink
       // away when the results list above it is long.
@@ -182,8 +182,8 @@ export function MessageSearchPanel({
         data-testid="message-search-results"
         className={
           keyboardAnchored
-            ? "mt-auto flex flex-col gap-1"
-            : "flex flex-col gap-1"
+            ? "mt-auto flex flex-col gap-2"
+            : "flex flex-col gap-2"
         }
       >
         {results.map((result) => (
@@ -191,13 +191,14 @@ export function MessageSearchPanel({
             <Button
               data-testid="message-search-result"
               onClick={() => handleJump(result)}
-              variant={keyboardAnchored ? "surface" : "ghostMuted"}
+              variant="searchResult"
+              data-surface={keyboardAnchored ? "card" : "transparent"}
               size="card"
               align="start"
               className="w-full"
             >
               <span className="text-xs-tight uppercase tracking-wider text-muted-foreground">
-                {result.role === "assistant" ? "Agent" : "You"} ·{" "}
+                {result.role === "assistant" ? "Eliza" : "You"} ·{" "}
                 {formatTimestamp(result.createdAt)}
               </span>
               <span className="line-clamp-2 text-sm text-foreground">
@@ -234,10 +235,10 @@ export function MessageSearchPanel({
         >
           {resultsListEl}
         </div>
-        <div className="flex shrink-0 flex-col gap-1">
+        <Card variant="messageSearch" flow="column" className="shrink-0 gap-1">
           {statusEl}
           {inputEl}
-        </div>
+        </Card>
       </Card>
     );
   }
@@ -263,9 +264,11 @@ export function MessageSearchPanel({
 function formatTimestamp(createdAt: number): string {
   if (!createdAt) return "";
   try {
-    return new Date(createdAt).toLocaleDateString(undefined, {
+    return new Date(createdAt).toLocaleString(undefined, {
       month: "short",
       day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   } catch {
     // error-policy:J3 invalid stored timestamp — a date label is decoration;

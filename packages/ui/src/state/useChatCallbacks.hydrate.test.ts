@@ -90,11 +90,44 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
+  it.each(["/chat", "/notes", "/calendar", "/browser"])(
+    "restores the same transcript on repeated launches at %s without creating a chat",
+    async (route) => {
+      const messages = [
+        {
+          id: "m1",
+          role: "user",
+          text: "Please keep replies brief",
+          timestamp: 1,
+        },
+        { id: "m2", role: "assistant", text: "Will do.", timestamp: 2 },
+      ];
+      const client = makeFakeClient({
+        listConversations: vi.fn(async () => ({
+          conversations: [CONVERSATION],
+        })),
+        getConversationMessages: vi.fn(async () => ({ messages })),
+      });
+      for (let launch = 0; launch < 2; launch++) {
+        window.history.replaceState(null, "", route);
+        const { deps, activeConversationIdRef, setConversationMessages } =
+          makeDeps(client);
+        await hydrateInitialConversation(deps);
+        expect(activeConversationIdRef.current).toBe(CONVERSATION.id);
+        expect(setConversationMessages).toHaveBeenLastCalledWith(messages);
+        expect(client.getConversationMessages).toHaveBeenLastCalledWith(
+          CONVERSATION.id,
+        );
+      }
+      expect(client.createConversation).not.toHaveBeenCalled();
+    },
+  );
+
   it("disables synthetic greetings only for native iOS", () => {
     expect(shouldSeedSyntheticConversationGreeting(true, true)).toBe(false);
-    expect(shouldSeedSyntheticConversationGreeting(true, false)).toBe(true);
-    expect(shouldSeedSyntheticConversationGreeting(false, true)).toBe(true);
-    expect(shouldSeedSyntheticConversationGreeting(false, false)).toBe(true);
+    expect(shouldSeedSyntheticConversationGreeting(true, false)).toBe(false);
+    expect(shouldSeedSyntheticConversationGreeting(false, true)).toBe(false);
+    expect(shouldSeedSyntheticConversationGreeting(false, false)).toBe(false);
   });
 
   it("starts native iOS with an active empty conversation and no greeting backfill", async () => {
@@ -236,6 +269,50 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     );
   });
 
+  it("preserves visible history on a failed same-conversation refresh while marking recovery incomplete", async () => {
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({ conversations: [CONVERSATION] })),
+      getConversationMessages: vi.fn().mockRejectedValue(new Error("offline")),
+    });
+    const { deps, setConversationMessages, loadedConversationIdRef } =
+      makeDeps(client);
+    deps.activeConversationIdRef.current = CONVERSATION.id;
+    loadedConversationIdRef.current = CONVERSATION.id;
+    const visible: ConversationMessage[] = [
+      {
+        id: "visible",
+        role: "user",
+        text: "Keep this history",
+        timestamp: 1,
+      },
+    ];
+    deps.conversationMessagesRef.current = visible;
+    await hydrateInitialConversation(deps);
+    expect(deps.conversationMessagesRef.current).toBe(visible);
+    expect(setConversationMessages).not.toHaveBeenCalled();
+    expect(loadedConversationIdRef.current).toBeNull();
+    expect(client.createConversation).not.toHaveBeenCalled();
+  });
+
+  it("does not accept an empty draft when a possible real-history candidate is unavailable", async () => {
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({
+        conversations: [
+          CONVERSATION,
+          { ...CONVERSATION, id: "real", roomId: "real-room" },
+        ],
+      })),
+      getConversationMessages: vi
+        .fn()
+        .mockResolvedValueOnce({ messages: [] })
+        .mockRejectedValueOnce(new Error("offline")),
+    });
+    const { deps, loadedConversationIdRef } = makeDeps(client);
+    await hydrateInitialConversation(deps);
+    expect(loadedConversationIdRef.current).toBeNull();
+    expect(client.createConversation).not.toHaveBeenCalled();
+  });
+
   it("skips a saved greeting-only draft when a real conversation exists", async () => {
     window.localStorage.setItem("eliza:chat:activeConversationId", "empty");
     const realConversation = {
@@ -371,28 +448,115 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
 
     expect(await hydrateInitialConversation(deps)).toBeNull();
   });
+
+  it.each([undefined, {}, [null]])(
+    "does not create a conversation from a malformed history response: %j",
+    async (conversations) => {
+      const client = makeFakeClient({
+        listConversations: vi.fn(async () => ({ conversations })),
+      });
+      const { deps, activeConversationIdRef } = makeDeps(client);
+      await hydrateInitialConversation(deps);
+      expect(client.createConversation).not.toHaveBeenCalled();
+      expect(activeConversationIdRef.current).toBeNull();
+    },
+  );
+
+  it("does not create when the conversation list is unavailable", async () => {
+    const client = makeFakeClient({
+      listConversations: vi.fn().mockRejectedValue(new Error("offline")),
+    });
+    await hydrateInitialConversation(makeDeps(client).deps);
+    expect(client.createConversation).not.toHaveBeenCalled();
+  });
 });
 
 describe("settleConversationHydrationForSend", () => {
+  it("keeps a restore authoritative past the former one-second cutoff", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveList!: (value: {
+        conversations: (typeof CONVERSATION)[];
+      }) => void;
+      const client = makeFakeClient({
+        listConversations: vi.fn(
+          () =>
+            new Promise((resolve) => {
+              resolveList = resolve;
+            }),
+        ),
+        getConversationMessages: vi.fn(async () => ({
+          messages: [
+            { id: "history", role: "user", text: "Remember me", timestamp: 1 },
+          ],
+        })),
+      });
+      const { deps, activeConversationIdRef } = makeDeps(client);
+      const task = hydrateInitialConversation(deps);
+      const taskRef = { current: task };
+      const settled = settleConversationHydrationForSend(
+        taskRef,
+        deps.conversationHydrationEpochRef,
+      );
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(taskRef.current).toBe(task);
+      expect(deps.conversationHydrationEpochRef.current).toBe(1);
+      expect(client.createConversation).not.toHaveBeenCalled();
+      resolveList({ conversations: [CONVERSATION] });
+      expect(await settled).toBe(true);
+      expect(activeConversationIdRef.current).toBe(CONVERSATION.id);
+      expect(client.createConversation).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("lets a completed startup restore retain conversation ownership", async () => {
     const taskRef = { current: Promise.resolve<string | null>("c1") };
     const epochRef = { current: 4 };
 
-    await settleConversationHydrationForSend(taskRef, epochRef, 100);
+    expect(
+      await settleConversationHydrationForSend(taskRef, epochRef, 100),
+    ).toBe(true);
 
     expect(epochRef.current).toBe(4);
     expect(taskRef.current).toBeNull();
   });
 
-  it("invalidates a hung restore before the send claims conversation ownership", async () => {
+  it("declines a send while retaining a slow restore for the next retry", async () => {
+    let resolve!: (value: string) => void;
     const taskRef = {
-      current: new Promise<string | null>(() => {}),
+      current: new Promise<string | null>((done) => {
+        resolve = done;
+      }),
     };
+    const task = taskRef.current;
     const epochRef = { current: 4 };
 
-    await settleConversationHydrationForSend(taskRef, epochRef, 0);
+    expect(await settleConversationHydrationForSend(taskRef, epochRef, 0)).toBe(
+      false,
+    );
 
-    expect(epochRef.current).toBe(5);
+    expect(epochRef.current).toBe(4);
+    expect(taskRef.current).toBe(task);
+    resolve("restored");
+    expect(
+      await settleConversationHydrationForSend(taskRef, epochRef, 100),
+    ).toBe(true);
     expect(taskRef.current).toBeNull();
+  });
+
+  it("does not accept an old restore after conversation authority changes", async () => {
+    let resolve!: (value: string) => void;
+    const taskRef = {
+      current: new Promise<string | null>((done) => {
+        resolve = done;
+      }),
+    };
+    const epochRef = { current: 4 };
+    const settled = settleConversationHydrationForSend(taskRef, epochRef, 100);
+    epochRef.current++;
+    resolve("other-owner");
+    expect(await settled).toBe(false);
   });
 });

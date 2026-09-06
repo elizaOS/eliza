@@ -439,6 +439,8 @@ export function buildFailureReplyPrompt(
 		"Hard rules:",
 		"- Stay in character. Keep your usual voice and tone.",
 		"- NEVER answer the user's question on the merits.",
+		"- Clearly say you could not complete this request. Do not imply the requested action happened or is still running.",
+		"- Do not ask the user to perform the requested action themselves or report what they see; you did not execute it successfully.",
 		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
 		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
 		FAILURE_PROMPT_CAUSE_RETRY_RULE[cause],
