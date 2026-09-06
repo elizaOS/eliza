@@ -236,11 +236,12 @@ describe("HealthView (fetch-driven)", () => {
       expect.any(AbortSignal),
     );
 
-    HTMLElement.prototype.scrollIntoView = vi.fn();
-    fireEvent.keyDown(agent("health-range-filter"), { key: "Enter" });
-    fireEvent.click(
-      await screen.findByRole("option", { name: "Last 30 days" }),
-    );
+    const option = await screen.findByRole<HTMLOptionElement>("option", {
+      name: "Last 30 days",
+    });
+    fireEvent.change(agent("health-range-filter"), {
+      target: { value: option.value },
+    });
 
     await waitFor(() => expect(fetchers.fetchHistory).toHaveBeenCalledTimes(2));
     expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(
