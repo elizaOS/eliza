@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Deterministically derives hero artwork (theme + gradient) for an app from its
  * name/category so every app gets stable, distinct placeholder art without a
@@ -85,13 +86,14 @@ export function getAppHeroDisplayLabel(app: AppHeroArtworkSource): string {
 }
 
 export function getAppHeroMonogram(app: AppHeroArtworkSource): string {
-  const label = trimPackagePrefix(app.displayName ?? app.name);
+  const label = toWellFormedUnicode(trimPackagePrefix(app.displayName ?? app.name));
   const words = label.split(/[\s._/-]+/).filter(Boolean);
   const initials = words
     .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
+    .map((word) => Array.from(word)[0]?.toUpperCase() ?? "")
     .join("");
-  return (initials || label.slice(0, 2).toUpperCase() || "?").slice(0, 2);
+  const fallback = Array.from(label).slice(0, 2).join("").toUpperCase() || "?";
+  return initials || fallback;
 }
 
 export function getAppHeroThemeKey(app: AppHeroArtworkSource): AppHeroThemeKey {
