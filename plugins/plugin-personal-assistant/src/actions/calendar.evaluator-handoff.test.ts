@@ -65,7 +65,9 @@ async function runDeletion(
   const message = {
     id: "00000000-0000-0000-0000-000000000504",
     agentId: AGENT_ID,
-    entityId: "00000000-0000-0000-0000-000000000502",
+    // This harness exercises settlement, using an authenticated agent-self
+    // caller rather than an unresolved external sender with no owner records.
+    entityId: AGENT_ID,
     roomId: "00000000-0000-0000-0000-000000000503",
     createdAt: Date.parse("2026-09-05T10:00:00.000Z"),
     content: { text: request, source: "test" },
@@ -188,9 +190,10 @@ describe("Calendar receipt-grounded evaluator handoff through PA", () => {
       ModelType.ACTION_PLANNER,
       ModelType.RESPONSE_HANDLER,
     ]);
-    expect(run.actionResult).toMatchObject({
+    expect(run.actionResult, JSON.stringify(run.actionResult)).toMatchObject({
       success: false,
       transcriptVisibility: "internal",
+      turnComplete: false,
       effectReceipts: [{ outcome: "noop", operation: "calendar.event.delete" }],
       data: {
         retryable: false,
@@ -225,7 +228,6 @@ describe("Calendar receipt-grounded evaluator handoff through PA", () => {
     expect(run.actionResult).toMatchObject({
       success: true,
       transcriptVisibility: "internal",
-      turnComplete: false,
       data: {
         deleted: true,
         targetEvent: EVENT,
