@@ -35,6 +35,8 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
 const FORGET_BY_QUERY_TABLES: readonly MemoryType[] = ["facts", "memories"];
+const FORGET_TOGETHER_MAX_ROWS = 3;
+const FORGET_TOGETHER_MIN_TERMS = 3;
 
 const UUID_SCHEMA_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
@@ -155,19 +157,25 @@ function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
   return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
 }
 
-function scoreText(text: string, query: string): number {
-  const t = text.toLowerCase();
-  const q = query.toLowerCase();
-  if (!t || !q) return 0;
-  const terms = [
+/** Distinct content terms of a query: length >= 2, stop words removed. */
+function scoreQueryTerms(query: string): string[] {
+  return [
     ...new Set(
-      q
+      query
+        .toLowerCase()
         .split(/[^\p{L}\p{N}]+/u)
         .filter(
           (term) => term.length >= 2 && !SEARCH_QUERY_STOP_WORDS.has(term),
         ),
     ),
   ];
+}
+
+function scoreText(text: string, query: string): number {
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  if (!t || !q) return 0;
+  const terms = scoreQueryTerms(q);
   const whole = t.includes(q) ? 1 : 0;
   if (terms.length === 0) return whole;
   const textTerms = new Set(t.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
@@ -1265,7 +1273,23 @@ async function doDeleteByQuery(
       .trim()
       .toLowerCase();
   const distinctTexts = new Set(matched.map(normalize));
-  if (distinctTexts.size > 1) {
+  // "Forget that I take my tea without sugar" routinely matches two of the
+  // requester's own fact rows with different wording (the explicit durable
+  // memory and the Stage-1 observation). When every match is one of the
+  // requester's own facts, the phrase carries at least three content terms
+  // and at most a few rows match, forgetting them together is exactly the
+  // request; anything looser stays ambiguous and the planner picks by id.
+  const forgetTogether =
+    distinctTexts.size > 1 &&
+    matched.length <= FORGET_TOGETHER_MAX_ROWS &&
+    scoreQueryTerms(query).length >= FORGET_TOGETHER_MIN_TERMS &&
+    matched.every(
+      (c) =>
+        c.type === "facts" &&
+        !!message.entityId &&
+        c.memory.entityId === message.entityId,
+    );
+  if (distinctTexts.size > 1 && !forgetTogether) {
     const lines = matched
       .map((c) => toListItem(c.memory, c.type))
       .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);

@@ -5153,6 +5153,19 @@ export async function handleChatRoutes(
           503,
         );
       } else {
+        // error-policy:J1 Boundary translation; the cause must be visible in
+        // the server log, not only in the 500 body (live 2026-09-06: repeated
+        // stale-revision 500s with no trace of the throwing writer).
+        state.runtime?.logger.warn(
+          {
+            src: "eliza-api",
+            route: "POST /api/agents/:id/message",
+            err: getErrorMessage(err),
+            code: err instanceof ElizaError ? err.code : undefined,
+            stack: err instanceof Error ? err.stack : undefined,
+          },
+          "[eliza-api] compat message route failed",
+        );
         json(res, { error: getErrorMessage(err) }, 500);
       }
     }

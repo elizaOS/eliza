@@ -522,6 +522,71 @@ describe("MEMORY op:delete by query scope", () => {
     expect(rows.filter((row) => row.tableName === "messages")).toHaveLength(1);
   });
 
+  it("forgets the requester's own matching facts together when they differ only in wording", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User takes their tea without sugar.",
+      entityId: USER_ID,
+    });
+    seedFact(rows, { text: "takes tea without sugar", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "takes tea without sugar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 2 });
+    expect(result.effectReceipts).toHaveLength(2);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
+  it("stays ambiguous when a matching row is not one of the requester's facts", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User takes their tea without sugar.",
+      entityId: USER_ID,
+    });
+    rows.push({
+      memory: {
+        id: crypto.randomUUID() as UUID,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "takes tea without sugar" },
+        createdAt: Date.now(),
+      } as Memory,
+      tableName: "memories",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "takes tea without sugar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(rows).toHaveLength(2);
+  });
+
+  it("stays ambiguous for a short phrase that matches several facts", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "likes green tea", entityId: USER_ID });
+    seedFact(rows, { text: "drinks tea at night", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "tea",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(2);
+  });
+
   it("still deletes from an explicitly named table", async () => {
     const { runtime, rows } = makeRuntime();
     rows.push({
