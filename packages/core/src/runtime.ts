@@ -1278,6 +1278,20 @@ const EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [
 	2_000, 5_000, 10_000,
 ];
 
+/**
+ * Configuration keys that operators commonly place under `settings.secrets`
+ * but that carry no credential; their values are safe in prompts and must not
+ * be redacted literally. Closed set on purpose: any other key under `secrets`
+ * keeps the literal redaction.
+ */
+const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
+	"TIMEZONE",
+	"TZ",
+	"LOCALE",
+	"LANGUAGE",
+	"LANG",
+]);
+
 export class AgentRuntime implements IAgentRuntime {
 	/** The runtime invokes request preparation before each resolved model handler. */
 	readonly supportsModelAttemptPreparation = true;
@@ -12123,9 +12137,17 @@ ${section_end}`;
 		if (!secrets || typeof secrets !== "object") {
 			return {};
 		}
-		// Filter to only include string values
+		// Filter to only include string values. A small closed set of
+		// configuration keys that operators park under `secrets` but that name
+		// no credential is left out of the literal pass (live 2026-09-06: the
+		// owner's TIMEZONE=America/Los_Angeles was rewritten to
+		// "[REDACTED:TIMEZONE]" in every provider text, so the planner never
+		// learned the zone and stored calendar moves as fabricated UTC instants).
+		// Everything else under `secrets` stays redacted literally; the pattern
+		// sweep in `redactSecrets` is unchanged.
 		const result: Record<string, string> = {};
 		for (const [key, value] of Object.entries(secrets)) {
+			if (NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())) continue;
 			if (typeof value === "string" && value.length > 0) {
 				result[key] = value;
 			}

@@ -104,13 +104,20 @@ function readNestedOptionalString(
 		: undefined;
 }
 
+/**
+ * The desired avatar and whether an operator asked for it. The built-in
+ * default is optional: a checkout without the bundled file has nothing to
+ * sync, whereas a configured source that cannot be loaded is a real failure.
+ */
+type DesiredDiscordAvatar = { source: string; explicit: boolean };
+
 function normalizeDesiredDiscordAvatarSource(
 	runtime: IAgentRuntime,
 	settings: DiscordSettings,
-): string | undefined {
+): DesiredDiscordAvatar {
 	const configured = settings.profileAvatar?.trim();
 	if (configured) {
-		return configured;
+		return { source: configured, explicit: true };
 	}
 
 	const character = runtime.character as Record<string, unknown> | undefined;
@@ -118,17 +125,17 @@ function normalizeDesiredDiscordAvatarSource(
 		readNestedOptionalString(character, ["identity", "avatar"]) ??
 		readNestedOptionalString(character, ["settings", "identity", "avatar"]);
 	if (fromIdentity) {
-		return fromIdentity;
+		return { source: fromIdentity, explicit: true };
 	}
 
 	const fromCharacter =
 		readNestedOptionalString(character, ["avatar"]) ??
 		readNestedOptionalString(character, ["settings", "avatar"]);
 	if (fromCharacter) {
-		return fromCharacter;
+		return { source: fromCharacter, explicit: true };
 	}
 
-	return DEFAULT_DISCORD_PROFILE_AVATAR;
+	return { source: DEFAULT_DISCORD_PROFILE_AVATAR, explicit: false };
 }
 
 function extractDataUriPayload(source: string): Buffer | null {
@@ -295,11 +302,8 @@ export async function syncDiscordClientProfile(
 	}
 
 	const desiredName = normalizeDesiredDiscordName(runtime, settings);
-	const desiredAvatarSource = normalizeDesiredDiscordAvatarSource(
-		runtime,
-		settings,
-	);
-	if (!desiredName && !desiredAvatarSource) {
+	const desiredAvatar = normalizeDesiredDiscordAvatarSource(runtime, settings);
+	if (!desiredName && !desiredAvatar.source) {
 		return;
 	}
 
@@ -327,11 +331,31 @@ export async function syncDiscordClientProfile(
 		}
 	}
 
-	if (desiredAvatarSource) {
-		const avatar = await loadDiscordProfileAvatarBytes(
-			desiredAvatarSource,
-			options,
-		);
+	if (desiredAvatar.source) {
+		let avatar: Awaited<ReturnType<typeof loadDiscordProfileAvatarBytes>> =
+			null;
+		try {
+			avatar = await loadDiscordProfileAvatarBytes(
+				desiredAvatar.source,
+				options,
+			);
+		} catch (error) {
+			if (
+				desiredAvatar.explicit ||
+				!(error instanceof ElizaError) ||
+				error.code !== "DISCORD_PROFILE_AVATAR_NOT_FOUND"
+			) {
+				throw error;
+			}
+			// error-policy:J4 the built-in default avatar is optional: a checkout
+			// that does not bundle the file has no avatar to sync, so the miss is
+			// a designed no-op (live 2026-09-06: every boot reported an Error for
+			// the absent default). An operator-configured source still fails loudly.
+			runtime.logger.debug(
+				{ src: "plugin:discord", agentId: runtime.agentId },
+				"No bundled default Discord avatar in this checkout; skipping avatar sync",
+			);
+		}
 		if (avatar && persisted.avatarHash !== avatar.hash) {
 			if (typeof clientUser.setAvatar === "function") {
 				await clientUser.setAvatar(avatar.bytes);

@@ -31,6 +31,10 @@ import {
 } from "@elizaos/core";
 
 const MEMORY_OPS = ["create", "search", "update", "delete"] as const;
+
+/** Update/delete enforce alternative selectors at the handler boundary. */
+const MEMORY_MISSING_TARGET_MESSAGE =
+  'A valid memoryId or nonempty query is required. Use a memoryId returned by a previous search, or quote the user\'s own words in "query", e.g. {"action":"delete","query":"favorite tea","confirm":true}. For update, keep action:"update" and include replacement "text".';
 type MemoryOp = (typeof MEMORY_OPS)[number];
 
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
@@ -1049,7 +1053,7 @@ async function doUpdate(
   const query = params.query?.trim();
   const text = typeof params.text === "string" ? params.text.trim() : "";
   if (!memoryId && !query) {
-    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+    return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
   if (!text) return fail("text is required.", "MEMORY_MISSING_TEXT");
   if (params.confirm !== true) {
@@ -1199,7 +1203,7 @@ async function doDelete(
   const memoryId = memoryParam.id;
   const query = params.query?.trim();
   if (!memoryId && !query) {
-    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+    return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
   if (params.confirm !== true) {
     return fail(
@@ -1245,7 +1249,7 @@ async function doDelete(
   }
 
   if (!query) {
-    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+    return fail(MEMORY_MISSING_TARGET_MESSAGE, "MEMORY_MISSING_ID");
   }
   return doDeleteByQuery(runtime, message, params, query);
 }
@@ -1559,7 +1563,7 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        'search: filter text. update/delete: the memory to change or forget, quoted in the user\'s own words from this message (never paraphrase: "like my coffee with oat milk", not "prefer oat milk") when memoryId is not given; one of query or memoryId is required.',
+        'search: filter text. update/delete: the memory to change or forget, quoted in the user\'s own words from this message (never paraphrase: "like my coffee with oat milk", not "prefer oat milk"). Either a valid memoryId or a nonempty query is required. memoryId alone selects one exact record and takes precedence when both are supplied.',
       required: false,
       schema: { type: "string" as const },
     },
@@ -1590,7 +1594,7 @@ export const memoryAction: Action = {
     {
       name: "memoryId",
       description:
-        "update/delete: id of the memory to mutate; optional when query is provided.",
+        "update/delete: exact memory UUID from a previous search result; sufficient without query. Takes precedence when both memoryId and query are supplied.",
       required: false,
       modelOmissionSentinels: ["", "null", "undefined"],
       schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },

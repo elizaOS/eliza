@@ -1741,11 +1741,13 @@ export const calendarAction: Action & {
     {
       name: "title",
       description:
-        "Event title for create_event; for update_event/delete_event the exact title of the target event when no eventId is known. TOP-LEVEL flat. " +
+        "Event title for create_event, the NEW name when update_event renames an event, or the existing target title for delete_event when query and details.eventId are absent. " +
+        "For update_event identify the existing event with `query` (its own words, e.g. 'piano lesson'), `details.oldTitle`, or `details.eventId` from a search_events/feed result; title never selects an update target. TOP-LEVEL flat. " +
         "NEVER inside `details`. " +
-        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
+        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
+        "Move example: `{ subaction: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
       descriptionCompressed:
-        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end; delete/update: target title",
+        "title TOP-LEVEL; NOT details. create_event: title; update_event: NEW name only, target = query/oldTitle/eventId; delete_event: target title when query/eventId absent",
       required: false,
       // Live 2026-09-05 23:32: the promoted CALENDAR_DELETE_EVENT child rejected
       // a top-level title ("Unexpected argument 'title'") that the parent
@@ -1756,7 +1758,8 @@ export const calendarAction: Action & {
     {
       name: "query",
       description:
-        "Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
+        "Search phrase for search_events/travel_itinerary: flight, dentist, Denver. " +
+        "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known. An update may also identify its target with details.oldTitle; a delete may use the existing title when query and eventId are absent.",
       required: false,
       subactions: [
         "feed",
@@ -1780,12 +1783,14 @@ export const calendarAction: Action & {
       name: "details",
       description:
         "Structured fields for create_event/update_event/delete_event. " +
-        "`start`/`end` ISO-8601; aliases `startAt`/`endAt` accepted. " +
+        "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. Aliases `startAt`/`endAt` and `startTime`/`endTime` accepted. " +
+        "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
+        "`details.date` selects the target event's current day, never the destination day of a move. " +
         "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
         "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
         "check_availability/propose_times time-window fields TOP LEVEL, not `details`.",
       descriptionCompressed:
-        "details create|update|delete: calendarId,start/end,eventId,location; title/window TOP",
+        "details create|update|delete: calendarId,start/end,eventId,location; owner-local start/end require owner's IANA timeZone; date = target's current day; title/window TOP",
       required: false,
       subactions: [
         "feed",

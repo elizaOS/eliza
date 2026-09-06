@@ -7,7 +7,10 @@ import type { AgentRuntime, createMessageMemory } from "@elizaos/core";
 import { embedRecallQuery, ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { maybeAugmentChatMessageWithDocuments } from "./chat-augmentation.ts";
+import {
+  maybeAugmentChatMessageWithDocuments,
+  userRequestFromAugmentedText,
+} from "./chat-augmentation.ts";
 
 function makeMessage(): ReturnType<typeof createMessageMemory> {
   return {
@@ -234,6 +237,10 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(result).not.toBe(message);
     expect(result.content.text).toContain("<contextual_documents>");
     expect(result.content.text).toContain("set inference markup");
+    // Gates that run after augmentation recover the request from the wrapper.
+    expect(userRequestFromAugmentedText(result.content.text ?? "")).toBe(
+      message.content.text,
+    );
     const [, , searchMode] = documents.searchDocuments.mock.calls[0];
     expect(searchMode).toBe("keyword");
   });

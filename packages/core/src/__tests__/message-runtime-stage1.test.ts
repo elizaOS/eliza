@@ -2015,6 +2015,33 @@ describe("runV5MessageRuntimeStage1", () => {
 			);
 		}
 
+		it("judges the recall signal on the user's request, not on a document-augmentation wrapper", async () => {
+			// Live 2026-09-06: the augmentation preamble's own words matched a
+			// relevance keyword on every API turn and the eager corpus went out.
+			const runtime = runtimeWithHistoryProvider();
+			const augmented = [
+				"Answer the user request using the contextual documents below; what we discussed is the source of truth.",
+				"<contextual_documents>",
+				'<source title="notes" similarity="0.900">',
+				"we talked about the trip and remember the dates",
+				"</source>",
+				"</contextual_documents>",
+				"",
+				"<user_request>",
+				"whats on my calendar tuesday?",
+				"</user_request>",
+			].join("\n");
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: augmented }),
+				state: historyState(),
+				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			});
+			const wire = wireOfFirstCall(runtime);
+			expect(wire).toContain("LOSSLESS_HISTORY_MANIFEST");
+			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+		});
+
 		it("sends the lossless manifest on a text turn with no recall signal", async () => {
 			// Live 2026-09-05: the eager cross-room history was 22.7K of a
 			// 44K-token Stage-1 prompt on "whats on my calendar tuesday?".

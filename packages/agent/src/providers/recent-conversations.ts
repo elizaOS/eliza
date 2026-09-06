@@ -5,6 +5,13 @@
  * transcript when present. Suppressed
  * inside automation and page-scoped rooms, which carry their own context.
  * Gated to ADMIN (enforced by applyPluginRoleGating).
+ *
+ * The eager form is emitted only when the current message carries a recall
+ * signal (this provider's own `relevanceKeywords`, the same test Stage 1
+ * applies before it swaps eager blocks for their manifest); every other turn
+ * gets the manifest as its text, so a brand-new room never pays the complete
+ * cross-platform corpus on its first message (live 2026-09-06: an empty room
+ * rendered 265K chars of other rooms' history into a 92K-token Stage 1).
  */
 import type {
   IAgentRuntime,
@@ -24,8 +31,11 @@ import {
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
   toWellFormedUnicode,
+  unwrapUserMessageTextForDetection,
+  validateActionKeywords,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
+import { userRequestFromAugmentedText } from "../api/augmented-request.ts";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -36,6 +46,19 @@ import {
   formatSpeakerLabel,
   roomSourceTag,
 } from "../shared/conversation-format.ts";
+
+/**
+ * The user's own words for the recall test: the runtime's retained payload
+ * when the inbound text was armoured by incoming-message-security (this is a
+ * scoring boundary, so the detection variant that never collapses to "" is
+ * the right one), then the `<user_request>` body when document augmentation
+ * wrapped the request in its instruction preamble.
+ */
+function relevanceTextOf(message: Memory): string {
+  return userRequestFromAugmentedText(
+    unwrapUserMessageTextForDetection(message) || (message.content.text ?? ""),
+  );
+}
 
 function attachmentPromptSummary(attachments: readonly Media[]): string {
   return attachments
@@ -214,9 +237,39 @@ export const recentConversationsProvider: Provider = {
 
       markOwnerExclusiveDisclosureUsed(message);
 
+      const manifestText = manifestLines.join("\n");
+      const relevanceKeywords =
+        recentConversationsProvider.relevanceKeywords ?? [];
+      // Inbound text from an untrusted transport arrives wrapped in the
+      // external-content notice, whose boilerplate contains the word
+      // "conversation" and so matched a recall keyword on every turn (live
+      // 2026-09-06: a 33-char time question reached here as 653 chars). Only
+      // the user's own words may carry the recall signal.
+      const relevanceText = relevanceTextOf(message);
+      const eagerRelevant = validateActionKeywords(
+        { ...message, content: { ...message.content, text: relevanceText } },
+        [],
+        relevanceKeywords,
+      );
+      runtime.logger?.debug?.(
+        {
+          src: "provider:recent-conversations",
+          eagerRelevant,
+          keywordCount: relevanceKeywords.length,
+          matchedKeyword: eagerRelevant
+            ? relevanceKeywords.find((keyword) =>
+                relevanceText.toLowerCase().includes(keyword.toLowerCase()),
+              )
+            : undefined,
+          messageTextChars: (message.content.text ?? "").length,
+          relevanceTextChars: relevanceText.length,
+          storedMessages: sorted.length,
+        },
+        "recent-conversations representation chosen",
+      );
       return {
-        text: eagerLines.join("\n"),
-        overflowText: manifestLines.join("\n"),
+        text: eagerRelevant ? eagerLines.join("\n") : manifestText,
+        overflowText: manifestText,
         values: {
           recentConversationCount: sorted.length,
           recentConversationRoomCount: rooms.length,

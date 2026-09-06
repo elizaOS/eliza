@@ -8,6 +8,8 @@
 
 import crypto from "node:crypto";
 
+export { userRequestFromAugmentedText } from "./augmented-request.ts";
+
 import type {
   AccessContext,
   AgentRuntime,

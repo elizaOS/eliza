@@ -5,7 +5,11 @@
  * SQL) and the relationships service exposes identity-cluster membership.
  */
 import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { normalizeActionIdentifier } from "@elizaos/core";
+import {
+  normalizeActionIdentifier,
+  promoteSubactionsToActions,
+  validateToolArgs,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
@@ -2077,4 +2081,102 @@ describe("MEMORY op:search rendered text", () => {
     });
     expect(result.promptData).not.toHaveProperty("memories");
   });
+});
+
+describe("promoted MEMORY_UPDATE / MEMORY_DELETE target selection", () => {
+  const children = promoteSubactionsToActions(memoryAction);
+
+  async function runPromotedMutation(
+    operation: "update" | "delete",
+    runtime: IAgentRuntime,
+    parameters: Record<string, unknown>,
+  ): Promise<ActionResult> {
+    const name = `MEMORY_${operation.toUpperCase()}`;
+    const action = children.find((candidate) => candidate.name === name);
+    if (!action) throw new Error(`missing promoted child ${name}`);
+    const validated = validateToolArgs(action, parameters);
+    expect(validated.errors).toEqual([]);
+    if (!validated.valid || !validated.args) {
+      throw new Error(`Promoted mutation arguments rejected for ${name}`);
+    }
+    return (await action.handler(runtime, makeMessage(), undefined, {
+      parameters: validated.args,
+    } as never)) as ActionResult;
+  }
+
+  for (const operation of ["update", "delete"] as const) {
+    describe(operation, () => {
+      it.each(["memoryId", "query"] as const)(
+        "accepts %s alone through validation and mutates only the selected record",
+        async (selector) => {
+          const { runtime, rows } = makeRuntime();
+          const originalText = "My favorite tea is green tea.";
+          const replacementText = "My favorite tea is oolong.";
+          const memoryId = seedFact(rows, {
+            text: originalText,
+            entityId: USER_ID,
+          });
+          const unrelatedId = seedFact(rows, {
+            text: "The project codename is Kingfisher.",
+            entityId: USER_ID,
+          });
+          const unrelated = structuredClone(
+            rows.find((row) => row.memory.id === unrelatedId),
+          );
+
+          const result = await runPromotedMutation(operation, runtime, {
+            confirm: true,
+            ...(operation === "update" ? { text: replacementText } : {}),
+            ...(selector === "memoryId"
+              ? { memoryId }
+              : { query: originalText }),
+          });
+
+          expect(result.success).toBe(true);
+          expect(result.effectReceipts).toHaveLength(1);
+          expect(result.effectReceipts?.[0]).toMatchObject({
+            operation: `memory.${operation}`,
+            resource: { id: memoryId },
+            outcome: "applied",
+          });
+          expect(
+            rows.find((row) => row.memory.id === memoryId)?.memory.content.text,
+          ).toBe(operation === "update" ? replacementText : undefined);
+          expect(rows.find((row) => row.memory.id === unrelatedId)).toEqual(
+            unrelated,
+          );
+        },
+      );
+
+      it.each([
+        { name: "missing", parameters: {} },
+        { name: "empty", parameters: { query: "" } },
+        { name: "whitespace-only", parameters: { query: " \t\n" } },
+      ])(
+        "rejects a $name selector at the handler without changing any record",
+        async ({ parameters }) => {
+          const { runtime, rows } = makeRuntime();
+          seedFact(rows, {
+            text: "My favorite tea is green tea.",
+            entityId: USER_ID,
+          });
+          const before = structuredClone(rows);
+
+          const result = await runPromotedMutation(operation, runtime, {
+            confirm: true,
+            ...(operation === "update"
+              ? { text: "My favorite tea is oolong." }
+              : {}),
+            ...parameters,
+          });
+
+          expect(result.success).toBe(false);
+          expect(result.data).toMatchObject({ error: "MEMORY_MISSING_ID" });
+          expect(result.text).toContain("valid memoryId or nonempty query");
+          expect(result.effectReceipts).toBeUndefined();
+          expect(rows).toEqual(before);
+        },
+      );
+    });
+  }
 });

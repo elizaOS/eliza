@@ -34,12 +34,14 @@ const CALENDAR_DETAIL_STRING_KEYS = [
   "start_at",
   "start",
   "start_time",
+  "startTime",
   "starttime",
   "endAt",
   "endat",
   "end_at",
   "end",
   "end_time",
+  "endTime",
   "endtime",
   "newTitle",
   "newtitle",
@@ -117,7 +119,7 @@ const stringSchema: ActionParameterSchema = { type: "string" };
 // UTC instant) and day bounds as "2026-09-08T00:00:00Z".."23:59:59Z" for a
 // Pacific owner; the runtime applies the owner's zone to offset-less values.
 const LOCAL_WALL_TIME_FORMAT =
-  "the user's local wall-clock time formatted YYYY-MM-DDTHH:mm:ss with NO trailing Z and NO UTC offset (the runtime applies the user's timezone); never convert to UTC";
+  "local wall-clock time formatted YYYY-MM-DDTHH:mm:ss with NO trailing Z and NO UTC offset, paired with the intended IANA timeZone (normally the user's configured timezone); never fabricate a UTC instant";
 const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_STRING_KEYS)[number], string>
 > = {
@@ -129,8 +131,8 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   timeMin: `Window start as ${LOCAL_WALL_TIME_FORMAT}, or RFC 3339 with an explicit numeric offset.`,
   timeMax: "Window end (exclusive) in the same format as timeMin.",
   timeZone:
-    "IANA timezone only when the user names one (e.g. America/New_York); otherwise omit it so the user's configured timezone applies.",
-  date: "Local calendar date YYYY-MM-DD of the target event for update_event/delete_event lookups when the user named a day; use start/startAt for create_event.",
+    "IANA timezone for the supplied wall-clock times (e.g. America/New_York): use the user's configured timezone unless they name another. Include it for updates so an existing event's different timezone does not reinterpret the requested new time.",
+  date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). Use start/startAt, not date, for create_event.",
   oldTitle:
     "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
   newTitle:
