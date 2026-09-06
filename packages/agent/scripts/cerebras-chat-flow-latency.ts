@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Measures the complete production chat path against Cerebras Gemma 4 31B.
+ * Measures the complete production chat path against a configured Cerebras model.
  *
  * A real PGLite-backed AgentRuntime processes every turn through providers,
  * model routing, streaming, persistence, delivery, and lifecycle events. The
@@ -8,11 +8,12 @@
  * each live response was distinct rather than served by a fabricated fallback.
  */
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  AgentRuntime,
   buildInferenceTimingDevPayload,
   ChannelType,
   createMessageMemory,
@@ -23,17 +24,26 @@ import {
   InferenceTurnTimer,
   inferenceTimingRegistry,
   isSensitiveKeyName,
+  isTextGenerationModelType,
   type Memory,
   type ModelEventPayload,
   ModelType,
+  type Plugin,
   redactSensitiveText,
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
+import {
+  applyCacheExperiment,
+  type CacheExperimentMode,
+  measuredProviderFetch,
+  type ProviderWireEvidence,
+  requireRealEmbeddingConfig,
+  runChatCondition,
+} from "./cerebras-chat-flow-experiment.ts";
 
-const DEFAULT_MODEL = "gemma-4-31b";
 const DEFAULT_SAMPLES = 30;
 const DEFAULT_WARMUPS = 3;
 const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
@@ -52,6 +62,7 @@ const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
 // is assembled dynamically by the real PGLite test-runtime factory.
 const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/agent/scripts/cerebras-chat-flow-latency.ts",
+  "packages/agent/scripts/cerebras-chat-flow-experiment.ts",
   "packages/agent/src",
   "packages/cloud/routing/src",
   "packages/core/src",
@@ -117,6 +128,7 @@ export interface ModelInputContext {
   phase: "warmup" | "sample" | "cancellation";
   index?: number;
   proof: string;
+  roomId?: string;
 }
 
 export interface ModelInputEvidence {
@@ -480,7 +492,11 @@ async function main(): Promise<void> {
   if (!apiKey) {
     throw new Error("CEREBRAS_API_KEY is required for live latency evidence");
   }
-  const model = process.env.ELIZA_CEREBRAS_CHAT_MODEL?.trim() || DEFAULT_MODEL;
+  const model = process.env.ELIZA_CEREBRAS_CHAT_MODEL?.trim();
+  if (!model)
+    throw new Error(
+      "Set ELIZA_CEREBRAS_CHAT_MODEL to an independently verified available model",
+    );
   const sampleCount = positiveIntegerSetting(
     "ELIZA_CEREBRAS_CHAT_SAMPLES",
     DEFAULT_SAMPLES,
@@ -489,30 +505,215 @@ async function main(): Promise<void> {
     "ELIZA_CEREBRAS_CHAT_WARMUPS",
     DEFAULT_WARMUPS,
   );
+  const sourceRevision = sourceRevisionEvidence();
+  const nativeEmbedding =
+    process.env.ELIZA_CEREBRAS_EMBEDDING_MODE === "native";
+  const embedding = nativeEmbedding
+    ? {
+        endpoint: "native://fused",
+        model: process.env.LOCAL_EMBEDDING_MODEL?.trim() || "",
+        dimensions: positiveIntegerSetting("LOCAL_EMBEDDING_DIMENSIONS", 384),
+      }
+    : requireRealEmbeddingConfig(process.env);
+  let nativeProvenance: {
+    modelPath: string;
+    modelSha256: string;
+    libraryPath: string;
+    librarySha256: string;
+  } | null = null;
+  const bootstrapPlugins: Plugin[] = [];
+  if (nativeEmbedding) {
+    const modelsDir = process.env.MODELS_DIR?.trim();
+    if (!modelsDir || !embedding.model)
+      throw new Error(
+        "Native embeddings require explicit MODELS_DIR and LOCAL_EMBEDDING_MODEL",
+      );
+    const { resolveFusedEmbeddingBundleRoot } = await import(
+      "../../../plugins/plugin-local-inference/src/runtime/fused-embedding-bundle.ts"
+    );
+    const { resolveFusedLibraryPath } = await import(
+      "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts"
+    );
+    const { ensureLocalInferenceHandler } = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
+    const bundle = resolveFusedEmbeddingBundleRoot({
+      modelsDir,
+      model: embedding.model,
+    });
+    const libraryPath = bundle ? resolveFusedLibraryPath(bundle) : null;
+    if (!libraryPath)
+      throw new Error("Installed fused embedding library/model unavailable");
+    const modelPath = join(modelsDir, embedding.model);
+    nativeProvenance = {
+      modelPath,
+      libraryPath,
+      modelSha256: createHash("sha256")
+        .update(await readFile(modelPath))
+        .digest("hex"),
+      librarySha256: createHash("sha256")
+        .update(await readFile(libraryPath))
+        .digest("hex"),
+    };
+    bootstrapPlugins.push({
+      name: "benchmark-native-boot",
+      description:
+        "Uses the canonical local inference boot without replacing its model handlers",
+      init: async (_config, runtime) => {
+        if (!(runtime instanceof AgentRuntime))
+          throw new Error("Native benchmark requires AgentRuntime");
+        await ensureLocalInferenceHandler(runtime);
+      },
+    });
+  }
+  const cacheMode = process.env.ELIZA_CEREBRAS_CACHE_MODE?.trim();
+  if (
+    cacheMode !== "existing" &&
+    cacheMode !== "automatic" &&
+    cacheMode !== "conversation"
+  ) {
+    throw new Error(
+      "ELIZA_CEREBRAS_CACHE_MODE must explicitly select existing, automatic or conversation",
+    );
+  }
+  const pathKind = process.env.ELIZA_CEREBRAS_CHAT_PATH?.trim();
+  if (pathKind !== "direct" && pathKind !== "gateway") {
+    throw new Error(
+      "ELIZA_CEREBRAS_CHAT_PATH must identify direct or gateway execution",
+    );
+  }
+  const gatewaySourceRevision =
+    process.env.ELIZA_CEREBRAS_GATEWAY_SOURCE_REVISION?.trim();
+  if (
+    pathKind === "gateway" &&
+    !/^[a-f0-9]{40}$/.test(gatewaySourceRevision ?? "")
+  ) {
+    throw new Error(
+      "Gateway evidence requires an attested ELIZA_CEREBRAS_GATEWAY_SOURCE_REVISION",
+    );
+  }
+  const condition = process.env.ELIZA_CEREBRAS_CHAT_CONDITION?.trim();
+  if (
+    condition !== "rolling-history" &&
+    condition !== "fresh-room" &&
+    condition !== "post-idle"
+  ) {
+    throw new Error(
+      "ELIZA_CEREBRAS_CHAT_CONDITION must select rolling-history, fresh-room or post-idle",
+    );
+  }
+  const idleMs =
+    condition === "post-idle"
+      ? positiveIntegerSetting("ELIZA_CEREBRAS_CHAT_IDLE_MS", 360_000)
+      : 0;
+  const keyCapabilityConfirmed =
+    process.env.ELIZA_CEREBRAS_CACHE_KEY_CAPABILITY_CONFIRMED === "true";
+  if (cacheMode !== "automatic" && !keyCapabilityConfirmed) {
+    throw new Error(
+      "Confirm account prompt_cache_key capability before a keyed live run",
+    );
+  }
   configuredModelEnvironment(model);
+  const endpoint = new URL(process.env.CEREBRAS_BASE_URL as string);
+  if (
+    !["http:", "https:"].includes(endpoint.protocol) ||
+    endpoint.username ||
+    endpoint.password ||
+    endpoint.search ||
+    endpoint.hash
+  ) {
+    throw new Error(
+      "Text endpoint must be HTTP(S) without embedded credentials, query or fragment",
+    );
+  }
 
   const { default: openaiPlugin } = await import(
     "../../../plugins/plugin-openai/index.ts"
   );
   const { runtime, cleanup } = await createTestRuntime({
     characterName: "CerebrasLatencyAudit",
-    plugins: [openaiPlugin],
+    plugins: [...bootstrapPlugins, openaiPlugin],
+    embeddingDimensions: embedding.dimensions,
   });
+  const originalFetch = globalThis.fetch;
+  const wireEvidence: ProviderWireEvidence[] = [];
+  let activeModelInputContext: ModelInputContext | null = null;
+  globalThis.fetch = measuredProviderFetch(
+    originalFetch,
+    {
+      text: process.env.CEREBRAS_BASE_URL as string,
+      embedding: embedding.endpoint,
+    },
+    () => activeModelInputContext,
+    (evidence) => wireEvidence.push(evidence),
+  );
   try {
     const modelUsageEvents: ModelEventPayload[] = [];
     runtime.registerEvent(EventType.MODEL_USED, async (payload) => {
       modelUsageEvents.push(payload);
     });
     const modelInputs: ModelInputEvidence[] = [];
-    let activeModelInputContext: ModelInputContext | null = null;
+    const modelExecutions: Array<{
+      modelType: string;
+      context: ModelInputContext | null;
+      durationMs: number;
+      outcome: "success" | "error";
+    }> = [];
     const measuredUseModel = runtime.useModel.bind(runtime);
-    runtime.useModel = (async (modelType, params) => {
-      if (modelType === ModelType.RESPONSE_HANDLER) {
+    runtime.useModel = (async (modelType, params, provider) => {
+      const isTextModel = isTextGenerationModelType(modelType);
+      const measuredParams = isTextModel
+        ? applyCacheExperiment(params, {
+            mode: cacheMode as CacheExperimentMode,
+            keyCapabilityConfirmed,
+            agentId: runtime.agentId,
+            conversationId: activeModelInputContext?.roomId ?? roomId,
+            model,
+            stage: String(modelType),
+          })
+        : params;
+      if (isTextModel) {
         modelInputs.push(
-          captureModelInput(modelType, params, activeModelInputContext),
+          captureModelInput(modelType, measuredParams, activeModelInputContext),
         );
       }
-      return await measuredUseModel(modelType, params);
+      const context = activeModelInputContext
+        ? { ...activeModelInputContext }
+        : null;
+      const startedAt = performance.now();
+      let outcome: "success" | "error" = "error";
+      try {
+        const result = await measuredUseModel(
+          modelType,
+          measuredParams,
+          nativeEmbedding && modelType === ModelType.TEXT_EMBEDDING
+            ? "eliza-local-inference"
+            : provider,
+        );
+        if (nativeEmbedding && modelType === ModelType.TEXT_EMBEDDING) {
+          if (
+            !Array.isArray(result) ||
+            result.length !== embedding.dimensions ||
+            !result.every(
+              (value) => typeof value === "number" && Number.isFinite(value),
+            ) ||
+            !result.some((value) => value !== 0)
+          ) {
+            throw new Error("Native embedding returned an invalid vector");
+          }
+          if (wireEvidence.some((wire) => wire.kind === "embedding"))
+            throw new Error("Native embedding unexpectedly fell back to HTTP");
+        }
+        outcome = "success";
+        return result;
+      } finally {
+        modelExecutions.push({
+          modelType: String(modelType),
+          context,
+          durationMs: performance.now() - startedAt,
+          outcome,
+        });
+      }
     }) as typeof runtime.useModel;
     const worldId = randomUUID() as UUID;
     const roomId = randomUUID() as UUID;
@@ -535,13 +736,34 @@ async function main(): Promise<void> {
     });
     await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
 
-    const runTurn = async (index: number, warmup: boolean) => {
+    const lastRoomCompletion = new Map<string, number>();
+    const prepareRoom = async () => {
+      const id = randomUUID() as UUID;
+      await runtime.ensureConnection({
+        entityId,
+        roomId: id,
+        worldId,
+        worldName: "Cerebras latency audit",
+        userName: "Latency auditor",
+        name: "Latency auditor",
+        source: "cerebras_latency_audit",
+        channelId: id,
+        type: ChannelType.DM,
+      });
+      await runtime.ensureParticipantInRoom(runtime.agentId, id);
+      return id;
+    };
+    const runTurn = async (
+      index: number,
+      warmup: boolean,
+      turnRoomId: string = roomId,
+    ) => {
       const proof = `SPEED-${warmup ? "W" : "S"}-${index}`;
       const prompt = `Reply with exactly ${proof} and no other text.`;
       const message = createMessageMemory({
         id: randomUUID() as UUID,
         entityId,
-        roomId,
+        roomId: turnRoomId as UUID,
         content: {
           text: prompt,
           source: "client_chat",
@@ -551,19 +773,28 @@ async function main(): Promise<void> {
       const streamed: string[] = [];
       const usageEventOffset = modelUsageEvents.length;
       const startedAt = performance.now();
+      const previousCompletedAt = lastRoomCompletion.get(turnRoomId);
+      const observedIdleMs =
+        previousCompletedAt === undefined
+          ? null
+          : startedAt - previousCompletedAt;
+      let firstTextAt: number | null = null;
       activeModelInputContext = {
         phase: warmup ? "warmup" : "sample",
         index,
         proof,
+        roomId: turnRoomId,
       };
       let result: Awaited<ReturnType<typeof generateChatResponse>>;
       try {
         result = await generateChatResponse(
           runtime,
           message as Memory,
-          runtime.character.name,
+          runtime.character.name ?? "CerebrasLatencyAudit",
           {
             onChunk: (chunk) => {
+              if (chunk.length > 0 && firstTextAt === null)
+                firstTextAt = performance.now();
               streamed.push(chunk);
             },
           },
@@ -572,7 +803,9 @@ async function main(): Promise<void> {
         activeModelInputContext = null;
       }
       const wallMs = performance.now() - startedAt;
-      const turnUsageEvents = modelUsageEvents.slice(usageEventOffset);
+      const turnUsageEvents = modelUsageEvents
+        .slice(usageEventOffset)
+        .filter((event) => event.type !== ModelType.TEXT_EMBEDDING);
       const modelUsagePayload = turnUsageEvents[0];
       if (turnUsageEvents.length !== 1 || !modelUsagePayload) {
         throw new Error(
@@ -601,7 +834,7 @@ async function main(): Promise<void> {
       const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
       const totalToQuiescenceMs = performance.now() - startedAt;
       const recentMessages = await runtime.getMemories({
-        roomId,
+        roomId: turnRoomId as UUID,
         tableName: "messages",
         limit: 12,
       });
@@ -636,12 +869,17 @@ async function main(): Promise<void> {
           )}`,
         );
       }
+      lastRoomCompletion.set(turnRoomId, performance.now());
       return {
         index,
+        roomId: turnRoomId,
+        observedIdleMs,
         proof,
         prompt,
         output: result.text,
         wallMs: rounded(wallMs),
+        firstVisibleTextMs:
+          firstTextAt === null ? null : rounded(firstTextAt - startedAt),
         backgroundTasks,
         backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
         totalToQuiescenceMs: rounded(totalToQuiescenceMs),
@@ -669,17 +907,29 @@ async function main(): Promise<void> {
     }
     inferenceTimingRegistry.reset();
 
-    const turns = [];
-    for (let index = 0; index < sampleCount; index += 1) {
-      turns.push(await runTurn(index, false));
-    }
+    const samples = await runChatCondition({
+      condition,
+      samples: sampleCount,
+      idleMs,
+      initialRoom: roomId,
+      prepareRoom,
+      runTurn,
+      wait: async (milliseconds) => {
+        process.stderr.write(
+          `Waiting ${milliseconds}ms before resuming ${sampleCount} separately primed rooms.\n`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, milliseconds));
+        inferenceTimingRegistry.reset();
+      },
+    });
+    const turns = samples.map((sample) => sample.value);
     const chatTelemetry = buildInferenceTimingDevPayload(sampleCount);
     if (chatTelemetry.turns.length !== sampleCount) {
       throw new Error(
         `Expected ${sampleCount} timed turns, observed ${chatTelemetry.turns.length}`,
       );
     }
-    if (turns.some((turn) => turn.usage.llmCalls !== 1)) {
+    if (turns.some((turn) => turn.usage?.llmCalls !== 1)) {
       throw new Error(
         "Every benchmark turn must make exactly one live LLM call",
       );
@@ -706,8 +956,8 @@ async function main(): Promise<void> {
     let liveModelInvocationObserved = false;
     let invokedModelType: string | null = null;
     let modelSignalWasAlreadyAborted = false;
-    runtime.useModel = (async (modelType, params) => {
-      const pending = originalUseModel(modelType, params);
+    runtime.useModel = (async (modelType, params, provider) => {
+      const pending = originalUseModel(modelType, params, provider);
       if (
         !liveModelInvocationObserved &&
         modelType === ModelType.RESPONSE_HANDLER
@@ -737,7 +987,7 @@ async function main(): Promise<void> {
       await generateChatResponse(
         runtime,
         cancellationMessage as Memory,
-        runtime.character.name,
+        runtime.character.name ?? "CerebrasLatencyAudit",
         { abortSignal: cancellationController.signal },
       );
       throw new Error("Cancellation probe unexpectedly completed");
@@ -852,15 +1102,66 @@ async function main(): Promise<void> {
     }
     const providerSweepTelemetry = buildInferenceTimingDevPayload(sampleCount);
 
+    const successfulEmbeddingCalls = modelExecutions.filter(
+      (call) =>
+        call.modelType === ModelType.TEXT_EMBEDDING &&
+        call.outcome === "success",
+    );
+    if (
+      successfulEmbeddingCalls.length === 0 ||
+      (!nativeEmbedding &&
+        !wireEvidence.some(
+          (wire) => wire.kind === "embedding" && wire.status === 200,
+        ))
+    ) {
+      throw new Error(
+        "No successful real embedding execution and matching wire request observed; this run cannot certify production embedding timing",
+      );
+    }
+    for (const turn of turns) {
+      if (
+        !wireEvidence.some(
+          (wire) => wire.kind === "text" && wire.context?.proof === turn.proof,
+        )
+      ) {
+        throw new Error(`Missing actual SDK wire request for ${turn.proof}`);
+      }
+    }
     const report = {
       generatedAt: new Date().toISOString(),
-      sourceRevision: sourceRevisionEvidence(),
+      sourceRevision,
       runtime: "AgentRuntime + plugin-sql/PGLite + plugin-openai",
       endpoint: process.env.CEREBRAS_BASE_URL,
       model,
-      reasoningEffort: "omitted (Gemma 4 has no reasoning-effort control)",
-      embeddingMode:
-        "plugin-openai deterministic local token/bigram feature hashing (Cerebras exposes no embedding endpoint)",
+      reasoningEffort:
+        process.env.OPENAI_REASONING_EFFORT?.trim() || "provider-default",
+      embedding: { ...embedding, nativeProvenance },
+      cacheExperiment: { mode: cacheMode, keyCapabilityConfirmed },
+      workload: {
+        condition,
+        requestedIdleMs: idleMs,
+        cacheTemperature:
+          "Only provider-reported cached token counts establish reuse; fresh-room is not asserted cold",
+      },
+      errorRatePercent: 0,
+      errorRateScope:
+        "All samples passed; any failure aborts this command and cannot produce a successful report",
+      wireEvidence: jsonEvidence(wireEvidence),
+      modelExecutions,
+      path: {
+        kind: pathKind,
+        gatewaySourceRevision: gatewaySourceRevision ?? null,
+      },
+      providerQueueMs: null,
+      providerQueueAvailability: "not reported by this transport",
+      acousticFirstAudioMs: null,
+      acousticAvailability:
+        "this command exercises text chat, not a voice renderer",
+      firstVisibleTextMs: distribution(
+        turns.flatMap((turn) =>
+          turn.firstVisibleTextMs === null ? [] : [turn.firstVisibleTextMs],
+        ),
+      ),
       execution:
         "production generateChatResponse path with streaming, persistence, and distinct proof validation",
       warmups: warmupCount,
@@ -897,9 +1198,11 @@ async function main(): Promise<void> {
     };
     const json = `${JSON.stringify(report, null, 2)}\n`;
     const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();
-    if (reportPath) await writeFile(reportPath, json, "utf8");
+    if (reportPath)
+      await writeFile(reportPath, json, { encoding: "utf8", mode: 0o600 });
     process.stdout.write(json);
   } finally {
+    globalThis.fetch = originalFetch;
     await cleanup();
   }
 }
