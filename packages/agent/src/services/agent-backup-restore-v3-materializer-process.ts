@@ -45,7 +45,7 @@ export function createAgentBackupRestoreV3ProcessMaterializer(input: {
   )
     throw materializerWireError("INPUT_INVALID");
   const roots = Object.freeze({
-    version: 1 as const,
+    version: 2 as const,
     trustedRoot: candidateFs.trustedRoot,
     attemptRoot: candidateFs.attemptRoot,
     trustedRootIdentity: candidateFs.trustedRootIdentity,
@@ -177,19 +177,12 @@ async function runWorker(
       ...(emulate ? ["--test-only-non-linux-fs"] : []),
     ],
     {
-      stdio: ["pipe", "pipe", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
       // Never inherit NODE_OPTIONS, model credentials, preload hooks or vault keys.
       env: emulate ? { NODE_ENV: "test" } : {},
     },
   );
-  const liveness = child.stdio[3];
-  if (
-    !child.stdin ||
-    !child.stdout ||
-    !child.stderr ||
-    !liveness ||
-    !("end" in liveness)
-  ) {
+  if (!child.stdin || !child.stdout || !child.stderr) {
     child.kill("SIGKILL");
     await new Promise<void>((resolve) => child.once("close", () => resolve()));
     throw materializerWireError("PROCESS_FAILED");
@@ -204,7 +197,6 @@ async function runWorker(
     failure = materializerWireError(code);
     // EOF cooperatively aborts the worker, which joins its validation children.
     // Killing only the worker PID could leave a child writing after DB rollback.
-    liveness.end();
     child.stdin?.destroy();
   };
   const abort = () => interrupt("INTERRUPTED");
@@ -217,7 +209,6 @@ async function runWorker(
   );
   control.signal.addEventListener("abort", abort, { once: true });
   child.on("error", () => interrupt("PROCESS_FAILED"));
-  liveness.on("error", () => interrupt("PROCESS_FAILED"));
   child.stdin.on("error", () => interrupt("INPUT_FAILED"));
   child.stdout.on("error", () => interrupt("OUTPUT_INVALID"));
   child.stderr.on("error", () => interrupt("PROCESS_FAILED"));
@@ -239,7 +230,7 @@ async function runWorker(
     if (!failure) {
       child.stdin.write(prefix);
       child.stdin.write(metadata);
-      child.stdin.end(payload);
+      child.stdin.write(payload);
     }
     const code = await reaped;
     if (failure) throw failure;
@@ -252,7 +243,7 @@ async function runWorker(
   } finally {
     clearTimeout(timeout);
     control.signal.removeEventListener("abort", abort);
-    liveness.destroy();
+    child.stdin.destroy();
     await reaped;
     prefix.fill(0);
     output.fill(0);

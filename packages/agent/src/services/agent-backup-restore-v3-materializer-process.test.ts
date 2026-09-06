@@ -8,7 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import {
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   type AgentBackupRestoreV3ComponentReceipt,
@@ -93,7 +93,7 @@ async function fixture() {
   );
   snapshot.payload.fill(0);
   const request = {
-    version: 1,
+    version: 2,
     trustedRoot: root,
     attemptRoot,
     trustedRootIdentity: candidateFs.trustedRootIdentity,
@@ -205,6 +205,27 @@ it("losslessly reads byte-fragmented binary ingress and zeroes transport buffers
   expect(parsed.payload).toEqual(f.record.payload);
   expect(chunks.every((chunk) => chunk[0] === 0)).toBe(true);
   parsed.payload.fill(0);
+});
+
+it("returns a complete frame while preserving the open liveness stream", async () => {
+  const f = await fixture();
+  const input = new PassThrough();
+  const pending = readMaterializerRequest(input);
+  input.write(f.wire);
+  try {
+    const parsed = await pending;
+    expect(parsed.request).toEqual(f.request);
+    expect(parsed.payload).toEqual(f.record.payload);
+    expect(input.destroyed).toBe(false);
+    expect(input.readableEnded).toBe(false);
+    parsed.payload.fill(0);
+    const trailing = Buffer.from([7]);
+    input.write(trailing);
+    expect(input.read()).toEqual(trailing);
+    trailing.fill(0);
+  } finally {
+    input.destroy();
+  }
 });
 
 it.each(["oversize", "truncated", "trailing", "tampered"] as const)(
