@@ -1183,14 +1183,14 @@ const CLOUD_APPS_MENTION_RE = new RegExp(
 const CLOUD_APPS_ARTICLE_ALT = alt(CLOUD_APPS_ARTICLES);
 const CLOUD_APPS_PARTICLE_ALT = rawAlt(CLOUD_APPS_PARTICLES);
 const CLOUD_APPS_COURTESY_ALT = alt(CLOUD_APPS_COURTESY);
-const CLOUD_APPS_EDGE = `[\\s\\p{P}]*`;
-const CLOUD_APPS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s\\p{P}]+)?`;
-const CLOUD_APPS_OPTIONAL_ARTICLE = `(?:(?:${CLOUD_APPS_ARTICLE_ALT})[\\s\\p{P}]+)?`;
+const CLOUD_APPS_EDGE = `[\\s.!?。！？]*`;
+const CLOUD_APPS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s]+)?`;
+const CLOUD_APPS_OPTIONAL_ARTICLE = `(?:(?:${CLOUD_APPS_ARTICLE_ALT})[\\s]+)?`;
 const CLOUD_APPS_OPTIONAL_PARTICLE = `(?:${CLOUD_APPS_PARTICLE_ALT})?`;
 const CLOUD_APPS_COMMAND_RE = new RegExp(
   [
-    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_VERB_ALT})[\\s\\p{P}]*${CLOUD_APPS_OPTIONAL_ARTICLE}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
-    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_OPTIONAL_PARTICLE}[\\s\\p{P}]*(?:${CLOUD_APPS_VERB_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
+    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_VERB_ALT})[\\s]*${CLOUD_APPS_OPTIONAL_ARTICLE}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
+    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_OPTIONAL_PARTICLE}[\\s]*(?:${CLOUD_APPS_VERB_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
   ].join("|"),
   "iu",
 );
@@ -1220,38 +1220,71 @@ interface CompiledView {
   re: RegExp;
 }
 
-// For each view, compile one regex covering the precise nav patterns:
-//   verb … noun           (open settings / 打开设置 / abre ajustes)
-//   noun … verb           (SOV: 설정 열기 / 設定を開いて)
-//   possessive noun       (my settings / 我的设置 / mis ajustes)
-//   noun viewword         (settings page / 设置页面)
-//   whole message == noun (just "settings")
-// Gaps use [\s\S]{0,N} so CJK (no spaces) and short filler both match, while
-// staying tight enough to avoid cross-clause false positives.
+// Standalone grammar consumes the whole request. Only grammatical articles,
+// possessives and particles may separate verbs and view nouns; arbitrary filler
+// would let a quoted instruction or another clause steal domain action hints.
+const COMMAND_EDGE = `[\\s.!?。！？]*`;
+const COMMAND_COURTESY = alt([
+  ...CLOUD_APPS_COURTESY,
+  "can you",
+  "could you",
+  "would you",
+  "請",
+  "请",
+]);
+const COMMAND_PREFIX = `(?:(?:can you|could you|would you)\\s+)?(?:(?:${COMMAND_COURTESY})\\s*)?`;
+const COMMAND_SUFFIX = `(?:\\s*(?:${alt(CLOUD_APPS_COURTESY)}))?`;
+const COMMAND_ARTICLE = alt([
+  ...CLOUD_APPS_ARTICLES,
+  ...POSSESSIVES,
+  "a",
+  "el",
+  "la",
+  "los",
+  "o",
+  "as",
+  "le",
+  "la",
+  "der",
+  "das",
+  "den",
+  "dem",
+]);
+const COMMAND_DETERMINER = `(?:(?:${COMMAND_ARTICLE})\\s*)?`;
+const COMMAND_PARTICLE = `(?:${CLOUD_APPS_PARTICLE_ALT})?`;
+const COMMAND_VERB = alt([...NAV_VERBS, "go back to", "check", "revisa"]);
 const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
   (v) => v !== CLOUD_APPS_VIEW_ID && VIEW_NOUNS[v],
 ).map((viewId) => {
   const N = nounAlt(VIEW_NOUNS[viewId]);
-  const pattern = [
-    `(?:${VERB_ALT})[\\s\\S]{0,16}?(?:${N})`,
-    `(?:${N})[\\s\\S]{0,8}?(?:${VERB_ALT})`,
-    `(?:${POSS_ALT})[\\s\\S]{0,4}?(?:${N})`,
-    `(?:${N})[\\s\\S]{0,4}?(?:${VW_ALT})`,
-    `^[\\s\\p{P}]*(?:${N})[\\s\\p{P}]*$`,
+  const noun = `${COMMAND_DETERMINER}(?:${N})(?:\\s*(?:${VW_ALT}))?`;
+  const patterns = [
+    `(?:${COMMAND_VERB})\\s*${noun}`,
+    `${noun}${COMMAND_PARTICLE}\\s*(?:${COMMAND_VERB})`,
+    `(?:${POSS_ALT})\\s*(?:${N})`,
+    `(?:${N})\\s*(?:${VW_ALT})`,
+    `(?:${N})`,
   ].join("|");
-  return { viewId, re: new RegExp(pattern, "iu") };
+  return {
+    viewId,
+    re: new RegExp(
+      `^${COMMAND_EDGE}${COMMAND_PREFIX}(?:${patterns})${COMMAND_SUFFIX}${COMMAND_EDGE}$`,
+      "iu",
+    ),
+  };
 });
 
 // Bare "go back" is the conversational counterpart of the shell's Home affordance.
 // Browser/OS history remains a client-owned gesture, so this exact whole-message
 // form can safely return to the canonical chat surface without guessing history.
-const BARE_HOME_NAVIGATION = /^[\s\p{P}]*go\s+back[\s\p{P}]*$/iu;
+const BARE_HOME_NAVIGATION = /^[\s.!?。！？]*go\s+back[\s.!?。！？]*$/iu;
 
 // A whole-message "go <single word>" command has enough intent to safely
 // recover a one-key typo in "home" without making every view noun fuzzy. Keep
 // this keyboard-aware and substitution-only: broad edit distance would turn
 // unrelated commands such as "go dome" into navigation.
-const FUZZY_HOME_NAVIGATION = /^[\s\p{P}]*go(?:\s+to)?\s+([a-z]+)[\s\p{P}]*$/iu;
+const FUZZY_HOME_NAVIGATION =
+  /^[\s.!?。！？]*go(?:\s+to)?\s+([a-z]+)[\s.!?。！？]*$/iu;
 const QWERTY_NEIGHBORS: Readonly<Record<string, string>> = {
   e: "wsdr",
   h: "ygjb",
