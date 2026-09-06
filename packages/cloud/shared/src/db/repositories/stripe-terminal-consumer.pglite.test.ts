@@ -54,12 +54,21 @@ beforeAll(async () => {
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
   await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
-  const noticeMigration = await readFile(
-    new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of noticeMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  for (const migration of [
+    "0382_subscription_notice_intents.sql",
+    "0383_subscription_cancellation_result.sql",
+    "0384_subscription_cancellation_undo.sql",
+    "0385_subscription_reconciliation.sql",
+  ]) {
+    const migrationSql = await readFile(
+      new URL(`../migrations/${migration}`, import.meta.url),
+      "utf8",
+    );
+    for (const statement of migrationSql
+      .replaceAll('"public".', "")
+      .split("--> statement-breakpoint")) {
+      if (statement.trim()) await getPgliteClientForTests().exec(statement);
+    }
   }
 });
 beforeEach(async () => {

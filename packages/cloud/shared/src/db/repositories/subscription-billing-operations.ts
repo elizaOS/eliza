@@ -28,6 +28,7 @@ import {
   type SubscriptionBillingFenceState,
   subscriptionBillingFences,
 } from "../schemas/subscription-billing-operations";
+import { subscriptionReconciliationAttempts } from "../schemas/subscription-reconciliation";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import {
@@ -872,7 +873,36 @@ export class SubscriptionBillingOperationsRepository {
           "Older unacknowledged event cannot republish current lifecycle",
           { receiptId: receipt.id },
         );
+      let reconciledPublication = false;
       if (!historical && sameTerminalLifecycle(current, values)) {
+        const [revision] = await tx
+          .select({ source: billingSubscriptionRevisions.source })
+          .from(billingSubscriptionRevisions)
+          .where(
+            and(
+              eq(billingSubscriptionRevisions.organization_id, input.organizationId),
+              eq(billingSubscriptionRevisions.subscription_id, current.id),
+              eq(billingSubscriptionRevisions.revision, current.lifecycle_revision),
+            ),
+          );
+        if (revision?.source === "reconciliation") {
+          const [attempt] = await tx
+            .select({ id: subscriptionReconciliationAttempts.id })
+            .from(subscriptionReconciliationAttempts)
+            .where(
+              and(
+                eq(subscriptionReconciliationAttempts.organization_id, input.organizationId),
+                eq(subscriptionReconciliationAttempts.subscription_id, current.id),
+                eq(subscriptionReconciliationAttempts.result_revision, current.lifecycle_revision),
+                eq(subscriptionReconciliationAttempts.disposition, "applied"),
+              ),
+            );
+          reconciledPublication = Boolean(attempt);
+        }
+      }
+      // A late webhook acknowledges an already committed recovery publication;
+      // ordinary webhook observations retain their existing revision semantics.
+      if (reconciledPublication) {
         await requireReconciliationProjection(tx, current, input.expectedProjectionRevision);
         const applied = await this.applyEventInTransaction(tx, {
           organizationId: input.organizationId,
