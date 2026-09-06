@@ -24,6 +24,7 @@ import {
 import { materializeAgentBackupRestoreV3CandidateFileSet } from "./agent-backup-restore-v3-candidate-file-set";
 import {
   type AgentBackupRestoreV3CandidateFs,
+  type AgentBackupRestoreV3CandidateFsLock,
   isAgentBackupRestoreV3CandidateFs,
 } from "./agent-backup-restore-v3-candidate-fs";
 import {
@@ -107,6 +108,7 @@ function componentProof(value: {
 
 export async function assembleAgentBackupRestoreV3Candidate(
   input: Readonly<AgentBackupRestoreV3CandidateAssemblyInput>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateAssemblyReceipt>> {
   const exact = snapshotOwnDataRecord(
     input,
@@ -142,10 +144,9 @@ export async function assembleAgentBackupRestoreV3Candidate(
       "Candidate receipt differs from the exact staging session",
     );
   const candidateReceiptSha256 = digest(receipt);
-  const lock = await candidateFs.acquireLock(
-    ".restore-v3-assemble.lock",
-    control,
-  );
+  const lock =
+    heldLock ??
+    (await candidateFs.acquireLock(".restore-v3-assemble.lock", control));
   let failure: unknown;
   let result:
     | Readonly<AgentBackupRestoreV3CandidateAssemblyReceipt>
@@ -300,7 +301,7 @@ export async function assembleAgentBackupRestoreV3Candidate(
     failure = cause;
   }
   try {
-    await lock.release(internalCleanupControl());
+    if (!heldLock) await lock.release(internalCleanupControl());
   } catch (cause) {
     // error-policy:J2 Failed release is never hidden behind an assembly receipt.
     if (failure !== undefined)

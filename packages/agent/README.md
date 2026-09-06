@@ -49,6 +49,23 @@ directory. The harness creates only test-owned containers and tmpfs data and
 removes them after each test; it never pulls an image implicitly. Its idle
 container is a test fixture, not the production quarantine bootstrap.
 
+`prepareAgentBackupRestoreV3Generation` copies an assembled candidate into a
+second, non-overlapping private quarantine. It preserves the character and
+physical database separately and composes state files, media and vault files
+under `generation/state`. Copies use bounded descriptor-bound reads, independent
+destination inodes and the existing no-replace file writer. Both root locks stay
+held through source revalidation and durable prepared-layout publication.
+Cross-component path collisions, source changes and unexpected destination files
+fail closed. Exact replay checks the recorded destination tree without repairing
+or rewriting a previously prepared generation.
+
+The prepared-layout receipt is not a generation activation or boot grant. Both
+roots remain unavailable to a running workload. Production integration must still
+promote the exact layout outside the candidate authority, select its database and
+character explicitly, verify Agent readiness/functionality, and gate activation
+and routes. Opening the prepared directory directly with a live runtime would
+violate the quarantine contract.
+
 ## Research tasks
 
 `ResearchTaskExecutor` requires a provider registered for

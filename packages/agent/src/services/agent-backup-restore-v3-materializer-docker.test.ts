@@ -217,6 +217,52 @@ afterEach(async () => {
 
 // Explicit Docker lane: ordinary unit runs must not create containers or pull images.
 describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
+  it("copies generation files under two actual Linux inode locks without sharing source inodes", async () => {
+    const f = await fixture();
+    const proof = JSON.parse(
+      remote(
+        f.id,
+        `
+      import fs from "node:fs/promises";
+      import {openAgentBackupRestoreV3CandidateFs} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-candidate-fs.js";
+      const control = {signal: new AbortController().signal, deadlineEpochMs: Date.now() + 10000};
+      await fs.mkdir("/restore/destination", {mode: 0o700});
+      const source = await openAgentBackupRestoreV3CandidateFs({trustedRoot: "/restore", attemptRoot: "/restore/attempt", control});
+      const target = await openAgentBackupRestoreV3CandidateFs({trustedRoot: "/restore", attemptRoot: "/restore/destination", control});
+      const sourceLock = await source.acquireLock(".copy.lock", control);
+      const targetLock = await target.acquireLock(".copy.lock", control);
+      try {
+        await source.ensureFileTreeDirectory("input/empty", control, sourceLock);
+        const writer = await source.createFileTreeFile("input", {path: "state.bin", sizeBytes: 300001, mode: 0o400, mtimeMs: 0}, undefined, control, sourceLock);
+        await writer.write(new Uint8Array(262144).fill(91), control);
+        await writer.write(new Uint8Array(37857).fill(91), control);
+        await writer.finalize(control);
+        const inventory = await source.inspectFileTree("input", control, sourceLock);
+        const copied = await source.copyFileTreeFileTo(target, "input", inventory.entries[0], "generation", "state/state.bin", control, sourceLock, targetLock);
+        const replay = await source.copyFileTreeFileTo(target, "input", inventory.entries[0], "generation", "state/state.bin", control, sourceLock, targetLock);
+        const bytes = await fs.readFile("/restore/destination/generation/state/state.bin");
+        const metadata = await fs.stat("/restore/destination/generation/state/state.bin");
+        process.stdout.write(JSON.stringify({bytes: bytes.length, allBytesExact: bytes.every(byte => byte === 91), privateMode: metadata.mode & 511, links: metadata.nlink, distinctInodes: copied.inode !== inventory.entries[0].inode, exactReplay: JSON.stringify(copied) === JSON.stringify(replay), emptyDirectories: inventory.directoryPaths}));
+      } finally {
+        await targetLock.release(control);
+        await sourceLock.release(control);
+        await target.close();
+        await source.close();
+      }
+    `,
+      ),
+    );
+    expect(proof).toEqual({
+      bytes: 300001,
+      allBytesExact: true,
+      privateMode: 0o400,
+      links: 1,
+      distinctInodes: true,
+      exactReplay: true,
+      emptyDirectories: ["empty"],
+    });
+  }, 30_000);
+
   it("materializes exact bytes through exec without inherited descriptors, network or runtime boot", async () => {
     const f = await fixture();
     const payload = new TextEncoder().encode(
