@@ -36,8 +36,6 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
 const FORGET_BY_QUERY_TABLES: readonly MemoryType[] = ["facts", "memories"];
-const FORGET_TOGETHER_MAX_ROWS = 3;
-const FORGET_TOGETHER_MIN_TERMS = 3;
 
 const UUID_SCHEMA_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
@@ -1316,23 +1314,9 @@ async function doDeleteByQuery(
       .trim()
       .toLowerCase();
   const distinctTexts = new Set(matched.map(normalize));
-  // "Forget that I take my tea without sugar" routinely matches two of the
-  // requester's own fact rows with different wording (the explicit durable
-  // memory and the Stage-1 observation). When every match is one of the
-  // requester's own facts, the phrase carries at least three content terms
-  // and at most a few rows match, forgetting them together is exactly the
-  // request; anything looser stays ambiguous and the planner picks by id.
-  const forgetTogether =
-    distinctTexts.size > 1 &&
-    matched.length <= FORGET_TOGETHER_MAX_ROWS &&
-    scoreQueryTerms(query).length >= FORGET_TOGETHER_MIN_TERMS &&
-    matched.every(
-      (c) =>
-        c.type === "facts" &&
-        !!message.entityId &&
-        c.memory.entityId === message.entityId,
-    );
-  if (distinctTexts.size > 1 && !forgetTogether) {
+  // Retrieval matches do not establish that distinct texts express the same
+  // claim, even when their records share an author. Let the planner select ids.
+  if (distinctTexts.size > 1) {
     const lines = matched
       .map((c) => toListItem(c.memory, c.type))
       .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);

@@ -526,6 +526,65 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("requires explicit selection when a query matches the requester and an unresolved friend's preference", async () => {
+    const { runtime, rows } = makeRuntime();
+    const ownId = seedFact(rows, {
+      text: "I prefer green tea without sugar",
+      entityId: USER_ID,
+      metadata: {
+        messageId: "msg-tea-preferences",
+        subject: "user",
+        subjectResolved: true,
+      },
+    });
+    const friendId = seedFact(rows, {
+      text: "My friend prefers green tea without sugar",
+      entityId: USER_ID,
+      metadata: {
+        messageId: "msg-tea-preferences",
+        subject: "friend",
+        subjectResolved: false,
+      },
+    });
+    seedFact(rows, {
+      text: "I prefer green tea without sugar",
+      entityId: OTHER_USER_ID,
+    });
+    const before = structuredClone(rows);
+    const message = makeMessage();
+    message.content.text =
+      "Forget that I prefer green tea without sugar, but keep what you know about my friend.";
+
+    const ambiguous = await runAction(runtime, message, {
+      action: "delete",
+      query: "I prefer green tea without sugar",
+      confirm: true,
+    });
+
+    expect(ambiguous.success).toBe(false);
+    expect(ambiguous.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(ambiguous.text).toContain(ownId);
+    expect(ambiguous.text).toContain(friendId);
+    expect(ambiguous.effectReceipts).toBeUndefined();
+    expect(rows).toEqual(before);
+
+    const selected = await runAction(runtime, message, {
+      action: "delete",
+      memoryId: ownId,
+      confirm: true,
+    });
+
+    expect(selected.success).toBe(true);
+    expect(rows).toEqual(before.filter((row) => row.memory.id !== ownId));
+    expect(selected.effectReceipts).toHaveLength(1);
+    expect(selected.effectReceipts?.[0]).toMatchObject({
+      operation: "memory.delete",
+      resource: { id: ownId },
+      outcome: "applied",
+      commit: { kind: "durable", id: ownId },
+    });
+  });
+
   it("deletes only the explicit id and preserves unrelated facts from the same source message", async () => {
     const { runtime, rows } = makeRuntime();
     const id = seedFact(rows, {
@@ -844,13 +903,14 @@ describe("MEMORY op:delete by query scope", () => {
     expect(rows.filter((row) => row.tableName === "messages")).toHaveLength(1);
   });
 
-  it("forgets the requester's own matching facts together when they differ only in wording", async () => {
+  it("requires explicit ids for the requester's matching facts with different wording", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, {
       text: "User takes their tea without sugar.",
       entityId: USER_ID,
     });
     seedFact(rows, { text: "takes tea without sugar", entityId: USER_ID });
+    const before = structuredClone(rows);
 
     const result = await runAction(runtime, makeMessage(), {
       action: "delete",
@@ -858,10 +918,11 @@ describe("MEMORY op:delete by query scope", () => {
       confirm: true,
     });
 
-    expect(result.success).toBe(true);
-    expect(result.values).toMatchObject({ deletedCount: 2 });
-    expect(result.effectReceipts).toHaveLength(2);
-    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(result.effectReceipts).toBeUndefined();
+    expect(rows).toEqual(before);
+    for (const row of before) expect(result.text).toContain(row.memory.id);
   });
 
   it("stays ambiguous when a matching row is not one of the requester's facts", async () => {
