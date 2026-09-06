@@ -167,6 +167,13 @@ export const appBillingDeletionCustomerRepository = {
           command.provider_result.customerBindingId !== customerBindingId
         )
           appBillingConflict("Customer deletion has no retained completion receipt");
+        const proof = await tx.execute<{ valid: boolean }>(
+          sql`SELECT app_billing_customer_deletion_receipt_valid(c) AS valid FROM billing_subscription_commands c WHERE c.id=${command.id}::uuid`,
+        );
+        if (!proof.rows[0]?.valid)
+          appBillingConflict(
+            "Customer deletion receipt does not prove its original provider binding",
+          );
         return { kind: "complete" };
       }
       if (command.status !== "PREPARED" && command.status !== "OUTCOME_UNKNOWN")

@@ -145,6 +145,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0457_app_billing_completion_validation_guards",
       "0458_app_billing_completion_commit_validation",
       "0459_app_billing_completion_mutation_fence",
+      "0460_app_billing_customer_receipt_digests",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -418,7 +419,15 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       observation: {
         value,
         digest: settlementDigest(value),
-        inputDigest: "d".repeat(64),
+        inputDigest: settlementDigest({
+          operation: "inspectBoundCustomer",
+          scope: {
+            scopeId: source.scopeId,
+            appId: source.identity.appId,
+            billingAccountId: source.identity.billingAccountId,
+          },
+          customerId: payload.customerId,
+        }),
         apiVersion: "2024-11-20.acacia",
         merchantId: merchant,
         providerAccountId: payload.providerAccountId,
@@ -437,13 +446,22 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
     const complete = (result: typeof receipt) =>
       db.query(
         "UPDATE billing_subscription_commands SET status='SUCCEEDED',provider_result=$2,provider_response_digest=$3,completed_at=now(),state_revision=3,lease_token=NULL,lease_expires_at=NULL WHERE id=$1",
-        [commandId, JSON.stringify(result), receipt.observation.digest],
+        [commandId, JSON.stringify(result), result.observation.digest],
       );
     await expect(
       complete({
         ...receipt,
         observation: { ...receipt.observation, value: { ...value, customerId: "cus_foreign" } },
       }),
+    ).rejects.toThrow("exact retained tombstone evidence");
+    await expect(
+      complete({
+        ...receipt,
+        observation: { ...receipt.observation, inputDigest: "d".repeat(64) },
+      }),
+    ).rejects.toThrow("exact retained tombstone evidence");
+    await expect(
+      complete({ ...receipt, observation: { ...receipt.observation, digest: "e".repeat(64) } }),
     ).rejects.toThrow("exact retained tombstone evidence");
     await db.query("UPDATE account_deletion_phase_receipts SET lease_generation=2 WHERE id=$1", [
       auth.phaseReceiptId,
@@ -1470,5 +1488,68 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
         )
       ).rows[0].role,
     ).toBe("member");
+  });
+  test("legacy receipt with an unverifiable digest remains pending without another provider mutation", async () => {
+    const state = await settledCustomer();
+    const repo = (await import("../../db/repositories/app-billing-deletion-customer"))
+      .appBillingDeletionCustomerRepository;
+    const claim = await repo.claim(state.binding.id, state.auth);
+    if (claim.kind !== "claimed") throw new Error("Expected current customer execution");
+    const value = { customerId: claim.claim.payload.customerId, status: "deleted" };
+    const { requestId, requestDigest, lifecycleRevision, phaseReceiptId, phaseGeneration } =
+      state.auth;
+    const result = {
+      kind: "deleted_customer",
+      customerBindingId: state.binding.id,
+      observation: {
+        value,
+        digest: settlementDigest(value),
+        inputDigest: "a".repeat(64),
+        merchantId: merchant,
+        providerAccountId: claim.claim.payload.providerAccountId,
+        livemode: false,
+        apiVersion: "2024-11-20.acacia",
+        observedAt: new Date().toISOString(),
+      },
+      completionAuthority: {
+        requestId,
+        requestDigest,
+        lifecycleRevision,
+        phaseReceiptId,
+        phaseGeneration,
+      },
+    };
+    // Reproduce a receipt accepted before0460; transactional DDL restores the new guard before any replay.
+    await db.query("BEGIN");
+    try {
+      await db.query(
+        "ALTER TABLE billing_subscription_commands DISABLE TRIGGER app_billing_customer_receipt_digest_guard",
+      );
+      await db.query(
+        "UPDATE billing_subscription_commands SET status='SUCCEEDED',provider_result=$2,provider_response_digest=$3,completed_at=clock_timestamp(),state_revision=state_revision+1,lease_token=NULL,lease_expires_at=NULL WHERE id=$1",
+        [claim.claim.lease.commandId, JSON.stringify(result), result.observation.digest],
+      );
+      await db.query(
+        "ALTER TABLE billing_subscription_commands ENABLE TRIGGER app_billing_customer_receipt_digest_guard",
+      );
+      await db.query("COMMIT");
+    } catch (error) {
+      // error-policy:J2 Preserve fixture failure after rolling back the temporary historical guard state.
+      await db.query("ROLLBACK");
+      throw error;
+    }
+    const at = fixture.requests.length;
+    await expect(repo.claim(state.binding.id, state.auth)).rejects.toThrow(
+      "does not prove its original provider binding",
+    );
+    expect(await deleteCustomer(state)).toBe("pending");
+    expect(fixture.requests.length).toBe(at);
+    expect(
+      (
+        await db.query("SELECT provider_result FROM billing_subscription_commands WHERE id=$1", [
+          claim.claim.lease.commandId,
+        ])
+      ).rows[0].provider_result,
+    ).toEqual(result);
   });
 });
