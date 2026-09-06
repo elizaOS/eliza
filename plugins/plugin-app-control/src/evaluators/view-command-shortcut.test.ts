@@ -71,8 +71,6 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["mở lịch", "calendar"],
 		["buksan ang calendar", "calendar"],
 		["open my inbox", "inbox"],
-		["check my messages", "inbox"],
-		["revisa mi correo", "inbox"],
 		["show my wallet", "wallet"],
 		["abre ajustes", "settings"],
 		["打开设置", "settings"],
@@ -193,6 +191,10 @@ describe("viewCommandShortcutEvaluator — overrides weak-model STOP", () => {
 
 describe("standalone shortcut applicability preserves domain planning", () => {
 	const requests = [
+		"check my notes",
+		"revisa mis tareas",
+		"check my messages",
+		"revisa mi correo",
 		"Do not change views. List my todos and tell me if any are due. Do not create, update, or delete anything.",
 		"Please quote the phrase open calendar in my note",
 		"What does open settings mean?",
@@ -212,9 +214,9 @@ describe("standalone shortcut applicability preserves domain planning", () => {
 			`leaves complete request %j untouched (owner registered: ${hasOwner})`,
 			async (text) => {
 				const context = ctx(text, {
-					extraActions: hasOwner ? ["OWNER_TODOS"] : [],
-					candidateActions: hasOwner ? ["OWNER_TODOS"] : ["REPLY"],
-					parentActionHints: hasOwner ? ["OWNER_TODOS"] : [],
+					extraActions: hasOwner ? ["OWNER_TODOS", "NOTES"] : [],
+					candidateActions: hasOwner ? ["OWNER_TODOS", "NOTES"] : ["REPLY"],
+					parentActionHints: hasOwner ? ["OWNER_TODOS", "NOTES"] : [],
 				});
 				const before = structuredClone(context);
 				expect(await viewCommandShortcutEvaluator.shouldRun(context)).toBe(

@@ -1252,7 +1252,7 @@ const COMMAND_ARTICLE = alt([
 ]);
 const COMMAND_DETERMINER = `(?:(?:${COMMAND_ARTICLE})\\s*)?`;
 const COMMAND_PARTICLE = `(?:${CLOUD_APPS_PARTICLE_ALT})?`;
-const COMMAND_VERB = alt([...NAV_VERBS, "go back to", "check", "revisa"]);
+const COMMAND_VERB = alt([...NAV_VERBS, "go back to"]);
 const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
   (v) => v !== CLOUD_APPS_VIEW_ID && VIEW_NOUNS[v],
 ).map((viewId) => {
