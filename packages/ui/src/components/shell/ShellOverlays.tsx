@@ -158,9 +158,8 @@ export function ActionNoticeToast({
         type="button"
         variant="ghostMuted"
         size="icon-lg"
-        shape="circle"
         aria-label="Dismiss notification"
-        className="pointer-events-auto shrink-0"
+        className="pointer-events-auto shrink-0 rounded-full"
         onClick={onDismiss}
       >
         <X size={16} aria-hidden="true" />

@@ -14,7 +14,6 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
   variants: {
     variant: {
       default: "",
-      messageSearch: "rounded-[1rem] bg-card",
       flatPadded: "bg-card p-4",
       outlinedPadded: "border border-border bg-card p-4",
       reportPanel: "border border-border/70 bg-background/85",

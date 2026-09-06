@@ -131,11 +131,13 @@ export function MessageSearchPanel({
       placeholder="Search messages…"
       aria-label="Search messages"
       data-testid="message-search-input"
-      variant={keyboardAnchored ? "messageSearchSurface" : "messageSearch"}
+      variant={keyboardAnchored ? "surface" : "default"}
       // In the keyboard-anchored layout the input is the flex item pinned at
       // the panel bottom (right above the soft keyboard); it must never shrink
       // away when the results list above it is long.
-      className={keyboardAnchored ? "shrink-0" : undefined}
+      className={
+        keyboardAnchored ? "shrink-0 rounded-[1rem] bg-card" : "rounded-[1rem]"
+      }
     />
   );
 
@@ -191,12 +193,10 @@ export function MessageSearchPanel({
             <Button
               data-testid="message-search-result"
               onClick={() => handleJump(result)}
-              variant={
-                keyboardAnchored ? "messageSearch" : "messageSearchPlain"
-              }
+              variant={keyboardAnchored ? "surface" : "ghostMuted"}
               size="card"
               align="start"
-              className="w-full"
+              className="w-full rounded-[1rem] hover:bg-[color-mix(in_srgb,var(--card)_92%,var(--text-strong))]"
             >
               <span className="text-xs-tight uppercase tracking-wider text-muted-foreground">
                 {result.role === "assistant" ? "Eliza" : "You"} ·{" "}
@@ -236,10 +236,10 @@ export function MessageSearchPanel({
         >
           {resultsListEl}
         </div>
-        <Card variant="messageSearch" flow="column" className="shrink-0 gap-1">
+        <div className="flex shrink-0 flex-col gap-1 rounded-[1rem] bg-card">
           {statusEl}
           {inputEl}
-        </Card>
+        </div>
       </Card>
     );
   }
