@@ -5346,13 +5346,33 @@ function parameterValueCoveredBy(
 	if (leaves.length === 0) return true;
 	return leaves.every((leaf) => {
 		const normalized = normalizeCorrelationText(leaf);
-		if (!/\s/.test(normalized)) return haystack.text.includes(normalized);
+		if (!/\s/.test(normalized)) {
+			return identifierPresentAtTokenBoundary(normalized, haystack.text);
+		}
 		const terms = correlationContentTerms(leaf);
-		if (terms.length === 0) return haystack.text.includes(normalized);
+		if (terms.length === 0) {
+			return identifierPresentAtTokenBoundary(normalized, haystack.text);
+		}
 		return terms.every((term) =>
 			inflectionTermKeys(term).some((key) => haystack.terms.has(key)),
 		);
 	});
+}
+
+/**
+ * An identifier counts as carried only as a whole token: `evt-1` is not
+ * present in `evt-12` (review 2026-09-06 — substring containment superseded a
+ * refused delete of evt-1 with a confirmed delete of evt-12).
+ */
+function identifierPresentAtTokenBoundary(
+	identifier: string,
+	haystackText: string,
+): boolean {
+	const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return new RegExp(
+		`(?<![\\p{L}\\p{N}_-])${escaped}(?![\\p{L}\\p{N}_-])`,
+		"u",
+	).test(haystackText);
 }
 
 function parameterNamesNamedByFailure(
@@ -5440,8 +5460,16 @@ export function malformedCallSupersededBy(
 		if ((PLANNER_TOOL_DISCRIMINATOR_KEYS as readonly string[]).includes(name)) {
 			continue;
 		}
-		if (namedInFailure.has(name)) continue;
 		if (!isSuppliedParameterValue(value)) continue;
+		if (namedInFailure.has(name)) {
+			// The failure objected to this field's placement or shape, so the
+			// corrected call may carry the value under another name — but it
+			// must still carry it: a supplied target is never dropped (review
+			// 2026-09-06 — `title: "Piano lesson"` rejected as unexpected was
+			// "superseded" by `details.title: "Dentist"`).
+			if (!parameterValueCoveredBy(value, haystack)) return false;
+			continue;
+		}
 		if (Object.hasOwn(params, name) && isSuppliedParameterValue(params[name])) {
 			if (!correlationValuesEqual(value, params[name])) return false;
 			continue;
