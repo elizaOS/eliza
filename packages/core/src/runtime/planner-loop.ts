@@ -1958,6 +1958,53 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
+		const queueAdvance = selectQueueAutoAdvance({
+			trajectory,
+			failures,
+			lastPlannerExplicitCompleted,
+		});
+		if (queueAdvance) {
+			// Live 2026-09-05: two planned creates (or deletes) paid a full
+			// evaluator call (0.8–1.3 s) between the steps only to pick the call
+			// that was already queued. A step that settled with a committed
+			// receipt is mechanical proof; the terminal evaluation still judges
+			// the whole batch. Failures, pauses, reads and non-internal results
+			// keep their per-step evaluation.
+			const gateStartedAt = Date.now();
+			const gated: EvaluatorOutput = {
+				success: true,
+				decision: "NEXT_RECOMMENDED",
+				thought: QUEUE_AUTO_ADVANCE_THOUGHT,
+				recommendedToolCallId: queueAdvance.nextToolCallId,
+			};
+			trajectory.evaluatorOutputs.push(
+				projectToolDiagnosticValue(
+					gated,
+					redactDiagnosticText,
+				) as EvaluatorOutput,
+			);
+			appendEvaluatorContextEvent(
+				trajectory,
+				gated,
+				iteration,
+				redactDiagnosticText,
+			);
+			await recordGatedEvaluationStage({
+				runtime: params.runtime,
+				recorder: params.recorder,
+				trajectoryId: params.trajectoryId,
+				parentStageId: params.parentStageId,
+				iteration,
+				startedAt: gateStartedAt,
+				endedAt: Date.now(),
+				output: gated,
+				reason: "queue_auto_advance",
+				logger: params.runtime.logger,
+			});
+			preferRecommendedToolCall(trajectory, gated);
+			continue;
+		}
+
 		if (trajectory.plannedQueue.length > 0) {
 			appendPendingToolQueueFeedbackEvent(
 				trajectory,
@@ -7204,25 +7251,33 @@ const READ_EFFECT_OPERATION_PATTERN =
  * replyContext with facts, nothing queued, nothing failed, no pause for the
  * user, and no planner-declared pending scope.
  */
-function selectGroundedReceiptReply(args: {
-	trajectory: PlannerTrajectory;
-	failures: readonly FailureLike[];
-	lastPlannerExplicitCompleted: boolean | undefined;
-	declaredIntent: string | undefined;
-}): GroundedReceiptReply | null {
-	const { trajectory, failures } = args;
-	if (args.lastPlannerExplicitCompleted === false) return null;
-	if (trajectory.plannedQueue.length > 0 || failures.length > 0) return null;
-	if (completedToolStepCount(trajectory) !== 1) return null;
-	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
-	const latestStep = trajectory.steps[trajectory.steps.length - 1];
-	const result = latestStep?.result;
-	if (!latestStep?.toolCall || !result || result.success !== true) return null;
-	if (result.transcriptVisibility !== "internal") return null;
-	// `false` explicitly requires evaluation; only omission delegates.
-	if (result.turnComplete === false) return null;
-	if (hasAwaitingUserInputMarker(result)) return null;
-	if (hasRequiresConfirmationMarker(result)) return null;
+/**
+ * A tool result that settled on its own terms: succeeded, stays out of the
+ * user-facing transcript, did not demand evaluation (`turnComplete:false`),
+ * and is not pausing for input or confirmation.
+ */
+function isSettledInternalSuccess(
+	result: PlannerToolResult | undefined,
+): result is PlannerToolResult {
+	return (
+		!!result &&
+		result.success === true &&
+		result.transcriptVisibility === "internal" &&
+		result.turnComplete !== false &&
+		!hasAwaitingUserInputMarker(result) &&
+		!hasRequiresConfirmationMarker(result)
+	);
+}
+
+/**
+ * Committed receipt ids when every receipt on the result is mechanical proof:
+ * `applied` or a replayed `noop` count as committed; a plain `noop` on a read
+ * operation is accepted without being a claim. Null when any receipt is a
+ * preview, failure, rollback, reverted, or an unreplayed mutation no-op.
+ */
+function committedReceiptIdsForGate(
+	result: PlannerToolResult,
+): string[] | null {
 	const receipts = result.effectReceipts ?? [];
 	if (receipts.length === 0) return null;
 	const reverted = revertedEffectReceiptIds(receipts);
@@ -7239,11 +7294,57 @@ function selectGroundedReceiptReply(args: {
 				continue;
 			}
 			if (READ_EFFECT_OPERATION_PATTERN.test(receipt.operation)) continue;
-			// A non-replayed no-op on a mutation proves nothing.
 			return null;
 		}
 		return null;
 	}
+	return committedReceiptIds;
+}
+
+export const QUEUE_AUTO_ADVANCE_THOUGHT =
+	"Planned batch step settled with a committed receipt; executing the next queued call without an intermediate evaluation.";
+
+/**
+ * Inside a planner batch, advance to the next queued call without an evaluator
+ * call when the step just executed settled with at least one committed
+ * mutation receipt. A read-only step, a failure, a pause, a non-internal
+ * result, or a terminal queued call (REPLY) keeps the per-step evaluation.
+ */
+function selectQueueAutoAdvance(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+}): { nextToolCallId: string } | null {
+	const { trajectory, failures } = args;
+	if (trajectory.plannedQueue.length === 0 || failures.length > 0) return null;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	if (!latestStep?.toolCall || !isSettledInternalSuccess(result)) return null;
+	const committed = committedReceiptIdsForGate(result);
+	if (!committed || committed.length === 0) return null;
+	const next = trajectory.plannedQueue[0];
+	if (!next || isTerminalToolCall(next)) return null;
+	return { nextToolCallId: next.id ?? next.name };
+}
+
+function selectGroundedReceiptReply(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+	declaredIntent: string | undefined;
+}): GroundedReceiptReply | null {
+	const { trajectory, failures } = args;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (trajectory.plannedQueue.length > 0 || failures.length > 0) return null;
+	if (completedToolStepCount(trajectory) !== 1) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	if (!latestStep?.toolCall || !isSettledInternalSuccess(result)) return null;
+	const committedReceiptIds = committedReceiptIdsForGate(result);
+	if (!committedReceiptIds) return null;
 	const data = result.data;
 	const context =
 		data && typeof data === "object"

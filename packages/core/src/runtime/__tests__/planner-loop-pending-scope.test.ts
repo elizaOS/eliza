@@ -866,6 +866,128 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		expect(result.finalMessage).toBe("Added it and noted it.");
 	});
 
+	it("advances a planned batch after a committed receipt without an intermediate evaluator call", async () => {
+		// Live 2026-09-05 23:53: two planned creates paid a full evaluator call
+		// between the steps (809 ms) only to pick the call already queued.
+		const dentistReceipt: EffectReceipt = {
+			...appliedReceipt,
+			receiptId: "calendar-receipt-2",
+			resource: { ...appliedReceipt.resource, id: "evt-2" },
+			commit: { ...appliedReceipt.commit, id: "evt-2" },
+		};
+		const h = harness({
+			userMessage:
+				"add gym tuesday at 7am and a dentist visit wednesday at 3pm",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-gym",
+							arguments: { eliza_turn_scope: "final", title: "Gym" },
+						},
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-dentist",
+							arguments: { eliza_turn_scope: "final", title: "Dentist visit" },
+						},
+					],
+				},
+			],
+			evaluations: [finish("Added the gym session and the dentist visit.")],
+			results: [
+				internalCalendarResult(),
+				internalCalendarResult([dentistReceipt], {
+					data: {
+						replyContext: {
+							domain: "calendar",
+							intent: "add dentist visit wednesday at 3pm",
+							scenario: "create_event_completed",
+							facts: "Created “Dentist visit” for Sep 9, 3:00 PM PDT.",
+						},
+					},
+				}),
+			],
+			intents: ["add the requested calendar events"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
+		// One terminal evaluation for the whole batch; no render (two steps).
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(result.trajectory.evaluatorOutputs[0]).toMatchObject({
+			decision: "NEXT_RECOMMENDED",
+			recommendedToolCallId: "calendar-dentist",
+			thought: expect.stringContaining("without an intermediate evaluation"),
+		});
+		expect(result.finalMessage).toBe(
+			"Added the gym session and the dentist visit.",
+		);
+	});
+
+	it.each([
+		[
+			"the step only read (no committed mutation)",
+			internalCalendarResult([readNoopReceipt], {
+				data: {
+					replyContext: {
+						domain: "calendar",
+						intent: "find the gym session",
+						scenario: "search_results",
+						facts: "Found “Gym session” on Sep 8, 7:00 AM PDT.",
+					},
+				},
+			}),
+		],
+		[
+			"the step asked for evaluation",
+			internalCalendarResult([appliedReceipt], { turnComplete: false }),
+		],
+		[
+			"the step's receipt was a mutation no-op",
+			internalCalendarResult([mutationNoopReceipt]),
+		],
+	])(
+		"keeps the per-step evaluator inside a batch when %s",
+		async (_label, firstResult) => {
+			const h = harness({
+				plans: [
+					{
+						text: "",
+						toolCalls: [
+							{
+								...call("CALENDAR", "final"),
+								id: "calendar-first",
+								arguments: { eliza_turn_scope: "final", title: "First" },
+							},
+							{
+								...call("CALENDAR", "final"),
+								id: "calendar-second",
+								arguments: { eliza_turn_scope: "final", title: "Second" },
+							},
+						],
+					},
+				],
+				evaluations: [
+					JSON.stringify({
+						thought: "Take the queued call.",
+						success: true,
+						decision: "NEXT_RECOMMENDED",
+						recommendedToolCallId: "calendar-second",
+					}),
+					finish("Both done."),
+				],
+				results: [firstResult, internalCalendarResult()],
+				intents: ["add the requested calendar events"],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+			expect(result.finalMessage).toBe("Both done.");
+		},
+	);
+
 	it("declines the gate and lets the full evaluator continue when the render reports partial completion (two appointments, one created)", async () => {
 		// Review 2026-09-05: one verified receipt plus one declared intent proves
 		// one action, not the whole request. When the render judges the facts
