@@ -338,6 +338,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       subview?: string;
     };
   } | null = null;
+  private readonly overlapRequests = new Set<AbortController>();
   /**
    * Resolves once the active canonical response stream has finished reading
    * and persisting its model turn. An overlap request may prepare while the
@@ -1380,7 +1381,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private startOverlapTurn(transcript: string): void {
-    this.pendingOverlapTurn?.abort.abort();
     const traceId = this.mintTraceId("turn");
     const abort = new AbortController();
     const pending = {
@@ -1390,6 +1390,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       replyText: null,
       handoffRequested: false,
     };
+    this.overlapRequests.add(abort);
     this.pendingOverlapTurn = pending;
     this.send({ t: "stt_final", text: transcript, traceId });
     this.send({ t: "user_eos", traceId });
@@ -1410,14 +1411,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // The existing response may still be streaming model output even though
       // its first TTS audio is already audible. Serializing this boundary keeps
       // canonical conversation writes ordered while still allowing the next
-      // model request to overlap the remainder of old audio playback. Replaced
-      // overlap requests remain in this chain until cancellation has settled.
+      // model request to overlap the remainder of old audio playback. Every
+      // finalized utterance reaches canonical history, even when a newer
+      // utterance has taken ownership of the next audible reply.
       await previousResponse;
-      if (
-        pending.abort.signal.aborted ||
-        this.pendingOverlapTurn !== pending ||
-        this.closed
-      ) {
+      if (pending.abort.signal.aborted || this.closed) {
         return;
       }
       const result = await streamElizaConversation(
@@ -1469,14 +1467,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (!this.currentVoiceTurnId) this.beginPreparedOverlapHandoff();
     } catch (error) {
       // error-policy:J1 Report a failed overlap at the voice transport boundary.
-      if (pending.abort.signal.aborted || this.pendingOverlapTurn !== pending)
-        return;
+      if (pending.abort.signal.aborted || this.closed) return;
       logger.warn("[voice-session] overlapping response preparation failed", {
         traceId: pending.traceId,
         errorClass: error instanceof Error ? error.name : typeof error,
       });
-      this.pendingOverlapTurn = null;
+      if (this.pendingOverlapTurn === pending) this.pendingOverlapTurn = null;
       this.send({ t: "error", code: "llm_error", retryable: true });
+    } finally {
+      this.overlapRequests.delete(pending.abort);
     }
   }
 
@@ -2185,6 +2184,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
    */
   private interrupt(reason: "acoustic" | "explicit"): void {
     this.clearAssistantPlaybackSuppression();
+    for (const abort of this.overlapRequests) abort.abort();
+    this.overlapRequests.clear();
+    this.pendingOverlapTurn = null;
     const traceId = this.currentVoiceTurnId;
     if (!traceId) return; // nothing speaking/thinking to interrupt.
     this.emitTurnMetrics(traceId, "interrupted");
@@ -2203,8 +2205,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.llmAbort.abort();
       this.llmAbort = null;
     }
-    this.pendingOverlapTurn?.abort.abort();
-    this.pendingOverlapTurn = null;
     // 4. Drop pending phrase aggregation.
     if (this.phrase) {
       this.phrase.reset();
@@ -2287,6 +2287,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return;
     this.clearAssistantPlaybackSuppression();
     this.closed = true;
+    for (const abort of this.overlapRequests) abort.abort();
+    this.overlapRequests.clear();
+    this.pendingOverlapTurn = null;
     this.state = "closed";
     logger.info("[voice-session] session closed", {
       sessionId: this.sessionId,
