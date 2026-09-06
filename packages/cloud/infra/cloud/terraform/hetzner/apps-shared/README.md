@@ -83,6 +83,10 @@ ID supplied by Terraform, requires an ext4 filesystem, and verifies the mounted
 block-device identity. It never formats a volume. Missing attachment or package
 readiness is a failure retried by systemd, rather than a healthy empty host.
 
+The PostgreSQL cluster unit independently checks the assigned mount, cluster major
+and effective data directory before every start. Package hooks and early reboot
+starts fail closed until bootstrap has prepared the matching volume.
+
 A new empty volume needs a one-use authorization after its creation and identity
 have been verified in the reviewed plan/provider receipt. On that candidate host,
 use the new volume ID from that receipt in this root command:
