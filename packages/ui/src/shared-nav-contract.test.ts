@@ -72,7 +72,7 @@ const PLUGIN_VIEW_TARGETS: Record<string, PluginViewPin> = {
   focus: { path: "/focus", sources: ["plugins/plugin-blocker/src/plugin.ts"] },
   goals: { path: "/goals", sources: ["plugins/plugin-goals/src/plugin.ts"] },
   health: { path: "/health", sources: ["plugins/plugin-health/src/index.ts"] },
-  todos: { path: "/todos", sources: ["plugins/plugin-todos/src/index.ts"] },
+  todos: { path: "/todos", sources: ["plugins/plugin-todos/src/plugin.ts"] },
   notes: {
     path: "/notes",
     sources: [
