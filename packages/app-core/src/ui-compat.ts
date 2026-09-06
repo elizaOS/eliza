@@ -23,7 +23,9 @@ export type {
   AppRunSummary,
   AppSessionJsonValue,
 } from "@elizaos/shared/contracts/apps";
+export { Spinner, StatusBadge } from "@elizaos/ui";
 export { client } from "@elizaos/ui/api";
+export { Button } from "@elizaos/ui/button";
 export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export {
   SurfaceCard,
@@ -39,10 +41,7 @@ export {
   toneForViewerAttachment,
 } from "@elizaos/ui/components/apps/extensions/surface.helpers";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-export { Button } from "@elizaos/ui/components/ui/button";
-export { Input } from "@elizaos/ui/components/ui/input";
-export { Spinner } from "@elizaos/ui/components/ui/spinner";
-export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
+export { Input } from "@elizaos/ui/input";
 // app-store only pulls React + an erased type (same weight as useApp), so it
 // stays light enough for the Node API process — re-export the selector hooks so
 // app plugins can subscribe to AppContext slices instead of the whole value.
