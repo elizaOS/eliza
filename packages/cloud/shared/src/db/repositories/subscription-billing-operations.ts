@@ -41,12 +41,14 @@ import {
   SUBSCRIPTION_LIFECYCLE_LEASE_LOST,
   SUBSCRIPTION_LIFECYCLE_REOBSERVE,
   SUBSCRIPTION_LIFECYCLE_UNSUPPORTED,
+  sameTerminalLifecycle,
   TERMINAL_LIFECYCLE_DISPOSITION,
   validateTerminalPublication,
   validateTerminalReceipt,
   validateTerminalSource,
 } from "./subscription-lifecycle-finalization";
 import { enqueueCanceledNoticeInTransaction } from "./subscription-notices";
+import { requireReconciliationProjection } from "./subscription-reconciliation-projection";
 
 export const SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT = "SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT";
 export const SUBSCRIPTION_BILLING_OPERATIONS_INVALID = "SUBSCRIPTION_BILLING_OPERATIONS_INVALID";
@@ -849,6 +851,45 @@ export class SubscriptionBillingOperationsRepository {
         );
       }
       validateTerminalSource(current, organization.stripe_customer_id, values);
+      const [historical] = await tx
+        .select({ revision: billingSubscriptionRevisions.revision })
+        .from(billingSubscriptionRevisions)
+        .where(
+          and(
+            eq(billingSubscriptionRevisions.subscription_id, current.id),
+            eq(billingSubscriptionRevisions.organization_id, input.organizationId),
+            eq(billingSubscriptionRevisions.provider_event_id, receipt.provider_event_id),
+          ),
+        )
+        .limit(1);
+      if (
+        (historical && historical.revision !== current.lifecycle_revision) ||
+        (current.last_provider_event_created_at &&
+          receipt.event_created_at < current.last_provider_event_created_at)
+      )
+        lifecycleFailure(
+          SUBSCRIPTION_LIFECYCLE_REOBSERVE,
+          "Older unacknowledged event cannot republish current lifecycle",
+          { receiptId: receipt.id },
+        );
+      if (!historical && sameTerminalLifecycle(current, values)) {
+        await requireReconciliationProjection(tx, current, input.expectedProjectionRevision);
+        const applied = await this.applyEventInTransaction(tx, {
+          organizationId: input.organizationId,
+          receiptId: receipt.id,
+          leaseToken: input.leaseToken,
+          subscriptionRevision: current.lifecycle_revision,
+          disposition: TERMINAL_LIFECYCLE_DISPOSITION,
+        });
+        if (!applied)
+          lifecycleFailure(
+            SUBSCRIPTION_LIFECYCLE_LEASE_LOST,
+            "Receipt lease expired before semantic no-op commit",
+            { receiptId: receipt.id },
+          );
+        return { outcome: "already_applied", receipt: applied };
+      }
+
       const lifecycle = await subscriptionAuthorityRepository.advanceInTransaction(tx, {
         organizationId: input.organizationId,
         subscriptionId: input.subscriptionId,

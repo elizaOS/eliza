@@ -82,7 +82,7 @@ export function validateTerminalReceipt(
 export function validateTerminalSource(
   current: BillingSubscription,
   organizationCustomerId: string | null,
-  values: TerminalObservation,
+  values: TerminalReconciliationObservation,
 ): void {
   if (organizationCustomerId === null || organizationCustomerId !== values.stripe_customer_id) {
     lifecycleFailure(
@@ -151,4 +151,27 @@ export function validateTerminalPublication(
       );
     }
   }
+}
+
+/** Recovery observations carry explicit attempt provenance rather than invented event fields. */
+export const terminalReconciliationObservationSchema = terminalObservationSchema.omit({
+  last_provider_event_id: true,
+  last_provider_event_created_at: true,
+});
+export type TerminalReconciliationObservation = z.infer<
+  typeof terminalReconciliationObservationSchema
+>;
+
+export function sameTerminalLifecycle(
+  current: BillingSubscription,
+  values: TerminalReconciliationObservation,
+): boolean {
+  return terminalReconciliationObservationSchema.keyof().options.every((field) => {
+    if (field === "provider_object_digest") return true;
+    const stored = current[field],
+      observed = values[field];
+    return stored instanceof Date && observed instanceof Date
+      ? stored.getTime() === observed.getTime()
+      : stored === observed;
+  });
 }

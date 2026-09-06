@@ -50,6 +50,7 @@ beforeAll(async () => {
     "0382_subscription_notice_intents.sql",
     "0383_subscription_cancellation_result.sql",
     "0384_subscription_cancellation_undo.sql",
+    "0385_subscription_reconciliation.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),
@@ -105,7 +106,9 @@ beforeAll(async () => {
     SELECT organization_id,subscription_id,requested_by_user_id,'cancel',3,'erased-recancel','erased-provider-recancel',request_digest,'APPLIED',1,now(),provider_response_digest,now(),result_subscription_id,4,now(),id FROM billing_subscription_commands WHERE idempotency_key='erased-undo';
     INSERT INTO subscription_notice_intents(id,organization_id,subscription_id,source_revision) VALUES ('60000000-0000-4000-8000-000000000001','${ORGANIZATION_ID}','${SUBSCRIPTION_ID}',5);
     INSERT INTO subscription_notice_attempts(notice_id,organization_id,policy_digest,expires_at) VALUES ('60000000-0000-4000-8000-000000000001','${ORGANIZATION_ID}','${"b".repeat(64)}',now()+interval '1 minute');
-    UPDATE organization_subscription_authorities SET state='current', subscription_id='${SUBSCRIPTION_ID}' WHERE organization_id='${ORGANIZATION_ID}';
+    INSERT INTO subscription_reconciliation_scans(organization_id,subscription_id,generation) VALUES ('${ORGANIZATION_ID}','${SUBSCRIPTION_ID}',1);
+    INSERT INTO subscription_reconciliation_attempts(organization_id,subscription_id,generation,expected_revision,identity_digest,lease_token,started_at,expires_at,disposition,observation_digest,observed_revision,result_revision,completed_at) VALUES ('${ORGANIZATION_ID}','${SUBSCRIPTION_ID}',1,4,'${"a".repeat(64)}',gen_random_uuid(),now()-interval '2 minutes',now()-interval '1 minute','applied','${"b".repeat(64)}',5,5,now());
+    UPDATE organization_subscription_authorities SET state='current' , subscription_id='${SUBSCRIPTION_ID}' WHERE organization_id='${ORGANIZATION_ID}';
   `);
 });
 
@@ -124,6 +127,12 @@ describe("account deletion restrictive-grant terminal absence", () => {
     await dbWrite.execute(
       sql`UPDATE organizations SET account_lifecycle_state='deletion_irreversible' WHERE id=${ORGANIZATION_ID}`,
     );
+    const recoveryBefore = (
+      await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_attempts")
+    ).rows;
+    const scanBefore = (
+      await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_scans")
+    ).rows;
     const before = await getPgliteClientForTests().query(
       "SELECT * FROM subscription_notice_intents",
     );
@@ -186,6 +195,14 @@ describe("account deletion restrictive-grant terminal absence", () => {
       (await getPgliteClientForTests().query("SELECT * FROM organization_subscription_authorities"))
         .rows,
     ).toEqual(identityBefore.rows);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_attempts"))
+        .rows,
+    ).toEqual(recoveryBefore);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_scans"))
+        .rows,
+    ).toEqual(scanBefore);
     await getPgliteClientForTests().exec("DROP TABLE notice_erasure_restrict_probe");
     await adapter.execute(context, "delete-local-grants-once");
     await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });
@@ -202,6 +219,7 @@ describe("account deletion restrictive-grant terminal absence", () => {
       expect(result.rows[0]?.count).toBe(0);
     }
     for (const table of [
+      "subscription_reconciliation_attempts",
       "subscription_notice_intents",
       "subscription_notice_attempts",
       "billing_subscription_commands",

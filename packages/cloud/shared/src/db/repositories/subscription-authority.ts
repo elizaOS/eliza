@@ -19,6 +19,10 @@ import {
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
+import {
+  type ReconciliationIdentity,
+  requireLiveReconciliationLease,
+} from "./subscription-reconciliation-lease";
 
 export const SUBSCRIPTION_AUTHORITY_CONFLICT = "SUBSCRIPTION_AUTHORITY_CONFLICT";
 export const SUBSCRIPTION_AUTHORITY_NOT_FOUND = "SUBSCRIPTION_AUTHORITY_NOT_FOUND";
@@ -495,12 +499,34 @@ export class SubscriptionAuthorityRepository {
     );
   }
 
+  /** Publishes one lease-owned reconciliation revision with no fabricated webhook provenance. */
+  async advanceReconciliationInTransaction(
+    tx: DbTransaction,
+    input: ReconciliationIdentity & { values: AdvanceSubscriptionCommandInput["values"] },
+  ): Promise<SubscriptionMutationResult> {
+    return this.advanceWithProvenance(
+      tx,
+      {
+        ...input,
+        source: "reconciliation",
+        observation: "authoritative_provider_retrieval",
+        values: {
+          ...input.values,
+          last_provider_event_id: null,
+          last_provider_event_created_at: null,
+        },
+      },
+      { kind: "reconciliation", identity: input },
+    );
+  }
+
   private async advanceWithProvenance(
     tx: DbTransaction,
     input: AdvanceSubscriptionInput,
     provenance:
       | { kind: "provider_event" }
-      | { kind: "command"; commandId: string; leaseToken: string; executionGeneration: number },
+      | { kind: "command"; commandId: string; leaseToken: string; executionGeneration: number }
+      | { kind: "reconciliation"; identity: ReconciliationIdentity },
   ): Promise<SubscriptionMutationResult> {
     const [organization] = await tx
       .select({
@@ -522,6 +548,8 @@ export class SubscriptionAuthorityRepository {
     const accountAuthority = await readAccountAuthority(tx, input.organizationId);
     requireCurrentAccountAuthority(accountAuthority, input.subscriptionId);
     requireActivationAllowed(organization, input.values);
+    if (provenance.kind === "reconciliation")
+      await requireLiveReconciliationLease(tx, provenance.identity);
     if (provenance.kind === "command") {
       const [command] = await tx
         .select()
@@ -571,16 +599,18 @@ export class SubscriptionAuthorityRepository {
       });
     }
     const requestedValues =
-      provenance.kind === "command"
+      provenance.kind !== "provider_event"
         ? {
             ...input.values,
             last_provider_event_id: current.last_provider_event_id,
             last_provider_event_created_at: current.last_provider_event_created_at,
           }
         : input.values;
-    if (provenance.kind === "command" && current.lifecycle_revision !== input.expectedRevision)
+    if (
+      provenance.kind !== "provider_event" &&
+      current.lifecycle_revision !== input.expectedRevision
+    )
       conflict("Subscription command source revision changed", {
-        commandId: provenance.commandId,
         expectedRevision: input.expectedRevision,
         actualRevision: current.lifecycle_revision,
       });

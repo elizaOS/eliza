@@ -143,6 +143,7 @@ export * from "./subscription-allowance-periods";
 export * from "./subscription-allowance-transactions";
 export * from "./subscription-billing-operations";
 export * from "./subscription-notices";
+export * from "./subscription-reconciliation";
 export * from "./synthetic-environment-leases";
 export * from "./synthetic-world-commands";
 export * from "./telegram-chats";

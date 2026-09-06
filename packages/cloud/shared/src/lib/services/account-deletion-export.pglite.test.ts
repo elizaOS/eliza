@@ -173,6 +173,13 @@ beforeAll(async () => {
       [noticeId, organizationId, "b".repeat(64)],
     );
   }
+  const reconciliationMigration = await Bun.file(
+    new URL("../../db/migrations/0385_subscription_reconciliation.sql", import.meta.url),
+  ).text();
+  for (const statement of reconciliationMigration.split("--> statement-breakpoint"))
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  await getPgliteClientForTests().exec(`INSERT INTO subscription_reconciliation_scans(organization_id,subscription_id,generation) SELECT organization_id,id,1 FROM billing_subscriptions;
+    INSERT INTO subscription_reconciliation_attempts(organization_id,subscription_id,generation,expected_revision,identity_digest,lease_token,started_at,expires_at,disposition,observation_digest,observed_revision,completed_at) SELECT organization_id,id,1,1,'${"a".repeat(64)}',gen_random_uuid(),now()-interval '2 minutes',now()-interval '1 minute','no_change','${"b".repeat(64)}',1,now() FROM billing_subscriptions;`);
   await dbWrite.execute(`INSERT INTO app_users SELECT a.id,u.id FROM apps a CROSS JOIN users u`);
   await dbWrite.execute(
     `INSERT INTO app_billing_registrations(app_id,owner_organization_id,infrastructure_payer_organization_id,registered_by_user_id,provider_environment) SELECT id,organization_id,organization_id,created_by_user_id,'test' FROM apps`,
@@ -237,6 +244,18 @@ test("exports transitive owned rows and excludes cross-tenant rows through real 
       organization_id: ORGANIZATION_ID,
       state: "none",
       subscription_id: null,
+    }),
+  ]);
+  expect(table("subscription_reconciliation_scans")?.rows).toEqual([
+    expect.objectContaining({ organization_id: ORGANIZATION_ID, generation: 1 }),
+  ]);
+  expect(table("subscription_reconciliation_attempts")?.rows).toEqual([
+    expect.objectContaining({
+      organization_id: ORGANIZATION_ID,
+      disposition: "no_change",
+      expected_revision: 1,
+      observed_revision: 1,
+      result_revision: null,
     }),
   ]);
   const accounts = table("app_subscriber_accounts")?.rows;

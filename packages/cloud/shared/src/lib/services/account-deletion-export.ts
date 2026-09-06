@@ -125,6 +125,16 @@ const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
     where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
   },
   {
+    table: "subscription_reconciliation_scans",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+  {
+    table: "subscription_reconciliation_attempts",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+  {
     table: "subscription_notice_intents",
     policy: "portable_subject_data",
     where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,

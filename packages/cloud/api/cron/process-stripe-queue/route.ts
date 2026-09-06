@@ -8,6 +8,7 @@ import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { drain, queueLength } from "@/lib/queue/redis-queue";
 import { recoverOrganizationSubscriptionCancellations } from "@/lib/services/subscription-cancellation";
 import { sweepSubscriptionNotices } from "@/lib/services/subscription-notices";
+import { recoverMissedSubscriptionEvents } from "@/lib/services/subscription-reconciliation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -19,34 +20,77 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
   try {
     requireCronSecret(c);
 
-    const before = await queueLength(STRIPE_QUEUE_KEY);
-    const stats = await drain<StripeEventMessage>(
-      STRIPE_QUEUE_KEY,
-      (envelope) =>
-        processStripeEvent({
-          body: envelope.body,
-          attempts: envelope.attempts,
-        }),
-      { max: 25, budgetMs: 25_000, maxAttempts: 5 },
-    );
-    const after = await queueLength(STRIPE_QUEUE_KEY);
-    const cancellations = await recoverOrganizationSubscriptionCancellations(5);
-    const notices = await sweepSubscriptionNotices();
-
-    logger.info("[Stripe Queue] Redis drain complete", {
-      before,
-      after,
-      ...stats,
-    });
-
+    const lanes = await Promise.allSettled([
+      (async () => {
+        const before = await queueLength(STRIPE_QUEUE_KEY);
+        const stats = await drain<StripeEventMessage>(
+          STRIPE_QUEUE_KEY,
+          (envelope) =>
+            processStripeEvent({
+              body: envelope.body,
+              attempts: envelope.attempts,
+            }),
+          { max: 25, budgetMs: 25_000, maxAttempts: 5 },
+        );
+        return { before, after: await queueLength(STRIPE_QUEUE_KEY), ...stats };
+      })(),
+      recoverOrganizationSubscriptionCancellations(5),
+      sweepSubscriptionNotices(),
+      recoverMissedSubscriptionEvents(),
+    ]);
+    const [queue, cancellations, notices, recovery] = lanes;
+    if (
+      queue.status !== "fulfilled" ||
+      cancellations.status !== "fulfilled" ||
+      notices.status !== "fulfilled" ||
+      recovery.status !== "fulfilled"
+    ) {
+      const names = ["queue", "cancellations", "notices", "recovery"];
+      const failures = lanes.flatMap((lane, index) =>
+        lane.status === "rejected" ? [names[index]] : [],
+      );
+      logger.error("[Stripe Queue] Independent maintenance lanes failed", {
+        failures: lanes.flatMap((lane, index) =>
+          lane.status === "rejected"
+            ? [{ lane: names[index], error: lane.reason }]
+            : [],
+        ),
+      });
+      return c.json(
+        {
+          success: false,
+          error: "stripe_maintenance_lane_failed",
+          failedLanes: failures,
+          lanes: lanes.map((lane, index) =>
+            lane.status === "fulfilled"
+              ? { lane: names[index], status: "fulfilled", result: lane.value }
+              : { lane: names[index], status: "failed" },
+          ),
+        },
+        503,
+      );
+    }
+    if (recovery.value.status === "degraded")
+      return c.json(
+        {
+          success: false,
+          error: "subscription_recovery_degraded",
+          queue: STRIPE_QUEUE_KEY,
+          ...queue.value,
+          cancellations: cancellations.value,
+          notices: notices.value,
+          recovery: recovery.value,
+        },
+        503,
+      );
+    logger.info("[Stripe Queue] Redis drain complete", queue.value);
     return c.json({
       success: true,
       queue: STRIPE_QUEUE_KEY,
-      notices,
-      cancellations,
-      before,
-      after,
-      ...stats,
+      ...queue.value,
+      cancellations: cancellations.value,
+      notices: notices.value,
+      recovery: recovery.value,
     });
   } catch (error) {
     // error-policy:J1 authenticated cron failures retain a structured retryable boundary.

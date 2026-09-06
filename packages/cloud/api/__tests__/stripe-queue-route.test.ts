@@ -31,6 +31,13 @@ const recoverOrganizationSubscriptionCancellations = mock(async () => ({
 mock.module("@/lib/services/subscription-cancellation", () => ({
   recoverOrganizationSubscriptionCancellations,
 }));
+const recoverMissedSubscriptionEvents = mock(async () => ({
+  status: "ok",
+  attempts: [],
+}));
+mock.module("@/lib/services/subscription-reconciliation", () => ({
+  recoverMissedSubscriptionEvents,
+}));
 const sweepSubscriptionNotices = mock(async () => ({
   inspected: 1,
   policyUnavailable: 1,
@@ -90,6 +97,11 @@ describe("Stripe queue cron route", () => {
     queueLength.mockReset();
     processStripeEvent.mockClear();
     sweepSubscriptionNotices.mockClear();
+    recoverMissedSubscriptionEvents.mockReset();
+    recoverMissedSubscriptionEvents.mockResolvedValue({
+      status: "ok",
+      attempts: [],
+    });
     recoverOrganizationSubscriptionCancellations.mockClear();
     queueLength.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
     drain.mockImplementation(async (_key, handler) => {
@@ -115,6 +127,7 @@ describe("Stripe queue cron route", () => {
     expect(processStripeEvent).not.toHaveBeenCalled();
     expect(sweepSubscriptionNotices).not.toHaveBeenCalled();
     expect(recoverOrganizationSubscriptionCancellations).not.toHaveBeenCalled();
+    expect(recoverMissedSubscriptionEvents).not.toHaveBeenCalled();
   });
 
   test("drains the stripe-events queue with the bounded retry contract", async () => {
@@ -128,6 +141,7 @@ describe("Stripe queue cron route", () => {
       success: true,
       queue: "stripe-events",
       notices: { inspected: 1, policyUnavailable: 1 },
+      recovery: { status: "ok", attempts: [] },
       cancellations: { inspected: 1, applied: 0, pending: 1, unavailable: 0 },
       before: 3,
       after: 1,
@@ -152,7 +166,7 @@ describe("Stripe queue cron route", () => {
     });
   });
 
-  test("returns failureResponse JSON when queue draining fails", async () => {
+  test("reports a failed queue lane while still awaiting independent recovery and notices", async () => {
     queueLength.mockReset();
     drain.mockReset();
     queueLength.mockResolvedValueOnce(3);
@@ -163,11 +177,52 @@ describe("Stripe queue cron route", () => {
       env,
     );
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
       success: false,
-      error: "An unexpected error occurred",
-      code: "internal_error",
+      error: "stripe_maintenance_lane_failed",
+      failedLanes: ["queue"],
+      lanes: [
+        { lane: "queue", status: "failed" },
+        {
+          lane: "cancellations",
+          status: "fulfilled",
+          result: { inspected: 1, applied: 0, pending: 1, unavailable: 0 },
+        },
+        {
+          lane: "notices",
+          status: "fulfilled",
+          result: { inspected: 1, policyUnavailable: 1 },
+        },
+        {
+          lane: "recovery",
+          status: "fulfilled",
+          result: { status: "ok", attempts: [] },
+        },
+      ],
     });
+    expect(recoverMissedSubscriptionEvents).toHaveBeenCalledTimes(1);
+    expect(sweepSubscriptionNotices).toHaveBeenCalledTimes(1);
+  });
+});
+
+test("degraded observation receipts remain explicitly retryable at the cron boundary", async () => {
+  queueLength.mockReset();
+  queueLength.mockResolvedValue(0);
+  drain.mockReset();
+  drain.mockResolvedValue({ processed: 0, failed: 0, retried: 0 });
+  recoverMissedSubscriptionEvents.mockResolvedValueOnce({
+    status: "degraded",
+    attempts: [],
+  });
+  const response = await app.fetch(
+    post({ authorization: "Bearer cron-secret" }),
+    env,
+  );
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    success: false,
+    error: "subscription_recovery_degraded",
+    recovery: { status: "degraded" },
   });
 });
