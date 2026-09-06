@@ -154,6 +154,8 @@ async function createThroughHandler(args: {
   details: Record<string, unknown>;
   settings?: Record<string, string>;
   feedEvents?: LifeOpsCalendarEvent[];
+  title?: string;
+  intent?: string;
 }) {
   const service = stubService(args.feedEvents);
   const { deps, runJsonModel } = makeDeps();
@@ -170,7 +172,8 @@ async function createThroughHandler(args: {
     {
       parameters: {
         subaction: "create_event",
-        title: "Gym session",
+        title: args.title ?? "Gym session",
+        ...(args.intent ? { intent: args.intent } : {}),
         details: args.details,
       },
     },
@@ -254,6 +257,87 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
       });
     },
   );
+
+  it("lets the per-event intent pick the day when one message names several dates", async () => {
+    // Live 2026-09-05 22:43: "pottery class saturday at 10am and a haircut
+    // sunday at 2pm" — the haircut's Sunday start was "corrected" to Saturday
+    // because the stated-date check read the whole message first.
+    const { created, extractorCalls, result } = await createThroughHandler({
+      text: "add a pottery class saturday at 10am and a haircut sunday at 2pm to my calendar",
+      title: "Haircut",
+      intent: "Add a haircut Sunday at 2pm",
+      details: {
+        start: "2026-09-06T14:00:00",
+        durationMinutes: 60,
+        calendarId: "primary",
+      },
+    });
+    expect(extractorCalls).toBe(0);
+    expect(result.success).toBe(true);
+    expect(created).toMatchObject({
+      startAt: "2026-09-06T21:00:00.000Z",
+      endAt: "2026-09-06T22:00:00.000Z",
+      timeZone: OWNER_TIME_ZONE,
+    });
+  });
+
+  it("keeps the message's single stated day over a planner intent that disagrees", async () => {
+    const { created } = await createThroughHandler({
+      text: "add gym session tuesday at 7am to my calendar",
+      intent: "add gym session wednesday at 7am",
+      details: { start: "2026-09-09T07:00:00", calendarId: "primary" },
+    });
+    expect(created).toMatchObject({
+      startAt: TUESDAY_7AM_PDT,
+      endAt: TUESDAY_8AM_PDT,
+    });
+  });
+
+  it("pauses instead of creating an event whose start has already passed, suggesting the same time next week", async () => {
+    // PINNED_NOW is Saturday 11:00 AM Pacific; "saturday at 10am" is an hour
+    // gone. Live 2026-09-05 the pottery class was created at 10:00 that day.
+    const { result, createCalls } = await createThroughHandler({
+      text: "add a pottery class saturday at 10am to my calendar",
+      title: "Pottery class",
+      intent: "Add a pottery class Saturday at 10am",
+      details: {
+        start: "2026-09-05T10:00:00",
+        durationMinutes: 60,
+        calendarId: "primary",
+      },
+    });
+    expect(createCalls).toBe(0);
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      subaction: "create_event",
+      requiresInput: true,
+      requestedStartAt: "2026-09-05T17:00:00.000Z",
+      suggestedStartAt: "2026-09-12T17:00:00.000Z",
+    });
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "calendar.event.create",
+      outcome: "noop",
+    });
+    const evidence = JSON.stringify(result.data ?? {}) + (result.text ?? "");
+    expect(evidence).toContain("already passed");
+    expect(evidence).toContain("Sep 12");
+  });
+
+  it("creates a past event when the planner marks allowPast for an explicit user request", async () => {
+    const { created, result } = await createThroughHandler({
+      text: "log the pottery class I went to this morning at 10am",
+      title: "Pottery class",
+      intent: "Record the pottery class from this morning at 10am",
+      details: {
+        start: "2026-09-05T10:00:00",
+        durationMinutes: 60,
+        allowPast: true,
+        calendarId: "primary",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(created).toMatchObject({ startAt: "2026-09-05T17:00:00.000Z" });
+  });
 
   it("trusts a UTC instant when the owner's zone is UTC", async () => {
     const { created, extractorCalls } = await createThroughHandler({

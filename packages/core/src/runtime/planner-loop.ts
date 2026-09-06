@@ -43,7 +43,10 @@ import type {
 	ProviderDataRecord,
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
-import { hasAppliedUserFacingEffectProof } from "../types/effects";
+import {
+	hasAppliedUserFacingEffectProof,
+	revertedEffectReceiptIds,
+} from "../types/effects";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -61,6 +64,7 @@ import {
 	readWorkspaceDeltaReceipt,
 	type WorkspaceDeltaReceipt,
 } from "../types/workspace-delta";
+import { inflectionTermKeys } from "../utils/inflection-term-keys";
 import {
 	isModelProviderError,
 	isProviderContextOverflowError,
@@ -1955,6 +1959,53 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
+		const queueAdvance = selectQueueAutoAdvance({
+			trajectory,
+			failures,
+			lastPlannerExplicitCompleted,
+		});
+		if (queueAdvance) {
+			// Live 2026-09-05: two planned creates (or deletes) paid a full
+			// evaluator call (0.8–1.3 s) between the steps only to pick the call
+			// that was already queued. A step that settled with a committed
+			// receipt is mechanical proof; the terminal evaluation still judges
+			// the whole batch. Failures, pauses, reads and non-internal results
+			// keep their per-step evaluation.
+			const gateStartedAt = Date.now();
+			const gated: EvaluatorOutput = {
+				success: true,
+				decision: "NEXT_RECOMMENDED",
+				thought: QUEUE_AUTO_ADVANCE_THOUGHT,
+				recommendedToolCallId: queueAdvance.nextToolCallId,
+			};
+			trajectory.evaluatorOutputs.push(
+				projectToolDiagnosticValue(
+					gated,
+					redactDiagnosticText,
+				) as EvaluatorOutput,
+			);
+			appendEvaluatorContextEvent(
+				trajectory,
+				gated,
+				iteration,
+				redactDiagnosticText,
+			);
+			await recordGatedEvaluationStage({
+				runtime: params.runtime,
+				recorder: params.recorder,
+				trajectoryId: params.trajectoryId,
+				parentStageId: params.parentStageId,
+				iteration,
+				startedAt: gateStartedAt,
+				endedAt: Date.now(),
+				output: gated,
+				reason: "queue_auto_advance",
+				logger: params.runtime.logger,
+			});
+			preferRecommendedToolCall(trajectory, gated);
+			continue;
+		}
+
 		if (trajectory.plannedQueue.length > 0) {
 			appendPendingToolQueueFeedbackEvent(
 				trajectory,
@@ -2038,6 +2089,96 @@ async function runPlannerLoopIterations(
 					trajectory,
 				),
 			};
+		}
+
+		// Grounded receipt gate (owner ruling 2026-09-05): a single declared intent
+		// settled by ONE verified internal action needs a user-facing phrasing of
+		// its receipt facts, not a second model judgment over the whole composed
+		// state. The action's applied/noop receipt is the verification; its
+		// replyContext facts are the only source for the reply. Multi-intent
+		// turns, pending scope, failures, confirmation/input pauses, and any
+		// unverified result keep the full evaluator. A failed or unsafe render
+		// also falls through to it.
+		const groundedReceipt = requiresIntentEvaluation
+			? selectGroundedReceiptReply({
+					trajectory,
+					failures,
+					lastPlannerExplicitCompleted,
+					declaredIntents: declaredIntentsFromContext(plannerContext),
+				})
+			: null;
+		if (groundedReceipt) {
+			const renderStartedAt = Date.now();
+			const rendered = await renderGroundedReceiptReply(
+				params,
+				groundedReceipt,
+			);
+			if (rendered && !rendered.complete) {
+				// The receipt proves one action; the render judged that it does not
+				// cover the whole request. The full evaluator decides whether to
+				// continue the remaining work instead of this gate declaring FINISH.
+				params.runtime.logger?.debug?.(
+					{ src: "planner-loop", partialReply: rendered.message },
+					"Grounded receipt render reports partial completion; running the full evaluator",
+				);
+			}
+			if (rendered?.complete) {
+				const gated: EvaluatorOutput = {
+					success: true,
+					decision: "FINISH",
+					thought: GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT,
+					messageToUser: rendered.message,
+					// Egress binds completion claims to committed receipt ids AND the
+					// model's own prose (raw.messageToUser); both travel with the
+					// synthesized verdict so delivery never rewrites the reply.
+					...(groundedReceipt.committedReceiptIds.length > 0
+						? { effectReceiptIds: groundedReceipt.committedReceiptIds }
+						: {}),
+					raw: {
+						messageToUser: rendered.message,
+						source: "grounded_receipt_render",
+					},
+				};
+				trajectory.evaluatorOutputs.push(
+					projectToolDiagnosticValue(
+						gated,
+						redactDiagnosticText,
+					) as EvaluatorOutput,
+				);
+				appendEvaluatorContextEvent(
+					trajectory,
+					gated,
+					iteration,
+					redactDiagnosticText,
+				);
+				await recordGatedEvaluationStage({
+					runtime: params.runtime,
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: renderStartedAt,
+					endedAt: Date.now(),
+					output: gated,
+					reason: "grounded_receipt_render",
+					logger: params.runtime.logger,
+				});
+				return {
+					status: "finished",
+					trajectory,
+					evaluator: gated,
+					finalMessage: userSafeFinalMessage(
+						terminalMessageWithFailureAuthority(
+							trajectory,
+							preferredFinalMessageFromToolOrModel(
+								trajectory,
+								gated.messageToUser,
+							),
+						),
+						trajectory,
+					),
+				};
+			}
 		}
 
 		let evaluator: EvaluatorOutput;
@@ -3288,6 +3429,12 @@ async function recordGatedEvaluationStage(args: {
 				gated: true,
 				llmCallSkipped: true,
 				reason: args.reason ?? "explicit_terminal_reply",
+				...(args.output.effectReceiptIds?.length
+					? { effectReceiptIds: [...args.output.effectReceiptIds] }
+					: {}),
+				...(typeof args.output.raw?.source === "string"
+					? { source: args.output.raw.source }
+					: {}),
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
@@ -4974,9 +5121,365 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		} else if (step.result.success === true) {
 			unresolvedByOperation.delete(operationKey);
 			resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
+			resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+const MALFORMED_CALL_FAILURE_PATTERN =
+	/\b(?:is required|required\b.*\bmissing|Unexpected argument|invalid uuid|not a valid uuid|MISSING_[A-Z_]+|INVALID_[A-Z_]+|UNEXPECTED_ARGUMENT|VALIDATION|CONFIRMATION_REQUIRED|pass confirm)\b/i;
+
+/**
+ * A failure that only says the call itself was malformed (a required argument
+ * missing, an unexpected or invalid argument) had no effect, so it is not an
+ * outcome the user must hear about once the planner re-issues the same
+ * operation correctly and it succeeds. The operation key includes the
+ * arguments, so the corrected call never matches the malformed one and the
+ * stale failure kept authority over the final message (live 2026-09-06 00:45:
+ * MEMORY create without `text`, retried with text and applied, yet the turn
+ * delivered a raw planner marker instead of the evaluator's "Got it").
+ *
+ * "The same operation" is decided by {@link malformedCallSupersededBy}: every
+ * target or intent field the malformed call supplied must survive into the
+ * successful call, so a failed update of note A is never laundered by a later
+ * update of note B and a refused delete of one query is never laundered by a
+ * confirmed delete of another (review 2026-09-06, Discussion 30659).
+ */
+function resolveMalformedCallsSupersededBy(
+	step: PlannerStep,
+	unresolvedByOperation: Map<string, PlannerStep>,
+): void {
+	const call = step.toolCall;
+	if (!call) return;
+	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
+		const failedCall = failed.toolCall;
+		if (
+			!failedCall ||
+			failedCall.name.toUpperCase() !== call.name.toUpperCase()
+		) {
+			continue;
+		}
+		if (!isMalformedCallFailure(failed.result)) continue;
+		if (!malformedCallSupersededBy(failedCall, failed.result, call)) continue;
+		unresolvedByOperation.delete(key);
+	}
+}
+
+const PLANNER_TOOL_DISCRIMINATOR_KEYS = [
+	"action",
+	"subaction",
+	"op",
+	"operation",
+] as const;
+
+function plannerToolDiscriminatorValue(call: PlannerToolCall): string {
+	const params = call.params ?? {};
+	for (const key of PLANNER_TOOL_DISCRIMINATOR_KEYS) {
+		const value = params[key];
+		if (typeof value === "string" && value.trim()) {
+			return value.trim().toLowerCase();
+		}
+	}
+	return "";
+}
+
+const DESTRUCTIVE_DISCRIMINATOR_PATTERN =
+	/^(?:delete|remove|clear|forget|cancel|archive|purge|reset|revoke|destroy|drop|unlink|wipe)/i;
+
+/** Parameter names that address a target even when their value is one word. */
+const TARGET_PARAMETER_KEY_PATTERN =
+	/^(?:id|ids|query|title|name|text|content|body|path|url|key|subject|target|filter|search|q|email|handle|username|channel|room|entity|event|note|file)$|(?:Id|Ids|Name|Title|Query|Path|Url|Key|Text|Handle)$/;
+
+/** One lowercase token (or a boolean/number) is an enum-like descriptor, not a target. */
+const DESCRIPTOR_TOKEN_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
+
+/**
+ * Function words dropped when a malformed call's prose target is matched
+ * against the corrected call. Pronouns are included because the planner
+ * restates first-person content in the third person ("I like my coffee" →
+ * "The user likes their coffee"). A single UPPERCASE letter is kept as an
+ * identifier ("Note A" vs "Note B") while the article "a" and the pronoun
+ * "I" are dropped.
+ */
+const CORRELATION_STOP_WORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"and",
+	"or",
+	"of",
+	"to",
+	"in",
+	"on",
+	"at",
+	"for",
+	"with",
+	"that",
+	"this",
+	"these",
+	"those",
+	"is",
+	"are",
+	"was",
+	"were",
+	"be",
+	"been",
+	"am",
+	"do",
+	"does",
+	"did",
+	"have",
+	"has",
+	"had",
+	"please",
+	"user",
+	"users",
+	"i",
+	"me",
+	"my",
+	"mine",
+	"you",
+	"your",
+	"we",
+	"our",
+	"us",
+	"he",
+	"him",
+	"his",
+	"she",
+	"her",
+	"they",
+	"them",
+	"their",
+	"it",
+	"its",
+]);
+
+function correlationContentTerms(text: string): string[] {
+	return text.split(/[^\p{L}\p{N}]+/u).filter((token) => {
+		if (!token) return false;
+		const lower = token.toLowerCase();
+		if (!CORRELATION_STOP_WORDS.has(lower)) return true;
+		return token.length === 1 && token !== lower && lower !== "i";
+	});
+}
+
+function isSuppliedParameterValue(value: unknown): boolean {
+	if (value === undefined || value === null) return false;
+	if (typeof value === "string") return value.trim().length > 0;
+	if (Array.isArray(value)) return value.length > 0;
+	if (typeof value === "object") return Object.keys(value).length > 0;
+	return true;
+}
+
+function isDescriptorParameterValue(value: unknown): boolean {
+	if (typeof value === "boolean" || typeof value === "number") return true;
+	if (typeof value === "string")
+		return DESCRIPTOR_TOKEN_PATTERN.test(value.trim());
+	if (Array.isArray(value)) {
+		return value.every(
+			(entry) =>
+				typeof entry === "string" &&
+				DESCRIPTOR_TOKEN_PATTERN.test(entry.trim()),
+		);
+	}
+	return false;
+}
+
+function normalizeCorrelationText(value: string): string {
+	return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function stableCorrelationJson(value: unknown): string {
+	if (Array.isArray(value)) {
+		return `[${value.map(stableCorrelationJson).join(",")}]`;
+	}
+	if (value && typeof value === "object") {
+		return `{${Object.keys(value)
+			.sort()
+			.map(
+				(key) =>
+					`${JSON.stringify(key)}:${stableCorrelationJson(
+						(value as Record<string, unknown>)[key],
+					)}`,
+			)
+			.join(",")}}`;
+	}
+	if (typeof value === "string") {
+		return JSON.stringify(normalizeCorrelationText(value));
+	}
+	return JSON.stringify(value) ?? "null";
+}
+
+function correlationValuesEqual(left: unknown, right: unknown): boolean {
+	return stableCorrelationJson(left) === stableCorrelationJson(right);
+}
+
+function correlationLeafStrings(value: unknown, out: string[] = []): string[] {
+	if (typeof value === "string") {
+		if (value.trim()) out.push(value);
+	} else if (Array.isArray(value)) {
+		for (const entry of value) correlationLeafStrings(entry, out);
+	} else if (value && typeof value === "object") {
+		for (const entry of Object.values(value))
+			correlationLeafStrings(entry, out);
+	} else if (typeof value === "number") {
+		out.push(String(value));
+	}
+	return out;
+}
+
+/**
+ * A value the corrected call no longer carries under the same name is still
+ * accounted for when it appears somewhere in the corrected arguments: an
+ * identifier (no whitespace) must appear verbatim, prose must have every
+ * content term present (inflection-insensitive), so misfiled content
+ * (`query: "I like my coffee with oat milk"` → `text: "The user likes their
+ * coffee with oat milk."`) correlates while a different target does not.
+ */
+function parameterValueCoveredBy(
+	value: unknown,
+	haystack: { text: string; terms: Set<string> },
+): boolean {
+	const leaves = correlationLeafStrings(value);
+	if (leaves.length === 0) return true;
+	return leaves.every((leaf) => {
+		const normalized = normalizeCorrelationText(leaf);
+		if (!/\s/.test(normalized)) return haystack.text.includes(normalized);
+		const terms = correlationContentTerms(leaf);
+		if (terms.length === 0) return haystack.text.includes(normalized);
+		return terms.every((term) =>
+			inflectionTermKeys(term).some((key) => haystack.terms.has(key)),
+		);
+	});
+}
+
+function parameterNamesNamedByFailure(
+	failedCall: PlannerToolCall,
+	result: PlannerToolResult | undefined,
+): Set<string> {
+	const names = new Set<string>();
+	const data = result?.data as
+		| {
+				error?: unknown;
+				invalidParameterNames?: unknown;
+				parameterErrors?: unknown;
+		  }
+		| undefined;
+	if (Array.isArray(data?.invalidParameterNames)) {
+		for (const name of data.invalidParameterNames) {
+			if (typeof name === "string") names.add(name);
+		}
+	}
+	if (Array.isArray(data?.parameterErrors)) {
+		for (const entry of data.parameterErrors) {
+			if (!entry || typeof entry !== "object") continue;
+			for (const field of ["name", "path", "parameter", "field"]) {
+				const value = (entry as Record<string, unknown>)[field];
+				if (typeof value === "string" && value) names.add(value.split(".")[0]);
+			}
+		}
+	}
+	const message = [
+		typeof data?.error === "string" ? data.error : "",
+		typeof result?.text === "string" ? result.text : "",
+		typeof result?.error === "string"
+			? result.error
+			: result?.error instanceof Error
+				? result.error.message
+				: "",
+	].join(" ");
+	for (const name of Object.keys(failedCall.params ?? {})) {
+		const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		if (
+			new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, "i").test(
+				message,
+			)
+		) {
+			names.add(name);
+		}
+	}
+	return names;
+}
+
+// Exported for unit coverage of the correlation contract: the resolver's
+// decision is the deliverable, so tests pin its shapes directly.
+export function malformedCallSupersededBy(
+	failedCall: PlannerToolCall,
+	failedResult: PlannerToolResult | undefined,
+	call: PlannerToolCall,
+): boolean {
+	const failedDiscriminator = plannerToolDiscriminatorValue(failedCall);
+	const discriminator = plannerToolDiscriminatorValue(call);
+	if (
+		failedDiscriminator !== discriminator &&
+		(DESTRUCTIVE_DISCRIMINATOR_PATTERN.test(failedDiscriminator) ||
+			DESTRUCTIVE_DISCRIMINATOR_PATTERN.test(discriminator))
+	) {
+		// A different subaction can only stand in for a constructive one that
+		// never ran (update without text → create with text); a refused delete
+		// is never laundered by a later create, update or unrelated delete.
+		return false;
+	}
+	const namedInFailure = parameterNamesNamedByFailure(failedCall, failedResult);
+	const params = call.params ?? {};
+	const haystackText = normalizeCorrelationText(
+		correlationLeafStrings(params).join(" "),
+	);
+	const haystack = {
+		text: haystackText,
+		terms: new Set(
+			correlationContentTerms(correlationLeafStrings(params).join(" ")).flatMap(
+				inflectionTermKeys,
+			),
+		),
+	};
+	for (const [name, value] of Object.entries(failedCall.params ?? {})) {
+		if (name === "eliza_turn_scope") continue;
+		if ((PLANNER_TOOL_DISCRIMINATOR_KEYS as readonly string[]).includes(name)) {
+			continue;
+		}
+		if (namedInFailure.has(name)) continue;
+		if (!isSuppliedParameterValue(value)) continue;
+		if (Object.hasOwn(params, name) && isSuppliedParameterValue(params[name])) {
+			if (!correlationValuesEqual(value, params[name])) return false;
+			continue;
+		}
+		if (
+			!TARGET_PARAMETER_KEY_PATTERN.test(name) &&
+			isDescriptorParameterValue(value)
+		) {
+			continue;
+		}
+		if (!parameterValueCoveredBy(value, haystack)) return false;
+	}
+	return true;
+}
+
+function isMalformedCallFailure(
+	result: PlannerToolResult | undefined,
+): boolean {
+	if (!result) return false;
+	const data = result.data as
+		| {
+				error?: unknown;
+				parameterErrors?: unknown;
+				invalidParameterNames?: unknown;
+		  }
+		| undefined;
+	if (Array.isArray(data?.parameterErrors) && data.parameterErrors.length > 0) {
+		return true;
+	}
+	const code = typeof data?.error === "string" ? data.error : "";
+	const text = typeof result.text === "string" ? result.text : "";
+	const message =
+		typeof result.error === "string"
+			? result.error
+			: result.error instanceof Error
+				? result.error.message
+				: "";
+	return MALFORMED_CALL_FAILURE_PATTERN.test(`${code} ${text} ${message}`);
 }
 
 /**
@@ -6173,6 +6676,10 @@ async function rescueReplyFromSuccessfulResults(
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		if (step.result?.success !== true) continue;
+		// Internal results carry no user-facing text (a memory id, a receipt);
+		// composing a reply from them produced a hallucinated apology (live
+		// 2026-09-06 01:29: "it seems my previous message didn't land").
+		if (step.result.transcriptVisibility === "internal") continue;
 		const diagnosticResult = projectToolDiagnosticValue(
 			step.result,
 			redactDiagnosticText,
@@ -7069,6 +7576,309 @@ function trySubPlannerVerdictGate(args: {
 	};
 }
 
+export const GROUNDED_RECEIPT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: single declared intent settled by one verified internal action; reply rendered from its receipt facts; evaluator LLM call skipped.";
+
+interface GroundedReceiptOperation {
+	domain: string;
+	toolIntent: string;
+	scenario: string;
+	facts: string;
+}
+
+interface GroundedReceiptReply {
+	domain: string;
+	declaredIntents: string[];
+	userRequest: string;
+	operations: GroundedReceiptOperation[];
+	committedReceiptIds: string[];
+}
+
+const READ_EFFECT_OPERATION_PATTERN =
+	/(^|\.)(read|search|list|feed|show|get|lookup|find)(\.|$)/i;
+
+/**
+ * The one shape the grounded receipt gate accepts: exactly one completed tool
+ * step, successful, internal-transcript, that did NOT set `turnComplete:false`
+ * (the contract for "evaluation required"), carrying canonical receipts —
+ * applied commits or replayed no-ops for mutations, plain no-ops only for
+ * reads, nothing failed, previewed, rolled back or reverted — plus a
+ * replyContext with facts, nothing queued, nothing failed, no pause for the
+ * user, and no planner-declared pending scope.
+ */
+/**
+ * A tool result that settled on its own terms: succeeded, stays out of the
+ * user-facing transcript, did not demand evaluation (`turnComplete:false`),
+ * and is not pausing for input or confirmation.
+ */
+function isSettledInternalSuccess(
+	result: PlannerToolResult | undefined,
+): result is PlannerToolResult {
+	return (
+		!!result &&
+		result.success === true &&
+		result.transcriptVisibility === "internal" &&
+		result.turnComplete !== false &&
+		!hasAwaitingUserInputMarker(result) &&
+		!hasRequiresConfirmationMarker(result)
+	);
+}
+
+/**
+ * Committed receipt ids when every receipt on the result is mechanical proof:
+ * `applied` or a replayed `noop` count as committed; a plain `noop` on a read
+ * operation is accepted without being a claim. Null when any receipt is a
+ * preview, failure, rollback, reverted, or an unreplayed mutation no-op.
+ */
+function committedReceiptIdsForGate(
+	result: PlannerToolResult,
+): string[] | null {
+	const receipts = result.effectReceipts ?? [];
+	if (receipts.length === 0) return null;
+	const reverted = revertedEffectReceiptIds(receipts);
+	const committedReceiptIds: string[] = [];
+	for (const receipt of receipts) {
+		if (reverted.has(receipt.receiptId)) return null;
+		if (receipt.outcome === "applied") {
+			committedReceiptIds.push(receipt.receiptId);
+			continue;
+		}
+		if (receipt.outcome === "noop") {
+			if (receipt.idempotency.replayed) {
+				committedReceiptIds.push(receipt.receiptId);
+				continue;
+			}
+			if (READ_EFFECT_OPERATION_PATTERN.test(receipt.operation)) continue;
+			return null;
+		}
+		return null;
+	}
+	return committedReceiptIds;
+}
+
+export const QUEUE_AUTO_ADVANCE_THOUGHT =
+	"Planned batch step settled with a committed receipt; executing the next queued call without an intermediate evaluation.";
+
+/**
+ * Inside a planner batch, advance to the next queued call without an evaluator
+ * call when the step just executed settled with at least one committed
+ * mutation receipt. A read-only step, a failure, a pause, a non-internal
+ * result, or a terminal queued call (REPLY) keeps the per-step evaluation.
+ */
+function selectQueueAutoAdvance(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+}): { nextToolCallId: string } | null {
+	const { trajectory, failures } = args;
+	if (trajectory.plannedQueue.length === 0 || failures.length > 0) return null;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	if (!latestStep?.toolCall || !isSettledInternalSuccess(result)) return null;
+	const committed = committedReceiptIdsForGate(result);
+	if (!committed || committed.length === 0) return null;
+	const next = trajectory.plannedQueue[0];
+	if (!next || isTerminalToolCall(next)) return null;
+	return { nextToolCallId: next.id ?? next.name };
+}
+
+function selectGroundedReceiptReply(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+	declaredIntents: readonly string[];
+}): GroundedReceiptReply | null {
+	const { trajectory, failures } = args;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (trajectory.plannedQueue.length > 0 || failures.length > 0) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const completedSteps = [
+		...trajectory.archivedSteps,
+		...trajectory.steps,
+	].filter((step) => step.toolCall && step.result);
+	if (completedSteps.length === 0) return null;
+	// More declared intents than executed actions almost always means part of
+	// the request is still undone; that verdict belongs to the full evaluator
+	// (which can continue the work), not to a render that would only say so.
+	if (args.declaredIntents.length > completedSteps.length) return null;
+	const operations: GroundedReceiptOperation[] = [];
+	const committedReceiptIds: string[] = [];
+	for (const step of completedSteps) {
+		const result = step.result;
+		if (!isSettledInternalSuccess(result)) return null;
+		const committed = committedReceiptIdsForGate(result);
+		if (!committed) return null;
+		committedReceiptIds.push(...committed);
+		const data = result.data;
+		const context =
+			data && typeof data === "object"
+				? (data as Record<string, unknown>).replyContext
+				: undefined;
+		if (!context || typeof context !== "object" || Array.isArray(context)) {
+			return null;
+		}
+		const record = context as Record<string, unknown>;
+		const facts = typeof record.facts === "string" ? record.facts.trim() : "";
+		const domain =
+			typeof record.domain === "string" ? record.domain.trim() : "";
+		if (!facts || !domain) return null;
+		operations.push({
+			domain,
+			toolIntent: typeof record.intent === "string" ? record.intent.trim() : "",
+			scenario:
+				typeof record.scenario === "string" ? record.scenario.trim() : "",
+			facts,
+		});
+	}
+	const domains = [...new Set(operations.map((operation) => operation.domain))];
+	return {
+		domain: domains.length === 1 ? domains[0] : domains.join(" and "),
+		declaredIntents: args.declaredIntents
+			.map((intent) => intent.trim())
+			.filter((intent) => intent.length > 0),
+		userRequest: latestUserRequestText(trajectory.context),
+		operations,
+		committedReceiptIds,
+	};
+}
+
+/** The user's message for this turn as the planner context carries it. */
+function latestUserRequestText(context: ContextObject): string {
+	const events = Array.isArray(context.events) ? context.events : [];
+	for (let index = events.length - 1; index >= 0; index -= 1) {
+		const event = events[index] as
+			| { type?: unknown; message?: { role?: unknown; content?: unknown } }
+			| undefined;
+		if (event?.type !== "message" || event.message?.role !== "user") continue;
+		const content = event.message.content;
+		if (typeof content === "string") return content.trim();
+		if (content && typeof content === "object") {
+			const text = (content as { text?: unknown }).text;
+			if (typeof text === "string") return text.trim();
+		}
+	}
+	return "";
+}
+
+interface GroundedReceiptRender {
+	message: string;
+	/** The render model's verdict that the facts cover everything the user asked for. */
+	complete: boolean;
+}
+
+/**
+ * Parses the render model's `{"complete": boolean, "message": string}` object.
+ * The whole trimmed response must be that one object (at most wrapped in one
+ * exact code fence): preamble, trailing prose, or an array is an explicit "no
+ * render" so the full evaluator runs instead of a verdict lifted out of prose.
+ */
+function parseGroundedReceiptRender(raw: string): GroundedReceiptRender | null {
+	let candidate = raw.trim();
+	const fence = candidate.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/i);
+	if (fence) candidate = fence[1].trim();
+	if (!candidate.startsWith("{") || !candidate.endsWith("}")) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(candidate);
+	} catch {
+		// error-policy:J3 A malformed render is an explicit non-result; the
+		// caller falls back to the full evaluator rather than guessing a reply.
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return null;
+	}
+	const record = parsed as Record<string, unknown>;
+	if (
+		typeof record.complete !== "boolean" ||
+		typeof record.message !== "string"
+	) {
+		return null;
+	}
+	const message = record.message.trim();
+	if (!message) return null;
+	return { message, complete: record.complete };
+}
+
+/**
+ * Compact TEXT_SMALL render of an action's receipt facts against the user's
+ * actual request, with the model's own verdict on whether those facts cover
+ * everything the request asked for. Null on any failure, malformed output, or
+ * unsafe text so the caller falls back to the full evaluator; a render that
+ * reports partial completion is returned so the caller can decline the gate
+ * and let the evaluator continue the remaining work.
+ */
+async function renderGroundedReceiptReply(
+	params: PlannerLoopParams,
+	reply: GroundedReceiptReply,
+): Promise<GroundedReceiptRender | null> {
+	const agentName =
+		(
+			params.runtime as { character?: { name?: string } }
+		).character?.name?.trim() || "the assistant";
+	const system = [
+		`You are ${agentName}. ${reply.operations.length === 1 ? `A ${reply.domain} operation` : `${reply.operations.length} ${reply.domain} operations`} the user asked for ${reply.operations.length === 1 ? "has" : "have"} just completed. Write the reply the user will read and judge whether the request is fully done.`,
+		"Rules for the reply: plain everyday words in one or two short sentences; keep every date, time, name and number exactly as given; if the facts say something was not found, not changed, or needs the user's input, say that plainly instead of claiming it was done; if the facts cover only part of what the user asked, say what was done and name what was not; never expose ids, field names, JSON, tool names, or receipt metadata; add no offers or follow-up questions the facts do not ask for.",
+		'Output exactly one JSON object and nothing else: {"complete": true or false, "message": "<the reply>"}. Set "complete" to true only when the facts show that everything the user\'s message asked for has been done. If any requested item, change, or detail is missing, not found, or still pending, set it to false.',
+	].join("\n");
+	const operationBlocks = reply.operations.map((operation, index) => {
+		const label =
+			reply.operations.length === 1 ? "Operation" : `Operation ${index + 1}`;
+		return [
+			operation.toolIntent && operation.toolIntent !== reply.userRequest
+				? `${label} performed for: ${operation.toolIntent}`
+				: `${label}:`,
+			operation.scenario ? `Outcome type: ${operation.scenario}` : "",
+			`Authoritative facts (use only these; do not add, infer, or soften anything):`,
+			operation.facts,
+		]
+			.filter((line) => line !== "")
+			.join("\n");
+	});
+	const user = [
+		reply.userRequest ? `User's message: ${reply.userRequest}` : "",
+		reply.declaredIntents.length > 0
+			? `Understood intent${reply.declaredIntents.length > 1 ? "s" : ""}: ${reply.declaredIntents.join("; ")}`
+			: "",
+		...operationBlocks,
+	]
+		.filter((line) => line !== "")
+		.join("\n");
+	try {
+		const raw = await params.runtime.useModel(ModelType.TEXT_SMALL, {
+			messages: [
+				{ role: "system", content: system },
+				{ role: "user", content: user },
+			],
+			maxTokens: 320,
+		});
+		const text = (
+			typeof raw === "string"
+				? raw
+				: typeof (raw as { text?: unknown } | null)?.text === "string"
+					? (raw as { text: string }).text
+					: ""
+		).trim();
+		if (!text) return null;
+		const render = parseGroundedReceiptRender(text);
+		if (!render || isUnsafeUserVisibleText(render.message)) return null;
+		return render;
+	} catch (error) {
+		// error-policy:J4 a failed render is not a failed turn: the full evaluator
+		// owns the reply and its own provider-failure handling.
+		params.runtime.logger?.warn?.(
+			{
+				src: "planner-loop",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Grounded receipt render failed; using the full evaluator",
+		);
+		return null;
+	}
+}
+
 function tryGateEvaluator(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
@@ -7313,6 +8123,59 @@ function userSafeFinalMessage(
  */
 export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
+const PLANNER_PROTOCOL_JSON_KEYS = new Set([
+	"plannerCompleted",
+	"turnScope",
+	"eliza_turn_scope",
+	"tool_calls",
+	"toolCalls",
+	"tool_call",
+	"function_call",
+	"tool_use",
+	"messageToUser",
+	"recommendedToolCallId",
+	"effectReceiptIds",
+]);
+
+/**
+ * Bare JSON that is the loop's own protocol rather than an answer: markers,
+ * tool invocations (`name` + arguments, `action` + params), verdict and
+ * render envelopes, JSON-schema fragments, and empty containers. Arrays are
+ * protocol when any element is.
+ */
+function isPlannerProtocolJson(value: unknown): boolean {
+	if (Array.isArray(value)) {
+		return value.length === 0 || value.some(isPlannerProtocolJson);
+	}
+	if (!value || typeof value !== "object") return false;
+	const keys = Object.keys(value);
+	if (keys.length === 0) return true;
+	const has = (key: string) => Object.hasOwn(value, key);
+	if (keys.some((key) => PLANNER_PROTOCOL_JSON_KEYS.has(key))) return true;
+	if (has("decision") && has("success")) return true;
+	if (has("complete") && has("message") && keys.length <= 3) return true;
+	if (
+		has("name") &&
+		(has("arguments") || has("parameters") || has("params") || has("input"))
+	) {
+		return true;
+	}
+	if (
+		has("action") &&
+		(has("params") || has("arguments") || has("parameters"))
+	) {
+		return true;
+	}
+	if (
+		has("type") &&
+		typeof (value as { type: unknown }).type === "string" &&
+		(has("properties") || has("required") || keys.length === 1)
+	) {
+		return true;
+	}
+	return false;
+}
+
 // Exported for unit coverage of the egress rejection contract (F18):
 // the last-line guard is the deliverable, so tests pin its shapes.
 export function isUnsafeUserVisibleText(value: string | undefined): boolean {
@@ -7342,6 +8205,25 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/"decision"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/.test(text) &&
 		/"success"\s*:\s*(?:true|false)/.test(text)
 	) {
+		return true;
+	}
+	// A bare JSON body shaped like planner protocol — a turn-scope marker, a
+	// tool invocation, a verdict envelope, a schema fragment — is never a
+	// reply (live 2026-09-06: {"plannerCompleted":true,"turnScope":"final"}
+	// reached the user; a forced synthesis returned {"type":"object"}). JSON
+	// the user asked for (a data record, a list of numbers) is prose here
+	// (review 2026-09-06): only protocol shapes are rejected.
+	if (/^[[{][\s\S]*[\]}]$/.test(text)) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(text);
+		} catch {
+			// error-policy:J3 Not valid JSON — fall through to the other checks.
+			parsed = undefined;
+		}
+		if (parsed !== undefined && isPlannerProtocolJson(parsed)) return true;
+	}
+	if (/"(?:plannerCompleted|turnScope|eliza_turn_scope)"\s*:/.test(text)) {
 		return true;
 	}
 	return [

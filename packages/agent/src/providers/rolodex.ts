@@ -53,8 +53,11 @@ export const rolodexProvider: Provider = {
   relevanceKeywords: getValidationKeywordTerms("provider.rolodex.relevance", {
     includeAllLocales: true,
   }),
-  contexts: ["contacts", "memory"],
-  contextGate: { anyOf: ["contacts", "memory"] },
+  // Live 2026-09-05: in the memory context this rendered 893 contacts (44K
+  // characters) on a plain "remember that I prefer…" turn; the MEMORY tool
+  // works on the user's text and never needs the address book.
+  contexts: ["contacts"],
+  contextGate: { anyOf: ["contacts"] },
   cacheStable: false,
   cacheScope: "turn",
   // roleGate ADMIN is enforced by applyPluginRoleGating (#12087 Item 14); the

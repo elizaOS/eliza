@@ -145,6 +145,17 @@ function findDiscriminatorParameter(
  * `normalizeSubaction` so case / separator variants in hand-written lists
  * still hit the canonical enum value.
  */
+function parameterRequiredForSubaction(
+	requiredForSubactions: readonly string[] | undefined,
+	subaction: string,
+): boolean {
+	if (!requiredForSubactions) return false;
+	const pinned = normalizeSubaction(subaction);
+	return requiredForSubactions.some(
+		(entry) => normalizeSubaction(entry) === pinned,
+	);
+}
+
 function parameterAppliesToSubaction(
 	parameter: ActionParameter,
 	subaction: string,
@@ -221,8 +232,16 @@ function pinDiscriminatorForVirtual(
 			continue;
 		}
 		if (!parameterAppliesToSubaction(parameter, subaction)) continue;
-		const { subactions: _applicability, ...rest } = parameter;
-		sliced.push(rest);
+		const {
+			subactions: _applicability,
+			requiredForSubactions,
+			...rest
+		} = parameter;
+		sliced.push(
+			parameterRequiredForSubaction(requiredForSubactions, subaction)
+				? { ...rest, required: true }
+				: rest,
+		);
 	}
 	return sliced;
 }

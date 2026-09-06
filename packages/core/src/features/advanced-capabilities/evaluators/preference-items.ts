@@ -50,7 +50,9 @@ import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
+	factClaimsEquivalent,
 	factLexicalSimilarity,
+	factPolarityDiffers,
 	readStoredFactKeywords,
 } from "../fact-keywords.ts";
 import {
@@ -161,6 +163,28 @@ function readFactMetadata(memory: Memory): FactMetadata {
 function isDurablePreferenceFact(memory: Memory): boolean {
 	const meta = readFactMetadata(memory);
 	return meta.category === "preference" && meta.kind !== "current";
+}
+
+/**
+ * Stage-1 stores the same turn's `extract.facts` as lapsing
+ * `current/uncategorized` rows. A row extracted from THIS message is the same
+ * observation the extractor is now classifying, so it is upgraded in place
+ * rather than shadowed by a durable twin. Other messages' rows are never
+ * merged: lexical overlap cannot tell a restatement from a changed value.
+ */
+function isSameMessageStageFact(memory: Memory, message: Memory): boolean {
+	if (!message.id) return false;
+	const meta = memory.metadata as Record<string, unknown> | undefined;
+	return (
+		memory.entityId === message.entityId &&
+		memory.roomId === message.roomId &&
+		meta?.source === "facts_and_relationships_stage" &&
+		meta.kind === "current" &&
+		meta.messageId === message.id &&
+		// A fallback row whose subject the room could not resolve is not the
+		// author's own observation and is never promoted as their preference.
+		meta.subjectResolved !== false
+	);
 }
 
 function pickFactConfidence(memory: Memory): number {
@@ -332,6 +356,20 @@ async function applyAddPreferenceFact(
 	const targetValues = [op.claim, "preference", keywords];
 	let best: { memory: Memory; similarity: number } | null = null;
 	for (const candidate of candidates) {
+		const candidateText =
+			typeof candidate.memory.content.text === "string"
+				? candidate.memory.content.text
+				: "";
+		// A negated candidate is a different claim however many words it shares.
+		if (factPolarityDiffers(op.claim, candidateText)) continue;
+		// Promoting a Stage-1 observation rewrites its classification, so only the
+		// identical claim qualifies; a durable preference is merely strengthened.
+		if (
+			isSameMessageStageFact(candidate.memory, message) &&
+			!factClaimsEquivalent(op.claim, candidateText)
+		) {
+			continue;
+		}
 		const similarity = factLexicalSimilarity(targetValues, [
 			candidate.searchText,
 			readStoredFactKeywords(candidate.memory),
@@ -344,12 +382,30 @@ async function applyAddPreferenceFact(
 	}
 	if (best?.memory.id) {
 		// Update-not-duplicate: a re-stated preference reinforces the existing
-		// row instead of creating a near-copy the provider would rank twice.
-		const nextMeta: CustomMetadata = {
-			...preserveFactMetadata(best.memory),
-			confidence: clamp01(pickFactConfidence(best.memory) + STRENGTHEN_DELTA),
-			lastConfirmedAt: nowIso(),
-		};
+		// row instead of creating a near-copy the provider would rank twice; a
+		// same-message Stage-1 observation is promoted to the durable preference.
+		const nextMeta: CustomMetadata = isSameMessageStageFact(
+			best.memory,
+			message,
+		)
+			? {
+					...preserveFactMetadata(best.memory),
+					kind: "durable",
+					category: "preference",
+					promotedBy: "preference_extractor",
+					keywords: [
+						...new Set([...readStoredFactKeywords(best.memory), ...keywords]),
+					],
+					confidence: clamp01(op.confidence ?? NEW_FACT_CONFIDENCE),
+					lastConfirmedAt: nowIso(),
+				}
+			: {
+					...preserveFactMetadata(best.memory),
+					confidence: clamp01(
+						pickFactConfidence(best.memory) + STRENGTHEN_DELTA,
+					),
+					lastConfirmedAt: nowIso(),
+				};
 		await runtime.updateMemory({ id: best.memory.id, metadata: nextMeta });
 		return { added: false, strengthened: true };
 	}
@@ -466,7 +522,11 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 								authorEntityIds: [message.entityId],
 								unique: false,
 							})
-						).filter(isDurablePreferenceFact)
+						).filter(
+							(memory) =>
+								isDurablePreferenceFact(memory) ||
+								isSameMessageStageFact(memory, message),
+						)
 					: prepared.knownPreferenceFacts;
 				const candidates: FactCandidate[] = freshFacts.map((memory) => ({
 					memory,

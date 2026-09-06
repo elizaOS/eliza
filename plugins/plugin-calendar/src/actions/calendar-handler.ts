@@ -1562,8 +1562,8 @@ function resolveStructuredCalendarSubaction(
   }
 
   if (
-    detailString(details, "startAt") ||
-    detailString(details, "endAt") ||
+    createStartDetail(details) ||
+    createEndDetail(details) ||
     detailString(details, "windowPreset") ||
     detailNumber(details, "durationMinutes") ||
     params.title ||
@@ -2258,6 +2258,171 @@ function chooseSuggestedCreateEventMinute(args: {
  * stated day, preserving wall-clock time and duration. No stated date, or a
  * matching one, changes nothing — a correct planner is a no-op here.
  */
+/**
+ * The schema advertises `start`/`end` beside `startAt`/`endAt` (live 2026-09-05
+ * the planner used `start`); every create read accepts both spellings so a
+ * valid planner time is executed instead of re-extracted from prose.
+ */
+function createStartDetail(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  return detailString(details, "startAt") ?? detailString(details, "start");
+}
+
+function createEndDetail(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  return detailString(details, "endAt") ?? detailString(details, "end");
+}
+
+const DATE_SEGMENT_SPLIT_PATTERN =
+  /\s*(?:,|;|\band\b|\bthen\b|\bplus\b|\balso\b|\bas well as\b)\s*/i;
+
+function distinctStatedLocalDates(
+  text: string,
+  timeZone: string,
+): LocalDateOnly[] {
+  const dates: LocalDateOnly[] = [];
+  for (const segment of text.split(DATE_SEGMENT_SPLIT_PATTERN)) {
+    if (segment.trim().length === 0) continue;
+    const parsed = parseExplicitLocalDate(segment, timeZone);
+    if (parsed && !dates.some((d) => compareLocalDates(d, parsed) === 0)) {
+      dates.push(parsed);
+    }
+  }
+  return dates;
+}
+
+/**
+ * The date the user stated for THIS create. The message is authoritative when
+ * it names one date; when it names several (one message, several events —
+ * live 2026-09-05 "pottery class saturday … and a haircut sunday" put the
+ * haircut on Saturday), the planner's per-event intent decides which one this
+ * create is for.
+ */
+function resolveStatedCreateDate(args: {
+  currentMessage: string;
+  intent: string;
+  timeZone: string;
+}): LocalDateOnly | null {
+  const messageDates = distinctStatedLocalDates(
+    args.currentMessage,
+    args.timeZone,
+  );
+  const intentDate = parseExplicitLocalDate(args.intent, args.timeZone);
+  if (messageDates.length >= 2) {
+    return intentDate ?? messageDates[0] ?? null;
+  }
+  return messageDates[0] ?? intentDate;
+}
+
+/**
+ * Texts consulted, in order, for the stated day of an update/delete target.
+ * Single-day message: the user's words first, then the planner's per-target
+ * intent, then the planner's `date` detail — planner weekday arithmetic is not
+ * trusted over the user's words (live 23:33: "sunday" arrived as the 7th).
+ * Message naming several days (one message, several targets — live 22:44
+ * "the yoga class on thursday, the pottery class on saturday and the haircut
+ * on sunday" constrained every target to Thursday): the per-target intent
+ * first, then the planner's `date` detail (its only per-target narrowing when
+ * it sent no intent — live 00:16 the dentist on Friday was missed because the
+ * message's first day, Thursday, was applied), then the message. An intent
+ * that merely echoes the whole message carries no per-target information and
+ * is skipped.
+ */
+function mutationTargetTexts(args: {
+  details: Record<string, unknown> | undefined;
+  currentMessage: string;
+  intent: string;
+  timeZone: string;
+}): (string | undefined)[] {
+  const explicitDate = detailString(args.details, "date");
+  const message = args.currentMessage.trim();
+  const intent =
+    args.intent.trim() && args.intent.trim() !== message
+      ? args.intent.trim()
+      : undefined;
+  const messageNamesSeveralDays =
+    distinctStatedLocalDates(message, args.timeZone).length >= 2;
+  return messageNamesSeveralDays
+    ? [intent, explicitDate, message]
+    : [message, intent, explicitDate];
+}
+
+const PAST_START_GRACE_MS = 5 * 60 * 1000;
+const EXPLICIT_DATE_TOKEN_PATTERN =
+  /\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/;
+
+function namesBareWeekday(text: string): boolean {
+  const normalized = normalizeText(text);
+  return (
+    WEEKDAY_NAME_PATTERN.test(normalized) &&
+    !EXPLICIT_DATE_TOKEN_PATTERN.test(normalized) &&
+    !MONTH_NAME_PATTERN.test(normalized)
+  );
+}
+
+/**
+ * A create whose start has already passed is not executed silently and is not
+ * reinterpreted: "saturday at 10am" said on Saturday afternoon (live
+ * 2026-09-05) most likely means next Saturday, but only the user can say so.
+ * The action pauses with the facts and, when the user named a bare weekday,
+ * the same wall-clock time one week later as the suggestion. The planner may
+ * set `allowPast` when the user explicitly wants a past time recorded.
+ */
+function resolvePastStartClarification(args: {
+  request: CreateLifeOpsCalendarEventRequest;
+  details: Record<string, unknown> | undefined;
+  title: string;
+  currentMessage: string;
+  intent: string;
+  timeZone: string;
+  now: Date;
+}): { facts: string; suggestedStartAt?: string } | null {
+  if (detailBoolean(args.details, "allowPast") === true) return null;
+  if (args.request.allDay || !args.request.startAt) return null;
+  const startMs = Date.parse(args.request.startAt);
+  if (
+    !Number.isFinite(startMs) ||
+    startMs >= args.now.getTime() - PAST_START_GRACE_MS
+  ) {
+    return null;
+  }
+  const startText = formatCalendarEventDateTime(
+    { startAt: args.request.startAt, timezone: args.timeZone },
+    { includeTimeZoneName: true },
+  );
+  if (
+    !namesBareWeekday(args.intent) &&
+    !namesBareWeekday(args.currentMessage)
+  ) {
+    return {
+      facts: `“${args.title}” at ${startText} has already passed, so nothing was created. Ask which date the user wants.`,
+    };
+  }
+  const parts = getZonedDateParts(new Date(startMs), args.timeZone);
+  const nextWeek = addDaysToLocalDate(
+    { year: parts.year, month: parts.month, day: parts.day },
+    7,
+  );
+  const suggestedStartAt = buildUtcDateFromLocalParts(args.timeZone, {
+    year: nextWeek.year,
+    month: nextWeek.month,
+    day: nextWeek.day,
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second,
+  }).toISOString();
+  const suggestedText = formatCalendarEventDateTime(
+    { startAt: suggestedStartAt, timezone: args.timeZone },
+    { includeTimeZoneName: true },
+  );
+  return {
+    facts: `“${args.title}” at ${startText} has already passed, so nothing was created. The same time next week is ${suggestedText}; ask whether to schedule it then or on another date.`,
+    suggestedStartAt,
+  };
+}
+
 function applyStatedDateToCreateRequest(args: {
   request: CreateLifeOpsCalendarEventRequest;
   currentMessage: string;
@@ -2272,9 +2437,11 @@ function applyStatedDateToCreateRequest(args: {
   if (Number.isNaN(startDate.getTime())) {
     return { corrected: false };
   }
-  const stated =
-    parseExplicitLocalDate(args.currentMessage, args.timeZone) ??
-    parseExplicitLocalDate(args.intent, args.timeZone);
+  const stated = resolveStatedCreateDate({
+    currentMessage: args.currentMessage,
+    intent: args.intent,
+    timeZone: args.timeZone,
+  });
   if (!stated) {
     return { corrected: false };
   }
@@ -2349,12 +2516,11 @@ function suggestCreateEventStartAt(args: {
     return null;
   }
 
-  const targetDate =
-    parseExplicitLocalDate(
-      args.currentMessage,
-      args.calendarContext.calendarTimeZone,
-    ) ??
-    parseExplicitLocalDate(args.intent, args.calendarContext.calendarTimeZone);
+  const targetDate = resolveStatedCreateDate({
+    currentMessage: args.currentMessage,
+    intent: args.intent,
+    timeZone: args.calendarContext.calendarTimeZone,
+  });
   if (!targetDate) {
     return null;
   }
@@ -3039,8 +3205,8 @@ export function buildCreateEventRequest(
       args.fallbackRequest?.title ??
       args.inferredTitle);
 
-  const explicitStartAt = detailString(args.details, "startAt");
-  const explicitEndAt = detailString(args.details, "endAt");
+  const explicitStartAt = createStartDetail(args.details);
+  const explicitEndAt = createEndDetail(args.details);
   const explicitWindowPreset = sanitizeWindowPreset(
     detailString(args.details, "windowPreset"),
   );
@@ -4289,7 +4455,15 @@ const calendarAction: CalendarHandlerAction = {
         ) ?? []),
       ],
       llmPlan,
-      fallbackQueries: [tripWindowIntent?.location],
+      fallbackQueries: [
+        tripWindowIntent?.location,
+        // A typed delete target ("delete_event" + title) is the target itself;
+        // dropping it sent valid structured deletes to the clarify path without
+        // ever reading the feed (ROOT trace step-1788648925553-vzj6rq).
+        ...(subaction === "delete_event"
+          ? [params.title, detailString(details, "title")]
+          : []),
+      ],
     });
     // Remembered so the read path does not repeat the same extraction with
     // the same inputs when this one found nothing.
@@ -4331,10 +4505,20 @@ const calendarAction: CalendarHandlerAction = {
     }): Promise<ActionResult> => {
       const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
       if (!payload.interaction || typeof payload.text !== "string") {
+        // `turnComplete:false` is the core contract for "evaluation required";
+        // a settled successful operation with a canonical receipt omits it so
+        // the runtime may phrase the receipt facts directly (owner ruling
+        // 2026-09-05). Pauses for the user and failures keep the evaluation.
+        const pauseData = payload.data as Record<string, unknown> | undefined;
+        const settled =
+          payload.success &&
+          effectReceipt.outcome !== "failed" &&
+          pauseData?.requiresInput !== true &&
+          pauseData?.approvalRequired !== true;
         return {
           success: payload.success,
           transcriptVisibility: "internal",
-          turnComplete: false,
+          ...(settled ? {} : { turnComplete: false }),
           effectReceipts: [effectReceipt],
           data: {
             ...payload.data,
@@ -4463,8 +4647,8 @@ const calendarAction: CalendarHandlerAction = {
         // shape, those typed fields are authoritative. The extraction model is
         // a fallback for umbrella or incomplete calls, not a mandatory second
         // interpretation of an already-structured planner decision.
-        const plannerStartAt = detailString(details, "startAt");
-        const plannerEndAt = detailString(details, "endAt");
+        const plannerStartAt = createStartDetail(details);
+        const plannerEndAt = createEndDetail(details);
         const plannerTimeZone = detailString(details, "timeZone");
         // A "Z" instant for an owner who is not in UTC is the planner's most
         // common mistake (live 2026-09-05: "tuesday at 7am" arrived as
@@ -4593,6 +4777,49 @@ const calendarAction: CalendarHandlerAction = {
               requiresInput: true,
               missing: ["startAt"],
               title,
+            },
+          });
+        }
+        const pastStart = resolvePastStartClarification({
+          request,
+          details,
+          title,
+          currentMessage: messageText(message).trim(),
+          intent,
+          timeZone: createTimeZone,
+          // The moment the user asked, the same clock the receipts observe.
+          now: new Date(calendarMessageObservedAt(message)),
+        });
+        if (pastStart) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_create_event_past_start",
+              pastStart.facts,
+              {
+                title,
+                requestedStartAt: request.startAt,
+                suggestedStartAt: pastStart.suggestedStartAt ?? null,
+                calendarTimeZone: createTimeZone,
+              },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.create",
+              discriminator: title,
+              reason:
+                "The requested start had already passed, so no approval or calendar event was created until the user confirms the date.",
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["confirmed date"],
+              title,
+              requestedStartAt: request.startAt,
+              ...(pastStart.suggestedStartAt
+                ? { suggestedStartAt: pastStart.suggestedStartAt }
+                : {}),
             },
           });
         }
@@ -4754,7 +4981,14 @@ const calendarAction: CalendarHandlerAction = {
             action: "update",
             events: feed.events,
             titleHint,
-            texts: [messageText(message), intent],
+            // An explicit `date` detail names the target's local day ahead of
+            // any date phrase in the prose.
+            texts: mutationTargetTexts({
+              details,
+              currentMessage: messageText(message),
+              intent,
+              timeZone: planningTimeZone,
+            }),
             timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {
@@ -5101,7 +5335,14 @@ const calendarAction: CalendarHandlerAction = {
             action: "delete",
             events: feed.events,
             titleHint,
-            texts: [messageText(message), intent],
+            // An explicit `date` detail names the target's local day ahead of
+            // any date phrase in the prose.
+            texts: mutationTargetTexts({
+              details,
+              currentMessage: messageText(message),
+              intent,
+              timeZone: planningTimeZone,
+            }),
             timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {

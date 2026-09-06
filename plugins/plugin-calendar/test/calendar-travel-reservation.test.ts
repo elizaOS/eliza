@@ -42,6 +42,8 @@ function message(): Memory {
     id: "00000000-0000-0000-0000-000000000301",
     entityId: "00000000-0000-0000-0000-000000000302",
     roomId: "00000000-0000-0000-0000-000000000303",
+    // The fixtures live in July 2026; the request time anchors the past-start check.
+    createdAt: Date.parse("2026-07-27T11:55:00.000Z"),
     content: { text: "Add soccer practice with travel from home" },
   } as Memory;
 }
@@ -156,7 +158,8 @@ async function runCreate(
   expect(result.effectReceipts).toHaveLength(1);
   if (result.transcriptVisibility === "internal") {
     expect(callback).not.toHaveBeenCalled();
-    expect(result.turnComplete).toBe(false);
+    // Settled internal results omit turnComplete (evaluation delegated); pauses keep false.
+    expect(result.turnComplete).not.toBe(true);
     expect(result).not.toHaveProperty("text");
     expect(result).not.toHaveProperty("userFacingText");
     expect(result.data?.replyContext).toMatchObject({

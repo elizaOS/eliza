@@ -5,8 +5,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { createUnavailableGroundedActionReply } from "../../types/action-reply";
+import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
+import {
+	isUnsafeUserVisibleText,
+	malformedCallSupersededBy,
+	runPlannerLoop,
+} from "../planner-loop";
 import type { PlannerRuntime, PlannerToolResult } from "../planner-types";
 
 function call(name: string, scope?: "more_work_pending" | "final") {
@@ -17,6 +22,16 @@ function call(name: string, scope?: "more_work_pending" | "final") {
 			...(scope ? { eliza_turn_scope: scope } : {}),
 		},
 	};
+}
+
+/** The grounded receipt render's `{complete, message}` object as the model returns it. */
+function render(message: string, complete = true) {
+	return JSON.stringify({ complete, message });
+}
+
+/** An evaluator verdict that the recorded results do not yet satisfy the request. */
+function continueWork(thought: string) {
+	return JSON.stringify({ thought, success: false, decision: "CONTINUE" });
 }
 
 function finish(messageToUser: string, success = true) {
@@ -33,17 +48,29 @@ function harness(args: {
 	evaluations: string[];
 	results?: PlannerToolResult[];
 	intents?: string[];
+	/** TEXT_SMALL responses for the grounded receipt render. */
+	renders?: string[];
+	userMessage?: string;
 }) {
 	let plannerIndex = 0;
 	let evaluatorIndex = 0;
+	let renderIndex = 0;
 	let resultIndex = 0;
 	const executed: string[] = [];
 	const useModel = vi.fn<PlannerRuntime["useModel"]>(async (type) => {
 		const response =
 			type === ModelType.ACTION_PLANNER
 				? args.plans[plannerIndex++]
-				: args.evaluations[evaluatorIndex++];
-		if (response === undefined) throw new Error("Unexpected model call");
+				: type === ModelType.TEXT_SMALL
+					? args.renders?.[renderIndex++]
+					: args.evaluations[evaluatorIndex++];
+		if (response === undefined) {
+			throw new Error(
+				`Unexpected model call ${String(type)} after ${useModel.mock.calls
+					.map(([calledType]) => String(calledType))
+					.join(",")}`,
+			);
+		}
 		return response;
 	});
 	const executeToolCall = vi.fn(async (tool: { name: string }) => {
@@ -62,6 +89,17 @@ function harness(args: {
 			context: {
 				id: "compound-turn",
 				events: [
+					{
+						id: "current-message",
+						type: "message",
+						source: "user",
+						createdAt: 1,
+						message: {
+							role: "user",
+							content:
+								args.userMessage ?? "add gym session tuesday at 7am please",
+						},
+					},
 					{
 						id: "handler",
 						type: "message_handler",
@@ -589,5 +627,928 @@ describe("planner-declared pending work", () => {
 		expect(result.trajectory.plannedQueue.map((tool) => tool.name)).toEqual([
 			"LATER",
 		]);
+	});
+});
+
+describe("grounded receipt gate (single declared intent, one verified internal action)", () => {
+	const appliedReceipt: EffectReceipt = {
+		receiptId: "calendar-receipt-1",
+		operation: "calendar.event.create",
+		resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
+		artifacts: [],
+		idempotency: { key: null, replayed: false },
+		observedAt: "2026-09-05T18:00:00.000Z",
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: "evt-1",
+			committedAt: "2026-09-05T18:00:00.000Z",
+		},
+	};
+	const readNoopReceipt: EffectReceipt = {
+		receiptId: "calendar-read-receipt-1",
+		operation: "calendar.event.search",
+		resource: { kind: "calendar.feed", id: "feed-1", version: "v1" },
+		artifacts: [],
+		idempotency: { key: null, replayed: false },
+		observedAt: "2026-09-05T18:00:00.000Z",
+		outcome: "noop",
+		reason:
+			"The operation read an authoritative calendar snapshot without changing it.",
+	};
+	const mutationNoopReceipt: EffectReceipt = {
+		...readNoopReceipt,
+		receiptId: "calendar-noop-receipt-1",
+		operation: "calendar.event.delete",
+		reason: "No matching event.",
+	};
+	const rolledBackReceipt: EffectReceipt = {
+		receiptId: "calendar-rollback-1",
+		operation: "calendar.event.create",
+		resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
+		artifacts: [],
+		idempotency: { key: null, replayed: false },
+		observedAt: "2026-09-05T18:00:01.000Z",
+		outcome: "rolled_back",
+		rollback: {
+			receiptId: "calendar-rollback-1",
+			revertedReceiptIds: ["calendar-receipt-1"],
+			rolledBackAt: "2026-09-05T18:00:01.000Z",
+		},
+	};
+	const internalCalendarResult = (
+		receipts: EffectReceipt[] = [appliedReceipt],
+		overrides: Partial<PlannerToolResult> = {},
+	): PlannerToolResult => ({
+		success: true,
+		transcriptVisibility: "internal",
+		effectReceipts: receipts,
+		data: {
+			replyContext: {
+				domain: "calendar",
+				intent: "add gym session tuesday at 7am to my calendar",
+				scenario: "create_event_completed",
+				facts: "Created “Gym session” for Sep 8, 7:00 AM PDT.",
+			},
+		},
+		...overrides,
+	});
+	const modelCalls = (h: ReturnType<typeof harness>, type: string) =>
+		h.useModel.mock.calls.filter(([calledType]) => calledType === type).length;
+	const renderPromptOf = (h: ReturnType<typeof harness>) => {
+		const request = h.useModel.mock.calls.find(
+			([t]) => t === ModelType.TEXT_SMALL,
+		)?.[1] as { messages?: Array<{ content: string }> } | undefined;
+		return (request?.messages ?? []).map((m) => m.content).join("\n");
+	};
+
+	it("renders the reply from committed receipt facts, carries receipt ids and raw provenance, and skips the evaluator", async () => {
+		// Live 2026-09-05: the evaluator re-judged a verified calendar create with
+		// a 15K-token prompt (0.8–1.0 s) only to phrase facts the action had
+		// already produced.
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [],
+			renders: [render("Added your gym session for Tuesday at 7:00 AM.")],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR"]);
+		expect(result.finalMessage).toBe(
+			"Added your gym session for Tuesday at 7:00 AM.",
+		);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			success: true,
+			effectReceiptIds: ["calendar-receipt-1"],
+			raw: {
+				messageToUser: "Added your gym session for Tuesday at 7:00 AM.",
+				source: "grounded_receipt_render",
+			},
+		});
+		const prompt = renderPromptOf(h);
+		expect(prompt).toContain("Created “Gym session” for Sep 8, 7:00 AM PDT.");
+		expect(prompt).toContain(
+			"User's message: add gym session tuesday at 7am please",
+		);
+		expect(prompt).toContain("Understood intent: add gym session to calendar");
+		expect(prompt).toContain("never expose ids");
+	});
+
+	it("gates a read whose receipt is a plain no-op without claiming a side effect", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [],
+			renders: [render("You have a gym session on Tuesday at 7:00 AM.")],
+			results: [
+				internalCalendarResult([readNoopReceipt], {
+					data: {
+						replyContext: {
+							domain: "calendar",
+							intent: "whats on my calendar tuesday?",
+							scenario: "search_events",
+							facts:
+								"Your matching calendar event is Gym session (Sep 8, 7:00 AM).",
+						},
+					},
+				}),
+			],
+			intents: ["list calendar events for tuesday"],
+		});
+		const result = await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(result.evaluator?.effectReceiptIds).toBeUndefined();
+	});
+
+	it("keeps the full evaluator when the action set turnComplete:false", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
+			renders: [render("should not be used")],
+			results: [
+				internalCalendarResult([appliedReceipt], { turnComplete: false }),
+			],
+			intents: ["add gym session to calendar"],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+	});
+
+	it("keeps the full evaluator when a mutation only produced a non-replayed no-op", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("I couldn't find that event.", false)],
+			renders: [render("should not be used")],
+			results: [internalCalendarResult([mutationNoopReceipt])],
+			intents: ["delete the gym session"],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+	});
+
+	it("keeps the full evaluator when a receipt was rolled back", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("The event was rolled back.", false)],
+			renders: [render("should not be used")],
+			results: [internalCalendarResult([appliedReceipt, rolledBackReceipt])],
+			intents: ["add gym session to calendar"],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+	});
+
+	it("keeps the full evaluator when Stage-1 declared more than one intent", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [
+				finish("Added the gym session; the note is still pending.", false),
+			],
+			renders: [render("should not be used")],
+			results: [internalCalendarResult()],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+	});
+
+	it("keeps the full evaluator when a receipt failed", async () => {
+		const failed: EffectReceipt = {
+			receiptId: "calendar-failed-1",
+			operation: "calendar.event.create",
+			resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
+			artifacts: [],
+			idempotency: { key: null, replayed: false },
+			observedAt: "2026-09-05T18:00:00.000Z",
+			outcome: "failed",
+			failure: {
+				code: "CALENDAR_SERVICE_400",
+				retryable: false,
+				acceptance: "unknown",
+			},
+		};
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("The calendar rejected the event.", false)],
+			renders: [render("should not be used")],
+			results: [internalCalendarResult([failed])],
+			intents: ["add gym session to calendar"],
+		});
+		await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+	});
+
+	it("keeps the full evaluator while the planner declared more_work_pending", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("CALENDAR", "more_work_pending")] },
+				{ text: "", toolCalls: [call("NOTES", "final")] },
+			],
+			evaluations: [finish("Added it."), finish("Added it and noted it.")],
+			renders: [render("should not be used")],
+			results: [
+				internalCalendarResult(),
+				{
+					success: true,
+					text: "OK NOTES",
+					transcriptVisibility: "internal" as const,
+				},
+			],
+			intents: ["add gym session and note it"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR", "NOTES"]);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(result.finalMessage).toBe("Added it and noted it.");
+	});
+
+	it("advances a planned batch after a committed receipt without an intermediate evaluator call", async () => {
+		// Live 2026-09-05 23:53: two planned creates paid a full evaluator call
+		// between the steps (809 ms) only to pick the call already queued.
+		const dentistReceipt: EffectReceipt = {
+			...appliedReceipt,
+			receiptId: "calendar-receipt-2",
+			resource: { ...appliedReceipt.resource, id: "evt-2" },
+			commit: { ...appliedReceipt.commit, id: "evt-2" },
+		};
+		const h = harness({
+			userMessage:
+				"add gym tuesday at 7am and a dentist visit wednesday at 3pm",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-gym",
+							arguments: { eliza_turn_scope: "final", title: "Gym" },
+						},
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-dentist",
+							arguments: { eliza_turn_scope: "final", title: "Dentist visit" },
+						},
+					],
+				},
+			],
+			evaluations: [],
+			renders: [render("Added the gym session and the dentist visit.")],
+			results: [
+				internalCalendarResult(),
+				internalCalendarResult([dentistReceipt], {
+					data: {
+						replyContext: {
+							domain: "calendar",
+							intent: "add dentist visit wednesday at 3pm",
+							scenario: "create_event_completed",
+							facts: "Created “Dentist visit” for Sep 9, 3:00 PM PDT.",
+						},
+					},
+				}),
+			],
+			intents: ["add the gym session", "add the dentist visit"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
+		// No intermediate evaluator; the fully settled batch ends in one render.
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(result.trajectory.evaluatorOutputs[0]).toMatchObject({
+			decision: "NEXT_RECOMMENDED",
+			recommendedToolCallId: "calendar-dentist",
+			thought: expect.stringContaining("without an intermediate evaluation"),
+		});
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			effectReceiptIds: ["calendar-receipt-1", "calendar-receipt-2"],
+			raw: { source: "grounded_receipt_render" },
+		});
+		const prompt = renderPromptOf(h);
+		expect(prompt).toContain("Operation 1");
+		expect(prompt).toContain("Operation 2");
+		expect(prompt).toContain("Created “Gym session” for Sep 8, 7:00 AM PDT.");
+		expect(prompt).toContain("Created “Dentist visit” for Sep 9, 3:00 PM PDT.");
+		expect(prompt).toContain(
+			"Understood intents: add the gym session; add the dentist visit",
+		);
+		expect(result.finalMessage).toBe(
+			"Added the gym session and the dentist visit.",
+		);
+	});
+
+	it.each([
+		[
+			"the step only read (no committed mutation)",
+			internalCalendarResult([readNoopReceipt], {
+				data: {
+					replyContext: {
+						domain: "calendar",
+						intent: "find the gym session",
+						scenario: "search_results",
+						facts: "Found “Gym session” on Sep 8, 7:00 AM PDT.",
+					},
+				},
+			}),
+			// The read + the applied create still settle the batch for one render.
+			1,
+			1,
+		],
+		[
+			"the step asked for evaluation",
+			internalCalendarResult([appliedReceipt], { turnComplete: false }),
+			2,
+			0,
+		],
+		[
+			"the step's receipt was a mutation no-op",
+			internalCalendarResult([mutationNoopReceipt]),
+			2,
+			0,
+		],
+	])(
+		"keeps the per-step evaluator inside a batch when %s",
+		async (_label, firstResult, evaluatorCalls, renderCalls) => {
+			const h = harness({
+				plans: [
+					{
+						text: "",
+						toolCalls: [
+							{
+								...call("CALENDAR", "final"),
+								id: "calendar-first",
+								arguments: { eliza_turn_scope: "final", title: "First" },
+							},
+							{
+								...call("CALENDAR", "final"),
+								id: "calendar-second",
+								arguments: { eliza_turn_scope: "final", title: "Second" },
+							},
+						],
+					},
+				],
+				evaluations: [
+					JSON.stringify({
+						thought: "Take the queued call.",
+						success: true,
+						decision: "NEXT_RECOMMENDED",
+						recommendedToolCallId: "calendar-second",
+					}),
+					finish("Both done."),
+				],
+				renders: [render("Both done.")],
+				results: [firstResult, internalCalendarResult()],
+				intents: ["add the requested calendar events"],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(evaluatorCalls);
+			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(renderCalls);
+			expect(result.finalMessage).toBe("Both done.");
+		},
+	);
+
+	it("a malformed call re-issued correctly does not keep failure authority: the evaluator's message ships with no synthesis pass", async () => {
+		// Live 2026-09-06 00:45: MEMORY create without `text` failed, the retry
+		// applied, the evaluator finished with "Got it", and the user received
+		// {"plannerCompleted":true,"turnScope":"final"} from a forced synthesis.
+		const h = harness({
+			userMessage: "remember that I take my tea without sugar",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "create",
+								kind: "preference",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "create",
+								text: "User takes their tea without sugar.",
+							},
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork("The create had no text; retry with the text."),
+				finish("Got it. No sugar in the tea."),
+			],
+			results: [
+				{
+					success: false,
+					text: "text is required.",
+					data: { error: "MEMORY_MISSING_TEXT" },
+				},
+				{
+					success: true,
+					text: "Stored memory 1.",
+					data: { actionName: "MEMORY", op: "create", memoryId: "1" },
+				},
+			],
+			intents: ["remember the tea preference"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(result.finalMessage).toBe("Got it. No sugar in the tea.");
+	});
+
+	it("a malformed update is superseded by a correlated create of the same content: no synthesis pass, the evaluator's message ships", async () => {
+		// Live 2026-09-06 01:29: MEMORY update {query, confirm} failed "text is
+		// required", the retry created the same content with a receipt, the
+		// evaluator finished "Got it, oat milk it is." — and the user received a
+		// hallucinated apology from a rescue pass because the different
+		// subaction kept the malformed failure's authority.
+		const h = harness({
+			userMessage: "remember that I like my coffee with oat milk",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "update",
+								query: "I like my coffee with oat milk",
+								confirm: true,
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "create",
+								text: "The user likes their coffee with oat milk.",
+								kind: "preference",
+								tags: ["coffee", "oat-milk", "preference"],
+							},
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork("The update had no text; create the memory instead."),
+				finish("Got it, oat milk it is."),
+			],
+			results: [
+				{
+					success: false,
+					text: "text is required.",
+					data: { error: "MEMORY_MISSING_TEXT" },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					text: "Stored memory 85034506.",
+					data: { actionName: "MEMORY", op: "create", memoryId: "85034506" },
+				},
+			],
+			intents: ["remember coffee preference"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(result.finalMessage).toBe("Got it, oat milk it is.");
+	});
+
+	it("a refused delete of one query keeps failure authority when a different query is deleted afterwards", async () => {
+		// Review 2026-09-06 (Discussion 30659): the malformed failure's target
+		// was never acted on, so an unrelated success of the same tool must not
+		// launder it — the evaluator's "Both forgotten." may not ship.
+		const h = harness({
+			userMessage: "forget my favorite color and my coffee preference",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								query: "favorite color",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								query: "coffee with oat milk",
+								confirm: true,
+							},
+						},
+					],
+				},
+				"I removed the coffee memory, but the favorite-color one needed confirmation and was not removed.",
+			],
+			evaluations: [
+				continueWork("The delete needs confirm; retry."),
+				finish("Both forgotten."),
+				"I removed the coffee memory, but the favorite-color one needed confirmation and was not removed.",
+			],
+			results: [
+				{
+					success: false,
+					text: "confirm is required to delete.",
+					data: { error: "CONFIRMATION_REQUIRED" },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					text: "Deleted 1 memory.",
+					data: { actionName: "MEMORY", op: "delete", deletedCount: 1 },
+				},
+			],
+			intents: ["forget favorite color", "forget coffee preference"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(result.finalMessage).not.toBe("Both forgotten.");
+		expect(result.finalMessage).toContain("favorite-color");
+	});
+
+	it("malformed-call supersession keeps every supplied target of the failed call", () => {
+		const failedUpdateA = {
+			name: "VIEWS",
+			params: { action: "update", id: "note-a" },
+		};
+		const titleRequired = {
+			success: false,
+			text: "title is required.",
+			data: { error: "VIEWS_MISSING_TITLE" },
+		};
+		// Same target, corrected: superseded.
+		expect(
+			malformedCallSupersededBy(failedUpdateA, titleRequired, {
+				name: "VIEWS",
+				params: { action: "update", id: "note-a", title: "Groceries" },
+			}),
+		).toBe(true);
+		// Different note: the failed update of note A is still unresolved.
+		expect(
+			malformedCallSupersededBy(failedUpdateA, titleRequired, {
+				name: "VIEWS",
+				params: { action: "update", id: "note-b", title: "Groceries" },
+			}),
+		).toBe(false);
+		// Prose targets that differ only by an uppercase identifier letter.
+		expect(
+			malformedCallSupersededBy(
+				{ name: "VIEWS", params: { action: "update", title: "Note A" } },
+				{ success: false, text: "confirm is required." },
+				{
+					name: "VIEWS",
+					params: { action: "update", title: "Note B", confirm: true },
+				},
+			),
+		).toBe(false);
+		// Different delete query: not superseded.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color" },
+				},
+				{ success: false, text: "confirm is required to delete." },
+				{
+					name: "MEMORY",
+					params: {
+						action: "delete",
+						query: "coffee with oat milk",
+						confirm: true,
+					},
+				},
+			),
+		).toBe(false);
+		// Same delete query with confirm added: superseded.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color" },
+				},
+				{ success: false, text: "confirm is required to delete." },
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color", confirm: true },
+				},
+			),
+		).toBe(true);
+		// A refused delete is never laundered by a create of the same content.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color is green" },
+				},
+				{ success: false, text: "confirm is required to delete." },
+				{
+					name: "MEMORY",
+					params: { action: "create", text: "User's favorite color is green." },
+				},
+			),
+		).toBe(false);
+		// Content misfiled in query, re-issued as text in the third person.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: {
+						action: "update",
+						query: "I like my coffee with oat milk",
+						confirm: true,
+					},
+				},
+				{ success: false, text: "text is required." },
+				{
+					name: "MEMORY",
+					params: {
+						action: "create",
+						text: "The user likes their coffee with oat milk.",
+						kind: "preference",
+					},
+				},
+			),
+		).toBe(true);
+		// Dropped descriptor (kind) does not block; a dropped target does.
+		expect(
+			malformedCallSupersededBy(
+				{ name: "MEMORY", params: { action: "create", kind: "preference" } },
+				{ success: false, text: "text is required." },
+				{
+					name: "MEMORY",
+					params: { action: "create", text: "User takes tea without sugar." },
+				},
+			),
+		).toBe(true);
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", eventId: "evt-1" },
+				},
+				{ success: false, text: "confirm is required." },
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", title: "Dentist", confirm: true },
+				},
+			),
+		).toBe(false);
+		// The field the failure named as unexpected is excluded from correlation.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", title: "Piano lesson" },
+				},
+				{ success: false, text: "Unexpected argument 'title'." },
+				{
+					name: "CALENDAR",
+					params: {
+						action: "delete_event",
+						details: { title: "Piano lesson" },
+					},
+				},
+			),
+		).toBe(true);
+	});
+
+	it("never delivers protocol-shaped JSON or a turn-scope marker as user text, but keeps JSON the user asked for", () => {
+		expect(
+			isUnsafeUserVisibleText('{"plannerCompleted":true,"turnScope":"final"}'),
+		).toBe(true);
+		expect(isUnsafeUserVisibleText('{"complete":true,"message":"Done."}')).toBe(
+			true,
+		);
+		expect(
+			isUnsafeUserVisibleText(
+				'{"name":"MEMORY","arguments":{"action":"create","text":"x"}}',
+			),
+		).toBe(true);
+		expect(isUnsafeUserVisibleText('{"type":"object"}')).toBe(true);
+		expect(isUnsafeUserVisibleText("{}")).toBe(true);
+		expect(isUnsafeUserVisibleText('[{"a":1}]')).toBe(false);
+		expect(isUnsafeUserVisibleText('{"temperature":21,"unit":"C"}')).toBe(
+			false,
+		);
+		expect(isUnsafeUserVisibleText("[1, 2, 3]")).toBe(false);
+		expect(isUnsafeUserVisibleText('done: "eliza_turn_scope": "final"')).toBe(
+			true,
+		);
+		expect(isUnsafeUserVisibleText("Got it. No sugar in the tea.")).toBe(false);
+		expect(isUnsafeUserVisibleText("Use {braces} freely in prose}")).toBe(
+			false,
+		);
+	});
+
+	it("declines the gate and lets the full evaluator continue when the render reports partial completion (two appointments, one created)", async () => {
+		// Review 2026-09-05: one verified receipt plus one declared intent proves
+		// one action, not the whole request. When the render judges the facts
+		// cover only part of the message, the evaluator — not this gate — decides,
+		// and here it continues the remaining create instead of finishing.
+		const dentistReceipt: EffectReceipt = {
+			...appliedReceipt,
+			receiptId: "calendar-receipt-2",
+			resource: { ...appliedReceipt.resource, id: "evt-2" },
+			commit: { ...appliedReceipt.commit, id: "evt-2" },
+		};
+		const h = harness({
+			userMessage:
+				"add gym tuesday at 7am and a dentist visit wednesday at 3pm",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-gym",
+							arguments: { eliza_turn_scope: "final", title: "Gym" },
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "calendar-dentist",
+							arguments: { eliza_turn_scope: "final", title: "Dentist visit" },
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork(
+					"Only the gym session exists; the dentist visit is still missing.",
+				),
+			],
+			renders: [
+				render(
+					"Added your gym session for Tuesday at 7:00 AM. The dentist visit was not added.",
+					false,
+				),
+				render(
+					"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
+				),
+			],
+			results: [
+				internalCalendarResult(),
+				internalCalendarResult([dentistReceipt], {
+					data: {
+						replyContext: {
+							domain: "calendar",
+							intent: "add dentist visit wednesday at 3pm",
+							scenario: "create_event_completed",
+							facts: "Created “Dentist visit” for Sep 9, 3:00 PM PDT.",
+						},
+					},
+				}),
+			],
+			intents: ["add the requested calendar events"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
+		// Partial render → evaluator CONTINUE → second create → the settled batch
+		// is rendered once more, this time judged complete.
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(2);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(result.evaluator).toMatchObject({
+			decision: "FINISH",
+			success: true,
+			effectReceiptIds: ["calendar-receipt-1", "calendar-receipt-2"],
+		});
+		expect(result.finalMessage).toBe(
+			"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
+		);
+		const renderPrompt = renderPromptOf(h);
+		expect(renderPrompt).toContain(
+			"User's message: add gym tuesday at 7am and a dentist visit wednesday at 3pm",
+		);
+		expect(renderPrompt).toContain('"complete": true or false');
+	});
+
+	it.each([
+		[
+			"preamble before the object",
+			'Not complete yet {"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}',
+		],
+		[
+			"an array wrapping the object",
+			'[{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}]',
+		],
+		[
+			"trailing prose after the object",
+			'{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."} All done.',
+		],
+		[
+			"a fence with prose outside it",
+			'Here you go:\n```json\n{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}\n```',
+		],
+	])(
+		"falls back to the evaluator when the render carries %s",
+		async (_label, renderText) => {
+			const h = harness({
+				plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+				evaluations: [finish("Added your gym session for Tuesday at 7am.")],
+				renders: [renderText],
+				results: [internalCalendarResult()],
+				intents: ["add gym session to calendar"],
+			});
+			const result = await h.run();
+			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+			expect(result.evaluator?.raw?.source).toBeUndefined();
+			expect(result.finalMessage).toBe(
+				"Added your gym session for Tuesday at 7am.",
+			);
+		},
+	);
+
+	it("accepts the object inside one exact whole-response code fence", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [],
+			renders: [
+				'```json\n{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}\n```',
+			],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(result.finalMessage).toBe(
+			"Added your gym session for Tuesday at 7:00 AM.",
+		);
+	});
+
+	it("falls back to the evaluator when the render is not the {complete, message} contract", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
+			renders: ["Added your gym session for Tuesday at 7:00 AM."],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(result.finalMessage).toBe(
+			"Added your gym session for Tuesday at 7am.",
+		);
+	});
+
+	it("falls back to the evaluator when the render is empty", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
+			renders: ["   "],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run();
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(result.finalMessage).toBe(
+			"Added your gym session for Tuesday at 7am.",
+		);
 	});
 });

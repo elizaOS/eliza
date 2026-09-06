@@ -185,6 +185,78 @@ export function scoreFactKeywordRelevance(
 	}));
 }
 
+const NEGATION_PATTERN =
+	/\b(?:not|no|never|none|neither|nor|without|cannot|can't|cant|won't|wont|don't|dont|doesn't|doesnt|didn't|didnt|isn't|isnt|aren't|arent|wasn't|wasnt|hasn't|hasnt|haven't|havent|wouldn't|wouldnt|shouldn't|shouldnt|couldn't|couldnt|dislikes?|disliked|hates?|hated|avoids?|avoided|stopped|quit|refuses?|refused)\b/gi;
+
+/**
+ * Markers that place a claim in the past or mark a reversal, so "used to
+ * prefer X" and "prefers X" are different claims however many words they share.
+ */
+const TEMPORAL_SHIFT_PATTERN =
+	/\b(?:used to|no longer|not anymore|anymore|any more|previously|formerly|back then|in the past|these days|nowadays|from now on|switched (?:to|from)|changed (?:to|from))\b/i;
+
+function negationParity(text: string): number {
+	const normalized = text.replace(/[\u2018\u2019]/g, "'");
+	const matches = normalized.match(NEGATION_PATTERN);
+	return (matches?.length ?? 0) % 2;
+}
+
+/**
+ * True when the two texts cannot be the same claim: their negation parity
+ * differs ("likes oat milk" vs "does not like oat milk"; "used to hate oat
+ * milk" vs "does not hate oat milk", where the double negation flips back), or
+ * exactly one side carries a past/reversal marker ("used to prefer" vs
+ * "prefers"). Keyword similarity drops stopwords such as "not" and cannot see
+ * either, so a lexical match alone is never treated as equivalence.
+ */
+export function factPolarityDiffers(left: string, right: string): boolean {
+	if (negationParity(left) !== negationParity(right)) return true;
+	return (
+		TEMPORAL_SHIFT_PATTERN.test(left) !== TEMPORAL_SHIFT_PATTERN.test(right)
+	);
+}
+
+const LEADING_SUBJECT_PATTERN = /^(?:the )?user\s+/;
+
+/**
+ * Cosmetic normalization only: case (Unicode-aware), curly quotes, whitespace,
+ * one trailing sentence terminator, and a leading "user"/"the user" subject
+ * reference (the subject is fixed by the row's entity binding, not by this
+ * word). Every other character is kept in order — letters in any script,
+ * digits, and punctuation that can carry meaning ("C++" vs "C", "A > B" vs
+ * "A < B", "likes 茶" vs "likes 咖啡" all stay distinct).
+ */
+function normalizeClaimText(text: string): string {
+	return text
+		.normalize("NFC")
+		.toLowerCase()
+		.replace(/[\u2018\u2019]/g, "'")
+		.replace(/[\u201c\u201d]/g, '"')
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/[.!?。]+$/u, "")
+		.trim()
+		.replace(LEADING_SUBJECT_PATTERN, "");
+}
+
+/**
+ * Conservative "same claim" test for destructive convergence (one row absorbs
+ * another): after cosmetic normalization the two texts must be identical, word
+ * for word and in order, with the same polarity. "prefers oat milk in coffee"
+ * and "User prefers oat milk in coffee." are the same claim; "prefers tea over
+ * coffee" / "prefers coffee over tea" (reversed), "prefers oat milk in coffee"
+ * / "prefers oat milk in their coffee" (a modifier), and "previously liked oat
+ * milk" / "nowadays likes oat milk" are not, and stay as separate rows —
+ * a duplicate row is recoverable, a suppressed distinct fact is not. Keyword
+ * similarity remains retrieval ranking only, never proof of equivalence.
+ */
+export function factClaimsEquivalent(left: string, right: string): boolean {
+	if (factPolarityDiffers(left, right)) return false;
+	const normalizedLeft = normalizeClaimText(left);
+	const normalizedRight = normalizeClaimText(right);
+	return normalizedLeft.length > 0 && normalizedLeft === normalizedRight;
+}
+
 export function factLexicalSimilarity(
 	leftValues: unknown[],
 	rightValues: unknown[],

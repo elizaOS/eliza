@@ -97,6 +97,15 @@ export interface ActionParameter {
 	 */
 	subactions?: readonly string[];
 	/**
+	 * Subaction values on whose promoted virtual this parameter is REQUIRED,
+	 * although it stays optional on the parent umbrella (where the discriminator
+	 * decides which fields matter). Live 2026-09-06: with `text` optional on the
+	 * MEMORY umbrella and its children, the planner routinely omitted it on
+	 * `create`, failing two remember turns in three; a schema-level `required`
+	 * on MEMORY_CREATE is what native tool-calling models honour.
+	 */
+	requiredForSubactions?: readonly string[];
+	/**
 	 * Accepted arg-name synonyms for this parameter. The pre-validation
 	 * normalizer renames an incoming alias key to this param's name when the
 	 * param itself is absent from the args and exactly one declared param claims

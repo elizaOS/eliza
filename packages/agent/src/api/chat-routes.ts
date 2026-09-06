@@ -142,6 +142,7 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import type { ChatImageAttachment } from "./server-types.ts";
+import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 
 export type { ChatImageAttachment, LogEntry };
 
@@ -3732,8 +3733,9 @@ export async function ensureCompatChatConnection(
   }
 
   // Ensure world ownership only for a directly authenticated owner principal.
-  const world = await runtime.getWorld(worldId);
-  if (world) {
+  // Re-applied on a fresh read when the revision moved underneath (the
+  // connection bootstrap and deferred boot maintenance write the same world).
+  await updateWorldMetadataWithRetry(runtime, worldId, (world) => {
     let needsUpdate = false;
     if (!world.metadata) {
       world.metadata = {};
@@ -3753,10 +3755,8 @@ export async function ensureCompatChatConnection(
     if (recordOwnerGrant(world.metadata as RolesWorldMetadata, userId)) {
       needsUpdate = true;
     }
-    if (needsUpdate) {
-      await runtime.updateWorld(world);
-    }
-  }
+    return needsUpdate;
+  });
 
   return { userId, roomId, worldId };
 }
@@ -3786,7 +3786,18 @@ async function grantSessionUserWorldRole(
   worldId: UUID,
   entityId: UUID,
 ): Promise<void> {
-  const world = await runtime.getWorld(worldId);
+  const world = await updateWorldMetadataWithRetry(
+    runtime,
+    worldId,
+    (world) => {
+      world.metadata ??= {};
+      const metadata = world.metadata as RolesWorldMetadata;
+      if (hasAtLeastRole(getEntityRole(metadata, entityId), "USER")) {
+        return false;
+      }
+      return recordRoleGrant(metadata, entityId, "USER", "session");
+    },
+  );
   if (!world) {
     // ensureConnection creates the world before this runs; a missing world
     // fails closed (the entity stays GUEST) rather than failing the turn.
@@ -3794,15 +3805,6 @@ async function grantSessionUserWorldRole(
       { src: "eliza-api", worldId, entityId },
       "[eliza-api] machine-session USER grant skipped: web-chat world missing",
     );
-    return;
-  }
-  world.metadata ??= {};
-  const metadata = world.metadata as RolesWorldMetadata;
-  if (hasAtLeastRole(getEntityRole(metadata, entityId), "USER")) {
-    return;
-  }
-  if (recordRoleGrant(metadata, entityId, "USER", "session")) {
-    await runtime.updateWorld(world);
   }
 }
 
@@ -4815,6 +4817,29 @@ export async function handleChatRoutes(
           503,
         );
       } else {
+        // error-policy:J1 Boundary translation; the cause must be visible in
+        // the server log, not only in the 500 body (live 2026-09-06: repeated
+        // stale-revision 500s with no trace of the throwing writer).
+        state.runtime?.logger.warn(
+          {
+            src: "eliza-api",
+            route: "POST /api/agents/:id/message",
+            err: getErrorMessage(err),
+            code: err instanceof ElizaError ? err.code : undefined,
+            context: err instanceof ElizaError ? err.context : undefined,
+            // One line: the console transport keeps only the first line of a
+            // multi-line value, which hid every frame.
+            frames:
+              err instanceof Error && err.stack
+                ? err.stack
+                    .split("\n")
+                    .slice(1, 12)
+                    .map((frame) => frame.trim())
+                    .join(" <- ")
+                : undefined,
+          },
+          "[eliza-api] compat message route failed",
+        );
         json(res, { error: getErrorMessage(err) }, 500);
       }
     }

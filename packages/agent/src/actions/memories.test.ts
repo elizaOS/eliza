@@ -63,6 +63,7 @@ function makeRuntime(options?: {
       tableName: string;
       roomId?: UUID;
       entityId?: UUID;
+      authorEntityIds?: UUID[];
       limit?: number;
       cursor?: { createdAt: number; id: UUID };
     }) => {
@@ -73,6 +74,11 @@ function makeRuntime(options?: {
         .filter((row) => !params.roomId || row.memory.roomId === params.roomId)
         .filter(
           (row) => !params.entityId || row.memory.entityId === params.entityId,
+        )
+        .filter(
+          (row) =>
+            !params.authorEntityIds ||
+            params.authorEntityIds.includes(row.memory.entityId as UUID),
         )
         .map((row) => row.memory)
         .sort(
@@ -176,6 +182,510 @@ async function runCreate(
 ): Promise<ActionResult> {
   return runAction(runtime, message, { action: "create", ...parameters });
 }
+
+describe("MEMORY op:create converges with the Stage-1 facts stage", () => {
+  function seedStageFact(
+    rows: StoredRow[],
+    fields: {
+      text: string;
+      messageId: UUID;
+      keywords: string[];
+      entityId?: UUID;
+      subject?: string;
+      subjectResolved?: boolean;
+    },
+  ): UUID {
+    const id = crypto.randomUUID() as UUID;
+    rows.push({
+      memory: {
+        id,
+        entityId: fields.entityId ?? USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: fields.text, type: "fact" },
+        metadata: {
+          type: "custom",
+          source: "facts_and_relationships_stage",
+          messageId: fields.messageId,
+          subject: fields.subject ?? "user",
+          subjectResolved: fields.subjectResolved ?? true,
+          tags: ["fact", "extracted", "stage1"],
+          keywords: fields.keywords,
+          kind: "current",
+          category: "uncategorized",
+          confidence: 0.6,
+          verificationStatus: "self_reported",
+        },
+        createdAt: Date.now() - 1_000,
+      } as Memory,
+      tableName: "facts",
+    });
+    return id;
+  }
+
+  it("upgrades the Stage-1 fact extracted from the same message instead of storing a durable twin", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const stageId = seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({
+      memoryId: stageId,
+      upgradedStageFact: true,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.content.text).toBe(
+      "User prefers oat milk in coffee.",
+    );
+    expect(rows[0].memory.metadata).toMatchObject({
+      kind: "durable",
+      category: "preference",
+      source: "MEMORY",
+      promotedFrom: "facts_and_relationships_stage",
+      previousText: "prefers oat milk in coffee",
+      messageId: message.id,
+    });
+  });
+
+  it("stores a fresh durable row when the adapter rejects the in-place upgrade", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    const stageId = seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+    });
+    runtime.updateMemory = (async () => false) as IAgentRuntime["updateMemory"];
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).not.toMatchObject({ upgradedStageFact: true });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.id).toBe(stageId);
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+    expect(rows[1].memory.metadata).toMatchObject({
+      kind: "durable",
+      source: "MEMORY",
+    });
+    expect(result.values).toMatchObject({ memoryId: rows[1].memory.id });
+  });
+
+  it("never merges a same-message Stage-1 fact with the opposite polarity", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "does not like oat milk",
+      messageId: message.id as UUID,
+      keywords: ["oat", "milk"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User likes oat milk.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.content.text).toBe("does not like oat milk");
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+  });
+
+  it("keeps a paraphrase that adds a word as a separate row", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.content.text).toBe("prefers oat milk in coffee");
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+  });
+
+  it("keeps a past claim and its present correction as two rows (review counterexample)", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "used to hate oat milk",
+      messageId: message.id as UUID,
+      keywords: ["hate", "oat", "milk"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User does not hate oat milk anymore.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.content.text).toBe("used to hate oat milk");
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+    expect(rows[1].memory.content.text).toBe(
+      "User does not hate oat milk anymore.",
+    );
+  });
+
+  it("never merges a same-message Stage-1 fact authored by another participant", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+      entityId: OTHER_USER_ID,
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.entityId).toBe(OTHER_USER_ID);
+    expect(rows[0].memory.metadata).toMatchObject({ kind: "current" });
+    expect(rows[1].memory.entityId).toBe(USER_ID);
+  });
+
+  it("never absorbs a same-message fact about someone the room could not resolve", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk in coffee",
+      messageId: message.id as UUID,
+      keywords: ["prefers", "oat", "milk", "coffee"],
+      subject: "Bob",
+      subjectResolved: false,
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.metadata).toMatchObject({
+      kind: "current",
+      subject: "Bob",
+      subjectResolved: false,
+    });
+  });
+
+  it("never merges a Stage-1 fact extracted from a different message", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedStageFact(rows, {
+      text: "prefers oat milk in cereal",
+      messageId: crypto.randomUUID() as UUID,
+      keywords: ["prefers", "oat", "milk", "cereal"],
+    });
+
+    const result = await runCreate(runtime, message, {
+      text: "User prefers oat milk in their coffee.",
+      kind: "preference",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].memory.metadata).toMatchObject({
+      kind: "current",
+      category: "uncategorized",
+    });
+    expect(rows[1].memory.metadata).toMatchObject({
+      kind: "durable",
+      source: "MEMORY",
+      messageId: message.id,
+    });
+  });
+});
+
+describe("MEMORY op:create argument shape", () => {
+  it("stores content the planner misfiled in `query` instead of failing the turn", async () => {
+    // Live 2026-09-06 01:09: three identical create calls with the content in
+    // `query` and no `text` errored the whole remember turn.
+    const { runtime, rows } = makeRuntime();
+    const result = await runCreate(runtime, makeMessage(), {
+      query: "I like my coffee with oat milk",
+      kind: "preference",
+    });
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.content.text).toBe("I like my coffee with oat milk");
+    expect(result.data).toMatchObject({
+      text: "I like my coffee with oat milk",
+    });
+  });
+
+  it("names the field to use when neither text nor query carries content", async () => {
+    const { runtime, rows } = makeRuntime();
+    const result = await runCreate(runtime, makeMessage(), {
+      kind: "preference",
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain('"text" argument');
+    expect(rows).toHaveLength(0);
+  });
+});
+
+describe("MEMORY mutations settle with receipts for the grounded reply gate", () => {
+  it("create returns an internal result with an applied receipt and reply facts", async () => {
+    const { runtime, rows } = makeRuntime();
+    const result = await runCreate(runtime, makeMessage(), {
+      text: "User likes their coffee black.",
+      kind: "preference",
+    });
+    expect(result.success).toBe(true);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.turnComplete).toBeUndefined();
+    expect(result.effectReceipts).toHaveLength(1);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "memory.create",
+      outcome: "applied",
+      resource: { kind: "memory.fact", id: rows[0].memory.id },
+      commit: { kind: "durable", id: rows[0].memory.id },
+    });
+    expect(result.data).toMatchObject({
+      replyContext: {
+        domain: "memory",
+        scenario: "memory_stored",
+        facts: expect.stringContaining('"User likes their coffee black."'),
+      },
+    });
+  });
+
+  it("delete by id returns an internal result with an applied receipt naming what was forgotten", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId,
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "memory.delete",
+      outcome: "applied",
+      resource: { id: memoryId },
+    });
+    expect(result.data).toMatchObject({
+      replyContext: {
+        scenario: "memory_forgotten",
+        facts: expect.stringContaining("Kingfisher"),
+      },
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("a refused delete (no confirm) stays a plain failure without receipts", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId,
+    });
+    expect(result.success).toBe(false);
+    expect(result.transcriptVisibility).toBeUndefined();
+    expect(result.effectReceipts).toBeUndefined();
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe("MEMORY op:delete by query scope", () => {
+  it("matches a verb's -ing form against the stored base form", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User usually wakes up at 6am.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "waking up at 6am",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
+  it("does not let a short term match an unrelated stored word", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User takes the bus to work.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "takes the bu to work",
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(1);
+  });
+
+  it("matches the user's phrasing against a stored sentence across inflection and pronouns", async () => {
+    // Live 2026-09-06 01:20: "forget that I like my coffee with oat milk" found
+    // nothing although "User likes their coffee with oat milk." was stored.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User likes their coffee with oat milk.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "like my coffee with oat milk",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 1 });
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
+  it("forgets stored facts but never the chat transcript when no type is given", async () => {
+    const { runtime, rows } = makeRuntime();
+    const factId = seedFact(rows, {
+      text: "drinks tea without sugar",
+      entityId: USER_ID,
+    });
+    rows.push({
+      memory: {
+        id: crypto.randomUUID() as UUID,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "forget that I drink my tea without sugar" },
+        createdAt: Date.now(),
+      } as Memory,
+      tableName: "messages",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "tea without sugar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 1 });
+    expect(rows.find((row) => row.memory.id === factId)).toBeUndefined();
+    expect(rows.filter((row) => row.tableName === "messages")).toHaveLength(1);
+  });
+
+  it("forgets the requester's own matching facts together when they differ only in wording", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User takes their tea without sugar.",
+      entityId: USER_ID,
+    });
+    seedFact(rows, { text: "takes tea without sugar", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "takes tea without sugar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 2 });
+    expect(result.effectReceipts).toHaveLength(2);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
+  it("stays ambiguous when a matching row is not one of the requester's facts", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User takes their tea without sugar.",
+      entityId: USER_ID,
+    });
+    rows.push({
+      memory: {
+        id: crypto.randomUUID() as UUID,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "takes tea without sugar" },
+        createdAt: Date.now(),
+      } as Memory,
+      tableName: "memories",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "takes tea without sugar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(rows).toHaveLength(2);
+  });
+
+  it("stays ambiguous for a short phrase that matches several facts", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "likes green tea", entityId: USER_ID });
+    seedFact(rows, { text: "drinks tea at night", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "tea",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(2);
+  });
+
+  it("still deletes from an explicitly named table", async () => {
+    const { runtime, rows } = makeRuntime();
+    rows.push({
+      memory: {
+        id: crypto.randomUUID() as UUID,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "scratch note about tea" },
+        createdAt: Date.now(),
+      } as Memory,
+      tableName: "messages",
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "scratch note about tea",
+      type: "messages",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "messages")).toHaveLength(0);
+  });
+});
 
 describe("MEMORY op:update", () => {
   it("updates a text-only memory without requiring an embedding provider", async () => {

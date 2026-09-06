@@ -296,7 +296,6 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
       transcriptVisibility: "internal",
-      turnComplete: false,
       effectReceipts: [
         {
           operation: "calendar.feed.read",

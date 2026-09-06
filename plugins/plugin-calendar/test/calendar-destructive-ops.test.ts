@@ -68,6 +68,11 @@ function event(args: {
 }
 
 const LUNCH_MAYA = event({ externalId: "evt-1", title: "Lunch with Maya" });
+const STANDUP_FRIDAY = event({
+  externalId: "evt-3",
+  title: "Standup",
+  startAt: "2026-07-10T15:00:00.000Z",
+});
 const LUNCH_GRANDMA = event({
   externalId: "evt-2",
   title: "Lunch with Grandma",
@@ -192,7 +197,8 @@ function expectInternalHandoff(
   callback: ReturnType<typeof vi.fn>,
 ): void {
   expect(callback).not.toHaveBeenCalled();
-  expect(result.turnComplete).toBe(false);
+  // Settled internal results omit turnComplete (evaluation delegated); pauses keep false.
+  expect(result.turnComplete).not.toBe(true);
   expect(result).not.toHaveProperty("text");
   expect(result).not.toHaveProperty("userFacingText");
   expect(result.data?.replyContext).toMatchObject({
@@ -327,6 +333,84 @@ describe("CALENDAR delete_event disambiguation", () => {
       }),
     );
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("a multi-target message lets the per-target intent pick the day instead of the message's first date", async () => {
+    // Live 2026-09-05 22:44: three deletes in one message were all constrained
+    // to the first stated day, so two existing events came back "not found".
+    const multi = stubService([LUNCH_MAYA, LUNCH_GRANDMA, STANDUP_FRIDAY]);
+    const result = await runHandler({
+      service: multi,
+      text: "delete lunch with maya on 2026-07-08 and the standup on 2026-07-10 from my calendar",
+      parameters: {
+        subaction: "delete_event",
+        query: "standup",
+        intent: "delete the standup on 2026-07-10 from my calendar",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(multi.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: STANDUP_FRIDAY }),
+    );
+  });
+
+  it("the user's stated day outranks a wrong planner date detail", async () => {
+    // Live 2026-09-05 23:33: "delete the haircut on sunday" came with
+    // details.date for the Monday, so the lookup missed the Sunday event.
+    const result = await runHandler({
+      service,
+      text: "delete lunch with grandma on 2026-07-08",
+      parameters: {
+        subaction: "delete_event",
+        query: "grandma",
+        details: { date: "2026-07-09", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
+  });
+
+  it("a multi-target message with no per-target intent uses the planner's date detail, not the message's first day", async () => {
+    // Live 2026-09-06 00:16: "delete the yoga class on thursday and the dentist
+    // visit on friday" — the dentist call carried date=Friday but no intent, and
+    // the lookup was constrained to Thursday, so the Friday event was missed.
+    const multi = stubService([LUNCH_MAYA, LUNCH_GRANDMA, STANDUP_FRIDAY]);
+    const result = await runHandler({
+      service: multi,
+      text: "delete lunch with maya on 2026-07-08 and the standup on 2026-07-10 from my calendar",
+      parameters: {
+        subaction: "delete_event",
+        title: "Standup",
+        query: "standup friday",
+        details: { date: "2026-07-10", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(multi.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: STANDUP_FRIDAY }),
+    );
+  });
+
+  it("typed delete_event + title (no query) → reads the feed and targets that event", async () => {
+    // ROOT trace step-1788648925553-vzj6rq (2026-09-05): the planner sent
+    // subaction=delete_event with the exact title and a date; the handler
+    // discarded the title and asked which event, without any lookup.
+    const result = await runHandler({
+      service,
+      text: "clean up the two QA events",
+      parameters: {
+        subaction: "delete_event",
+        title: "Lunch with Grandma",
+        details: { date: "2026-07-08", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
+    expect(service.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+    );
   });
 
   it("explicit eventId → proceeds directly without a feed lookup", async () => {

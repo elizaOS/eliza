@@ -10,17 +10,22 @@ import { createHash } from "node:crypto";
 import type {
   Action,
   ActionResult,
+  EffectReceipt,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
 import {
+  buildFactKeywordsForStorage,
   MemoryType as CoreMemoryType,
   ElizaError,
+  factClaimsEquivalent,
   getRelatedEntityIds,
+  inflectionTermKeys,
   logger,
   ModelType,
+  readStoredFactKeywords,
   toWellFormedUnicode,
   validateUuid,
 } from "@elizaos/core";
@@ -30,6 +35,9 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
+const FORGET_BY_QUERY_TABLES: readonly MemoryType[] = ["facts", "memories"];
+const FORGET_TOGETHER_MAX_ROWS = 3;
+const FORGET_TOGETHER_MIN_TERMS = 3;
 
 const UUID_SCHEMA_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
@@ -107,6 +115,12 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "with",
   "you",
   "your",
+  ,
+  "their",
+  "his",
+  "her",
+  "us",
+  "its",
 ]);
 
 function fail(
@@ -150,24 +164,38 @@ function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
   return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
 }
 
-function scoreText(text: string, query: string): number {
-  const t = text.toLowerCase();
-  const q = query.toLowerCase();
-  if (!t || !q) return 0;
-  const terms = [
+/** Distinct content terms of a query: length >= 2, stop words removed. */
+function scoreQueryTerms(query: string): string[] {
+  return [
     ...new Set(
-      q
+      query
+        .toLowerCase()
         .split(/[^\p{L}\p{N}]+/u)
         .filter(
           (term) => term.length >= 2 && !SEARCH_QUERY_STOP_WORDS.has(term),
         ),
     ),
   ];
+}
+
+function scoreText(text: string, query: string): number {
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  if (!t || !q) return 0;
+  const terms = scoreQueryTerms(q);
   const whole = t.includes(q) ? 1 : 0;
   if (terms.length === 0) return whole;
-  const textTerms = new Set(t.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  const textTerms = new Set(
+    t
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter(Boolean)
+      .flatMap(inflectionTermKeys),
+  );
   let matches = 0;
-  for (const term of terms) if (textTerms.has(term)) matches += 1;
+  for (const term of terms) {
+    if (inflectionTermKeys(term).some((key) => textTerms.has(key)))
+      matches += 1;
+  }
   const requiredMatches = terms.length >= 3 ? 2 : 1;
   if (whole === 0 && matches < requiredMatches) return 0;
   return whole + matches / terms.length;
@@ -204,13 +232,243 @@ function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
  */
 const EXPLICIT_MEMORY_CONFIDENCE = 0.95;
 
+type MemoryMutationOperation =
+  | "memory.create"
+  | "memory.update"
+  | "memory.delete";
+
+/**
+ * Applied receipt for a durable memory mutation. With `transcriptVisibility:
+ * "internal"` and `data.replyContext`, the planner loop's grounded receipt
+ * gate can phrase the outcome from these facts (a ~350 ms render) instead of
+ * spending a full evaluator call (live 2026-09-05 23:52: 912 ms) to say
+ * "Got it". Failures and confirmation refusals stay plain results.
+ */
+function memoryMutationReceipt(args: {
+  operation: MemoryMutationOperation;
+  memoryId: string;
+  observedAt: string;
+}): EffectReceipt {
+  const digest = createHash("sha256")
+    .update([args.operation, args.memoryId, args.observedAt].join("|"))
+    .digest("hex");
+  return {
+    receiptId: `memory-mutation-receipt-v1:${digest}`,
+    operation: args.operation,
+    resource: { kind: "memory.fact", id: args.memoryId },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: args.observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: args.memoryId,
+      committedAt: args.observedAt,
+    },
+  };
+}
+
+function memoryReplyContext(args: {
+  scenario: string;
+  facts: string;
+  context?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    domain: "memory",
+    intent: "",
+    scenario: args.scenario,
+    facts: args.facts,
+    context: args.context ?? {},
+  };
+}
+
+/**
+ * Stage-1 persists `extract.facts` as lapsing `current/uncategorized` rows in
+ * parallel with the planner. When the same user message also routes to an
+ * explicit MEMORY create, the two writes race and the FACTS provider renders
+ * one claim twice. A Stage-1 row extracted from THIS message (its
+ * `metadata.messageId`) that lexically covers the explicit text is upgraded in
+ * place instead of getting a durable twin. Rows from other messages, other
+ * authors, other rooms, or with the opposite polarity are never merged:
+ * lexical overlap alone cannot tell a restatement from a changed value.
+ */
+const STAGE_FACT_SOURCE = "facts_and_relationships_stage";
+
+function metadataRecord(memory: Memory): Record<string, unknown> {
+  const meta = memory.metadata;
+  return meta && typeof meta === "object" && !Array.isArray(meta)
+    ? (meta as Record<string, unknown>)
+    : {};
+}
+
+async function findSameMessageStageFact(
+  runtime: IAgentRuntime,
+  message: Memory,
+  text: string,
+): Promise<(Memory & { id: UUID }) | null> {
+  if (!message.id || !message.roomId || !message.entityId) return null;
+  const rows = await runtime.getMemories({
+    tableName: "facts",
+    roomId: message.roomId,
+    entityId: message.entityId,
+    authorEntityIds: [message.entityId],
+    unique: false,
+  });
+  for (const row of rows) {
+    const meta = metadataRecord(row);
+    if (
+      !row.id ||
+      row.entityId !== message.entityId ||
+      row.roomId !== message.roomId ||
+      meta.source !== STAGE_FACT_SOURCE ||
+      meta.kind !== "current" ||
+      meta.messageId !== message.id ||
+      // A fact about someone this room could not resolve sits under the author
+      // only as a fallback; it is not the author's own claim.
+      meta.subjectResolved === false
+    ) {
+      continue;
+    }
+    const rowText =
+      typeof row.content.text === "string" ? row.content.text : "";
+    // Only the identical claim (same content words, same polarity) is absorbed;
+    // any paraphrase that adds or drops a content word stays a separate row.
+    if (factClaimsEquivalent(text, rowText)) {
+      return row as Memory & { id: UUID };
+    }
+  }
+  return null;
+}
+
+async function upgradeStageFact(
+  runtime: IAgentRuntime,
+  stageFact: Memory & { id: UUID },
+  next: {
+    text: string;
+    kind: string | undefined;
+    tags: string[];
+    keywords: string[];
+    createdAt: number;
+  },
+): Promise<ActionResult | null> {
+  const previousMeta = metadataRecord(stageFact);
+  const previousText =
+    typeof stageFact.content.text === "string" ? stageFact.content.text : "";
+  const previousCategory =
+    typeof previousMeta.category === "string" &&
+    previousMeta.category !== "uncategorized"
+      ? previousMeta.category
+      : undefined;
+  let embedding: number[] | undefined;
+  if (
+    previousText !== next.text &&
+    Array.isArray(stageFact.embedding) &&
+    stageFact.embedding.length > 0
+  ) {
+    const regenerated = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: next.text,
+    });
+    if (!Array.isArray(regenerated) || regenerated.length === 0) {
+      return fail(
+        "Embedding model returned no vector.",
+        "MEMORY_EMBEDDING_FAILED",
+      );
+    }
+    embedding = regenerated;
+  }
+  const updated = await runtime.updateMemory({
+    id: stageFact.id,
+    content: { ...stageFact.content, text: next.text, source: "MEMORY" },
+    metadata: {
+      ...previousMeta,
+      type: CoreMemoryType.CUSTOM,
+      source: "MEMORY",
+      promotedFrom: STAGE_FACT_SOURCE,
+      ...(previousText && previousText !== next.text ? { previousText } : {}),
+      kind: "durable",
+      category: next.kind ?? previousCategory ?? "user_note",
+      confidence: EXPLICIT_MEMORY_CONFIDENCE,
+      keywords: [
+        ...new Set([...readStoredFactKeywords(stageFact), ...next.keywords]),
+      ],
+      verificationStatus: "self_reported",
+      lastConfirmedAt: new Date(next.createdAt).toISOString(),
+    } as Memory["metadata"],
+    ...(embedding ? { embedding } : {}),
+  });
+  if (updated === false) {
+    // The adapter declined the in-place upgrade; the explicit request still
+    // has to land, so the caller stores a fresh durable row instead.
+    logger.warn(
+      { memoryId: stageFact.id },
+      "[MEMORY] in-place upgrade of the Stage-1 fact was rejected; storing a new durable row",
+    );
+    return null;
+  }
+  const observedAt = new Date(next.createdAt).toISOString();
+  return {
+    success: true,
+    transcriptVisibility: "internal",
+    text: `Stored memory ${stageFact.id}.`,
+    values: {
+      memoryId: stageFact.id,
+      kind: next.kind ?? null,
+      tagCount: next.tags.length,
+      upgradedStageFact: true,
+    },
+    effectReceipts: [
+      memoryMutationReceipt({
+        operation: "memory.create",
+        memoryId: stageFact.id,
+        observedAt,
+      }),
+    ],
+    data: {
+      actionName: "MEMORY",
+      op: "create" as const,
+      memoryId: stageFact.id,
+      text: next.text,
+      kind: next.kind ?? null,
+      tags: next.tags,
+      createdAt: next.createdAt,
+      upgradedFrom: STAGE_FACT_SOURCE,
+      replyContext: memoryReplyContext({
+        scenario: "memory_stored",
+        facts: `Saved to durable memory: "${next.text}".${next.kind ? ` Category: ${next.kind}.` : ""}`,
+        context: { memoryId: stageFact.id, kind: next.kind ?? null },
+      }),
+    },
+  };
+}
+
 async function doCreate(
   runtime: IAgentRuntime,
   message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
-  const text = typeof params.text === "string" ? params.text.trim() : "";
-  if (!text) return fail("text is required.", "MEMORY_MISSING_TEXT");
+  // Live 2026-09-06: the planner repeatedly put the content to remember in
+  // `query` (a search/delete field that means nothing on create) and left `text`
+  // empty, three identical calls in a row until the turn errored. The field
+  // name is a structural slip, not a different request: use it, say so.
+  const explicitText =
+    typeof params.text === "string" ? params.text.trim() : "";
+  const queryAsText =
+    !explicitText && typeof params.query === "string"
+      ? params.query.trim()
+      : "";
+  if (queryAsText) {
+    logger.warn(
+      { queryLength: queryAsText.length },
+      "[MEMORY] create arrived with the content in `query`; storing it as text",
+    );
+  }
+  const text = explicitText || queryAsText;
+  if (!text) {
+    return fail(
+      'text is required for create: put the content to remember in the "text" argument (query is only for search, update and delete lookups).',
+      "MEMORY_MISSING_TEXT",
+    );
+  }
 
   const kind =
     typeof params.kind === "string" && params.kind.trim()
@@ -223,8 +481,20 @@ async function doCreate(
     : [];
 
   const agentId = runtime.agentId as UUID;
-  const memoryId = crypto.randomUUID() as UUID;
   const createdAt = Date.now();
+  const keywords = buildFactKeywordsForStorage(tags, text, kind ?? "");
+  const stageFact = await findSameMessageStageFact(runtime, message, text);
+  if (stageFact) {
+    const upgraded = await upgradeStageFact(runtime, stageFact, {
+      text,
+      kind,
+      tags,
+      keywords,
+      createdAt,
+    });
+    if (upgraded) return upgraded;
+  }
+  const memoryId = crypto.randomUUID() as UUID;
 
   // Persist where the recall read path looks. The FACTS provider — the only
   // default-on read path for user facts — scans the `facts` table scoped to
@@ -242,6 +512,7 @@ async function doCreate(
       metadata: {
         type: CoreMemoryType.CUSTOM,
         source: "MEMORY",
+        ...(message.id ? { messageId: message.id } : {}),
         kind: "durable",
         category: kind ?? "user_note",
         confidence: EXPLICIT_MEMORY_CONFIDENCE,
@@ -257,8 +528,16 @@ async function doCreate(
 
   return {
     success: true,
+    transcriptVisibility: "internal",
     text: `Stored memory ${memoryId}.`,
     values: { memoryId, kind: kind ?? null, tagCount: tags.length },
+    effectReceipts: [
+      memoryMutationReceipt({
+        operation: "memory.create",
+        memoryId,
+        observedAt: new Date(createdAt).toISOString(),
+      }),
+    ],
     data: {
       actionName: "MEMORY",
       op: "create" as const,
@@ -267,6 +546,11 @@ async function doCreate(
       kind: kind ?? null,
       tags,
       createdAt,
+      replyContext: memoryReplyContext({
+        scenario: "memory_stored",
+        facts: `Saved to durable memory: "${text}".${kind ? ` Category: ${kind}.` : ""}`,
+        context: { memoryId, kind: kind ?? null },
+      }),
     },
   };
 }
@@ -465,14 +749,15 @@ async function collectCandidates(
   runtime: IAgentRuntime,
   scope: {
     type?: MemoryType;
+    /** Explicit table set; wins over `type` and the full default. */
+    tables?: readonly MemoryType[];
     entityId?: UUID;
     roomId?: UUID;
     query?: string;
   },
 ): Promise<CandidateScan> {
-  const tables: readonly MemoryType[] = scope.type
-    ? [scope.type]
-    : MEMORY_TYPES;
+  const tables: readonly MemoryType[] =
+    scope.tables ?? (scope.type ? [scope.type] : MEMORY_TYPES);
   const collected: MemoryCandidate[] = [];
 
   for (const tableName of tables) {
@@ -838,16 +1123,35 @@ async function doUpdate(
   const updated = primaryMemoryId
     ? await runtime.getMemoryById(primaryMemoryId)
     : null;
+  const updatedAt = new Date().toISOString();
+  const updatedText =
+    typeof updated?.content.text === "string" ? updated.content.text : text;
   return {
     success: true,
+    transcriptVisibility: "internal",
     text: `Updated ${updatedIds.length} memory record(s).`,
     values: { memoryId: primaryMemoryId, updatedCount: updatedIds.length },
+    effectReceipts: updatedIds.map((id) =>
+      memoryMutationReceipt({
+        operation: "memory.update",
+        memoryId: id,
+        observedAt: updatedAt,
+      }),
+    ),
     data: {
       actionName: "MEMORY",
       op: "update" as const,
       memoryId: primaryMemoryId,
       memoryIds: updatedIds,
       memory: updated ?? null,
+      replyContext: memoryReplyContext({
+        scenario: "memory_updated",
+        facts:
+          updatedIds.length === 1
+            ? `Updated the memory; it now says: "${updatedText}".`
+            : `Updated ${updatedIds.length} memories; they now say: "${updatedText}".`,
+        context: { memoryIds: updatedIds },
+      }),
     },
   };
 }
@@ -878,11 +1182,32 @@ async function doDelete(
     }
 
     await runtime.deleteMemory(memoryId);
+    const forgottenText =
+      typeof existing.content.text === "string" ? existing.content.text : "";
     return {
       success: true,
+      transcriptVisibility: "internal",
       text: `Forgot memory ${memoryId}.`,
       values: { memoryId },
-      data: { actionName: "MEMORY", op: "delete" as const, memoryId },
+      effectReceipts: [
+        memoryMutationReceipt({
+          operation: "memory.delete",
+          memoryId,
+          observedAt: new Date().toISOString(),
+        }),
+      ],
+      data: {
+        actionName: "MEMORY",
+        op: "delete" as const,
+        memoryId,
+        replyContext: memoryReplyContext({
+          scenario: "memory_forgotten",
+          facts: forgottenText
+            ? `Forgot the memory: "${forgottenText}".`
+            : "Forgot the requested memory.",
+          context: { memoryId },
+        }),
+      },
     };
   }
 
@@ -924,8 +1249,13 @@ async function doDeleteByQuery(
   // that carry no entity (internal maintenance invocations).
   const scopeEntityId = message.entityId ?? entityParam.id;
 
+  // "Forget X" targets stored knowledge. Without an explicit type the scan
+  // covers facts and agent memories only — never the chat transcript or
+  // documents (live 2026-09-06 00:16: a forget-by-query matched the user's own
+  // "forget that I…" message and reported it as a deletable memory).
   const scan = await collectCandidates(runtime, {
     type,
+    tables: type ? [type] : FORGET_BY_QUERY_TABLES,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
@@ -951,7 +1281,23 @@ async function doDeleteByQuery(
       .trim()
       .toLowerCase();
   const distinctTexts = new Set(matched.map(normalize));
-  if (distinctTexts.size > 1) {
+  // "Forget that I take my tea without sugar" routinely matches two of the
+  // requester's own fact rows with different wording (the explicit durable
+  // memory and the Stage-1 observation). When every match is one of the
+  // requester's own facts, the phrase carries at least three content terms
+  // and at most a few rows match, forgetting them together is exactly the
+  // request; anything looser stays ambiguous and the planner picks by id.
+  const forgetTogether =
+    distinctTexts.size > 1 &&
+    matched.length <= FORGET_TOGETHER_MAX_ROWS &&
+    scoreQueryTerms(query).length >= FORGET_TOGETHER_MIN_TERMS &&
+    matched.every(
+      (c) =>
+        c.type === "facts" &&
+        !!message.entityId &&
+        c.memory.entityId === message.entityId,
+    );
+  if (distinctTexts.size > 1 && !forgetTogether) {
     const lines = matched
       .map((c) => toListItem(c.memory, c.type))
       .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);
@@ -973,15 +1319,35 @@ async function doDeleteByQuery(
     deleted.push(toListItem(c.memory, c.type));
   }
 
+  const forgottenAt = new Date().toISOString();
+  const forgottenTexts = deleted
+    .map((item) => toWellFormedUnicode(item.text))
+    .filter((value) => value.trim().length > 0);
   return {
     success: true,
+    transcriptVisibility: "internal",
     text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
     values: { deletedCount: deleted.length },
+    effectReceipts: deleted.map((item) =>
+      memoryMutationReceipt({
+        operation: "memory.delete",
+        memoryId: item.id,
+        observedAt: forgottenAt,
+      }),
+    ),
     data: {
       actionName: "MEMORY",
       op: "delete" as const,
       query,
       deleted,
+      replyContext: memoryReplyContext({
+        scenario: "memory_forgotten",
+        facts:
+          deleted.length === 1
+            ? `Forgot the memory: "${forgottenTexts[0] ?? query}".`
+            : `Forgot ${deleted.length} memories matching "${query}": ${forgottenTexts.map((value) => `"${value}"`).join("; ")}.`,
+        context: { query, deletedCount: deleted.length },
+      }),
     },
   };
 }
@@ -1019,7 +1385,7 @@ export const memoryAction: Action = {
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true).",
+    "Manage agent memory records. op:create stores a new memory (text is required); op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true). To forget something the user states, call delete with query and confirm:true directly — a prior search is unnecessary.",
   descriptionCompressed:
     "manage agent memory create search update delete; update/delete by memoryId or query; update/delete require confirm:true",
   routingHint:
@@ -1077,8 +1443,9 @@ export const memoryAction: Action = {
     {
       name: "text",
       description:
-        "create: content to store. update: replacement text body for the memory.",
+        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: replacement text body for the memory.",
       required: false,
+      requiredForSubactions: ["create", "update"],
       schema: { type: "string" as const },
     },
     {
@@ -1124,7 +1491,7 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search/update/delete: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories.",
+        "search/update/delete ONLY: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories. Not used by create — the content to remember goes in text.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1165,6 +1532,7 @@ export const memoryAction: Action = {
       description:
         "update/delete: must be true to proceed with the destructive operation.",
       required: false,
+      requiredForSubactions: ["update", "delete"],
       schema: { type: "boolean" as const },
     },
   ],

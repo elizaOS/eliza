@@ -53,6 +53,22 @@ describe.each([
     },
   );
 
+  it("accepts a typed title on the promoted delete child", () => {
+    // Live 2026-09-05 23:32: CALENDAR_DELETE_EVENT rejected a top-level title
+    // ("Unexpected argument 'title'") that the parent accepts, so a valid
+    // structured delete failed before any lookup and the turn ended with a
+    // false failure reply.
+    const del = promoteSubactionsToActions(parent).find(
+      (action) => action.name === "CALENDAR_DELETE_EVENT",
+    ) as Action;
+    expect(del).toBeDefined();
+    const args = {
+      title: "Pottery class",
+      details: { date: "2026-09-05", timeZone: "UTC" },
+    };
+    expect(validateToolArgs(del, args)).toMatchObject({ valid: true, args });
+  });
+
   it("accepts a sparse create call but still rejects invalid typed travel arguments", () => {
     const create = promoteSubactionsToActions(parent).find(
       (action) => action.name === "CALENDAR_CREATE_EVENT",
