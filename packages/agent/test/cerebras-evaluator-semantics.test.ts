@@ -3,8 +3,9 @@
  * OpenAI-compatible SDK. Deterministic loopback completions drive the actual
  * four builtin processors; no evaluator, identity service or database is mocked.
  */
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { ModelType } from "@elizaos/core";
+import { MemoryType, ModelType, type UUID } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../../../plugins/plugin-openai/models/index.ts";
@@ -14,6 +15,7 @@ import {
   createSemanticFixtures,
   prepareSemanticEvaluators,
   type ReplayFinish,
+  readSemanticEffects,
   replayResponseBody,
   runSemanticFixture,
 } from "../scripts/cerebras-evaluator-semantics.ts";
@@ -139,13 +141,14 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
         fixture,
       );
       expect(run.result.errors).toEqual([]);
-      assertSemanticEffects(fixture, run.after, live.runtime.agentId);
+      assertSemanticEffects(fixture, run.after, live.runtime.agentId, fixtures);
       // A superficially successful processor result must not hide a missing DB identity.
       expect(() =>
         assertSemanticEffects(
           fixture,
           { ...run.after, identities: [] },
           agentId,
+          fixtures,
         ),
       ).toThrow("persisted owned GitHub identity");
       if (!fixture.completed)
@@ -153,6 +156,90 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
           "Destination is missing",
         );
     }
+    const [fixture, foreign] = fixtures;
+    if (!fixture || !foreign) throw new Error("Missing adversarial fixtures");
+    const runtime = live.runtime;
+    const assertCurrent = async () => {
+      const effects = await readSemanticEffects(
+        runtime,
+        relationships,
+        fixture,
+      );
+      assertSemanticEffects(fixture, effects, agentId, fixtures);
+    };
+    // Real additional owned data is allowed; acceptance is not an exact row-count snapshot.
+    await runtime.createMemory(
+      {
+        id: randomUUID() as UUID,
+        agentId: runtime.agentId,
+        entityId: fixture.entityId as UUID,
+        roomId: fixture.roomId as UUID,
+        content: { text: "Mira enjoys pottery." },
+        metadata: {
+          type: MemoryType.CUSTOM,
+          source: "fact_extractor",
+          kind: "durable",
+        },
+      },
+      "facts",
+    );
+    await assertCurrent();
+    const badFactId = randomUUID() as UUID;
+    await runtime.createMemory(
+      {
+        id: badFactId,
+        agentId: runtime.agentId,
+        entityId: fixture.entityId as UUID,
+        roomId: fixture.roomId as UUID,
+        content: { text: `Mira lives in ${foreign.town}.` },
+        metadata: {
+          type: MemoryType.CUSTOM,
+          source: "fact_extractor",
+          kind: "durable",
+        },
+      },
+      "facts",
+    );
+    await expect(assertCurrent()).rejects.toThrow("contaminated fact");
+    await runtime.deleteMemory(badFactId);
+    const contradictoryId = randomUUID() as UUID;
+    await runtime.createMemory(
+      {
+        id: contradictoryId,
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        roomId: fixture.roomId as UUID,
+        content: {
+          type: "task_completion_reflection",
+          text: "Contradictory assessment",
+        },
+        metadata: {
+          type: MemoryType.CUSTOM,
+          messageId: fixture.messageId,
+          taskAssessed: true,
+          taskCompleted: false,
+          taskCompletionReason: "Not done",
+        },
+      },
+      "memories",
+    );
+    await expect(assertCurrent()).rejects.toThrow(
+      "contradictory same-message completion",
+    );
+    await runtime.deleteMemory(contradictoryId);
+    await assertCurrent();
+    await relationships.upsertIdentity(
+      fixture.entityId as UUID,
+      {
+        platform: "github",
+        handle: foreign.handle,
+        confidence: 0.8,
+        verified: false,
+        source: "reflection",
+      },
+      [fixture.messageId as UUID],
+    );
+    await expect(assertCurrent()).rejects.toThrow("contaminated identity");
     await live.cleanup();
     live = undefined;
     for (const rejected of ["length", "content_filter", "malformed"] as const) {
