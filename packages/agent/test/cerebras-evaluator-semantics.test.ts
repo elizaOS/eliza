@@ -27,6 +27,7 @@ afterEach(() => {
 it("persists both owned semantic fixtures and rejects incomplete replay without effects", async () => {
   const fixtures = createSemanticFixtures();
   let finish: ReplayFinish = "original";
+  let conflictingRelationship = false;
   const requests: string[] = [];
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -59,6 +60,9 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
                   sourceEntityId: fixture.entityId,
                   targetEntityId: fixture.colleagueId,
                   relationshipType: "colleague",
+                  ...(conflictingRelationship
+                    ? { metadata: { relationshipType: "parent" } }
+                    : {}),
                 },
               ]
             : [],
@@ -262,6 +266,48 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
       await live.cleanup();
       live = undefined;
     }
+    finish = "original";
+    conflictingRelationship = true;
+    live = await createTestRuntime({
+      characterName: "SemanticBuiltinTest",
+      embeddingDimensions: 384,
+    });
+    live.runtime.registerModel(
+      ModelType.TEXT_SMALL,
+      handleTextSmall,
+      "openai",
+      100,
+    );
+    const conflictService = await prepareSemanticEvaluators(live.runtime);
+    const conflictFixture = fixtures[0];
+    if (!conflictFixture) throw new Error("Missing conflict fixture");
+    const conflictRun = await runSemanticFixture(
+      live.runtime,
+      conflictService,
+      conflictFixture,
+    );
+    expect(conflictRun.result.errors).toEqual([
+      {
+        evaluatorName: "relationships",
+        error: "Evaluator output section did not validate",
+      },
+    ]);
+    expect(conflictRun.result.processedEvaluators).not.toContain(
+      "relationships",
+    );
+    expect(conflictRun.after.relationships).toEqual([]);
+    // Other valid sections still run; the rejection belongs to the relationship section.
+    expect(
+      conflictRun.after.identities.some(
+        (identity) => identity.handle === conflictFixture.handle,
+      ),
+    ).toBe(true);
+    expect(conflictRun.after.completion?.completed).toBe(true);
+    expect(
+      conflictRun.after.facts.some((fact) =>
+        fact.content.text?.includes(conflictFixture.town),
+      ),
+    ).toBe(true);
   } finally {
     await live?.cleanup();
     globalThis.fetch = originalFetch;
