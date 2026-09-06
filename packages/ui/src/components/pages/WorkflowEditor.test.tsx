@@ -1,6 +1,7 @@
 /** Exercises the native Smithers studio over mocked elizaOS Cloud workflow APIs. */
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -18,7 +19,10 @@ import {
   vi,
 } from "vitest";
 import { client } from "../../api";
-import type { WorkflowDefinition } from "../../api/client-types-chat";
+import type {
+  WorkflowDefinition,
+  WorkflowExecution,
+} from "../../api/client-types-chat";
 import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../../events";
 import { WorkflowEditor } from "./WorkflowEditor";
 
@@ -113,6 +117,115 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("WorkflowEditor", () => {
+  it("shows failed history reads and lets the user retry", async () => {
+    api.getWorkflowRevisions.mockRejectedValueOnce(
+      new Error("History service unavailable"),
+    );
+    render(<WorkflowEditor initial={workflow()} />);
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(await screen.findByText(/History service unavailable/)).toBeTruthy();
+    expect(screen.queryByText("No saved revisions")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry history" }));
+    expect(await screen.findByText("No saved revisions")).toBeTruthy();
+    expect(screen.queryByText(/History service unavailable/)).toBeNull();
+  });
+
+  it("does not show a previous workflow's runs after its delayed response arrives", async () => {
+    const oldRuns = Promise.withResolvers<WorkflowExecution[]>();
+    api.getWorkflowExecutions.mockReturnValueOnce(oldRuns.promise);
+    const { rerender } = render(<WorkflowEditor initial={workflow()} />);
+    await waitFor(() =>
+      expect(api.getWorkflowExecutions).toHaveBeenCalledWith("workflow-1", 30),
+    );
+    rerender(
+      <WorkflowEditor
+        initial={{ ...workflow(), id: "workflow-2", name: "Review" }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    await waitFor(() =>
+      expect(api.getWorkflowExecutions).toHaveBeenCalledWith("workflow-2", 30),
+    );
+    await act(async () =>
+      oldRuns.resolve([
+        {
+          id: "old-run",
+          workflowId: "workflow-1",
+          mode: "manual",
+          status: "finished",
+          finished: true,
+          startedAt: now,
+          stoppedAt: now,
+          input: {},
+          events: [],
+          output: "old workflow result",
+        },
+      ]),
+    );
+    expect(screen.queryByText("old workflow result")).toBeNull();
+    expect(screen.queryByText("old-run")).toBeNull();
+  });
+
+  it("keeps a newly started run when an earlier runs request finishes late", async () => {
+    const oldRuns = Promise.withResolvers<WorkflowExecution[]>();
+    api.getWorkflowExecutions.mockReturnValueOnce(oldRuns.promise);
+    render(<WorkflowEditor initial={workflow()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() => expect(api.runWorkflowDefinition).toHaveBeenCalled());
+    await screen.findByLabelText("Output");
+    await act(async () => oldRuns.resolve([]));
+    expect(screen.getByLabelText("Output")).toBeTruthy();
+    expect(screen.queryByText("No runs yet")).toBeNull();
+  });
+
+  it("still starts a saved workflow when revision refresh fails", async () => {
+    api.getWorkflowRevisions.mockRejectedValue(
+      new Error("Revision backend unavailable"),
+    );
+    render(<WorkflowEditor />);
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() =>
+      expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {}),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(
+      await screen.findByText(/Revision backend unavailable/),
+    ).toBeTruthy();
+  });
+
+  it("marks live status stale on a failed poll and recovers on the next poll", async () => {
+    const running: WorkflowExecution = {
+      id: "live-poll",
+      workflowId: "workflow-1",
+      mode: "manual",
+      status: "running",
+      finished: false,
+      startedAt: now,
+      stoppedAt: null,
+      input: {},
+      events: [],
+    };
+    api.getWorkflowExecutions.mockResolvedValue([running]);
+    api.getWorkflowExecution
+      .mockRejectedValueOnce(new Error("Status temporarily unavailable"))
+      .mockResolvedValue({
+        ...running,
+        status: "finished",
+        finished: true,
+        stoppedAt: now,
+        output: "Recovered result",
+      });
+    render(<WorkflowEditor initial={workflow()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    expect(
+      await screen.findByText(/Live status unavailable/, {}, { timeout: 3000 }),
+    ).toBeTruthy();
+    expect(
+      await screen.findByText(/Recovered result/, {}, { timeout: 3000 }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Live status unavailable/)).toBeNull();
+  });
+
   it("renders native source, visual triggers, and typed widgets", async () => {
     render(<WorkflowEditor initial={workflow()} />);
     expect(screen.getByText("Build digest")).toBeTruthy();
@@ -341,6 +454,12 @@ describe("WorkflowEditor", () => {
         },
       ],
     });
+    api.cancelWorkflowExecution.mockRejectedValueOnce(
+      new Error("Cancellation unavailable"),
+    );
+    api.restoreWorkflowRevision.mockRejectedValueOnce(
+      new Error("Restore unavailable"),
+    );
     render(<WorkflowEditor initial={workflow()} />);
     fireEvent.click(screen.getByRole("button", { name: "Runs" }));
     expect(
@@ -351,6 +470,14 @@ describe("WorkflowEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm cancel run" }));
     await waitFor(() =>
       expect(api.cancelWorkflowExecution).toHaveBeenCalledWith("run-live"),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Cancellation unavailable",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm cancel run" }));
+    await waitFor(() =>
+      expect(screen.queryByText("Cancellation unavailable")).toBeNull(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "History" }));
@@ -367,6 +494,9 @@ describe("WorkflowEditor", () => {
         "workflow-1",
         "v0",
       ),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Restore unavailable",
     );
   });
 

@@ -1,6 +1,7 @@
-// Shared visual task-card language for the /orchestrator and /task-coordinator
-// single-pane landings. Both views render the same card medallion + chips so the
-// two surfaces read as one product. Pure presentation — no data fetching.
+/**
+ * Shares task cards, status indicators, and empty states across the task and
+ * orchestrator surfaces. Data loading remains with each owning view.
+ */
 
 import { Button, Card, Input, Separator, StatusPulseDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -367,7 +368,7 @@ export function TaskEmptyState({
     <>
       <Separator tone="subtle40" />
       <div
-        className="flex min-h-64 flex-col items-center justify-center gap-3 py-10 text-center"
+        className="flex min-h-64 flex-col items-center justify-center gap-3 py-10 text-center [@media(max-height:500px)]:min-h-0 [@media(max-height:500px)]:py-4"
         data-testid="task-empty-state"
       >
         <CircleDashed
