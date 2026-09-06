@@ -111,6 +111,7 @@ const activeRuntimes: AgentRuntime[] = [];
 
 async function createHarness(options: {
 	actionResult: Record<string, unknown>;
+	actionGate?: (roomId: UUID) => Promise<void>;
 }): Promise<Harness> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({
@@ -146,7 +147,10 @@ async function createHarness(options: {
 			},
 		],
 		validate: async () => true,
-		handler: async () => options.actionResult as never,
+		handler: async (_runtime, message) => {
+			await options.actionGate?.(message.roomId);
+			return options.actionResult as never;
+		},
 	};
 	runtime.registerAction(calendarAction);
 
@@ -229,6 +233,107 @@ describe("planner-loop death after a completed tool", () => {
 				await runtime.close();
 			}),
 		);
+	});
+
+	it("propagates out-of-band Stop instead of rescuing settled tool text", async () => {
+		let announce!: (roomId: UUID) => void;
+		const entered = new Promise<UUID>((resolve) => {
+			announce = resolve;
+		});
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const harness = await createHarness({
+			actionResult: {
+				success: true,
+				userFacingText: USER_FACING,
+				modelReplyRequired: true,
+			},
+			actionGate: async (roomId) => {
+				announce(roomId);
+				await gate;
+			},
+		});
+		const pending = new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "look up the eliza-test entry"),
+			harness.callback,
+			{ onStreamChunk: async () => undefined },
+		);
+		const rejection = expect(pending).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+		});
+		const roomId = await entered;
+		expect(
+			harness.runtime.turnControllers.abortTurn(roomId, "ui-chat-stop"),
+		).toBe(true);
+		release();
+		await rejection;
+		expect(visibleTexts(harness.callbacks)).toEqual([]);
+		expect(harness.reportedScopes).not.toContain("MessageService.plannerLoop");
+	});
+
+	it("never delivers the preliminary navigation promise after Stop during planning", async () => {
+		let announce!: () => void;
+		const entered = new Promise<void>((resolve) => {
+			announce = resolve;
+		});
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let actionCalls = 0;
+		const harness = await createHarness({
+			actionResult: { success: true },
+			actionGate: async () => {
+				actionCalls++;
+			},
+		});
+		const stageOne = stageOneToolTurn();
+		stageOne.toolCalls[0].arguments.replyText =
+			"Switching you to the calendar view now.";
+		harness.runtime.responseHandlerEvaluators.push({
+			name: "navigation-planning-admission",
+			priority: 100,
+			shouldRun: () => true,
+			evaluate: () => ({ reply: "On it.", requiresTool: true }),
+		});
+		harness.runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			async () => stageOne,
+			"stop-test",
+			200,
+		);
+		harness.runtime.registerModel(
+			ModelType.ACTION_PLANNER,
+			async () => {
+				announce();
+				await gate;
+				throw new Error("provider stopped after cancellation");
+			},
+			"stop-test",
+			200,
+		);
+		const pending = new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "look up the requested entry"),
+			harness.callback,
+		);
+		const rejection = expect(pending).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+		});
+		await entered;
+		const [roomId] = harness.runtime.turnControllers.activeRoomIds();
+		expect(roomId).toBeDefined();
+		expect(
+			harness.runtime.turnControllers.abortTurn(roomId, "ui-chat-stop"),
+		).toBe(true);
+		release();
+		await rejection;
+		expect(actionCalls).toBe(0);
+		expect(visibleTexts(harness.callbacks)).toEqual([]);
+		expect(harness.reportedScopes).not.toContain("MessageService.plannerLoop");
 	});
 
 	it("delivers the completed tool's user-facing result instead of the canned failure", async () => {
