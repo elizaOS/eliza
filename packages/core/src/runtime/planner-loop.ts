@@ -610,7 +610,9 @@ async function runPlannerLoopIterations(
 	// the planner repeats settled operations, do not replay them. Repetition
 	// alone is not completion: the planner must explicitly release pending
 	// scope before that evaluator verdict can become the final response.
-	let pendingScopeRejectedFinish: EvaluatorOutput | undefined;
+	let pendingScopeRejectedFinish:
+		| { output: EvaluatorOutput; iteration: number }
+		| undefined;
 	const correctPendingSuccessfulFinish = (
 		evaluator: EvaluatorOutput,
 		iteration: number,
@@ -647,7 +649,7 @@ async function runPlannerLoopIterations(
 				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
 				"Only an explicit final planner declaration can supersede the pending scope.",
 		});
-		pendingScopeRejectedFinish = evaluator;
+		pendingScopeRejectedFinish = { output: evaluator, iteration };
 		return {
 			...evaluator,
 			success: false,
@@ -772,6 +774,7 @@ async function runPlannerLoopIterations(
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
+			const contextBeforePlanner = trajectory.context;
 			const synthesizingRequiredModelReply = pendingRequiredModelReply;
 			// Providers occasionally 400 with "Failed to generate tool_calls …
 			// tool_choice = 'required'": the model simply failed to emit a call
@@ -876,6 +879,25 @@ async function runPlannerLoopIterations(
 					),
 				};
 			}
+			// A terminal scope release changes no task evidence. Reuse only the
+			// immediately preceding valid FINISH, with no intervening action or
+			// context replacement. The existing final-message/receipt authority
+			// still owns delivery; the planner's REPLY prose is not adopted.
+			const releasesRejectedFinish =
+				!codingDrainQueue &&
+				pendingScopeRejectedFinish?.iteration === iteration - 1 &&
+				pendingScopeRejectedFinish.output.protocolFailure !== true &&
+				Boolean(pendingScopeRejectedFinish.output.messageToUser?.trim()) &&
+				trajectory.context === contextBeforePlanner &&
+				failures.length === 0 &&
+				!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
+				plannerOutput.completed === true &&
+				plannerOutput.toolCalls.length === 1 &&
+				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY" &&
+				!terminalMessageFromToolCalls(
+					plannerOutput.toolCalls,
+					plannerOutput.messageToUser,
+				)?.trim();
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
 			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
@@ -914,7 +936,10 @@ async function runPlannerLoopIterations(
 				});
 			}
 			if (pendingScopeRejectedFinish) {
-				if (batchOnlyRepeatsSettledWork(plannerOutput.toolCalls)) {
+				if (
+					releasesRejectedFinish ||
+					batchOnlyRepeatsSettledWork(plannerOutput.toolCalls)
+				) {
 					if (plannerOutput.completed !== true) {
 						appendPlannerModelFeedbackEvent(trajectory, {
 							id: `pending-scope-repeat:${iteration}`,
@@ -935,9 +960,9 @@ async function runPlannerLoopIterations(
 							iteration,
 							repeated: plannerOutput.toolCalls.map((call) => call.name),
 						},
-						"[planner-loop] planner repeated settled operations after a pending-scope replan; delivering the rejected FINISH instead of replaying them",
+						"[planner-loop] planner released pending scope without new work; delivering the rejected FINISH without replay or another evaluation",
 					);
-					const rejectedFinish = pendingScopeRejectedFinish;
+					const rejectedFinish = pendingScopeRejectedFinish.output;
 					pendingScopeRejectedFinish = undefined;
 					trajectory.evaluatorOutputs.push(
 						projectToolDiagnosticValue(
