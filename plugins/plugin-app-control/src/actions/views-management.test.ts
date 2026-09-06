@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { canActionRun } from "../../../../packages/core/src/runtime/action-gate.js";
 import { viewFollowupRoutingEvaluator } from "../evaluators/view-followup-routing.js";
 import { APP_CREATE_INTENT_TAG, runCreate } from "./app-create.js";
 import { createViewsAction, createViewsAliasAction } from "./views.js";
@@ -239,6 +240,16 @@ describe("view management actions", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
+	});
+
+	it("admits navigation on Notes turns through the planner's action gate", () => {
+		const action = createViewsAction();
+		expect(
+			canActionRun(action, { activeContexts: ["notes"], userRoles: ["USER"] }),
+		).toBe(true);
+		expect(
+			canActionRun(action, { activeContexts: ["web"], userRoles: ["USER"] }),
+		).toBe(false);
 	});
 
 	it("authenticates direct manager and broadcast loopback requests", async () => {

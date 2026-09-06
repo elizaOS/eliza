@@ -245,6 +245,7 @@ const VIEW_ACTION_CONTEXTS = [
 	"files",
 	"terminal",
 	"email",
+	"notes",
 	"calendar",
 	"contacts",
 	"tasks",
