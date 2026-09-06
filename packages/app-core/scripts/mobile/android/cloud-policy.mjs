@@ -223,6 +223,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRecognitionService.java",
   "ElizaVoiceInputMethodService.java",
   "ElizaBootReceiver.java",
+  "ElizaApplication.java",
   "ElizaWorkScheduler.java",
   "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
@@ -758,6 +759,11 @@ export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding=
 
 export function applyAndroidPlayManifestHardening(source) {
   let xml = source
+    // WorkManager belongs to the local-agent target and is absent from Play.
+    .replace(
+      /(<application\b[^>]*?)\s+android:name="(?:[\w.]*\.)?ElizaApplication"/,
+      "$1",
+    )
     .replace(/\s+android:dataExtractionRules="[^"]*"/, "")
     .replace(/\s+android:fullBackupContent="[^"]*"/, "")
     .replace(
