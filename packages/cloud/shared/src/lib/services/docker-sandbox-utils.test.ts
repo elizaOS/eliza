@@ -1559,18 +1559,17 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
-  test("rejects raw control bytes before remote mutation and permits later recovery", async () => {
-    const fs = await import("node:fs");
-    const invalidOverrides = [
-      "operator-key\0suffix",
-      "operator-key\x7fsuffix",
-      "operator-key\nsuffix",
-      "operator-key\rsuffix",
-      "operator-key\tsuffix",
-      "operator-key\x01suffix",
-    ];
-
-    for (const invalidOverride of invalidOverrides) {
+  test.each([
+    "operator-key\0suffix",
+    "operator-key\x7fsuffix",
+    "operator-key\nsuffix",
+    "operator-key\rsuffix",
+    "operator-key\tsuffix",
+    "operator-key\x01suffix",
+  ])(
+    "rejects control bytes in %j before remote mutation and permits recovery",
+    async (invalidOverride) => {
+      const fs = await import("node:fs");
       const volume = await makeVolume();
       let remoteCalls = 0;
       const trackedExec: typeof shExecStdin = async (...args) => {
@@ -1591,8 +1590,8 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
         "valid-operator-key",
       );
       fs.rmSync(volume, { recursive: true, force: true });
-    }
-  });
+    },
+  );
 
   test("an empty or whitespace-only override falls through to the volume lifecycle", async () => {
     const fs = await import("node:fs");
