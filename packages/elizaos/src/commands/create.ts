@@ -37,8 +37,18 @@ const LANGUAGE_NAMES: Record<string, string> = {
   typescript: "TypeScript",
 };
 
+function truncateWellFormed(str: string, maxLength: number): string {
+  if (str.length <= maxLength) return str;
+  let cut = maxLength;
+  const lead = str.charCodeAt(cut - 1);
+  if (lead >= 0xd800 && lead <= 0xdbff) {
+    cut -= 1;
+  }
+  return str.slice(0, cut);
+}
+
 function normalizeProjectName(value: string): string {
-  const clamped = value.length > 256 ? value.slice(0, 256) : value;
+  const clamped = value.length > 256 ? truncateWellFormed(value, 256) : value;
   return clamped
     .trim()
     .toLowerCase()
