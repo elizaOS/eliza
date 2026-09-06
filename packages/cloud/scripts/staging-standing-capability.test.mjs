@@ -19,6 +19,7 @@ function boundary({
   flag = "true",
   role = "moderator",
   healthCommits,
+  capabilityCommit,
   status = 200,
 } = {}) {
   const requests = [];
@@ -43,6 +44,7 @@ function boundary({
       const headers = {};
       if (flag !== null) headers["x-is-admin"] = flag;
       if (role !== null) headers["x-admin-role"] = role;
+      if (capabilityCommit) headers["x-deployment-sha"] = capabilityCommit;
       return new Response(null, { status, headers });
     },
   };
@@ -57,10 +59,27 @@ test("brackets the HEAD request with deployment checks and emits no credential o
   assert.equal(http.requests.length, 3);
   assert.equal(result.isAdmin, true);
   assert.equal(result.role, "moderator");
-  assert.equal(result.deploySha, config.expectedDeploySha);
+  assert.equal(result.healthObservedDeploySha, config.expectedDeploySha);
   assert.equal(result.provesModerationMutation, false);
   assert.ok(!JSON.stringify(result).includes(config.apiKey));
   assert.ok(!JSON.stringify(result).includes("Authorization"));
+});
+
+test("mixed replicas cannot attribute capability to the surrounding health revision", async () => {
+  const http = boundary({
+    healthCommits: [config.expectedDeploySha, config.expectedDeploySha],
+    capabilityCommit: "c".repeat(40),
+  });
+  const result = await inspectStandingCapability(config, http);
+  assert.equal(result.isAdmin, true);
+  assert.equal(result.role, "moderator");
+  assert.equal(result.healthObservedDeploySha, config.expectedDeploySha);
+  assert.equal(result.capabilityDeployment.status, "unverified");
+  assert.equal(
+    result.capabilityDeployment.reason,
+    "response_revision_not_verified",
+  );
+  assert.equal(result.deploySha, undefined);
 });
 
 test("a false HEAD result does not claim successful authentication", async () => {

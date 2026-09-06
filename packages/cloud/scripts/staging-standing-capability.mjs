@@ -2,7 +2,8 @@
 /**
  * Checks the protected staging credential's moderation role without reading
  * account data or mutating standing. Deployment beacons bracket the HEAD-only
- * capability request; only bounded role and deployment evidence is retained.
+ * capability request. Their revision identifies only those health responses;
+ * the capability response's deployment remains explicitly unverified.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -102,11 +103,15 @@ export async function inspectStandingCapability(
   }
   await verifyDeployment(config, fetchImpl);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "staging_standing_capability",
     environment: "staging",
     sourceSha: config.sourceSha,
-    deploySha: config.expectedDeploySha,
+    healthObservedDeploySha: config.expectedDeploySha,
+    capabilityDeployment: {
+      status: "unverified",
+      reason: "response_revision_not_verified",
+    },
     observedAt: new Date(now()).toISOString(),
     httpStatus: 200,
     isAdmin: flag === "true",
