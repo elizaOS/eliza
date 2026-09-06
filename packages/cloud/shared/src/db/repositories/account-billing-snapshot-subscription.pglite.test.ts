@@ -1,6 +1,8 @@
 /** Exercises subscription snapshot reads and public projection against real migrated PGlite rows. */
+
 import { afterAll, beforeAll, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { observeSubscriptionAllowanceEligibility } from "./subscription-allowance-eligibility";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -31,6 +33,13 @@ beforeAll(async () => {
     CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
+  `);
+  await getPgliteClientForTests().exec(`
+    ALTER TABLE organizations ADD COLUMN is_active boolean NOT NULL DEFAULT true, ADD COLUMN account_deletion_request_id uuid, ADD COLUMN credit_balance numeric(16,6) NOT NULL DEFAULT 0, ADD COLUMN balance_revision bigint NOT NULL DEFAULT 0, ADD COLUMN settings jsonb NOT NULL DEFAULT '{}';
+    ALTER TABLE org_storage_quota ADD COLUMN created_at timestamp DEFAULT now(), ADD COLUMN updated_at timestamp DEFAULT now(), ADD COLUMN native_catalog_reconciled_at timestamptz;
+    ALTER TABLE credit_transactions ADD COLUMN amount numeric(16,6), ADD COLUMN type text, ADD COLUMN metadata jsonb;
+    CREATE TABLE organization_config(organization_id uuid PRIMARY KEY, settings jsonb NOT NULL DEFAULT '{}');
+    CREATE TABLE org_rate_limit_overrides(id uuid PRIMARY KEY,organization_id uuid,completions_rpm integer,embeddings_rpm integer,standard_rpm integer,strict_rpm integer);
   `);
   const migration = await readFile(
     new URL("../migrations/0373_subscription_authority.sql", import.meta.url),
@@ -115,6 +124,7 @@ async function snapshot(organizationId = ORG_A, observedAt = "2026-08-20T12:00:0
       buildOrganizationSubscriptionSnapshot(
         await readPrimaryOrganizationSubscription(tx, organizationId),
         observedAt,
+        await observeSubscriptionAllowanceEligibility(tx, organizationId, new Date(observedAt)),
       ),
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );
@@ -141,7 +151,7 @@ test("current-source read preserves exact allowance and strips all provider auth
         status: "available",
         value: {
           granted: "9999999999.999999",
-          effectiveRemaining: "9999999998.999998",
+          effectiveRemaining: { status: "available", value: "9999999998.999998" },
           reserved: "0.000001",
           settled: "1.000000",
         },
@@ -223,7 +233,11 @@ test("observed expiry makes allowance unavailable to spend without pretending th
     value: {
       allowance: {
         status: "available",
-        value: { state: "open", unreserved: "9999999998.999998", effectiveRemaining: "0.000000" },
+        value: {
+          state: "open",
+          unreserved: "9999999998.999998",
+          effectiveRemaining: { status: "unavailable" },
+        },
       },
     },
   });

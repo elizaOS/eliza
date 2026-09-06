@@ -129,6 +129,7 @@ export function requireOrganizationResourceLimit(
 export async function readOrganizationQuotaPolicyInTransaction(
   tx: DbTransaction,
   organizationId: string,
+  observedAt?: Date,
 ): Promise<OrganizationQuotaPolicy> {
   const [org] = await tx
     .select({
@@ -200,7 +201,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
       .from(organizations)
       .where(eq(organizations.id, organizationId));
     if (!clock) return unavailable(organizationId, "missing_database_clock");
-    const now = new Date(clock.now);
+    const now = observedAt ?? new Date(clock.now);
     return {
       ...base,
       observedAt: now.toISOString(),
@@ -277,7 +278,7 @@ export async function readOrganizationQuotaPolicyInTransaction(
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   if (!clock) return unavailable(organizationId, "missing_database_clock");
-  const now = new Date(clock.now);
+  const now = observedAt ?? new Date(clock.now);
   if (
     !entitlement.entitlement_effective ||
     now < entitlement.effective_from ||

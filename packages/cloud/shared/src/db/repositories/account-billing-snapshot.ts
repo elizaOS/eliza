@@ -39,6 +39,10 @@ import {
   type PrimaryOrganizationSubscription,
   readPrimaryOrganizationSubscription,
 } from "./account-billing-snapshot-subscription";
+import {
+  observeSubscriptionAllowanceEligibility,
+  type SubscriptionAllowanceEligibility,
+} from "./subscription-allowance-eligibility";
 
 export interface PrimaryStatusCounts {
   used: string;
@@ -57,6 +61,7 @@ export interface PrimaryComputeRateSegment {
 export interface PrimaryAccountBillingReadModel {
   observedAt: string;
   subscription: PrimaryOrganizationSubscription;
+  allowanceFunding: SubscriptionAllowanceEligibility;
   policyObservedAt: string;
   policyLimits: OrganizationQuotaPolicy["limits"] | { status: "unavailable"; code: string };
   organization: {
@@ -291,7 +296,11 @@ export async function readPrimaryAccountBillingSnapshot(
       let policyObservedAt = observedAt;
       let policyLimits: PrimaryAccountBillingReadModel["policyLimits"];
       try {
-        const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+        const policy = await readOrganizationQuotaPolicyInTransaction(
+          tx,
+          organizationId,
+          new Date(observedAt),
+        );
         configuredTier =
           policy.tier.status === "available"
             ? {
@@ -382,10 +391,16 @@ export async function readPrimaryAccountBillingSnapshot(
 
       const control = controlRows[0];
       const subscription = await readPrimaryOrganizationSubscription(tx, organizationId);
+      const allowanceFunding = await observeSubscriptionAllowanceEligibility(
+        tx,
+        organizationId,
+        new Date(observedAt),
+      );
 
       return {
         observedAt,
         subscription,
+        allowanceFunding,
         policyLimits,
         policyObservedAt,
         organization: {

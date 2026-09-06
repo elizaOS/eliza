@@ -23,7 +23,11 @@ test("the full primary reader and public projection preserve source and exact am
   const snapshot = await readPrimaryAccountBillingSnapshot("61000000-0000-4000-8000-000000000001");
   expect(snapshot.organization).toMatchObject({ creditBalance: "10.000001", balanceRevision: "1" });
   expect(
-    buildOrganizationSubscriptionSnapshot(snapshot.subscription, snapshot.observedAt),
+    buildOrganizationSubscriptionSnapshot(
+      snapshot.subscription,
+      snapshot.observedAt,
+      snapshot.allowanceFunding,
+    ),
   ).toMatchObject({
     status: "available",
     value: {

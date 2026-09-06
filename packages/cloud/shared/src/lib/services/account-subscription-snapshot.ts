@@ -1,6 +1,8 @@
 /** Projects a coherent organization-only subscription read without provider identifiers, guessed charges or app-subscriber policy. */
+
 import { ElizaError } from "@elizaos/core";
 import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
+import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
 import type {
   Observed,
   OrganizationSubscriptionSnapshot,
@@ -9,6 +11,7 @@ import type {
 export function buildOrganizationSubscriptionSnapshot(
   primary: PrimaryOrganizationSubscription,
   observedAt: string,
+  funding: SubscriptionAllowanceEligibility,
 ): Observed<OrganizationSubscriptionSnapshot> {
   const provenance = { source: "primary-organization-subscription", observedAt };
   if (primary.state === "none")
@@ -35,11 +38,19 @@ export function buildOrganizationSubscriptionSnapshot(
           expired: money(period.expired_amount),
           clawedBack: money(period.clawed_back_amount),
           effectiveRemaining:
-            period.state === "open" &&
-            Date.parse(observedAt) >= period.period_start.getTime() &&
-            Date.parse(observedAt) < period.expires_at.getTime()
-              ? money(period.available_amount)
-              : "0.000000",
+            funding.status === "available" && funding.period?.id === period.id
+              ? { ...provenance, status: "available", value: money(period.available_amount) }
+              : {
+                  ...provenance,
+                  status: "unavailable",
+                  error: {
+                    code:
+                      funding.status === "unavailable"
+                        ? funding.code
+                        : "subscription_allowance_not_spendable",
+                    retryable: true,
+                  },
+                },
           currency: "USD",
         },
       }

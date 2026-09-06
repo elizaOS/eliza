@@ -95,7 +95,13 @@ describe.skipIf(!databaseUrl)("coherent production account billing snapshot", ()
       creditBalance: "10.000001",
       balanceRevision: "1",
     });
-    expect(project(observed.value.subscription, observed.value.observedAt)).toMatchObject({
+    expect(
+      project(
+        observed.value.subscription,
+        observed.value.observedAt,
+        observed.value.allowanceFunding,
+      ),
+    ).toMatchObject({
       status: "available",
       value: {
         lifecycleRevision: "1",
@@ -108,7 +114,9 @@ describe.skipIf(!databaseUrl)("coherent production account billing snapshot", ()
       creditBalance: "20.000002",
       balanceRevision: "2",
     });
-    expect(project(refreshed.subscription, refreshed.observedAt)).toMatchObject({
+    expect(
+      project(refreshed.subscription, refreshed.observedAt, refreshed.allowanceFunding),
+    ).toMatchObject({
       status: "available",
       value: {
         lifecycleRevision: "2",

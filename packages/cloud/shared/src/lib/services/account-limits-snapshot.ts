@@ -1484,7 +1484,11 @@ export async function buildAccountBillingSnapshot(
 
     const snapshotCompletedAt = sources.now().toISOString();
     const v2: AccountBillingSnapshotV2 = {
-      subscription: buildOrganizationSubscriptionSnapshot(primary.subscription, observedAt),
+      subscription: buildOrganizationSubscriptionSnapshot(
+        primary.subscription,
+        observedAt,
+        primary.allowanceFunding,
+      ),
       snapshotStartedAt,
       snapshotCompletedAt,
       balance,

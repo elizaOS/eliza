@@ -54,6 +54,7 @@ function healthyPrimary(
 ): PrimaryAccountBillingReadModel {
   return {
     subscription: { state: "none" },
+    allowanceFunding: { status: "available", period: undefined },
     policyObservedAt: PRIMARY_OBSERVED_AT,
     policyLimits: resolvedLimits(),
     observedAt: PRIMARY_OBSERVED_AT,

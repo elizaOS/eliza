@@ -333,8 +333,8 @@ export interface OrganizationSubscriptionSnapshot {
     settled: string;
     expired: string;
     clawedBack: string;
-    /** Exact USD available within the observed period; restricted to eligible funding classes. */
-    effectiveRemaining: string;
+    /** Exact USD eligible for new allowance-funded spending at the snapshot clock. Denied authority is unavailable; retained ledger amounts above remain observable. */
+    effectiveRemaining: Observed<string>;
     currency: "USD";
   }>;
 }
