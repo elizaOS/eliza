@@ -1,10 +1,16 @@
 /** Verifies the billing-settings JSON boundary with deterministic service mocks. */
 import { describe, expect, mock, test } from "bun:test";
 
+class MockPolicyError extends Error {}
+
 const updateSettings = mock(async () => undefined);
 class MockAutoTopUpSettingsValidationError extends Error {}
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireCurrentBillingManagerSession: async () => ({
+    id: "user-1",
+    organization_id: "org-1",
+  }),
   requireUserOrApiKeyWithOrg: async () => ({
     id: "user-1",
     organization_id: "org-1",
@@ -26,6 +32,7 @@ mock.module("@/lib/services/auto-top-up", () => ({
     MAX_THRESHOLD: 1000,
   },
   AutoTopUpSettingsValidationError: MockAutoTopUpSettingsValidationError,
+  AutoTopUpSettingsPolicyError: MockPolicyError,
   autoTopUpService: {
     getSettings: async () => ({
       enabled: false,

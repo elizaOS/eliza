@@ -4,7 +4,7 @@
  * retries reuse that attempt's stable idempotency key and fenced lease.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import Decimal from "decimal.js";
 import type Stripe from "stripe";
 import type {
@@ -145,6 +145,13 @@ export class AutoTopUpSettingsValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AutoTopUpSettingsValidationError";
+  }
+}
+
+/** Public validation failure with a safe, actionable settings message. */
+export class AutoTopUpSettingsPolicyError extends ElizaError {
+  constructor(message: string) {
+    super(message, { code: "BILLING_SETTINGS_INVALID" });
   }
 }
 
@@ -433,21 +440,27 @@ export class AutoTopUpService {
 
   validateSettings(amount: number, threshold: number): void {
     if (!Number.isFinite(amount) || !Number.isFinite(threshold)) {
-      throw new Error("Auto top-up settings must be valid numbers");
+      throw new AutoTopUpSettingsPolicyError("Auto top-up settings must be valid numbers");
     }
     if (amount < AUTO_TOP_UP_LIMITS.MIN_AMOUNT) {
-      throw new Error(`Auto top-up amount must be at least $${AUTO_TOP_UP_LIMITS.MIN_AMOUNT}`);
+      throw new AutoTopUpSettingsPolicyError(
+        `Auto top-up amount must be at least $${AUTO_TOP_UP_LIMITS.MIN_AMOUNT}`,
+      );
     }
     if (amount > AUTO_TOP_UP_LIMITS.MAX_AMOUNT) {
-      throw new Error(`Auto top-up amount cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_AMOUNT}`);
+      throw new AutoTopUpSettingsPolicyError(
+        `Auto top-up amount cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_AMOUNT}`,
+      );
     }
     if (threshold < AUTO_TOP_UP_LIMITS.MIN_THRESHOLD) {
-      throw new Error(
+      throw new AutoTopUpSettingsPolicyError(
         `Auto top-up threshold must be at least $${AUTO_TOP_UP_LIMITS.MIN_THRESHOLD}`,
       );
     }
     if (threshold > AUTO_TOP_UP_LIMITS.MAX_THRESHOLD) {
-      throw new Error(`Auto top-up threshold cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_THRESHOLD}`);
+      throw new AutoTopUpSettingsPolicyError(
+        `Auto top-up threshold cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_THRESHOLD}`,
+      );
     }
   }
 
@@ -1566,7 +1579,9 @@ export class AutoTopUpService {
       enabled?: boolean;
       amount?: number;
       threshold?: number;
+      payAsYouGoFromEarnings?: boolean;
     },
+    authorizeMutation: () => Promise<void>,
   ): Promise<void> {
     const organization = await organizationsRepository.findById(organizationId);
     if (!organization) {
@@ -1574,7 +1589,7 @@ export class AutoTopUpService {
     }
 
     if (settings.enabled === true && !organization.stripe_default_payment_method) {
-      throw new Error(
+      throw new AutoTopUpSettingsPolicyError(
         "Cannot enable auto top-up without a default payment method. Please add a payment method first.",
       );
     }
@@ -1584,7 +1599,7 @@ export class AutoTopUpService {
         autoTopUpAttemptsRepository.findBlockingLegacyPaymentByOrganization(organizationId),
       ]);
       if (blockingAttempt || blockingLegacyPayment) {
-        throw new Error(
+        throw new AutoTopUpSettingsPolicyError(
           "Cannot enable auto top-up while an earlier card payment requires reconciliation.",
         );
       }
@@ -1638,6 +1653,11 @@ export class AutoTopUpService {
       updates.auto_top_up_threshold = "0.00";
     }
 
+    if (settings.payAsYouGoFromEarnings !== undefined) {
+      updates.pay_as_you_go_from_earnings = settings.payAsYouGoFromEarnings;
+    }
+    // Recheck after all asynchronous validation and immediately before persistence.
+    await authorizeMutation();
     await organizationsRepository.update(organizationId, updates);
     await Promise.all([
       invalidateOrganizationCache(organizationId),

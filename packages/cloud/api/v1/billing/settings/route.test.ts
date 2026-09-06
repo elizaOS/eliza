@@ -4,6 +4,8 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+class MockPolicyError extends Error {}
+
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000000207";
 const STANDARD_RATE_LIMIT = { windowMs: 60_000, maxRequests: 100 } as const;
 const rateLimitConfigs: Array<Record<string, unknown>> = [];
@@ -25,7 +27,10 @@ const getSettings = mock(async () => ({
   threshold: null,
   hasPaymentMethod: true,
 }));
-const updateSettings = mock(async () => undefined);
+const updateSettings = mock(
+  async (_id: string, _settings: object, authorize: () => Promise<void>) =>
+    authorize(),
+);
 const findOrganizationById = mock(async () => ({
   id: ORGANIZATION_ID,
   pay_as_you_go_from_earnings: false,
@@ -34,6 +39,7 @@ const updateOrganization = mock(async () => undefined);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
+  requireCurrentBillingManagerSession: requireUserOrApiKeyWithOrg,
 }));
 
 mock.module("@/db/repositories", () => ({
@@ -51,6 +57,7 @@ mock.module("@/lib/services/auto-top-up", () => ({
     MAX_THRESHOLD: 1000,
   },
   AutoTopUpSettingsValidationError,
+  AutoTopUpSettingsPolicyError: MockPolicyError,
   autoTopUpService: { getSettings, updateSettings },
 }));
 
@@ -91,7 +98,9 @@ beforeEach(() => {
     hasPaymentMethod: true,
   });
   updateSettings.mockClear();
-  updateSettings.mockResolvedValue(undefined);
+  updateSettings.mockImplementation(async (_id, _settings, authorize) =>
+    authorize(),
+  );
   findOrganizationById.mockClear();
   findOrganizationById.mockResolvedValue({
     id: ORGANIZATION_ID,
@@ -134,11 +143,15 @@ describe("billing settings cutover safety", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(updateSettings).toHaveBeenCalledWith(ORGANIZATION_ID, {
-      enabled: false,
-      amount: undefined,
-      threshold: undefined,
-    });
+    expect(updateSettings).toHaveBeenCalledWith(
+      ORGANIZATION_ID,
+      {
+        enabled: false,
+        amount: undefined,
+        payAsYouGoFromEarnings: undefined,
+      },
+      expect.any(Function),
+    );
     await expect(response.json()).resolves.toMatchObject({
       success: true,
       settings: {
