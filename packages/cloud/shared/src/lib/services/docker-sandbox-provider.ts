@@ -74,6 +74,7 @@ import {
   buildDockerCreateWithSecretEnvCommand,
   buildEnsureNetworkCmd,
   buildExactRestoreStagingVolumeCleanupCommand,
+  buildLocalDockerDaemonCommand,
   buildProtectedHostDirectoryCommands,
   buildReplacementCandidateObservedCommand,
   buildReplacementCreatedContainerIdProofCommand,
@@ -5290,7 +5291,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       while (Date.now() < deadline) {
         if (
           await checkDockerRetainedContainerHealth(
-            (command, timeout) => ssh.exec(command, timeout),
+            (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
             locator.containerId,
             locator.agentId,
           )
@@ -5309,7 +5310,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   ): Promise<SandboxRetainedResumeReceipt> {
     return this.withRetainedContainerConnection(locator, (ssh) =>
       resumeDockerRetainedContainer(
-        (command, timeout) => ssh.exec(command, timeout),
+        (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
         locator.containerId,
         locator.agentId,
       ),
@@ -5319,7 +5320,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   async captureRetainedContainer(locator: SandboxRetainedCaptureLocator): Promise<string> {
     return this.withRetainedContainerConnection(locator, (ssh) =>
       captureDockerRetainedContainer(
-        (command, timeout) => ssh.exec(command, timeout),
+        (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
         locator.containerName,
         locator.agentId,
       ),
@@ -5331,7 +5332,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   ): Promise<SandboxRetainedStopReceipt> {
     return this.withRetainedContainerConnection(locator, (ssh) =>
       stopDockerRetainingState(
-        (command, timeout) => ssh.exec(command, timeout),
+        (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
         locator.containerId,
         locator.agentId,
       ),
@@ -5400,7 +5401,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         },
         (ssh) =>
           deleteDockerRetainedContainer(
-            (command, timeout) => ssh.exec(command, timeout),
+            (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
             containerId,
             locator.agentId,
           ),

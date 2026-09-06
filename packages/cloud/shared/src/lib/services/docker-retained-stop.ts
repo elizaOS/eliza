@@ -39,7 +39,7 @@ export async function deleteDockerRetainedContainer(
     `if [ "$rc" -eq 0 ]; then printf 'present|%s\\n' "$output"; elif [ "$rc" -eq 1 ] && { ${absenceMessages.map((message) => `[ "$output" = ${shellQuote(message)} ]`).join(" || ")}; }; then printf 'absent\\n'; else printf 'unknown\\n'; fi`,
   ].join("; ");
   const read = async () => {
-    const observed = (await execute(`sh -lc ${shellQuote(probe)}`, 15_000)).trim();
+    const observed = (await execute(`sh -c ${shellQuote(probe)}`, 15_000)).trim();
     if (observed === "absent") return "absent";
     if (observed === `present|${containerId}|${agentId}`) return "present";
     throw new ElizaError("Retained deletion cannot prove exact ownership or absence", {

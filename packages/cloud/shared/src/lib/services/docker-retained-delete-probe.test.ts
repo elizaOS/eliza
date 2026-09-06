@@ -25,7 +25,7 @@ for (const scenario of ["absent", "other-id", "permission", "timeout"] as const)
     writeFileSync(timeout, '#!/bin/sh\nshift 3\nexec "$@"\n', { mode: 0o700 });
     let reads = 0;
     const execute = async (command: string) => {
-      if (!command.startsWith("sh -lc ")) throw new Error("Unexpected destructive command");
+      if (!command.startsWith("sh -c ")) throw new Error("Unexpected destructive command");
       reads++;
       return execFileSync(
         "sh",
