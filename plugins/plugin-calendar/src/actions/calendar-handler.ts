@@ -5957,7 +5957,7 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "subaction",
       description:
-        "Calendar operation. Use search_events for flights, itinerary, travel, appointments, or keyword lookup; feed for agenda/schedule reads; next_event for the next upcoming event; create_event only when creating a new event.",
+        "Calendar operation. Use feed for the full agenda or all events on a date or in a time range, including requests with no title or keyword filter. Use search_events only when the user supplies an event-content filter such as a title, attendee, location, or keyword; a date alone is a time bound, not a search phrase. Use next_event for the next upcoming event; create_event only when creating a new event.",
       required: false,
       schema: {
         type: "string" as const,
@@ -5989,14 +5989,14 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "query",
       description:
-        "Short search phrase for search_events, such as flight, dentist, Denver, or return flight.",
+        "Event-content filter explicitly requested by the user, such as flight, dentist, Denver, or return flight. Never put dates, agenda, events, or schedule here just to express a time range. For an unfiltered day agenda use feed with details.timeMin/timeMax and omit query/queries.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "queries",
       description:
-        "Optional array of search phrases for search_events. The action will combine and dedupe them.",
+        "Optional event-content filters for search_events. The action combines and deduplicates them. Omit for an unfiltered agenda; dates belong in details.timeMin/timeMax, not in search phrases.",
       required: false,
       schema: {
         type: "array" as const,
