@@ -47,18 +47,17 @@ it("shows recorded offsets without claiming response latency", () => {
 it("mounts full data only on disclosure and renders tool content as text", () => {
   const { container } = render(<TrajectoryRecord detail={detail} />);
   expect(container.querySelector("pre")).toBeNull();
-  const disclosure = screen
-    .getByText("1. tool: recorded inputs and outputs")
-    .closest("details");
-  if (!disclosure) throw new Error("Missing recorded-data disclosure");
-  disclosure.open = true;
-  fireEvent(disclosure, new Event("toggle"));
+  const disclosure = screen.getByRole("button", {
+    name: "1. tool: recorded inputs and outputs",
+  });
+  fireEvent.click(disclosure);
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
   expect(container.querySelector("pre")?.textContent).toContain(
     "<script>alert(1)</script>",
   );
   expect(container.querySelector("script")).toBeNull();
-  disclosure.open = false;
-  fireEvent(disclosure, new Event("toggle"));
+  fireEvent.click(disclosure);
+  expect(disclosure.getAttribute("aria-expanded")).toBe("false");
   expect(container.querySelector("pre")).toBeNull();
 });
 

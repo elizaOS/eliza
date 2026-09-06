@@ -382,6 +382,109 @@ describe("factMemoryEvaluator keyword dedupe", () => {
 	});
 });
 
+describe("factMemoryEvaluator dedupe against explicit MEMORY facts", () => {
+	const explicitFact: Memory = {
+		id: "00000000-0000-0000-0000-0000000000f1" as UUID,
+		entityId,
+		agentId,
+		roomId,
+		content: { text: "The user's favorite tea is genmaicha", source: "MEMORY" },
+		metadata: {
+			type: "custom",
+			source: "MEMORY",
+			kind: "durable",
+			category: "preference",
+			confidence: 0.95,
+			keywords: ["tea", "favorite", "genmaicha"],
+			verificationStatus: "self_reported",
+		},
+		createdAt: Date.now(),
+	} as Memory;
+
+	it("strengthens the user's explicit memory instead of adding a re-categorised copy", async () => {
+		// Live 2026-09-06: the MEMORY action stored durable/preference, the
+		// extractor added current/uncategorized in the same turn, and the next
+		// "forget my favorite tea" was ambiguous between the two.
+		const runtime = makeRuntime();
+		const result = await processFactOps(runtime, [explicitFact], {
+			ops: [
+				{
+					op: "add_current",
+					claim: "user's favorite tea is genmaicha",
+					category: "uncategorized",
+					structured_fields: {},
+					keywords: ["tea", "genmaicha"],
+				},
+			],
+		});
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.updateMemory).toHaveBeenCalledWith(
+			expect.objectContaining({ id: explicitFact.id }),
+		);
+		expect(result?.data).toMatchObject({ added: 0, strengthened: 1 });
+	});
+
+	it.each([
+		"The user's favorite tea is hojicha",
+		"The user's favorite tea is not genmaicha",
+		"The user's sister's favorite tea is genmaicha",
+	])(
+		"does not discard a distinct claim resembling explicit memory: %s",
+		async (claim) => {
+			const runtime = makeRuntime();
+			const result = await processFactOps(runtime, [explicitFact], {
+				ops: [
+					{
+						op: "add_current",
+						claim,
+						category: "uncategorized",
+						structured_fields: {},
+						keywords: ["tea", "favorite"],
+					},
+				],
+			});
+			expect(runtime.updateMemory).not.toHaveBeenCalled();
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({
+					content: expect.objectContaining({ text: claim }),
+				}),
+				"facts",
+				true,
+			);
+			expect(result?.data).toMatchObject({ added: 1, strengthened: 0 });
+		},
+	);
+
+	it("keeps the kind/category gate for extractor-authored facts", async () => {
+		const runtime = makeRuntime();
+		const extractorFact: Memory = {
+			...explicitFact,
+			id: "00000000-0000-0000-0000-0000000000f2" as UUID,
+			content: { text: "The user's favorite tea is genmaicha" },
+			metadata: {
+				kind: "durable",
+				category: "preference",
+				confidence: 0.7,
+				keywords: ["tea", "favorite", "genmaicha"],
+			},
+		} as Memory;
+		const result = await processFactOps(runtime, [extractorFact], {
+			ops: [
+				{
+					op: "add_current",
+					claim: "user's favorite tea is genmaicha",
+					category: "uncategorized",
+					structured_fields: {},
+					keywords: ["tea", "genmaicha"],
+				},
+			],
+		});
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		expect(result?.data).toMatchObject({ added: 1, strengthened: 0 });
+	});
+});
+
 describe("reflection evaluator schemas are strict-structured-output safe", () => {
 	// Strict-mode validators (Cerebras, Groq, OpenAI strict) reject any object
 	// node that lacks an explicit `properties` map or allows additional

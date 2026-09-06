@@ -1,21 +1,37 @@
-import { useEffect, useState } from "react";
+/** Read-only trajectory records with optional correlated server timing diagnostics. */
+import { Button, CodeBlock, Table } from "@elizaos/ui";
+import { useEffect, useId, useState } from "react";
 import { fetchTrajectoryTiming, type TrajectoryDetail } from "../api-client";
 
 /** Full recorded data, mounted only when opened to keep large prompts out of the idle DOM. */
 function RecordedData({ label, value }: { label: string; value: unknown }) {
   const [open, setOpen] = useState(false);
+  const contentId = useId();
   return (
-    <details
-      className="rounded-lg border border-border p-3"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="cursor-pointer font-medium">{label}</summary>
-      {open && (
-        <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      )}
-    </details>
+    <div>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-auto whitespace-normal text-left"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen((previous) => !previous)}
+      >
+        {label}
+      </Button>
+      <div id={contentId} hidden={!open}>
+        {open && (
+          <CodeBlock
+            value={JSON.stringify(value, null, 2)}
+            wrap
+            role="region"
+            aria-label={label}
+            tabIndex={0}
+            className="mt-3 max-h-96"
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -47,14 +63,14 @@ function InferenceTimingRecord({ trajectoryId }: { trajectoryId: string }) {
 
   return (
     <section aria-label="Server delivery timings" className="space-y-3">
-      <button
+      <Button
         type="button"
-        className="rounded-lg border border-border px-3 py-2 text-sm"
+        variant="outline"
         disabled={request > 0 && timing === null && error === null}
         onClick={() => setRequest((previous) => previous + 1)}
       >
         {request ? "Reload server timings" : "Load server timings"}
-      </button>
+      </Button>
       <p className="text-sm text-muted-foreground">
         Optional local diagnostics from the latest 200 recorded inference turns.
         Matched by trajectory ID, not by time. Unavailable or missing records do
@@ -104,7 +120,7 @@ function InferenceTimingRecord({ trajectoryId }: { trajectoryId: string }) {
             </p>
             {flow ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm tabular-nums">
+                <Table className="text-left tabular-nums">
                   <caption className="py-2 text-left">
                     Exclusive wall time: recorder-assigned overlapping spans are
                     counted once. Rounded to 0.1 ms; raw precision below.
@@ -129,7 +145,7 @@ function InferenceTimingRecord({ trajectoryId }: { trajectoryId: string }) {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </Table>
               </div>
             ) : (
               <p className="text-sm">No exclusive breakdown was recorded.</p>
@@ -175,7 +191,7 @@ export function TrajectoryRecord({ detail }: { detail: TrajectoryDetail }) {
       <InferenceTimingRecord key={trajectory.id} trajectoryId={trajectory.id} />
       {stages.length > 0 ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm tabular-nums">
+          <Table className="text-left tabular-nums">
             <caption className="sr-only">
               Stage timings relative to trace start
             </caption>
@@ -209,7 +225,7 @@ export function TrajectoryRecord({ detail }: { detail: TrajectoryDetail }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </div>
       ) : (
         <p className="text-sm">
@@ -217,7 +233,7 @@ export function TrajectoryRecord({ detail }: { detail: TrajectoryDetail }) {
         </p>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm tabular-nums">
+        <Table className="text-left tabular-nums">
           <caption className="py-2 text-left font-medium">
             All model-call timings, including calls outside the stage table
           </caption>
@@ -250,7 +266,7 @@ export function TrajectoryRecord({ detail }: { detail: TrajectoryDetail }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
       <p className="text-sm text-muted-foreground">
         Prompts and tool results may contain private conversation data. Inspect

@@ -417,14 +417,19 @@ function resolveReasoningEffort(
 ): ReasoningEffort | "none" | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (normalized) {
+  if (normalized === "none") {
     if (
-      normalized === "none" &&
       isCerebrasMode(runtime) &&
       modelName &&
       normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
     )
       return "none";
+    // "none" is a deliberate operator setting that only the documented
+    // endpoint above accepts on the wire. For every other model it resolves to
+    // that model's documented default below, silently: warning on every call
+    // for a recognized value is noise (live 2026-09-06: three warnings per
+    // Discord turn on gemma-4-31b, whose default already sends no field).
+  } else if (normalized) {
     if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
       return normalized as ReasoningEffort;
     }

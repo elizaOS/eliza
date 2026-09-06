@@ -57,6 +57,7 @@ import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
+	factClaimsEquivalent,
 	factLexicalSimilarity,
 	readStoredFactKeywords,
 } from "../fact-keywords.ts";
@@ -552,14 +553,34 @@ async function prepareFacts(
 	return { ...base, knownFacts };
 }
 
+/** `content.source` / `metadata.source` the MEMORY action stamps on facts it stores verbatim for the user. */
+const EXPLICIT_MEMORY_SOURCE = "MEMORY";
+
+function isExplicitMemoryFact(memory: Memory): boolean {
+	const metadataSource = (memory.metadata as { source?: unknown } | undefined)
+		?.source;
+	return (
+		metadataSource === EXPLICIT_MEMORY_SOURCE ||
+		memory.content?.source === EXPLICIT_MEMORY_SOURCE
+	);
+}
+
+/** Explicit user memories absorb only equivalent claims, never similar topics. */
 function findDedupTarget(
 	candidates: FactCandidate[],
+	claim: string,
 	targetValues: unknown[],
 	kind: FactKind,
 	category: string,
-): { memory: Memory; similarity: number } | null {
+): Memory | null {
 	let best: { memory: Memory; similarity: number } | null = null;
 	for (const candidate of candidates) {
+		if (isExplicitMemoryFact(candidate.memory)) {
+			if (factClaimsEquivalent(claim, candidate.memory.content.text ?? "")) {
+				return candidate.memory;
+			}
+			continue;
+		}
 		if (readFactKind(candidate.memory) !== kind) continue;
 		if (readCategory(candidate.memory) !== category) continue;
 		const similarity = factLexicalSimilarity(targetValues, [
@@ -572,7 +593,7 @@ function findDedupTarget(
 			}
 		}
 	}
-	return best;
+	return best?.memory ?? null;
 }
 
 interface ApplyContext {
@@ -682,12 +703,13 @@ async function applyAddDurable(
 	const targetValues = [op.claim, op.category, op.structured_fields, keywords];
 	const dedupTarget = findDedupTarget(
 		[...ctx.candidatePool, ...ctx.insertedThisRun],
+		op.claim,
 		targetValues,
 		"durable",
 		op.category,
 	);
 	if (dedupTarget) {
-		await applyStrengthenForMemory(ctx, dedupTarget.memory);
+		await applyStrengthenForMemory(ctx, dedupTarget);
 		return { added: false, strengthened: true };
 	}
 	const factId = await insertFact(ctx, {
@@ -725,12 +747,13 @@ async function applyAddCurrent(
 	const targetValues = [op.claim, op.category, op.structured_fields, keywords];
 	const dedupTarget = findDedupTarget(
 		[...ctx.candidatePool, ...ctx.insertedThisRun],
+		op.claim,
 		targetValues,
 		"current",
 		op.category,
 	);
 	if (dedupTarget) {
-		await applyStrengthenForMemory(ctx, dedupTarget.memory);
+		await applyStrengthenForMemory(ctx, dedupTarget);
 		return { added: false, strengthened: true };
 	}
 	const validAt =

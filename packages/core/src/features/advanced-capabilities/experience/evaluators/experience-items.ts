@@ -12,8 +12,10 @@
  * existing similar experiences and against each other, and dropped below the
  * auto-record confidence threshold.
  */
+
 import { logger } from "../../../../logger.ts";
 import { stringifyForDiagnostics } from "../../../../runtime/json-output.ts";
+import { renderStoredEnvelopesForPrompt } from "../../../../security/external-content";
 import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
@@ -456,7 +458,11 @@ export const experiencePatternEvaluator: Evaluator<
 			(memory) => !isSyntheticMemory(memory),
 		);
 		const conversationContext = recentMessages
-			.map((memory) => memory.content.text)
+			.map((memory) =>
+				typeof memory.content.text === "string"
+					? renderStoredEnvelopesForPrompt(memory.content.text)
+					: memory.content.text,
+			)
 			.filter(
 				(text): text is string => typeof text === "string" && text.length > 0,
 			)

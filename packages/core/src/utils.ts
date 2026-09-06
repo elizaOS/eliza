@@ -20,11 +20,12 @@
  * `export * from "./utils"` resolves to, so helpers under `utils/` that must be
  * reachable from the package are re-exported at the bottom.
  */
+
 import Handlebars from "handlebars";
 import z from "zod";
-
 import logger from "./logger";
 import { replaceIndexedNameTokens } from "./name-tokens";
+import { renderStoredEnvelopesForPrompt } from "./security/external-content";
 import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
@@ -365,8 +366,15 @@ export const addHeader = (header: string, body: string) => {
  * @param {number} visibleCount - Number of messages rendered in the block.
  * @returns {string} The annotated section header.
  */
+/**
+ * Prefix of the RECENT_MESSAGES conversation block heading. The post-turn
+ * evaluator uses it to recognise that the complete room conversation is
+ * already rendered in provider context and must not be embedded a second time.
+ */
+export const CONVERSATION_MESSAGES_HEADER_PREFIX = "# Conversation Messages (";
+
 export const conversationMessagesHeader = (visibleCount: number): string =>
-	`# Conversation Messages (${visibleCount} retained)`;
+	`${CONVERSATION_MESSAGES_HEADER_PREFIX}${visibleCount} retained)`;
 
 /**
  * Generates a string with random user names populated in a template.
@@ -528,7 +536,10 @@ export const formatMessages = ({
 			continue;
 		}
 
-		const messageText = (message.content as Content).text;
+		const rawMessageText = (message.content as Content).text;
+		const messageText = rawMessageText
+			? renderStoredEnvelopesForPrompt(rawMessageText)
+			: rawMessageText;
 		const reactedMessageText = (message.content as Content).reactedMessageText;
 		const messageActions = (message.content as Content).actions;
 		const messageThought = (message.content as Content).thought;

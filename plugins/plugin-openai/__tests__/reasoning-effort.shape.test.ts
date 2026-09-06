@@ -3,7 +3,7 @@
  * `providerOptions.openai.reasoningEffort` for the four valid efforts. Mocked
  * runtime.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -134,6 +134,50 @@ describe("Cerebras default reasoning effort", () => {
     expect(
       (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
     ).toBeUndefined();
+  });
+
+  it("treats an explicit 'none' as no reasoning field for gemma-4-31b without a per-call warning", () => {
+    // Live 2026-09-06: the operator pinned OPENAI_REASONING_EFFORT=none for
+    // the Qwen planner; every gemma-4-31b call then logged an "is not a valid
+    // reasoning effort" warning (three per Discord turn) while sending the
+    // same request it sends with the variable unset.
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    try {
+      const runtime = buildRuntime({
+        CEREBRAS_API_KEY: "csk-test",
+        OPENAI_REASONING_EFFORT: "none",
+      });
+      const opts = __INTERNAL_resolveProviderOptions(
+        { prompt: "hi" } as never,
+        runtime,
+        "gemma-4-31b"
+      );
+      expect(
+        (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+      ).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("keeps the documented 'low' default for gpt-oss-120b when 'none' is pinned, without warning", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    try {
+      const runtime = buildRuntime({
+        CEREBRAS_API_KEY: "csk-test",
+        OPENAI_REASONING_EFFORT: "none",
+      });
+      const opts = __INTERNAL_resolveProviderOptions(
+        { prompt: "hi" } as never,
+        runtime,
+        "gpt-oss-120b"
+      );
+      expect(opts?.openai).toMatchObject({ reasoningEffort: "low" });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("preserves an explicit reasoning effort for gemma-4-31b", () => {

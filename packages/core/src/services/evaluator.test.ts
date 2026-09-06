@@ -22,6 +22,7 @@ import {
 	ModelType,
 } from "../types";
 import { ChannelType } from "../types/primitives";
+import { conversationMessagesHeader } from "../utils";
 import { EvaluatorService, runPostTurnEvaluators } from "./evaluator";
 import { getRoomTranscript } from "./evaluator-transcript";
 
@@ -374,6 +375,94 @@ describe("EvaluatorService", () => {
 		expect(prompt).not.toContain("OWN COPY");
 		expect(prompt).toContain("STAGE1-PROVIDER-BLOB");
 		expect(runtime.getMemories).toHaveBeenCalledTimes(1);
+	});
+
+	it("points the transcript slot at the provider conversation block instead of embedding a second copy", async () => {
+		// Live 2026-09-06: the RECENT_MESSAGES block, the room transcript and a
+		// section copy put the same 450-row conversation into one prompt three
+		// times (107K tokens); the provider limit was reachable as the room grew.
+		const runtime = makeRuntime();
+		const transcript: Memory[] = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "I moved to Lisbon last week", source: "test" },
+			} as Memory,
+		];
+		runtime.getMemories = vi.fn(
+			async () => transcript,
+		) as AgentRuntime["getMemories"];
+		runtime.registerEvaluator({
+			name: "alpha",
+			description: "alpha evaluator",
+			providers: ["CONVERSATION_PROXIMITY"],
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: ({ shared }) =>
+				shared?.roomTranscriptRendered
+					? "alpha: see shared transcript"
+					: "alpha: OWN COPY",
+			parse: (output) => output as never,
+		});
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_modelType, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true } };
+		}) as AgentRuntime["useModel"];
+		const block = `${conversationMessagesHeader(1)}\n(12:00) Nubs: I moved to Lisbon last week`;
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: { providers: { RECENT_MESSAGES: { text: block } } },
+			text: `# Current Time\nnow\n${block}`,
+		});
+
+		expect(prompt.split("I moved to Lisbon last week")).toHaveLength(2);
+		expect(prompt.split(conversationMessagesHeader(1))).toHaveLength(2);
+		expect(prompt).toContain(
+			'rendered once below in Provider context under "# Conversation Messages (',
+		);
+		expect(prompt).toContain("alpha: see shared transcript");
+		expect(prompt).not.toContain("OWN COPY");
+	});
+
+	it("keeps the full room transcript when only a message quotes the conversation heading", async () => {
+		const runtime = makeRuntime();
+		const transcript: Memory[] = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "I moved to Lisbon last week", source: "test" },
+			} as Memory,
+		];
+		runtime.getMemories = vi.fn(
+			async () => transcript,
+		) as AgentRuntime["getMemories"];
+		runtime.registerEvaluator({
+			name: "alpha",
+			description: "alpha evaluator",
+			providers: ["CONVERSATION_PROXIMITY"],
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "alpha section",
+			parse: (output) => output as never,
+		});
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_modelType, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true } };
+		}) as AgentRuntime["useModel"];
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: `${conversationMessagesHeader(7)} quoted inside a user message`,
+		});
+
+		expect(prompt).toContain("I moved to Lisbon last week");
+		expect(prompt).not.toContain("rendered once below in Provider context");
 	});
 
 	it("merges active evaluator sections into one structured model call", async () => {

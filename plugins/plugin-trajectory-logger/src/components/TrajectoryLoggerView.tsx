@@ -10,7 +10,7 @@
  */
 
 import type { OverlayAppContext } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
@@ -158,12 +158,12 @@ export function TrajectoryLoggerView({
             Inspect a specific trajectory
           </label>
           <div className="flex flex-wrap gap-2">
-            <input
+            <Input
               id="trajectory-id"
               value={idInput}
               onChange={(event) => setIdInput(event.target.value)}
               placeholder="step-…"
-              className="min-w-0 flex-1 rounded-lg border border-border bg-background p-2 text-sm"
+              className="min-w-0 flex-1"
             />
             <Button type="submit" variant="outline" disabled={!idInput.trim()}>
               Load turn

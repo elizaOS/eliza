@@ -36,6 +36,7 @@ import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../utils/well-formed.ts";
+import { CONVERSATION_MESSAGES_HEADER_PREFIX } from "../utils.ts";
 import {
 	formatRecentMessages,
 	getRoomTranscript,
@@ -78,6 +79,21 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
 		// JSON is an explicit invalid result.
 		return null;
 	}
+}
+
+/**
+ * Whether the composed state carries the RECENT_MESSAGES conversation block:
+ * detected on that provider's own text, never on arbitrary state text, so a
+ * message quoting the heading cannot suppress the transcript.
+ */
+function hasProviderConversationBlock(state: State): boolean {
+	const providers = isRecord(state.data) ? state.data.providers : undefined;
+	const recent = isRecord(providers) ? providers.RECENT_MESSAGES : undefined;
+	return (
+		isRecord(recent) &&
+		typeof recent.text === "string" &&
+		recent.text.includes(CONVERSATION_MESSAGES_HEADER_PREFIX)
+	);
 }
 
 function mergeStates(base: State | undefined, providerState: State): State {
@@ -215,6 +231,14 @@ function buildPrompt(params: {
 		? state.data.actionResults
 		: undefined;
 	const providerContext = state.text.trim() || "(none)";
+	// The RECENT_MESSAGES provider renders the canonical complete room
+	// conversation (same retained rows, same hygiene and dedupe as
+	// getRoomTranscript, plus names, timestamps, attachments and actions). When
+	// that block is in provider context the room conversation is already in
+	// this prompt once; the transcript slot points at it instead of embedding a
+	// second, plainer copy (live 2026-09-06: three copies per call, 107K tokens,
+	// the provider limit reachable as the room grows).
+	const providerConversationRendered = hasProviderConversationBlock(state);
 	// The merged evaluator prompt uses complete model projections while the
 	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
@@ -228,13 +252,15 @@ function buildPrompt(params: {
 		// own copy (live 2026-09-05: five copies of the room history per call).
 		// A failed transcript read leaves sections on their own copies so the
 		// failure isolates per evaluator exactly as before.
-		roomTranscript:
-			params.roomTranscript === null
+		roomTranscript: providerConversationRendered
+			? `rendered once below in Provider context under "${CONVERSATION_MESSAGES_HEADER_PREFIX}N retained)" (complete, deduped, oldest first)`
+			: params.roomTranscript === null
 				? "(unavailable this turn)"
 				: formatRecentMessages(params.roomTranscript),
 	};
 	const shared = {
-		roomTranscriptRendered: params.roomTranscript !== null,
+		roomTranscriptRendered:
+			providerConversationRendered || params.roomTranscript !== null,
 		actionResultsText: sharedParts.actionResults,
 	};
 

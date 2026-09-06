@@ -1,10 +1,9 @@
-import type { InferenceTimingDevPayload } from "@elizaos/core";
-
 /**
  * Wire types and fetch wrappers for trajectory logger routes.
  * The core trajectory API may return larger payloads, but this client types only
  * the fields the widget reads and tolerates extra route fields.
  */
+import type { InferenceTimingDevPayload } from "@elizaos/core";
 
 export interface TrajectoryListItem {
   id: string;
