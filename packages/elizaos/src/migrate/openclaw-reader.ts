@@ -173,7 +173,40 @@ function readOptional<T>(
   }
 }
 
+/** Human-readable classification of a non-regular-file stat result. */
+function describeStatType(stat: fs.Stats): string {
+  if (stat.isDirectory()) return "directory";
+  if (stat.isBlockDevice()) return "block device";
+  if (stat.isCharacterDevice()) return "character device";
+  if (stat.isFIFO()) return "FIFO";
+  if (stat.isSocket()) return "socket";
+  return "non-file entry";
+}
+
+/**
+ * Read an OPTIONAL persona/memory source file, stat-guarding the type first.
+ *
+ * A genuinely absent path (`ENOENT`) is tolerated and returns `undefined`, so a
+ * partial home still migrates. A path that EXISTS is classified before the read:
+ * a non-regular-file source (directory, FIFO, socket, device) is rejected with
+ * `MigrationSourceReadError` instead of being handed to `readFileSync`. Without
+ * this guard a FIFO persona source blocks `readFileSync` waiting for a writer
+ * that never comes, hanging `migrate-agent` indefinitely; the guard converts
+ * that hang into an explicit typed failure before any archive artifact is
+ * written. `statSync` follows symlinks, so a symlink to a real file still reads.
+ */
 function readIfPresent(p: string): string | undefined {
+  const stat = statIfPresent(p);
+  if (stat === undefined) return undefined;
+  if (!stat.isFile()) {
+    // error-policy:J3 An existing non-regular-file source is invalid input, not
+    // absent data: reject it explicitly rather than blocking on readFileSync
+    // (a FIFO) or silently classifying the persona as missing.
+    throw new MigrationSourceReadError(
+      { path: p, operation: "read" },
+      new Error(`source is a ${describeStatType(stat)}, not a regular file`),
+    );
+  }
   return readOptional(p, "read", () =>
     normalizeEol(fs.readFileSync(p, "utf8")),
   );
