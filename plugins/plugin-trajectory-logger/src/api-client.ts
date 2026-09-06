@@ -8,6 +8,9 @@ export interface TrajectoryListItem {
   id: string;
   status: "active" | "completed" | "error";
   llmCallCount: number;
+  startTime?: number;
+  endTime?: number;
+  durationMs?: number;
 }
 
 export interface TrajectoryListResult {
@@ -22,6 +25,10 @@ export interface UILlmCall {
   purpose: string;
   actionType: string;
   stepType: string;
+  timestamp?: number;
+  latencyMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
 }
 
 export interface UIProviderAccess {
@@ -63,6 +70,14 @@ export interface TrajectoryDetail {
   providerAccesses: UIProviderAccess[];
   toolEvents?: UIToolEvent[];
   evaluationEvents?: UIEvaluationEvent[];
+  semanticStages?: {
+    stageId: string;
+    kind: string;
+    startedAt: number;
+    endedAt?: number;
+    latencyMs?: number;
+    payload: Record<string, unknown>;
+  }[];
 }
 
 function toWellFormedUnicodeLocal(text: string): string {
