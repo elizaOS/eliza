@@ -616,6 +616,13 @@ describe("desktop-session-prime", () => {
     expect(isLoopbackBase("http://192.168.1.100:3000")).toBe(false);
     expect(isLoopbackBase("http://example.com")).toBe(false);
     expect(isLoopbackBase("not-a-valid-url")).toBe(false);
+
+    // Defence-in-depth: scheme checks ensure only http: and https: are admitted
+    expect(isLoopbackBase("ftp://localhost/x")).toBe(false);
+    expect(isLoopbackBase("ws://localhost:3000")).toBe(false);
+    expect(isLoopbackBase("wss://localhost:3000")).toBe(false);
+    expect(isLoopbackBase("file://localhost/foo")).toBe(false);
+    expect(isLoopbackBase("https://localhost:5173")).toBe(true);
   });
 
   it("fails closed when external loopback auth bridge produces no session", async () => {
@@ -719,6 +726,54 @@ describe("desktop-session-prime", () => {
 
       expect(result).toBe(false);
       expect(injectApiBaseIntoWindows).toHaveBeenCalledTimes(1);
+    });
+
+    it("marks agent ready when reachability is verified", async () => {
+      seedPersistedSession();
+      const setAgentReady = vi.fn();
+      await initializeExternalDesktopRuntimeSession({
+        mode: "external",
+        externalApiBase: "http://127.0.0.1:3000",
+        externalReachability: "verified",
+        currentWindow: { webview: { loadURL: vi.fn(), rpc: undefined } },
+        publishAgentApiBase: vi.fn(),
+        collectOpenWindows: () => [],
+        setAgentReady,
+        resolveRendererUrl: async () => "http://localhost:5173/app",
+        injectApiBaseIntoWindows: vi.fn(),
+      });
+      expect(setAgentReady).toHaveBeenCalledWith(true);
+    });
+
+    it("marks agent not ready (fails closed) when reachability is unavailable or omitted", async () => {
+      seedPersistedSession();
+      const setAgentReadyUnavailable = vi.fn();
+      await initializeExternalDesktopRuntimeSession({
+        mode: "external",
+        externalApiBase: "http://127.0.0.1:3000",
+        externalReachability: "unavailable",
+        currentWindow: { webview: { loadURL: vi.fn(), rpc: undefined } },
+        publishAgentApiBase: vi.fn(),
+        collectOpenWindows: () => [],
+        setAgentReady: setAgentReadyUnavailable,
+        resolveRendererUrl: async () => "http://localhost:5173/app",
+        injectApiBaseIntoWindows: vi.fn(),
+      });
+      expect(setAgentReadyUnavailable).toHaveBeenCalledWith(false);
+
+      const setAgentReadyOmitted = vi.fn();
+      await initializeExternalDesktopRuntimeSession({
+        mode: "external",
+        externalApiBase: "http://127.0.0.1:3000",
+        // externalReachability omitted
+        currentWindow: { webview: { loadURL: vi.fn(), rpc: undefined } },
+        publishAgentApiBase: vi.fn(),
+        collectOpenWindows: () => [],
+        setAgentReady: setAgentReadyOmitted,
+        resolveRendererUrl: async () => "http://localhost:5173/app",
+        injectApiBaseIntoWindows: vi.fn(),
+      });
+      expect(setAgentReadyOmitted).toHaveBeenCalledWith(false);
     });
   });
 });

@@ -1881,7 +1881,7 @@ function injectApiBase(win: BrowserWindow): void {
         ) ??
         "",
     );
-    setAgentReady(runtimeResolution.externalReachability !== "unavailable");
+    setAgentReady(runtimeResolution.externalReachability === "verified");
     return;
   }
 

@@ -243,7 +243,7 @@ export async function initializeExternalDesktopRuntimeSession(
     const apiToken =
       resolveApiToken?.(env) ?? resolveQualifiedToken?.(externalApiBase) ?? "";
     publishAgentApiBase(rendererBase, apiToken, collectOpenWindows());
-    setAgentReady(externalReachability !== "unavailable");
+    setAgentReady(externalReachability === "verified");
     await reloadRendererAfterDesktopSessionPrime({
       sessionPrimed,
       backendGeneration: `external:${externalApiBase}`,

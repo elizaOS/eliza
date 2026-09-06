@@ -494,6 +494,7 @@ function waitForSocketConsumption(
 export function isLoopbackBase(apiBase: string): boolean {
   try {
     const url = new URL(apiBase);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
     const host = url.hostname.toLowerCase();
     return (
       host === "127.0.0.1" ||
