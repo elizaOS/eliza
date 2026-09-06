@@ -1,4 +1,4 @@
-/** Regression: empty/malformed yt-dlp subtitle and caption arrays must degrade through getTranscript's fallback order, never throw. */
+/** Regression: empty/malformed yt-dlp subtitle and caption arrays must degrade through getTranscript's fallback order (never throw), and a url-less leading variant must not discard the usable track behind it. */
 
 import type {
   IAgentRuntime,
@@ -128,6 +128,36 @@ describe("VideoService.getTranscript empty-caption degradation", () => {
       runtime,
     );
     expect(result.text).toBe("mock audio transcript");
+  });
+
+  it("skips a leading url-less subtitles.en variant and consumes the next usable one", async () => {
+    const { service } = createServiceWithYtDlp({
+      title: "Multi Variant Subs",
+      channel: "chan",
+      description: "desc",
+      categories: ["Music"],
+      subtitles: {
+        en: [{}, { url: "https://caption.example/en.srt" }],
+      },
+    });
+    const srt = ["1", "00:00:01,000 --> 00:00:04,000", "second variant"].join(
+      "\n",
+    );
+    const downloadSRT = vi
+      .spyOn(
+        service as unknown as { downloadSRT: (u: string) => Promise<string> },
+        "downloadSRT",
+      )
+      .mockResolvedValue(srt);
+    const runtime = createRuntime();
+
+    const result = await service.processVideo(
+      "https://youtu.be/multi-variant-subs",
+      runtime,
+    );
+
+    expect(downloadSRT).toHaveBeenCalledWith("https://caption.example/en.srt");
+    expect(result.text).toBe("second variant");
   });
 
   it("still consumes a populated subtitles.en track ahead of the fallbacks", async () => {
