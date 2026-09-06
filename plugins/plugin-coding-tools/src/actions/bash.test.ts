@@ -953,7 +953,7 @@ describeIfPosix("shellAction", () => {
     );
   });
 
-  it("spills complete redacted Unicode streams and returns a bounded projection", async () => {
+  it("delivers complete redacted Unicode streams to the planner and artifact reader", async () => {
     const secret = "marigold9-complete-shell-secret";
     const stdout = `${"🙂α\n".repeat(7_000)}${secret}\nstdout-tail`;
     const stderr = `${"界β\n".repeat(8_000)}${secret}\nstderr-tail`;
@@ -972,12 +972,11 @@ describeIfPosix("shellAction", () => {
     const redactedStdout = stdout.replace(secret, "[REDACTED:TEST_SECRET]");
     const redactedStderr = stderr.replace(secret, "[REDACTED:TEST_SECRET]");
     expect(result.success).toBe(true);
-    expect(result.text).toContain("model projection omitted");
-    expect(result.text).toContain("stdout-tail");
-    expect(result.text).toContain("stderr-tail");
+    expect(result.text).toContain(redactedStdout);
+    expect(result.text).toContain(redactedStderr);
     const data = result.data as Record<string, unknown>;
     expect(data.output_truncated).toBe(false);
-    expect(data.output_projected).toBe(true);
+    expect(data.output_projected).toBe(false);
     expect(data.source_loss).toBe(false);
     expect(data.stdout_source_bytes).toBe(Buffer.byteLength(stdout, "utf8"));
     expect(data.stderr_source_bytes).toBe(Buffer.byteLength(stderr, "utf8"));
