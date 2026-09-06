@@ -230,7 +230,7 @@ export const recentConversationsProvider: Provider = {
         [],
         relevanceKeywords,
       );
-      runtime.logger?.info?.(
+      runtime.logger?.warn?.(
         {
           src: "provider:recent-conversations",
           eagerRelevant,
