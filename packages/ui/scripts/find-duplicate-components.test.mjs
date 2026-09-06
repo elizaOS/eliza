@@ -250,3 +250,28 @@ test("the markdown report exposes classifications and the molecular queue", () =
     /packages\/ui\/src\/components\/shared\/ViewHeader\.tsx/,
   );
 });
+
+test("compiler output beside typed source does not change the maintained inventory", () => {
+  const directory = fs.mkdtempSync(
+    fileURLToPath(new URL("../src/inventory-emit-", import.meta.url)),
+  );
+  const source =
+    'import { createElement } from "react"; export function View() { return createElement("div", null, "content"); }';
+  const typed = path.join(directory, "typed.tsx");
+  const authored = path.join(directory, "authored.js");
+  const emitted = path.join(directory, "typed.js");
+  try {
+    fs.writeFileSync(typed, source);
+    fs.writeFileSync(authored, source);
+    const inventory = () =>
+      listMaintainedSourceFiles()
+        .filter((file) => file.startsWith(directory))
+        .sort();
+    const before = inventory();
+    assert.deepEqual(before, [authored, typed].sort());
+    fs.writeFileSync(emitted, source);
+    assert.deepEqual(inventory(), before);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
