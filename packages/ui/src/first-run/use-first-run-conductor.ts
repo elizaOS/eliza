@@ -1196,6 +1196,7 @@ export function useFirstRunConductor(): void {
       (handled) => {
         busyRef.current = false;
         if (handled) return;
+        settingsRecoveryPendingRef.current = false;
         if (draftRef.current.runtime === "cloud") startCloudProvisionFlow();
         else startProviderFinish();
       },
@@ -1391,6 +1392,7 @@ export function useFirstRunConductor(): void {
 
       if (group === "runtime") {
         if (id !== "cloud" && id !== "local" && id !== "remote") return true;
+        settingsRecoveryPendingRef.current = false;
         // Switching AWAY from a previously-picked (possibly partially
         // committed) local runtime must unwind it: clear the persisted mode +
         // local active server and stop a service a failed finish may have
@@ -1610,6 +1612,7 @@ export function useFirstRunConductor(): void {
           return true;
         }
         if (id === "restart" && runtimeChooserEnabled) {
+          settingsRecoveryPendingRef.current = false;
           // Re-offer a FRESH (unlocked) runtime choice so the user can switch
           // how their agent runs after a failed finish — unwinding whatever
           // the failed local path committed first (#14390), so switching to
