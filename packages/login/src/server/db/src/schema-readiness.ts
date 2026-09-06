@@ -18,36 +18,13 @@ export async function initializeLoginSchema(): Promise<void> {
   const skipsMigrations = skip === "1" || skip === "true";
   const mode =
     process.env.STEWARD_MIGRATION_READINESS_MODE?.trim() || "drizzle";
-  if (mode !== "drizzle" && mode !== "steward-owned") {
-    throw new ElizaError(
-      "STEWARD_MIGRATION_READINESS_MODE must be drizzle or steward-owned",
-      {
-        code: "LOGIN_MIGRATION_CONFIG_INVALID",
-      },
-    );
+  if (mode !== "drizzle") {
+    throw new ElizaError("STEWARD_MIGRATION_READINESS_MODE must be drizzle", {
+      code: "LOGIN_MIGRATION_CONFIG_INVALID",
+    });
   }
-  let ownedSchema: "public" | "steward" | undefined;
-  if (mode === "steward-owned") {
-    const schema = process.env.STEWARD_CORE_REPAIR_EXPECTED_SCHEMA;
-    if (!skipsMigrations || (schema !== "public" && schema !== "steward")) {
-      throw new ElizaError(
-        "Operator-managed schemas require SKIP_MIGRATIONS=1 and STEWARD_CORE_REPAIR_EXPECTED_SCHEMA=public or steward",
-        {
-          code: "LOGIN_MIGRATION_CONFIG_INVALID",
-        },
-      );
-    }
-    ownedSchema = schema;
-  }
-  if (mode === "drizzle" && !skipsMigrations) await runMigrations();
+  if (!skipsMigrations) await runMigrations();
   try {
-    if (ownedSchema !== undefined) {
-      const { inspectStewardReleaseReadiness } = await import(
-        "./release-readiness"
-      );
-      await inspectStewardReleaseReadiness({ expectedSchema: ownedSchema });
-      return;
-    }
     const client = createPostgresClient();
     try {
       const rows = await client<{ hash: string; createdAt: string }[]>`

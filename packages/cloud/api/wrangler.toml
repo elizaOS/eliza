@@ -366,16 +366,15 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 # Required secrets — set via `wrangler secret put KEY` (or run
 # packages/cloud/scripts/admin/cf-secrets-migrate.mjs which iterates a .env file).
 #
-# CANONICAL LIST (cross-reference cloud/packages/apps/api/MIGRATION_NOTES.md once Agent B
-# publishes it; if names diverge, Agent B's c.env.X usage wins — update this
-# file and leave a note in cloud/INFRA.md).
+# Login credentials retain their existing names to preserve deployed sessions
+# and encrypted keys. LOGIN_API_URL selects the owned identity service.
 #
 #   DATABASE_URL                       Railway Postgres (Worker reaches it via the HYPERDRIVE binding;
 #       DATABASE_URL is the origin string for the sidecar/scripts — public-proxy DSNs need
 #       ?sslmode=no-verify or DATABASE_SSL_NO_VERIFY=true for direct node-pg consumers)
 #   REDIS_URL                          Railway TCP Redis for non-Worker consumers (rediss://...)
-#   STEWARD_API_URL                    Optional Steward base URL override;
-#       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
+#   LOGIN_API_URL                      Base URL of the owned @elizaos/login service
+#   STEWARD_API_URL                    Legacy base URL alias during deployment cutover
 #   STEWARD_JWT_SECRET                 Canonical HS256 secret for Steward JWT verify (jose); MUST match Steward host
 #   STEWARD_SESSION_SECRET             Deprecated compatibility alias for STEWARD_JWT_SECRET
 #   REMOTE_PAIRING_HMAC_SECRET          Dedicated 32+ byte HMAC key for short-lived remote pairing verifiers

@@ -41,13 +41,11 @@ deployment's existing values. `PORT` defaults to 3200; `LOGIN_BIND_HOST` default
 to loopback. Provider credentials and relying-party configuration remain
 deployment settings.
 
-Restricted runtime roles use `SKIP_MIGRATIONS=1`: startup verifies the migration
-ledger without attempting schema writes. Deployments with the separate existing
-production ledgers also retain `STEWARD_MIGRATION_READINESS_MODE=steward-owned`
-and `STEWARD_CORE_REPAIR_EXPECTED_SCHEMA=public` or `steward`. That mode checks
-the immutable repair catalog, authentication migration chain and physical passkey
-provenance before listening. Apply migrations through the deployment's migration
-role; a missing or inconsistent schema prevents startup.
+Restricted runtime roles use `SKIP_MIGRATIONS=1`: startup verifies every migration
+hash and timestamp without attempting schema writes. Apply migrations through
+the deployment's migration role; a missing or inconsistent ledger prevents
+startup. Existing `STEWARD_MIGRATION_READINESS_MODE=drizzle` configuration remains
+accepted.
 
 The PostgreSQL integration suite creates and removes a separate database on a
 local PostgreSQL server. Run it with `LOGIN_TEST_DATABASE_URL` set to that
