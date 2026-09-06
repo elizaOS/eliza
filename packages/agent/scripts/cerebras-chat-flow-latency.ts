@@ -42,6 +42,7 @@ import {
   type ProviderWireEvidence,
   requireRealEmbeddingConfig,
   runChatCondition,
+  verifyCacheExperimentWire,
 } from "./cerebras-chat-flow-experiment.ts";
 
 const DEFAULT_SAMPLES = 30;
@@ -134,6 +135,7 @@ export interface ModelInputContext {
 export interface ModelInputEvidence {
   context: ModelInputContext | null;
   modelType: string;
+  experimentOutcome?: "applied" | "rejected";
   prompt?: string;
   messages?: unknown;
   promptSegments?: unknown;
@@ -643,6 +645,18 @@ async function main(): Promise<void> {
     () => modelContext.getStore() ?? null,
     (evidence) => wireEvidence.push(evidence),
   );
+  const returnedChatResponses: Array<{
+    context: ModelInputContext;
+    text: string;
+    streamedText: string;
+  }> = [];
+  const modelInputs: ModelInputEvidence[] = [];
+  const modelExecutions: Array<{
+    modelType: string;
+    context: ModelInputContext | null;
+    durationMs: number;
+    outcome: "success" | "error";
+  }> = [];
   try {
     if (bootNative) {
       process.stderr.write(
@@ -661,13 +675,6 @@ async function main(): Promise<void> {
         context: modelContext.getStore() ?? null,
       });
     });
-    const modelInputs: ModelInputEvidence[] = [];
-    const modelExecutions: Array<{
-      modelType: string;
-      context: ModelInputContext | null;
-      durationMs: number;
-      outcome: "success" | "error";
-    }> = [];
     const measuredUseModel = runtime.useModel.bind(runtime);
     runtime.useModel = (async (modelType, params, provider) => {
       const activeModelInputContext = modelContext.getStore() ?? null;
@@ -678,24 +685,29 @@ async function main(): Promise<void> {
       const startedAt = performance.now();
       let outcome: "success" | "error" = "error";
       try {
-        const measuredParams = isTextModel
-          ? applyCacheExperiment(params, {
+        let measuredParams = params;
+        if (isTextModel) {
+          let experimentOutcome: "applied" | "rejected" = "rejected";
+          try {
+            measuredParams = applyCacheExperiment(params, {
               mode: cacheMode as CacheExperimentMode,
               keyCapabilityConfirmed,
               agentId: runtime.agentId,
               conversationId: activeModelInputContext?.roomId ?? roomId,
               model,
               stage: String(modelType),
-            })
-          : params;
-        if (isTextModel) {
-          modelInputs.push(
-            captureModelInput(
-              modelType,
-              measuredParams,
-              activeModelInputContext,
-            ),
-          );
+            });
+            experimentOutcome = "applied";
+          } finally {
+            modelInputs.push({
+              ...captureModelInput(
+                modelType,
+                measuredParams,
+                activeModelInputContext,
+              ),
+              experimentOutcome,
+            });
+          }
         }
         const result = await measuredUseModel(
           modelType,
@@ -819,6 +831,11 @@ async function main(): Promise<void> {
       );
       const wallMs = performance.now() - startedAt;
       const streamedText = streamed.join("");
+      returnedChatResponses.push({
+        context: { ...context },
+        text: result.text,
+        streamedText,
+      });
       try {
         verifyProofResponse(result.text, proof);
         verifyProofResponse(streamedText, proof);
@@ -1188,6 +1205,10 @@ async function main(): Promise<void> {
         throw new Error(`Missing actual SDK wire request for ${turn.proof}`);
       }
     }
+    const validatedWireRequests = verifyCacheExperimentWire(
+      wireEvidence,
+      cacheMode,
+    );
     const report = {
       generatedAt: new Date().toISOString(),
       sourceRevision,
@@ -1197,7 +1218,11 @@ async function main(): Promise<void> {
       reasoningEffort:
         process.env.OPENAI_REASONING_EFFORT?.trim() || "provider-default",
       embedding: { ...embedding, nativeProvenance },
-      cacheExperiment: { mode: cacheMode, keyCapabilityConfirmed },
+      cacheExperiment: {
+        mode: cacheMode,
+        keyCapabilityConfirmed,
+        validatedWireRequests,
+      },
       workload: {
         condition,
         requestedIdleMs: idleMs,
@@ -1296,6 +1321,9 @@ async function main(): Promise<void> {
             cacheMode,
             embedding: { ...embedding, nativeProvenance },
             wireEvidence,
+            modelInputs,
+            modelExecutions,
+            returnedChatResponses,
             error: error instanceof Error ? error.message : String(error),
           }),
           null,

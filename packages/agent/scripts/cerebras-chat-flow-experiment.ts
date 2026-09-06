@@ -157,6 +157,34 @@ export interface ProviderWireEvidence {
   outcome: "response" | "error";
 }
 
+/** Reject an experiment whose effective SDK request contradicts the selected hint mode. */
+export function verifyCacheExperimentWire(
+  evidence: readonly ProviderWireEvidence[],
+  mode: CacheExperimentMode,
+): number {
+  const textRequests = evidence.filter((wire) => wire.kind === "text");
+  if (textRequests.length === 0)
+    throw new Error("Cache experiment has no text wire requests");
+  for (const wire of textRequests) {
+    const request = optionsRecord(wire.request);
+    if (mode === "automatic" && Object.hasOwn(request, "prompt_cache_key")) {
+      throw new Error(
+        "Automatic cache experiment was overwritten before SDK dispatch",
+      );
+    }
+    if (
+      mode === "conversation" &&
+      (typeof request.prompt_cache_key !== "string" ||
+        !/^experiment:v1:[a-f0-9]{64}$/.test(request.prompt_cache_key))
+    ) {
+      throw new Error(
+        "Conversation cache experiment was overwritten or omitted before SDK dispatch",
+      );
+    }
+  }
+  return textRequests.length;
+}
+
 /** Observes the actual SDK fetch boundary without consuming or replacing response streams. */
 export function measuredProviderFetch(
   originalFetch: typeof fetch,
