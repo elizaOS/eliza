@@ -1002,6 +1002,28 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText).not.toHaveBeenCalled();
   });
 
+  it("updates capture routing when Cloud speech becomes available or disconnects", async () => {
+    appMock.value.elizaCloudConnected = true;
+    appMock.value.elizaCloudVoiceProxyAvailable = false;
+    const { result, rerender } = renderHook(() => useShellController());
+
+    await act(async () => result.current.startRecording("dictate"));
+    expect(lastCaptureOpts?.cloudConnected).toBe(false);
+    await act(async () => result.current.stopRecording());
+
+    appMock.value.elizaCloudVoiceProxyAvailable = true;
+    rerender();
+    await act(async () => result.current.startRecording("dictate"));
+    expect(lastCaptureOpts?.cloudConnected).toBe(true);
+    await act(async () => result.current.stopRecording());
+
+    appMock.value.elizaCloudConnected = false;
+    rerender();
+    await act(async () => result.current.startRecording("dictate"));
+    expect(lastCaptureOpts?.cloudConnected).toBe(false);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+
   it("converse capture (hands-free) sends the transcript as a VOICE_DM", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {
@@ -1947,6 +1969,34 @@ describe("useShellController — mic capture-failure notice", () => {
     expect(tone).toBe("error");
     // Recording state is cleaned up (not stuck "on").
     expect(result.current.recording).toBe(false);
+  });
+
+  it("ends hands-free when the capture reports an asynchronous failure", async () => {
+    let options: VoiceCaptureFactoryOptions | undefined;
+    createVoiceCaptureMock.mockImplementation((opts) => {
+      options = opts;
+      return {
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+        dispose: vi.fn(),
+        getAnalyser: vi.fn(() => null),
+      } as never;
+    });
+    const { result } = renderHook(() => useShellController());
+    await act(async () => result.current.toggleHandsFree());
+    await flushCaptureStart();
+    expect(result.current.handsFree).toBe(true);
+
+    const recognitionError = new Error("SpeechRecognition error: not-allowed");
+    recognitionError.name = "SpeechRecognitionError";
+    act(() => options?.onStateChange?.("error", recognitionError));
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.recording).toBe(false);
+    expect(result.current.micPermission).not.toBe("denied");
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+    await flushCaptureStart();
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
   });
 
   it("distinguishes a missing device (NotFoundError) from a denial", async () => {

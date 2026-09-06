@@ -1,7 +1,6 @@
 /**
- * VoiceTierBanner — device-tier card shown in first-run and at the top of
- * Settings → Voice. Renders the hardware classification (MAX / GOOD / OKAY /
- * POOR); the caller computes and supplies the `tier`.
+ * Displays hardware suitability for local voice models. The supplied tier does
+ * not establish installed models, active routing, or measured response latency.
  */
 
 import { AlertTriangle, BadgeCheck, Gauge, Sparkles } from "lucide-react";
@@ -31,27 +30,30 @@ const TIER_COPY: Record<
   }
 > = {
   MAX: {
-    title: "Local voice runs at full speed.",
-    description: "Recognition, the model, and speech all stay loaded together.",
+    title: "Strong hardware for local voice.",
+    description:
+      "This hardware can support larger voice models together. Models still need to be installed and configured.",
     tone: "accent",
     icon: Sparkles,
   },
   GOOD: {
-    title: "Local voice runs well here.",
-    description: "Models load on demand and respond in about half a second.",
+    title: "Hardware suitable for local voice.",
+    description:
+      "Local voice models can run on this hardware. Install and configure them before using local voice.",
     tone: "ok",
     icon: BadgeCheck,
   },
   OKAY: {
-    title: "Local voice runs, but slowly.",
-    description: "Expect 2-5 seconds before the agent responds.",
+    title: "Limited hardware for local voice.",
+    description:
+      "Smaller local models may work better. Response time depends on the models and current workload.",
     tone: "warn",
     icon: Gauge,
   },
   POOR: {
-    title: "Voice routes through Eliza Cloud.",
+    title: "Cloud voice recommended for this hardware.",
     description:
-      "This device is below the specs for local voice, so it uses the cloud.",
+      "This hardware may struggle with local voice models. Connect a Cloud speech provider to use Cloud voice.",
     tone: "danger",
     icon: AlertTriangle,
   },

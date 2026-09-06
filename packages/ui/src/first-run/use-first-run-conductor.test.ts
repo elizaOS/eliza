@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
 
 const mocks = vi.hoisted(() => ({
+  openDesktopSettingsWindow: vi.fn(async () => undefined),
   client: {
     listLocalAgentBackups: vi.fn(
       async (): Promise<LocalAgentBackupMetadata[]> => [],
@@ -55,6 +56,8 @@ const mocks = vi.hoisted(() => ({
     ),
     submitFirstRun: vi.fn(async () => undefined),
     getFirstRunStatus: vi.fn(async () => ({ complete: false })),
+    getStatus: vi.fn(async () => ({ state: "not_started", canRespond: false })),
+    startAgent: vi.fn(async () => ({ state: "running", canRespond: true })),
     getBaseUrl: vi.fn(() => ""),
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
@@ -89,9 +92,20 @@ Object.assign(mocks.client, {
   ensurePersonalDedicatedEliza: mocks.client.getPersonalSharedEliza,
 });
 
+vi.mock("../utils/desktop-workspace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/desktop-workspace")>()),
+  openDesktopSettingsWindow: mocks.openDesktopSettingsWindow,
+}));
+
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
   return { ...actual, client: mocks.client };
+});
+
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../bridge/electrobun-rpc")>();
+  return { ...actual, getDesktopRuntimeMode: async () => ({ mode: "local" }) };
 });
 
 vi.mock("../api/client-cloud", async (importOriginal) => {
@@ -357,6 +371,7 @@ async function waitForTurn(
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  mocks.openDesktopSettingsWindow.mockResolvedValue(undefined);
   // jsdom's window.open is unimplemented and logs a console error the setup
   // gate would flag; the flow launchers claim a real popup on every runtime /
   // provider pick, so default it to the popup-blocked (null) signal. Tests
@@ -1018,6 +1033,152 @@ describe("useFirstRunConductor", () => {
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
     unmount();
   });
+
+  it("keeps native Settings recovery retryable without declaring unfinished setup complete", async () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+      new Error("Couldn't reach Eliza Cloud"),
+    );
+    const spies = seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+      ).toBe(true);
+    });
+    mocks.openDesktopSettingsWindow.mockRejectedValueOnce(
+      new Error("Window unavailable"),
+    );
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.text.includes("Settings could not open"),
+        ),
+      ).toBe(true);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.text.includes("Finish configuring your connection"),
+        ),
+      ).toBe(true);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(mocks.openDesktopSettingsWindow).toHaveBeenCalledTimes(2);
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
+    unmount();
+  });
+
+  it.each([
+    { initialState: "not_started", ready: true, starts: 1 },
+    { initialState: "not_started", ready: false, starts: 1 },
+    { initialState: "running", ready: true, starts: 0 },
+    { initialState: "starting", ready: false, starts: 0 },
+  ])(
+    "reconciles Settings recovery ($initialState, ready=$ready)",
+    async ({ initialState, ready, starts }) => {
+      windowWithElectrobun.__electrobunWindowId = 1;
+      mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+        new Error("Cloud needs credits"),
+      );
+      const spies = seedAppStore();
+      const { transcript, turn, unmount } = renderConductor();
+      await waitForTurn(turn, "first-run:greeting");
+      tryHandleFirstRunAction("__first_run__:runtime:cloud");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+        ).toBe(true),
+      );
+      tryHandleFirstRunAction("__first_run__:error:settings");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) =>
+            m.text.includes("Finish configuring your connection"),
+          ),
+        ).toBe(true),
+      );
+      mocks.client.getFirstRunStatus.mockResolvedValueOnce({ complete: true });
+      mocks.client.getStatus.mockResolvedValueOnce({
+        state: initialState,
+        canRespond: initialState === "running" && ready,
+      });
+      if (starts)
+        mocks.client.getStatus.mockResolvedValueOnce({
+          state: "running",
+          canRespond: ready,
+        });
+      const priorCloudCalls =
+        mocks.client.getPersonalSharedEliza.mock.calls.length;
+      tryHandleFirstRunAction("__first_run__:error:retry");
+      tryHandleFirstRunAction("__first_run__:error:retry");
+      if (ready) {
+        await waitFor(() =>
+          expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+        );
+      } else {
+        await waitFor(() =>
+          expect(
+            transcript.current.some((m) =>
+              m.text.includes("not ready to answer"),
+            ),
+          ).toBe(true),
+        );
+        expect(spies.completeFirstRun).not.toHaveBeenCalled();
+      }
+      expect(mocks.client.startAgent).toHaveBeenCalledTimes(starts);
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(
+        priorCloudCalls,
+      );
+      expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+      unmount();
+    },
+  );
+
+  it.each(["error:retry", "runtime:cloud"])(
+    "resumes Cloud after leaving Settings without a configured local runtime (%s)",
+    async (action) => {
+      windowWithElectrobun.__electrobunWindowId = 1;
+      mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+        new Error("Cloud needs credits"),
+      );
+      seedAppStore();
+      const { transcript, turn, unmount } = renderConductor();
+      await waitForTurn(turn, "first-run:greeting");
+      tryHandleFirstRunAction("__first_run__:runtime:cloud");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+        ).toBe(true),
+      );
+      tryHandleFirstRunAction("__first_run__:error:settings");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) =>
+            m.text.includes("Finish configuring your connection"),
+          ),
+        ).toBe(true),
+      );
+      localStorage.removeItem("steward_session_token");
+      mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+      seedAppStore({ elizaCloudConnected: false });
+      tryHandleFirstRunAction(`__first_run__:${action}`);
+      await waitForTurn(turn, "first-run:cloud-oauth");
+      localStorage.setItem("steward_session_token", "cloud-token");
+      mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+      seedAppStore({ elizaCloudConnected: true });
+      await waitForTurn(turn, "first-run:tutorial");
+      expect(mocks.client.startAgent).not.toHaveBeenCalled();
+      expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+      unmount();
+    },
+  );
 
   it("a persistent finish 404 does NOT re-loop the runtime question: the error turn stays distinct, offers retry, and 'Configure in Settings' escapes", async () => {
     // Simulate the reported bug: POST /api/first-run always 404s ("Not found").
@@ -2776,7 +2937,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await act(async () => vi.advanceTimersByTimeAsync(50));
     expect(turn("first-run:cloud-login-waiting")?.text).toContain(
-      "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+      "Preparing Cloud sign-in… Complete sign-in in your browser when it opens. You can retry here if it does not open.",
     );
     expect(turn("first-run:cloud-login-waiting")?.text).toContain(
       "__first_run__:cloud-login:retry=Open sign-in again",

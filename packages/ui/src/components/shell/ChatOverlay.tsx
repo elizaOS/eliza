@@ -1009,7 +1009,15 @@ function SheetGrabber({
         aria-label={open ? "drag down to close chat" : "drag up to open chat"}
         data-testid="chat-sheet-grabber"
         data-open={open ? "true" : "false"}
+        onClick={(event) => {
+          // Assistive activation has no pointer sequence. Pointer taps already
+          // toggle through the gesture binding and must not be replayed here.
+          if (disabled || event.detail !== 0) return;
+          if (open) onClose();
+          else onOpen();
+        }}
         onKeyDown={(e) => {
+          if (disabled) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             if (open) onClose();
@@ -1431,12 +1439,16 @@ export function ChatOverlay({
   // handlers.
   const {
     handleChatEdit,
+    elizaCloudLoginFallbackUrl,
+    cloudLoginHasError,
     handleSelectConversation,
     loadConversationMessagesAround,
   } = useAppSelectorShallow((s) => ({
     // Editing a persisted turn must truncate and replace the original branch;
     // sending the corrected text as a fresh turn leaves the typo in history.
     handleChatEdit: s.handleChatEdit,
+    elizaCloudLoginFallbackUrl: s.elizaCloudLoginFallbackUrl,
+    cloudLoginHasError: Boolean(s.elizaCloudLoginError),
     // Search-jump (#14279): select the hit's conversation, then (if the hit is
     // older than the loaded recent window) load a window centered on it before
     // scrolling. Inert no-ops in stories/tests with no AppContext.
@@ -1623,16 +1635,23 @@ export function ChatOverlay({
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
   const cloudLoginWaiting = React.useMemo(() => {
-    if (!firstRunOpen) return false;
+    if (
+      !firstRunOpen ||
+      cloudLoginHasError ||
+      typeof elizaCloudLoginFallbackUrl !== "string" ||
+      !elizaCloudLoginFallbackUrl
+    )
+      return false;
     // The conductor keeps earlier setup turns in transcript history and can
     // refresh one in place. Only the newest semantic first-run state may
     // minimize the sheet; a later tutorial/error/status must take ownership.
     const activeMessage = selectSemanticNewestFirstRunMessage(messages);
     return (
       activeMessage?.id === "first-run:cloud-login-waiting" &&
-      activeMessage.content.startsWith("Waiting for sign-in in the browser")
+      (activeMessage.content.startsWith("Preparing Cloud sign-in") ||
+        activeMessage.content.startsWith("Waiting for sign-in in the browser"))
     );
-  }, [firstRunOpen, messages]);
+  }, [firstRunOpen, messages, elizaCloudLoginFallbackUrl, cloudLoginHasError]);
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);

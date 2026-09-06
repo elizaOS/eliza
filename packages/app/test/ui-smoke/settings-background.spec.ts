@@ -6,6 +6,7 @@ import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import sharp from "sharp";
+import type { ModelHubSnapshot } from "../../../ui/src/api/client-local-inference";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -133,7 +134,10 @@ async function busyWallpaperDataUrl(): Promise<string> {
   return `data:image/jpeg;base64,${buf.toString("base64")}`;
 }
 
-async function installSettingsBackgroundRoutes(page: Page): Promise<void> {
+async function installSettingsBackgroundRoutes(
+  page: Page,
+  hubOverrides: Partial<ModelHubSnapshot> = {},
+): Promise<void> {
   await installDefaultAppRoutes(page);
 
   await page.route("**/api/config", async (route) => {
@@ -173,6 +177,13 @@ async function installSettingsBackgroundRoutes(page: Page): Promise<void> {
   // Local-inference shell-level GETs — the booted zero-key stack answers 501,
   // which the diagnostics guard treats as a failure. A fresh agent has no local
   // model, so an idle/unsupported snapshot matches real zero-state.
+  await page.route("**/api/local-inference/providers", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { providers: [] });
+  });
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -223,6 +234,7 @@ async function installSettingsBackgroundRoutes(page: Page): Promise<void> {
           TEXT_LARGE: slot("TEXT_LARGE"),
         },
       },
+      ...hubOverrides,
     });
   });
   await page.route(
@@ -265,6 +277,7 @@ async function seedSettingsBackgroundStorage(
 ): Promise<void> {
   await seedAppStorage(page, {
     "eliza:mobile-runtime-mode": "local",
+    "eliza:permissions-primed": "1",
     [UI_BACKGROUND_STORAGE_KEY]: JSON.stringify(background),
   });
 }
@@ -388,6 +401,7 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
+  await expect(page.getByTestId("permission-priming-modal")).toBeHidden();
   await mkdir(SCREENSHOT_DIR, { recursive: true });
   await captureScreenshotWithQualityRetry(page, name, {
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
@@ -486,6 +500,10 @@ async function gotoSettings(page: Page): Promise<void> {
 }
 
 test.describe("settings shares the unified app background (#9143)", () => {
+  test.beforeAll(async () => {
+    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
+  });
+
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -494,11 +512,246 @@ test.describe("settings shares the unified app background (#9143)", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
+  test("shows a failed model activation in detached Settings", async ({
+    page,
+  }) => {
+    await seedSettingsBackgroundStorage(page, {
+      mode: "image",
+      color: "#ef5a1f",
+      imageUrl: "/bg-sunset.webp",
+    });
+    await installReadyDesktopStatusBridge(page);
+    await installSettingsBackgroundRoutes(page, {
+      catalog: [
+        {
+          id: "eliza-1-2b",
+          displayName: "Eliza-1",
+          hfRepo: "elizaos/eliza-1",
+          ggufFile: "model.gguf",
+          params: "2B",
+          quant: "Q4_K_M",
+          sizeGb: 1.4,
+          minRamGb: 4,
+          category: "chat",
+          bucket: "small",
+          blurb: "Local text model",
+          publishStatus: "published",
+        },
+      ],
+      installed: [
+        {
+          id: "eliza-1-2b",
+          displayName: "Eliza-1",
+          path: "/models/model.gguf",
+          sizeBytes: 1400000000,
+          installedAt: "2026-09-05T00:00:00Z",
+          lastUsedAt: null,
+          source: "eliza-download",
+        },
+      ],
+    });
+    await page.route("**/api/local-inference/active", (route) =>
+      fulfillJson(route, {
+        modelId: "eliza-1-2b",
+        status: "error",
+        error:
+          "Model activation failed its quality checks. Choose another model.",
+      }),
+    );
+    await openAppPath(page, "/settings?shell=settings#ai-model");
+    await page
+      .getByRole("button", { name: "Make active", exact: true })
+      .click();
+    const notice = page.getByTestId("shell-action-notice");
+    await expect(notice).toContainText(
+      "Model activation failed its quality checks",
+    );
+    await expect(notice).toBeInViewport();
+    await screenshot(page, "detached-settings-action-error");
+    await page.getByRole("button", { name: "General", exact: true }).click();
+    await expect(page.getByTestId("background-catalog-gallery")).toBeVisible();
+  });
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`makes failed voice previews visible and retryable at ${viewport.width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedSettingsBackgroundStorage(page, {
+        mode: "image",
+        color: "#ef5a1f",
+        imageUrl: "/bg-sunset.webp",
+      });
+      await installReadyDesktopStatusBridge(page);
+      await installSettingsBackgroundRoutes(page);
+      await page.route("**/api/cloud/status", (route) =>
+        fulfillJson(route, {
+          connected: true,
+          enabled: true,
+          cloudVoiceProxyAvailable: true,
+          hasApiKey: true,
+        }),
+      );
+      await page.route("**/api/cloud/credits", (route) =>
+        fulfillJson(route, {
+          connected: true,
+          balance: 100,
+          low: false,
+          critical: false,
+          authRejected: false,
+        }),
+      );
+      let previewRequests = 0;
+      await page.route(
+        "https://storage.googleapis.com/eleven-public-prod/**",
+        (route) => {
+          previewRequests += 1;
+          // Exercise the browser's real media decoder failure, not a replacement Audio object.
+          return route.fulfill({
+            status: 200,
+            contentType: "audio/mpeg",
+            body: "invalid audio payload",
+          });
+        },
+      );
+      await openAppPath(page, "/settings?shell=settings#voice");
+      const voice = page.getByRole("combobox", { name: "Voice", exact: true });
+      await voice.click();
+      await screenshot(page, `voice-selector-menu-${viewport.width}`);
+      await page.getByRole("option", { name: /Rachel/ }).click();
+      await screenshot(page, `voice-selector-selected-${viewport.width}`);
+      const preview = page.getByRole("button", {
+        name: "Preview Voice",
+        exact: true,
+      });
+      await preview.click();
+      const error = page
+        .getByRole("alert")
+        .filter({ hasText: "Couldn't play this voice preview" });
+      await expect(error).toBeVisible();
+      await expect(preview).toBeEnabled();
+      await error.scrollIntoViewIfNeeded();
+      await screenshot(page, `voice-preview-error-${viewport.width}`);
+      const requestsBeforeRetry = previewRequests;
+      await preview.click();
+      await expect
+        .poll(() => previewRequests)
+        .toBeGreaterThan(requestsBeforeRetry);
+      await expect(error).toBeVisible();
+      await voice.click();
+      await page.getByRole("option", { name: /Sarah/ }).click();
+      await expect(error).toHaveCount(0);
+    });
+  }
+
+  test("scrolls detached Settings to its lower controls", async ({ page }) => {
+    await page.setViewportSize({ width: 1044, height: 768 });
+    await seedSettingsBackgroundStorage(page, {
+      mode: "image",
+      color: "#ef5a1f",
+      imageUrl: "/bg-sunset.webp",
+    });
+    await installReadyDesktopStatusBridge(page);
+    await installSettingsBackgroundRoutes(page);
+    await openAppPath(page, "/settings?shell=settings#ai-model");
+    const scroller = page.getByTestId("settings-scroll-region");
+    await expect(scroller).toBeVisible();
+    const advanced = page.getByRole("button", {
+      name: "Custom providers & model overrides",
+      exact: true,
+    });
+    for (const viewport of [
+      { width: 1044, height: 768 },
+      { width: 760, height: 560 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await scroller.evaluate((el) => {
+        el.scrollTop = 0;
+      });
+      await expect(advanced).not.toBeInViewport();
+      await scroller.hover();
+      await page.mouse.wheel(0, 10000);
+      await expect(advanced).toBeInViewport({ ratio: 1 });
+      await advanced.click();
+      await expect(advanced).toHaveAttribute("aria-expanded", "true");
+      await advanced.press("Enter");
+      await expect(advanced).toHaveAttribute("aria-expanded", "false");
+      await screenshot(page, `detached-settings-bottom-${viewport.width}`);
+    }
+  });
+
+  test("reveals the selected wallpaper without shifting the detached settings window", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 760, height: 560 });
+    await seedSettingsBackgroundStorage(page, {
+      mode: "image",
+      color: "#ef5a1f",
+      imageUrl: "/bg-sunset.webp",
+    });
+    await installReadyDesktopStatusBridge(page);
+    await installSettingsBackgroundRoutes(page);
+    await openAppPath(page, "/settings?shell=settings");
+    const general = page.getByRole("button", { name: "General", exact: true });
+    await expect(general).toBeVisible();
+    const before = await general.boundingBox();
+    expect(before).not.toBeNull();
+    await general.click();
+    const gallery = page.getByTestId("background-catalog-gallery");
+    await expect(gallery).toBeVisible();
+    const selected = gallery.getByRole("button", {
+      name: "Set background to Ember Night",
+      exact: true,
+    });
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
+    await expect
+      .poll(async () => {
+        const after = await general.boundingBox();
+        return after && before ? Math.abs(after.x - before.x) : Infinity;
+      })
+      .toBeLessThan(1);
+    const stripBounds = await gallery.boundingBox();
+    const selectedBounds = await selected.boundingBox();
+    expect(stripBounds).not.toBeNull();
+    expect(selectedBounds).not.toBeNull();
+    if (!stripBounds || !selectedBounds)
+      throw new Error("Wallpaper picker has no layout");
+    expect(selectedBounds.x).toBeGreaterThanOrEqual(stripBounds.x);
+    expect(selectedBounds.x + selectedBounds.width).toBeLessThanOrEqual(
+      stripBounds.x + stripBounds.width,
+    );
+    expect(
+      await gallery.evaluate((strip) => {
+        const offsets = [];
+        for (
+          let parent = strip.parentElement;
+          parent;
+          parent = parent.parentElement
+        ) {
+          offsets.push(parent.scrollLeft);
+        }
+        return offsets.every((offset) => offset === 0);
+      }),
+    ).toBe(true);
+    await screenshot(page, "detached-general-rest");
+    await selected.hover();
+    await screenshot(page, "detached-general-hover");
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await openAppPath(page, "/settings?shell=settings#appearance");
+    await expect(gallery).toBeVisible();
+    await expect(selected).toBeInViewport({ ratio: 1 });
+    await screenshot(page, "mobile-general-rest");
+    await selected.hover();
+    await screenshot(page, "mobile-general-hover");
+  });
+
   test("captures settings over shader + photo backgrounds and diagnoses the safe-area seam", async ({
     page,
   }) => {
     test.setTimeout(180_000);
-    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
 
     const wallpaper = await busyWallpaperDataUrl();
 

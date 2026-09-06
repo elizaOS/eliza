@@ -18,7 +18,10 @@ import type {
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useRole } from "../../hooks/useRole";
-import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
+import {
+  filterSettingsDefaultLocalModels,
+  isSettingsDefaultLocalModel,
+} from "../../services/local-inference/catalog-policy";
 import { useAppSelectorShallow } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
@@ -32,6 +35,7 @@ import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
+import { findInstalled } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import type {
   VoiceModelInstallationView,
@@ -328,6 +332,11 @@ export function LocalInferencePanel() {
   }
 
   const catalog = filterSettingsDefaultLocalModels(hub.catalog);
+  // Publication policy governs new offers; installed models retain management controls.
+  const managementCatalog = hub.catalog.filter(
+    (model) =>
+      isSettingsDefaultLocalModel(model) || findInstalled(model, hub.installed),
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -381,7 +390,7 @@ export function LocalInferencePanel() {
 
       {tab === "curated" && (
         <ModelHubView
-          catalog={catalog}
+          catalog={managementCatalog}
           installed={hub.installed}
           downloads={hub.downloads}
           active={hub.active}
@@ -405,7 +414,13 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <VoiceModelUpdatesSection />
+      <AdvancedSettingsDisclosure
+        title={t("localinference.voiceModelUpdates", {
+          defaultValue: "Voice model updates",
+        })}
+      >
+        <VoiceModelUpdatesSection />
+      </AdvancedSettingsDisclosure>
 
       <AdvancedSettingsDisclosure
         title={t("localinference.devicesTitle", {

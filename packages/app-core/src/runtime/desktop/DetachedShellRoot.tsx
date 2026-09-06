@@ -2,14 +2,17 @@
  * Renders the root of a detached desktop window — a single non-"main"
  * WindowShellRoute (browser, chat, plugins, triggers, or a settings section)
  * inside the shared app workspace chrome. Gates on app state first: startup
- * failure, pairing, and a first-run-blocked notice each short-circuit before the
- * routed content. Heavy page views are lazy-loaded behind Suspense so they stay
- * off every window's first-paint graph; PluginsPageView is imported statically
+ * failure and pairing short-circuit before routed content; unfinished setup
+ * blocks agent views while allowing Settings recovery. Heavy page views are
+ * lazy-loaded behind Suspense so they stay off every window's first-paint graph;
+ * PluginsPageView is imported statically
  * because App.tsx already eager-loads it, so a lazy edge here buys nothing.
  */
 
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
+import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
+import { ActionNoticeToast } from "@elizaos/ui/components/shell/ActionNoticeToast";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
@@ -222,7 +225,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
       return (
         <DetachedWorkspaceView chatScope="page-settings">
           <DetachedLazyBoundary>
-            <section className="w-full flex-1 min-h-0 overflow-hidden">
+            <section className="flex w-full min-h-0 flex-1 flex-col overflow-hidden">
               <DetachedSettingsSectionView section={target.settingsSection} />
             </section>
           </DetachedLazyBoundary>
@@ -245,8 +248,14 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
 export function DetachedShellRoot({
   route,
 }: DetachedShellRootProps): JSX.Element {
-  const { authRequired, firstRunComplete, retryStartup, startupError, t } =
-    useApp();
+  const {
+    actionNotice,
+    authRequired,
+    firstRunComplete,
+    retryStartup,
+    startupError,
+    t,
+  } = useApp();
   if (startupError) {
     return <StartupFailureView error={startupError} onRetry={retryStartup} />;
   }
@@ -255,7 +264,9 @@ export function DetachedShellRoot({
     return <PairingView />;
   }
 
-  if (!firstRunComplete) {
+  // Settings owns the recovery path for failed setup. Pairing and role gates
+  // still apply; opening configuration does not make the agent ready.
+  if (!firstRunComplete && route.mode !== "settings") {
     return (
       <div className="flex h-full min-h-0 w-full flex-col font-body text-txt bg-bg">
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -279,8 +290,11 @@ export function DetachedShellRoot({
         id="detached-main"
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       >
-        <DetachedShellContent route={route} />
+        <ShellRoleProvider>
+          <DetachedShellContent route={route} />
+        </ShellRoleProvider>
       </main>
+      <ActionNoticeToast actionNotice={actionNotice} />
     </div>
   );
 }

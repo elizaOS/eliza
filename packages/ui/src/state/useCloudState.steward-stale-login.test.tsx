@@ -10,6 +10,7 @@
 // first click. A still-usable token and a mounted launcher keep the
 // Steward-branch behavior. jsdom with the API client mocked.
 
+import { registerStewardTokenRemoval } from "@elizaos/shared/steward-session-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
@@ -221,6 +222,47 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
     expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
+
+  it.each([true, false])(
+    "allows another sign-in attempt after protected credential removal fails (forceReauth=%s)",
+    async (forceReauth) => {
+      if (!forceReauth) localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+      const removeCredential = vi
+        .fn<() => Promise<void>>()
+        .mockRejectedValueOnce(new Error("Keychain unavailable"))
+        .mockResolvedValue(undefined);
+      const unregister = registerStewardTokenRemoval(removeCredential);
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      try {
+        let joinedAttemptSettled = false;
+        await act(async () => {
+          const attempt = result.current.handleCloudLogin(null, {
+            forceReauth,
+          });
+          void result.current
+            .handleCloudLogin(null, { forceReauth })
+            .then(() => {
+              joinedAttemptSettled = true;
+            });
+          await expect(attempt).rejects.toThrow();
+        });
+        await waitFor(() => expect(joinedAttemptSettled).toBe(true));
+        expect(result.current.elizaCloudLoginBusy).toBe(false);
+        expect(result.current.elizaCloudLoginError).toBeTruthy();
+        expect(deviceCodeCalls()).toBe(0);
+
+        await act(async () => {
+          await result.current.handleCloudLogin(null, { forceReauth });
+        });
+        expect(deviceCodeCalls()).toBe(1);
+        expect(result.current.elizaCloudLoginBusy).toBe(false);
+        expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+      } finally {
+        unmount();
+        unregister();
+      }
+    },
+  );
 
   it("a still-usable stored token keeps the Steward short-circuit (no device-code call)", async () => {
     const valid = makeJwt(3600);

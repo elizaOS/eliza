@@ -410,42 +410,48 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     unmount();
   });
 
-  it("opens from a prepared desktop session without another click-time network round-trip", async () => {
-    const browserUrl =
-      "https://eliza.app/auth/cli-login?session=desktop-prepared";
-    const desktopOpenExternal = vi.fn().mockResolvedValue(undefined);
-    windowWithElectrobun.__electrobunWindowId = 1;
-    windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__ = {
-      request: { desktopOpenExternal },
-      onMessage: vi.fn(),
-      offMessage: vi.fn(),
-    };
-    cloudLoginDirectSpy.mockResolvedValue({
-      ok: true,
-      apiBase: "https://api.eliza.app",
-      browserUrl,
-      sessionId: "desktop-prepared",
-    });
+  it.each([null, "local-runtime-token"])(
+    "opens a prepared desktop sign-in despite cached connection state (backend=%s)",
+    async (backendToken) => {
+      vi.spyOn(client, "getRestAuthToken").mockReturnValue(backendToken);
+      const browserUrl =
+        "https://eliza.app/auth/cli-login?session=desktop-prepared";
+      const desktopOpenExternal = vi.fn().mockResolvedValue(undefined);
+      windowWithElectrobun.__electrobunWindowId = 1;
+      windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__ = {
+        request: { desktopOpenExternal },
+        onMessage: vi.fn(),
+        offMessage: vi.fn(),
+      };
+      cloudLoginDirectSpy.mockResolvedValue({
+        ok: true,
+        apiBase: "https://api.eliza.app",
+        browserUrl,
+        sessionId: "desktop-prepared",
+      });
 
-    const prepared = prepareDesktopCloudLoginSession("https://eliza.app", () =>
-      client.cloudLoginDirect("https://eliza.app"),
-    );
-    await prepared;
-    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+      const prepared = prepareDesktopCloudLoginSession(
+        "https://eliza.app",
+        () => client.cloudLoginDirect("https://eliza.app"),
+      );
+      await prepared;
+      expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
 
-    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
-    await act(async () => {
-      void result.current.handleCloudLogin(null, { requireClientAuth: true });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      act(() => result.current.setElizaCloudConnected(true));
+      await act(async () => {
+        void result.current.handleCloudLogin(null, { requireClientAuth: true });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
 
-    await waitFor(() => {
-      expect(desktopOpenExternal).toHaveBeenCalledWith({ url: browserUrl });
-    });
-    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
-    unmount();
-  });
+      await waitFor(() => {
+        expect(desktopOpenExternal).toHaveBeenCalledWith({ url: browserUrl });
+      });
+      expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+      unmount();
+    },
+  );
 
   it("does not navigate the auth popup until CLI-session creation completes", async () => {
     vi.useFakeTimers();
@@ -1326,7 +1332,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
       enabled: true,
       connected: true,
       hasApiKey: true,
-      cloudVoiceProxyAvailable: false,
+      cloudVoiceProxyAvailable: true,
     });
     getCloudCreditsSpy.mockResolvedValue({
       authRejected: true,
@@ -1334,14 +1340,27 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     });
 
     const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = true;
     await act(async () => {
-      await result.current.pollCloudCredits();
+      connected = await result.current.pollCloudCredits();
     });
 
+    expect(connected).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudVoiceProxyAvailable).toBe(false);
     expect(result.current.elizaCloudAuthRejected).toBe(true);
     expect(result.current.elizaCloudCredits).toBeNull();
     expect(result.current.elizaCloudCreditsLow).toBe(false);
     expect(result.current.elizaCloudCreditsError).toBeNull();
+
+    getCloudCreditsSpy.mockResolvedValue({ balance: 12 });
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+    expect(connected).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    expect(result.current.elizaCloudVoiceProxyAvailable).toBe(true);
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
 
     unmount();
   });
@@ -1361,6 +1380,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     });
 
     expect(result.current.elizaCloudCreditsError).toBe("credits endpoint down");
+    expect(result.current.elizaCloudConnected).toBe(true);
     expect(result.current.elizaCloudCredits).toBeNull();
     expect(result.current.elizaCloudAuthRejected).toBe(false);
 

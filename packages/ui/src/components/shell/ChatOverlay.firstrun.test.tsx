@@ -104,11 +104,16 @@ const RUNTIME_CHOICE_MESSAGE = [
 ].join("\n");
 
 /** Seed the app-store with a spied `sendActionMessage` (all else inert). */
-function seedAppStoreWithActionSpy(): ReturnType<typeof vi.fn> {
+function seedAppStoreWithActionSpy(
+  loginUrl = "",
+  loginError: string | null = null,
+): ReturnType<typeof vi.fn> {
   const sendActionMessage = vi.fn().mockResolvedValue(undefined);
   const noop = () => {};
   const value = new Proxy({} as AppContextValue, {
     get(_target, prop) {
+      if (prop === "elizaCloudLoginFallbackUrl") return loginUrl;
+      if (prop === "elizaCloudLoginError") return loginError;
       if (prop === "sendActionMessage") return sendActionMessage;
       if (prop === "t") return (k: string) => k;
       if (prop === "uiLanguage") return "en";
@@ -250,6 +255,10 @@ describe("ChatOverlay first-run gating", () => {
     expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(grabber.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(grabber, { detail: 0 });
+    fireEvent.keyDown(grabber, { key: "Enter" });
+    fireEvent.keyDown(grabber, { key: "ArrowDown" });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
     expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
     expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
     // Onboarding owns the first card at the top of the transcript, so the
@@ -700,7 +709,59 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
+  it("keeps recovery choices reachable while the browser login URL is still being prepared", () => {
+    seedAppStoreWithActionSpy();
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          createdAt: 2,
+          content:
+            "Preparing Cloud sign-in… Complete sign-in in your browser when it opens.\n[CHOICE:first-run id=cloud-login-retry-1]\n__first_run__:cloud-login:retry=Open sign-in again\n[/CHOICE]",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "half",
+    );
+    expect(
+      screen.getByTestId("choice-__first_run__:cloud-login:retry"),
+    ).toBeTruthy();
+  });
+
+  it("reopens recovery when native browser launch fails after publishing the login URL", () => {
+    const loginUrl = "https://eliza.app/auth/cli-login";
+    seedAppStoreWithActionSpy(loginUrl);
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          createdAt: 2,
+          content:
+            "Preparing Cloud sign-in…\n[CHOICE:first-run id=cloud-login-retry-1]\n__first_run__:cloud-login:retry=Open sign-in again\n[/CHOICE]",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+    act(() => {
+      seedAppStoreWithActionSpy(loginUrl, "Could not open the sign-in browser");
+    });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "half",
+    );
+    expect(
+      screen.getByTestId("choice-__first_run__:cloud-login:retry"),
+    ).toBeTruthy();
+  });
+
   it("uses the regular compact composer during external sign-in, then opens full on authentication", () => {
+    seedAppStoreWithActionSpy("https://eliza.app/auth/cli-login");
     const waitingController = makeController({
       messages: [
         {
@@ -757,6 +818,7 @@ describe("ChatOverlay first-run gating", () => {
   });
 
   it("reopens onboarding when a newer tutorial choice supersedes the retained Cloud sign-in wait", () => {
+    seedAppStoreWithActionSpy("https://eliza.app/auth/cli-login");
     const waitingMessage = {
       id: "first-run:cloud-login-waiting",
       role: "assistant" as const,
@@ -808,6 +870,7 @@ describe("ChatOverlay first-run gating", () => {
   });
 
   it("keeps a refreshed Cloud wait collapsed when its semantic timestamp is newer than a later array entry", () => {
+    seedAppStoreWithActionSpy("https://eliza.app/auth/cli-login");
     const controller = makeController({
       messages: [
         {
@@ -884,6 +947,7 @@ describe("ChatOverlay first-run gating", () => {
   );
 
   it("never idle-collapses first-run sign-in recovery into the handle-only pill", () => {
+    seedAppStoreWithActionSpy("https://eliza.app/auth/cli-login");
     vi.useFakeTimers();
     try {
       const waitingController = makeController({

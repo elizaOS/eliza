@@ -7,7 +7,6 @@
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
-import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
@@ -15,6 +14,10 @@ import {
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
+import { VOICE_PROVIDERS } from "../../voice/types";
+import { useVoiceConfig } from "../../voice/useVoiceConfig";
+import { resolveEffectiveVoiceConfig } from "../../voice/voice-chat-types";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
@@ -55,7 +58,9 @@ interface ProviderSwitcherProps {
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const app = useAppSelectorShallow((s) => ({
     t: s.t,
+    uiLanguage: s.uiLanguage,
     elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
     plugins: s.plugins,
     pluginSaving: s.pluginSaving,
     pluginSaveSuccess: s.pluginSaveSuccess,
@@ -65,10 +70,18 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setActionNotice: s.setActionNotice,
   }));
   const t = app.t;
-  // Warm the runtime-mode default voice/ASR cache for the Voice section.
-  useDefaultProviderPresets();
+  const { voiceConfig } = useVoiceConfig(app.uiLanguage);
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
+  const effectiveVoiceConfig = resolveEffectiveVoiceConfig(voiceConfig, {
+    cloudConnected: isCloudVoiceRunnable({
+      connected: elizaCloudConnected,
+      proxyAvailable: app.elizaCloudVoiceProxyAvailable,
+    }),
+  });
+  const voiceProvider = VOICE_PROVIDERS.find(
+    (provider) => provider.id === effectiveVoiceConfig?.provider,
+  );
   const plugins = Array.isArray(props.plugins)
     ? props.plugins
     : Array.isArray(app.plugins)
@@ -179,7 +192,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const handleCloudSignIn = useCallback(() => {
     // Keep the popup user-activation alive across the async login start.
     claimCloudLoginWindow();
-    void handleInteractiveCloudLogin?.().catch((error: unknown) => {
+    void handleInteractiveCloudLogin?.({
+      forceReauth: true,
+    }).catch((error: unknown) => {
       // error-policy:J4 Login failed; keep Settings usable and show the notice.
       setActionNotice?.(
         error instanceof Error ? error.message : "Could not start Cloud login.",
@@ -261,12 +276,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
           })
         : t("providerswitcher.cloudTileUnsignedDescription", {
-            defaultValue:
-              "Sign in to use managed models. Chat replies use Local until then.",
+            defaultValue: "Sign in to use managed models.",
           })
       : t("providerswitcher.localTileDescription", {
           defaultValue:
-            "Runs entirely on this device with the bundled local model. Private and works offline.",
+            "Use an installed model to process chat on this device.",
         });
 
   return (
@@ -276,8 +290,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           defaultValue: "Intelligence",
         })}
         description={t("providerswitcher.intelligenceGroupDescription", {
-          defaultValue:
-            "Agent runtime and chat inference are separate. The tiles below pick inference — the Active source is answering chat. Open a tile to inspect or switch.",
+          defaultValue: "Choose where chat replies are processed.",
         })}
         bare
       >
@@ -347,6 +360,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       {!selection.cloudRuntimeLocked ? (
         <ModelConfigurationPanel
           activeChatProvider={activeChatCatalogProvider}
+          showChatModels={
+            !isSubscriptionProviderSelectionId(resolvedSelectedId)
+          }
         />
       ) : null}
 
@@ -375,40 +391,27 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </SettingsGroup>
       ) : null}
 
-      {/* Voice folds into this section for MVP (the standalone Voice tab is
-          developer-only): speech is pinned to the bundled Kokoro TTS, so a
-          read-only status row is the whole story. */}
       <SettingsGroup
         title={t("providerswitcher.voiceGroupTitle", { defaultValue: "Voice" })}
         bare
       >
         <SettingsRow
-          label={
-            <span className="flex items-center gap-2">
-              <Mic className="size-[18px] shrink-0 text-accent" aria-hidden />
-              {selection.cloudRuntimeLocked
-                ? t("providerswitcher.cloudVoiceRowLabel", {
-                    defaultValue: "Eliza Cloud voice",
-                  })
-                : t("providerswitcher.voiceRowLabel", {
-                    defaultValue: "Kokoro (on-device)",
-                  })}
-            </span>
-          }
-          description={
-            selection.cloudRuntimeLocked
-              ? t("providerswitcher.cloudVoiceRowDescription", {
-                  defaultValue:
-                    "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
-                })
-              : t("providerswitcher.voiceRowDescription", {
-                  defaultValue:
-                    "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
-                })
-          }
+          icon={Mic}
+          label={t("providerswitcher.speechPlaybackLabel", {
+            defaultValue: "Speech playback",
+          })}
+          description={t("providerswitcher.speechPlaybackDescription", {
+            defaultValue: "Provider used for spoken replies.",
+          })}
           control={
-            <span className="text-xs text-accent">
-              {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
+            <span className="text-xs text-txt-strong">
+              {voiceProvider
+                ? t(voiceProvider.labelKey, {
+                    defaultValue: voiceProvider.label,
+                  })
+                : t("providerswitcher.servingInferenceUnconfirmed", {
+                    defaultValue: "Unconfirmed",
+                  })}
             </span>
           }
         />
@@ -461,7 +464,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
 /**
  * Selection state says what is configured; the serving axes say what actually
- * answered chat. When a direct external provider is serving, do not leave the
+ * answered chat. When serving is unconfirmed or external, do not leave the
  * Local or Cloud tile labelled Active merely because that routing toggle is
  * still selected. Mark a matching key-provider entry active when one exists.
  *
@@ -471,18 +474,35 @@ export function reconcileProviderEntriesWithServingAxes(
   entries: ProviderListEntry[],
   axes: ServingAxes,
 ): ProviderListEntry[] {
-  if (axes.inference !== "external") return entries;
+  if (axes.inference !== "external" && axes.inference !== "unknown") {
+    return entries;
+  }
   const providerId = axes.activeChatProvider?.trim().toLowerCase() ?? "";
   return entries.map((entry) => {
+    // Coding-only subscriptions are independent of the chat serving source.
+    if (
+      entry.category === "subscription" &&
+      entry.id !== "openai-subscription"
+    ) {
+      return entry;
+    }
     const current =
-      entry.category === "key" && entry.id.trim().toLowerCase() === providerId;
+      axes.inference === "external" &&
+      entry.category === "key" &&
+      entry.id.trim().toLowerCase() === providerId;
     const selectedInferenceTile =
       entry.category === "local" || entry.category === "cloud";
     return {
       ...entry,
       current,
       ...(selectedInferenceTile && entry.status.label === "Active"
-        ? { status: { tone: "muted" as const, label: "Available" } }
+        ? {
+            status: {
+              tone: "muted" as const,
+              label:
+                axes.inference === "unknown" ? "Unconfirmed" : "Not serving",
+            },
+          }
         : {}),
     };
   });
