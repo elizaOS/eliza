@@ -34,7 +34,7 @@ import {
 import net from "node:net";
 import path from "node:path";
 import { ElizaError, type GenerateTextParams, logger } from "@elizaos/core";
-import { buildBionicChatInput } from "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap";
+import { buildBionicChatInput } from "@elizaos/plugin-capacitor-bridge/bionic-chat-messages";
 import { DEFAULT_MODELS_DIR } from "../runtime/embedding-manager-support";
 import { resolveFusedEmbeddingBundleRoot } from "../runtime/fused-embedding-bundle";
 import type {

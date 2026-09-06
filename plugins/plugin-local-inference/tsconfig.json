@@ -35,6 +35,9 @@
 			"@elizaos/plugin-capacitor-bridge": [
 				"../plugin-capacitor-bridge/src/index.ts"
 			],
+			"@elizaos/plugin-capacitor-bridge/bionic-chat-messages": [
+				"../plugin-capacitor-bridge/src/bionic-chat-messages.ts"
+			],
 			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
 				"../plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
 			],

@@ -33,6 +33,12 @@ export default defineConfig({
 			),
 			// Deep subpath must precede the bare alias — the bare entry
 			// prefix-matches and would rewrite this to `src/index.ts/<subpath>`.
+			"@elizaos/plugin-capacitor-bridge/bionic-chat-messages": fileURLToPath(
+				new URL(
+					"../plugin-capacitor-bridge/src/bionic-chat-messages.ts",
+					import.meta.url,
+				),
+			),
 			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap":
 				fileURLToPath(
 					new URL(

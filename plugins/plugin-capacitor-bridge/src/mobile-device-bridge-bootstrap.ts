@@ -45,8 +45,6 @@ import {
 } from "@elizaos/core";
 import { buildBionicChatInput } from "./bionic-chat-messages";
 
-export { buildBionicChatInput } from "./bionic-chat-messages";
-
 import { imageUrlToBase64 } from "./image-url-to-base64.ts";
 import { downloadHttpModel } from "./shared/http-model-download.ts";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";

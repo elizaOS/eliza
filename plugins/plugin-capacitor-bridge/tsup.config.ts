@@ -10,6 +10,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
 	entry: {
 		index: "src/index.ts",
+		"bionic-chat-messages": "src/bionic-chat-messages.ts",
 		"android/bridge": "src/android/bridge.ts",
 		"android/dispatch": "src/android/dispatch.ts",
 		"ios/bridge": "src/ios/bridge.ts",

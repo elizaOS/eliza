@@ -27,6 +27,10 @@ This package is used by the elizaOS agent bundle. It is not a standard elizaOS p
 @elizaos/plugin-capacitor-bridge
 ```
 
+The `./bionic-chat-messages` subpath validates complete native chat inputs without
+initializing the device bridge or reading its startup configuration. Backend
+loaders use this subpath so callers can configure the bridge before boot.
+
 ## Configuration
 
 ### Android (WebSocket device bridge)
