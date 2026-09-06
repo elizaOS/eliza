@@ -39,6 +39,91 @@ function loopComposedInstructionText(
 		.join("\n");
 }
 
+describe("retry against the same target resolves the earlier failure", () => {
+	it("a corrected CALENDAR_UPDATE_EVENT retry with the same query does not ship the canned failure when synthesis is unavailable", async () => {
+		// Live 2026-09-06 tj-0665423b229826: the first update failed on an
+		// invalid range, the retry with a corrected end succeeded and the row
+		// moved, yet the turn shipped FAILED_TOOL_FALLBACK_MESSAGE because the
+		// changed value made the retry a different operation key.
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "first",
+						name: "CALENDAR_UPDATE_EVENT",
+						arguments: {
+							query: "piano lesson",
+							details: {
+								start: "2026-09-10T18:00:00",
+								end: "2026-09-10T18:00:00",
+							},
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "retry",
+						name: "CALENDAR_UPDATE_EVENT",
+						arguments: {
+							query: "piano lesson",
+							details: {
+								start: "2026-09-10T18:00:00",
+								end: "2026-09-10T19:00:00",
+							},
+						},
+					},
+				],
+			})
+			// Every later model call (final synthesis, failure-aware pass) is
+			// unavailable, as when the provider window is closed.
+			.mockRejectedValue(new Error("Too Many Requests"));
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				text: "The event end must be after its start.",
+				data: { error: "CALENDAR_EVENT_RANGE_INVALID" },
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "Moved the piano lesson to Thursday at 6:00 PM.",
+				data: { eventId: "evt-1" },
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE",
+				thought: "Retry with a valid end time.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH",
+				thought: "The lesson is moved.",
+				messageToUser: "Moved your piano lesson to Thursday at 6pm.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "CALENDAR_UPDATE_EVENT", description: "Update an event." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).toContain("Moved your piano lesson");
+	});
+});
+
 describe("honest failed-turn replies (#17948)", () => {
 	it.each([
 		"Got it — the charger and water are for the train trip. I recorded the correction and left the note unchanged.",

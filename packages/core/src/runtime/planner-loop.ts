@@ -5779,7 +5779,52 @@ function plannerToolOperationKey(
 	if (toolCall.name.toUpperCase() === "SHELL") {
 		delete (params as Record<string, unknown>).description;
 	}
+	// A mutation that names its target with an explicit selector is the same
+	// operation across retries that only correct value fields: a failed
+	// CALENDAR_UPDATE_EVENT { query, details.start/end } followed by a successful
+	// one with a corrected end is one resolved operation, not two (live
+	// 2026-09-06 tj-0665423b229826: the corrected retry succeeded, the row moved,
+	// and the turn still shipped the generic failure text because the value
+	// change made a new key). Selectors are the explicit identity fields only;
+	// a replacement `title` is a value and never a selector.
+	const selectors = explicitTargetSelectors(params);
+	if (selectors) {
+		return `${toolCall.name.toUpperCase()}|target:${stableJsonStringify(selectors)}`;
+	}
 	return `${toolCall.name.toUpperCase()}|${stableJsonStringify(params)}`;
+}
+
+const TARGET_SELECTOR_KEYS = [
+	"eventId",
+	"memoryId",
+	"taskId",
+	"noteId",
+	"contactId",
+	"id",
+	"query",
+	"oldTitle",
+] as const;
+
+/**
+ * The explicit identity fields of a mutation call, read from the top level
+ * and from a nested `details` object, or undefined when the call names no
+ * target (creates, searches, free-form tools keep the full-argument key).
+ */
+function explicitTargetSelectors(
+	params: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+	const details =
+		params.details && typeof params.details === "object"
+			? (params.details as Record<string, unknown>)
+			: undefined;
+	const selectors: Record<string, unknown> = {};
+	for (const key of TARGET_SELECTOR_KEYS) {
+		const value = params[key] ?? details?.[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			selectors[key] = value.trim().toLowerCase();
+		}
+	}
+	return Object.keys(selectors).length > 0 ? selectors : undefined;
 }
 
 function handleRequiredToolPlannerMiss(params: {
