@@ -1788,3 +1788,27 @@ describe("possessive empty-state egress proof", () => {
 		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
 	});
 });
+
+describe("empty-state uncertainty and quoted clause boundaries", () => {
+	it.each([
+		"I cannot say you have no notes.",
+		"I can't conclude you have no tasks.",
+		"I cannot verify with confidence that you have no reminders.",
+		"I am not able to confirm that you have no goals.",
+		'The example says "You have no notes."',
+	])("does not reject explicit uncertainty or quoted wording: %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toEqual({ verdict: "allow" });
+	});
+	it.each([
+		'The example says "If you have no notes", but you have no tasks.',
+		'The example asks "Do you have no notes?" You have no tasks.',
+		"I cannot say you have no notes, but you have no tasks.",
+		"You have no notes.",
+	])("requires proof for an unquoted asserted clause: %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+});

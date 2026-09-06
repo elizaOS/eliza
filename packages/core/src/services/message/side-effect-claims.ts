@@ -708,17 +708,21 @@ const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
 const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
 	/\b(?:if|unless|when|whenever|once|whether|in\s+case)\b[^.!?\n]*$/i;
 
-// Quoted examples report wording, not the user's tracked state. Apostrophes
-// inside words are contractions and cannot open a quoted span.
-function emptyClaimIsQuoted(text: string, index: number): boolean {
-	for (const quote of text.matchAll(
+// Quoted wording is classified once as non-assertive text. Preserve offsets and
+// line boundaries in this local grammar projection; the original reply and all
+// model context remain untouched.
+function unquotedEmptyClaimText(text: string): string {
+	return text.replace(
 		/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|`[^`\n]*`|(?<![\p{L}\p{N}])'[^'\n]*'(?![\p{L}\p{N}])/gu,
-	)) {
-		if (index >= quote.index && index < quote.index + quote[0].length)
-			return true;
-	}
-	return false;
+		(quote) => quote.replace(/[^\r\n]/g, " "),
+	);
 }
+
+// A negated ability to establish the immediately following proposition is
+// explicit uncertainty, not an assertion of that proposition. Ending at the
+// claim prevents uncertainty about an earlier clause from hiding a later claim.
+const UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN =
+	/\bi\s+(?:cannot|can\s+not|can['’]t|do\s+not|don['’]t|am\s+not\s+able\s+to)\s+(?:say|conclude|confirm|verify|establish|assert|tell)(?:\s+(?:for\s+(?:certain|sure)|with\s+confidence))?\s+(?:that\s+)?$/i;
 
 /**
  * True when a reply ASSERTS that the user's tracked work (tasks, todos,
@@ -731,13 +735,13 @@ function emptyClaimIsQuoted(text: string, index: number): boolean {
  * is empty is not a claim about looked-up state.
  */
 export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
-	const text = reply.trim();
-	if (!text) return false;
+	const text = unquotedEmptyClaimText(reply.trim());
+	if (!text.trim()) return false;
 	for (const pattern of EMPTY_TRACKED_STATE_CLAIM_PATTERNS) {
 		for (const match of text.matchAll(pattern)) {
 			const prefix = text.slice(0, match.index);
 			if (CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
-			if (emptyClaimIsQuoted(text, match.index)) continue;
+			if (UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
 			if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
 			return true;
 		}
