@@ -672,27 +672,31 @@ async function main(): Promise<void> {
     runtime.useModel = (async (modelType, params, provider) => {
       const activeModelInputContext = modelContext.getStore() ?? null;
       const isTextModel = isTextGenerationModelType(modelType);
-      const measuredParams = isTextModel
-        ? applyCacheExperiment(params, {
-            mode: cacheMode as CacheExperimentMode,
-            keyCapabilityConfirmed,
-            agentId: runtime.agentId,
-            conversationId: activeModelInputContext?.roomId ?? roomId,
-            model,
-            stage: String(modelType),
-          })
-        : params;
-      if (isTextModel) {
-        modelInputs.push(
-          captureModelInput(modelType, measuredParams, activeModelInputContext),
-        );
-      }
       const context = activeModelInputContext
         ? { ...activeModelInputContext }
         : null;
       const startedAt = performance.now();
       let outcome: "success" | "error" = "error";
       try {
+        const measuredParams = isTextModel
+          ? applyCacheExperiment(params, {
+              mode: cacheMode as CacheExperimentMode,
+              keyCapabilityConfirmed,
+              agentId: runtime.agentId,
+              conversationId: activeModelInputContext?.roomId ?? roomId,
+              model,
+              stage: String(modelType),
+            })
+          : params;
+        if (isTextModel) {
+          modelInputs.push(
+            captureModelInput(
+              modelType,
+              measuredParams,
+              activeModelInputContext,
+            ),
+          );
+        }
         const result = await measuredUseModel(
           modelType,
           measuredParams,
@@ -834,6 +838,15 @@ async function main(): Promise<void> {
       const backgroundTasks = await drainPostDeliveryTasks(runtime);
       const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
       const totalToQuiescenceMs = performance.now() - startedAt;
+      const failedModels = modelExecutions.filter(
+        (execution) =>
+          execution.context?.proof === proof && execution.outcome === "error",
+      );
+      if (failedModels.length > 0) {
+        throw new Error(
+          `Model execution failed during ${proof}, including post-delivery work: ${failedModels.map((execution) => execution.modelType).join(", ")}`,
+        );
+      }
       const turnUsageEvents = modelUsageEvents
         .slice(usageEventOffset)
         .filter(
