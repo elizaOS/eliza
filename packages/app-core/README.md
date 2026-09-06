@@ -43,10 +43,13 @@ This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, 
 
 > **`bun run dev` requires Node 24+.** The combined dev supervisor pins its Vite
 > proxy child to a Node 24+ executable because Vite's dev-server WebSocket proxy
-> depends on Node HTTP-upgrade semantics that Bun does not fully implement:
-> under a Bun-hosted Vite the dashboard's `/ws` upgrade stays in `CONNECTING`
-> and fails while ordinary `/api` HTTP proxying still succeeds. A Bun-only
-> checkout without a compliant Node fails at supervisor start. See
+> depends on Node HTTP-upgrade semantics that the repo-pinned Bun (`bun@1.3.14`)
+> does not fully implement: under a Bun-hosted Vite the dashboard's `/ws` upgrade
+> stays in `CONNECTING` and fails while ordinary `/api` HTTP proxying still
+> succeeds. A Bun-only checkout without a compliant Node fails at supervisor
+> start. This incompatibility was measured on the pinned Bun 1.3.x; later Bun
+> releases may complete the upgrade, so re-verify before removing the Node pin.
+> See
 > [`scripts/README.md`](scripts/README.md#node-runtime-for-the-supervised-vite-proxy).
 
 ## Native inference setup

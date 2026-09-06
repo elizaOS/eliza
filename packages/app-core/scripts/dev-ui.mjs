@@ -1016,11 +1016,13 @@ function startVite() {
 
   // Pin the supervised Vite child to Node 24+ even when this orchestrator runs
   // under Bun. Vite proxies the dashboard's `/api` and `/ws` traffic, and its
-  // dev-server WebSocket proxy depends on Node HTTP-upgrade semantics that Bun
-  // does not fully implement: under a Bun-hosted Vite the `/ws` upgrade stays
-  // in `CONNECTING` and fails while ordinary `/api` HTTP proxying still
-  // succeeds, silently dropping live notifications and chat events. The API
-  // runtime is resolved independently and may still be Bun-backed.
+  // dev-server WebSocket proxy depends on Node HTTP-upgrade semantics that the
+  // repo-pinned Bun (`bun@1.3.14`) does not fully implement: under a Bun-hosted
+  // Vite the `/ws` upgrade stays in `CONNECTING` and fails while ordinary
+  // `/api` HTTP proxying still succeeds, silently dropping live notifications
+  // and chat events. The API runtime is resolved independently and may still be
+  // Bun-backed. (Observed on the pinned Bun 1.3.x; re-verify on newer Bun before
+  // removing the pin.)
   const viteForce = process.env.ELIZA_VITE_FORCE === "1";
   let viteCmd;
   let viteArgs;
