@@ -157,7 +157,7 @@ describe("requireInferenceApiKeyWithOrg", () => {
     expect(repositoryUserLookups).toEqual(["user-1"]);
     expect(keyTimings).toHaveLength(1);
     expect(userTimings).toHaveLength(1);
-    expect(usageCalls).toEqual(["key-1"]);
+    expect(usageCalls).toEqual([]);
   });
 
   test("inactive API key returns the authoritative standing reason", async () => {

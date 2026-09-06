@@ -54,7 +54,7 @@ mock.module("../../db/repositories/users", () => ({
 
 mock.module("./admin", () => ({
   adminService: {
-    shouldBlockUser: async () => {
+    shouldBlockUserConsistent: async () => {
       moderationReads++;
       return false;
     },
