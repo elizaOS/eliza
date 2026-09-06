@@ -22,6 +22,12 @@ import type {
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
 export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
+import { deriveCompactionContentManifest } from "../../runtime/content-access-manifest";
+import {
+	contentManifestLedgerKeys,
+	loadManifestLedger,
+	publishManifestLedger,
+} from "../../runtime/content-manifest-ledger";
 import {
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
@@ -1874,6 +1880,88 @@ export class TrajectoriesService extends Service {
 		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
 		allowCompatibilityFallback = true,
 	): Promise<void> {
+		await this.persistTrajectoryRows(
+			trajectoryId,
+			trajectory,
+			status,
+			execute,
+			allowCompatibilityFallback,
+		);
+		await this.publishContentManifestLedger(trajectoryId, trajectory);
+	}
+
+	/**
+	 * Derive the runtime content manifest from every persisted step's tool
+	 * result carriers and publish it as restart-safe shards through the
+	 * database cache domain (#25141). Diagnostics-only: a ledger failure is
+	 * reported and must never fail trajectory persistence itself.
+	 */
+	private async publishContentManifestLedger(
+		trajectoryId: string,
+		trajectory: Trajectory,
+	): Promise<void> {
+		try {
+			const steps = trajectory.steps
+				.flatMap((step) => {
+					const stages = (step.semanticStages ?? []).filter(
+						(stage) => stage.kind === "tool",
+					);
+					return stages.map((stage) => ({
+						result: (stage.payload.tool as { result?: unknown } | undefined)
+							?.result,
+					}));
+				})
+				.filter((step) => step.result !== undefined);
+			if (steps.length === 0) return;
+			const manifest = deriveCompactionContentManifest(
+				{ steps: steps as never, archivedSteps: [] },
+				{ lastUsedAt: new Date().toISOString() },
+			);
+			if (manifest.contentRefs.length === 0) return;
+			const runtime = this.runtime as IAgentRuntime & {
+				adapter?: {
+					getCaches?: unknown;
+					setCaches?: unknown;
+					compareAndSwapCache?: unknown;
+				};
+			};
+			const adapter = runtime.adapter;
+			if (
+				!adapter ||
+				typeof adapter.getCaches !== "function" ||
+				typeof adapter.setCaches !== "function" ||
+				typeof adapter.compareAndSwapCache !== "function"
+			) {
+				return;
+			}
+			await publishManifestLedger(
+				adapter as never,
+				`${this.runtime.agentId}:trajectory:${trajectoryId}`,
+				manifest,
+			);
+		} catch (error) {
+			// error-policy:J7 the continuity ledger is diagnostic continuity
+			// state; its failure is observed here and must not take down
+			// trajectory persistence.
+			logger.warn(
+				{ err: error, trajectoryId },
+				"[trajectory-logger] content-manifest ledger publication failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.publishContentManifestLedger",
+				error,
+				{ trajectoryId },
+			);
+		}
+	}
+
+	private async persistTrajectoryRows(
+		trajectoryId: string,
+		trajectory: Trajectory,
+		status: TrajectoryStatus = "active",
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
+		allowCompatibilityFallback = true,
+	): Promise<void> {
 		const totals = this.computeTotals(trajectory.steps);
 		const isFinalStatus = status !== "active";
 		const persistedEndTime = isFinalStatus ? trajectory.endTime : null;
@@ -3245,7 +3333,147 @@ export class TrajectoriesService extends Service {
 
 		const row = result.rows[0];
 		const trajectory = this.rowToTrajectory(row);
+		await this.attachContentManifestLedger(trajectory);
 		return trajectory;
+	}
+
+	/**
+	 * Restart-safe ledger consumption (#25141 review): the persisted manifest
+	 * shard ledger is reloaded and fully verified (chain, totals, digest) from
+	 * the database cache domain by the production detail reader, so durable
+	 * ledger bytes are reachable after a writer exits — not write-only. The
+	 * verified entries surface on the detail wire as
+	 * `metadata.contentManifest` (empty array when the trajectory never
+	 * authorized content). Integrity failures — and a missing head on a
+	 * trajectory whose own carriers say a manifest SHOULD exist — become an
+	 * explicit unavailable marker on the same field, never silent corruption,
+	 * a fabricated empty success, or a failed trajectory read.
+	 */
+	private async attachContentManifestLedger(
+		trajectory: Trajectory,
+	): Promise<void> {
+		const ledgerId = `${this.runtime.agentId}:trajectory:${trajectory.trajectoryId}`;
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: {
+				getCaches?: unknown;
+			};
+		};
+		const adapter = runtime.adapter;
+		if (!adapter || typeof adapter.getCaches !== "function") {
+			this.projectContentManifestAbsence(trajectory);
+			return;
+		}
+		try {
+			const loaded = await loadManifestLedger(adapter as never, ledgerId);
+			// Entries are validated, JSON-shaped records; the wire metadata
+			// type is the JsonValue boundary the viewer consumes.
+			trajectory.metadata = {
+				...trajectory.metadata,
+				contentManifest: loaded.entries as unknown as JsonValue,
+			};
+		} catch (error) {
+			if (
+				error instanceof ElizaError &&
+				error.code === "CONTENT_MANIFEST_HEAD_MISSING" &&
+				this.expectedContentRefCount(trajectory) === 0
+			) {
+				// The trajectory's own carriers authorize no content refs, so
+				// the publisher correctly never wrote a head — the honest
+				// empty state, not an error.
+				trajectory.metadata = {
+					...trajectory.metadata,
+					contentManifest: [],
+				};
+				return;
+			}
+			// error-policy:J4 the verified-ledger projection is an explicit
+			// unavailable state: a damaged or unreadable ledger — or a
+			// missing head where carriers say content was authorized
+			// (publication failed or the head was lost) — must surface as a
+			// distinct marker, never as a silently partial manifest, a
+			// fabricated empty one, or a failed trajectory read.
+			trajectory.metadata = {
+				...trajectory.metadata,
+				contentManifest: { unavailable: true },
+			};
+			logger.warn(
+				{ err: error, ledgerId },
+				"[trajectory-logger] content-manifest ledger load failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.attachContentManifestLedger",
+				error,
+				{ ledgerId },
+			);
+		}
+	}
+
+	/**
+	 * Whether the trajectory's persisted tool-result carriers authorize any
+	 * content refs — the exact derivation the publisher ran to decide whether
+	 * a ledger head should exist. A reader uses it to distinguish the honest
+	 * "nothing was ever authorized" empty state from a lost or failed
+	 * publication.
+	 *
+	 * Tri-state by design: the derivation itself can fail on malformed
+	 * persisted carriers (the publisher catches the same failure and leaves
+	 * no head), so `undefined` means "cannot reconstruct" — callers must
+	 * treat that as unavailable, never as empty.
+	 */
+	private expectedContentRefCount(trajectory: Trajectory): number | undefined {
+		try {
+			const carriers = trajectory.steps
+				.flatMap((step) => {
+					const stages = (step.semanticStages ?? []).filter(
+						(stage) => stage.kind === "tool",
+					);
+					return stages.map((stage) => ({
+						result: (stage.payload.tool as { result?: unknown } | undefined)
+							?.result,
+					}));
+				})
+				.filter((step) => step.result !== undefined);
+			if (carriers.length === 0) return 0;
+			const manifest = deriveCompactionContentManifest(
+				{ steps: carriers as never, archivedSteps: [] },
+				{ lastUsedAt: new Date().toISOString() },
+			);
+			return manifest.contentRefs.length;
+		} catch (error) {
+			// error-policy:J4 the absence reconstruction is a projection on
+			// untrusted persisted carriers; a derivation failure must degrade
+			// to the explicit unavailable state, never fail the read or
+			// masquerade as an honest empty manifest.
+			logger.warn(
+				{ err: error, trajectoryId: trajectory.trajectoryId },
+				"[trajectory-logger] content-manifest absence reconstruction failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.expectedContentRefCount",
+				error,
+				{ trajectoryId: trajectory.trajectoryId },
+			);
+			return undefined;
+		}
+	}
+
+	/**
+	 * No cache domain exists at all: project the manifest field from the
+	 * trajectory's carriers alone so the wire shape stays stable — empty when
+	 * nothing was authorized, explicitly unavailable when content was
+	 * authorized but no ledger can be read.
+	 */
+	private projectContentManifestAbsence(trajectory: Trajectory): void {
+		// Tri-state: undefined (reconstruction failed) falls to unavailable
+		// alongside "refs exist but no ledger" — only a derived 0 is honest
+		// emptiness.
+		trajectory.metadata = {
+			...trajectory.metadata,
+			contentManifest:
+				this.expectedContentRefCount(trajectory) === 0
+					? []
+					: ({ unavailable: true } as unknown as JsonValue),
+		};
 	}
 
 	async getStats(): Promise<TrajectoryStats> {
@@ -3340,7 +3568,8 @@ export class TrajectoriesService extends Service {
 		await this.ensureStorageReady();
 
 		const ids = trajectoryIds.map(sqlLiteral).join(", ");
-		return this.executeRawSqlTransaction(async (execute) => {
+		const deleted: string[] = [];
+		const removed = await this.executeRawSqlTransaction(async (execute) => {
 			await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
 				SELECT id FROM trajectories WHERE id IN (${ids})
 				AND agent_id = ${sqlLiteral(this.runtime.agentId)}
@@ -3349,32 +3578,72 @@ export class TrajectoriesService extends Service {
 				`DELETE FROM trajectories WHERE id IN (${ids})
 				 AND agent_id = ${sqlLiteral(this.runtime.agentId)} RETURNING id`,
 			);
+			for (const row of result.rows) {
+				const id = (row as { id?: unknown }).id;
+				if (typeof id === "string") deleted.push(id);
+			}
 			return result.rows.length;
 		});
+		await this.discardContentManifestLedgers(deleted);
+		return removed;
 	}
 
-	async clearAllTrajectories(): Promise<number> {
-		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime.adapter) throw this.storageUnavailableError();
-		await this.ensureStorageReady();
-
-		return this.executeRawSqlTransaction(async (execute) => {
-			const countResult = await execute(
-				`SELECT count(*)::int AS cnt FROM trajectories
-				 WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}`,
+	/**
+	 * Remove the manifest-ledger cache rows (head + every shard generation's
+	 * sequences recorded on the head) for pruned trajectories (#25141). The
+	 * durable ledger must not outlive the trajectory rows it describes;
+	 * failure to clean is reported, never fatal to the prune.
+	 */
+	private async discardContentManifestLedgers(
+		trajectoryIds: string[],
+	): Promise<void> {
+		if (trajectoryIds.length === 0) return;
+		const runtimeAdapter = (
+			this.runtime as IAgentRuntime & {
+				adapter?: unknown;
+			}
+		).adapter;
+		const adapter =
+			runtimeAdapter !== null &&
+			typeof runtimeAdapter === "object" &&
+			typeof (runtimeAdapter as { getCaches?: unknown }).getCaches ===
+				"function" &&
+			typeof (runtimeAdapter as { deleteCaches?: unknown }).deleteCaches ===
+				"function"
+				? (runtimeAdapter as unknown as {
+						getCaches: (keys: string[]) => Promise<Map<string, unknown>>;
+						deleteCaches: (keys: string[]) => Promise<boolean>;
+					})
+				: undefined;
+		if (!adapter) return;
+		try {
+			const keys: string[] = [];
+			for (const trajectoryId of trajectoryIds) {
+				const ledgerKeys = await contentManifestLedgerKeys(
+					{
+						getCaches: <T>(keysToRead: string[]) =>
+							adapter.getCaches(keysToRead) as Promise<Map<string, T>>,
+					},
+					`${this.runtime.agentId}:trajectory:${trajectoryId}`,
+				);
+				if (ledgerKeys) keys.push(...ledgerKeys);
+			}
+			if (keys.length > 0) {
+				await adapter.deleteCaches(keys);
+			}
+		} catch (error) {
+			// error-policy:J7 ledger cleanup is diagnostic continuity state;
+			// its failure must not fail the trajectory prune that owns it.
+			logger.warn(
+				{ err: error, trajectoryIds },
+				"[trajectory-logger] content-manifest ledger cleanup failed",
 			);
-			const count = requiredTrajectoryCell(
-				asNumber(pickCell(countResult.rows[0] ?? {}, "cnt")),
-				"cnt",
+			this.runtime.reportError?.(
+				"TrajectoriesService.discardContentManifestLedgers",
+				error,
+				{ trajectoryIds },
 			);
-			await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
-				SELECT id FROM trajectories WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}
-			)`);
-			await execute(
-				`DELETE FROM trajectories WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}`,
-			);
-			return count;
-		});
+		}
 	}
 
 	private storageUnavailableError(): ElizaError {

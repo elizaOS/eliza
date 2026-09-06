@@ -685,6 +685,28 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract deleteCaches(keys: string[]): Promise<boolean>;
 
 	/**
+	 * Compare-and-swap a cache row under an optimistic revision; see
+	 * IDatabaseAdapter.compareAndSwapCache for the contract. Concrete base is
+	 * provided so adapters written before the contract keep compiling; SQL and
+	 * in-memory adapters override with real conditional updates. The base
+	 * throws the typed capability error so callers gate on
+	 * CONTENT_MANIFEST_CAS_UNSUPPORTED uniformly.
+	 */
+	compareAndSwapCache<T>(
+		_key: string,
+		_expectedRevision: number | null,
+		_nextRevision: number,
+		_value: T,
+	): Promise<boolean> {
+		return Promise.reject(
+			new ElizaError("compareAndSwapCache is not supported by this adapter", {
+				code: "CONTENT_MANIFEST_CAS_UNSUPPORTED",
+				context: { operation: "compareAndSwapCache" },
+			}),
+		);
+	}
+
+	/**
 	 * Retrieves tasks based on specified parameters.
 	 * @param params Object containing optional roomId and tags to filter tasks
 	 * @returns Promise resolving to an array of Task objects
