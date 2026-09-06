@@ -1783,7 +1783,7 @@ export const calendarAction: Action & {
       name: "details",
       description:
         "Structured fields for create_event/update_event/delete_event. " +
-        "`start`/`end` ISO-8601; aliases `startAt`/`endAt` accepted. " +
+        "`start`/`end`: local wall-clock ISO-8601 in the user's timezone WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. Aliases `startAt`/`endAt` accepted. " +
         "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
         "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
         "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
