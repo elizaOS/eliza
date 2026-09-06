@@ -964,6 +964,7 @@ export async function writeAll(
 }
 
 interface KernelLockLease {
+  readonly descriptor: number;
   readonly release: () => Promise<void>;
 }
 
@@ -1089,6 +1090,16 @@ export class AgentBackupRestoreV3CandidateFsLock {
     return this.#state === "active";
   }
 
+  inheritedDescriptor(authority: symbol): number {
+    if (authority !== LOCK_USE_AUTHORITY || this.#state !== "active") {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_LOCK_INVALID",
+        "Candidate lock descriptor is unavailable",
+      );
+    }
+    return this.#lease.descriptor;
+  }
+
   acquireUse(authority: symbol): () => void {
     if (authority !== LOCK_USE_AUTHORITY || this.#state !== "active") {
       candidateFsError(
@@ -1146,6 +1157,20 @@ export class AgentBackupRestoreV3CandidateFsControl {
   #closePromise: Promise<void> | null = null;
   #pendingLockAcquisitions = 0;
   #lockAcquisitionDrainWaiters: Array<() => void> = [];
+
+  async withInheritedLockDescriptor<T>(
+    lock: AgentBackupRestoreV3CandidateFsLock,
+    operation: (descriptor: number) => Promise<T>,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+  ): Promise<T> {
+    const releaseUse = this.beginLockUse(lock);
+    try {
+      await this.assertLockHeld(lock, control);
+      return await operation(lock.inheritedDescriptor(LOCK_USE_AUTHORITY));
+    } finally {
+      releaseUse();
+    }
+  }
 
   private constructor(input: {
     trustedAuthority: CandidateFsDirectoryAuthority;
@@ -1447,6 +1472,7 @@ export class AgentBackupRestoreV3CandidateFsControl {
       }
       setAdd(TEST_PLATFORM_LOCKS, key);
       lease = OBJECT_FREEZE({
+        descriptor: this.#attemptAuthority.handle.fd,
         release: async () => {
           setDelete(TEST_PLATFORM_LOCKS, key);
         },
@@ -1465,10 +1491,12 @@ export class AgentBackupRestoreV3CandidateFsControl {
         "/bin/sh",
         [
           "-c",
-          "command -v flock >/dev/null 2>&1 || exit 74; flock --exclusive --nonblock 3 || exit 73; printf 1; exec sleep 2147483647",
+          "command -v flock >/dev/null 2>&1 || exit 74; flock --exclusive --nonblock 3 || exit 73; printf 1; exec cat >/dev/null",
         ],
         {
-          stdio: ["ignore", "pipe", "ignore", lockHandle.fd],
+          // EOF releases an orphan helper after parent death. Descendants that
+          // can mutate quarantine inherit this same open-file-description lock.
+          stdio: ["pipe", "pipe", "ignore", lockHandle.fd],
         },
       );
       try {
@@ -1490,6 +1518,7 @@ export class AgentBackupRestoreV3CandidateFsControl {
         throw cause;
       }
       lease = OBJECT_FREEZE({
+        descriptor: lockHandle.fd,
         release: async () => {
           let processFailure: unknown;
           try {
