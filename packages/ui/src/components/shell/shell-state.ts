@@ -132,6 +132,7 @@ export function filterRenderableShellMessages(
       m.secretRequest !== undefined ||
       m.capabilityHandoff !== undefined ||
       m.failureKind !== undefined ||
+      (m.role === "assistant" && m.interrupted === true) ||
       (m.role === "assistant" && phase === "responding"),
   );
 }
