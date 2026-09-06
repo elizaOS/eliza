@@ -56,6 +56,8 @@ const mocks = vi.hoisted(() => ({
     ),
     submitFirstRun: vi.fn(async () => undefined),
     getFirstRunStatus: vi.fn(async () => ({ complete: false })),
+    getStatus: vi.fn(async () => ({ state: "not_started", canRespond: false })),
+    startAgent: vi.fn(async () => ({ state: "running", canRespond: true })),
     getBaseUrl: vi.fn(() => ""),
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
@@ -98,6 +100,12 @@ vi.mock("../utils/desktop-workspace", async (importOriginal) => ({
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
   return { ...actual, client: mocks.client };
+});
+
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../bridge/electrobun-rpc")>();
+  return { ...actual, getDesktopRuntimeMode: async () => ({ mode: "local" }) };
 });
 
 vi.mock("../api/client-cloud", async (importOriginal) => {
@@ -1066,6 +1074,72 @@ describe("useFirstRunConductor", () => {
     expect(spies.setTab).not.toHaveBeenCalledWith("settings");
     unmount();
   });
+
+  it.each([
+    { initialState: "not_started", ready: true, starts: 1 },
+    { initialState: "not_started", ready: false, starts: 1 },
+    { initialState: "running", ready: true, starts: 0 },
+    { initialState: "starting", ready: false, starts: 0 },
+  ])(
+    "reconciles Settings recovery ($initialState, ready=$ready)",
+    async ({ initialState, ready, starts }) => {
+      windowWithElectrobun.__electrobunWindowId = 1;
+      mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+        new Error("Cloud needs credits"),
+      );
+      const spies = seedAppStore();
+      const { transcript, turn, unmount } = renderConductor();
+      await waitForTurn(turn, "first-run:greeting");
+      tryHandleFirstRunAction("__first_run__:runtime:cloud");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+        ).toBe(true),
+      );
+      tryHandleFirstRunAction("__first_run__:error:settings");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) =>
+            m.text.includes("Finish configuring your connection"),
+          ),
+        ).toBe(true),
+      );
+      mocks.client.getFirstRunStatus.mockResolvedValueOnce({ complete: true });
+      mocks.client.getStatus.mockResolvedValueOnce({
+        state: initialState,
+        canRespond: initialState === "running" && ready,
+      });
+      if (starts)
+        mocks.client.getStatus.mockResolvedValueOnce({
+          state: "running",
+          canRespond: ready,
+        });
+      const priorCloudCalls =
+        mocks.client.getPersonalSharedEliza.mock.calls.length;
+      tryHandleFirstRunAction("__first_run__:error:retry");
+      tryHandleFirstRunAction("__first_run__:error:retry");
+      if (ready) {
+        await waitFor(() =>
+          expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+        );
+      } else {
+        await waitFor(() =>
+          expect(
+            transcript.current.some((m) =>
+              m.text.includes("not ready to answer"),
+            ),
+          ).toBe(true),
+        );
+        expect(spies.completeFirstRun).not.toHaveBeenCalled();
+      }
+      expect(mocks.client.startAgent).toHaveBeenCalledTimes(starts);
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(
+        priorCloudCalls,
+      );
+      expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+      unmount();
+    },
+  );
 
   it("a persistent finish 404 does NOT re-loop the runtime question: the error turn stays distinct, offers retry, and 'Configure in Settings' escapes", async () => {
     // Simulate the reported bug: POST /api/first-run always 404s ("Not found").
