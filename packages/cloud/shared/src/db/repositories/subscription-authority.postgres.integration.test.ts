@@ -219,7 +219,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await setupClient.query(`CREATE SCHEMA ${schemaName}`);
     await setupClient.query(`SET search_path TO ${schemaName}, public`);
     await setupClient.query(`
-      CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true, stripe_customer_id text, account_lifecycle_state text NOT NULL DEFAULT 'active', paid_work_fenced_at timestamptz);
+      CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true, stripe_customer_id text, account_lifecycle_state text NOT NULL DEFAULT 'active', paid_work_fenced_at timestamptz, account_deletion_request_id uuid);
       CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
       CREATE TABLE credit_transactions (
@@ -555,27 +555,30 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         clock_timestamp() + interval '1 day',1,$3)`,
       [CLOCK_SUBSCRIPTION, CLOCK_ORG, DIGEST],
     );
+    await setupClient!.query(copyLifecycleRevision, [CLOCK_SUBSCRIPTION]);
     await setupClient!.query(
-      `INSERT INTO billing_subscription_revisions (
-        organization_id, subscription_id, revision, source, provider_environment,
-        stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
-        plan_key, catalog_version, status, current_period_start, current_period_end,
-        cancel_at_period_end, provider_object_digest
-      ) VALUES ($2,$1,1,'webhook','test','cus_clock','sub_clock','si_clock',
-        'plus_monthly','v1','active',clock_timestamp() - interval '1 day',
-        clock_timestamp() + interval '1 day',false,$3)`,
-      [CLOCK_SUBSCRIPTION, CLOCK_ORG, DIGEST],
+      "UPDATE organizations SET stripe_customer_id='cus_clock' WHERE id=$1",
+      [CLOCK_ORG],
     );
+    await setupClient!.query(
+      "UPDATE organization_subscription_authorities SET subscription_id=$1,state='current' WHERE organization_id=$2",
+      [CLOCK_SUBSCRIPTION, CLOCK_ORG],
+    );
+    await entitlements.rebuild({
+      organizationId: CLOCK_ORG,
+      sourceSubscriptionId: CLOCK_SUBSCRIPTION,
+      sourceSubscriptionRevision: 1,
+      expectedProjectionRevision: 0,
+    });
     await setupClient!.query(
       `INSERT INTO subscription_allowance_periods (
         id, organization_id, subscription_id, subscription_revision,
         provider_environment, stripe_invoice_id, plan_key, catalog_version,
         period_start, period_end, expires_at, granted_amount, available_amount
-      ) SELECT $1,$2,$3,1,'test','in_clock','plus_monthly','v1',
-        database_now - interval '1 day', database_now + interval '1 day',
-        database_now + interval '1 day',5,5
-      FROM (SELECT clock_timestamp() AS database_now) AS clock`,
-      [randomUUID(), CLOCK_ORG, CLOCK_SUBSCRIPTION],
+      ) SELECT $1,organization_id,id,lifecycle_revision,provider_environment,'in_clock',plan_key,catalog_version,
+        current_period_start,current_period_end,current_period_end,5,5
+      FROM billing_subscriptions WHERE id=$2`,
+      [randomUUID(), CLOCK_SUBSCRIPTION],
     );
 
     setSystemTime(new Date("2040-01-01T00:00:00.000Z"));

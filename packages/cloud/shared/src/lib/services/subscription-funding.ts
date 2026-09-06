@@ -17,11 +17,17 @@ import {
 } from "../../db/repositories/subscription-funding-reservations";
 import {
   type BillingFundingReservation,
+  billingFundingAllocations,
   billingFundingReservations,
 } from "../../db/schemas/billing-funding-reservations";
+import {
+  billingSubscriptionRevisions,
+  billingSubscriptions,
+} from "../../db/schemas/billing-subscriptions";
 import { organizations } from "../../db/schemas/organizations";
 import { subscriptionAllowancePeriods } from "../../db/schemas/subscription-allowance-periods";
 import { creditsService } from "./credits";
+import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-policy";
 import {
   SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
   SUBSCRIPTION_FUNDING_LOGICAL_OPERATION_KEY_PATTERN,
@@ -148,7 +154,7 @@ async function lockOrganization(tx: DbTransaction, organizationId: string): Prom
 }
 
 async function findCurrentAllowance(tx: DbTransaction, organizationId: string, now: Date) {
-  const [period] = await tx
+  const periods = await tx
     .select()
     .from(subscriptionAllowancePeriods)
     .where(
@@ -160,9 +166,15 @@ async function findCurrentAllowance(tx: DbTransaction, organizationId: string, n
       ),
     )
     .orderBy(desc(subscriptionAllowancePeriods.expires_at))
-    .limit(1)
+    .limit(2)
     .for("update");
-  return period;
+  if (periods.length > 1)
+    fundingError(
+      "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
+      "Multiple current allowance periods require reconciliation",
+      { organizationId },
+    );
+  return periods[0];
 }
 
 function reservationExpiry(input: ReserveSubscriptionFundingInput, now: Date): Date {
@@ -220,10 +232,133 @@ export class SubscriptionFundingService {
       await lockOrganization(tx, input.organizationId);
       const now = await readPostLockDatabaseNow(tx);
       const fundingClass = SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation];
-      const period =
-        fundingClass === "allowance_eligible"
-          ? await findCurrentAllowance(tx, input.organizationId, now)
-          : undefined;
+      // Replay is pinned to the original allocation, even after its period or source changes.
+      const [existing] = await tx
+        .select()
+        .from(billingFundingReservations)
+        .where(
+          and(
+            eq(billingFundingReservations.organization_id, input.organizationId),
+            eq(billingFundingReservations.logical_operation_id, input.logicalOperationId),
+          ),
+        )
+        .for("update");
+      if (existing) {
+        if (
+          existing.request_digest !== digest ||
+          existing.requested_amount !== requestedAmount ||
+          existing.funding_class !== fundingClass
+        )
+          fundingError(
+            SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
+            "Reservation replay differs from its immutable request",
+            { organizationId: input.organizationId },
+          );
+        const [allowanceAllocation] = await tx
+          .select({ id: billingFundingAllocations.id })
+          .from(billingFundingAllocations)
+          .where(
+            and(
+              eq(billingFundingAllocations.reservation_id, existing.id),
+              eq(billingFundingAllocations.source, "allowance"),
+            ),
+          );
+        if (!allowanceAllocation) {
+          const requestedExpiry = reservationExpiry(input, now);
+          if (
+            !Number.isFinite(requestedExpiry.getTime()) ||
+            (input.expiresAt && existing.expires_at.getTime() !== input.expiresAt.getTime())
+          )
+            fundingError(
+              SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
+              "Reservation replay changes or invalidates its expiry",
+              { organizationId: input.organizationId },
+            );
+        }
+        return { reservation: existing, replayed: true };
+      }
+      let period: Awaited<ReturnType<typeof findCurrentAllowance>> | undefined;
+      if (fundingClass === "allowance_eligible") {
+        const [org] = await tx
+          .select({
+            id: organizations.id,
+            is_active: organizations.is_active,
+            account_lifecycle_state: organizations.account_lifecycle_state,
+            account_deletion_request_id: organizations.account_deletion_request_id,
+            paid_work_fenced_at: organizations.paid_work_fenced_at,
+          })
+          .from(organizations)
+          .where(eq(organizations.id, input.organizationId));
+        if (
+          !org ||
+          !org.is_active ||
+          org.account_lifecycle_state !== "active" ||
+          org.account_deletion_request_id !== null ||
+          org.paid_work_fenced_at !== null
+        )
+          fundingError(
+            "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
+            "Organization is unavailable for new funding",
+            { organizationId: input.organizationId },
+          );
+        const policy = await readOrganizationQuotaPolicyInTransaction(tx, input.organizationId);
+        if (policy.authority.source === "subscription" && !policy.subscriptionFunded)
+          fundingError(
+            "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
+            "Current subscription is unavailable for new funding",
+            { organizationId: input.organizationId },
+          );
+        period = await findCurrentAllowance(tx, input.organizationId, now);
+        if (period) {
+          const [source] = await tx
+            .select()
+            .from(billingSubscriptions)
+            .where(
+              and(
+                eq(billingSubscriptions.id, period.subscription_id),
+                eq(billingSubscriptions.organization_id, input.organizationId),
+              ),
+            );
+          const [grantRevision] = await tx
+            .select()
+            .from(billingSubscriptionRevisions)
+            .where(
+              and(
+                eq(billingSubscriptionRevisions.subscription_id, period.subscription_id),
+                eq(billingSubscriptionRevisions.organization_id, input.organizationId),
+                eq(billingSubscriptionRevisions.revision, period.subscription_revision),
+              ),
+            );
+          if (
+            !policy.subscriptionFunded ||
+            policy.authority.sourceSubscriptionId !== period.subscription_id ||
+            !source ||
+            !grantRevision ||
+            grantRevision.status !== "active" ||
+            grantRevision.plan_key !== period.plan_key ||
+            grantRevision.catalog_version !== period.catalog_version ||
+            grantRevision.provider !== period.provider ||
+            grantRevision.provider_environment !== period.provider_environment ||
+            grantRevision.current_period_start?.getTime() !== period.period_start.getTime() ||
+            grantRevision.current_period_end?.getTime() !== period.period_end.getTime() ||
+            !source.current_period_start ||
+            !source.current_period_end ||
+            !Number.isFinite(source.current_period_start.getTime()) ||
+            !Number.isFinite(source.current_period_end.getTime()) ||
+            period.provider !== source.provider ||
+            period.provider_environment !== source.provider_environment ||
+            source.current_period_start.getTime() !== period.period_start.getTime() ||
+            source.current_period_end.getTime() !== period.period_end.getTime() ||
+            source.plan_key !== period.plan_key ||
+            source.catalog_version !== period.catalog_version
+          )
+            fundingError(
+              "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
+              "Allowance is not owned by current eligible subscription period",
+              { organizationId: input.organizationId },
+            );
+        }
+      }
       const split = splitSubscriptionFundingSources({
         requestedAmount,
         availableAllowance: period

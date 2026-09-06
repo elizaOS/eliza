@@ -394,6 +394,8 @@ jobs:
             packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/subscription-renewal.postgres.integration.test.ts
       - name: Require subscription authority outcome
         if: always()
         env:

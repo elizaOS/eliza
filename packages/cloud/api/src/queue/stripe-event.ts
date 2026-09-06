@@ -31,7 +31,6 @@
 import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
-
 import { dbRead } from "@/db/helpers";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
@@ -221,6 +220,16 @@ export async function processStripeEvent(
       } else {
         await reconcileStripeTerminalLifecycle(delivery.body);
       }
+      return "ack";
+    }
+    if (
+      event.type === "invoice.paid" &&
+      isRecurringInvoice(event.data.object)
+    ) {
+      const { reconcileStripePaidRenewal } = await import(
+        "@/lib/services/stripe-paid-renewal"
+      );
+      await reconcileStripePaidRenewal(delivery.body);
       return "ack";
     }
     if (await requiresSubscriptionReconciliation(event)) {
