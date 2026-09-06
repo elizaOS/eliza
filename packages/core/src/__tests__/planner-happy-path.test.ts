@@ -277,6 +277,70 @@ function readRecordedTrajectories(agentId: string): unknown[] {
 }
 
 describe("v5 happy path — message handler → planner → executor → evaluator", () => {
+	it("builds current catalog hierarchy for separate runtimes with the same action names", async () => {
+		for (const grouped of [true, false]) {
+			const child = makeMockAction({
+				name: "CATALOG_FLOW_CHILD",
+				handler: async () => ({ success: true, text: "Child result" }),
+			});
+			const parent = makeMockAction({
+				name: "CATALOG_FLOW_PARENT",
+				subActions: grouped ? [child.name] : [],
+				handler: async () => ({ success: true, text: "Parent result" }),
+			});
+			const read = makeMockAction({
+				name: "CATALOG_FLOW_READ",
+				handler: async () => ({ success: true, text: "Read current data." }),
+			});
+			const runtime = makeRuntime({
+				actions: [read, parent, child],
+				responses: [
+					{
+						expectModelType: ModelType.RESPONSE_HANDLER,
+						body: stage1Response({ contexts: ["general"] }),
+					},
+					{
+						expectModelType: ModelType.ACTION_PLANNER,
+						body: {
+							text: "",
+							toolCalls: [{ id: "read-current", name: read.name, args: {} }],
+						},
+					},
+					{
+						expectModelType: ModelType.RESPONSE_HANDLER,
+						body: JSON.stringify({
+							success: true,
+							decision: "FINISH",
+							thought: "The read completed.",
+							messageToUser: "Read current data.",
+						}),
+					},
+				],
+			});
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage("Read current data."),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+			expect(result.kind).toBe("planned_reply");
+			expect(runtime.logger.debug).toHaveBeenCalledWith(
+				expect.objectContaining({
+					actionSurface: expect.objectContaining({
+						catalogParentCount: grouped ? 2 : 3,
+						tierAParents: grouped
+							? [parent.name, read.name]
+							: [child.name, parent.name, read.name],
+						tierAChildrenByParent: expect.objectContaining({
+							[parent.name]: grouped ? [child.name] : [],
+						}),
+					}),
+				}),
+				"Built v5 planner action surface",
+			);
+		}
+	});
+
 	it("enters the coding planner directly without a HANDLE_RESPONSE model call", async () => {
 		const fileHandler = vi.fn(async () => ({
 			success: true,
