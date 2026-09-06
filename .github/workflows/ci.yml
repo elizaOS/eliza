@@ -37,9 +37,9 @@ jobs:
             for color in ['red','lime']: inputs+=['-f','lavfi','-i',f'color=c={color}:s=64x64:r={rate}:d={duration}']
             run([*inputs,'-filter_complex','[0:v][1:v]concat=n=2:v=1'+filter_tail+'[v]','-map','[v]',*options,'-pix_fmt','yuv420p',video])
             result={'name':name,'source_pixels':pixels(['-i',video])}
-          if name=='sparse-input':
-           probe=subprocess.run(['ffmpeg','-hide_banner','-i',video,'-vf','showinfo','-fps_mode','passthrough','-f','null','-'],capture_output=True,text=True,check=True)
-           print(probe.stderr)
+            if name=='sparse-input':
+             probe=subprocess.run(['ffmpeg','-hide_banner','-i',video,'-vf','showinfo','-fps_mode','passthrough','-f','null','-'],capture_output=True,text=True,check=True)
+             print(probe.stderr)
             for seek in [True,False]:
              target=str(p/(name+('-seek.png' if seek else '-full.png')))
              run([*(['-sseof','-1'] if seek else []),'-i',video,'-fps_mode','passthrough','-update','1',target])
