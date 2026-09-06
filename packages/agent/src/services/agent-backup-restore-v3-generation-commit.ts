@@ -97,6 +97,20 @@ function equal(left: unknown, right: unknown): boolean {
 export async function commitAgentBackupRestoreV3Generation(
   input: Readonly<AgentBackupRestoreV3GenerationCommitInput>,
 ): Promise<AgentBackupRestoreV3CommittedGenerationReceipt> {
+  return settleGenerationCommit(input, false);
+}
+
+/** Boot consumers may verify a terminal handoff, never complete an unfinished commit. */
+export async function verifyAgentBackupRestoreV3GenerationCommit(
+  input: Readonly<AgentBackupRestoreV3GenerationCommitInput>,
+): Promise<AgentBackupRestoreV3CommittedGenerationReceipt> {
+  return settleGenerationCommit(input, true);
+}
+
+async function settleGenerationCommit(
+  input: Readonly<AgentBackupRestoreV3GenerationCommitInput>,
+  requireCommitted: boolean,
+): Promise<AgentBackupRestoreV3CommittedGenerationReceipt> {
   const keys = [
     "generationFs",
     "preparedReceipt",
@@ -167,6 +181,7 @@ export async function commitAgentBackupRestoreV3Generation(
       control,
       lock,
     );
+    if (requireCommitted && committed === null) fail("NOT_COMMITTED");
     const retained = await candidate.readDurableJson(
       INTENT,
       LIMIT,
