@@ -623,3 +623,5 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			},
 		},
 	];
+
+import { replyClaimsInProgressWork } from "./side-effect-claims.js";

@@ -118,11 +118,15 @@ describe("non-verdict evaluator JSON leaves remaining work to the real planner",
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [
-						{
-							id: "calendar-repeat",
-							name: "CALENDAR",
-							arguments: calendarParams,
-						},
+						...(outcome === "applied"
+							? [
+									{
+										id: "calendar-repeat",
+										name: "CALENDAR",
+										arguments: calendarParams,
+									},
+								]
+							: []),
 						{
 							id: "home-1",
 							name: "VIEWS",

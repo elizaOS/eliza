@@ -102,7 +102,6 @@ export async function generateStage1Decision(
 	args: V5MessageRuntimeInput,
 	{
 		senderRole,
-		ambientHardGate,
 		useProviderOverflow,
 		context,
 		availableContexts,
@@ -112,7 +111,6 @@ export async function generateStage1Decision(
 		recorder,
 		trajectoryId,
 	}: {
-		ambientHardGate: boolean;
 		useProviderOverflow: boolean;
 		senderRole: Awaited<ReturnType<typeof resolveStage1SenderRole>>;
 		context: Awaited<ReturnType<typeof createV5MessageContextObject>>;

@@ -224,12 +224,12 @@ export function evaluatePlannedReplyEgress(args: {
 	return { verdict: "allow" };
 }
 
-export async function enforceEffectGroundedVisibleContent(
+export function enforceEffectGroundedVisibleContent(
 	runtime: IAgentRuntime,
 	message: Memory,
 	response: Content,
 	actionName?: string,
-): Promise<Content> {
+): Content | Promise<Content> {
 	const hasEffectDeliveryBinding =
 		getEffectDeliveryBinding(response) !== undefined;
 	if (!hasEffectDeliveryBinding && response.effectReceiptIds !== undefined) {
@@ -250,18 +250,16 @@ export async function enforceEffectGroundedVisibleContent(
 			},
 			"Replaced visible completion text that lacked validated effect receipt bindings",
 		);
-		return {
+		return resolvePlannedReplyEgress({
+			runtime,
+			message,
+			reply: response.text ?? "",
+			actionResults: [],
+		}).then((grounded) => ({
 			...stripEffectDeliveryBinding(response),
-			text: (
-				await resolvePlannedReplyEgress({
-					runtime,
-					message,
-					reply: response.text ?? "",
-					actionResults: [],
-				})
-			).text,
+			text: grounded.text,
 			agentVoiced: true,
-		};
+		}));
 	}
 	return response;
 }

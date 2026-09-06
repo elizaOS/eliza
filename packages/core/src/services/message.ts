@@ -581,4 +581,8 @@ export class DefaultMessageService implements IMessageService {
 	}
 }
 
-export { decideUmbrellaPlannerBudget } from "./message/planned-tool.js";
+export { resolvePlannedReplyEgress } from "./message/egress-policy.js";
+export {
+	collectBudgetedStageOneCandidateActions,
+	decideUmbrellaPlannerBudget,
+} from "./message/planned-tool.js";

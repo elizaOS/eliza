@@ -367,7 +367,6 @@ export async function runV5MessageRuntimeStage1(
 			args,
 			{
 				senderRole,
-				ambientHardGate,
 				useProviderOverflow,
 				context,
 				availableContexts,

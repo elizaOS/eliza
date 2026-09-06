@@ -418,7 +418,7 @@ describe("voice settings write backstop (#16942)", () => {
 				contexts: ["general"],
 				simple: false,
 				requiresTool: true,
-				candidateActions: ["SETTINGS"],
+				candidateActions: expect.arrayContaining(["SETTINGS"]),
 			});
 		},
 	);

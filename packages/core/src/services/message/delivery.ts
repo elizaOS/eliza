@@ -270,12 +270,14 @@ export function wrapSingleTurnVisibleCallback(
 				}
 			}
 		}
-		response = await enforceEffectGroundedVisibleContent(
+		const grounded = enforceEffectGroundedVisibleContent(
 			fullRuntime,
 			message,
 			response,
 			actionName,
 		);
+		// Ordinary replies reach the connector synchronously before persistence starts.
+		response = grounded instanceof Promise ? await grounded : grounded;
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
 				fullRuntime.logger?.debug?.(
