@@ -9,7 +9,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { BuildConfig, BunPlugin } from "bun";
@@ -704,6 +704,66 @@ export function createBuildRunner(options: BuildRunnerOptions) {
 // Source directory for TypeScript
 const TS_SRC = "src";
 
+const ERRORS_SOURCE_STEM = fileURLToPath(
+	new URL("./src/errors.ts", import.meta.url),
+)
+	.replaceAll("\\", "/")
+	.replace(/\.[cm]?[jt]s$/, "");
+const CANONICAL_ERRORS_NAMESPACE = "eliza-core-canonical-errors";
+export const CANONICAL_ERRORS_RUNTIME_EXPORTS = [
+	"ElizaError",
+	"isElizaError",
+	"toElizaError",
+] as const;
+
+/**
+ * Keep every bundled package entrypoint on the public `./errors` module.
+ *
+ * Bun normally inlines `src/errors.ts` into each entry bundle, which creates a
+ * distinct `ElizaError` constructor in the root, browser, edge, and testing
+ * artifacts. The small standalone errors artifact is emitted separately; this
+ * plugin turns internal imports into one external package-private reference so
+ * all public entrypoints observe that artifact's exact bindings. The `#errors`
+ * imports-map entry also avoids downstream prefix aliases for `@elizaos/core`,
+ * which would otherwise rewrite a public self-reference as a child of a file.
+ */
+const canonicalErrorsPlugin: BunPlugin = {
+	name: "eliza-core-canonical-errors",
+	setup(build) {
+		build.onResolve(
+			{ filter: /^(?:\.\.?\/)+errors(?:\.[cm]?[jt]s)?$/ },
+			({ importer, path }) => {
+				if (!importer) return undefined;
+				const sourceStem = resolve(dirname(importer), path)
+					.replaceAll("\\", "/")
+					.replace(/\.[cm]?[jt]s$/, "");
+				if (sourceStem !== ERRORS_SOURCE_STEM) return undefined;
+				return {
+					path: "canonical-errors",
+					namespace: CANONICAL_ERRORS_NAMESPACE,
+				};
+			},
+		);
+		build.onLoad(
+			{
+				filter: /^canonical-errors$/,
+				namespace: CANONICAL_ERRORS_NAMESPACE,
+			},
+			() => ({
+				// A named re-export is intentional. Bun emits a large compatibility shim
+				// for `export *` here; the source-surface ratchet test keeps this list in
+				// sync if errors.ts gains another runtime export.
+				contents: `export { ${CANONICAL_ERRORS_RUNTIME_EXPORTS.join(", ")} } from "#errors";\n`,
+				loader: "js",
+			}),
+		);
+		build.onResolve({ filter: /^#errors$/ }, ({ path }) => ({
+			path,
+			external: true,
+		}));
+	},
+};
+
 // Ensure dist directories exist
 ["dist", "dist/node", "dist/browser", "dist/edge"].forEach((dir) => {
 	if (!existsSync(dir)) {
@@ -812,7 +872,6 @@ export async function buildNode(
 		buildOptions: {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
@@ -827,6 +886,7 @@ export async function buildNode(
 			minify: false,
 			generateDts: false, // We'll generate declarations separately for all entry points
 			skipClean: true,
+			plugins: [canonicalErrorsPlugin],
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
@@ -835,6 +895,40 @@ export async function buildNode(
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Node.js build complete in ${duration}s`);
+}
+
+/**
+ * Emit the platform-neutral public `./errors` artifact on its own. Keeping this
+ * out of Bun's multi-entry Node build avoids a `node:module`/`createRequire`
+ * preamble, so browser and Workerd roots can safely share the same binding.
+ */
+export async function buildErrors(
+	runnerFactory: typeof createBuildRunner = createBuildRunner,
+) {
+	console.log("🧱 Building shared errors entrypoint...");
+	const startTime = Date.now();
+
+	const runErrors = runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/errors.ts`],
+			outdir: "dist/node",
+			target: "browser",
+			format: "esm",
+			external: [],
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			plugins: [],
+			selfPackageName: "@elizaos/core",
+		},
+	});
+
+	await runErrors();
+
+	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+	console.log(`✅ Shared errors entrypoint complete in ${duration}s`);
 }
 
 /**
@@ -868,7 +962,7 @@ export async function buildBrowser(
 			minify: false,
 			generateDts: false, // Use the same .d.ts files from Node build
 			skipClean: true,
-			plugins: [],
+			plugins: [canonicalErrorsPlugin],
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
@@ -908,7 +1002,7 @@ export async function buildEdge(
 			minify: false,
 			generateDts: false,
 			skipClean: true,
-			plugins: [edgeRuntimeSourcesPlugin],
+			plugins: [canonicalErrorsPlugin, edgeRuntimeSourcesPlugin],
 			selfPackageName: "@elizaos/core",
 		},
 	});
@@ -1041,6 +1135,7 @@ export async function buildTesting(
 			minify: false,
 			generateDts: false,
 			skipClean: true,
+			plugins: [canonicalErrorsPlugin],
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
@@ -1068,6 +1163,9 @@ export async function buildNodeOnly(
 	const generateDeclarations =
 		options.generateDeclarations ?? generateTypeScriptDeclarations;
 	const skipTesting = argv.includes("--skip-testing");
+	// This artifact shares dist/node with the Node bundle. Emit it first so two
+	// Bun writers never race in the same output directory.
+	await buildErrors(runnerFactory);
 	const tasks: Array<Promise<void>> = [buildNode(runnerFactory)];
 	if (!skipTesting) tasks.push(buildTesting(runnerFactory));
 	await Promise.all(tasks);
@@ -1075,6 +1173,25 @@ export async function buildNodeOnly(
 
 	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
 	console.log(`\n🎉 Node-only build complete in ${totalDuration}s`);
+}
+
+export async function buildEdgeOnly(
+	options: {
+		runnerFactory?: typeof createBuildRunner;
+		edgeBundleIo?: EdgeBundleIo;
+	} = {},
+) {
+	console.log("🚀 Starting Edge-only build process for @elizaos/core");
+	const totalStart = Date.now();
+	const runnerFactory = options.runnerFactory ?? createBuildRunner;
+
+	// The edge root keeps a package self-reference to this platform-neutral
+	// artifact, so a clean Edge-only build must emit both sides of the contract.
+	await buildErrors(runnerFactory);
+	await buildEdge(runnerFactory, options.edgeBundleIo);
+
+	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
+	console.log(`\n🎉 Edge-only build complete in ${totalDuration}s`);
 }
 
 /**
@@ -1094,6 +1211,10 @@ export async function buildAll(
 	const runnerFactory = options.runnerFactory ?? createBuildRunner;
 	const generateDeclarations =
 		options.generateDeclarations ?? generateTypeScriptDeclarations;
+
+	// This artifact shares dist/node with the Node bundle. Emit it first so two
+	// Bun writers never race in the same output directory.
+	await buildErrors(runnerFactory);
 
 	// Build JS in parallel first
 	await Promise.all([
@@ -1548,6 +1669,80 @@ export function packedConsumerNodeOptions(
 	return stripped.length > 0 ? stripped : undefined;
 }
 
+/** Remove inherited export conditions so each identity probe selects its target. */
+export function conditionNeutralNodeOptions(
+	nodeOptions: string | undefined,
+): string | undefined {
+	if (!nodeOptions) return nodeOptions;
+	const stripped = nodeOptions
+		.replace(/(?:^|\s)(?:--conditions|-C)(?:=|\s+)\S+(?=\s|$)/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return stripped.length > 0 ? stripped : undefined;
+}
+
+interface ErrorIdentityConditionSet {
+	args: string[];
+	expected: {
+		isBrowser: boolean;
+		isEdge?: boolean;
+		isNode: boolean;
+	};
+	label: string;
+}
+
+async function verifyBuiltErrorIdentity(
+	conditionSets: ErrorIdentityConditionSet[] = [
+		{
+			args: [],
+			expected: { isBrowser: false, isNode: true },
+			label: "Node",
+		},
+		{
+			args: ["--conditions=browser"],
+			expected: { isBrowser: true, isNode: false },
+			label: "browser",
+		},
+		{
+			args: ["--conditions=workerd"],
+			expected: { isBrowser: false, isEdge: true, isNode: false },
+			label: "Workerd",
+		},
+	],
+): Promise<void> {
+	const consumerNodeOptions = conditionNeutralNodeOptions(
+		process.env.NODE_OPTIONS,
+	);
+	const consumerEnv: NodeJS.ProcessEnv = { ...process.env };
+	if (consumerNodeOptions === undefined) delete consumerEnv.NODE_OPTIONS;
+	else consumerEnv.NODE_OPTIONS = consumerNodeOptions;
+
+	for (const { args, expected, label } of conditionSets) {
+		const consumer = [
+			'import * as root from "@elizaos/core";',
+			'import * as errors from "@elizaos/core/errors";',
+			`const expected = ${JSON.stringify(expected)};`,
+			`const label = ${JSON.stringify(label)};`,
+			'for (const [name, binding] of Object.entries(errors)) { if (!(name in root) || root[name] !== binding) throw new Error(label + " root does not preserve the errors entrypoint binding " + name); }',
+			'for (const [name, value] of Object.entries(expected)) { if (root[name] !== value) throw new Error(label + " conditions selected the wrong root: expected " + name + "=" + value + ", received " + root[name]); }',
+			'if (!("isEdge" in expected) && root.isEdge !== undefined) throw new Error(label + " root unexpectedly exposes isEdge=" + root.isEdge);',
+			'const fromRoot = new root.ElizaError("root", { code: "ROOT" });',
+			'const fromErrors = new errors.ElizaError("errors", { code: "ERRORS" });',
+			'if (!(fromRoot instanceof errors.ElizaError) || !(fromErrors instanceof root.ElizaError)) throw new Error(label + " cross-entrypoint instanceof failed");',
+			'if (!root.isElizaError(fromErrors) || root.toElizaError(fromErrors) !== fromErrors) throw new Error(label + " root helpers rejected the errors entrypoint instance");',
+			"",
+		].join("\n");
+		await execFileAsync(
+			"node",
+			[...args, "--input-type=module", "--eval", consumer],
+			{ cwd: process.cwd(), env: consumerEnv },
+		);
+	}
+	console.log(
+		`✅ Compiled ${conditionSets.map(({ label }) => label).join(", ")} error constructor identity verified`,
+	);
+}
+
 async function verifyPackedEdgeContract(): Promise<void> {
 	const fs = await import("node:fs/promises");
 	const consumerNodeOptions = packedConsumerNodeOptions(
@@ -1620,9 +1815,13 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			join(contractRoot, "consumer.mjs"),
 			[
 				'import * as edge from "@elizaos/core/edge";',
+				'import { ElizaError as ErrorsElizaError } from "@elizaos/core/errors";',
 				'if (edge.isEdge !== true) throw new Error("packed edge marker is missing");',
 				'if (!Array.isArray(edge.basicActions) || typeof edge.createBasicCapabilitiesPlugin !== "function") throw new Error("packed basic capability runtime is missing");',
 				'if ("advancedCapabilities" in edge || "pluginManager" in edge) throw new Error("packed edge runtime exposes a host-only capability");',
+				'if (edge.ElizaError !== ErrorsElizaError) throw new Error("packed edge and errors entrypoints expose distinct ElizaError constructors");',
+				'const structured = new ErrorsElizaError("packed", { code: "PACKED" });',
+				'if (!(structured instanceof edge.ElizaError) || !edge.isElizaError(structured) || edge.toElizaError(structured) !== structured) throw new Error("packed edge error identity is broken");',
 				"",
 			].join("\n"),
 		);
@@ -1631,7 +1830,7 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			env: consumerEnv,
 		});
 		console.log(
-			"✅ Packed @elizaos/core/edge declarations and runtime import verified",
+			"✅ Packed @elizaos/core/edge runtime and error identity verified",
 		);
 
 		const expectedFlatFiles = [
@@ -1669,7 +1868,11 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			process.cwd(),
 			"../../node_modules/@elizaos/vitest-vite/bin/vite.js",
 		);
-		for (const mode of ["package-browser", "flat-alias"] as const) {
+		for (const mode of [
+			"package-browser",
+			"flat-alias",
+			"broad-root-alias",
+		] as const) {
 			const consumerRoot = join(contractRoot, mode);
 			await fs.mkdir(consumerRoot, { recursive: true });
 			await fs.writeFile(
@@ -1683,30 +1886,63 @@ async function verifyPackedEdgeContract(): Promise<void> {
 				"utf8",
 			);
 			await fs.writeFile(
-				join(consumerRoot, "entry.js"),
+				join(consumerRoot, "cloud-routing-browser.js"),
 				[
-					'import { isTruthyEnvValue, sanitizeSpeechText } from "@elizaos/core/client-public";',
-					'if (!isTruthyEnvValue("yes")) throw new Error("browser consumer helper did not execute");',
-					'if (sanitizeSpeechText(" hello ") !== "hello") throw new Error("browser consumer speech helper diverged");',
-					"export const verified = true;",
+					'export function cloudServiceApisBaseUrl() { return "https://example.invalid"; }',
+					"export function isCloudConnected() { return false; }",
+					"export function resolveCloudRoute() { return undefined; }",
+					"export function toRuntimeSettings() { return {}; }",
 					"",
 				].join("\n"),
 				"utf8",
 			);
-			const aliases = [
-				`{ find: "node:module", replacement: ${JSON.stringify(join(consumerRoot, "node-module-browser.js"))} }`,
-			];
+			await fs.writeFile(
+				join(consumerRoot, "entry.js"),
+				(mode === "broad-root-alias"
+					? [
+							'import * as root from "@elizaos/core";',
+							'import * as errors from "../node_modules/@elizaos/core/dist/node/errors.js";',
+							'if (root.isBrowser !== true) throw new Error("broad alias did not select the browser root");',
+							'if (root.ElizaError !== errors.ElizaError) throw new Error("broad alias split the canonical error constructor");',
+							'const structured = new errors.ElizaError("vite", { code: "VITE" });',
+							'if (!(structured instanceof root.ElizaError) || !root.isElizaError(structured) || root.toElizaError(structured) !== structured) throw new Error("broad alias broke error identity");',
+							"export const verified = true;",
+							"",
+						]
+					: [
+							'import { isTruthyEnvValue, sanitizeSpeechText } from "@elizaos/core/client-public";',
+							'if (!isTruthyEnvValue("yes")) throw new Error("browser consumer helper did not execute");',
+							'if (sanitizeSpeechText(" hello ") !== "hello") throw new Error("browser consumer speech helper diverged");',
+							"export const verified = true;",
+							"",
+						]
+				).join("\n"),
+				"utf8",
+			);
+			const aliases =
+				mode === "broad-root-alias"
+					? [
+							`{ find: "@elizaos/core", replacement: ${JSON.stringify(join(packageRoot, "dist/browser/index.browser.js"))} }`,
+							`{ find: "@elizaos/cloud-routing", replacement: ${JSON.stringify(join(consumerRoot, "cloud-routing-browser.js"))} }`,
+						]
+					: [
+							`{ find: "node:module", replacement: ${JSON.stringify(join(consumerRoot, "node-module-browser.js"))} }`,
+						];
 			if (mode === "flat-alias") {
 				aliases.push(
 					`{ find: "@elizaos/core/client-public", replacement: ${JSON.stringify(join(packageRoot, "dist/client-public.js"))} }`,
 				);
 			}
+			const externals =
+				mode === "broad-root-alias"
+					? "[/^node:/, /^(?!@elizaos\\/core$|@elizaos\\/cloud-routing$|#errors$)(?:@[^/]+\\/[^/]+|[^./][^:]*)$/]"
+					: "[/^node:/]";
 			await fs.writeFile(
 				join(consumerRoot, "vite.config.mjs"),
 				[
 					"export default {",
 					`  resolve: { alias: [${aliases.join(", ")}] },`,
-					'  build: { outDir: "dist", emptyOutDir: true, lib: { entry: "entry.js", formats: ["es"], fileName: () => "bundle.js" } },',
+					`  build: { outDir: "dist", emptyOutDir: true, rollupOptions: { external: ${externals} }, lib: { entry: "entry.js", formats: ["es"], fileName: () => "bundle.js" } },`,
 					'  logLevel: "error",',
 					"};",
 					"",
@@ -1724,7 +1960,7 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			});
 		}
 		console.log(
-			"✅ Packed Node, browser-condition, and exact-flat Vite consumers verified",
+			"✅ Packed Node, browser-condition, exact-flat, and broad-root-alias Vite consumers verified",
 		);
 	} finally {
 		await execFileAsync("node", [RM_RECURSIVE_SCRIPT, contractRoot], {
@@ -1740,12 +1976,27 @@ if (import.meta.main) {
 	if (isNodeOnly && isEdgeOnly) {
 		throw new Error("Choose either --node-only or --edge-only, not both");
 	}
-	const build = isEdgeOnly ? buildEdge : isNodeOnly ? buildNodeOnly : buildAll;
+	const build = isEdgeOnly
+		? buildEdgeOnly
+		: isNodeOnly
+			? buildNodeOnly
+			: buildAll;
 
 	withCoreBuildLock(async () => {
 		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT]);
 		await build();
-		if (!isNodeOnly && !isWatch) await verifyPackedEdgeContract();
+		if (isEdgeOnly && !isWatch) {
+			await verifyBuiltErrorIdentity([
+				{
+					args: ["--conditions=workerd"],
+					expected: { isBrowser: false, isEdge: true, isNode: false },
+					label: "Workerd",
+				},
+			]);
+		} else if (!isNodeOnly && !isWatch) {
+			await verifyBuiltErrorIdentity();
+			await verifyPackedEdgeContract();
+		}
 		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT, "--check"]);
 	}).catch((error) => {
 		console.error("Build script error:", error);
