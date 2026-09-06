@@ -3,6 +3,7 @@
 import { ElizaError } from "@elizaos/core";
 import {
   type AgentExecutionTier,
+  type AgentSandboxPlacementLocator,
   CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../../db/schemas/agent-sandboxes";
 
@@ -115,33 +116,7 @@ export interface SandboxRetainedStopReceipt {
   state: "exited" | "created";
 }
 
-export interface SandboxReplacementCleanupLocator {
-  sandboxId: string;
-  nodeId: string;
-  containerName: string;
-  /** Immutable docker_nodes primary key for exact-placement recovery. */
-  nodeRecordId?: string | null;
-  /** Immutable Linux-boot occurrence bound to the reserved restore target. */
-  nodeIncarnation?: string | null;
-  /** Trigger-owned history row for that exact node occurrence. */
-  nodeHistoryId?: string | null;
-  /** SSH authority frozen with nodeRecordId before candidate effects. */
-  nodeHostname?: string | null;
-  nodeSshPort?: number | null;
-  nodeSshUser?: string | null;
-  nodeHostKeyFingerprint?: string | null;
-  /** Attempt-scoped remote secret cleanup protocol understood by this locator. */
-  replacementSecretCleanupVersion?: 1 | null;
-  replacementAttemptId?: string | null;
-  /** Restore generation that derived an attempt-scoped quarantine container. */
-  restoreAttemptId?: string | null;
-  containerId?: string | null;
-  vpnNodeId?: string | null;
-  vpnNodeName?: string | null;
-  previousVpnNodeId?: string | null;
-  vpnRegistrationStartedAt?: string | null;
-  allocationCounted?: boolean | null;
-}
+export type SandboxReplacementCleanupLocator = AgentSandboxPlacementLocator;
 
 /** Proven-success outcome of one exact-success replacement invocation. */
 export interface SandboxReplacementCreateSettlement {

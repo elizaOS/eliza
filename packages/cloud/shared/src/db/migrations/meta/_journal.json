@@ -2556,6 +2556,13 @@
       "when": 1796083200008,
       "tag": "0363_agent_local_state_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 364,
+      "version": "7",
+      "when": 1788686810440,
+      "tag": "0364_agent_serving_placement",
+      "breakpoints": true
     }
   ]
 }

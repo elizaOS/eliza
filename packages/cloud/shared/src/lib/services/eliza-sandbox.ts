@@ -13005,6 +13005,7 @@ export class ElizaSandboxService {
       }
 
       const locator = this.getReplacementCleanupLocator(current);
+      let servingPlacement = current.serving_placement;
       if (locator) {
         // A preserved retry handle has no replacement metadata because its
         // identity already lives on the primary row. Construct the replacement
@@ -13017,6 +13018,24 @@ export class ElizaSandboxService {
         ) {
           throw new Error("Replacement cleanup ownership changed before adoption");
         }
+        const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : null;
+        servingPlacement = {
+          version: 1,
+          volumePath: metadata?.volumePath ?? null,
+          locator: {
+            ...incoming,
+            vpnRegistrationStartedAt: incoming.vpnRegistrationStartedAt?.toISOString() ?? null,
+            nodeRecordId: metadata?.nodeRecordId ?? null,
+            nodeIncarnation: metadata?.nodeIncarnation ?? null,
+            nodeHistoryId: metadata?.nodeHistoryId ?? null,
+            nodeHostname: metadata?.hostname ?? null,
+            nodeSshPort: metadata?.nodeSshPort ?? null,
+            nodeSshUser: metadata?.nodeSshUser ?? null,
+            nodeHostKeyFingerprint: metadata?.nodeHostKeyFingerprint ?? null,
+            replacementSecretCleanupVersion: metadata?.replacementSecretCleanupVersion ?? null,
+            restoreAttemptId: metadata?.restoreAttemptId ?? null,
+          },
+        };
       } else if (isDockerBackedMetadata(handle.metadata)) {
         const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
         if (
@@ -13034,6 +13053,7 @@ export class ElizaSandboxService {
         .update(agentSandboxes)
         .set({
           ...updateData,
+          serving_placement: servingPlacement,
           replacement_cleanup_sandbox_id: null,
           replacement_cleanup_node_id: null,
           replacement_cleanup_container_name: null,
