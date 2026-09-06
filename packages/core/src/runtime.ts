@@ -11805,6 +11805,36 @@ ${section_end}`;
 	async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]> {
 		return this.adapter.getMemoriesByIds(ids, tableName);
 	}
+	/**
+	 * #25140 native content paging passthrough. The adapter owns the segment
+	 * store; the runtime forwards the capability advertisement verbatim so
+	 * callers can gate on the same contract the adapter declares. Absent on
+	 * adapters without the segment store (undefined method + undefined
+	 * capability) so `hasMemoryContentPageCapability` correctly reports false.
+	 */
+	get getMemoryContentPage(): IDatabaseAdapter["getMemoryContentPage"] {
+		const adapter = this.adapter as IDatabaseAdapter & {
+			getMemoryContentPage?: IDatabaseAdapter["getMemoryContentPage"];
+		};
+		return typeof adapter.getMemoryContentPage === "function"
+			? adapter.getMemoryContentPage.bind(adapter)
+			: undefined;
+	}
+	get memoryContentPageCapability(): IDatabaseAdapter["memoryContentPageCapability"] {
+		return (
+			this.adapter as IDatabaseAdapter & {
+				memoryContentPageCapability?: 1;
+			}
+		).memoryContentPageCapability;
+	}
+	get reindexMemoryContent(): IDatabaseAdapter["reindexMemoryContent"] {
+		const adapter = this.adapter as IDatabaseAdapter & {
+			reindexMemoryContent?: IDatabaseAdapter["reindexMemoryContent"];
+		};
+		return typeof adapter.reindexMemoryContent === "function"
+			? adapter.reindexMemoryContent.bind(adapter)
+			: undefined;
+	}
 	async getMemoriesByRoomIds(params: {
 		tableName: string;
 		roomIds: UUID[];
