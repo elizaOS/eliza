@@ -148,7 +148,13 @@ export function requireRealEmbeddingConfig(
 
 export interface ProviderWireEvidence {
   kind: "text" | "embedding";
-  context: { phase: string; index?: number; proof: string } | null;
+  context: {
+    phase: string;
+    index?: number;
+    proof: string;
+    modelInvocationId?: string;
+    expectedCacheKey?: string | null;
+  } | null;
   /** Serialized SDK request body; credentials/headers are deliberately never captured. */
   request: unknown;
   status: number | null;
@@ -157,7 +163,19 @@ export interface ProviderWireEvidence {
   outcome: "response" | "error";
 }
 
-/** Reject an experiment whose effective SDK request contradicts the selected hint mode. */
+/** Read the expectation from the actual transformed input, not a reconstructed policy. */
+export function expectedConversationCacheKey(input: unknown): string {
+  const params = optionsRecord(input);
+  const providers = optionsRecord(params.providerOptions);
+  const openai = optionsRecord(providers.openai);
+  if (typeof openai.promptCacheKey !== "string" || !openai.promptCacheKey)
+    throw new Error(
+      "Conversation experiment has no transformed key expectation",
+    );
+  return openai.promptCacheKey;
+}
+
+/** Reject an experiment whose effective SDK request contradicts its exact model invocation. */
 export function verifyCacheExperimentWire(
   evidence: readonly ProviderWireEvidence[],
   mode: CacheExperimentMode,
@@ -172,14 +190,21 @@ export function verifyCacheExperimentWire(
         "Automatic cache experiment was overwritten before SDK dispatch",
       );
     }
-    if (
-      mode === "conversation" &&
-      (typeof request.prompt_cache_key !== "string" ||
-        !/^experiment:v1:[a-f0-9]{64}$/.test(request.prompt_cache_key))
-    ) {
-      throw new Error(
-        "Conversation cache experiment was overwritten or omitted before SDK dispatch",
-      );
+    if (mode === "conversation") {
+      if (
+        !wire.context?.modelInvocationId ||
+        typeof wire.context.expectedCacheKey !== "string" ||
+        !wire.context.expectedCacheKey
+      ) {
+        throw new Error(
+          "Conversation wire request has no exact model invocation expectation",
+        );
+      }
+      if (request.prompt_cache_key !== wire.context.expectedCacheKey) {
+        throw new Error(
+          "Conversation cache experiment key mismatched its model invocation before SDK dispatch",
+        );
+      }
     }
   }
   return textRequests.length;
