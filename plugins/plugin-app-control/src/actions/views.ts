@@ -446,6 +446,11 @@ function inferMode(
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	const trimmed = viewRequestText(text).trim();
 	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
+	// The planner owns explicit navigation. Incidental words such as "right
+	// now" must not turn a show call into a split layout or another operation.
+	if (normalizedExplicit === "show" || normalizedExplicit === "open") {
+		return normalizedExplicit;
+	}
 	// An explicit request to (re)generate a view's icon/image wins over the
 	// generic edit/create/update verbs that share its phrasing — regenerating an
 	// icon is a direct asset write, not a coding-agent edit.
@@ -2386,7 +2391,6 @@ async function runViewsLayout({
 	return {
 		success: result.ok,
 		text: result.text,
-		continueChain: false,
 		values: {
 			mode,
 			viewIds,

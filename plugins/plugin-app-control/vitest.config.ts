@@ -174,6 +174,10 @@ export default defineConfig({
 				replacement: path.join(coreSrc, "client-public.ts"),
 			},
 			{
+				find: /^@elizaos\/core\/errors$/,
+				replacement: path.join(coreSrc, "errors.ts"),
+			},
+			{
 				find: "@elizaos/core",
 				replacement: path.join(coreSrc, "index.node.ts"),
 			},

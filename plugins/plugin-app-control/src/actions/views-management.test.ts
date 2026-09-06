@@ -1319,7 +1319,7 @@ describe("view management actions", () => {
 			message("open orchestrator in a new window") as never,
 			undefined,
 			{
-				action: "open",
+				action: "window",
 				view: "orchestrator",
 			},
 			callback,
@@ -1753,7 +1753,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('treats "next to it" as split even when the planner passes action=open', async () => {
+	it('places "next to it" through the planner-selected split operation', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -1782,7 +1782,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("now open the calender view next to it") as never,
 			undefined,
-			{ action: "open", view: "calendar" },
+			{ action: "split", view: "calendar" },
 			callback,
 		);
 
@@ -4465,7 +4465,7 @@ describe("view management actions", () => {
 		);
 
 		expect(result?.success).toBe(true);
-		expect(result?.continueChain).toBe(false);
+		expect(result?.continueChain).not.toBe(false);
 		expect(result?.values).toMatchObject({
 			mode: "split",
 			viewIds: ["notes", "calendar"],

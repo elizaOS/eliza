@@ -362,6 +362,21 @@ describe("view switching — VIEWS action resolver", () => {
 	});
 
 	describe("structured navigation — registered targets reach the requested view", () => {
+		it("keeps a planner-selected show operation when the user says right now", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result, callback } = await runShow(
+				REGISTRY,
+				"Which view is open right now? Then open Calendar and check for events on September 9, 2026 in America/New_York. Do not create, edit, or delete anything.",
+				{ view: "calendar" },
+			);
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["calendar"]);
+			expect(result?.data).not.toHaveProperty("action", "split-view");
+			expect(result?.continueChain).not.toBe(false);
+			expect(result?.modelReplyRequired).toBe(true);
+			expect(callback).not.toHaveBeenCalled();
+		});
+
 		// The planner supplies the view id; the accompanying utterance is context.
 		const ACTIVE_CASES: ReadonlyArray<readonly [string, string]> = [
 			["open the chat view", "chat"],
