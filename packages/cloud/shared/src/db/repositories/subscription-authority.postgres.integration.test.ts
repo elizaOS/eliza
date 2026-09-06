@@ -27,6 +27,7 @@ const PURCHASED_ORG = "10000000-0000-4000-8000-000000000096";
 const PURCHASED_TRANSACTION = "13000000-0000-4000-8000-000000000096";
 
 let setupClient: Client | undefined;
+let entitlements: import("./subscription-entitlements").SubscriptionEntitlementsRepository;
 let allowanceRepository: import("./subscription-allowance").SubscriptionAllowanceRepository;
 let writeTransaction: typeof import("../helpers").writeTransaction;
 let microsToMoney: typeof import("./subscription-funding-reservations").microsToMoney;
@@ -62,6 +63,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       [
         "../migrations/0373_subscription_authority.sql",
         "../migrations/0374_subscription_funding_transaction_uniqueness.sql",
+        "../migrations/0379_subscription_account_authority.sql",
       ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
     );
     for (const migration of migrations) {
@@ -85,6 +87,9 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       "./subscription-allowance"
     ));
     ({ writeTransaction } = await import("../helpers"));
+    ({ subscriptionEntitlementsRepository: entitlements } = await import(
+      "./subscription-entitlements"
+    ));
     ({ microsToMoney } = await import("./subscription-funding-reservations"));
     ({ subscriptionFundingService } = await import("../../lib/services/subscription-funding"));
     ({ closeDatabaseConnectionsForTests } = await import("../client"));
@@ -547,6 +552,86 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       expect(stamp.rows).toEqual([{ skewed: false }]);
     } finally {
       setSystemTime();
+      await locker.query("ROLLBACK");
+      await locker.end();
+    }
+  });
+  test("publication rechecks lifecycle authority after an independent transaction releases its lock", async () => {
+    const organizationId = randomUUID();
+    const subscriptionId = randomUUID();
+    await setupClient!.query("INSERT INTO organizations (id) VALUES ($1)", [organizationId]);
+    await setupClient!.query(
+      `INSERT INTO billing_subscriptions (
+      id, organization_id, provider_environment, stripe_customer_id, stripe_subscription_id,
+      stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start,
+      current_period_end, lifecycle_revision, provider_object_digest
+    ) VALUES ($1,$2,'test','cus_projection','sub_projection','si_projection','plus_monthly','v1',
+      'active','2026-08-01Z','2026-09-01Z',1,$3)`,
+      [subscriptionId, organizationId, DIGEST],
+    );
+    const copyRevision = `INSERT INTO billing_subscription_revisions (
+      organization_id, subscription_id, revision, source, provider_environment,
+      stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+      plan_key, catalog_version, status, current_period_start, current_period_end,
+      cancel_at_period_end, provider_object_digest, dunning_started_at, grace_expires_at
+    ) SELECT organization_id, id, lifecycle_revision, 'webhook', provider_environment,
+      stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+      plan_key, catalog_version, status, current_period_start, current_period_end,
+      cancel_at_period_end, provider_object_digest, dunning_started_at, grace_expires_at
+      FROM billing_subscriptions WHERE id=$1`;
+    await setupClient!.query(copyRevision, [subscriptionId]);
+    await setupClient!.query(
+      "UPDATE organization_subscription_authorities SET subscription_id=$1, state='current' WHERE organization_id=$2",
+      [subscriptionId, organizationId],
+    );
+    const request = {
+      organizationId,
+      sourceSubscriptionId: subscriptionId,
+      sourceSubscriptionRevision: 1,
+      expectedProjectionRevision: 0,
+    };
+    await entitlements.rebuild(request);
+
+    const locker = await connect();
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [organizationId]);
+      await locker.query(
+        "UPDATE billing_subscriptions SET lifecycle_revision=2, status='grace', dunning_started_at='2026-08-20Z', grace_expires_at='2026-08-27Z' WHERE id=$1",
+        [subscriptionId],
+      );
+      await locker.query(copyRevision, [subscriptionId]);
+      const pending = entitlements.rebuild({ ...request, expectedProjectionRevision: 1 }).then(
+        (result) => ({ result }),
+        (error: unknown) => ({ error }),
+      );
+      let reachedOrganizationLock = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const waiting = await setupClient!.query<{ blocked: boolean }>(
+          `SELECT EXISTS (
+          SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'
+          AND application_name=$1 AND query ILIKE '%organizations%FOR UPDATE%'
+        ) AS blocked`,
+          [schemaName],
+        );
+        reachedOrganizationLock = waiting.rows[0]?.blocked === true;
+        if (reachedOrganizationLock) break;
+        await Bun.sleep(10);
+      }
+      expect(reachedOrganizationLock).toBe(true);
+      await locker.query("COMMIT");
+      expect(await pending).toMatchObject({ error: { code: "SUBSCRIPTION_ENTITLEMENT_CONFLICT" } });
+      const current = await entitlements.rebuild({
+        ...request,
+        sourceSubscriptionRevision: 2,
+        expectedProjectionRevision: 1,
+      });
+      expect(current.entitlement).toMatchObject({
+        state: "grace",
+        source_subscription_revision: 2,
+      });
+      expect(current.entitlement.effective_until?.toISOString()).toBe("2026-08-27T00:00:00.000Z");
+    } finally {
       await locker.query("ROLLBACK");
       await locker.end();
     }

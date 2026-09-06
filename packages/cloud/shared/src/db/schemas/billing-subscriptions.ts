@@ -1,5 +1,5 @@
 /**
- * Defines tenant-scoped subscription authority and its immutable lifecycle revisions.
+ * Defines tenant-scoped subscription authority, immutable lifecycle revisions, and canonical account identity.
  */
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
@@ -227,3 +227,26 @@ export type BillingSubscriptionRevision = Readonly<
   InferSelectModel<typeof billingSubscriptionRevisions>
 >;
 export type NewBillingSubscriptionRevision = InferInsertModel<typeof billingSubscriptionRevisions>;
+
+/** Canonical account identity association, owned by the existing lifecycle repository. */
+export const organizationSubscriptionAuthorities = pgTable(
+  "organization_subscription_authorities",
+  {
+    organization_id: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    subscription_id: uuid("subscription_id"),
+    state: text("state").$type<"none" | "current" | "unavailable">().notNull().default("none"),
+  },
+  (table) => ({
+    subscription_tenant_fk: foreignKey({
+      columns: [table.subscription_id, table.organization_id],
+      foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
+      name: "organization_subscription_authorities_tenant_fk",
+    }).onDelete("restrict"),
+    state_check: check(
+      "organization_subscription_authorities_state_check",
+      sql`(${table.state} = 'current' AND ${table.subscription_id} IS NOT NULL) OR (${table.state} IN ('none', 'unavailable') AND ${table.subscription_id} IS NULL)`,
+    ),
+  }),
+);
