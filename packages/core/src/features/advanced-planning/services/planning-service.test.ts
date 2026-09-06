@@ -594,4 +594,64 @@ describe("PlanningService.executePlan parallel admission bound (#30732)", () => 
 		expect(execution.results).toHaveLength(stepCount);
 		expect(execution.errors).toBeUndefined();
 	});
+
+	it("aggregates results in step order even when completion order differs", async () => {
+		const stepCount = 24;
+		// Each step owns a distinct action whose result text is intrinsic to its
+		// step index, so the assertion depends only on aggregation order and not on
+		// which handler happened to be admitted first. Within every worker batch the
+		// higher-index step sleeps least, so completion order provably diverges from
+		// step order; only the position-indexed `outcomes` array can keep
+		// `execution.results` in plan order. Reversing the aggregation loop makes
+		// this the sole failing test.
+		const actions: Action[] = Array.from(
+			{ length: stepCount },
+			(_unused, index) =>
+				({
+					name: `ORDERED_STEP_${index}`,
+					description: "Finishes out of step order within its batch",
+					tags: ["capability:read"],
+					validate: async () => true,
+					handler: async () => {
+						// Later steps in each batch of PARALLEL_CAP finish first.
+						await new Promise((resolve) =>
+							setTimeout(resolve, 40 - (index % PARALLEL_CAP) * 5),
+						);
+						return { success: true, text: `step-${index}` };
+					},
+				}) satisfies Action,
+		);
+
+		const runtime = planningRuntime(actions[0], { actions });
+		const service = new PlanningService(runtime);
+		const plan = {
+			id: "33333333-3333-4333-8333-333333333333",
+			goal: "preserve aggregation order under a bounded pool",
+			thought: "fan out steps that finish out of order",
+			totalSteps: stepCount,
+			currentStep: 0,
+			executionModel: "parallel" as const,
+			steps: Array.from({ length: stepCount }, (_unused, index) => ({
+				id: `4444${String(index).padStart(4, "0")}-3333-4333-8333-333333333333`,
+				actionName: `ORDERED_STEP_${index}`,
+				retryPolicy: {
+					maxRetries: 0,
+					backoffMs: 0,
+					backoffMultiplier: 1,
+					onError: "continue" as const,
+				},
+			})),
+		};
+
+		const execution = await service.executePlan(
+			runtime,
+			plan as unknown as Parameters<PlanningService["executePlan"]>[1],
+			msg("run them in order"),
+		);
+
+		expect(execution.success).toBe(true);
+		expect(execution.results.map((result) => result.text)).toEqual(
+			Array.from({ length: stepCount }, (_unused, index) => `step-${index}`),
+		);
+	});
 });
