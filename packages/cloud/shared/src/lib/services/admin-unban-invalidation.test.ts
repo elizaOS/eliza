@@ -105,6 +105,38 @@ mock.module("./organization-policy-admission", () => ({
   },
 }));
 
+const primaryDatabase = {
+  query: {
+    userModerationStatus: {
+      findFirst: async () => moderationRecord(primaryModerationStatus),
+    },
+    users: {
+      findFirst: async () => ({
+        id: USER_ID,
+        organization_id: ORG_ID,
+        steward_user_id: STEWARD_USER_ID,
+      }),
+    },
+  },
+  insert: () => ({
+    values: async (data: { status?: string }) => {
+      primaryModerationStatus = data.status ?? primaryModerationStatus;
+      lifecycleEvents.push(`db:${primaryModerationStatus}`);
+    },
+  }),
+  update: () => ({
+    set: (data: { status?: string }) => ({
+      where: async () => {
+        primaryModerationStatus = data.status ?? primaryModerationStatus;
+        lifecycleEvents.push(`db:${primaryModerationStatus}`);
+      },
+    }),
+  }),
+  select: () => {
+    throw new Error("Cached outbound standing must not read the database");
+  },
+};
+
 mock.module("../../db/client", () => ({
   dbRead: {
     query: {
@@ -120,42 +152,11 @@ mock.module("../../db/client", () => ({
       },
     },
   },
-  dbWrite: {
-    query: {
-      userModerationStatus: {
-        findFirst: async () => moderationRecord(primaryModerationStatus),
-      },
-      users: {
-        findFirst: async () => ({
-          id: USER_ID,
-          organization_id: ORG_ID,
-          steward_user_id: STEWARD_USER_ID,
-        }),
-      },
-    },
-    insert: () => ({
-      values: async (data: { status?: string }) => {
-        primaryModerationStatus = data.status ?? primaryModerationStatus;
-        lifecycleEvents.push(`db:${primaryModerationStatus}`);
-      },
-    }),
-    update: () => ({
-      set: (data: { status?: string }) => ({
-        where: async () => {
-          primaryModerationStatus = data.status ?? primaryModerationStatus;
-          lifecycleEvents.push(`db:${primaryModerationStatus}`);
-        },
-      }),
-    }),
-  },
+  dbWrite: primaryDatabase,
 }));
 
 mock.module("../../db/helpers", () => ({
-  dbWrite: {
-    select: () => {
-      throw new Error("Cached outbound standing must not read the database");
-    },
-  },
+  dbWrite: primaryDatabase,
 }));
 
 mock.module("../../db/repositories", () => ({
