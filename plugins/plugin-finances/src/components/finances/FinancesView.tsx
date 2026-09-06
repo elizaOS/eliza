@@ -634,7 +634,11 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
     [load, state],
   );
 
-  return <FinancesSpatialView snapshot={snapshot} onAction={onAction} />;
+  return (
+    <div className="eliza-chat-scroll h-full min-h-0 overflow-y-auto">
+      <FinancesSpatialView snapshot={snapshot} onAction={onAction} />
+    </div>
+  );
 }
 
 export default FinancesView;

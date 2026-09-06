@@ -82,7 +82,7 @@ describe("positiveExpectationMatches", () => {
       true,
     ],
     ["builtin-tasks", "Tasks No coding tasks yet.", true],
-    ["builtin-automations", "Automations Nothing scheduled yet", true],
+    ["builtin-automations", "New Show All (0) Nothing scheduled yet", true],
   ])("matches %s semantic readiness for %j", (slug, text, expected) => {
     expect(
       positiveExpectationMatches(normalize(text), expectationFor(slug)),
@@ -358,10 +358,7 @@ ph eg`,
       "builtin-apps",
       "< Projects\nInstall, create, and run your elizaOS apps.\nAsk\nEliza\n+ UR",
     ],
-    [
-      "builtin-automations",
-      "< Automations\nTora active Passe Fane\n[4] [4] [4] [4]\nS Al ©Pompts % Wordlows [> Active © Inactive\nAsk\nA @ Eliza\nC LL ar [A\n8",
-    ],
+    ["builtin-automations", "New\nShow\nAll (0)\nNothing scheduled yet"],
     [
       "builtin-character-select",
       "Name\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for UI smoke tests",
