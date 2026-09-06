@@ -159,17 +159,43 @@ function parseUuidParam(
   return { ok: true, id };
 }
 
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+/**
+ * Planners that only have `query` available put a record id there when they
+ * mean "this memory"; a UUID-shaped query with no memoryId is that id.
+ */
+function adoptUuidQueryAsMemoryId(params: MemoryParams): MemoryParams {
+  const query = typeof params.query === "string" ? params.query.trim() : "";
+  if (params.memoryId || !UUID_SHAPE.test(query)) return params;
+  return { ...params, memoryId: query, query: undefined };
+}
+
 function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
   const candidate = params.action ?? params.subaction ?? params.op;
   return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
+}
+
+/**
+ * Abbreviation dots and clock spacing are removed before matching so a
+ * user's "6am" finds the extractor's "6a.m." and "6 am" (live 2026-09-06
+ * 02:36: "forget that I usually wake up at 6am" scanned 20 rows and matched
+ * nothing against "The user usually wakes up at 6a.m.", the planner then
+ * issued two deletes without a query and the turn errored).
+ */
+function normalizeMatchText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/(?<=[\p{L}\p{N}])\.(?=[\p{L}\p{N}]|\s|$)/gu, "")
+    .replace(/(\d)\s+([ap]m)\b/gu, "$1$2");
 }
 
 /** Distinct content terms of a query: length >= 2, stop words removed. */
 function scoreQueryTerms(query: string): string[] {
   return [
     ...new Set(
-      query
-        .toLowerCase()
+      normalizeMatchText(query)
         .split(/[^\p{L}\p{N}]+/u)
         .filter(
           (term) => term.length >= 2 && !SEARCH_QUERY_STOP_WORDS.has(term),
@@ -179,8 +205,8 @@ function scoreQueryTerms(query: string): string[] {
 }
 
 function scoreText(text: string, query: string): number {
-  const t = text.toLowerCase();
-  const q = query.toLowerCase();
+  const t = normalizeMatchText(text);
+  const q = normalizeMatchText(query);
   if (!t || !q) return 0;
   const terms = scoreQueryTerms(q);
   const whole = t.includes(q) ? 1 : 0;
@@ -1397,8 +1423,10 @@ export const memoryAction: Action = {
     _state,
     options,
   ): Promise<ActionResult> => {
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
-      {}) as MemoryParams;
+    const params = adoptUuidQueryAsMemoryId(
+      ((options as HandlerOptions | undefined)?.parameters ??
+        {}) as MemoryParams,
+    );
     const op = normalizeMemoryOp(params);
     if (!op) {
       return fail(
@@ -1491,8 +1519,9 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search/update/delete ONLY: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories. Not used by create — the content to remember goes in text.",
+        "search: filter text. update/delete: REQUIRED — the wording of the memory to change or forget (a few distinctive words are enough), or its id from a previous search.",
       required: false,
+      requiredForSubactions: ["update", "delete"],
       schema: { type: "string" as const },
     },
     {

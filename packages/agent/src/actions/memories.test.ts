@@ -520,6 +520,38 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("matches clock times across abbreviation dots and spacing (6am vs 6a.m. vs 6 am)", async () => {
+    // Live 2026-09-06 02:36: "forget that I usually wake up at 6am" scanned 20
+    // rows and matched nothing against "The user usually wakes up at 6a.m.".
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The user usually wakes up at 6a.m.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "usually wake up at 6 am",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
+  it("treats a UUID-shaped query as the memory id when memoryId is absent", async () => {
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, {
+      text: "User likes jazz.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: String(id),
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
   it("matches a verb's -ing form against the stored base form", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, {
