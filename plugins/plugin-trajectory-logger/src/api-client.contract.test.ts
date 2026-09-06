@@ -9,11 +9,37 @@ import {
   fetchTrajectoryDetail,
   fetchTrajectoryExport,
   fetchTrajectoryList,
+  fetchTrajectoryTiming,
   purgeTrajectory,
   type TrajectoryDetail,
   type TrajectoryListResult,
 } from "./api-client.js";
 import { extractShouldRespondDecision, summarizePhases } from "./phases.js";
+
+it("joins timing only by trajectory metadata and retains all exact matches", async () => {
+  const turns = [
+    { turnId: "unrelated", t0EpochMs: 1000, spans: [] },
+    { turnId: "first", spans: [{ meta: { trajectoryId: "target" } }] },
+    { turnId: "second", spans: [{ meta: { trajectoryId: "target" } }] },
+    { turnId: "other", spans: [{ meta: { trajectoryId: "target-child" } }] },
+  ];
+  const flows = turns.map((turn) => ({ turnId: turn.turnId, stages: [] }));
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ turns, flows })),
+      ),
+  );
+  const result = await fetchTrajectoryTiming("target");
+  expect(result.turns.map((turn) => turn.turnId)).toEqual(["first", "second"]);
+  expect(result.flows.map((flow) => flow.turnId)).toEqual(["first", "second"]);
+  expect(await fetchTrajectoryTiming("missing")).toEqual({
+    turns: [],
+    flows: [],
+  });
+});
 
 const LIST_PAYLOAD = {
   trajectories: [

@@ -384,6 +384,52 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(runtime.createMemory).not.toHaveBeenCalled();
 	});
 
+	it("skips a Stage-1 fact when the same-message MEMORY row names the subject possessively", async () => {
+		// Live 2026-09-06 17:57Z: "remember that my favorite tea is hojicha" →
+		// MEMORY stored "The user's favorite tea is hojicha"; Stage-1 kept
+		// "favorite tea is hojicha"; both persisted and the later forget hit
+		// MEMORY_AMBIGUOUS_QUERY.
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["favorite tea is hojicha"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const message = makeMessage();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-00000000bbb2" as UUID,
+				entityId: message.entityId,
+				agentId: runtime.agentId,
+				roomId: message.roomId,
+				content: {
+					text: "The user's favorite tea is hojicha",
+					source: "MEMORY",
+				},
+				metadata: {
+					type: "custom",
+					source: "MEMORY",
+					kind: "durable",
+					category: "preference",
+					messageId: message.id,
+					keywords: ["tea", "favorite", "hojicha"],
+				},
+				createdAt: 2,
+			} as Memory,
+		]);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message,
+			state: makeState(),
+			extract: { facts: ["favorite tea is hojicha"] },
+		});
+
+		expect(result.written.facts).toBe(0);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
 	it("suppresses only the author's own fact: a third-person fact in the same message persists under that participant", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({

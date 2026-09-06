@@ -203,25 +203,15 @@ export const notesAction: Action = {
               .includes(normalizedTopic),
           )
         : notes;
-      const result = committed({
+      return committed({
         op,
+        readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
         filterApplied: topic !== undefined,
         ...(topic ? { topic } : {}),
         notes: matches,
       });
-      if (matches.length > 0) return result;
-      // Preserve the scoped read as model-facing evidence. The ordinary planner
-      // generates the reply; a filtered miss never authorizes a broader empty
-      // state claim or a preset action-owned answer.
-      return {
-        ...result,
-        data: {
-          ...result.data,
-          claimGrounding: ["empty_tracked_state"],
-        },
-      };
     }
 
     // The service still receives one user-authored content value. Providers

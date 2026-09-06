@@ -2144,7 +2144,6 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
  * runtime's cooldown; changing its endpoint or credential resets the memo.
  * Entries expire at the provider's Retry-After and never block another model.
  */
-const RATE_LIMIT_COOLDOWN_MAX_MS = 120_000;
 const rateLimitCooldowns = new WeakMap<
   IAgentRuntime,
   { endpoint: string; credential: string | undefined; models: Map<string, number> }
@@ -2196,43 +2195,53 @@ function noteRateLimitCooldown(
     (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
     (error as { status?: number } | undefined)?.status;
   if (status !== 429) return;
-  const retryAfter = rateLimitRetryAfterSeconds(error);
-  if (retryAfter === undefined || retryAfter <= TRANSIENT_LANE_MAX_BACKOFF_SECONDS) return;
-  const untilMs = Date.now() + Math.min(retryAfter * 1000, RATE_LIMIT_COOLDOWN_MAX_MS);
+  const retryAfterMs = providerRetryAfterMs(error);
+  if (retryAfterMs === undefined || retryAfterMs <= TRANSIENT_LANE_MAX_BACKOFF_MS) return;
+  // The cooldown is a timestamp, not an awaited retry. Preserve the provider's
+  // whole delay so a later alias cannot resend before the stated reset.
+  const untilMs = Date.now() + retryAfterMs;
   const existing = models.get(modelName) ?? 0;
   if (untilMs > existing) models.set(modelName, untilMs);
   logger.warn(
-    { src: "plugin:openai", model: modelName, retryAfterSeconds: retryAfter },
+    { src: "plugin:openai", model: modelName, retryAfterSeconds: retryAfterMs / 1000 },
     "[OpenAI] provider rate limit reached; holding this model until the window resets"
   );
 }
 
 /** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
-const TRANSIENT_LANE_MAX_BACKOFF_SECONDS = 3;
+const TRANSIENT_LANE_MAX_BACKOFF_MS = 3000;
 
 /**
- * Read the provider's `Retry-After` from an AI SDK API error. Returns seconds,
- * or undefined when the header is absent or unparseable.
+ * Read the provider's retry delay once for both retry admission and cooldowns.
+ * The millisecond header takes precedence over Retry-After seconds/date, matching
+ * the SDK transport contract. Invalid values fall through to the other header;
+ * missing or invalid hints leave the bounded exponential policy in control.
  */
-function rateLimitRetryAfterSeconds(error: unknown): number | undefined {
+function providerRetryAfterMs(error: unknown): number | undefined {
   const headers = (error as { responseHeaders?: unknown } | undefined)?.responseHeaders;
   if (!headers || typeof headers !== "object") return undefined;
+  let milliseconds: string | undefined;
+  let secondsOrDate: string | undefined;
   for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
-    if (key.toLowerCase() !== "retry-after") continue;
     const raw = Array.isArray(value) ? value[0] : value;
-    if (typeof raw !== "string" || raw.trim().length === 0) return undefined;
-    const seconds = Number(raw.trim());
-    if (Number.isFinite(seconds)) return seconds >= 0 ? seconds : undefined;
-    const at = Date.parse(raw);
-    if (!Number.isFinite(at)) return undefined;
-    return Math.max(0, Math.round((at - Date.now()) / 1000));
+    if (typeof raw !== "string" || raw.trim().length === 0) continue;
+    if (key.toLowerCase() === "retry-after-ms") milliseconds = raw.trim();
+    if (key.toLowerCase() === "retry-after") secondsOrDate = raw.trim();
   }
-  return undefined;
+  const explicitMilliseconds = milliseconds === undefined ? Number.NaN : Number(milliseconds);
+  if (Number.isFinite(explicitMilliseconds) && explicitMilliseconds >= 0)
+    return explicitMilliseconds;
+  if (secondsOrDate === undefined) return undefined;
+  const seconds = Number(secondsOrDate);
+  if (Number.isFinite(seconds))
+    return seconds >= 0 && Number.isFinite(seconds * 1000) ? seconds * 1000 : undefined;
+  const at = Date.parse(secondsOrDate);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined;
 }
 
-function rateLimitOutlastsTransientLane(error: unknown): boolean {
-  const retryAfter = rateLimitRetryAfterSeconds(error);
-  return retryAfter !== undefined && retryAfter > TRANSIENT_LANE_MAX_BACKOFF_SECONDS;
+function providerRetryOutlastsTransientLane(error: unknown): boolean {
+  const retryAfterMs = providerRetryAfterMs(error);
+  return retryAfterMs !== undefined && retryAfterMs > TRANSIENT_LANE_MAX_BACKOFF_MS;
 }
 
 function isPermanentQuotaError(error: unknown): boolean {
@@ -2264,18 +2273,20 @@ function isPermanentQuotaError(error: unknown): boolean {
 }
 
 function isTransientProviderError(error: unknown): boolean {
-  // The SDK already owns HTTP retries. Re-entering it after exhaustion
-  // multiplies its budget (up to 18 requests for one streamed model call).
-  // Keep this outer lane for provider failures the SDK does not retry.
+  // The plugin owns retries with SDK retries disabled. Defensively reject an
+  // already-exhausted SDK retry envelope rather than multiply another owner's
+  // attempts if a wrapped provider surfaces one.
   if (RetryError.isInstance(error)) return false;
+  // A valid provider delay beyond this lane's wait budget must reach runtime
+  // fallback immediately. Never shorten the delay and resend early.
+  if (providerRetryOutlastsTransientLane(error)) return false;
   const e = error as
     | { statusCode?: number; status?: number; message?: string; data?: unknown }
     | undefined;
   if (!e) return false;
   const status = e.statusCode ?? e.status;
-  if (status === 429)
-    return !isPermanentQuotaError(error) && !rateLimitOutlastsTransientLane(error);
-  if (status === 408 || status === 409) return true;
+  if (status === 429 && isPermanentQuotaError(error)) return false;
+  if (status === 408 || status === 409 || status === 429) return true;
   if (typeof status === "number" && status >= 500 && status < 600) return true;
   // Include the raw response body: the AI SDK derives `message` from the
   // OpenAI `{"error":{...}}` envelope only, so a provider that reports its
@@ -2371,23 +2382,6 @@ function describeRetryReason(error: unknown): string {
   return (error as { message?: string })?.message ?? String(error);
 }
 
-function providerRetryDelay(error: unknown, fallbackMs: number): number {
-  if (typeof error !== "object" || error === null) return fallbackMs;
-  const headers = (error as { responseHeaders?: Record<string, string> }).responseHeaders;
-  if (!headers) return fallbackMs;
-  const milliseconds = headers["retry-after-ms"];
-  const secondsOrDate = headers["retry-after"];
-  let delay = Number.NaN;
-  if (milliseconds?.trim()) delay = Number(milliseconds);
-  if (!Number.isFinite(delay) && secondsOrDate?.trim()) {
-    const seconds = Number(secondsOrDate);
-    delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(secondsOrDate) - Date.now();
-  }
-  // Retain the SDK's supported retry-header window while consolidating retry
-  // ownership. The same abort-aware wait handles server and local backoff.
-  return Number.isFinite(delay) && delay >= 0 && delay < 60_000 ? delay : fallbackMs;
-}
-
 /**
  * The single backoff seam every transient-retry lane goes through. Two jobs:
  *
@@ -2411,9 +2405,13 @@ async function waitForTransientRetry(opts: {
   const { lane, maxRetries, error, model, signal, state } = opts;
   state.retryCount += 1;
   state.lastRetryReason = describeRetryReason(error);
-  const backoffMs = providerRetryDelay(
-    error,
-    Math.min(3000, 300 * 2 ** (state.retryCount - 1)) + Math.floor(Math.random() * 200)
+  // Timers truncate fractional milliseconds; round up to honor the complete hint.
+  const backoffMs = Math.ceil(
+    providerRetryAfterMs(error) ??
+      Math.min(
+        TRANSIENT_LANE_MAX_BACKOFF_MS,
+        300 * 2 ** (state.retryCount - 1) + Math.floor(Math.random() * 200)
+      )
   );
   logger.warn(
     {

@@ -696,7 +696,8 @@ async function runPlannerLoopIterations(
 					(step) =>
 						step.toolCall &&
 						!isTerminalToolCall(step.toolCall) &&
-						step.result?.success === true,
+						step.result?.success === true &&
+						!isRepeatableObservation(step.result),
 				)
 				.map((step) =>
 					plannerToolOperationKey(
@@ -5892,6 +5893,18 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
 	return `${toolCall.name} ${canonicalParamsString(toolCall.params ?? {})}`;
 }
 
+/** Observations may change; applied effects and committed replays stay settled. */
+function isRepeatableObservation(result: PlannerToolResult): boolean {
+	const receipts = result.effectReceipts;
+	return receipts !== undefined && receipts.length > 0
+		? receipts.every(
+				(receipt) =>
+					(receipt.outcome === "noop" && !receipt.idempotency.replayed) ||
+					receipt.outcome === "preview",
+			)
+		: result.data?.readOnlyOperation === true;
+}
+
 /**
  * Separate settled operations from executable calls across the complete turn.
  * Successful mutations and legacy unclassified results remain deduplicated.
@@ -5914,16 +5927,7 @@ export function partitionRedundantSucceededCalls(
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
 		if (step.result.success === true) {
-			const receipts = step.result.effectReceipts;
-			const observation =
-				receipts !== undefined && receipts.length > 0
-					? receipts.every(
-							(receipt) =>
-								(receipt.outcome === "noop" && !receipt.idempotency.replayed) ||
-								receipt.outcome === "preview",
-						)
-					: step.result.data?.readOnlyOperation === true;
-			if (observation) continue;
+			if (isRepeatableObservation(step.result)) continue;
 			// A successful coding mutation can change the answer to any earlier
 			// inspection. Clear those settled identities before recording the
 			// mutation itself so READ-after-EDIT remains executable while an exact

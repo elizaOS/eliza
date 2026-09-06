@@ -62,6 +62,20 @@ describe("v5 evaluator skeleton", () => {
 		);
 	});
 
+	it("keeps grounded multi-call plans eligible without treating pending effects as success", () => {
+		expect(evaluatorTemplate).not.toContain("exactly one queued grounded tool");
+		expect(evaluatorTemplate).toContain(
+			"even when multiple queued tools remain",
+		);
+		expect(evaluatorTemplate).toContain(
+			"preserve the planned order and prerequisites",
+		);
+		expect(evaluatorTemplate).toContain("remaining plan is missing, stale");
+		expect(evaluatorTemplate).toContain(
+			"do not imagine the result or declare success before it executes",
+		);
+	});
+
 	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
 		expect(evaluatorTemplate).toContain("arbitrary JSON/tool attempts");
 		expect(evaluatorTemplate).toContain(

@@ -50,6 +50,8 @@ function createHarness(
 	const failure: PlannerToolResult = {
 		success: false,
 		error: "declared storage outage",
+		userFacingText:
+			"The storage operation failed; I cannot claim it completed.",
 		...(options.provenance === null
 			? {}
 			: { failureProvenance: options.provenance ?? retryable }),
@@ -61,6 +63,9 @@ function createHarness(
 					modelInputs.push(JSON.stringify(params));
 					if (type === "ACTION_PLANNER" && params?.tools) {
 						planningRounds++;
+						if (planningRounds > (options.maxToolCalls ?? 6) + 1) {
+							throw new Error("Unexpected extra planner round");
+						}
 						if (options.cancel && planningRounds > 1) {
 							return {
 								text: "",
@@ -81,7 +86,12 @@ function createHarness(
 										...(options.reconcileByRead ? {} : { idempotencyKey: key }),
 										...(options.pending === false
 											? {}
-											: { eliza_turn_scope: "more_work_pending" }),
+											: {
+													eliza_turn_scope:
+														planningRounds > 1 && !options.persistent
+															? "final"
+															: "more_work_pending",
+												}),
 									},
 								},
 							],
@@ -101,7 +111,9 @@ function createHarness(
 									toolCalls: [],
 								}
 							: {
-									text: "<tool_call><function=OWNER_TODOS>retry</function></tool_call>",
+									// A malformed verdict is distinct from a tool invocation,
+									// which deliberately requests CONTINUE in the local parser.
+									text: '{"success":false,"decision":"INVALID"}',
 									toolCalls: [],
 								};
 					}

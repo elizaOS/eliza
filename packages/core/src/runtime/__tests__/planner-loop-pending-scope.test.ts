@@ -250,6 +250,55 @@ describe("planner-declared pending work", () => {
 		});
 	});
 
+	it.each(["receipt", "read-only marker"] as const)(
+		"re-observes a %s read after a rejected FINISH instead of reusing stale state",
+		async (proof) => {
+			const observation =
+				proof === "receipt"
+					? {
+							effectReceipts: [
+								{
+									receiptId: "observed-list",
+									operation: "items.list",
+									resource: { kind: "items", id: "owner-items" },
+									artifacts: [],
+									idempotency: { key: null, replayed: false },
+									observedAt: "2026-09-06T00:00:00.000Z",
+									outcome: "noop" as const,
+									reason: "Read the current collection.",
+								},
+							],
+						}
+					: { data: { readOnlyOperation: true } };
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{ text: "", toolCalls: [call("READ", "final")] },
+				],
+				evaluations: [
+					finish("The collection is empty."),
+					finish("The new item is present."),
+				],
+				intents: ["inspect the current collection twice"],
+				userMessage:
+					"Inspect the collection again after the other writer finishes.",
+			});
+			let reads = 0;
+			const result = await h.run({
+				executeToolCall: async () => ({
+					success: true,
+					text: ++reads === 1 ? "[]" : '["new-item"]',
+					...observation,
+				}),
+			});
+			expect(reads).toBe(2);
+			expect(result.finalMessage).toBe("The new item is present.");
+			expect(
+				result.trajectory.steps.filter((step) => step.toolCall),
+			).toHaveLength(2);
+		},
+	);
+
 	it.each(["more_work_pending", undefined] as const)(
 		"does not finish an incomplete compound request when a repeated action has scope %s",
 		async (scope) => {

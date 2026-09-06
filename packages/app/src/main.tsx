@@ -278,6 +278,24 @@ declare global {
 }
 
 const { createRoot } = ReactDomClient;
+// Keep one renderer owner across entry-module HMR. An in-flight boot finishes
+// bridge initialization once, then renders through the latest mount callback.
+const rendererBootstrap: {
+  root: ReturnType<typeof createRoot> | null;
+  bootPromise: Promise<void> | null;
+  mount: () => void;
+  deepLinksInitialized: boolean;
+} = import.meta.hot?.data.rendererBootstrap ?? {
+  root: null,
+  bootPromise: null,
+  mount: mountReactApp,
+  deepLinksInitialized: false,
+};
+rendererBootstrap.mount = mountReactApp;
+if (import.meta.hot) {
+  import.meta.hot.data.rendererBootstrap = rendererBootstrap;
+}
+
 let deferredAppModuleLoadsScheduled = false;
 
 // Renderer cold-start telemetry (#9565). The trace adopts a native-host-injected
@@ -2836,6 +2854,9 @@ function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
 
+  // Refresh HMR-edited component/config handles without repeating bridge setup.
+  setBootConfig(buildAppBootConfig());
+
   const phoneCompanion = isPhoneCompanionMode();
   const detachedShell = isDetachedWindowShell(windowShellRoute);
   const appWindowSlug = detachedShell ? null : resolveAppWindowSlug();
@@ -2896,7 +2917,8 @@ function mountReactApp(): void {
     );
 
   markStartup("react-mount:start");
-  createRoot(rootEl).render(
+  rendererBootstrap.root ??= createRoot(rootEl);
+  rendererBootstrap.root.render(
     <ErrorBoundary>
       <StrictMode>
         <Suspense fallback={null}>
@@ -3583,7 +3605,7 @@ async function main(): Promise<void> {
 
   if (isPopoutWindow()) {
     injectPopoutApiBase();
-    mountReactApp();
+    rendererBootstrap.mount();
     scheduleDeferredAppModuleLoadsAfterPaint();
     return;
   }
@@ -3603,7 +3625,7 @@ async function main(): Promise<void> {
     if (isChatOverlayWindowShell(windowShellRoute) && isDesktopPlatform()) {
       await initializeDesktopShell();
     }
-    mountReactApp();
+    rendererBootstrap.mount();
     scheduleDeferredAppModuleLoadsAfterPaint();
     return;
   }
@@ -3668,7 +3690,7 @@ async function main(): Promise<void> {
   }
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
-  mountReactApp();
+  rendererBootstrap.mount();
   scheduleDeferredAppModuleLoadsAfterPaint();
   if (!isDesktopPlatform()) {
     // Off-desktop registerDesktopFusedWake self-gates to a no-op; keep calling
@@ -3683,21 +3705,40 @@ async function main(): Promise<void> {
 // rejection unhandled and the page permanently blank. Route every boot failure
 // to an actionable reload card instead.
 function boot(): void {
+  if (rendererBootstrap.bootPromise) {
+    if (rendererBootstrap.root) rendererBootstrap.mount();
+    return;
+  }
   // error-policy:J1 boot boundary — every rejection renders the reload card
-  void main().catch(renderBootFailure);
+  rendererBootstrap.bootPromise = Promise.resolve()
+    .then(main)
+    .catch((error) => {
+      // Platform setup can fail after mounting. Release React ownership before
+      // the failure renderer replaces #root with its explicit reload card.
+      rendererBootstrap.root?.unmount();
+      rendererBootstrap.root = null;
+      renderBootFailure(error);
+    });
 }
 
 // Android can deliver a warm ACTION_VIEW while a WebView navigation is replacing
 // the old document. Arm URL capture before DOMContentLoaded so the intent cannot
 // be sent only to the previous document's dead Capacitor callback registry.
-if (isNative) {
+if (isNative && !rendererBootstrap.deepLinksInitialized) {
   getMobileLifecycle().initializeDeepLinks();
+  rendererBootstrap.deepLinksInitialized = true;
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
+  document.addEventListener("DOMContentLoaded", boot, { once: true });
 } else {
   boot();
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    document.removeEventListener("DOMContentLoaded", boot);
+  });
 }
 
 export { isAndroid, isDesktopPlatform as isDesktop, isIOS, isNative, platform };

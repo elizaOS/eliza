@@ -7,10 +7,11 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleTextSmall } from "../models/text";
+import { handleResponseHandler, handleTextSmall } from "../models/text";
 
 let server: Server | undefined;
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   if (server) {
     server.closeAllConnections();
@@ -24,7 +25,7 @@ afterEach(async () => {
 async function fixture(
   code: string,
   recover: boolean,
-  retryAfter?: string,
+  retryAfter?: string | Record<string, string>,
   streamRecovery = false,
   structured = false,
   status = 429,
@@ -38,7 +39,10 @@ async function fixture(
     requestTimes.push(performance.now());
     response.setHeader("Content-Type", "application/json");
     if (!failAfterOutput && (!recover || requests === 1)) {
-      if (retryAfter) response.setHeader("Retry-After", retryAfter);
+      if (typeof retryAfter === "string") response.setHeader("Retry-After", retryAfter);
+      else if (retryAfter) {
+        for (const [name, value] of Object.entries(retryAfter)) response.setHeader(name, value);
+      }
       response.writeHead(status);
       response.end(
         JSON.stringify({ error: { message: "Provider rejected request", type: code, code } })
@@ -147,6 +151,116 @@ describe("provider quota retry HTTP boundary", () => {
     expect(test.requestTimes[1] - test.requestTimes[0]).toBeGreaterThanOrEqual(790);
   }, 10000);
 
+  const shortDelayCases: Array<{
+    header: string;
+    headers: Record<string, string>;
+    delayMs: number;
+  }> = [
+    { header: "milliseconds", headers: { "retry-after-ms": "800" }, delayMs: 800 },
+    {
+      header: "fractional milliseconds",
+      headers: { "retry-after-ms": "800.5" },
+      delayMs: 800.5,
+    },
+    {
+      header: "HTTP date",
+      headers: { "Retry-After": new Date(Date.UTC(2026, 8, 6, 12, 0, 1)).toUTCString() },
+      delayMs: 900,
+    },
+    {
+      header: "millisecond precedence",
+      headers: { "retry-after-ms": "800", "Retry-After": "30" },
+      delayMs: 800,
+    },
+    {
+      header: "invalid milliseconds with valid seconds",
+      headers: { "retry-after-ms": "invalid", "Retry-After": "0.8" },
+      delayMs: 800,
+    },
+  ];
+
+  it.each(shortDelayCases)(
+    "does not retry before a short $header hint",
+    async ({ headers, delayMs }) => {
+      vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 8, 6, 12, 0, 0, 100));
+      const timer = vi.spyOn(globalThis, "setTimeout");
+      const test = await fixture("rate_limit_exceeded", true, headers);
+      await expect(handleTextSmall(test.runtime, { prompt: "Reply briefly." })).resolves.toBe(
+        "Recovered"
+      );
+      expect(test.requests()).toBe(2);
+      expect(timer).toHaveBeenCalledWith(expect.any(Function), Math.ceil(delayMs));
+      expect(test.requestTimes[1] - test.requestTimes[0]).toBeGreaterThanOrEqual(delayMs);
+    },
+    10000
+  );
+
+  const longDelayHeaders: Array<{ header: string; headers: Record<string, string> }> = [
+    { header: "seconds", headers: { "Retry-After": "30" } },
+    { header: "milliseconds", headers: { "Retry-After-Ms": "30000" } },
+    {
+      header: "HTTP date",
+      headers: { "Retry-After": new Date(Date.UTC(2026, 8, 6, 12, 0, 30)).toUTCString() },
+    },
+  ];
+  const longDelayCases = longDelayHeaders.flatMap((hint) =>
+    [429, 503].flatMap((status) =>
+      ["generate", "live", "buffered", "structured"].map((mode) => ({ ...hint, status, mode }))
+    )
+  );
+
+  it.each(longDelayCases)(
+    "fails over without waiting or resending HTTP $status with long $header in $mode mode",
+    async ({ headers, status, mode }) => {
+      vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 8, 6, 12));
+      const test = await fixture("rate_limit_exceeded", true, headers, false, false, status);
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", mode === "buffered" ? "1" : "0");
+      const signal = AbortSignal.timeout(1000);
+      const call = async () => {
+        const result = await handleTextSmall(test.runtime, {
+          prompt: "Reply briefly.",
+          signal,
+          stream: mode !== "generate",
+          streamStructured: mode === "structured",
+        });
+        if (typeof result !== "string") {
+          for await (const chunk of result.textStream) {
+            throw new Error(`Unexpected output before provider rejection: ${chunk}`);
+          }
+        }
+      };
+      await expect(call()).rejects.toMatchObject({ statusCode: status });
+      expect(signal.aborted).toBe(false);
+      expect(test.requests()).toBe(1);
+    },
+    10000
+  );
+
+  it("keeps a long millisecond cooldown through aliases until the complete provider delay expires", async () => {
+    const now = Date.UTC(2026, 8, 6, 12);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const test = await fixture("rate_limit_exceeded", true, { "retry-after-ms": "180000" });
+    await expect(handleTextSmall(test.runtime, { prompt: "First attempt." })).rejects.toMatchObject(
+      {
+        statusCode: 429,
+      }
+    );
+    clock.mockReturnValue(now + 120_001);
+    await expect(
+      handleResponseHandler(test.runtime, {
+        prompt: "Same model through streaming.",
+        model: "latency-test",
+        stream: true,
+      })
+    ).rejects.toMatchObject({ name: "ProviderRateLimitCooldownError", statusCode: 429 });
+    expect(test.requests()).toBe(1);
+    clock.mockReturnValue(now + 180_000);
+    await expect(handleTextSmall(test.runtime, { prompt: "After reset." })).resolves.toBe(
+      "Recovered"
+    );
+    expect(test.requests()).toBe(2);
+  });
+
   it("recovers a buffered stream using the original rate-limit error", async () => {
     const test = await fixture("rate_limit_exceeded", true, undefined, true);
     vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
@@ -211,9 +325,7 @@ describe("provider quota retry HTTP boundary", () => {
   it.each([false, true])(
     "cancels provider-directed retry wait (structured=%s)",
     async (structured) => {
-      // Long provider windows fail over immediately under the stable cooldown
-      // policy. Exercise cancellation inside an eligible bounded retry wait.
-      const test = await fixture("rate_limit_exceeded", true, "0.8");
+      const test = await fixture("rate_limit_exceeded", true, "2");
       await expect(
         handleTextSmall(test.runtime, {
           prompt: "Reply briefly.",

@@ -2011,13 +2011,32 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     if (cameraPolicy.kind !== "semantic-exemption") {
       throw new Error("builtin-camera must declare a semantic exemption");
     }
+    // The complete browser fallback is painted; this does not certify the
+    // native Camera surface, which still needs separate native acceptance.
     await expect(
       readViewPaint(
         semanticRootForView(page, "builtin-camera"),
         page.locator("[data-test-overlay]"),
         cameraPolicy.fallbackExpectation,
       ),
-    ).resolves.toMatchObject({ semanticReady: false });
+    ).resolves.toMatchObject({ semanticReady: true });
+
+    for (const incompleteOrUnrelatedFallback of [
+      "View unavailable Retry",
+      "Settings Wallet Projects",
+    ]) {
+      const cameraRoot = semanticRootForView(page, "builtin-camera");
+      await cameraRoot.evaluate((root, text) => {
+        root.textContent = text;
+      }, incompleteOrUnrelatedFallback);
+      await expect(
+        readViewPaint(
+          cameraRoot,
+          page.locator("[data-test-overlay]"),
+          cameraPolicy.fallbackExpectation,
+        ),
+      ).resolves.toMatchObject({ semanticReady: false });
+    }
 
     await page.setContent("<main>first</main><main>second</main>");
     await expect(
