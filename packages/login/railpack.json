@@ -42,5 +42,11 @@
         ]
       }
     ]
-  }
+  },
+  "exclude": [
+    "!plugins/*/package.json",
+    "!packages/*/package.json",
+    "!packages/native/*/package.json",
+    "!packages/app-core/platforms/*/package.json"
+  ]
 }

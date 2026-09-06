@@ -78,5 +78,7 @@ Railway builds use [`railpack.json`](railpack.json). Keep the repository root as
 the build context, select Railpack, and set `RAILPACK_CONFIG_FILE` to
 `packages/login/railpack.json`. The configuration pins Bun and Node, installs the
 production dependency closure, and includes only login, core and logger
-workspaces in the runtime image. Retain the service's existing variables and
-`/health` check when changing its repository source.
+workspaces in the runtime image. Its ignore overrides retain workspace manifests
+that Bun needs to resolve the lockfile before filtering the install. Retain the
+service's existing variables and `/health` check when changing its repository
+source.
