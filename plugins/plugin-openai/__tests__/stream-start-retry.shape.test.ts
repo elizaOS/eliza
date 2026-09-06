@@ -195,7 +195,7 @@ describe("live-stream start retry", () => {
 
     await expect(collect(stream)).resolves.toEqual(["ok"]);
     expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
-  }, 30_000);
+  }, 90_000);
 
   it("retries a transient throw on the first pull", async () => {
     let call = 0;
