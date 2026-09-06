@@ -194,6 +194,11 @@ describe("App config backup/restore", () => {
     // Review-gate (#11834): even though the backup says enabled=true, the
     // restored app is a fresh draft — monetization must be FORCED OFF and the
     // caller warned. Pricing is persisted so re-enabling after review is easy.
+    expect(restored.discord_automation).toEqual(restoredFresh?.discord_automation);
+    expect(restored.telegram_automation).toEqual(restoredFresh?.telegram_automation);
+    expect(restored.inference_markup_percentage).toEqual(
+      restoredFresh?.inference_markup_percentage,
+    );
     expect(restoredFresh?.monetization_enabled).toBe(false);
     expect(restoredFresh?.review_status).toBe("draft");
     expect(warnings).toEqual(
@@ -221,6 +226,47 @@ describe("App config backup/restore", () => {
         generatedAt: "2026-07-01T00:00:00.000Z",
       },
     ]);
+  });
+
+  test("invalid restore pricing creates neither an app nor an API key", async () => {
+    const { orgId, userId } = await seed();
+    const { app: source } = await appsService.create({
+      name: "Invalid restore pricing",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://example.invalid",
+    });
+    const backup = await appBackupService.exportApp(source);
+    const appsBefore = await dbWrite
+      .select({ id: apps.id })
+      .from(apps)
+      .where(eq(apps.organization_id, orgId));
+    const keysBefore = await dbWrite
+      .select({ id: apiKeys.id })
+      .from(apiKeys)
+      .where(eq(apiKeys.organization_id, orgId));
+    for (const [field, value] of [
+      ["inference_markup_percentage", Number.NaN],
+      ["inference_markup_percentage", 1001],
+      ["purchase_share_percentage", -1],
+      ["purchase_share_percentage", 101],
+    ] as const) {
+      await expect(
+        appBackupService.restoreApp(orgId, userId, {
+          ...backup,
+          monetization: { ...backup.monetization, [field]: value },
+        }),
+      ).rejects.toThrow(field);
+    }
+    expect(
+      await dbWrite.select({ id: apps.id }).from(apps).where(eq(apps.organization_id, orgId)),
+    ).toHaveLength(appsBefore.length);
+    expect(
+      await dbWrite
+        .select({ id: apiKeys.id })
+        .from(apiKeys)
+        .where(eq(apiKeys.organization_id, orgId)),
+    ).toHaveLength(keysBefore.length);
   });
 
   test("export rejects a non-finite value from either monetization field", async () => {
@@ -297,10 +343,27 @@ describe("App config backup/restore", () => {
     const backup = await appBackupService.exportApp(source);
     backup.automation.telegram = null;
     await dbWrite.execute(sql`ALTER TABLE apps ALTER COLUMN telegram_automation SET NOT NULL`);
+    const appsBefore = await dbWrite
+      .select({ id: apps.id })
+      .from(apps)
+      .where(eq(apps.organization_id, orgId));
+    const keysBefore = await dbWrite
+      .select({ id: apiKeys.id })
+      .from(apiKeys)
+      .where(eq(apiKeys.organization_id, orgId));
     try {
       await expect(
         appBackupService.restoreApp(orgId, userId, backup, "Before migration"),
       ).rejects.toMatchObject({ cause: { code: "23502" } });
+      expect(
+        await dbWrite.select({ id: apps.id }).from(apps).where(eq(apps.organization_id, orgId)),
+      ).toHaveLength(appsBefore.length);
+      expect(
+        await dbWrite
+          .select({ id: apiKeys.id })
+          .from(apiKeys)
+          .where(eq(apiKeys.organization_id, orgId)),
+      ).toHaveLength(keysBefore.length);
     } finally {
       const migration = await readFile(
         new URL(

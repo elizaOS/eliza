@@ -1,5 +1,6 @@
 /**
  * Service for managing apps and app-related operations.
+ * Creation admits organization quota and commits initial configuration and key ownership together.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -28,7 +29,20 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import { parseAppMonetizationNumber } from "./app-credit-math";
 import { managedDomainsService } from "./managed-domains";
+
+/** Configuration committed with a restored app and its initial key; excludes enablement of monetization. */
+type InitialAppConfiguration = Pick<
+  App,
+  | "linked_character_ids"
+  | "discord_automation"
+  | "telegram_automation"
+  | "twitter_automation"
+  | "promotional_assets"
+  | "inference_markup_percentage"
+  | "purchase_share_percentage"
+>;
 
 const DEFAULT_MAX_APPS_PER_ORG = 25;
 const appByIdHydrations = new Map<string, Promise<void>>();
@@ -439,17 +453,34 @@ export class AppsService {
     return { limit };
   }
 
-  async create(data: {
-    name: string;
-    description?: string;
-    organization_id: string;
-    created_by_user_id: string;
-    app_url: string;
-    allowed_origins?: string[];
-    logo_url?: string;
-    website_url?: string;
-    contact_email?: string;
-  }): Promise<{ app: App; apiKey: string }> {
+  async create(
+    data: {
+      name: string;
+      description?: string;
+      organization_id: string;
+      created_by_user_id: string;
+      app_url: string;
+      allowed_origins?: string[];
+      logo_url?: string;
+      website_url?: string;
+      contact_email?: string;
+    },
+    initialConfiguration?: InitialAppConfiguration,
+  ): Promise<{ app: App; apiKey: string }> {
+    const initialPricing = initialConfiguration
+      ? {
+          inference_markup_percentage: parseAppMonetizationNumber(
+            "inference_markup_percentage",
+            initialConfiguration.inference_markup_percentage,
+            { min: 0, max: 1000 },
+          ),
+          purchase_share_percentage: parseAppMonetizationNumber(
+            "purchase_share_percentage",
+            initialConfiguration.purchase_share_percentage,
+            { min: 0, max: 100 },
+          ),
+        }
+      : undefined;
     let slug = this.generateSlug(data.name);
     let slugAttempts = 0;
 
@@ -478,6 +509,15 @@ export class AppsService {
           logo_url: data.logo_url,
           website_url: data.website_url,
           contact_email: data.contact_email,
+          linked_character_ids: initialConfiguration?.linked_character_ids,
+          discord_automation: initialConfiguration?.discord_automation,
+          telegram_automation: initialConfiguration?.telegram_automation,
+          twitter_automation: initialConfiguration?.twitter_automation,
+          promotional_assets: initialConfiguration?.promotional_assets,
+          inference_markup_percentage: initialPricing?.inference_markup_percentage,
+          purchase_share_percentage: initialPricing?.purchase_share_percentage,
+          monetization_enabled: initialConfiguration ? false : undefined,
+          review_status: initialConfiguration ? "draft" : undefined,
         },
         limit,
         tx,
