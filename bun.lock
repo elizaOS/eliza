@@ -1289,7 +1289,7 @@
       "dependencies": {
         "@elizaos/auth": "workspace:*",
         "@octokit/rest": "^22.0.0",
-        "coding-agent-adapters": "0.16.3",
+        "coding-agent-adapters": "0.17.0",
         "drizzle-orm": "0.45.2",
         "effect": "4.0.0-beta.105",
         "smol-toml": "^1.8.0",
@@ -7068,7 +7068,7 @@
 
     "codemirror": ["codemirror@6.0.2", "", { "dependencies": { "@codemirror/autocomplete": "^6.0.0", "@codemirror/commands": "^6.0.0", "@codemirror/language": "^6.0.0", "@codemirror/lint": "^6.0.0", "@codemirror/search": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.0.0" } }, "sha512-VhydHotNW5w1UGK0Qj96BwSk/Zqbp9WbnyK2W/eVMv4QyF41INRGpjUhFJY7/uDNuudSc33a/PKr4iDqRduvHw=="],
 
-    "coding-agent-adapters": ["coding-agent-adapters@0.16.3", "", { "dependencies": { "adapter-types": "^0.2.0", "pino": "^9.6.0" }, "peerDependencies": { "agent-adapter-monitor": "^0.3.0" }, "optionalPeers": ["agent-adapter-monitor"] }, "sha512-eY2fiJ95sIYl2PUok7EP2XREQ+Mjpz88itv0rJV9ChS0g94PwfqDE6Vm1/qhBqOCt6CIE6HD0FMHzZlM+51nig=="],
+    "coding-agent-adapters": ["coding-agent-adapters@0.17.0", "", { "dependencies": { "adapter-types": "^0.2.0", "pino": "^9.6.0" } }, "sha512-FmYpMPQRh8YiK0vC4gY1WW82Sjj1w4TJSdGmZDg0qIe81nxAHe6rzSVy4VTVCeHYonpKvaxCOcTOnCZXjYGH/A=="],
 
     "collapse-white-space": ["collapse-white-space@2.1.0", "", {}, "sha512-loKTxY1zCOuG4j9f6EPnuyyYkf58RnhhWTvRoZEokgB+WbdXehfjFviyOVYkqzEWz1Q5kRiZdBYS5SwxbQYwzw=="],
 
