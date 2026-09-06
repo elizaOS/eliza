@@ -1705,30 +1705,6 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
-		// A previous candidate in this same model response may have settled
-		// while this call waited in the queue. Recheck at dispatch so duplicate
-		// proposals cannot bypass the cross-round mutation guard.
-		const queuedPartition = partitionRedundantSucceededCalls(
-			[toolCall],
-			trajectory,
-		);
-		if (!codingDrainQueue && queuedPartition.fresh.length === 0) {
-			appendPlannerModelFeedbackEvent(trajectory, {
-				id: `settled-queued-tool-call:${iteration}:${toolCall.id}`,
-				type: "instruction",
-				source: "planner-loop",
-				createdAt: Date.now(),
-				content: `Skipped queued ${toolCall.name}: an identical operation already settled in this turn. Consult its recorded result before continuing.`,
-			});
-			trajectory.context = {
-				...trajectory.context,
-				plannedQueue: trajectory.context.plannedQueue?.filter(
-					(entry) => entry.id !== toolCall.id,
-				),
-			};
-			continue;
-		}
-
 		await executeQueuedToolCall({
 			params,
 			trajectory,

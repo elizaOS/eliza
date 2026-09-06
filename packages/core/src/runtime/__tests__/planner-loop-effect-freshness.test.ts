@@ -47,6 +47,7 @@ async function runStorePlan(
 		failFirst?: boolean;
 		externalChange?: boolean;
 		protocolFailureAfterWrite?: boolean;
+		userRequest?: string;
 	} = {},
 ) {
 	const items: string[] = [];
@@ -64,7 +65,20 @@ async function runStorePlan(
 				return { text: "", toolCalls };
 			},
 		},
-		context: { id: "freshness" },
+		context: {
+			id: "freshness",
+			events: options.userRequest
+				? [
+						{
+							id: "request",
+							type: "message",
+							source: "user",
+							createdAt: Date.now(),
+							content: options.userRequest,
+						},
+					]
+				: [],
+		},
 		tools: [{ name: "OWNER_TODOS", description: "Review or create items." }],
 		executeToolCall: async (
 			call: PlannerToolCall,
@@ -125,7 +139,7 @@ async function runStorePlan(
 	return { result, items, reads, messages, writes, attempts };
 }
 
-describe("planner effect freshness and queued duplicate dispatch", () => {
+describe("planner effect freshness and deliberate queued multiplicity", () => {
 	it("keeps applied and replayed receipts settled despite a contradictory read-only flag", () => {
 		const call = { name: "OWNER_TODOS", params: { action: "create" } };
 		for (const effect of [
@@ -188,22 +202,27 @@ describe("planner effect freshness and queued duplicate dispatch", () => {
 		expect(run.result.finalMessage).toContain("external-item");
 	});
 
-	it("suppresses same-response repeated writes at dispatch while preserving distinct operation arguments", async () => {
-		const run = await runStorePlan([
+	it("preserves separate unkeyed operations with identical arguments in one response", async () => {
+		const run = await runStorePlan(
 			[
-				proposal("w1", "create", "authorized-1"),
-				proposal("duplicate", "create", "authorized-1"),
-				proposal("w2", "create", "authorized-2"),
+				[
+					proposal("first-requested-record", "create"),
+					proposal("second-requested-record", "create"),
+				],
+				[proposal("r1", "review")],
 			],
-			[proposal("r1", "review")],
-		]);
+			{
+				userRequest:
+					"Create exactly two separate identical records. Both are intentional, not retries.",
+			},
+		);
 		expect(run.items).toEqual(["item-1", "item-2"]);
 		expect(run.reads).toEqual([["item-1", "item-2"]]);
 		expect(
 			run.result.trajectory.steps.filter(
-				(step) => step.toolCall?.id === "duplicate",
+				(step) => step.toolCall?.id === "second-requested-record",
 			),
-		).toHaveLength(0);
+		).toHaveLength(1);
 	});
 
 	it("does not treat a rejected pre-write attempt as a successful mutation", async () => {
