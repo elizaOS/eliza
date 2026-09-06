@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Card for one connector account in the account-management list: shows
  * status/role/privacy, an editable label, and the per-account actions (set
@@ -151,13 +152,11 @@ function deriveStatus(
 }
 
 function initials(label: string): string {
-  const trimmed = label.trim();
-  if (!trimmed) return "?";
-  return trimmed
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
+  const wellFormed = toWellFormedUnicode(label).trim();
+  if (!wellFormed) return "?";
+  const parts = wellFormed.split(/\s+/).slice(0, 2);
+  const chars = parts.map((part) => truncateWellFormed(part, 1).toUpperCase());
+  return truncateWellFormed(chars.join(""), 2) || "?";
 }
 
 export function ConnectorAccountCard({
