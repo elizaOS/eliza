@@ -5128,14 +5128,19 @@ const MALFORMED_CALL_FAILURE_PATTERN =
 
 /**
  * A failure that only says the call itself was malformed (a required argument
- * missing, an unexpected or invalid argument) is not an outcome the user must
- * hear about once the planner re-issues the same operation correctly and it
- * succeeds. The operation key includes the arguments, so the corrected call
- * never matches the malformed one and the stale failure kept authority over
- * the final message (live 2026-09-06 00:45: MEMORY create without `text`,
- * retried with text and applied, yet the turn delivered a raw planner marker
- * instead of the evaluator's "Got it"). Same tool, same discriminator value,
- * malformed-call failure text: superseded.
+ * missing, an unexpected or invalid argument) had no effect, so it is not an
+ * outcome the user must hear about once the planner re-issues the same
+ * operation correctly and it succeeds. The operation key includes the
+ * arguments, so the corrected call never matches the malformed one and the
+ * stale failure kept authority over the final message (live 2026-09-06 00:45:
+ * MEMORY create without `text`, retried with text and applied, yet the turn
+ * delivered a raw planner marker instead of the evaluator's "Got it").
+ *
+ * "The same operation" is decided by {@link malformedCallSupersededBy}: every
+ * target or intent field the malformed call supplied must survive into the
+ * successful call, so a failed update of note A is never laundered by a later
+ * update of note B and a refused delete of one query is never laundered by a
+ * confirmed delete of another (review 2026-09-06, Discussion 30659).
  */
 function resolveMalformedCallsSupersededBy(
 	step: PlannerStep,
@@ -5143,7 +5148,6 @@ function resolveMalformedCallsSupersededBy(
 ): void {
 	const call = step.toolCall;
 	if (!call) return;
-	const discriminator = plannerToolDiscriminatorValue(call);
 	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
 		const failedCall = failed.toolCall;
 		if (
@@ -5152,21 +5156,325 @@ function resolveMalformedCallsSupersededBy(
 		) {
 			continue;
 		}
-		if (plannerToolDiscriminatorValue(failedCall) !== discriminator) continue;
 		if (!isMalformedCallFailure(failed.result)) continue;
+		if (!malformedCallSupersededBy(failedCall, failed.result, call)) continue;
 		unresolvedByOperation.delete(key);
 	}
 }
 
+const PLANNER_TOOL_DISCRIMINATOR_KEYS = [
+	"action",
+	"subaction",
+	"op",
+	"operation",
+] as const;
+
 function plannerToolDiscriminatorValue(call: PlannerToolCall): string {
 	const params = call.params ?? {};
-	for (const key of ["action", "subaction", "op", "operation"]) {
+	for (const key of PLANNER_TOOL_DISCRIMINATOR_KEYS) {
 		const value = params[key];
 		if (typeof value === "string" && value.trim()) {
 			return value.trim().toLowerCase();
 		}
 	}
 	return "";
+}
+
+const DESTRUCTIVE_DISCRIMINATOR_PATTERN =
+	/^(?:delete|remove|clear|forget|cancel|archive|purge|reset|revoke|destroy|drop|unlink|wipe)/i;
+
+/** Parameter names that address a target even when their value is one word. */
+const TARGET_PARAMETER_KEY_PATTERN =
+	/^(?:id|ids|query|title|name|text|content|body|path|url|key|subject|target|filter|search|q|email|handle|username|channel|room|entity|event|note|file)$|(?:Id|Ids|Name|Title|Query|Path|Url|Key|Text|Handle)$/;
+
+/** One lowercase token (or a boolean/number) is an enum-like descriptor, not a target. */
+const DESCRIPTOR_TOKEN_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
+
+/**
+ * Function words dropped when a malformed call's prose target is matched
+ * against the corrected call. Pronouns are included because the planner
+ * restates first-person content in the third person ("I like my coffee" →
+ * "The user likes their coffee"). A single UPPERCASE letter is kept as an
+ * identifier ("Note A" vs "Note B") while the article "a" and the pronoun
+ * "I" are dropped.
+ */
+const CORRELATION_STOP_WORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"and",
+	"or",
+	"of",
+	"to",
+	"in",
+	"on",
+	"at",
+	"for",
+	"with",
+	"that",
+	"this",
+	"these",
+	"those",
+	"is",
+	"are",
+	"was",
+	"were",
+	"be",
+	"been",
+	"am",
+	"do",
+	"does",
+	"did",
+	"have",
+	"has",
+	"had",
+	"please",
+	"user",
+	"users",
+	"i",
+	"me",
+	"my",
+	"mine",
+	"you",
+	"your",
+	"we",
+	"our",
+	"us",
+	"he",
+	"him",
+	"his",
+	"she",
+	"her",
+	"they",
+	"them",
+	"their",
+	"it",
+	"its",
+]);
+
+function correlationTermKeys(term: string): string[] {
+	const lower = term.toLowerCase();
+	const keys = new Set<string>([lower]);
+	let base = lower;
+	if (base.length >= 5 && base.endsWith("ies")) {
+		base = `${base.slice(0, -3)}y`;
+	} else if (base.length >= 5 && base.endsWith("sses")) {
+		base = base.slice(0, -2);
+	} else if (base.length >= 4 && base.endsWith("s") && !base.endsWith("ss")) {
+		base = base.slice(0, -1);
+	}
+	keys.add(base);
+	for (const suffix of ["ing", "ed"]) {
+		if (base.length < suffix.length + 2 || !base.endsWith(suffix)) continue;
+		const stem = base.slice(0, -suffix.length);
+		keys.add(stem);
+		keys.add(`${stem}e`);
+		if (stem.length >= 3 && stem[stem.length - 1] === stem[stem.length - 2]) {
+			keys.add(stem.slice(0, -1));
+		}
+	}
+	return [...keys];
+}
+
+function correlationContentTerms(text: string): string[] {
+	return text.split(/[^\p{L}\p{N}]+/u).filter((token) => {
+		if (!token) return false;
+		const lower = token.toLowerCase();
+		if (!CORRELATION_STOP_WORDS.has(lower)) return true;
+		return token.length === 1 && token !== lower && lower !== "i";
+	});
+}
+
+function isSuppliedParameterValue(value: unknown): boolean {
+	if (value === undefined || value === null) return false;
+	if (typeof value === "string") return value.trim().length > 0;
+	if (Array.isArray(value)) return value.length > 0;
+	if (typeof value === "object") return Object.keys(value).length > 0;
+	return true;
+}
+
+function isDescriptorParameterValue(value: unknown): boolean {
+	if (typeof value === "boolean" || typeof value === "number") return true;
+	if (typeof value === "string")
+		return DESCRIPTOR_TOKEN_PATTERN.test(value.trim());
+	if (Array.isArray(value)) {
+		return value.every(
+			(entry) =>
+				typeof entry === "string" &&
+				DESCRIPTOR_TOKEN_PATTERN.test(entry.trim()),
+		);
+	}
+	return false;
+}
+
+function normalizeCorrelationText(value: string): string {
+	return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function stableCorrelationJson(value: unknown): string {
+	if (Array.isArray(value)) {
+		return `[${value.map(stableCorrelationJson).join(",")}]`;
+	}
+	if (value && typeof value === "object") {
+		return `{${Object.keys(value)
+			.sort()
+			.map(
+				(key) =>
+					`${JSON.stringify(key)}:${stableCorrelationJson(
+						(value as Record<string, unknown>)[key],
+					)}`,
+			)
+			.join(",")}}`;
+	}
+	if (typeof value === "string") {
+		return JSON.stringify(normalizeCorrelationText(value));
+	}
+	return JSON.stringify(value) ?? "null";
+}
+
+function correlationValuesEqual(left: unknown, right: unknown): boolean {
+	return stableCorrelationJson(left) === stableCorrelationJson(right);
+}
+
+function correlationLeafStrings(value: unknown, out: string[] = []): string[] {
+	if (typeof value === "string") {
+		if (value.trim()) out.push(value);
+	} else if (Array.isArray(value)) {
+		for (const entry of value) correlationLeafStrings(entry, out);
+	} else if (value && typeof value === "object") {
+		for (const entry of Object.values(value))
+			correlationLeafStrings(entry, out);
+	} else if (typeof value === "number") {
+		out.push(String(value));
+	}
+	return out;
+}
+
+/**
+ * A value the corrected call no longer carries under the same name is still
+ * accounted for when it appears somewhere in the corrected arguments: an
+ * identifier (no whitespace) must appear verbatim, prose must have every
+ * content term present (inflection-insensitive), so misfiled content
+ * (`query: "I like my coffee with oat milk"` → `text: "The user likes their
+ * coffee with oat milk."`) correlates while a different target does not.
+ */
+function parameterValueCoveredBy(
+	value: unknown,
+	haystack: { text: string; terms: Set<string> },
+): boolean {
+	const leaves = correlationLeafStrings(value);
+	if (leaves.length === 0) return true;
+	return leaves.every((leaf) => {
+		const normalized = normalizeCorrelationText(leaf);
+		if (!/\s/.test(normalized)) return haystack.text.includes(normalized);
+		const terms = correlationContentTerms(leaf);
+		if (terms.length === 0) return haystack.text.includes(normalized);
+		return terms.every((term) =>
+			correlationTermKeys(term).some((key) => haystack.terms.has(key)),
+		);
+	});
+}
+
+function parameterNamesNamedByFailure(
+	failedCall: PlannerToolCall,
+	result: PlannerToolResult | undefined,
+): Set<string> {
+	const names = new Set<string>();
+	const data = result?.data as
+		| {
+				error?: unknown;
+				invalidParameterNames?: unknown;
+				parameterErrors?: unknown;
+		  }
+		| undefined;
+	if (Array.isArray(data?.invalidParameterNames)) {
+		for (const name of data.invalidParameterNames) {
+			if (typeof name === "string") names.add(name);
+		}
+	}
+	if (Array.isArray(data?.parameterErrors)) {
+		for (const entry of data.parameterErrors) {
+			if (!entry || typeof entry !== "object") continue;
+			for (const field of ["name", "path", "parameter", "field"]) {
+				const value = (entry as Record<string, unknown>)[field];
+				if (typeof value === "string" && value) names.add(value.split(".")[0]);
+			}
+		}
+	}
+	const message = [
+		typeof data?.error === "string" ? data.error : "",
+		typeof result?.text === "string" ? result.text : "",
+		typeof result?.error === "string"
+			? result.error
+			: result?.error instanceof Error
+				? result.error.message
+				: "",
+	].join(" ");
+	for (const name of Object.keys(failedCall.params ?? {})) {
+		const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		if (
+			new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, "i").test(
+				message,
+			)
+		) {
+			names.add(name);
+		}
+	}
+	return names;
+}
+
+// Exported for unit coverage of the correlation contract: the resolver's
+// decision is the deliverable, so tests pin its shapes directly.
+export function malformedCallSupersededBy(
+	failedCall: PlannerToolCall,
+	failedResult: PlannerToolResult | undefined,
+	call: PlannerToolCall,
+): boolean {
+	const failedDiscriminator = plannerToolDiscriminatorValue(failedCall);
+	const discriminator = plannerToolDiscriminatorValue(call);
+	if (
+		failedDiscriminator !== discriminator &&
+		(DESTRUCTIVE_DISCRIMINATOR_PATTERN.test(failedDiscriminator) ||
+			DESTRUCTIVE_DISCRIMINATOR_PATTERN.test(discriminator))
+	) {
+		// A different subaction can only stand in for a constructive one that
+		// never ran (update without text → create with text); a refused delete
+		// is never laundered by a later create, update or unrelated delete.
+		return false;
+	}
+	const namedInFailure = parameterNamesNamedByFailure(failedCall, failedResult);
+	const params = call.params ?? {};
+	const haystackText = normalizeCorrelationText(
+		correlationLeafStrings(params).join(" "),
+	);
+	const haystack = {
+		text: haystackText,
+		terms: new Set(
+			correlationContentTerms(correlationLeafStrings(params).join(" ")).flatMap(
+				correlationTermKeys,
+			),
+		),
+	};
+	for (const [name, value] of Object.entries(failedCall.params ?? {})) {
+		if (name === "eliza_turn_scope") continue;
+		if ((PLANNER_TOOL_DISCRIMINATOR_KEYS as readonly string[]).includes(name)) {
+			continue;
+		}
+		if (namedInFailure.has(name)) continue;
+		if (!isSuppliedParameterValue(value)) continue;
+		if (Object.hasOwn(params, name) && isSuppliedParameterValue(params[name])) {
+			if (!correlationValuesEqual(value, params[name])) return false;
+			continue;
+		}
+		if (
+			!TARGET_PARAMETER_KEY_PATTERN.test(name) &&
+			isDescriptorParameterValue(value)
+		) {
+			continue;
+		}
+		if (!parameterValueCoveredBy(value, haystack)) return false;
+	}
+	return true;
 }
 
 function isMalformedCallFailure(
@@ -6388,6 +6696,10 @@ async function rescueReplyFromSuccessfulResults(
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		if (step.result?.success !== true) continue;
+		// Internal results carry no user-facing text (a memory id, a receipt);
+		// composing a reply from them produced a hallucinated apology (live
+		// 2026-09-06 01:29: "it seems my previous message didn't land").
+		if (step.result.transcriptVisibility === "internal") continue;
 		const diagnosticResult = projectToolDiagnosticValue(
 			step.result,
 			redactDiagnosticText,
@@ -7839,6 +8151,59 @@ function userSafeFinalMessage(
  */
 export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
+const PLANNER_PROTOCOL_JSON_KEYS = new Set([
+	"plannerCompleted",
+	"turnScope",
+	"eliza_turn_scope",
+	"tool_calls",
+	"toolCalls",
+	"tool_call",
+	"function_call",
+	"tool_use",
+	"messageToUser",
+	"recommendedToolCallId",
+	"effectReceiptIds",
+]);
+
+/**
+ * Bare JSON that is the loop's own protocol rather than an answer: markers,
+ * tool invocations (`name` + arguments, `action` + params), verdict and
+ * render envelopes, JSON-schema fragments, and empty containers. Arrays are
+ * protocol when any element is.
+ */
+function isPlannerProtocolJson(value: unknown): boolean {
+	if (Array.isArray(value)) {
+		return value.length === 0 || value.some(isPlannerProtocolJson);
+	}
+	if (!value || typeof value !== "object") return false;
+	const keys = Object.keys(value);
+	if (keys.length === 0) return true;
+	const has = (key: string) => Object.hasOwn(value, key);
+	if (keys.some((key) => PLANNER_PROTOCOL_JSON_KEYS.has(key))) return true;
+	if (has("decision") && has("success")) return true;
+	if (has("complete") && has("message") && keys.length <= 3) return true;
+	if (
+		has("name") &&
+		(has("arguments") || has("parameters") || has("params") || has("input"))
+	) {
+		return true;
+	}
+	if (
+		has("action") &&
+		(has("params") || has("arguments") || has("parameters"))
+	) {
+		return true;
+	}
+	if (
+		has("type") &&
+		typeof (value as { type: unknown }).type === "string" &&
+		(has("properties") || has("required") || keys.length === 1)
+	) {
+		return true;
+	}
+	return false;
+}
+
 // Exported for unit coverage of the egress rejection contract (F18):
 // the last-line guard is the deliverable, so tests pin its shapes.
 export function isUnsafeUserVisibleText(value: string | undefined): boolean {
@@ -7870,16 +8235,21 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	) {
 		return true;
 	}
-	// A bare JSON object/array or a native turn-scope marker is protocol, not
-	// prose (live 2026-09-06: {"plannerCompleted":true,"turnScope":"final"} was
-	// delivered to the user as the reply).
+	// A bare JSON body shaped like planner protocol — a turn-scope marker, a
+	// tool invocation, a verdict envelope, a schema fragment — is never a
+	// reply (live 2026-09-06: {"plannerCompleted":true,"turnScope":"final"}
+	// reached the user; a forced synthesis returned {"type":"object"}). JSON
+	// the user asked for (a data record, a list of numbers) is prose here
+	// (review 2026-09-06): only protocol shapes are rejected.
 	if (/^[[{][\s\S]*[\]}]$/.test(text)) {
+		let parsed: unknown;
 		try {
-			JSON.parse(text);
-			return true;
+			parsed = JSON.parse(text);
 		} catch {
 			// error-policy:J3 Not valid JSON — fall through to the other checks.
+			parsed = undefined;
 		}
+		if (parsed !== undefined && isPlannerProtocolJson(parsed)) return true;
 	}
 	if (/"(?:plannerCompleted|turnScope|eliza_turn_scope)"\s*:/.test(text)) {
 		return true;

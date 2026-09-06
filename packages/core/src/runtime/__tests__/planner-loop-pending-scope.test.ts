@@ -7,7 +7,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createUnavailableGroundedActionReply } from "../../types/action-reply";
 import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
-import { isUnsafeUserVisibleText, runPlannerLoop } from "../planner-loop";
+import {
+	isUnsafeUserVisibleText,
+	malformedCallSupersededBy,
+	runPlannerLoop,
+} from "../planner-loop";
 import type { PlannerRuntime, PlannerToolResult } from "../planner-types";
 
 function call(name: string, scope?: "more_work_pending" | "final") {
@@ -1071,11 +1075,301 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		expect(result.finalMessage).toBe("Got it. No sugar in the tea.");
 	});
 
-	it("never delivers a bare JSON object or a turn-scope marker as user text", () => {
+	it("a malformed update is superseded by a correlated create of the same content: no synthesis pass, the evaluator's message ships", async () => {
+		// Live 2026-09-06 01:29: MEMORY update {query, confirm} failed "text is
+		// required", the retry created the same content with a receipt, the
+		// evaluator finished "Got it, oat milk it is." — and the user received a
+		// hallucinated apology from a rescue pass because the different
+		// subaction kept the malformed failure's authority.
+		const h = harness({
+			userMessage: "remember that I like my coffee with oat milk",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "update",
+								query: "I like my coffee with oat milk",
+								confirm: true,
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "create",
+								text: "The user likes their coffee with oat milk.",
+								kind: "preference",
+								tags: ["coffee", "oat-milk", "preference"],
+							},
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork("The update had no text; create the memory instead."),
+				finish("Got it, oat milk it is."),
+			],
+			results: [
+				{
+					success: false,
+					text: "text is required.",
+					data: { error: "MEMORY_MISSING_TEXT" },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					text: "Stored memory 85034506.",
+					data: { actionName: "MEMORY", op: "create", memoryId: "85034506" },
+				},
+			],
+			intents: ["remember coffee preference"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(result.finalMessage).toBe("Got it, oat milk it is.");
+	});
+
+	it("a refused delete of one query keeps failure authority when a different query is deleted afterwards", async () => {
+		// Review 2026-09-06 (Discussion 30659): the malformed failure's target
+		// was never acted on, so an unrelated success of the same tool must not
+		// launder it — the evaluator's "Both forgotten." may not ship.
+		const h = harness({
+			userMessage: "forget my favorite color and my coffee preference",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								query: "favorite color",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY", "final"),
+							id: "memory-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								query: "coffee with oat milk",
+								confirm: true,
+							},
+						},
+					],
+				},
+				"I removed the coffee memory, but the favorite-color one needed confirmation and was not removed.",
+			],
+			evaluations: [
+				continueWork("The delete needs confirm; retry."),
+				finish("Both forgotten."),
+				"I removed the coffee memory, but the favorite-color one needed confirmation and was not removed.",
+			],
+			results: [
+				{
+					success: false,
+					text: "confirm is required to delete.",
+					data: { error: "CONFIRMATION_REQUIRED" },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					text: "Deleted 1 memory.",
+					data: { actionName: "MEMORY", op: "delete", deletedCount: 1 },
+				},
+			],
+			intents: ["forget favorite color", "forget coffee preference"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(result.finalMessage).not.toBe("Both forgotten.");
+		expect(result.finalMessage).toContain("favorite-color");
+	});
+
+	it("malformed-call supersession keeps every supplied target of the failed call", () => {
+		const failedUpdateA = {
+			name: "VIEWS",
+			params: { action: "update", id: "note-a" },
+		};
+		const titleRequired = {
+			success: false,
+			text: "title is required.",
+			data: { error: "VIEWS_MISSING_TITLE" },
+		};
+		// Same target, corrected: superseded.
+		expect(
+			malformedCallSupersededBy(failedUpdateA, titleRequired, {
+				name: "VIEWS",
+				params: { action: "update", id: "note-a", title: "Groceries" },
+			}),
+		).toBe(true);
+		// Different note: the failed update of note A is still unresolved.
+		expect(
+			malformedCallSupersededBy(failedUpdateA, titleRequired, {
+				name: "VIEWS",
+				params: { action: "update", id: "note-b", title: "Groceries" },
+			}),
+		).toBe(false);
+		// Prose targets that differ only by an uppercase identifier letter.
+		expect(
+			malformedCallSupersededBy(
+				{ name: "VIEWS", params: { action: "update", title: "Note A" } },
+				{ success: false, text: "confirm is required." },
+				{
+					name: "VIEWS",
+					params: { action: "update", title: "Note B", confirm: true },
+				},
+			),
+		).toBe(false);
+		// Different delete query: not superseded.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color" },
+				},
+				{ success: false, text: "confirm is required to delete." },
+				{
+					name: "MEMORY",
+					params: {
+						action: "delete",
+						query: "coffee with oat milk",
+						confirm: true,
+					},
+				},
+			),
+		).toBe(false);
+		// Same delete query with confirm added: superseded.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color" },
+				},
+				{ success: false, text: "confirm is required to delete." },
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color", confirm: true },
+				},
+			),
+		).toBe(true);
+		// A refused delete is never laundered by a create of the same content.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: { action: "delete", query: "favorite color is green" },
+				},
+				{ success: false, text: "confirm is required to delete." },
+				{
+					name: "MEMORY",
+					params: { action: "create", text: "User's favorite color is green." },
+				},
+			),
+		).toBe(false);
+		// Content misfiled in query, re-issued as text in the third person.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "MEMORY",
+					params: {
+						action: "update",
+						query: "I like my coffee with oat milk",
+						confirm: true,
+					},
+				},
+				{ success: false, text: "text is required." },
+				{
+					name: "MEMORY",
+					params: {
+						action: "create",
+						text: "The user likes their coffee with oat milk.",
+						kind: "preference",
+					},
+				},
+			),
+		).toBe(true);
+		// Dropped descriptor (kind) does not block; a dropped target does.
+		expect(
+			malformedCallSupersededBy(
+				{ name: "MEMORY", params: { action: "create", kind: "preference" } },
+				{ success: false, text: "text is required." },
+				{
+					name: "MEMORY",
+					params: { action: "create", text: "User takes tea without sugar." },
+				},
+			),
+		).toBe(true);
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", eventId: "evt-1" },
+				},
+				{ success: false, text: "confirm is required." },
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", title: "Dentist", confirm: true },
+				},
+			),
+		).toBe(false);
+		// The field the failure named as unexpected is excluded from correlation.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", title: "Piano lesson" },
+				},
+				{ success: false, text: "Unexpected argument 'title'." },
+				{
+					name: "CALENDAR",
+					params: {
+						action: "delete_event",
+						details: { title: "Piano lesson" },
+					},
+				},
+			),
+		).toBe(true);
+	});
+
+	it("never delivers protocol-shaped JSON or a turn-scope marker as user text, but keeps JSON the user asked for", () => {
 		expect(
 			isUnsafeUserVisibleText('{"plannerCompleted":true,"turnScope":"final"}'),
 		).toBe(true);
-		expect(isUnsafeUserVisibleText('[{"a":1}]')).toBe(true);
+		expect(isUnsafeUserVisibleText('{"complete":true,"message":"Done."}')).toBe(
+			true,
+		);
+		expect(
+			isUnsafeUserVisibleText(
+				'{"name":"MEMORY","arguments":{"action":"create","text":"x"}}',
+			),
+		).toBe(true);
+		expect(isUnsafeUserVisibleText('{"type":"object"}')).toBe(true);
+		expect(isUnsafeUserVisibleText("{}")).toBe(true);
+		expect(isUnsafeUserVisibleText('[{"a":1}]')).toBe(false);
+		expect(isUnsafeUserVisibleText('{"temperature":21,"unit":"C"}')).toBe(
+			false,
+		);
+		expect(isUnsafeUserVisibleText("[1, 2, 3]")).toBe(false);
 		expect(isUnsafeUserVisibleText('done: "eliza_turn_scope": "final"')).toBe(
 			true,
 		);
