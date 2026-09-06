@@ -321,7 +321,7 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		expect(result.success).toBe(false);
 		expect(JSON.parse(result.text ?? "{}")).toMatchObject({
 			effect: "view_navigation",
-			status: "unconfirmed",
+			status: "http-error",
 			viewId: "chat",
 			label: "Home",
 		});

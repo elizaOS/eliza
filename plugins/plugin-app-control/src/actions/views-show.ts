@@ -4,7 +4,7 @@
  * navigation; the post-tool model owns all visible wording.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
 	ActionResult,
 	HandlerCallback,
@@ -12,7 +12,7 @@ import type {
 	RoleGateRole,
 	ViewType,
 } from "@elizaos/core";
-import { logger, satisfiesRoleGate } from "@elizaos/core";
+import { getStreamingContext, logger, satisfiesRoleGate } from "@elizaos/core";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import { resolveViewCommandShortcut } from "../evaluators/view-command-routing.js";
@@ -22,6 +22,11 @@ import {
 	targetReferenceLogView,
 	userRequestMessageText,
 } from "../params.js";
+import {
+	type NavigationReceipt,
+	navigationDispatchBlock,
+	navigationRequestSignal,
+} from "./navigation-execution.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import { isRealtimeVoiceTurn } from "./view-delivery.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
@@ -461,7 +466,7 @@ export async function navigateToView(
 					...(originatingClientId ? { clientId: originatingClientId } : {}),
 					...(completedActionHandoffId ? { completedActionHandoffId } : {}),
 				}),
-				signal: AbortSignal.timeout(5_000),
+				signal: navigationRequestSignal(5_000),
 			},
 		);
 		if (resp.ok) {
@@ -600,6 +605,37 @@ export async function runViewsShow({
 	const plannerStep =
 		readStringOpt(options, "navigationIntent") === "planner-step";
 	const navigationStepId = readStringOpt(options, "navigationStepId");
+	const receipt = (
+		status: NavigationReceipt["status"],
+		viewId: string | null = null,
+		reason?: string,
+	): NavigationReceipt => ({
+		effect: "view_navigation",
+		stepId: navigationStepId,
+		viewId,
+		status,
+		...(reason ? { reason } : {}),
+	});
+	const blockedResult = (): ActionResult | undefined => {
+		const status = navigationDispatchBlock(message, plannerStep);
+		if (!status) return undefined;
+		const navigation = receipt(
+			status,
+			null,
+			status === "invalid"
+				? "Missing trusted navigation decision for this turn"
+				: "Navigation is forbidden or the turn was cancelled",
+		);
+		return {
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			text: JSON.stringify(navigation),
+			data: { navigation },
+		};
+	};
+	const initialBlock = blockedResult();
+	if (initialBlock) return initialBlock;
 	const rigidIntentViewId = plannerStep
 		? null
 		: resolveViewCommandShortcut({
@@ -614,7 +650,7 @@ export async function runViewsShow({
 			transcriptVisibility: "internal",
 			turnComplete: false,
 			text: "A planner navigation step requires an explicit view and navigationStepId. Domain work has not completed by navigation.",
-			data: { navigation: { status: "invalid", code: "VIEW_STEP_INVALID" } },
+			data: { navigation: receipt("invalid", null, "VIEW_STEP_INVALID") },
 		};
 	}
 	let target = extractedTarget ?? intentViewId;
@@ -626,10 +662,30 @@ export async function runViewsShow({
 			text,
 			transcriptVisibility: "internal",
 			turnComplete: false,
+			data: { navigation: receipt("invalid", null, "Missing target") },
 		};
 	}
 
-	const views = await client.listViews({ viewType });
+	let views: ViewSummary[];
+	try {
+		views = await client.listViews({ viewType });
+	} catch (error) {
+		// error-policy:J1 catalog/abort failure is a typed navigation outcome.
+		const navigation = receipt(
+			getStreamingContext()?.abortSignal?.aborted ? "cancelled" : "unavailable",
+			null,
+			error instanceof Error ? error.message : String(error),
+		);
+		return {
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			text: JSON.stringify(navigation),
+			data: { navigation },
+		};
+	}
+	const catalogBlock = blockedResult();
+	if (catalogBlock) return catalogBlock;
 	let resolution = resolveView(target, views);
 	let explicitAliasViewId: string | null = null;
 	if (resolution.kind === "none" && extractedTarget) {
@@ -681,7 +737,10 @@ export async function runViewsShow({
 			text,
 			transcriptVisibility: "internal",
 			turnComplete: false,
-			data: { target: targetReferenceLogView(target) },
+			data: {
+				target: targetReferenceLogView(target),
+				navigation: receipt("not-found", null),
+			},
 		};
 	}
 
@@ -694,31 +753,44 @@ export async function runViewsShow({
 			text,
 			transcriptVisibility: "internal",
 			turnComplete: false,
-			data: { candidates },
+			data: { candidates, navigation: receipt("ambiguous", null) },
 		};
 	}
 
 	const view = resolution.view;
-	if (
-		!view.available ||
-		(view.roleGate &&
-			!satisfiesRoleGate(
-				resolveCallerRoles ? await resolveCallerRoles() : userRoles,
-				view.roleGate,
-			))
-	) {
+
+	let callerRoles = userRoles;
+	try {
+		if (view.roleGate && resolveCallerRoles)
+			callerRoles = await resolveCallerRoles();
+	} catch (error) {
+		// error-policy:J1 role resolution failures remain explicit navigation failures.
+		const navigation = receipt(
+			getStreamingContext()?.abortSignal?.aborted ? "cancelled" : "unavailable",
+			view.id,
+			error instanceof Error ? error.message : String(error),
+		);
 		return {
 			success: false,
 			transcriptVisibility: "internal",
 			turnComplete: false,
-			text: "The requested view is unavailable to this caller. Continue independently authorized domain work.",
-			data: {
-				navigation: {
-					status: "unavailable",
-					viewId: view.id,
-					navigationStepId,
-				},
-			},
+			text: JSON.stringify(navigation),
+			data: { navigation },
+		};
+	}
+	const roleBlock = blockedResult();
+	if (roleBlock) return roleBlock;
+	if (
+		!view.available ||
+		(view.roleGate && !satisfiesRoleGate(callerRoles, view.roleGate))
+	) {
+		const navigation = receipt("unavailable", view.id);
+		return {
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			text: JSON.stringify(navigation),
+			data: { navigation },
 		};
 	}
 	const subview =
@@ -732,8 +804,25 @@ export async function runViewsShow({
 	const completedActionDelivery =
 		!isRealtimeVoiceTurn(message) && Boolean(originatingClientId);
 	const completedActionHandoffId = completedActionDelivery
-		? randomUUID()
+		? message.id
+			? createHash("sha256")
+					.update(
+						JSON.stringify([
+							message.id,
+							message.roomId,
+							message.entityId,
+							originatingClientId,
+							navigationStepId,
+							view.id,
+							subview,
+							viewType,
+						]),
+					)
+					.digest("hex")
+			: randomUUID()
 		: undefined;
+	const dispatchBlock = blockedResult();
+	if (dispatchBlock) return dispatchBlock;
 	const result = await navigateToView(
 		view,
 		viewType,
@@ -748,12 +837,35 @@ export async function runViewsShow({
 		completedActionHandoffId,
 	);
 
+	const navigation: NavigationReceipt = {
+		label: navigationLabel,
+		...(view.path ? { path: view.path } : {}),
+		...(result.subview ? { subview: result.subview } : {}),
+		...receipt(
+			result.ok
+				? result.receiptStatus === "delivered"
+					? "delivered"
+					: result.receiptStatus === "not-delivered" ||
+							result.receiptStatus === "malformed"
+						? result.receiptStatus
+						: "accepted"
+				: getStreamingContext()?.abortSignal?.aborted
+					? "cancelled"
+					: result.status === "accepted"
+						? "transport-error"
+						: result.status,
+			view.id,
+		),
+		...(completedActionHandoffId
+			? { handoffId: completedActionHandoffId }
+			: {}),
+	};
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
 	return {
 		success: result.ok,
-		text: result.text,
+		text: JSON.stringify(navigation),
 		// Navigation has already been handed to the shell. A confirmed success
 		// requests exactly one post-tool model reply so the acknowledgement stays
 		// natural and model-owned without an evaluator/planner retry loop. Failed or
@@ -776,11 +888,7 @@ export async function runViewsShow({
 		},
 		data: {
 			view,
-			navigation: {
-				status: result.ok ? "confirmed" : "unconfirmed",
-				viewId: view.id,
-				...(navigationStepId ? { stepId: navigationStepId } : {}),
-			},
+			navigation,
 			...(result.subview ? { subview: result.subview } : {}),
 		},
 	};

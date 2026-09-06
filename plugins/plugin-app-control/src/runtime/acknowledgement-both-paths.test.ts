@@ -112,7 +112,7 @@ describe("view-switch response context ownership", () => {
 		expect(result).not.toHaveProperty("verifiedUserFacing");
 		expect(JSON.parse(result.text ?? "{}")).toMatchObject({
 			effect: "view_navigation",
-			status: "accepted",
+			status: "malformed",
 			viewId: "notes",
 		});
 		expect(fetch).toHaveBeenCalledTimes(1);

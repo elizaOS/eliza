@@ -3,6 +3,7 @@
  * action execution, using AsyncLocalStorage when available and a stack elsewhere.
  */
 
+import { ElizaError } from "./errors";
 import type { StreamChunkCallback } from "./types/components";
 import type {
 	StreamingContextEventPayload,
@@ -12,6 +13,17 @@ import type {
 	StreamingToolResultPayload,
 } from "./types/streaming";
 import { StackContextManager } from "./utils/stack-context-manager";
+
+/** Trusted execution policy, bound to an actor and incoming turn, never tool arguments. */
+export interface TurnActionConstraint {
+	messageId: string;
+	roomId: string;
+	actorId: string;
+	action: string;
+	operations: readonly string[];
+	disposition: "allow" | "deny";
+	reason: string;
+}
 
 /**
  * Streaming context containing callbacks for streaming lifecycle.
@@ -33,6 +45,8 @@ export interface StreamingContext extends StreamingEventHooks {
 	messageId?: string;
 	/** Optional abort signal to cancel streaming */
 	abortSignal?: AbortSignal;
+	/** Shared by nested model/action scopes; policy producers own writes. */
+	actionConstraints?: Map<string, TurnActionConstraint>;
 }
 
 export interface StreamingHookPayloads {
@@ -175,7 +189,80 @@ export function runWithStreamingContext<T>(
 	context: StreamingContext | undefined,
 	fn: () => T,
 ): T {
-	return getOrCreateContextManager().run(context, fn);
+	const manager = getOrCreateContextManager();
+	const parent = manager.active();
+	const sameTurn =
+		!context?.messageId || context.messageId === parent?.messageId;
+	if (parent?.actionConstraints && sameTurn) {
+		// Detaching model streaming must not detach execution policy/cancellation.
+		context = context ?? { messageId: parent.messageId };
+		context.actionConstraints = parent.actionConstraints;
+		if (parent.abortSignal && context.abortSignal !== parent.abortSignal) {
+			context.abortSignal = context.abortSignal
+				? AbortSignal.any([parent.abortSignal, context.abortSignal])
+				: parent.abortSignal;
+		}
+	} else if (
+		parent?.actionConstraints &&
+		context?.actionConstraints === parent.actionConstraints
+	) {
+		context = { ...context, actionConstraints: new Map() };
+	}
+	return manager.run(context, fn);
+}
+
+/** Register validated policy on the ambient turn before asynchronous selection. */
+export function setTurnActionConstraint(
+	constraint: TurnActionConstraint,
+): void {
+	const context = getStreamingContext();
+	if (
+		!context ||
+		!constraint.messageId ||
+		!constraint.roomId ||
+		!constraint.actorId ||
+		!constraint.action ||
+		constraint.operations.length === 0 ||
+		constraint.operations.some((operation) => !operation.trim())
+	) {
+		throw new ElizaError(
+			"Turn action constraint requires an active context and complete identity",
+			{ code: "TURN_ACTION_CONSTRAINT_INVALID" },
+		);
+	}
+	context.abortSignal?.throwIfAborted();
+	context.actionConstraints ??= new Map();
+	context.actionConstraints.set(
+		JSON.stringify([
+			constraint.messageId,
+			constraint.roomId,
+			constraint.actorId,
+			constraint.action,
+		]),
+		Object.freeze({
+			...constraint,
+			operations: Object.freeze([...constraint.operations]),
+		}),
+	);
+}
+
+/** Read only the policy for this exact actor, turn, action and operation. */
+export function getTurnActionConstraint(
+	identity: Pick<
+		TurnActionConstraint,
+		"messageId" | "roomId" | "actorId" | "action"
+	>,
+	operation: string,
+): TurnActionConstraint | undefined {
+	const constraint = getStreamingContext()?.actionConstraints?.get(
+		JSON.stringify([
+			identity.messageId,
+			identity.roomId,
+			identity.actorId,
+			identity.action,
+		]),
+	);
+	return constraint?.operations.includes(operation) ? constraint : undefined;
 }
 
 /** A `StreamChunkCallback` that discards every chunk. */

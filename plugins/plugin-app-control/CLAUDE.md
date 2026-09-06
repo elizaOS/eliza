@@ -217,3 +217,12 @@ operations in the planner. Planner-owned VIEWS steps pass
 `navigationIntent=planner-step` and a `navigationStepId`; each target is resolved
 against the current catalog, preserving registration, availability, and role
 gates. Navigation receipts remain separate from event, note, or task effects.
+
+The contextual evaluator binds navigation permission to the incoming message,
+room, and actor through core StreamingContext. Nested model scopes preserve that
+policy and cancellation signal. Tool parameters cannot relax a deny constraint;
+planner steps require an explicit allow. Catalog requests and the final dispatch
+observe cancellation. Every navigation outcome uses `data.navigation.stepId`;
+`delivered` requires the matching completed-action handoff receipt, while missing,
+negative, or malformed delivery remains explicit. Stable handoff IDs scope replay
+to the same message, actor, client, step, and destination.

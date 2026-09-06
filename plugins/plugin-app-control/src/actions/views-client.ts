@@ -20,6 +20,7 @@ import {
 	type ViewType,
 } from "@elizaos/core";
 import { getAppControlApiBase } from "../loopback-api.js";
+import { navigationRequestSignal } from "./navigation-execution.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -533,7 +534,7 @@ export function createViewsClient(): ViewsClient {
 			const response = await fetch(url, {
 				method: "GET",
 				headers: createViewsRequestHeaders(),
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				signal: navigationRequestSignal(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
 				throw new Error(`Failed to list views: HTTP ${response.status}`);
@@ -546,7 +547,7 @@ export function createViewsClient(): ViewsClient {
 			const response = await fetch(`${getApiBase()}/api/views/current`, {
 				method: "GET",
 				headers: createViewsRequestHeaders(),
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+				signal: navigationRequestSignal(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
 				throw new Error(`Failed to get current view: HTTP ${response.status}`);
@@ -562,7 +563,7 @@ export function createViewsClient(): ViewsClient {
 					method: "POST",
 					headers: createViewsRequestHeaders(),
 					body: JSON.stringify({ path: opts.path, viewType: opts.viewType }),
-					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+					signal: navigationRequestSignal(REQUEST_TIMEOUT_MS),
 				},
 			);
 			// 501/404 = the shell has no navigate route; opening still succeeded.

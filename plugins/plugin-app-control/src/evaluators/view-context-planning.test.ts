@@ -8,6 +8,7 @@ import type { AddressInfo } from "node:net";
 import {
 	type ResponseHandlerEvaluatorContext,
 	runResponseHandlerEvaluators,
+	runWithStreamingContext,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { viewContextPlanningEvaluator } from "./view-context-planning.js";
@@ -70,7 +71,12 @@ function context(
 			},
 			logger: { error() {}, warn() {} },
 		},
-		message: { id: "turn-1", roomId: "room-1", content: { text } },
+		message: {
+			id: "turn-1",
+			roomId: "room-1",
+			entityId: "actor-1",
+			content: { text },
+		},
 		state: { values: {}, data: {}, text: "" },
 		messageHandler: {
 			processMessage: "RESPOND",
@@ -86,10 +92,12 @@ function context(
 	} as unknown as ResponseHandlerEvaluatorContext;
 }
 async function run(ctx: ResponseHandlerEvaluatorContext) {
-	return runResponseHandlerEvaluators({
-		...ctx,
-		evaluators: [viewContextPlanningEvaluator],
-	});
+	return runWithStreamingContext({ messageId: ctx.message.id }, () =>
+		runResponseHandlerEvaluators({
+			...ctx,
+			evaluators: [viewContextPlanningEvaluator],
+		}),
+	);
 }
 
 describe("same-turn contextual navigation", () => {

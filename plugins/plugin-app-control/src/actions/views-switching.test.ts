@@ -41,6 +41,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
 		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
@@ -560,7 +563,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.success).toBe(false);
 			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 				effect: "view_navigation",
-				status: "unconfirmed",
+				status: "transport-error",
 				viewId: "calendar",
 			});
 		});
