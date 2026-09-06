@@ -53,6 +53,8 @@ jobs:
         with:
           node-version: "24.15.0"
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Build compiled scenario dependency
+        run: bun run --cwd plugins/plugin-pdf build
       - name: Snapshot canonical evidence producers
         id: evidence-baseline
         run: bun run --cwd packages/evidence bundle:snapshot -- --repo-root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/stability-evidence-baseline.json"
@@ -140,6 +142,8 @@ jobs:
         with:
           node-version: "24.15.0"
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Build compiled scenario dependency
+        run: bun run --cwd plugins/plugin-pdf build
       - name: Snapshot canonical evidence producers
         id: evidence-baseline
         run: bun run --cwd packages/evidence bundle:snapshot -- --repo-root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/stability-evidence-baseline.json"
