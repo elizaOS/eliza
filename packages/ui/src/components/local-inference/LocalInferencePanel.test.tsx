@@ -20,14 +20,18 @@ import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 
 const clientMock = vi.hoisted(() => ({
   getLocalInferenceHub: vi.fn(),
+  startLocalInferenceDownload: vi.fn().mockResolvedValue(undefined),
+  cancelLocalInferenceDownload: vi.fn().mockResolvedValue(undefined),
   uninstallLocalInferenceModel: vi.fn().mockResolvedValue(undefined),
   getVoiceModelPreferences: vi.fn(),
   listVoiceModels: vi.fn(),
 }));
 
 const eventSourceMock = vi.hoisted(() => ({
+  available: true,
   source: {
     close: vi.fn(),
+    onopen: null as null | (() => void),
     onerror: null as null | (() => void),
     onmessage: null as null | ((event: MessageEvent) => void),
     readyState: 1,
@@ -58,7 +62,8 @@ vi.mock("../../utils/eliza-globals", () => ({
   getElizaApiToken: () => null,
 }));
 vi.mock("../../utils/event-source", () => ({
-  openEventSource: () => eventSourceMock.source,
+  openEventSource: () =>
+    eventSourceMock.available ? eventSourceMock.source : null,
 }));
 vi.mock("../../utils/renderer-diagnostics", () => ({
   reportRendererDiagnostic: vi.fn(),
@@ -76,7 +81,6 @@ vi.mock("./DeviceBridgeStatus", () => ({
   DeviceBridgeStatusBar: () => null,
 }));
 vi.mock("./DevicesPanel", () => ({ DevicesPanel: () => null }));
-vi.mock("./DownloadQueue", () => ({ DownloadQueue: () => null }));
 vi.mock("./HardwareBadge", () => ({ HardwareBadge: () => null }));
 vi.mock("./ModelUpdatesPanel", () => ({ ModelUpdatesPanel: () => null }));
 vi.mock("../settings/settings-control-primitives", () => ({
@@ -149,6 +153,8 @@ beforeEach(() => {
     () => new Promise(() => {}),
   );
   clientMock.listVoiceModels.mockImplementation(() => new Promise(() => {}));
+  eventSourceMock.available = true;
+  eventSourceMock.source.onopen = null;
   eventSourceMock.source.close.mockClear();
   eventSourceMock.source.onerror = null;
   eventSourceMock.source.onmessage = null;
@@ -156,6 +162,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -258,4 +265,232 @@ it("keeps an installed unpublished model removable without offering it as a fres
     screen.queryByRole("button", { name: "Download default model" }),
   ).toBeNull();
   expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+});
+
+describe("download snapshots without a usable stream", () => {
+  const job = {
+    jobId: "native-download",
+    modelId: "eliza-1-2b",
+    state: "downloading" as const,
+    received: 20,
+    total: 100,
+    bytesPerSec: 10,
+    etaMs: 8000,
+    startedAt: "2026-09-06T00:00:00.000Z",
+    updatedAt: "2026-09-06T00:00:01.000Z",
+  };
+
+  it.each(["unavailable", "rejected"])(
+    "reconciles progress and completion when streaming is %s and stops after unmount",
+    async (stream) => {
+      vi.useFakeTimers();
+      eventSourceMock.available = stream !== "unavailable";
+      clientMock.getLocalInferenceHub.mockResolvedValue(initialHub);
+      const view = render(<LocalInferencePanel />);
+      await act(async () => {});
+      if (stream === "rejected") {
+        act(() => eventSourceMock.source.onopen?.());
+        await act(async () => {});
+        act(() => eventSourceMock.source.onerror?.());
+      }
+      fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+      expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+
+      const pending = Promise.withResolvers<ModelHubSnapshot>();
+      clientMock.getLocalInferenceHub.mockReturnValue(pending.promise);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      const calls = clientMock.getLocalInferenceHub.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10000);
+      });
+      expect(clientMock.getLocalInferenceHub.mock.calls.length).toBe(calls);
+      await act(async () => {
+        pending.resolve({ ...initialHub, downloads: [job] });
+      });
+      expect(
+        screen.getByRole("progressbar").getAttribute("aria-valuenow"),
+      ).toBe("20");
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+
+      clientMock.getLocalInferenceHub.mockResolvedValue({
+        ...initialHub,
+        downloads: [{ ...job, received: 70 }],
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(
+        screen.getByRole("progressbar").getAttribute("aria-valuenow"),
+      ).toBe("70");
+      clientMock.getLocalInferenceHub.mockResolvedValue(initialHub);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+      view.unmount();
+      const finalCalls = clientMock.getLocalInferenceHub.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10000);
+      });
+      expect(clientMock.getLocalInferenceHub.mock.calls.length).toBe(
+        finalCalls,
+      );
+    },
+  );
+
+  it.each(["resolve", "reject"])(
+    "ignores a pre-cancellation poll that later %ss after cancellation refresh",
+    async (settlement) => {
+      vi.useFakeTimers();
+      eventSourceMock.available = false;
+      clientMock.getLocalInferenceHub.mockResolvedValue({
+        ...initialHub,
+        downloads: [job],
+      });
+      render(<LocalInferencePanel />);
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+
+      const stale = Promise.withResolvers<ModelHubSnapshot>();
+      clientMock.getLocalInferenceHub
+        .mockReturnValueOnce(stale.promise)
+        .mockResolvedValue(initialHub);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      });
+      expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+      await act(async () => {
+        if (settlement === "resolve") {
+          stale.resolve({ ...initialHub, downloads: [job] });
+        } else {
+          stale.reject(new Error("Obsolete snapshot failed"));
+        }
+      });
+      expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(screen.queryByText("Obsolete snapshot failed")).toBeNull();
+    },
+  );
+
+  it("retains downloads and exposes a retry when a fallback snapshot fails", async () => {
+    vi.useFakeTimers();
+    eventSourceMock.available = false;
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...initialHub,
+      downloads: [job],
+    });
+    render(<LocalInferencePanel />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+    clientMock.getLocalInferenceHub.mockRejectedValueOnce(
+      new Error("Snapshot unavailable"),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(
+      screen.getByText("Snapshot unavailable").closest('[role="alert"]'),
+    ).not.toBeNull();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "20",
+    );
+    clientMock.getLocalInferenceHub.mockResolvedValue(initialHub);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    expect(screen.queryByText("Snapshot unavailable")).toBeNull();
+    expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+  });
+
+  it("reconciles completion received before the first hub snapshot", async () => {
+    const initial = Promise.withResolvers<ModelHubSnapshot>();
+    const opened = Promise.withResolvers<ModelHubSnapshot>();
+    clientMock.getLocalInferenceHub
+      .mockReturnValueOnce(initial.promise)
+      .mockReturnValueOnce(opened.promise)
+      .mockResolvedValue(initialHub);
+    render(<LocalInferencePanel />);
+    act(() => eventSourceMock.source.onopen?.());
+    act(() => {
+      eventSourceMock.source.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({ type: "completed", job }),
+        }),
+      );
+    });
+    await act(async () => {
+      opened.resolve({ ...initialHub, downloads: [job] });
+      initial.resolve({ ...initialHub, downloads: [job] });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+    expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("does not roll stream progress back when an earlier refresh resolves", async () => {
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...initialHub,
+      downloads: [job],
+    });
+    render(<LocalInferencePanel />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+    const stale = Promise.withResolvers<ModelHubSnapshot>();
+    clientMock.getLocalInferenceHub.mockReturnValueOnce(stale.promise);
+    act(() => eventSourceMock.source.onopen?.());
+    act(() => {
+      eventSourceMock.source.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            type: "progress",
+            job: { ...job, received: 70 },
+          }),
+        }),
+      );
+    });
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "70",
+    );
+    await act(async () => {
+      stale.resolve({ ...initialHub, downloads: [job] });
+    });
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "70",
+    );
+  });
+
+  it("refreshes immediately after download and cancellation without waiting for streaming", async () => {
+    eventSourceMock.available = false;
+    const hub = {
+      ...initialHub,
+      active: { modelId: null, loadedAt: null, status: "idle" as const },
+      catalog: [MODEL_CATALOG[0]],
+    };
+    clientMock.getLocalInferenceHub.mockResolvedValue(hub);
+    render(<LocalInferencePanel />);
+    const download = await screen.findByRole("button", {
+      name: "Download default model",
+    });
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...hub,
+      downloads: [job],
+    });
+    fireEvent.click(download);
+    fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    clientMock.getLocalInferenceHub.mockResolvedValue(hub);
+    fireEvent.click(cancel);
+    await screen.findByText(/No downloads in progress/);
+    expect(clientMock.startLocalInferenceDownload).toHaveBeenCalledWith(
+      job.modelId,
+    );
+    expect(clientMock.cancelLocalInferenceDownload).toHaveBeenCalledWith(
+      job.modelId,
+    );
+  });
 });
