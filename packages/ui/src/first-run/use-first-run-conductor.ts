@@ -77,6 +77,7 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
+import { getDesktopRuntimeMode } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
@@ -851,12 +852,14 @@ export function useFirstRunConductor(): void {
 
   // Open configuration after a failed finish. Native Settings can recover
   // setup without marking an uninitialized backend ready for chat.
+  const settingsRecoveryPendingRef = React.useRef(false);
   const exitToSettings = React.useCallback(() => {
     if (completedRef.current) return;
     completedRef.current = true;
     if (isElectrobunRuntime()) {
       void openDesktopSettingsWindow().then(
         () => {
+          settingsRecoveryPendingRef.current = true;
           completedRef.current = false;
           seedError(
             "Finish configuring your connection in Settings, then try again.",
@@ -1156,6 +1159,63 @@ export function useFirstRunConductor(): void {
       });
   }, [handleOutcome]);
 
+  // Settings can persist a different provider without changing the draft that
+  // failed. Reconcile its actual backend before retrying that obsolete draft.
+  const retryAfterSettings = React.useCallback(() => {
+    busyRef.current = true;
+    void (async () => {
+      const mode = await getDesktopRuntimeMode();
+      const setup = await client.getFirstRunStatus();
+      if (mode?.mode !== "local" || !setup.complete) return false;
+      let status = await client.getStatus();
+      if (
+        status.state === "not_started" ||
+        status.state === "stopped" ||
+        status.state === "error"
+      ) {
+        await client.startAgent();
+        status = await client.getStatus();
+      }
+      setState("agentStatus", status);
+      if (status.state !== "running" || status.canRespond !== true) {
+        seedError(
+          "Your configured agent is not ready to answer yet. Try again once it has started, or check its connection in Settings.",
+        );
+        return true;
+      }
+      pendingCloudResumeRef.current = null;
+      clearCloudLoginPending();
+      activeCloudLoginCancelRef.current?.();
+      settingsRecoveryPendingRef.current = false;
+      provisionedRef.current = true;
+      completedRef.current = true;
+      completeFirstRun("chat");
+      resumePendingFirstRunText();
+      return true;
+    })().then(
+      (handled) => {
+        busyRef.current = false;
+        if (handled) return;
+        if (draftRef.current.runtime === "cloud") startCloudProvisionFlow();
+        else startProviderFinish();
+      },
+      (error: unknown) => {
+        // error-policy:J4 preserve Settings recovery when its backend cannot be reached
+        busyRef.current = false;
+        seedError(
+          `Your configured agent could not start. ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
+  }, [
+    completeFirstRun,
+    resumePendingFirstRunText,
+    seedError,
+    setState,
+    startCloudProvisionFlow,
+    startProviderFinish,
+  ]);
+
   // Continue an interrupted cloud/hybrid flow once the connection is present.
   // Shared by (a) the auto-resume effect below — used when the user connects
   // from the retry turn's OAuth block and the store later learns the connection
@@ -1167,6 +1227,7 @@ export function useFirstRunConductor(): void {
       if (
         busyRef.current ||
         bindInFlightRef.current ||
+        settingsRecoveryPendingRef.current ||
         provisionedRef.current
       ) {
         return;
@@ -1256,6 +1317,10 @@ export function useFirstRunConductor(): void {
       // current owned attempt, then starts a fresh sign-in from the new user
       // gesture. Late completion from the old attempt is generation-gated.
       if (group === "cloud-login" && id === "retry") {
+        if (settingsRecoveryPendingRef.current) {
+          if (!busyRef.current && !completedRef.current) retryAfterSettings();
+          return true;
+        }
         activeCloudLoginCancelRef.current?.();
         startCloudProvisionFlow();
         return true;
@@ -1561,6 +1626,10 @@ export function useFirstRunConductor(): void {
           );
           return true;
         }
+        if (settingsRecoveryPendingRef.current) {
+          retryAfterSettings();
+          return true;
+        }
         // retry: re-run the SAME finish for the runtime the user last chose.
         // The persist guard released itself on the failed POST, so a local
         // retry re-POSTs; a cloud retry re-runs provisioning.
@@ -1604,6 +1673,7 @@ export function useFirstRunConductor(): void {
       completeFirstRun,
       resumePendingFirstRunText,
       exitToSettings,
+      retryAfterSettings,
       startCloudProvisionFlow,
       startProviderFinish,
       setUiAccent,
