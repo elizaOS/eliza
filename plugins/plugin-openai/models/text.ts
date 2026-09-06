@@ -2186,6 +2186,51 @@ function assertModelNotCoolingDown(models: Map<string, number>, modelName: strin
   throw new ProviderRateLimitCooldownError(modelName, remaining);
 }
 
+function isModelCoolingDown(models: Map<string, number>, modelName: string): boolean {
+  const until = models.get(modelName);
+  if (until === undefined) return false;
+  if (until <= Date.now()) {
+    models.delete(modelName);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Operator-configured fallback model (`OPENAI_FALLBACK_MODEL`, alias
+ * `CEREBRAS_FALLBACK_MODEL`) used only while the requested model is held by a
+ * provider rate-limit cooldown. Undefined when unset or equal to the primary.
+ */
+function resolveFallbackModelName(
+  runtime: IAgentRuntime,
+  primaryModelName: string
+): string | undefined {
+  const raw =
+    getSetting(runtime, "OPENAI_FALLBACK_MODEL") ?? getSetting(runtime, "CEREBRAS_FALLBACK_MODEL");
+  const fallback = typeof raw === "string" ? raw.trim() : "";
+  if (!fallback || fallback === primaryModelName) return undefined;
+  return fallback;
+}
+
+/**
+ * The concrete model a request should use: the primary unless it is cooling
+ * down after a 429 and a distinct fallback is configured and not itself
+ * cooling down. Every slot keeps its primary model (live 2026-09-06: every
+ * slot pinned to one Cerebras model meant the runtime's slot chain re-sent
+ * held requests to the same model and the user saw a hold notice); the
+ * fallback is reached only for the duration of the provider's Retry-After.
+ */
+function selectRequestModelName(
+  models: Map<string, number>,
+  primaryModelName: string,
+  fallbackModelName: string | undefined
+): string {
+  if (!fallbackModelName) return primaryModelName;
+  if (!isModelCoolingDown(models, primaryModelName)) return primaryModelName;
+  if (isModelCoolingDown(models, fallbackModelName)) return primaryModelName;
+  return fallbackModelName;
+}
+
 function noteRateLimitCooldown(
   models: Map<string, number>,
   modelName: string,
@@ -2747,9 +2792,17 @@ async function generateTextByModelType(
   // Keep retries and their failures bound to this call's endpoint/credential,
   // even if runtime settings change while the HTTP request is in flight.
   const modelCooldowns = runtimeRateLimitCooldowns(runtime);
-  const modelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  const primaryModelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  const fallbackModelName = resolveFallbackModelName(runtime, primaryModelName);
+  const modelName = selectRequestModelName(modelCooldowns, primaryModelName, fallbackModelName);
   const usageProvider = getUsageProvider(runtime);
 
+  if (modelName !== primaryModelName) {
+    logger.info(
+      { src: "plugin:openai", modelType, primaryModel: primaryModelName, fallbackModel: modelName },
+      "[OpenAI] primary model is rate limited; serving this request with the configured fallback model"
+    );
+  }
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
   const providerOptions = resolveProviderOptions(params, runtime, modelName);
   const hasAttachments = (paramsWithAttachments.attachments?.length ?? 0) > 0;
@@ -3490,6 +3543,10 @@ export const __INTERNAL_sanitizeSchemaKeywords = {
 export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_enrichProviderCallError = enrichProviderCallError;
+/** @internal */
+export const __INTERNAL_selectRequestModelName = selectRequestModelName;
+/** @internal */
+export const __INTERNAL_resolveFallbackModelName = resolveFallbackModelName;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_isTransientProviderError = isTransientProviderError;
 /** @internal — exported for unit tests only. */
