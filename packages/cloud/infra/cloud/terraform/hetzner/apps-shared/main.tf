@@ -133,12 +133,21 @@ resource "hcloud_server" "tenant_db" {
     backup_s3_secret_key         = var.backup_s3_secret_key
     backup_encryption_passphrase = var.backup_encryption_passphrase
     backup_retention_days        = var.backup_retention_days
+    pitr_files = var.pitr_repository == null ? "" : templatefile("${path.module}/cloud-init/tenant-db-pitr.yaml.tftpl", {
+      repository  = var.pitr_repository
+      environment = var.environment
+    })
+    pitr_enabled = var.pitr_repository != null
   })
 
   # Same convention as control-plane / apps-data-plane: allow in-place rename
   # via Hetzner Console without TF drift. user_data + image swaps require the
   # separately reviewed guarded replacement procedure in README.md.
   lifecycle {
+    precondition {
+      condition     = var.pitr_repository == null ? true : var.pitr_repository.bucket != var.backup_s3_bucket
+      error_message = "PITR must use a separate bucket from the logical-dump expiry job."
+    }
     prevent_destroy = true
     ignore_changes  = [user_data, image, name, ssh_keys]
 

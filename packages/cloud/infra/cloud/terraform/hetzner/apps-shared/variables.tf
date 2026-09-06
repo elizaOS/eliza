@@ -78,6 +78,31 @@ variable "operator_ingress_cidrs" {
 # R2 bucket). All of endpoint/bucket/access/secret/passphrase must be set
 # together; leaving them empty keeps the pipeline installed but INERT — the
 # tenant_db server precondition in main.tf rejects partial configuration.
+variable "pitr_repository" {
+  description = "Dedicated encrypted WAL/PITR repository, separate from logical-dump retention and Terraform state. Null leaves existing host configuration unchanged. Credentials and encryption key require independent recovery custody."
+  type = object({
+    endpoint   = string
+    bucket     = string
+    region     = string
+    access_key = string
+    secret_key = string
+    cipher_key = string
+  })
+  default   = null
+  sensitive = true
+  validation {
+    condition = var.pitr_repository == null ? true : (
+      can(regex("^[a-zA-Z0-9][a-zA-Z0-9.-]+[a-zA-Z0-9]$", var.pitr_repository.endpoint)) &&
+      can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.pitr_repository.bucket)) &&
+      !startswith(var.pitr_repository.bucket, "eliza-terraform-state") &&
+      can(regex("^[a-zA-Z0-9-]+$", var.pitr_repository.region)) &&
+      length(var.pitr_repository.cipher_key) >= 32 &&
+      alltrue([for value in [var.pitr_repository.access_key, var.pitr_repository.secret_key, var.pitr_repository.cipher_key] : length(trimspace(value)) > 0 && !can(regex("[\\r\\n]", value))])
+    )
+    error_message = "PITR requires a hostname-only TLS endpoint, dedicated bucket, region, nonempty single-line credentials and an encryption key of at least 32 characters."
+  }
+}
+
 variable "backup_s3_endpoint" {
   description = "S3-compatible endpoint URL for off-host tenant-DB backups. Empty disables the backup pipeline."
   type        = string

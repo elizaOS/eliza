@@ -36,6 +36,36 @@ The nightly backup implementation below does not meet the production plan's
 five-minute PITR target; continuous WAL backup and measured recovery remain
 required before production acceptance.
 
+## Continuous tenant WAL backup
+
+`pitr_repository` accepts a complete endpoint hostname, bucket, region,
+access key, secret key and encryption key. It defaults to null. Supply it only
+for a dedicated repository outside the application failure domain, with keys
+recoverable independently of this host. The bucket must differ from both
+Terraform state and the logical-dump expiry bucket. Values are sensitive but
+remain in Terraform state and cloud-init user data; restrict both accordingly.
+
+With this bundle, new-host cloud-init installs pgBackRest, enables synchronous
+encrypted WAL upload with TLS verification and a 60-second WAL switch timeout,
+creates the stanza and verifies archiving before taking the initial full backup.
+Weekly full and daily differential timers follow. A recurring check exercises
+archive delivery and fails visibly in systemd if delivery does not complete.
+No WAL queue-size discard cutoff is configured. Storage exhaustion and failed
+checks still require the production alert integration.
+
+Automatic expiry is disabled until independently scoped deletion authority and
+restore proof are in place. The configured 30-day retention is the proposed
+policy for that later expiry activation; it does not currently delete data.
+This does not establish a five-minute RPO or a successful remote restore.
+Read back PostgreSQL's effective settings, completed backup metadata, archive
+checks and a separate restored cluster before declaring recovery available.
+
+Cloud-init is a new-host bootstrap. Changing this variable must not be treated
+as an in-place activation procedure for existing data hosts. Review the plan
+for replacement, preserve the original host/volume, and perform the earlier
+write-fenced migration procedure. A Linux host drill, backup-age monitoring,
+alert delivery and actual off-host credentials remain required before release.
+
 Run `terraform init -backend=false`, `terraform validate`, and `terraform test`
 for local configuration checks. Tests use mocked provider effects; live
 provider plans, connectivity and recovery evidence remain separate requirements.
