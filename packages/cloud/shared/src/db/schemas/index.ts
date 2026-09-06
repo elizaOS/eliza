@@ -40,6 +40,7 @@ export * from "./alb-priorities";
 export * from "./analytics-alert-events";
 export * from "./anonymous-sessions";
 export * from "./api-keys";
+export * from "./app-billing-accounts";
 export * from "./app-config";
 export * from "./app-credit-balances";
 export * from "./app-databases";

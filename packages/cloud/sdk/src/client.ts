@@ -9,6 +9,11 @@
  * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
  */
 
+import type {
+  AppBillingAccountResponse,
+  AppBillingEnvironment,
+  AppBillingRegistrationResponse,
+} from "./app-billing-account.js";
 import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { pollUntil } from "./poll.js";
@@ -500,6 +505,27 @@ export class ElizaCloudClient {
     return this.v1.requestData<ModelListResponse>("GET", "/models", {
       skipAuth: true,
     });
+  }
+
+  registerAppBilling(
+    appId: string,
+    environment: AppBillingEnvironment,
+  ): Promise<AppBillingRegistrationResponse> {
+    return this.v1.requestData(
+      "POST",
+      `/apps/${encodeURIComponent(appId)}/billing/registration`,
+      { json: { environment } },
+    );
+  }
+
+  getAppBillingAccount(
+    appId: string,
+    environment: AppBillingEnvironment,
+  ): Promise<AppBillingAccountResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/apps/${encodeURIComponent(appId)}/billing/account?environment=${encodeURIComponent(environment)}`,
+    );
   }
 
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {

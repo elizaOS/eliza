@@ -22,6 +22,18 @@ const stream = await cloud.routes.postApiV1ChatCompletionsRaw({
 });
 ```
 
+## Individual app billing account status
+
+With an interactive owner session, `registerAppBilling(appId, "test")` records
+an unconfigured registration whose infrastructure payer is the registered app
+owner. It accepts no Stripe identifiers. After the buyer approves the existing
+app consent flow, `getAppBillingAccount(appId, "test")` returns the buyer's
+individual account and explicit unavailable subscription state. Reads support
+interactive sessions and current mobile credentials issued by that exact app;
+general developer API keys do not grant buyer authority. The environment is
+required and may be `test` or `live`; registration performs no provider calls.
+This does not start a trial, create checkout, or grant credits or entitlements.
+
 ## Sign in with Eliza Cloud (web app) + app-credits
 
 A third-party web app can let users sign in with their Eliza Cloud account — no

@@ -41,6 +41,26 @@ the canonical snapshot before retrying an acquire, rollover, or release.
 
 `src/lib/` is server-only — browser code lives in `cloud-frontend`. Only the isomorphic helpers (`billing/`, math/string/validation) are safe to import from the frontend.
 
+## App billing account registration
+
+`db/repositories/app-billing-accounts` owns unconfigured individual buyer accounts.
+An interactive app creator registers an environment through
+`POST /api/v1/apps/:id/billing/registration`; the immutable infrastructure payer
+is the app's owning organization. Existing `appsRepository.connectUser` consent
+and registration share the app row lock and materialize one account per
+registration and user. Reads require current consent, active account/app state,
+and either a user session or a currently valid source-app mobile credential.
+General infrastructure API keys cannot authorize a buyer read.
+
+These records contain no provider account/customer, subscription, trial claim,
+or grant. Merchant and policy authority remain explicitly unconfigured. They do
+not define workspace/team billing or trial eligibility, and deleting consent or
+the app removes these unconfigured records. Historical organization billing
+records are not adopted or modified. Migration `0381_app_billing_registration.sql`
+must run before deploying the updated consent repository. Future lifecycle work
+must extend the existing subscription journal rather than treat these account
+records as a second lifecycle authority.
+
 ## Commands
 
 ```bash

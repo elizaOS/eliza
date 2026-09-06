@@ -884,6 +884,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/backup/route.ts",
   },
+  "GET /api/v1/apps/{id}/billing/account": {
+    method: "GET",
+    path: "/api/v1/apps/{id}/billing/account",
+    methodName: "getApiV1AppsByIdBillingAccount",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/apps/[id]/billing/account/route.ts",
+  },
   "GET /api/v1/apps/{id}/characters": {
     method: "GET",
     path: "/api/v1/apps/{id}/characters",
@@ -3173,6 +3182,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/route.ts",
   },
+  "POST /api/v1/apps/{id}/billing/registration": {
+    method: "POST",
+    path: "/api/v1/apps/{id}/billing/registration",
+    methodName: "postApiV1AppsByIdBillingRegistration",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/apps/[id]/billing/registration/route.ts",
+  },
   "POST /api/v1/apps/{id}/charges": {
     method: "POST",
     path: "/api/v1/apps/{id}/charges",
@@ -5349,6 +5367,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/apps/{id}/analytics": { id: string | number };
   "GET /api/v1/apps/{id}/analytics/requests": { id: string | number };
   "GET /api/v1/apps/{id}/backup": { id: string | number };
+  "GET /api/v1/apps/{id}/billing/account": { id: string | number };
   "GET /api/v1/apps/{id}/characters": { id: string | number };
   "GET /api/v1/apps/{id}/charges": { id: string | number };
   "GET /api/v1/apps/{id}/charges/{chargeId}": {
@@ -5723,6 +5742,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/approval-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/approval-requests/{id}/deny": { id: string | number };
   "POST /api/v1/apps": Record<never, never>;
+  "POST /api/v1/apps/{id}/billing/registration": { id: string | number };
   "POST /api/v1/apps/{id}/charges": { id: string | number };
   "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": {
     id: string | number;
@@ -6146,6 +6166,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/apps/{id}/analytics": never;
   "GET /api/v1/apps/{id}/analytics/requests": never;
   "GET /api/v1/apps/{id}/backup": never;
+  "GET /api/v1/apps/{id}/billing/account": never;
   "GET /api/v1/apps/{id}/characters": never;
   "GET /api/v1/apps/{id}/charges": never;
   "GET /api/v1/apps/{id}/charges/{chargeId}": never;
@@ -6408,6 +6429,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/approval-requests/{id}/cancel": never;
   "POST /api/v1/approval-requests/{id}/deny": never;
   "POST /api/v1/apps": never;
+  "POST /api/v1/apps/{id}/billing/registration": never;
   "POST /api/v1/apps/{id}/charges": never;
   "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": never;
   "POST /api/v1/apps/{id}/chat": never;
@@ -7680,6 +7702,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/apps/{id}/backup", TResponse>(
       "GET /api/v1/apps/{id}/backup",
+      options,
+    );
+  }
+
+  getApiV1AppsByIdBillingAccount<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/account">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/billing/account", TResponse>(
+      "GET /api/v1/apps/{id}/billing/account",
       options,
     );
   }
@@ -9973,6 +10004,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/apps", TResponse>(
       "POST /api/v1/apps",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingRegistration<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/registration">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/billing/registration", TResponse>(
+      "POST /api/v1/apps/{id}/billing/registration",
       options,
     );
   }
@@ -12672,6 +12712,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/apps/{id}/backup", options);
   }
 
+  getApiV1AppsByIdBillingAccountRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/account">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/billing/account", options);
+  }
+
   getApiV1AppsByIdCharactersRaw(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/characters">,
   ): Promise<Response> {
@@ -14329,6 +14375,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/apps"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apps", options);
+  }
+
+  postApiV1AppsByIdBillingRegistrationRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/registration">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/billing/registration", options);
   }
 
   postApiV1AppsByIdChargesRaw(
