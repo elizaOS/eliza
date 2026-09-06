@@ -15,6 +15,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { startPitrS3Fixture } from "./tenant-db-pitr-s3-fixture.mjs";
+
+const useS3 = process.argv.includes("--s3");
+if (process.argv.slice(2).some((arg) => arg !== "--s3"))
+  throw new Error("Supported option: --s3");
+let s3Fixture;
 
 const drillRoot = mkdtempSync("/tmp/eliza-tenant-pitr-");
 const source = join(drillRoot, "source");
@@ -111,9 +117,17 @@ try {
     join(drillRoot, "locks"),
   ])
     mkdirSync(dir, { mode: 0o700 });
+  if (useS3) s3Fixture = await startPitrS3Fixture(drillRoot);
+  const repositorySettings = s3Fixture
+    ? s3Fixture.settings
+    : `repo1-type=posix\nrepo1-path=${drillRoot}/repository\n`;
+  if (s3Fixture) {
+    report.scope = "local-postgresql16-tls-s3-repository";
+    report.s3Endpoint = s3Fixture.endpoint;
+  }
   writeFileSync(
     config,
-    `[tenant]\npg1-path=${source}\npg1-socket-path=${sourceSocket}\npg1-port=55439\npg1-user=drill_admin\n[global]\nrepo1-type=posix\nrepo1-path=${drillRoot}/repository\nrepo1-cipher-type=aes-256-cbc\nrepo1-cipher-pass=${randomBytes(32).toString("hex")}\nrepo1-retention-full=2\nlock-path=${drillRoot}/locks\nlog-level-file=off\nlog-level-console=info\nstart-fast=y\narchive-timeout=60\n`,
+    `[tenant]\npg1-path=${source}\npg1-socket-path=${sourceSocket}\npg1-port=55439\npg1-user=drill_admin\n[global]\n${repositorySettings}repo1-cipher-type=aes-256-cbc\nrepo1-cipher-pass=${randomBytes(32).toString("hex")}\nrepo1-retention-full=2\nlock-path=${drillRoot}/locks\nlog-level-file=off\nlog-level-console=info\nstart-fast=y\narchive-timeout=60\n`,
     { mode: 0o600 },
   );
   run(pg("initdb"), [
@@ -200,6 +214,50 @@ try {
     `${backup("--output=json", "info")}\n`,
     { mode: 0o600 },
   );
+  if (s3Fixture) {
+    const rejectionChecks = [
+      {
+        name: "invalidCredentialsRejected",
+        settings: readFileSync(config, "utf8").replace(
+          /^repo1-s3-key-secret=.*$/m,
+          "repo1-s3-key-secret=incorrect-fixture-key",
+        ),
+        pattern: /403|SignatureDoesNotMatch/,
+      },
+      {
+        name: "untrustedCertificateRejected",
+        settings: readFileSync(config, "utf8").replace(
+          /^repo1-storage-ca-file=.*$/m,
+          `repo1-storage-ca-file=${s3Fixture.untrustedCa}`,
+        ),
+        pattern:
+          /certificate verify failed|unable to get local issuer|self.signed certificate/i,
+      },
+    ];
+    for (const check of rejectionChecks) {
+      let rejected = false;
+      const rejectedConfig = join(drillRoot, `${check.name}.conf`);
+      writeFileSync(rejectedConfig, check.settings, { mode: 0o600 });
+      try {
+        run(backrest, [
+          `--config=${rejectedConfig}`,
+          `--config-include-path=${configIncludes}`,
+          "--stanza=tenant",
+          "--io-timeout=2",
+          "--db-timeout=2",
+          "--protocol-timeout=5",
+          "check",
+        ]);
+      } catch (error) {
+        // error-policy:J1 only the expected remote authentication/TLS rejection is drill evidence.
+        const diagnostic = `${error.cause?.stdout || ""}${error.cause?.stderr || ""}`;
+        if (!check.pattern.test(diagnostic)) throw error;
+        rejected = true;
+      }
+      if (!rejected) throw new Error(`S3 fixture accepted ${check.name}`);
+      report[check.name] = true;
+    }
+  }
   report.status = "passed";
 } catch (error) {
   // error-policy:J1 the CLI emits a failed report and nonzero exit without fabricating recovery evidence.
@@ -215,6 +273,17 @@ try {
       // error-policy:J6 preserve owned-cluster teardown failures in the drill result.
       report.status = "failed";
       report.teardownError =
+        error instanceof Error ? error.message : String(error);
+      process.exitCode = 1;
+    }
+  }
+  if (s3Fixture) {
+    try {
+      await s3Fixture.stop();
+    } catch (error) {
+      // error-policy:J6 surface an owned S3 fixture teardown failure.
+      report.status = "failed";
+      report.s3TeardownError =
         error instanceof Error ? error.message : String(error);
       process.exitCode = 1;
     }
