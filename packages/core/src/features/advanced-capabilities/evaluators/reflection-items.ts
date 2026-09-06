@@ -204,6 +204,7 @@ const relationshipSchema: JSONSchema = {
 				properties: {
 					sourceEntityId: { type: "string" },
 					targetEntityId: { type: "string" },
+					relationshipType: { type: "string" },
 					tags: { type: "array", items: { type: "string" } },
 					// Strict mode: every object must carry additionalProperties:false
 					// AND an explicit properties map even when the property is
@@ -256,12 +257,21 @@ const successSchema: JSONSchema = {
 	additionalProperties: false,
 };
 
-const RelationshipUpdateSchema = z.object({
-	sourceEntityId: z.string().min(1),
-	targetEntityId: z.string().min(1),
-	tags: z.array(z.string()).optional(),
-	metadata: z.record(z.string(), z.unknown()).optional(),
-});
+const RelationshipUpdateSchema = z
+	.object({
+		sourceEntityId: z.string().min(1),
+		targetEntityId: z.string().min(1),
+		relationshipType: z.string().trim().min(1).optional(),
+		tags: z.array(z.string()).optional(),
+		metadata: z.record(z.string(), z.unknown()).optional(),
+	})
+	.refine(
+		(relationship) =>
+			relationship.relationshipType === undefined ||
+			relationship.metadata?.relationshipType === undefined ||
+			relationship.metadata.relationshipType === relationship.relationshipType,
+		{ message: "Relationship type fields disagree" },
+	);
 
 const RelationshipOutputSchema = z.object({
 	relationships: z.array(RelationshipUpdateSchema),
@@ -817,12 +827,20 @@ async function applyRelationshipUpdates(
 			? relationship.tags.map((tag) => tag.trim()).filter(Boolean)
 			: [];
 
+		// Existing relationship context reads metadata.relationshipType; preserve
+		// the explicit extraction field through that canonical storage contract.
+		const semanticMetadata = {
+			...(relationship.metadata ?? {}),
+			...(relationship.relationshipType
+				? { relationshipType: relationship.relationshipType }
+				: {}),
+		};
 		if (existing) {
 			const updatedMetadata = {
 				...existing.metadata,
 				interactions:
 					((existing.metadata?.interactions as number | undefined) || 0) + 1,
-				...(relationship.metadata ?? {}),
+				...semanticMetadata,
 			};
 			const updatedTags = Array.from(
 				new Set([...(existing.tags || []), ...tags]),
@@ -839,7 +857,7 @@ async function applyRelationshipUpdates(
 				tags,
 				metadata: {
 					interactions: 1,
-					...(relationship.metadata ?? {}),
+					...semanticMetadata,
 				},
 			});
 		}
@@ -1115,6 +1133,8 @@ Rules:
 - Return only clearly supported relationships.
 - Use exact UUIDs from Entities in Room. Do not use names or placeholders.
 - Directional: sourceEntityId initiates, targetEntityId receives.
+- Include relationshipType for the supported relationship, such as "colleague".
+- Use tags for any additional supported labels; do not invent a relationship type.
 - Nothing changed -> {"relationships":[]}.
 
 `,
