@@ -700,10 +700,17 @@ async function actionClear({
   callback,
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
+  // "clear my todos" reconciles on the same (entityId, agentId) scope that the
+  // CURRENT_TODOS provider, actionList, and service.list() read, so it removes
+  // the user's whole persisted list. Narrowing by scope.roomId here left rows
+  // created from other rooms behind while the entity-scoped provider kept
+  // surfacing them, contradicting the action's own cross-room contract
+  // (#28006). Room-scoped deletion remains available as the store's explicit
+  // clear({ roomId }) opt-in for trusted internal callers.
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action: "clear", roomId: scope.roomId },
+    mutation: { action: "clear" },
   });
   if (execution.result.action !== "clear") {
     throw new Error("Todo mutation result does not match action=clear");
@@ -788,7 +795,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       "CLEAR_TODOS",
     ],
     description:
-      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear (remove the user's entire list). Todos are user-scoped (entityId), persistent, and shared across rooms for the same user; clear removes them across every room, matching what list shows.",
     descriptionCompressed:
       "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
     parameters: [
@@ -898,6 +905,13 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
         (action === "write" || action === "clear") &&
         validateUuid(scope.roomId) === null
       ) {
+        // A valid roomId is a precondition for both destructive mutations, not
+        // a delete filter: `write` seeds new rows with it, and `clear` requires
+        // it as cheap evidence the request came from a real conversational turn
+        // before permanently removing the entity's whole cross-room list. The
+        // clear delete itself still reconciles on (entityId, agentId) only, so
+        // a roomless or malformed dispatch fails closed instead of wiping the
+        // account (#28006 review follow-up).
         return failure(
           "invalid_scope",
           `a valid roomId is required for action=${action}`,
