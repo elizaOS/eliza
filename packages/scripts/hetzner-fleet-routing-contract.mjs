@@ -39,6 +39,13 @@ const DIRECT_RUNNER_SELECTORS = new Set([
   CERTIFICATION_DISPATCH_SELECTOR,
 ]);
 const JANITOR_WORKFLOW = "actions-zombie-janitor.yml";
+// A literal self-hosted pin is allowed only for hardware that has no hosted
+// substitute. `android-device` is the physical ARM64 handset lane: there is no
+// GitHub-hosted runner with a device attached, so failing it closed to
+// `ubuntu-24.04` would not degrade, it would just break. Every other literal
+// self-hosted pin must carry the HETZNER_FLEET_ONLINE opt-in.
+const PHYSICAL_DEVICE_LABELS = new Set(["android-device"]);
+const DIRECT_RUNNER_PATH = /^jobs\.[^.]+\.runs-on$/;
 const MATRIX_RUNNER_PATH =
   /^jobs\.[^.]+\.strategy\.matrix\.include\.\d+\.runner$/;
 const JANITOR_ROUTE_PATH =
@@ -46,6 +53,63 @@ const JANITOR_ROUTE_PATH =
 
 function lineAt(source, offset) {
   return source.slice(0, offset).split("\n").length;
+}
+
+/**
+ * Collect `jobs.<id>.runs-on` values that pin a literal self-hosted label list.
+ * `collectFleetRoutes` only sees nodes that already mention the fleet variable
+ * or the robot label, so a job hard-routed to a generic pool is invisible to
+ * it — the routing contract can check the shape of an opt-in but not the
+ * absence of one. These are the jobs that never opted in at all.
+ */
+function collectUnguardedSelfHostedRoutes(
+  node,
+  source,
+  pathParts = [],
+  routes = [],
+) {
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      const key = isScalar(pair.key) ? String(pair.key.value) : "<key>";
+      collectUnguardedSelfHostedRoutes(
+        pair.value,
+        source,
+        [...pathParts, key],
+        routes,
+      );
+    }
+    return routes;
+  }
+
+  if (isSeq(node)) {
+    const routePath = pathParts.join(".");
+    const labels = node.items
+      .filter((item) => isScalar(item) && typeof item.value === "string")
+      .map((item) => String(item.value));
+    if (
+      DIRECT_RUNNER_PATH.test(routePath) &&
+      labels.length === node.items.length &&
+      labels.some((label) => label.toLowerCase() === "self-hosted") &&
+      !labels.some((label) => PHYSICAL_DEVICE_LABELS.has(label.toLowerCase()))
+    ) {
+      routes.push({
+        line: lineAt(source, node.range?.[0] ?? 0),
+        path: routePath,
+        value: `[${labels.join(", ")}]`,
+      });
+      return routes;
+    }
+    node.items.forEach((item, index) => {
+      collectUnguardedSelfHostedRoutes(
+        item,
+        source,
+        [...pathParts, String(index)],
+        routes,
+      );
+    });
+  }
+
+  return routes;
 }
 
 function collectFleetRoutes(node, source, pathParts = [], routes = []) {
@@ -104,6 +168,15 @@ export function validateHetznerFleetRouting(repoRoot) {
       );
     }
 
+    for (const unguarded of collectUnguardedSelfHostedRoutes(
+      document.contents,
+      source,
+    )) {
+      failures.push(
+        `${name}:${unguarded.line} (${unguarded.path}): ${unguarded.value} pins a self-hosted pool without the HETZNER_FLEET_ONLINE opt-in`,
+      );
+    }
+
     const routes = collectFleetRoutes(document.contents, source);
     if (routes.length === 0) continue;
     files += 1;
@@ -111,7 +184,7 @@ export function validateHetznerFleetRouting(repoRoot) {
 
     for (const route of routes) {
       const directRoute =
-        /^jobs\.[^.]+\.runs-on$/.test(route.path) &&
+        DIRECT_RUNNER_PATH.test(route.path) &&
         DIRECT_RUNNER_SELECTORS.has(route.value);
       const indirectRoute =
         MATRIX_RUNNER_PATH.test(route.path) &&
