@@ -9,6 +9,7 @@ import {
   type DurableCustomerDeletionIntent,
   type DurableProviderIntent,
 } from "./generic-billing-provider";
+import { settlementDigest } from "./settlement-digest";
 
 const scope: BillingProviderScope = {
   scopeId: "scope-one",
@@ -1719,6 +1720,7 @@ describe("bound customer deletion", () => {
   test("requires exact DELETE tombstone and readback under the original durable intent", async () => {
     const f = setup();
     const original = structuredClone(f.deletion);
+    const present = await f.provider.inspectBoundCustomer(scope, "cus_one");
     let checked = false;
     const result = await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {
       expect(f.requests.at(-1)?.path).toBe("/v1/customers/cus_one");
@@ -1727,7 +1729,12 @@ describe("bound customer deletion", () => {
     });
     expect(checked).toBe(true);
     expect(result.value).toEqual({ customerId: "cus_one", status: "deleted" });
-    expect(result.inputDigest).toBe(original.requestDigest);
+    const deleted = await f.provider.inspectBoundCustomer(scope, "cus_one");
+    expect(result.digest).toBe(deleted.digest);
+    expect(result.digest).not.toBe(present.digest);
+    expect(result.digest).not.toBe(settlementDigest(original.closure));
+    expect(result.inputDigest).toBe(deleted.inputDigest);
+    expect(result.inputDigest).not.toBe(original.requestDigest);
     expect(result.providerAccountId).toBe(original.closure.stripeAccountId);
     expect(f.deletion).toEqual(original);
     expect(deletes(f)).toHaveLength(1);

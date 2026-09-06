@@ -944,7 +944,7 @@ export function createGenericBillingProvider(
       await this.verifyMerchant();
       const before = await this.inspectBoundCustomer(boundScope, customerId);
       if (before.value.status === "deleted")
-        return observation({ customerId, status: "deleted" }, closure, retained);
+        return { ...before, value: { customerId, status: "deleted" } };
       const requestOptions = options(retained);
       await beforeMutation();
       const raw = await stripe.customers.del(customerId, {}, requestOptions);
@@ -963,7 +963,7 @@ export function createGenericBillingProvider(
         "CUSTOMER_DELETION",
         "Customer deletion requires explicit provider readback",
       );
-      return observation({ customerId, status: "deleted" }, closure, retained);
+      return { ...after, value: { customerId, status: "deleted" } };
     },
     async retrieveCustomer(scope: BillingProviderScope, customerId: string) {
       const value = await customer(scope, customerId);
