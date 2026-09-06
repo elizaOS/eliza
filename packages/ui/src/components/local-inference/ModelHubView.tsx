@@ -16,6 +16,7 @@ import type {
   ModelBucket,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { isPublishedLocalModel } from "../../services/local-inference/catalog-policy";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
@@ -76,7 +77,36 @@ export function ModelHubView({
 }: ModelHubViewProps) {
   useRenderGuard("ModelHubView");
   const { t } = useTranslation();
-  const grouped = useMemo(() => groupByBucket(catalog), [catalog]);
+  const publishedCatalog = useMemo(
+    () =>
+      catalog.filter(
+        (model) =>
+          isPublishedLocalModel(model) ||
+          Boolean(findInstalled(model, installed)) ||
+          Boolean(findDownload(model.id, downloads)),
+      ),
+    [catalog, installed, downloads],
+  );
+  const grouped = useMemo(
+    () => groupByBucket(publishedCatalog),
+    [publishedCatalog],
+  );
+  const hasModels = BUCKET_ORDER.some(
+    (bucket) => (grouped.get(bucket)?.length ?? 0) > 0,
+  );
+
+  if (!hasModels) {
+    return (
+      <div
+        className="rounded-sm border border-border/50 bg-card/35 px-3 py-4 text-center text-sm text-muted"
+        data-testid="model-hub-unavailable"
+      >
+        {t("modelhub.noPublishedModels", {
+          defaultValue: "No published models are currently available.",
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

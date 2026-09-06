@@ -11,6 +11,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { isPublishedLocalModel } from "../../services/local-inference/catalog-policy";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
@@ -119,7 +120,9 @@ function pickRecommended(
   return (
     catalog.find(
       (model) =>
-        model.id.startsWith("eliza-1-") && !findInstalled(model, installed),
+        model.id.startsWith("eliza-1-") &&
+        !findInstalled(model, installed) &&
+        isPublishedLocalModel(model),
     ) ?? null
   );
 }

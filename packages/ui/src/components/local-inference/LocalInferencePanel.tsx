@@ -18,7 +18,10 @@ import type {
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useRole } from "../../hooks/useRole";
-import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
+import {
+  filterSettingsDefaultLocalModels,
+  isPublishedLocalModel,
+} from "../../services/local-inference/catalog-policy";
 import { useAppSelectorShallow } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
@@ -32,6 +35,7 @@ import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
+import { findDownload, findInstalled } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import type {
   VoiceModelInstallationView,
@@ -327,7 +331,12 @@ export function LocalInferencePanel() {
     );
   }
 
-  const catalog = filterSettingsDefaultLocalModels(hub.catalog);
+  const catalog = filterSettingsDefaultLocalModels(hub.catalog).filter(
+    (model) =>
+      isPublishedLocalModel(model) ||
+      Boolean(findInstalled(model, hub.installed)) ||
+      Boolean(findDownload(model.id, hub.downloads)),
+  );
 
   return (
     <div className="flex flex-col gap-3">

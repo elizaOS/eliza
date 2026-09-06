@@ -920,4 +920,55 @@ describe("Eliza-1 manifest download timeout (real route, portable fallback, fake
     expect(job.state).toBe("completed");
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("rejects downloading an unpublished/pending model tier with 404", async () => {
+    const kernel = await loadKernel();
+    const response = await kernel.handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/local-inference/downloads", {
+        method: "POST",
+        body: JSON.stringify({ modelId: "eliza-1-9b" }),
+      }),
+    );
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as { error?: string };
+    expect(body.error).toContain("Unknown model id: eliza-1-9b");
+  });
+
+  it("only returns published models from GET /api/local-inference/catalog when none are installed or downloading", async () => {
+    const kernel = await loadKernel();
+    const body = (await jsonRequest(
+      kernel,
+      "GET",
+      "/api/local-inference/catalog",
+    )) as { models: Array<{ id: string }> };
+    expect(body.models.some((m) => m.id === "eliza-1-9b")).toBe(false);
+    expect(body.models.some((m) => m.id === "eliza-1-2b")).toBe(true);
+    expect(body.models.some((m) => m.id === "eliza-1-4b")).toBe(true);
+  });
+
+  it("includes unpublished model in GET /api/local-inference/catalog when already installed", async () => {
+    const kernel = await loadKernel({
+      availableModels: [
+        {
+          name: "eliza-1-9b-128k.gguf",
+          path: "/models/eliza-1-9b-128k.gguf",
+          size: 5_000_000_000,
+        },
+      ],
+      bundleRecords: [
+        verifiedEliza1BundleRecord(
+          "eliza-1-9b",
+          "/models/eliza-1-9b-128k.gguf",
+        ),
+      ],
+    });
+    const body = (await jsonRequest(
+      kernel,
+      "GET",
+      "/api/local-inference/catalog",
+    )) as { models: Array<{ id: string }> };
+    expect(body.models.some((m) => m.id === "eliza-1-9b")).toBe(true);
+    expect(body.models.some((m) => m.id === "eliza-1-2b")).toBe(true);
+    expect(body.models.some((m) => m.id === "eliza-1-4b")).toBe(true);
+  });
 });

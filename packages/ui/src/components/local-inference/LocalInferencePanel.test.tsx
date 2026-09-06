@@ -37,6 +37,8 @@ vi.mock("../../hooks/useRole", () => ({
 }));
 vi.mock("../../services/local-inference/catalog-policy", () => ({
   filterSettingsDefaultLocalModels: (models: unknown[]) => models,
+  isPublishedLocalModel: (model: unknown) =>
+    (model as { publishStatus?: string })?.publishStatus !== "pending",
 }));
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (state: unknown) => unknown) =>

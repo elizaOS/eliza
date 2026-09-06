@@ -5,10 +5,10 @@
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   type Eliza1TierId,
-  eliza1TierPublishStatus,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
+import { isPublishedLocalModel } from "./catalog-policy";
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
@@ -229,7 +229,8 @@ function fallbackCandidates(
   const candidates = chatCandidates(catalog).filter(
     (model) =>
       DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
-      canFit(hardware, model, catalog),
+      canFit(hardware, model, catalog) &&
+      isPublishedLocalModel(model),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
@@ -269,7 +270,8 @@ export function selectRecommendedModelForSlot(
   const eligible = ladder.filter(
     (model) =>
       canFit(hardware, model, catalog) &&
-      kernelRequirementsSatisfied(model, binaryKernels),
+      kernelRequirementsSatisfied(model, binaryKernels) &&
+      isPublishedLocalModel(model),
   );
 
   // On hosts with >= 16 GB RAM/VRAM, give long-context (>= 64k) ladder
@@ -365,10 +367,8 @@ export function recommendForFirstRun(
   const byId = catalogById(catalog);
   const isEligibleChat = (model: CatalogModel): boolean =>
     !model.hiddenFromCatalog && DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
-  const publishStatusFor = (model: CatalogModel): "published" | "pending" =>
-    model.publishStatus ?? eliza1TierPublishStatus(model.id as Eliza1TierId);
   const isPublishedEligibleChat = (model: CatalogModel): boolean =>
-    isEligibleChat(model) && publishStatusFor(model) === "published";
+    isEligibleChat(model) && isPublishedLocalModel(model);
 
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
   if (preferred && isPublishedEligibleChat(preferred)) return preferred;
