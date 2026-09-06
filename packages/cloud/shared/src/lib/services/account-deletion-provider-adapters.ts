@@ -53,6 +53,10 @@ import {
   type AppBillingDeletionRuntime,
   recoverAppBillingForAccountDeletion,
 } from "./app-billing-deletion-recovery";
+import {
+  type AppBillingDeletionRefund,
+  recoverAppBillingRefundsForAccountDeletion,
+} from "./app-billing-deletion-refund-recovery";
 import { deleteAppWithCleanup } from "./app-cleanup";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { oauthService } from "./oauth";
@@ -133,6 +137,7 @@ function isMissingStripeResource(error: unknown): boolean {
 export interface AccountDeletionProviderAdapterDependencies {
   appBillingRuntime?: AppBillingDeletionRuntime;
   appBillingCheckout?: AppBillingDeletionCheckout;
+  appBillingRefund?: AppBillingDeletionRefund;
   backupAuthority?: AccountDeletionBackupAuthority;
   backupDatabase?: AccountDeletionBackupDatabase;
   computeDatabase?: AccountDeletionComputeDatabase;
@@ -445,6 +450,13 @@ export function createAccountDeletionProviderAdapters(
         );
         if (commandRecovery === "pending")
           return { state: "action_required", errorCode: "APP_BILLING_COMMAND_RECOVERY_REQUIRED" };
+        if (
+          (await recoverAppBillingRefundsForAccountDeletion(
+            context,
+            dependencies.appBillingRefund,
+          )) === "pending"
+        )
+          return { state: "action_required", errorCode: "APP_BILLING_REFUND_RECOVERY_REQUIRED" };
         const currentClosed = await dbWrite
           .select({ scopeId: appBillingDeletionDispositions.scope_id })
           .from(appBillingDeletionDispositions)

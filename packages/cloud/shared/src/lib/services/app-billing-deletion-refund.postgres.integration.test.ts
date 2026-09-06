@@ -138,6 +138,7 @@ describe.skipIf(!postgresUrl)("deletion refund recovery with PostgreSQL and Stri
       "0446_app_billing_refund_recovery_authority",
       "0447_app_billing_refund_observation_guards",
       "0449_app_billing_refund_actor_recovery",
+      "0451_app_billing_refund_phase_obligations",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -404,6 +405,33 @@ describe.skipIf(!postgresUrl)("deletion refund recovery with PostgreSQL and Stri
         reason: "provider_pending",
         providerStatus: "pending",
       });
+      if (recoveryPath !== "closed_scope") {
+        await expect(
+          db.query("UPDATE account_deletion_phase_receipts SET status='completed' WHERE id=$1", [
+            deletion.phaseReceiptId,
+          ]),
+        ).rejects.toThrow("Unsettled app refund");
+      }
+      const terminal = async () =>
+        (
+          await db.query("SELECT app_billing_refund_is_terminal($1,$2,$3,$4,$5,$6) AS terminal", [
+            original.id,
+            deletion.requestId,
+            deletion.requestDigest,
+            deletion.lifecycleRevision,
+            deletion.phaseReceiptId,
+            deletion.phaseGeneration,
+          ])
+        ).rows[0].terminal;
+      expect(await terminal()).toBe(false);
+      const { recoverAppBillingRefundsForAccountDeletion } = await import(
+        "./app-billing-deletion-refund-recovery"
+      );
+      expect(
+        await recoverAppBillingRefundsForAccountDeletion(deletion, (id, auth) =>
+          recover(id, auth, stripe),
+        ),
+      ).toBe("pending");
       const recovered = (
         await db.query("SELECT * FROM billing_subscription_commands WHERE id=$1", [original.id])
       ).rows[0];
@@ -418,7 +446,20 @@ describe.skipIf(!postgresUrl)("deletion refund recovery with PostgreSQL and Stri
           status: "terminal",
           providerStatus: status,
         });
+        expect(await terminal()).toBe(true);
       }
+      fixture.setRefundStatus(refundId, "pending");
+      expect(await recover(original.id, deletion, stripe)).toMatchObject({
+        status: "unresolved",
+        providerStatus: "pending",
+      });
+      expect(await terminal()).toBe(false);
+      fixture.setRefundStatus(refundId, "canceled");
+      expect(await recover(original.id, deletion, stripe)).toMatchObject({
+        status: "terminal",
+        providerStatus: "canceled",
+      });
+      expect(await terminal()).toBe(true);
       expect(
         (
           await db.query("SELECT provider_result FROM billing_subscription_commands WHERE id=$1", [
@@ -434,8 +475,11 @@ describe.skipIf(!postgresUrl)("deletion refund recovery with PostgreSQL and Stri
       ).rows;
       expect(observations.map((r) => r.observation.value.status)).toEqual([
         "pending",
+        "pending",
         "succeeded",
         "failed",
+        "canceled",
+        "pending",
         "canceled",
       ]);
       await expect(
