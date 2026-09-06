@@ -334,7 +334,10 @@ export interface Bindings {
   SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
   LLM_TRAJECTORY_STORAGE?: string;
 
-  // ---- Steward (auth provider) ----
+  // ---- First-party login ----
+  /** Authoritative base URL of the owned @elizaos/login service. */
+  LOGIN_API_URL?: string;
+  /** Legacy upstream binding accepted during deployment migration. */
   STEWARD_API_URL?: string;
   /** Server-side base URL mirror for SSR fetches that don't go through the SDK. */
   NEXT_PUBLIC_STEWARD_API_URL?: string;

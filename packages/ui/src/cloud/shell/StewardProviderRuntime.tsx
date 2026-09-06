@@ -1,5 +1,5 @@
 /**
- * Lazy Steward runtime — the heavy `@stwd/sdk` / `@stwd/react` chunk.
+ * Lazy Steward runtime — the heavy `@elizaos/login` / `@elizaos/ui` chunk.
  *
  * Loaded only by {@link StewardAuthProvider} when a token is present or the
  * route needs auth, so the wallet/Steward stack never lands on the first-paint
@@ -10,9 +10,8 @@
  * (honoring `exp`) running while a cloud surface is mounted.
  */
 
+import { LoginClient } from "@elizaos/login";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
-import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
-import { StewardClient } from "@stwd/sdk";
 import {
   type ComponentProps,
   type ReactNode,
@@ -21,6 +20,7 @@ import {
   useRef,
 } from "react";
 import { dispatchStewardSessionChange } from "../../events/steward-session-event";
+import { LoginProvider, useAuth as useStewardAuth } from "../../login/index";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
@@ -43,7 +43,6 @@ import {
 
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;
-type StewardProviderClient = ComponentProps<typeof StewardProvider>["client"];
 
 type StewardResponseBody = { code?: string; token?: string };
 
@@ -81,7 +80,7 @@ async function parseStewardResponseBody(
 // /login page + the app shell use the --accent brand orange). The SDK's dark surface/text defaults
 // already match our surfaces, so no other fields need theming. Passed as the
 // provider `theme` (Partial<TenantTheme>) → mapped to the scoped `.stwd-*` vars.
-const ELIZA_STEWARD_THEME: ComponentProps<typeof StewardProvider>["theme"] = {
+const ELIZA_STEWARD_THEME: ComponentProps<typeof LoginProvider>["theme"] = {
   primaryColor: "var(--accent)",
   accentColor: "var(--accent)",
 };
@@ -340,7 +339,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
   }, [isAuthenticated, user]);
 
   // Map the SDK context to the local context shape explicitly. The structural
-  // pass-through is fragile across @stwd/sdk resolutions; verifyEmailCallback
+  // pass-through is fragile across @elizaos/login resolutions; verifyEmailCallback
   // must narrow the MFA-required union before exposing tokens.
   const localAuth = useMemo<LocalStewardAuthValue>(
     () => ({
@@ -366,7 +365,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         // scrub those too — otherwise the token survives at rest there.
         scrubPersistedActiveServerToken();
         scrubPersistedAgentProfileTokens();
-        auth.signOut();
+        return auth.signOut();
       },
       getToken: () => auth.getToken(),
       verifyEmailCallback: async (token: string, email: string) => {
@@ -398,21 +397,17 @@ export default function StewardAuthRuntimeProvider({
 }) {
   const client = useMemo(
     () =>
-      new StewardClient({
+      new LoginClient({
         baseUrl: apiUrl,
         ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
       }),
     [apiUrl, tenantId],
   );
   const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);
-  // @stwd/react bundles an older @stwd/sdk than the one pinned here. The
-  // client classes are runtime-compatible, but TypeScript treats them as
-  // nominally different because both versions declare private fields.
-  const providerClient = client as unknown as StewardProviderClient;
 
   return (
-    <StewardProvider
-      client={providerClient}
+    <LoginProvider
+      client={client}
       agentId="eliza-cloud"
       theme={ELIZA_STEWARD_THEME}
       auth={authConfig}
@@ -421,6 +416,6 @@ export default function StewardAuthRuntimeProvider({
       }
     >
       <AuthTokenSync>{children}</AuthTokenSync>
-    </StewardProvider>
+    </LoginProvider>
   );
 }

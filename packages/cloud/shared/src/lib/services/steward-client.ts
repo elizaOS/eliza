@@ -2,7 +2,7 @@
  * Steward integration for Eliza Cloud.
  *
  * Two layers:
- *   1. `getStewardClient()` — returns a `@stwd/sdk` StewardClient for
+ *   1. `getStewardClient()` — returns a `@elizaos/login` StewardClient for
  *      provisioning and signing (used by server-wallets.ts).
  *   2. Read-only helpers (`getStewardAgent`, `getStewardWalletInfo`) that
  *      hit the Steward REST API directly for the API/dashboard layer.
@@ -10,7 +10,7 @@
  *      simple reads that only need a subset of the response.
  */
 
-import { StewardClient } from "@stwd/sdk";
+import { LoginClient } from "@elizaos/login";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { StewardUrlEnv } from "../steward-url";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
@@ -32,7 +32,7 @@ let hasWarnedMissingStewardTenantApiKey = false;
 // SDK client (singleton)
 // ---------------------------------------------------------------------------
 
-let _client: { key: string; value: StewardClient } | null = null;
+let _client: { key: string; value: LoginClient } | null = null;
 
 export interface StewardClientOptions extends ResolveStewardTenantCredentialsOptions {
   bearerToken?: string;
@@ -89,17 +89,17 @@ function warnMissingStewardTenantApiKey(apiKey?: string) {
 }
 
 /**
- * Returns a configured `@stwd/sdk` StewardClient instance (singleton).
+ * Returns a configured `@elizaos/login` StewardClient instance (singleton).
  *
  * Used by `server-wallets.ts` for wallet provisioning and RPC execution.
  */
-export function getStewardClient(): StewardClient {
+export function getStewardClient(): LoginClient {
   const config = resolveDefaultStewardConfig();
   if (!_client || _client.key !== config.key) {
     warnMissingStewardTenantApiKey(config.apiKey);
     _client = {
       key: config.key,
-      value: new StewardClient({
+      value: new LoginClient({
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         tenantId: config.tenantId,
@@ -111,10 +111,10 @@ export function getStewardClient(): StewardClient {
 
 export async function createStewardClient(
   options: StewardClientOptions = {},
-): Promise<StewardClient> {
+): Promise<LoginClient> {
   const credentials = await resolveStewardTenantCredentials(options);
   warnMissingStewardTenantApiKey(credentials.apiKey);
-  return new StewardClient({
+  return new LoginClient({
     baseUrl: resolveStewardHostUrl(),
     apiKey: credentials.apiKey,
     bearerToken: options.bearerToken,

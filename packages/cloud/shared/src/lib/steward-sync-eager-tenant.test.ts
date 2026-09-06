@@ -6,7 +6,7 @@
  * newly created organizations without their downstream Steward resources.
  * Follow-up receipts on #14645 established that `/user/me/tenants` returning
  * 403 for a tenant-scoped session is expected and is swallowed by
- * `@stwd/react@0.7.2`; it does not clear auth and was not the staging login-loop
+ * the login UI in `@elizaos/ui`; it does not clear auth and was not the staging login-loop
  * cause. Tenant provisioning remains an important post-commit readiness and
  * self-heal invariant, but it is not part of cookie/session authority.
  *

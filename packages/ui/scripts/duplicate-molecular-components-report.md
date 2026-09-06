@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 885 maintained React files. 100 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 906 maintained React files. 101 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -23,12 +23,12 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | row | button, card | 4 | distinct-domain-compositions |
 | dialog | button, dialog | 3 | distinct-domain-compositions |
 | dialog | button, dialog, input | 3 | distinct-domain-compositions |
+| form | button, input | 3 | distinct-domain-compositions |
 | list | badge, button, card | 3 | distinct-domain-compositions |
 | panel | button, card, input | 3 | distinct-domain-compositions |
 | card | badge, button, card, checkbox, dialog, spinner | 2 | distinct-domain-compositions |
 | card | button, input | 2 | distinct-domain-compositions |
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
-| form | button, input | 2 | distinct-domain-compositions |
 | panel | button, input | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
@@ -58,6 +58,14 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `PromptDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:95`
 - Fingerprint: `sha256:00ceb89f6fe73868413b0028529b0ad6edf2af5297e2c21084e59cc1026a2e7d`
 - Decision: **distinct-domain-compositions**. Command persistence, conversation renaming, and generic prompting have different validation, pending, error, and result contracts. Their stable shared behavior already belongs to Dialog, Input, and Button.
+
+### form: button + input
+
+- `TriggerForm` in `packages/ui/src/components/pages/TriggerForm.tsx:231`
+- `TagEditor` in `packages/ui/src/components/ui/tag-editor.tsx:29`
+- `LoginForm` in `packages/ui/src/login/components/LoginForm.tsx:180`
+- Fingerprint: `sha256:e65ec528e05f235ca953f8e85cca1b6cb760f2a58abc7fde60da628957bac1f8`
+- Decision: **distinct-domain-compositions**. Trigger configuration, tag editing and login share generic controls but not a domain lifecycle. Login performs provider discovery, credential challenges and session handoff; trigger configuration edits scheduling state; tag editing emits a list of strings. Each composes the canonical Button and Input primitives.
 
 ### list: badge + button + card
 
@@ -95,13 +103,6 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `InviteMemberDialog` in `packages/ui/src/cloud/organization/invite-member-dialog.tsx:66`
 - Fingerprint: `sha256:d79bada7a8fe1a7748f1f3ed393b0ad8b5ea866611e2a11e24b9ad1b779b20c6`
 - Decision: **distinct-domain-compositions**. The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles.
-
-### form: button + input
-
-- `TriggerForm` in `packages/ui/src/components/pages/TriggerForm.tsx:231`
-- `TagEditor` in `packages/ui/src/components/ui/tag-editor.tsx:29`
-- Fingerprint: `sha256:ecc864434687a7ce763252d359cad9bdb85db187f1defa060a767d5e5df45290`
-- Decision: **distinct-domain-compositions**. Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls.
 
 ### panel: button + input
 

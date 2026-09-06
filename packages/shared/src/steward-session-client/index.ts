@@ -603,7 +603,7 @@ export interface StewardNonceExchangeResponse extends StewardSessionResponse {
   expiresAt?: number;
   /**
    * Steward JWT. Mirrored from the upstream Steward exchange so the SPA can
-   * write it to localStorage (required by `@stwd/react`'s `useAuth()` to
+   * write it to localStorage (required by `@elizaos/ui`'s `useAuth()` to
    * report `isAuthenticated=true`). HttpOnly cookies are still the canonical
    * session — this is the JS-readable copy that keeps the wallet and OAuth
    * paths symmetric. The long-lived refresh token is deliberately NOT

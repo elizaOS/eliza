@@ -1,6 +1,6 @@
 /** Verifies the patched Steward SDK reaches the real agent-scoped approvals contract with session authority. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { StewardApiError, StewardClient } from "@stwd/sdk";
+import { LoginApiError, LoginClient } from "@elizaos/login";
 
 const originalFetch = globalThis.fetch;
 
@@ -28,7 +28,7 @@ describe("Steward SDK agent-scoped pending approvals", () => {
       }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    const client = new StewardClient({
+    const client = new LoginClient({
       baseUrl: "https://steward.example",
       apiKey: "tenant-key",
       bearerToken: "verified-session",
@@ -59,14 +59,14 @@ describe("Steward SDK agent-scoped pending approvals", () => {
     globalThis.fetch = mock(async () =>
       Response.json({ ok: true, data: { limit: 2, offset: 1 } }),
     ) as unknown as typeof fetch;
-    const client = new StewardClient({
+    const client = new LoginClient({
       baseUrl: "https://steward.example",
       bearerToken: "verified-session",
     });
 
     await expect(
       client.listPendingApprovals("agent-1", { limit: 2, offset: 1 }),
-    ).rejects.toBeInstanceOf(StewardApiError);
+    ).rejects.toBeInstanceOf(LoginApiError);
   });
 
   test("fails closed when the scoped response contains a malformed approval", async () => {
@@ -80,13 +80,13 @@ describe("Steward SDK agent-scoped pending approvals", () => {
         },
       }),
     ) as unknown as typeof fetch;
-    const client = new StewardClient({
+    const client = new LoginClient({
       baseUrl: "https://steward.example",
       bearerToken: "verified-session",
     });
 
     await expect(
       client.listPendingApprovals("agent-1", { limit: 2, offset: 0 }),
-    ).rejects.toBeInstanceOf(StewardApiError);
+    ).rejects.toBeInstanceOf(LoginApiError);
   });
 });

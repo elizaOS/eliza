@@ -7,7 +7,7 @@
  * device.
  */
 
-import type { StewardAuthResult, StewardMfaRequiredResult } from "@stwd/sdk";
+import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/login";
 
 export type StewardEmailLoginStatus =
   | "pending"
@@ -59,7 +59,7 @@ function string(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function isStewardUser(value: unknown): value is StewardAuthResult["user"] {
+function isStewardUser(value: unknown): value is LoginAuthResult["user"] {
   const user = object(value);
   if (!user || typeof user.id !== "string") return false;
   if (user.email !== null && typeof user.email !== "string") return false;
@@ -95,7 +95,7 @@ function isStewardUser(value: unknown): value is StewardAuthResult["user"] {
   );
 }
 
-function isStewardAuthResult(value: unknown): value is StewardAuthResult {
+function isStewardAuthResult(value: unknown): value is LoginAuthResult {
   const data = object(value);
   return (
     data !== null &&
@@ -108,7 +108,7 @@ function isStewardAuthResult(value: unknown): value is StewardAuthResult {
 }
 
 type StewardMfaPayload = Pick<
-  StewardMfaRequiredResult,
+  LoginMfaRequiredResult,
   "mfaRequired" | "mfa" | "user"
 >;
 
@@ -215,7 +215,7 @@ export async function verifyStewardEmailSignInCode(
   options: StewardEmailLoginOptions,
   email: string,
   code: string,
-): Promise<StewardAuthResult | StewardMfaRequiredResult> {
+): Promise<LoginAuthResult | LoginMfaRequiredResult> {
   const data = await request(options, "/auth/email/code/verify", {
     email,
     code,

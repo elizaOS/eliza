@@ -51,8 +51,8 @@ vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: () => Promise.resolve(),
 }));
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }

@@ -1,7 +1,7 @@
 /** Verifies wallet-chain capability gating with deterministic vendor hook doubles. */
 // @vitest-environment jsdom
 
-import type { StewardAuth } from "@stwd/sdk";
+import type { LoginAuth } from "@elizaos/login";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -50,7 +50,7 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 
 import { WalletButtons } from "./wallet-buttons";
 
-const auth = {} as StewardAuth;
+const auth = {} as LoginAuth;
 
 describe("WalletButtons capability gating", () => {
   afterEach(() => {
