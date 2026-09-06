@@ -230,6 +230,68 @@ describe("CALENDAR delete_event disambiguation", () => {
     service = stubService([LUNCH_MAYA, LUNCH_GRANDMA]);
   });
 
+  it.each(["query", "details.oldTitle"])(
+    "uses the explicit update target in %s without treating the replacement as its identity",
+    async (field) => {
+      const result = await runHandler({
+        service,
+        text: "update the selected lunch",
+        parameters: {
+          subaction: "update_event",
+          title: "Family lunch",
+          ...(field === "query" ? { query: "Lunch with Grandma" } : {}),
+          details: {
+            ...(field === "details.oldTitle"
+              ? { oldTitle: "Lunch with Grandma" }
+              : {}),
+            start: "2026-07-10T13:00:00Z",
+            timeZone: "UTC",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(service.modifyApproval).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+      );
+    },
+  );
+
+  it("does not use a replacement title to select an unrelated existing event", async () => {
+    service = stubService([
+      LUNCH_GRANDMA,
+      event({ externalId: "other-family-lunch", title: "Family lunch" }),
+    ]);
+    const result = await runHandler({
+      service,
+      text: "rename lunch with grandma to Family lunch",
+      parameters: {
+        subaction: "update_event",
+        title: "Family lunch",
+        details: { start: "2026-07-10T13:00:00Z", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MISSING_CALENDAR_TARGET" });
+    expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    expect(service.modifyApproval).not.toHaveBeenCalled();
+  });
+
+  it("reports a typed missing update target without searching or changing events", async () => {
+    const result = await runHandler({
+      service,
+      text: "change its start time",
+      parameters: {
+        subaction: "update_event",
+        details: { start: "2026-07-10T13:00:00Z", timeZone: "UTC" },
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MISSING_CALENDAR_TARGET" });
+    expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    expect(service.modifyApproval).not.toHaveBeenCalled();
+    expect(result.effectReceipts?.[0]).toMatchObject({ outcome: "noop" });
+  });
+
   it.each(["title", "details.title"])(
     "uses %s as the deletion target without a redundant query",
     async (field) => {

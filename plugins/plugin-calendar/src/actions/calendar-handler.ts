@@ -4951,6 +4951,16 @@ const calendarAction: CalendarHandlerAction = {
                 reason:
                   "The update request did not identify a target, so no approval or calendar event was changed.",
               }),
+              data: {
+                error: "MISSING_CALENDAR_TARGET",
+                parameterErrors: [
+                  {
+                    name: "query",
+                    message:
+                      "Identify the existing event with query, details.oldTitle, or details.eventId. title and details.newTitle describe the replacement name, not the update target.",
+                  },
+                ],
+              },
             });
           }
           const feedRequest = plannerWindowUsable(details, llmPlan)
@@ -5959,7 +5969,7 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "title",
       description:
-        "Event title when creating an event. Optional for read/search actions.",
+        "Title for create_event, replacement title for update_event, or existing title for delete_event. For an update target use query, details.oldTitle, or details.eventId; do not put the existing target here.",
       required: false,
       schema: { type: "string" as const },
     },

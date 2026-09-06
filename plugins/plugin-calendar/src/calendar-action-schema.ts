@@ -131,6 +131,12 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   timeZone:
     "IANA timezone only when the user names one (e.g. America/New_York); otherwise omit it so the user's configured timezone applies.",
   date: "Local calendar date YYYY-MM-DD of the target event for update_event/delete_event lookups when the user named a day; use start/startAt for create_event.",
+  oldTitle:
+    "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
+  newTitle:
+    "Replacement event title for update_event, never a lookup selector. Identify the existing event with query, oldTitle, or eventId.",
+  eventId:
+    "Existing provider event ID from the externalId field returned by the calendar feed or search, not the feed row's composite id; takes precedence over title or query lookup for update_event/delete_event.",
 };
 const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_BOOLEAN_KEYS)[number], string>
