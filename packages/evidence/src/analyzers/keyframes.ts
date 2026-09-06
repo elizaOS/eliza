@@ -108,25 +108,52 @@ export async function extractKeyframes(
     ],
     { timeout: 60_000 },
   );
-  // Seek to the final frame: read the whole stream and keep only the last.
-  await execFileAsync(
-    ffmpeg.bin,
-    [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-sseof",
-      "-1",
-      "-i",
-      videoPath,
-      "-update",
-      "1",
-      "-frames:v",
-      "1",
-      last,
-    ],
-    { timeout: 60_000 },
-  );
+  // Seek near EOF for normal recordings, then decode through the actual end.
+  // Audio or sparse VFR tails can leave no video frame after the seek; only a
+  // fresh candidate can prove success, otherwise retry without seeking.
+  const lastScratch = fs.mkdtempSync(path.join(outDir, ".last-frame-"));
+  const candidate = path.join(lastScratch, "last.png");
+  const deadline = performance.now() + 60_000;
+  const extractLast = async (seek: boolean): Promise<void> => {
+    const remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0) {
+      throw new EvidenceError(
+        "Final video frame extraction exceeded its deadline",
+        {
+          code: "VIDEO_FINAL_FRAME_TIMEOUT",
+        },
+      );
+    }
+    await execFileAsync(
+      ffmpeg.bin,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        ...(seek ? ["-sseof", "-1"] : []),
+        "-i",
+        videoPath,
+        "-fps_mode",
+        "passthrough",
+        "-update",
+        "1",
+        candidate,
+      ],
+      { timeout: remaining },
+    );
+  };
+  try {
+    await extractLast(true);
+    if (!fs.existsSync(candidate)) await extractLast(false);
+    if (!fs.existsSync(candidate)) {
+      throw new EvidenceError("Video did not yield a final decoded frame", {
+        code: "VIDEO_FINAL_FRAME_MISSING",
+      });
+    }
+    fs.renameSync(candidate, last);
+  } finally {
+    fs.rmSync(lastScratch, { recursive: true, force: true });
+  }
   const out: { file: string; kind: "scene" | "first" | "last" }[] = [
     { file: first, kind: "first" },
   ];
