@@ -619,3 +619,67 @@ test("undo cannot activate an unscheduled or expired subscription", async () => 
   ).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELLATION_CONFLICT" });
   expect(f.effects).toHaveLength(1);
 });
+
+test("undo rejects changed provider predecessor timestamp before mutation and preserves all publication state", async () => {
+  const f = await fixture();
+  await service.submitOrganizationSubscriptionCancellation(f.input, async () => {});
+  const before = await readback(f);
+  const ownedTimestamp = f.provider.canceled_at;
+  f.provider.canceled_at = ownedTimestamp! - 1;
+  update = async (id, params, options) => {
+    f.effects.push({ id, params, options });
+    f.provider.cancel_at_period_end = false;
+    f.provider.cancel_at = null;
+    f.provider.canceled_at = null;
+    return structuredClone(f.provider);
+  };
+  const input = {
+    ...f.input,
+    expectedSubscriptionRevision: 2,
+    idempotencyKey: crypto.randomUUID(),
+  };
+  const result = await service.submitOrganizationSubscriptionCancellationUndo(
+    input,
+    async () => {},
+  );
+  expect(result.status).toBe("OUTCOME_UNKNOWN");
+  expect(f.effects).toHaveLength(1);
+  expect(await readback(f)).toEqual(before);
+  expect(
+    (await repository.readCancellation({ ...input, commandId: result.commandId }, "resume"))
+      .cancellation_dispatch_state,
+  ).toBe("ready");
+  f.provider.canceled_at = ownedTimestamp;
+  const recovered = await service.submitOrganizationSubscriptionCancellationUndo(
+    input,
+    async () => {},
+  );
+  expect(recovered.status).toBe("APPLIED");
+  expect(recovered.resultSubscriptionRevision).toBe("3");
+  expect(f.effects).toHaveLength(2);
+});
+
+test("recancel retains pending authority when provider clears the owned undo timestamp before dispatch", async () => {
+  const f = await fixture();
+  await service.submitOrganizationSubscriptionCancellation(f.input, async () => {});
+  update = async (id, params, options) => {
+    f.effects.push({ id, params, options });
+    f.provider.cancel_at_period_end = false;
+    f.provider.cancel_at = null;
+    return structuredClone(f.provider);
+  };
+  const undo = await service.submitOrganizationSubscriptionCancellationUndo(
+    { ...f.input, expectedSubscriptionRevision: 2, idempotencyKey: crypto.randomUUID() },
+    async () => {},
+  );
+  expect(undo.status).toBe("APPLIED");
+  const before = await readback(f);
+  f.provider.canceled_at = null;
+  const result = await service.submitOrganizationSubscriptionCancellation(
+    { ...f.input, expectedSubscriptionRevision: 3, idempotencyKey: crypto.randomUUID() },
+    async () => {},
+  );
+  expect(result.status).toBe("OUTCOME_UNKNOWN");
+  expect(f.effects).toHaveLength(2);
+  expect(await readback(f)).toEqual(before);
+});

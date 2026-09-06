@@ -19,6 +19,7 @@ import { requireStripe } from "../stripe";
 import type { OrganizationSubscriptionCancellationDto } from "../types/cloud-api";
 import { logger } from "../utils/logger";
 import {
+  cancellationReobserve,
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
 } from "./stripe-period-end-cancellation";
@@ -87,6 +88,11 @@ async function executeClaim(
       allowRetainedCanceledAt: claim.source.canceled_at,
     });
     if (initial.scheduled !== targetScheduled && claim.canDispatch && revalidateSession !== null) {
+      if (
+        initial.scheduled !== claim.source.cancel_at_period_end ||
+        initial.canceledAt?.getTime() !== claim.source.canceled_at?.getTime()
+      )
+        cancellationReobserve("owned_schedule_preflight_mismatch");
       await verifyCustomer();
       await verifySession();
       await assertCancellationClaimCurrent(input, claim, true);
