@@ -126,7 +126,7 @@ function TodosEmptyBody({
   return (
     <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
       <Text bold align="center">
-        No todos yet
+        No active todos
       </Text>
       <Text tone="muted" style="caption" align="center">
         Add something you want Eliza to keep track of.

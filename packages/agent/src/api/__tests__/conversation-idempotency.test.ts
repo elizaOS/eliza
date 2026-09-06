@@ -1070,6 +1070,17 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(receipt).toBeDefined();
     expect((receipt?.content as { text?: string } | undefined)?.text).toBe("");
 
+    const reloaded = await runRoute("GET", SEND_PATH, state, {});
+    expect(reloaded.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          text: "",
+          interrupted: true,
+        }),
+      ]),
+    });
+
     const persistsAfterAbort = createMemory.mock.calls.length;
     const hydrated = await runRoute("GET", SEND_PATH, state, {});
     expect(hydrated.captured.payload).toMatchObject({

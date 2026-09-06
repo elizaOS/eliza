@@ -22,7 +22,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,
 			) ?? [],
-		).toEqual([]);
+		).toEqual(["app-control.view-context-planning"]);
 	});
 
 	it("lets a model-selected VIEWS action open the Browser surface without advertising VIEWS for browser retrieval", () => {

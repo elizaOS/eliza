@@ -40,6 +40,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		hardenIncomingUserMessage: actual.hardenIncomingUserMessage,
 		unwrapUserMessageText: actual.unwrapUserMessageText,

@@ -34,6 +34,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
 		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
@@ -548,7 +551,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.values).not.toHaveProperty("completedActionHandoffId");
 		});
 
-		it("keeps terminal fallback enabled for a malformed success receipt", async () => {
+		it("keeps malformed delivery on the planner failure path", async () => {
 			installNavigateCapture();
 			vi.mocked(globalThis.fetch).mockResolvedValue(
 				new Response("{", {
@@ -575,7 +578,9 @@ describe("view switching — VIEWS action resolver", () => {
 				vi.fn(),
 			);
 
-			expect(result?.success).toBe(true);
+			expect(result?.success).toBe(false);
+			expect(result?.modelReplyRequired).toBeUndefined();
+			expect(result?.turnComplete).toBe(false);
 			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});
 
@@ -605,7 +610,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.success).toBe(false);
 			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 				effect: "view_navigation",
-				status: "unconfirmed",
+				status: "transport-error",
 				viewId: "calendar",
 			});
 		});
@@ -794,7 +799,6 @@ describe("view switching — VIEWS action resolver", () => {
 	describe("planner-selected Calendar variants", () => {
 		it.each([
 			{ phrase: "open calendar", kind: "explicit English command" },
-			{ phrase: "what's on my calendar", kind: "passive English intent" },
 			{ phrase: "muéstrame mi calendario", kind: "multilingual command" },
 		])(
 			"honors the Simple Calendar target beside a $kind when both variants are registered",

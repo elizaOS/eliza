@@ -24,7 +24,7 @@ import {
 	viewsAction,
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
-import { viewContextEvaluator } from "./evaluators/view-context.js";
+import { viewContextPlanningEvaluator } from "./evaluators/view-context-planning.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
 import { pendingAppControlChoicesProvider } from "./providers/pending-choices.js";
@@ -115,6 +115,10 @@ export {
 	CONTEXT_VIEWS,
 	viewContextEvaluator,
 } from "./evaluators/view-context.js";
+export {
+	type ContextualNavigationIntent,
+	viewContextPlanningEvaluator,
+} from "./evaluators/view-context-planning.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 export { currentViewProvider } from "./providers/current-view.js";
 export {
@@ -167,16 +171,9 @@ export const appControlPlugin: Plugin = {
 		runtimeManagementAction,
 		settingsAction,
 	],
-	// View-switch cascade:
-	//  1. ROUTE  — the response handler and planner select VIEWS from the user's
-	//     request; there is no zero-model command override.
-	//  2. ACTION — viewsAction resolves the selected target and navigates.
-	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
-	//     the user never spelled out ("fix the login bug" -> task-coordinator).
-	//     Its gate defers whenever resolveIntentView already matches a direct
-	//     surface (the rigid matchViewCommand matcher, or the legacy intent
-	//     rules it falls back to), so it never contends with the action.
-	evaluators: [viewContextEvaluator],
+	// Model-selected navigation runs before planning and settles through the action queue.
+	evaluators: [],
+	responseHandlerEvaluators: [viewContextPlanningEvaluator],
 	providers: [
 		availableAppsProvider,
 		currentViewProvider,

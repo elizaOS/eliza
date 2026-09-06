@@ -130,7 +130,9 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
+  LifeOpsDefinitionTransitionResult,
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
@@ -157,6 +159,7 @@ import type {
   LifeOpsOccurrenceExplanation,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
+  LifeOpsTodoView,
   LifeOpsWeeklyGoalReview,
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
@@ -185,6 +188,7 @@ import type {
 } from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
 import { DefinitionsDomain } from "./domains/definitions-service.js";
@@ -1701,10 +1705,26 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.definitionsDomain.getDefinition(definitionId);
   }
 
+  async getTodos(): Promise<LifeOpsTodoView[]> {
+    const overview = await this.getOverview();
+    return this.definitionsDomain.getTodos(overview.owner.occurrences);
+  }
+
+  completeTodo(
+    definitionId: string,
+  ): Promise<LifeOpsDefinitionTransitionResult> {
+    return this.definitionsDomain.transitionTodo(definitionId, "completed");
+  }
+
+  reopenTodo(definitionId: string): Promise<LifeOpsDefinitionTransitionResult> {
+    return this.definitionsDomain.transitionTodo(definitionId, "active");
+  }
+
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
-  ): Promise<LifeOpsDefinitionRecord> {
-    return this.definitionsDomain.createDefinition(request);
+    context?: DefinitionCreationContext,
+  ): Promise<LifeOpsDefinitionCreationResult> {
+    return this.definitionsDomain.createDefinition(request, context);
   }
 
   updateDefinition(

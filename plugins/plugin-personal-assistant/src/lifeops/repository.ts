@@ -2906,6 +2906,21 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureGmailSyncColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
     await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+    await LifeOpsRepository.ensureDefinitionCreationIdentity(runtime);
+  }
+
+  /** Upgrade existing audit tables without inventing identity for legacy writes. */
+  static async ensureDefinitionCreationIdentity(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE app_lifeops.life_audit_events ADD COLUMN IF NOT EXISTS idempotency_key TEXT",
+    );
+    await executeRawSql(
+      runtime,
+      "CREATE UNIQUE INDEX IF NOT EXISTS uq_life_audit_events_operation ON app_lifeops.life_audit_events (agent_id, event_type, idempotency_key)",
+    );
   }
 
   /**
@@ -3915,9 +3930,14 @@ export class LifeOpsRepository {
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_task_definitions (
+    await this.insertDefinition(definition);
+  }
+
+  private async insertDefinition(
+    definition: LifeOpsTaskDefinition,
+    tx?: TransactionalDb,
+  ): Promise<void> {
+    const query = `INSERT INTO app_lifeops.life_task_definitions (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, kind, title, description, original_intent, timezone,
         status, priority, cadence_json, window_policy_json,
@@ -3957,8 +3977,182 @@ export class LifeOpsRepository {
         ${sqlJson(definition.metadata)},
         ${sqlQuote(definition.createdAt)},
         ${sqlQuote(definition.updatedAt)}
-      )`,
+      )`;
+    if (tx) await executeRawSqlTx(tx, query);
+    else await executeRawSql(this.runtime, query);
+  }
+
+  /** Claim identity and create its record atomically before dependent effects. */
+  async claimDefinitionCreation(
+    definition: LifeOpsTaskDefinition,
+    key: string,
+    requestJson: string,
+  ): Promise<{ definition: LifeOpsTaskDefinition; replayed: boolean }> {
+    const claimed = await withTransaction(this.runtime, async (tx) => {
+      const rows = await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_audit_events
+        (id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at, idempotency_key)
+        VALUES (${sqlQuote(crypto.randomUUID())}, ${sqlQuote(definition.agentId)}, 'definition_creation_claimed', 'definition',
+          ${sqlQuote(definition.id)}, 'creation operation claimed', ${sqlQuote(requestJson)}, '{}', 'agent', ${sqlQuote(isoNow())}, ${sqlQuote(key)})
+        ON CONFLICT (agent_id, event_type, idempotency_key) DO NOTHING RETURNING id`,
+      );
+      if (rows.length === 0) return false;
+      await this.insertDefinition(definition, tx);
+      return true;
+    });
+    if (claimed) return { definition, replayed: false };
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT owner_id,
+      inputs_json::jsonb = ${sqlQuote(requestJson)}::jsonb AS request_matches,
+      EXISTS (SELECT 1 FROM app_lifeops.life_audit_events completed
+        WHERE completed.agent_id = claim.agent_id AND completed.event_type = 'definition_creation_completed'
+          AND completed.idempotency_key = claim.idempotency_key AND completed.owner_id = claim.owner_id) AS completed
+      FROM app_lifeops.life_audit_events claim
+      WHERE agent_id = ${sqlQuote(definition.agentId)} AND event_type = 'definition_creation_claimed'
+        AND idempotency_key = ${sqlQuote(key)}`,
     );
+    const row = rows[0];
+    if (row?.request_matches !== true) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Creation key already identifies a different operation; reuse its original request or choose a new key for a new operation.",
+        {
+          code: "LIFEOPS_DEFINITION_IDEMPOTENCY_CONFLICT",
+          context: { agentId: definition.agentId },
+        },
+      );
+    }
+    const current = await this.getDefinition(
+      definition.agentId,
+      toText(row.owner_id),
+      definition,
+    );
+    if (!current)
+      throw new ElizaError(
+        "[LifeOpsRepository] This creation's record was deleted or is no longer in your scope. Its operation key cannot create another record.",
+        {
+          code: "LIFEOPS_DEFINITION_CREATION_RESOURCE_UNAVAILABLE",
+          context: { agentId: definition.agentId },
+        },
+      );
+    if (row.completed !== true) {
+      throw new ElizaError(
+        "[LifeOpsRepository] This creation has a persisted record but its dependent effects are not confirmed complete. Reconcile that record before retrying; no new creation was dispatched.",
+        {
+          code: "LIFEOPS_DEFINITION_CREATION_INCOMPLETE",
+          context: { definitionId: current.id, retryable: false },
+        },
+      );
+    }
+    return { definition: current, replayed: true };
+  }
+
+  /** Append completion only after all existing creation work has succeeded. */
+  async completeDefinitionCreation(
+    definition: LifeOpsTaskDefinition,
+    key: string,
+  ): Promise<void> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_audit_events
+      (id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at, idempotency_key)
+      SELECT ${sqlQuote(crypto.randomUUID())}, definition.agent_id, 'definition_creation_completed', 'definition', definition.id,
+        'creation operation completed', '{}', ${sqlJson({ version: definition.updatedAt })}, 'agent', ${sqlQuote(isoNow())}, claim.idempotency_key
+      FROM app_lifeops.life_task_definitions definition
+      JOIN app_lifeops.life_audit_events claim ON claim.agent_id = definition.agent_id AND claim.owner_id = definition.id
+      WHERE definition.agent_id = ${sqlQuote(definition.agentId)} AND definition.id = ${sqlQuote(definition.id)}
+        AND claim.event_type = 'definition_creation_claimed' AND claim.idempotency_key = ${sqlQuote(key)}
+        ${definitionScopePredicate(definition, "definition")} RETURNING id`,
+    );
+    if (rows.length !== 1)
+      throw new ElizaError(
+        "[LifeOpsRepository] Creation scope changed before completion could be recorded; inspect the existing operation.",
+        {
+          code: "LIFEOPS_DEFINITION_CREATION_COMPLETION_CONFLICT",
+          context: { agentId: definition.agentId },
+        },
+      );
+  }
+
+  /** Atomically transition an owner-scoped undated todo and its audit, preserving no-op revisions. */
+  async transitionUnscheduledTodo(
+    expected: LifeOpsTaskDefinition,
+    status: "active" | "completed",
+    updatedAt: string,
+  ): Promise<{
+    definition: LifeOpsTaskDefinition;
+    replayed: boolean;
+    auditId: string | null;
+  }> {
+    try {
+      return await withTransaction(this.runtime, async (tx) => {
+        const rows = await executeRawSqlTx(
+          tx,
+          `SELECT * FROM app_lifeops.life_task_definitions
+        WHERE agent_id = ${sqlQuote(expected.agentId)} AND id = ${sqlQuote(expected.id)}
+        ${definitionScopePredicate(expected)} FOR UPDATE`,
+        );
+        if (rows.length !== 1)
+          throw new ElizaError(
+            "The todo is no longer available in this owner scope.",
+            {
+              code: "LIFEOPS_DEFINITION_CONFLICT",
+              context: { definitionId: expected.id },
+            },
+          );
+        const current = parseTaskDefinition(rows[0]);
+        if (
+          current.kind !== "task" ||
+          current.cadence.kind !== "unscheduled" ||
+          !["active", "completed"].includes(current.status)
+        ) {
+          throw new ElizaError(
+            "Only active or completed undated todos support this transition; scheduled items use their occurrence.",
+            {
+              code: "LIFEOPS_TODO_TRANSITION_INVALID",
+              context: { definitionId: current.id },
+            },
+          );
+        }
+        if (current.status === status)
+          return { definition: current, replayed: true, auditId: null };
+        if (current.updatedAt !== expected.updatedAt)
+          throw new ElizaError(
+            "The todo changed before this transition; read its current state before retrying.",
+            {
+              code: "LIFEOPS_DEFINITION_CONFLICT",
+              context: { definitionId: current.id },
+            },
+          );
+        const next = { ...current, status, updatedAt };
+        const auditId = crypto.randomUUID();
+        await executeRawSqlTx(
+          tx,
+          `UPDATE app_lifeops.life_task_definitions SET status = ${sqlQuote(status)}, updated_at = ${sqlQuote(updatedAt)}
+        WHERE agent_id = ${sqlQuote(current.agentId)} AND id = ${sqlQuote(current.id)} ${definitionScopePredicate(current)}`,
+        );
+        await executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_audit_events
+        (id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at)
+        VALUES (${sqlQuote(auditId)}, ${sqlQuote(current.agentId)}, ${sqlQuote(status === "completed" ? "definition_completed" : "definition_reopened")}, 'definition', ${sqlQuote(current.id)},
+        'owner todo state transition', ${sqlJson({ previousStatus: current.status, previousRevision: current.updatedAt })}, ${sqlJson({ status, version: updatedAt })}, 'agent', ${sqlQuote(updatedAt)})`,
+        );
+        return { definition: next, replayed: false, auditId };
+      });
+    } catch (error) {
+      // error-policy:J2 Preserve typed transition conflicts and attach context to database failures.
+      if (error instanceof ElizaError) throw error;
+      throw new ElizaError(
+        "The todo state change could not be committed; inspect the current todo before retrying.",
+        {
+          code: "LIFEOPS_TODO_TRANSITION_FAILED",
+          cause: error,
+          context: { definitionId: expected.id },
+        },
+      );
+    }
   }
 
   /**
@@ -4928,6 +5122,22 @@ export class LifeOpsRepository {
       RETURNING id`,
     );
     return rows.length > 0;
+  }
+
+  /** Resolve one immutable audit under its complete agent/resource identity. */
+  async getAuditEvent(
+    agentId: string,
+    ownerType: string,
+    ownerId: string,
+    auditId: string,
+  ): Promise<LifeOpsAuditEvent | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_lifeops.life_audit_events
+      WHERE agent_id = ${sqlQuote(agentId)} AND owner_type = ${sqlQuote(ownerType)}
+        AND owner_id = ${sqlQuote(ownerId)} AND id = ${sqlQuote(auditId)}`,
+    );
+    return rows[0] ? parseAuditEvent(rows[0]) : null;
   }
 
   async listAuditEvents(

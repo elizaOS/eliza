@@ -30,6 +30,9 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		resolveStateDir: actual.resolveStateDir,
 		// Target extraction routes through the security-envelope unwrap seam;
 		// it must run against the real core implementations.
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
 		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,

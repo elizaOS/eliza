@@ -11268,9 +11268,10 @@ export async function runV5MessageRuntimeStage1(args: {
 						invokeDeterministicToolCall,
 					)
 				: await invokePlannerLoop(plannerContextAfterEarlyReply);
+			getStreamingContext()?.abortSignal?.throwIfAborted();
 		} catch (error) {
-			// Cancellation is terminal, not a provider failure to recover from.
-			// A stage-1 draft cannot stand in for an action the caller cancelled.
+			// Cancellation belongs to the transport's interrupted-turn boundary;
+			// neither preliminary prose nor a settled tool rescues a stopped turn.
 			getStreamingContext()?.abortSignal?.throwIfAborted();
 			if (
 				error instanceof TurnAbortedError ||
@@ -11278,6 +11279,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			) {
 				throw error;
 			}
+			// Provider capacity is a terminal integrity boundary. Preliminary prose
+			// and intermediate results cannot replace its explicit failure receipt.
+			if (isProviderContextOverflowFailure(error)) throw error;
 			// A coding turn is an all-the-way-to-verification transaction. A
 			// successful intermediate file operation cannot rescue a loop that hit
 			// its call/token/provider limit before a grounded terminal result; doing

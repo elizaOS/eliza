@@ -76,7 +76,6 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsHealthConnectorProvider,
   LifeOpsInboxChannel,
-  LifeOpsOccurrenceView,
   ManageLifeOpsGmailMessagesRequest,
   ProcessLifeOpsRemindersRequest,
   PurgeLifeOpsGmailImportedDataRequest,
@@ -377,23 +376,6 @@ function routeOperation(ctx: LifeOpsRouteContext): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-// Map a scheduled-task occurrence state onto the task item-board status the
-// TodosView renders. The overview returns only active occurrences
-// (visible/pending/snoozed), so the board never sees terminal states; the
-// mapping is exhaustive over LifeOpsOccurrenceState for type safety.
-function occurrenceStateToTodoStatus(
-  state: LifeOpsOccurrenceView["state"],
-): "pending" | "in_progress" | "completed" {
-  switch (state) {
-    case "snoozed":
-      return "in_progress";
-    case "completed":
-      return "completed";
-    default:
-      return "pending";
-  }
 }
 
 function decodeMatchedPathComponent(
@@ -2782,41 +2764,26 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  // Todos projection over the shared scheduled-task spine. Reuses getOverview()
-  // (the canonical read that projects life_task_definitions/occurrences) and
-  // flattens the owner's active occurrences into a flat task-list DTO the TodosView
-  // renders. No new query path — getOverview owns the computation; this route
-  // only maps occurrence-view fields to { id, title, status, dueDate }.
   if (method === "GET" && pathname === "/api/lifeops/todos") {
     return runRoute(ctx, async (service) => {
-      const overview = await service.getOverview();
-      const todos = overview.owner.occurrences.map((occurrence) => ({
-        id: occurrence.id,
-        title: occurrence.title,
-        status: occurrenceStateToTodoStatus(occurrence.state),
-        dueDate: occurrence.dueAt,
-        progress: occurrence.progress,
-      }));
-      // Undated tasks deliberately have no scheduled occurrence. Include their
-      // caller-scoped definitions so they remain visible in the Someday lane.
-      const definitions = await service.listDefinitions();
-      const unscheduled = definitions
-        .map((record) => record.definition)
-        .filter(
-          (definition) =>
-            definition.subjectType === "owner" &&
-            definition.kind === "task" &&
-            definition.status === "active" &&
-            definition.cadence.kind === "unscheduled",
-        )
-        .map((definition) => ({
-          id: definition.id,
-          title: definition.title,
-          status: "pending" as const,
-          dueDate: null,
-          progress: null,
-        }));
-      json(res, { todos: [...todos, ...unscheduled] });
+      json(res, { todos: await service.getTodos() });
+    });
+  }
+
+  const todoTransition = pathname.match(
+    /^\/api\/lifeops\/definitions\/([^/]+)\/(complete|reopen)$/,
+  );
+  if (method === "POST" && todoTransition) {
+    if (rateLimitRequest(ctx, "task_update")) return true;
+    const id = ctx.decodePathComponent(todoTransition[1], res, "definitionId");
+    if (!id) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        todoTransition[2] === "complete"
+          ? await service.completeTodo(id)
+          : await service.reopenTodo(id),
+      );
     });
   }
 
