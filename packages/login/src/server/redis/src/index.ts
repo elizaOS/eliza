@@ -1,4 +1,4 @@
-// @stwd/redis — Redis client, rate limiting, spend tracking, policy caching
+/** Exposes Redis connections, rate limits, transaction spend and policy caches. */
 
 export {
   type AggregationEvent,
@@ -17,26 +17,6 @@ export {
   type IoredisLike,
   type RedisDriver,
 } from "./client.js";
-export {
-  type CumulativeSpendBatchGroup,
-  type CumulativeSpendBatchResult,
-  type CumulativeSpendCap,
-  type CumulativeSpendScope,
-  type CumulativeSpendSnapshot,
-  type CumulativeSpendStream,
-  getCumulativeSpendSum,
-  getWindowedInvokeCount,
-  type ReserveCumulativeSpendInput,
-  type ReserveCumulativeSpendResult,
-  releaseCumulativeSpend,
-  releaseLegacyCumulativeSpendAfterCutover,
-  releaseLegacyWindowedInvokeAfterCutover,
-  releaseWindowedInvoke,
-  reserveCumulativeSpend,
-  reserveCumulativeSpendBatch,
-  reserveWindowedInvoke,
-  settleCumulativeSpend,
-} from "./cumulative-spend-tracker.js";
 export {
   type CachedPolicy,
   getCachedPolicies,

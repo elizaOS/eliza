@@ -1,3 +1,4 @@
+/** Issues and consumes signed, expiring execution authorizations bound to wallet requests and policy decisions. */
 import {
   createHash,
   createHmac,
@@ -6,6 +7,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import { and, eq, sql } from "drizzle-orm";
 import { requireLoginValue } from "../../../../required";
 import {
   executionAuthorizationNonces,
@@ -22,20 +24,6 @@ import {
   type PolicyRule,
   type SignRequest,
 } from "../../../shared/src/index.ts";
-
-// V2 signing crypto lives in @stwd/shared (pure, no DB) so the separate
-// proxy process can verify without depending on @stwd/api. Re-export here for
-// existing api-side callers/tests.
-export {
-  activeExecutionAuthV2Key,
-  isExecutionAuthV2SecretConfigured,
-  loadExecutionAuthV2Keys,
-  ProviderExecutionAuthV2Error,
-  signProviderExecutionCommitmentV2,
-  verifyProviderExecutionCommitmentV2,
-} from "../../../shared/src/index.ts";
-
-import { and, eq, sql } from "drizzle-orm";
 
 export const EXECUTION_AUTHORIZATION_TTL_MS = 60_000;
 const EXECUTION_AUTHORIZATION_HKDF_INFO =

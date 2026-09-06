@@ -1,3 +1,4 @@
+/** Defines wallet execution requests, policy decisions and signed authorization records. */
 export type ExecutionCapability =
   | "wallet.sign_transaction"
   | "wallet.sign_message"
@@ -101,66 +102,11 @@ export interface ExecutionAuthorization {
 }
 
 /**
- * Provider execution authorization v2.
- *
- * A `version: 2` authorization row in `execution_authorization_nonces`. It is a
- * subordinate, per-execution claim object keyed 1:1 to the intent; it NEVER
- * independently advances the provider action (that is the binding lifecycle).
- * Every bound fact below is re-checked at DB time by the single-winner claim
- * (spec §2.3) and again at the signing boundary (§4.1 step 3). The HMAC
- * `signature` is over the domain-separated v2 commitment (see @stwd/shared
- * `providerExecutionSignatureInput`), derived from `STEWARD_EXECUTION_AUTH_SECRET`
- * via HKDF — NEVER `STEWARD_JWT_SECRET` (X7 fail-closed, domain separation).
- */
-export type ProviderExecutionDispatchState =
-  | "none"
-  | "claimed"
-  | "dispatched"
-  | "succeeded"
-  | "failed"
-  | "outcome_unknown";
-
-export interface ProviderExecutionAuthorizationV2 {
-  version: 2;
-  authorizationId: string;
-  executionId: string;
-  intentId: string;
-  requestId: string;
-  tenantId: string;
-  workspaceId: string;
-  actorAgentId: string;
-  providerAccountId: string;
-  operationId: string;
-  operationRevision: number;
-  requestHash: string;
-  actionDigest: string;
-  grantDependencyHash: string;
-  policyRevisionHash: string;
-  accessDecisionHash: string;
-  approvalId: string;
-  approvalCommitmentHash: string;
-  routeId: string;
-  routeRevision: number;
-  secretId: string;
-  secretVersion: number;
-  backend: "credential-proxy";
-  providerIdempotencyKey: string;
-  commitmentHash: string;
-  nonce: string;
-  issuedAt: string;
-  expiresAt: string;
-  status: ExecutionAuthorizationStatus;
-  dispatchState: ProviderExecutionDispatchState;
-  keyId: string;
-  signature: string;
-}
-
-/**
  * Portable evidence container for an executed or rejected operation.
  *
  * The bundle intentionally references request, decision, authorization, audit,
  * and optional chain/provider artifacts without prescribing a runtime storage
- * format. Later evidence PRs can sign this bundle and ship an offline verifier.
+ * format.
  */
 export interface EvidenceBundle<Payload = unknown> {
   request: ExecutionRequest<Payload>;

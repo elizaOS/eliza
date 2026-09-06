@@ -1,16 +1,14 @@
-// @stwd/shared - types, constants, utils
+/** Defines identity, wallet and policy contracts shared by the service components. */
 
 import { CHAIN_PROVIDERS, type ChainProvider } from "./chains/index.js";
-import type { VenueId } from "./types/venue.js";
 
 // ─── Chain providers (extensible registry) ───
 export * from "./chains/index.js";
+export * from "./execution-auth-keys.js";
 export * from "./execution-contract.js";
 export * from "./execution-payload.js";
 export type { PriceOracle } from "./price-oracle.js";
 export { createPriceOracle } from "./price-oracle.js";
-export * from "./provider-action.js";
-export * from "./provider-execution-auth.js";
 // ─── Non-throwing description of an arbitrary thrown value (fail-closed catches) ───
 export {
   describeThrown,
@@ -35,8 +33,6 @@ export type {
   PluginMigrationSource,
   PolicyRuleContribution,
 } from "./types/plugin.js";
-// ─── Trading venues (Sprint 4) ───
-export * from "./types/venue.js";
 // ─── Runtime-extensible webhook event registry (core ∪ plugin-declared) ───
 export { WebhookEventRegistry } from "./webhook-event-registry.js";
 
@@ -639,7 +635,7 @@ export interface SignTypedDataRequest {
    * the legacy NULL-venue row. Phase 1 is hyperliquid-only; the field is
    * accepted but not yet routed through the new lookup path.
    */
-  venue?: VenueId;
+  venue?: string;
   domain: TypedDataDomain;
   types: Record<string, TypedDataField[]>;
   primaryType: string;

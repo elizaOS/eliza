@@ -1,3 +1,4 @@
+/** Defines the persisted identity, wallet, policy and audit schema used by service migrations and queries. */
 import { relations, sql } from "drizzle-orm";
 import {
   bigint,
@@ -564,12 +565,11 @@ export const agentWallets = pgTable(
     chainFamily: chainFamilyEnum("chain_family").notNull(),
     address: varchar("address", { length: 128 }).notNull(),
     /**
-     * Trading venue this wallet is scoped to (e.g. "hyperliquid").
-     * NULL on legacy rows; vault lookups fall back to chainFamily when
-     * venue isn't provided. See VenueId in @stwd/shared.
+     * Persisted wallet scope label. Legacy rows may be null; lookups use
+     * chainFamily when no scope is supplied.
      */
     venue: text("venue"),
-    /** Optional human-readable label, e.g. "perp", "spot", "ops". */
+    /** Optional human-readable wallet label. */
     purpose: text("purpose"),
     /** Non-secret address metadata such as Bitcoin network, script type, and derivation path. */
     metadata: jsonb("metadata")
@@ -1064,7 +1064,7 @@ export const encryptedChainKeys = pgTable(
      * venue isn't provided.
      */
     venue: text("venue"),
-    /** Optional human-readable label, e.g. "perp", "spot", "ops". */
+    /** Optional human-readable wallet label. */
     purpose: text("purpose"),
     ciphertext: text("ciphertext").notNull(),
     iv: text("iv").notNull(),

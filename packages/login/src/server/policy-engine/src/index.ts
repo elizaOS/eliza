@@ -1,43 +1,4 @@
-export type {
-  CapabilityIntentCompositionEffect,
-  CapabilityIntentCompositionResult,
-  CapabilityIntentConfig,
-  CapabilityIntentConstraints,
-  CapabilityIntentEffect,
-  CumulativeSpendConstraint,
-  CumulativeSpendScope,
-  ProviderPolicyContext,
-  ProviderPolicyEffect,
-  ProviderPolicyEvaluationV1,
-  ProviderPolicyRule,
-  ProviderPolicyRuleResult,
-  XConstraints,
-  XConstraintVerdict,
-  XContentPolicy,
-  XEscalationPolicy,
-  XPostsWindowCap,
-  XQuietHours,
-  XReplyMode,
-  XReplyPolicy,
-  XSpendPolicy,
-} from "./capability-intent";
-export {
-  CAPABILITY_INTENT_RULE_TYPE,
-  capabilityIntentContribution,
-  composeCapabilityIntentDecision,
-  composeProviderActionPolicyDecision,
-  cumulativeSpendBucketKey,
-  estimateXPostMicros,
-  evaluateCapabilityIntent,
-  evaluateXConstraints,
-  MAX_AGGREGATE_WINDOW_SECONDS,
-  PROVIDER_POLICY_REASON,
-  parseCapabilityIntentConfigForTest,
-  parseIso8601DurationSecondsForTest,
-  windowedInvokeBucketKey,
-  X_POST_PRICE_TABLE_V1,
-  X_POST_PRICE_TABLE_VERSION,
-} from "./capability-intent";
+/** Exposes transaction policy evaluation, aggregation and approval contracts for the identity service. */
 export type {
   AuditHook,
   PolicyEngineOptions,
@@ -88,19 +49,3 @@ export {
 } from "./policy-rule-registry";
 export type { ReputationInput } from "./reputation";
 export { calculateInternalReputation } from "./reputation";
-export type {
-  EvaluationResult as TradeOrderEvaluationResult,
-  TradeOrderEvaluation,
-  TradeOrderEvaluator,
-  TradeOrderPolicyInput,
-  TradePolicySession,
-} from "./trade-order";
-export {
-  assetAllowlistEvaluator,
-  dailySpendCapEvaluator,
-  defaultTradeOrderEvaluators,
-  evaluateTradeOrder,
-  leverageCapEvaluator as tradeLeverageCapEvaluator,
-  perOrderCapEvaluator,
-  venueAllowlistEvaluator as tradeVenueAllowlistEvaluator,
-} from "./trade-order";

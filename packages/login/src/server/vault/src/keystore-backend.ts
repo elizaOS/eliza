@@ -59,7 +59,7 @@ export interface KeystoreContext {
   agentId?: string;
   chainFamily?: string;
   name?: string;
-  /** Trading venue or other scope label, see VenueId in @stwd/shared. */
+  /** Persisted scope label distinguishing wallets within the same chain family. */
   venue?: string | null;
   version?: number | string;
 }
