@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Meetings — the canonical contract for agent-attended meetings.
  *
@@ -274,7 +275,7 @@ export function parseMeetingUrl(raw: string): ParsedMeetingUrl | null {
     return {
       platform: "teams",
       meetingUrl: url,
-      nativeMeetingId: decoded.slice(0, 128),
+      nativeMeetingId: truncateWellFormed(toWellFormedUnicode(decoded), 128),
     };
   }
   return null;
