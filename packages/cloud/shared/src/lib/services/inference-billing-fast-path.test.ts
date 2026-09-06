@@ -463,15 +463,8 @@ describe("createOptimisticDebitSettler", () => {
     deductResult = { success: true, newBalance: 4.25, transaction: { id: "debit-handoff" } };
     freshBalanceUsd = 4.25;
     await writeOrgBalanceHint(input.organizationId, 9, Date.now(), "1");
-    let releaseFreshBalance!: () => void;
-    freshBalanceGate = new Promise<void>((resolve) => {
-      releaseFreshBalance = resolve;
-    });
-    let markFreshBalanceReadStarted!: () => void;
-    const freshBalanceStarted = new Promise<void>((resolve) => {
-      markFreshBalanceReadStarted = resolve;
-    });
-    freshBalanceReadStarted = markFreshBalanceReadStarted;
+    const publicationGate = Promise.withResolvers<void>();
+    const publicationStarted = Promise.withResolvers<void>();
     let releaseDeductPostCommit!: () => void;
     deductPostCommitGate = new Promise<void>((resolve) => {
       releaseDeductPostCommit = resolve;
@@ -483,11 +476,14 @@ describe("createOptimisticDebitSettler", () => {
     deductFenceLowered = markDeductFenceLowered;
     const inferenceBalanceFence = {
       lowerCommittedBalance: mock(async () => undefined),
-      publishAuthoritativeBalance: mock(async () => undefined),
+      publishAuthoritativeBalance: mock(async () => {
+        publicationStarted.resolve();
+        await publicationGate.promise;
+      }),
     };
 
     // Model stream completion starts off-response settlement. Pause at the
-    // authoritative snapshot to model the exact 0-300ms interval after [DONE].
+    // authoritative publication to model the exact 0-300ms interval after [DONE].
     const settlement = debitInferenceCost(input, 0.02, "deferred", {
       preserveBalanceHintDuringFencedHandoff: true,
       inferenceBalanceFence,
@@ -499,7 +495,7 @@ describe("createOptimisticDebitSettler", () => {
     expect(freshBalanceCalls).toBe(0);
     expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledTimes(1);
     releaseDeductPostCommit();
-    await freshBalanceStarted;
+    await publicationStarted.promise;
 
     expect(deductCalls[0]?.preserveInferenceBalanceHint).toBe(true);
     expect(deductCalls[0]?.inferenceBalanceFence).toBe(inferenceBalanceFence);
@@ -508,10 +504,10 @@ describe("createOptimisticDebitSettler", () => {
     // The rapid next call must consume the committed LOWER balance, not the
     // pre-debit projection. The actual debit may exceed the active lease's
     // estimate, so retaining 9 here would let a concurrent request over-admit
-    // before the revisioned snapshot returns.
+    // before the revisioned publication completes.
     await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(4.25);
 
-    releaseFreshBalance();
+    publicationGate.resolve();
     await settlement;
     expect(inferenceBalanceFence.publishAuthoritativeBalance).toHaveBeenCalledWith(4.25, "2");
     expect(await readOrgBalanceHint(input.organizationId)).toMatchObject({

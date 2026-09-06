@@ -175,11 +175,13 @@ const acquireInferenceAdmissionLease = mock(
   },
 );
 const settleInferenceAdmissionLease = mock(async () => undefined);
-const markInferenceAdmissionLeaseDispatched = mock(async (lease: { providerDispatched: boolean }) => {
-  if (lease.providerDispatched) return;
-  settlementEvents.push("dispatch");
-  lease.providerDispatched = true;
-});
+const markInferenceAdmissionLeaseDispatched = mock(
+  async (lease: { providerDispatched: boolean }) => {
+    if (lease.providerDispatched) return;
+    settlementEvents.push("dispatch");
+    lease.providerDispatched = true;
+  },
+);
 const fenceInferenceAdmissionLeaseForSettlement = mock(
   async (lease: { estimatedCostUsd: number }, knownActualCostUsd: number) => {
     settlementEvents.push("settlement_fence");
@@ -524,9 +526,9 @@ test("strong proof on and off each acquire exactly one Durable Object lease", as
 
   for (const strongProof of [credential, undefined]) {
     acquireInferenceAdmissionLease.mockClear();
-  createInferenceAdmissionBalanceFence.mockClear();
-  inferenceBalanceFence.lowerCommittedBalance.mockClear();
-  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
+    createInferenceAdmissionBalanceFence.mockClear();
+    inferenceBalanceFence.lowerCommittedBalance.mockClear();
+    inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
     await admitOrganizationInference({
       ...admissionParams(model, []),
       ...(strongProof ? { credential: strongProof } : {}),
