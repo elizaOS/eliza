@@ -557,7 +557,11 @@ describe("registered app delegation HTTP and database authority", () => {
         apiBaseUrl: server.url.toString(),
       });
       const result = await client.exchange(await consent(), REDIRECT);
-      expect((await client.identity(result.data.token)).data.id).toBe(USER);
+      if (!result) throw new Error("Delegation exchange returned no response");
+      const identity = await client.identity(result.data.token);
+      if (!identity)
+        throw new Error("Delegation identity returned no response");
+      expect(identity.data.id).toBe(USER);
       expect(client.headers(result.data.token).get("Authorization")).toBe(
         headers().Authorization,
       );

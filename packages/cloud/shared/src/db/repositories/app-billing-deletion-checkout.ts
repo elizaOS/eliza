@@ -191,7 +191,11 @@ function assertPayload(
   authority: DeletionCheckoutAuthority,
 ) {
   const payload = command.request_payload;
-  if (payload?.domain !== "account_deletion" || payload.action !== "expire_checkout" || command.kind !== "expire_checkout")
+  if (
+    payload?.domain !== "account_deletion" ||
+    payload.action !== "expire_checkout" ||
+    command.kind !== "expire_checkout"
+  )
     appBillingConflict("Cleanup journal has no expiration intent");
   const expected = payloadFor(source, authority);
   if (
