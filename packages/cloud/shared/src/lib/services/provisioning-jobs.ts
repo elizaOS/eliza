@@ -16,6 +16,7 @@
 import { ElizaError } from "@elizaos/core";
 import {
   and,
+  asc,
   desc,
   eq,
   getTableColumns,
@@ -2362,9 +2363,9 @@ export class ProvisioningJobService {
         // A genuine user-initiated delete (the row is not already in a deletion
         // state) starts the deletion-failure counter fresh — error_count may
         // carry a stale provisioning-error value, and a new delete should get a
-        // full set of recovery sweeps before the circuit-breaker abandons it.
+        // full set of recovery sweeps before switching to the slower cadence.
         // A recovery re-enqueue (status is already deletion_pending/_failed)
-        // PRESERVES the count so reEnqueueFailedDeletions can stop the loop.
+        // preserves the count so reconciliation can apply the slower cadence.
         const isRecoveryReEnqueue =
           Boolean(sandbox.deletion_attempt_id) ||
           sandbox.status === "deletion_pending" ||
@@ -4886,13 +4887,8 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_DELETE: {
         const { agentId } = readAgentDeleteJobData(job);
         return async (tx) => {
-          // Bump error_count so reEnqueueFailedDeletions can circuit-break a
-          // permanently-dead node: each exhausted agent_delete adds one, and
-          // once the count crosses the re-enqueue threshold the sweep stops
-          // re-arming the row and alerts ops instead of looping forever. Once a
-          // row reaches deletion_failed the only writer of error_count is this
-          // path (markError only touches `error` rows), so the count tracks
-          // failed delete sweeps. A fresh user-initiated delete resets it.
+          // Exhausted attempts advance the retry cadence without abandoning
+          // provider cleanup. A fresh user-initiated delete resets this count.
           await tx
             .update(agentSandboxes)
             .set({
@@ -7003,12 +6999,10 @@ export class ProvisioningJobService {
    * the container + row. `minAgeMs` keeps this from fighting the live retry
    * loop right after a failure.
    *
-   * Circuit-breaker: a permanently-dead node would otherwise be re-armed every
-   * sweep forever. Each exhausted agent_delete bumps the sandbox's `error_count`
-   * (see the AGENT_DELETE failure handler), so a row that has already been
-   * re-enqueued `maxReEnqueues` times is SKIPPED — logged once as
-   * `event: "deletion.abandoned_candidate"` for ops to investigate (the
-   * container likely needs a manual node-level teardown) rather than looping.
+   * Repeated failures switch to a six-hour cadence and remain enumerable.
+   * Error count is diagnostic history, never proof that resources are absent.
+   * Eligibility is filtered before the batch limit so cooling rows do not
+   * crowd out due work. Oldest eligible rows run first.
    *
    * Capacity: `deletion_failed`/`deletion_pending` rows do NOT count toward the
    * org's agent ceiling (`QUOTA_COUNTED_STATUSES` in eliza-sandbox.ts), so a
@@ -7021,6 +7015,7 @@ export class ProvisioningJobService {
   async reEnqueueFailedDeletions(params?: {
     minAgeMs?: number;
     maxAgents?: number;
+    /** Failure threshold for slow retries; retained option name for callers. */
     maxReEnqueues?: number;
   }): Promise<{
     scanned: number;
@@ -7031,7 +7026,9 @@ export class ProvisioningJobService {
     const minAgeMs = params?.minAgeMs ?? 30 * 60 * 1000; // 30m
     const maxAgents = params?.maxAgents ?? 50;
     const maxReEnqueues = params?.maxReEnqueues ?? 5;
-    const cutoff = new Date(Date.now() - minAgeMs);
+    const now = Date.now();
+    const cutoff = new Date(now - minAgeMs);
+    const slowCutoff = new Date(now - Math.max(minAgeMs, 6 * 60 * 60 * 1000));
 
     const stuck = await dbWrite
       .select({
@@ -7052,6 +7049,10 @@ export class ProvisioningJobService {
           // idempotent and re-flips the row to deletion_pending.
           sql`${agentSandboxes.status} IN ('deletion_failed', 'deletion_pending')`,
           sql`${agentSandboxes.updated_at} < ${cutoff}`,
+          or(
+            sql`${agentSandboxes.error_count} < ${maxReEnqueues}`,
+            sql`${agentSandboxes.updated_at} < ${slowCutoff}`,
+          ),
           // REQUIRED now that deletion_pending is in scope: never re-arm a delete
           // that is legitimately in-flight. (deletion_failed rows never have an
           // active job, so this is a no-op for the original case.)
@@ -7064,24 +7065,22 @@ export class ProvisioningJobService {
           )`,
         ),
       )
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(maxAgents);
 
     let reEnqueued = 0;
     let failed = 0;
-    let abandoned = 0;
+    // Compatibility field: exhausted deletions remain retryable.
+    const abandoned = 0;
     for (const agent of stuck) {
-      // Circuit-breaker: a row that has burned through maxReEnqueues sweeps is a
-      // probably-dead node — stop re-arming it and surface it for ops once.
-      if ((agent.errorCount ?? 0) >= maxReEnqueues) {
-        abandoned += 1;
-        logger.warn("[provisioning-jobs] deletion abandoned — exceeded re-enqueue budget", {
-          event: "deletion.abandoned_candidate",
+      if (agent.errorCount >= maxReEnqueues) {
+        logger.warn("[provisioning-jobs] Retrying deletion after repeated failures", {
+          event: "deletion.slow_retry",
           agentId: agent.id,
           orgId: agent.organizationId,
           errorCount: agent.errorCount,
           maxReEnqueues,
         });
-        continue;
       }
       try {
         await this.enqueueAgentDeleteOnce({
@@ -7091,6 +7090,7 @@ export class ProvisioningJobService {
         });
         reEnqueued += 1;
       } catch (error) {
+        // error-policy:J1 The sweep reports failed admissions in its result.
         failed += 1;
         logger.warn("[provisioning-jobs] re-enqueue of failed deletion failed", {
           agentId: agent.id,
