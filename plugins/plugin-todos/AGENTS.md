@@ -44,22 +44,19 @@ of applying the effect twice.
   canonical SQL store.
 
 **Host adapters**
-- `todosPlugin` (default export) — `todosRuntimePlugin` plus the React view
-  re-exports. Requires `@elizaos/plugin-sql`; `TODO` defaults to `ADMIN`,
-  `CURRENT_TODOS` to `USER`.
-- `todosRuntimePlugin` (`./plugin`) — the Node plugin the agent boot loader
-  imports. It declares the dashboard `views` descriptor (string-only
-  `bundlePath`/`componentExport` metadata) but imports no React, so the view
-  bundle is resolved and mounted lazily only where a host loads it.
+- `todosPlugin` (default export) — Node plugin plus the dashboard view. Requires
+  `@elizaos/plugin-sql`; `TODO` defaults to `ADMIN`, `CURRENT_TODOS` to `USER`.
+- `./plugin` default — Node-safe descriptor with the dashboard declaration;
+  it imports no React components. Named `todosRuntimePlugin` remains the
+  headless descriptor for callers that intentionally omit dashboard views.
 - `createTodosEdgePlugin` (`./edge`) — Worker-safe action/provider plugin with
   an injected `TodoStore`. Its server-owned Shared-agent boundary admits
   `GUEST` principals; the host remains responsible for authenticating and
   deriving storage scope.
 
 **Views**
-- `TodosView` (`src/components/todos/TodosView.tsx`) — three-lane dashboard view.
-  Its descriptor is declared on `todosRuntimePlugin` (the boot `./plugin` export)
-  so it registers into `/api/views` at agent boot.
+- `TodosView` (`src/components/todos/TodosView.tsx`) — three-lane dashboard view
+  registered by both default Node entries through one shared descriptor.
 
 **Schema**
 - `todos.todos` — current Todo rows, including hierarchy and room/world
@@ -71,8 +68,8 @@ of applying the effect twice.
 
 ```
 src/
-  index.ts                  Default plugin barrel + React view public exports
-  plugin.ts                 Boot Node plugin (actions/providers/service + view descriptor)
+  index.ts                  Default Node plugin + dashboard view and public exports
+  plugin.ts                 Node-safe descriptors and dashboard metadata
   edge.ts                   Worker-safe factory and edge public exports
   store.ts                  Storage-neutral TodoStore and mutation contracts
   sql-store.ts              Canonical tenant-safe Drizzle/Postgres implementation

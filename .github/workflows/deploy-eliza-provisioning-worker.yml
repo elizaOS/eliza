@@ -24,6 +24,10 @@ on:
         description: Exact currently deployed worker commit; required only for diagnose
         required: false
         type: string
+      target_container_sha256:
+        description: Optional canonical container-name digest from the protected Personal preview
+        required: false
+        type: string
       environment:
         description: 'Target environment (host + secrets resolved from this)'
         required: true
@@ -98,6 +102,7 @@ jobs:
         env:
           MODE: ${{ inputs.mode }}
           EXPECTED_WORKER_SHA: ${{ inputs.expected_worker_sha }}
+          TARGET_CONTAINER_SHA256: ${{ inputs.target_container_sha256 }}
           BRANCH: ${{ steps.env.outputs.branch }}
           EFFECT_DIGEST: ${{ inputs.effect_digest }}
           GH_TOKEN: ${{ github.token }}
@@ -111,12 +116,20 @@ jobs:
               echo "::error::Diagnostics require an exact lowercase 40-hex expected_worker_sha"
               exit 1
             }
+            [ -z "$TARGET_CONTAINER_SHA256" ] || [[ "$TARGET_CONTAINER_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "::error::Diagnostics require an empty or lowercase 64-hex target container digest"
+              exit 1
+            }
             [ -z "$EFFECT_DIGEST" ] && [ -z "$REQUESTED_SHA" ] || {
               echo "::error::Diagnostics do not accept deployment or reconciler inputs"
               exit 1
             }
             exit 0
           fi
+          [ -z "$TARGET_CONTAINER_SHA256" ] || {
+            echo "::error::A target container digest is valid only for diagnostics"
+            exit 1
+          }
           if [ "${{ github.event_name }}" = "push" ]; then
             deployment_sha="$PUSH_SHA"
           elif [ -n "$REQUESTED_SHA" ]; then
@@ -179,22 +192,24 @@ jobs:
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         env:
           EXPECTED_WORKER_SHA: ${{ inputs.expected_worker_sha }}
+          TARGET_CONTAINER_SHA256: ${{ inputs.target_container_sha256 }}
           DIAGNOSTIC_SOURCE_BASE64: ${{ steps.diagnostic.outputs.source_base64 }}
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
-          envs: EXPECTED_WORKER_SHA,DIAGNOSTIC_SOURCE_BASE64
+          envs: EXPECTED_WORKER_SHA,TARGET_CONTAINER_SHA256,DIAGNOSTIC_SOURCE_BASE64
           script: |
             set -euo pipefail
             [[ "$EXPECTED_WORKER_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            [ -z "$TARGET_CONTAINER_SHA256" ] || [[ "$TARGET_CONTAINER_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 1
             # Read the existing lock without creating or changing any host file.
             exec 9</tmp/eliza-provisioning-worker-deploy.lock
             flock -s -w 30 9 || exit 1
             printf '%s' "$DIAGNOSTIC_SOURCE_BASE64" | base64 --decode | \
               /usr/bin/env -i PATH=/usr/bin:/bin \
-              /usr/bin/node --input-type=module - "$EXPECTED_WORKER_SHA"
+              /usr/bin/node --input-type=module - "$EXPECTED_WORKER_SHA" "$TARGET_CONTAINER_SHA256"
 
   deploy:
     if: inputs.mode != 'diagnose'

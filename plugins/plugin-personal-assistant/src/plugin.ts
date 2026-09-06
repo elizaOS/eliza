@@ -268,6 +268,7 @@ import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
+import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
 import { BrowserBridgePluginService } from "./service.js";
 import {
   BLOCK_RULE_RECONCILE_TASK_NAME,
@@ -721,6 +722,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   // unless the operator explicitly disables passive mode.
   passiveConnectorsByDefault: true,
   schema: lifeOpsSchema,
+  routes: personalAssistantRoutesPlugin.routes,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via

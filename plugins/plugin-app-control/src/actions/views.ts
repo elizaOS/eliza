@@ -36,6 +36,11 @@ import {
 	targetReferenceLogView,
 	userRequestMessageText,
 } from "../params.js";
+import {
+	type NavigationReceipt,
+	navigationDispatchBlock,
+	navigationRequestSignal,
+} from "./navigation-execution.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import { readViewInteractionClientId } from "./view-delivery.js";
 import {
@@ -2218,6 +2223,7 @@ async function runViewsClose({
 	const text = userRequestMessageText(message);
 	if (isCloseAllRequest(text, options)) {
 		const result = await navigateViewWithShellAction(
+			{ message, options },
 			"__all__",
 			"close-all",
 			"Closed all views.",
@@ -2278,6 +2284,7 @@ async function runViewsClose({
 	}
 
 	const result = await navigateViewWithShellAction(
+		{ message, options },
 		viewId,
 		"close",
 		`Closed ${label ?? viewId}.`,
@@ -2365,6 +2372,7 @@ async function runViewsLayout({
 		? (primary.viewType ?? viewType)
 		: (viewType ?? primary.viewType);
 	const result = await navigateViewLayout({
+		context: { message, options },
 		viewId: primary.id,
 		action,
 		viewIds,
@@ -2666,6 +2674,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				name: "view",
 				description:
 					"View name, label, or id (show / open / close / edit / delete). The home/main chat screen is chat; views-manager is the app list.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "navigationIntent",
+				description:
+					"Use planner-step for an explicit target within a contextual or compound plan. The per-step target takes precedence over unrelated original-message clauses.",
+				required: false,
+				schema: { type: "string", enum: ["planner-step"] },
+			},
+			{
+				name: "navigationStepId",
+				description:
+					"Unique plan-step identity for separately tracking navigation and domain receipts.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2987,17 +3009,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			options?: Record<string, unknown>,
 			deliveryCallback?: HandlerCallback,
 		): Promise<ActionResult> => {
-			// Helpers may emit diagnostic prose for legacy callers. Only actual
-			// interactive payloads are delivered directly; normal receipts remain
-			// tool evidence for the Eliza evaluator's generated response.
+			// Only interactive payloads bypass the model's grounded final reply.
 			const callback: HandlerCallback | undefined = deliveryCallback
 				? async (content, actionName) =>
 						isViewsInteractivePayload(content.text ?? "")
 							? deliveryCallback(content, actionName)
 							: []
 				: undefined;
+			let navigationSelected = false;
+			const shellContext = {
+				message,
+				options: normalizeActionOptions(options),
+			};
 			const run = async (): Promise<ActionResult> => {
-				const actionOptions = normalizeActionOptions(options);
+				const actionOptions = shellContext.options;
 				const client = clientFactory();
 				// Security-unwrapped user words — never the raw (possibly enveloped)
 				// content.text; the envelope's warning contains verbs the extractors match.
@@ -3101,6 +3126,22 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					`[plugin-app-control] VIEWS requestedMode=${mode} effectiveMode=${effectiveMode} action=${readStringOption(actionOptions, "action") ?? "inferred"} view=${readViewTargetOption(actionOptions) ?? "none"} resolvedCapability=${forcedResolvedCapability ? `${forcedResolvedCapability.view.id}:${forcedResolvedCapability.capability.id}` : "none"}`,
 				);
 
+				navigationSelected = [
+					"close",
+					"manager",
+					"pin",
+					"window",
+					"split",
+					"tile",
+				].includes(effectiveMode);
+				if (navigationSelected) {
+					const blocked = blockedShellNavigation(
+						{ message, options: actionOptions },
+						readStringOption(actionOptions, "view"),
+					);
+					if (blocked) return { success: false, text: blocked.text };
+				}
+
 				switch (effectiveMode) {
 					case "list":
 						return runViewsList({ client, viewType });
@@ -3132,6 +3173,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType,
 							callback,
 							originatingClientId: readViewInteractionClientId(message),
+							resolveCallerRoles: async () =>
+								(await ownerCheck(runtime, message))
+									? ["OWNER"]
+									: resolveViewCallerRoles(runtime, message),
 						});
 
 					case "close":
@@ -3157,6 +3202,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							available: true,
 						};
 						const result = await navigateToPath(
+							{ message, options: actionOptions },
 							managerView.path,
 							managerView.label,
 						);
@@ -3618,6 +3664,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							pinView.viewType ??
 							(await resolveViewTypeForId(client, pinView.id));
 						const pinResult = await pinViewAsTab(
+							{ message, options: actionOptions },
 							pinView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 						);
@@ -3667,6 +3714,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							windowView.viewType ??
 							(await resolveViewTypeForId(client, windowView.id));
 						const windowResult = await openViewInWindow(
+							{ message, options: actionOptions },
 							windowView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 							alwaysOnTop,
@@ -3702,7 +3750,34 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 			};
 
-			return withViewsInteractivePayload(await run());
+			try {
+				const result = await run();
+				const blocked =
+					navigationSelected && !result.success
+						? blockedShellNavigation(shellContext, null)
+						: undefined;
+				return withViewsInteractivePayload(
+					blocked
+						? {
+								success: false,
+								text: blocked.text,
+								data: { navigation: blocked.receipt },
+							}
+						: result,
+				);
+			} catch (error) {
+				// error-policy:J1 translate canonical cancellation at the navigation action boundary; other failures remain explicit.
+				const blocked = navigationSelected
+					? blockedShellNavigation(shellContext, null)
+					: undefined;
+				if (blocked)
+					return {
+						success: false,
+						text: blocked.text,
+						data: { navigation: blocked.receipt },
+					};
+				throw error;
+			}
 		},
 
 		examples: [
@@ -3951,6 +4026,29 @@ export function createViewsAliasAction(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+type ShellNavigationContext = {
+	message: Memory;
+	options?: Record<string, unknown>;
+};
+
+function blockedShellNavigation(
+	context: ShellNavigationContext,
+	viewId: string | null,
+): ShellNavResult | undefined {
+	const status = navigationDispatchBlock(
+		context.message,
+		context.options?.navigationIntent === "planner-step",
+	);
+	if (!status) return undefined;
+	const receipt: NavigationReceipt = {
+		effect: "view_navigation",
+		stepId: readStringOption(context.options, "navigationStepId"),
+		viewId,
+		status,
+	};
+	return { ok: false, text: JSON.stringify(receipt), receipt };
+}
+
 /**
  * Outcome of a shell-navigation request. `ok` is true when the shell accepted
  * the request (2xx) or genuinely does not implement the route (501/404) — the
@@ -3959,14 +4057,18 @@ export function createViewsAliasAction(
  * so the action surfaces a failure instead of claiming the UI changed.
  */
 interface ShellNavResult {
+	receipt?: NavigationReceipt;
 	ok: boolean;
 	text: string;
 }
 
 async function navigateToPath(
+	context: ShellNavigationContext,
 	pathStr: string,
 	label: string,
 ): Promise<ShellNavResult> {
+	const blocked = blockedShellNavigation(context, null);
+	if (blocked) return blocked;
 	const base = getAppControlApiBase();
 
 	try {
@@ -3974,7 +4076,7 @@ async function navigateToPath(
 			method: "POST",
 			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ path: pathStr }),
-			signal: AbortSignal.timeout(5_000),
+			signal: navigationRequestSignal(5_000),
 		});
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
 			return { ok: true, text: `Navigated to ${label}.` };
@@ -3983,6 +4085,9 @@ async function navigateToPath(
 			`[plugin-app-control] VIEWS/manager navigate returned ${resp.status}`,
 		);
 	} catch (err) {
+		// error-policy:J1 translate navigation transport failure without dispatching after cancellation.
+		const blocked = blockedShellNavigation(context, null);
+		if (blocked) return blocked;
 		logger.warn(
 			`[plugin-app-control] VIEWS/manager navigate failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -3995,6 +4100,7 @@ async function navigateToPath(
 }
 
 async function navigateViewWithShellAction(
+	context: ShellNavigationContext,
 	viewId: string,
 	action: "pin-tab" | "open-window" | "close" | "close-all",
 	successText: string,
@@ -4002,6 +4108,8 @@ async function navigateViewWithShellAction(
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
+	const blocked = blockedShellNavigation(context, null);
+	if (blocked) return blocked;
 	const base = getAppControlApiBase();
 
 	try {
@@ -4011,7 +4119,7 @@ async function navigateViewWithShellAction(
 				method: "POST",
 				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ action, viewType, alwaysOnTop }),
-				signal: AbortSignal.timeout(5_000),
+				signal: navigationRequestSignal(5_000),
 			},
 		);
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
@@ -4021,6 +4129,9 @@ async function navigateViewWithShellAction(
 			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
 		);
 	} catch (err) {
+		// error-policy:J1 translate navigation transport failure without dispatching after cancellation.
+		const blocked = blockedShellNavigation(context, null);
+		if (blocked) return blocked;
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -4030,6 +4141,7 @@ async function navigateViewWithShellAction(
 }
 
 async function navigateViewLayout({
+	context,
 	viewId,
 	action,
 	viewIds,
@@ -4040,6 +4152,7 @@ async function navigateViewLayout({
 	fallbackText,
 }: {
 	viewId: string;
+	context: ShellNavigationContext;
 	action: "split-view" | "tile-views";
 	viewIds: string[];
 	layout: "horizontal" | "vertical" | "grid";
@@ -4048,6 +4161,8 @@ async function navigateViewLayout({
 	successText: string;
 	fallbackText: string;
 }): Promise<ShellNavResult> {
+	const blocked = blockedShellNavigation(context, null);
+	if (blocked) return blocked;
 	const base = getAppControlApiBase();
 
 	try {
@@ -4063,7 +4178,7 @@ async function navigateViewLayout({
 					...(placement ? { placement } : {}),
 					...(viewType ? { viewType } : {}),
 				}),
-				signal: AbortSignal.timeout(5_000),
+				signal: navigationRequestSignal(5_000),
 			},
 		);
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
@@ -4073,6 +4188,9 @@ async function navigateViewLayout({
 			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
 		);
 	} catch (err) {
+		// error-policy:J1 translate navigation transport failure without dispatching after cancellation.
+		const blocked = blockedShellNavigation(context, null);
+		if (blocked) return blocked;
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -4082,10 +4200,12 @@ async function navigateViewLayout({
 }
 
 function pinViewAsTab(
+	context: ShellNavigationContext,
 	viewId: string,
 	viewType?: ViewType,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
+		context,
 		viewId,
 		"pin-tab",
 		`Pinned ${viewType ?? "gui"} view "${viewId}" as a desktop tab.`,
@@ -4095,11 +4215,13 @@ function pinViewAsTab(
 }
 
 function openViewInWindow(
+	context: ShellNavigationContext,
 	viewId: string,
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
+		context,
 		viewId,
 		"open-window",
 		`Opened ${viewType ?? "gui"} view "${viewId}" in a separate window.`,

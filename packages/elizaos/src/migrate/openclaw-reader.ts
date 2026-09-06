@@ -174,6 +174,16 @@ function readOptional<T>(
 }
 
 function readIfPresent(p: string): string | undefined {
+  const stat = statIfPresent(p);
+  if (stat === undefined) return undefined;
+  if (!stat.isFile()) {
+    throw new MigrationSourceReadError(
+      { path: p, operation: "read" },
+      new Error(
+        "Expected a regular file; refusing to read a special filesystem entry.",
+      ),
+    );
+  }
   return readOptional(p, "read", () =>
     normalizeEol(fs.readFileSync(p, "utf8")),
   );

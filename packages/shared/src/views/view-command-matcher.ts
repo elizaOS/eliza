@@ -1196,14 +1196,14 @@ const CLOUD_APPS_MENTION_RE = new RegExp(
 const CLOUD_APPS_ARTICLE_ALT = alt(CLOUD_APPS_ARTICLES);
 const CLOUD_APPS_PARTICLE_ALT = rawAlt(CLOUD_APPS_PARTICLES);
 const CLOUD_APPS_COURTESY_ALT = alt(CLOUD_APPS_COURTESY);
-const CLOUD_APPS_EDGE = `[\\s\\p{P}]*`;
-const CLOUD_APPS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s\\p{P}]+)?`;
-const CLOUD_APPS_OPTIONAL_ARTICLE = `(?:(?:${CLOUD_APPS_ARTICLE_ALT})[\\s\\p{P}]+)?`;
+const CLOUD_APPS_EDGE = `[\\s.!?。！？]*`;
+const CLOUD_APPS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s]+)?`;
+const CLOUD_APPS_OPTIONAL_ARTICLE = `(?:(?:${CLOUD_APPS_ARTICLE_ALT})[\\s]+)?`;
 const CLOUD_APPS_OPTIONAL_PARTICLE = `(?:${CLOUD_APPS_PARTICLE_ALT})?`;
 const CLOUD_APPS_COMMAND_RE = new RegExp(
   [
-    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_VERB_ALT})[\\s\\p{P}]*${CLOUD_APPS_OPTIONAL_ARTICLE}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
-    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_OPTIONAL_PARTICLE}[\\s\\p{P}]*(?:${CLOUD_APPS_VERB_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
+    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_VERB_ALT})[\\s]*${CLOUD_APPS_OPTIONAL_ARTICLE}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
+    `^${CLOUD_APPS_EDGE}${CLOUD_APPS_OPTIONAL_COURTESY}(?:${CLOUD_APPS_NOUN_ALT})${CLOUD_APPS_OPTIONAL_PARTICLE}[\\s]*(?:${CLOUD_APPS_VERB_ALT})${CLOUD_APPS_EDGE}(?:(?:${CLOUD_APPS_COURTESY_ALT})${CLOUD_APPS_EDGE})?$`,
   ].join("|"),
   "iu",
 );
@@ -1233,182 +1233,71 @@ interface CompiledView {
   re: RegExp;
 }
 
-// Trailing words a whole-message possessive command may carry ("my calendar
-// please", "my settings now") — mirrors CLOUD_APPS_COMMAND_RE's courtesy-tail
-// handling. Anything else after the noun ("what is on my calendar this week?")
-// is a read/question, not navigation, and must reach the normal planner.
-//
-// DESIGN DECISION — bounded vocabulary, not language enumeration. Missing this
-// deterministic shortcut degrades to the model path: the bot still navigates,
-// just slower. So the tail (and filler) lists are deliberately small, and
-// long-tail phrasings outside them — compound possessives ("my calendar and my
-// todo list"), novel courtesy ("cheers mate"), free-form trailers — are an
-// ACCEPTED tradeoff, left to the planner instead of growing these lists
-// unboundedly. Each entry mirrors a language the matcher already supports
-// (POSSESSIVES / VIEW_NOUNS); do not add new languages here alone.
-const POSS_TAIL_WORDS = [
+// Standalone grammar consumes the whole request. Only grammatical articles,
+// possessives and particles may separate verbs and view nouns; arbitrary filler
+// would let a quoted instruction or another clause steal domain action hints.
+const COMMAND_EDGE = `[\\s.!?。！？]*`;
+const COMMAND_COURTESY = alt([
   ...CLOUD_APPS_COURTESY,
-  // en
-  "now",
-  "right now",
-  "rn",
-  "asap",
-  "again",
-  "real quick",
-  "when you can",
-  "pls",
-  "plz",
-  "thanks",
-  "thank you",
-  "thx",
-  "ty",
-  "thanks a lot",
-  "thank you so much",
-  "please and thank you",
-  // es
-  "gracias",
-  "muchas gracias",
-  // fr — informal "please"; CLOUD_APPS_COURTESY covers the vous forms
-  "merci",
-  "merci beaucoup",
-  "s'il te plaît",
-  "s'il te plait",
-  "s’il te plaît",
-  "s’il te plait",
-  // de
-  "danke",
-  "danke schön",
-  "dankeschön",
-  "vielen dank",
-  // pt
-  "obrigado",
-  "obrigada",
-  "muito obrigado",
-  "muito obrigada",
-  // zh — thanks + the sentence-final softeners also in the Han noun boundary
-  "谢谢",
-  "多谢",
-  "吧",
-  "呗",
-  // ja — nouns/verbs support ja; POSSESSIVES has no ja possessive today, so
-  // these fire only on mixed-script phrasings. Kept for symmetry.
-  "ありがとう",
-  "ありがとうございます",
-  "お願い",
-  "お願いします",
-  // ko
-  "부탁해",
-  "부탁해요",
-  "부탁합니다",
-  "감사합니다",
-  "고마워",
-  "고마워요",
-  "고맙습니다",
-  // vi
-  "cảm ơn",
-  "cám ơn",
-  "làm ơn",
-  // tl
-  "salamat",
-  "pakiusap",
-] as const;
-const POSS_TAIL_ALT = alt(POSS_TAIL_WORDS);
-// "check my messages" / "revisa mi correo" are whole-message navigation
-// commands, but "check" is deliberately NOT a NAV_VERB (an unanchored
-// "check … <noun>" would re-hijack "can you check my notes for the recipe").
-// Allow it only as an anchored prefix of the whole-message possessive form.
-const POSS_CHECK_VERBS = [
-  "check",
-  "revisa",
-  "revisar",
-  "checa",
-  "verifica",
-  "confira",
-  "vérifie",
-  "verifie",
-  "prüfe",
-  "pruefe",
-] as const;
-const POSS_CHECK_ALT = alt(POSS_CHECK_VERBS);
-const POSS_EDGE = `[\\s\\p{P}]*`;
-// After the noun, also admit symbols (\p{S}: emoji like 🙏, ✨), combining
-// marks and format chars (\p{M}/\p{Cf}: emoji variation selector U+FE0F, ZWJ)
-// so "my calendar 🙏" still reads as a whole-message navigation command.
-const POSS_TRAIL = `[\\s\\p{P}\\p{S}\\p{M}\\p{Cf}]`;
-const POSS_OPTIONAL_COURTESY = `(?:(?:${CLOUD_APPS_COURTESY_ALT})[\\s\\p{P}]+)?`;
-const POSS_OPTIONAL_CHECK = `(?:(?:${POSS_CHECK_ALT})[\\s\\p{P}]+)?`;
-// Leading discourse filler / vocative that voice transcription often prepends
-// ("uh my calendar", "ok so my calendar"). Anchored prefix only — a filler
-// never licenses a question form ("uh whats on my calendar" still reaches the
-// planner because "whats" is not a filler. Fillers may stack ("uh okay my
-// calendar"), bounded to three. Same bounded-vocabulary tradeoff as
-// POSS_TAIL_WORDS above.
-const POSS_FILLER_WORDS = [
-  "uh",
-  "uhh",
-  "um",
-  "umm",
-  "er",
-  "erm",
-  "ok",
-  "okay",
-  "k",
-  "kk",
-  "hey",
-  "yo",
-  "so",
-  "oh",
-  "ah",
-  "hmm",
-  "alright",
-  "right",
-  "well",
-] as const;
-const POSS_FILLER_ALT = alt(POSS_FILLER_WORDS);
-const POSS_OPTIONAL_FILLERS = `(?:(?:${POSS_FILLER_ALT})[\\s\\p{P}]+){0,3}`;
-
-// For each view, compile one regex covering the precise nav patterns:
-//   verb … noun           (open settings / 打开设置 / abre ajustes)
-//   noun … verb           (SOV: 설정 열기 / 設定を開いて)
-//   possessive noun       (whole message: my settings / 我的设置 / mis ajustes,
-//                          optionally + courtesy tail: "my calendar please")
-//   noun viewword         (settings page / 设置页面)
-//   whole message == noun (just "settings")
-// Gaps use [\s\S]{0,N} so CJK (no spaces) and short filler both match, while
-// staying tight enough to avoid cross-clause false positives.
+  "can you",
+  "could you",
+  "would you",
+  "請",
+  "请",
+]);
+const COMMAND_PREFIX = `(?:(?:can you|could you|would you)\\s+)?(?:(?:${COMMAND_COURTESY})\\s*)?`;
+const COMMAND_SUFFIX = `(?:\\s*(?:${alt(CLOUD_APPS_COURTESY)}))?`;
+const COMMAND_ARTICLE = alt([
+  ...CLOUD_APPS_ARTICLES,
+  ...POSSESSIVES,
+  "a",
+  "el",
+  "la",
+  "los",
+  "o",
+  "as",
+  "le",
+  "la",
+  "der",
+  "das",
+  "den",
+  "dem",
+]);
+const COMMAND_DETERMINER = `(?:(?:${COMMAND_ARTICLE})\\s*)?`;
+const COMMAND_PARTICLE = `(?:${CLOUD_APPS_PARTICLE_ALT})?`;
+const COMMAND_VERB = alt([...NAV_VERBS, "go back to"]);
 const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
   (v) => v !== CLOUD_APPS_VIEW_ID && VIEW_NOUNS[v],
 ).map((viewId) => {
   const N = nounAlt(VIEW_NOUNS[viewId]);
-  const pattern = [
-    `(?:${VERB_ALT})[\\s\\S]{0,16}?(?:${N})`,
-    `(?:${N})[\\s\\S]{0,8}?(?:${VERB_ALT})`,
-    // Anchored to the whole message: a possessive+noun substring inside a
-    // longer sentence ("what is on my calendar this week?") is a read request,
-    // not an explicit navigation command. Optional bounded filler/courtesy/
-    // check prefixes and courtesy/thanks tails only — see POSS_TAIL_WORDS for
-    // the bounded-vocabulary design decision. The tail separator is * (not +)
-    // so a no-space CJK particle tail ("我的日历吧") matches; Latin tails stay
-    // word-bounded via alt()'s lookarounds. Compound possessives ("my calendar
-    // and my todo list") are deliberately NOT matched — accepted long tail,
-    // the planner handles them.
-    `^${POSS_EDGE}${POSS_OPTIONAL_FILLERS}${POSS_OPTIONAL_COURTESY}${POSS_OPTIONAL_CHECK}(?:${POSS_ALT})[\\s\\S]{0,4}?(?:${N})(?:${POSS_TRAIL}*(?:${POSS_TAIL_ALT}))*${POSS_TRAIL}*$`,
-    `(?:${N})[\\s\\S]{0,4}?(?:${VW_ALT})`,
-    `^[\\s\\p{P}]*(?:${N})[\\s\\p{P}]*$`,
+  const noun = `${COMMAND_DETERMINER}(?:${N})(?:\\s*(?:${VW_ALT}))?`;
+  const patterns = [
+    `(?:${COMMAND_VERB})\\s*${noun}`,
+    `${noun}${COMMAND_PARTICLE}\\s*(?:${COMMAND_VERB})`,
+    `(?:${POSS_ALT})\\s*(?:${N})`,
+    `(?:${N})\\s*(?:${VW_ALT})`,
+    `(?:${N})`,
   ].join("|");
-  return { viewId, re: new RegExp(pattern, "iu") };
+  return {
+    viewId,
+    re: new RegExp(
+      `^${COMMAND_EDGE}${COMMAND_PREFIX}(?:${patterns})${COMMAND_SUFFIX}${COMMAND_EDGE}$`,
+      "iu",
+    ),
+  };
 });
 
 // Bare "go back" is the conversational counterpart of the shell's Home affordance.
 // Browser/OS history remains a client-owned gesture, so this exact whole-message
 // form can safely return to the canonical chat surface without guessing history.
-const BARE_HOME_NAVIGATION = /^[\s\p{P}]*go\s+back[\s\p{P}]*$/iu;
+const BARE_HOME_NAVIGATION = /^[\s.!?。！？]*go\s+back[\s.!?。！？]*$/iu;
 
 // A whole-message "go <single word>" command has enough intent to safely
 // recover a one-key typo in "home" without making every view noun fuzzy. Keep
 // this keyboard-aware and substitution-only: broad edit distance would turn
 // unrelated commands such as "go dome" into navigation.
-const FUZZY_HOME_NAVIGATION = /^[\s\p{P}]*go(?:\s+to)?\s+([a-z]+)[\s\p{P}]*$/iu;
+const FUZZY_HOME_NAVIGATION =
+  /^[\s.!?。！？]*go(?:\s+to)?\s+([a-z]+)[\s.!?。！？]*$/iu;
 const QWERTY_NEIGHBORS: Readonly<Record<string, string>> = {
   e: "wsdr",
   h: "ygjb",

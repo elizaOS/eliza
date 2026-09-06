@@ -140,12 +140,12 @@ describe("matchViewCommand — negated navigation", () => {
 		expect(matchViewCommand(text)).toBeNull();
 	});
 
-	it("does not treat a negation prefix inside a word as negation", () => {
-		expect(matchViewCommand("notable request: open settings")).toBe("settings");
+	it("leaves a prefixed navigation mention to normal planning", () => {
+		expect(matchViewCommand("notable request: open settings")).toBeNull();
 	});
 
-	it("does not carry negation across a sentence boundary", () => {
-		expect(matchViewCommand("Never mind. Open settings")).toBe("settings");
+	it("leaves multiple sentences to normal planning", () => {
+		expect(matchViewCommand("Never mind. Open settings")).toBeNull();
 	});
 
 	it("does not confuse an unaccented Vietnamese noun with negation", () => {

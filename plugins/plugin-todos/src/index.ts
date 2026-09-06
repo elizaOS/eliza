@@ -4,18 +4,6 @@
  * schema, and the `TodosView` dashboard view) and re-exports its types, service,
  * schema, and views. Hard-depends on `@elizaos/plugin-sql`.
  */
-import type { Plugin } from "@elizaos/core";
-import { todosRuntimePlugin } from "./plugin.js";
-
-// The dashboard view now lives on `todosRuntimePlugin` (the boot-imported
-// `./plugin` export) so it registers at agent boot; this barrel is the same
-// plugin plus the React view re-exports below. Keep it a plain spread so the
-// view descriptor has a single source of truth.
-export const todosPlugin: Plugin = {
-  ...todosRuntimePlugin,
-};
-
-export default todosPlugin;
 
 export { todoAction } from "./actions/todo.js";
 export {
@@ -35,7 +23,11 @@ export {
   todosSchema,
   todosTable,
 } from "./db/schema.js";
-export { todosRuntimePlugin } from "./plugin.js";
+export {
+  todosPlugin,
+  todosPlugin as default,
+  todosRuntimePlugin,
+} from "./plugin.js";
 export { currentTodosProvider } from "./providers/current-todos.js";
 export {
   type CreateTodoInput,

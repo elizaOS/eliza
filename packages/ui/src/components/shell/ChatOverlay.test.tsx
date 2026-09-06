@@ -4865,6 +4865,43 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
 });
 
 describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
+  it("keeps an empty interrupted receipt visible after the turn becomes idle", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          phase: "idle",
+          messages: [
+            {
+              id: "stop-request",
+              role: "user",
+              content: "Open my appointments",
+              createdAt: 1,
+            },
+            {
+              id: "stop-receipt",
+              role: "assistant",
+              content: "",
+              interrupted: true,
+              createdAt: 2,
+            },
+            {
+              id: "ordinary-empty",
+              role: "assistant",
+              content: "",
+              createdAt: 3,
+            },
+          ],
+        })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.getByText("Response interrupted")).toBeTruthy();
+    expect(screen.queryByText("Thinking")).toBeNull();
+    expect(document.getElementById("chat-message-stop-receipt")).toBeTruthy();
+    expect(document.getElementById("chat-message-ordinary-empty")).toBeNull();
+  });
+
   function assistantTurnBody(messageId: string): HTMLElement {
     const body = document
       .getElementById(`chat-message-${messageId}`)

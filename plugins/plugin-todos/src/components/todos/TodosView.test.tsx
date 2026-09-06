@@ -139,7 +139,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("No todos yet");
+    await screen.findByText("No active todos");
     expect(screen.queryByText("Overdue task")).toBeNull();
   });
 
@@ -153,7 +153,7 @@ describe("TodosView — states", () => {
         }),
       }),
     );
-    await screen.findByText("No todos yet");
+    await screen.findByText("No active todos");
     expect(screen.queryByText("Done")).toBeNull();
   });
 
@@ -163,7 +163,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("No todos yet");
+    await screen.findByText("No active todos");
     fireEvent.click(agent("add"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });

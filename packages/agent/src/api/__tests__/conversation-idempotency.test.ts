@@ -1070,6 +1070,17 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(receipt).toBeDefined();
     expect((receipt?.content as { text?: string } | undefined)?.text).toBe("");
 
+    const reloaded = await runRoute("GET", SEND_PATH, state, {});
+    expect(reloaded.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          text: "",
+          interrupted: true,
+        }),
+      ]),
+    });
+
     const persistsAfterAbort = createMemory.mock.calls.length;
     const retry = await runRoute("POST", STREAM_PATH, state, body);
     // The retried key adopts the interrupted outcome: no second generation,
@@ -1116,6 +1127,17 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(receipt?.content).toMatchObject({
       text: "partial re",
       interrupted: true,
+    });
+
+    const reloaded = await runRoute("GET", SEND_PATH, state, {});
+    expect(reloaded.captured.payload).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: firstDone?.messageId,
+          text: "partial re",
+          interrupted: true,
+        }),
+      ]),
     });
 
     const retry = await runRoute("POST", STREAM_PATH, state, body);

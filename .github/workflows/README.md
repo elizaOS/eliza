@@ -439,6 +439,16 @@ checks source and process identity before and after collection, and reports only
 the official running-process image digest plus fixed worker-journal categories.
 It does not restart services, write host files, or change database state.
 
+The protected Personal preview emits `canonicalContainerNameSha256`, derived
+from the provider's canonical naming function inside the account-scoped read.
+Pass the selected target's digest as `target_container_sha256` to correlate
+timeout messages and complete health-diagnostic frames without exposing its ID.
+The digest is optional; an omitted digest leaves target attribution unavailable.
+Only closed container state, health, exit-code, auth-marker and boot-error
+categories are emitted. Console frames must be complete and adjacent; unexpected
+interleaving or unsupported escaping is counted as unparsed. These are historical
+log observations, not proof of the container's current state or image.
+
 The journal receipt covers at most the last 10,000 records from 24 hours. Counts
 are worker-wide, may include other provisioning attempts, and do not establish
 an individual agent's failure cause. Raw logs, process environment, hostnames,

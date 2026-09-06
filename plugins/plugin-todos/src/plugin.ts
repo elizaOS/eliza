@@ -1,13 +1,4 @@
-/**
- * Node-hosted Todos plugin. This is the export the agent boot loader imports
- * via the `./plugin` subpath (see `optional-plugin-imports.generated.ts`),
- * chosen over the `index.ts` barrel to avoid pulling the React view components
- * into the boot graph. Because `registerPluginViews` runs against this exact
- * export, the dashboard view descriptor must live here — the `views` entries
- * are string-only metadata (`bundlePath`/`componentExport` resolved and mounted
- * lazily at render time), so this module stays free of any UI import, exactly as
- * the sibling notes/calendar `./plugin` exports do.
- */
+/** Node-safe Todos descriptors: headless services and the host-discoverable dashboard declaration. */
 
 import type { Plugin } from "@elizaos/core";
 
@@ -25,6 +16,14 @@ export const todosRuntimePlugin: Plugin = {
   providers: [currentTodosProvider],
   services: [TodosService],
   schema: dbSchema,
+  async dispose(runtime) {
+    const service = runtime.getService<TodosService>(TodosService.serviceType);
+    await service?.stop();
+  },
+};
+
+export const todosPlugin: Plugin = {
+  ...todosRuntimePlugin,
   views: [
     {
       id: "todos",
@@ -46,10 +45,6 @@ export const todosRuntimePlugin: Plugin = {
       desktopTabEnabled: true,
     },
   ],
-  async dispose(runtime) {
-    const service = runtime.getService<TodosService>(TodosService.serviceType);
-    await service?.stop();
-  },
 };
 
-export default todosRuntimePlugin;
+export default todosPlugin;

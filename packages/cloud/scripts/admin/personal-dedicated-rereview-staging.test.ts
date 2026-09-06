@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  canonicalContainerNameSha256,
   diagnoseRereviewTarget,
   PersonalDedicatedRereviewOperatorError,
   previewDecisionEvidence,
@@ -12,6 +13,40 @@ import {
   resolveReceiptRow,
   runRereviewOperator,
 } from "./personal-dedicated-rereview-staging";
+import { summarizeJournal } from "./staging-worker-diagnostic.mjs";
+
+test("account preview correlation selects the same canonical container in worker evidence without exposing its identity", async () => {
+  const agentId = "11111111-1111-4111-8111-111111111111";
+  const otherId = "22222222-2222-4222-8222-222222222222";
+  const { getContainerName } = await import(
+    "@elizaos/cloud-shared/lib/services/docker-sandbox-utils"
+  );
+  const selectedName = getContainerName(agentId);
+  const otherName = getContainerName(otherId);
+  const digest = await canonicalContainerNameSha256(agentId);
+  const messages = [
+    `[docker-sandbox] Docker health check timed out after 60s for ${selectedName} on private-host`,
+    `[docker-sandbox] Docker health check timed out after 60s for ${otherName} on private-host`,
+    `[docker-sandbox] Health timeout diagnostics {\n  containerName: ${JSON.stringify(selectedName)},\n  nodeId: "private-node",\n  diagnostics: ${JSON.stringify("--- inspect ---\nstate=exited health=unhealthy exit=137 error=\n--- authkey marker ---\n--- logs ---\nOutOfMemory private-data\n")},\n}`,
+  ];
+  const result = summarizeJournal(
+    messages.map((MESSAGE) => JSON.stringify({ MESSAGE })).join("\n"),
+    digest,
+  );
+  expect(result.counts.docker_health_timeout).toBe(2);
+  expect(result.targetHealthTimeouts.docker).toBe(1);
+  expect(result.healthTimeouts.target.frames).toBe(1);
+  expect(result.healthTimeouts.target.observations[0].exitCode).toBe(137);
+  expect(
+    result.healthTimeouts.target.observations[0].bootSignals.out_of_memory,
+  ).toBe(true);
+  expect(JSON.stringify(result)).not.toContain(agentId);
+  expect(JSON.stringify(result)).not.toContain(otherId);
+  expect(JSON.stringify(result)).not.toContain("private");
+  await expect(
+    canonicalContainerNameSha256("private-invalid-identity"),
+  ).rejects.toMatchObject({ code: "container_correlation_identity_invalid" });
+});
 
 const resolved = {
   organizationId: "10000000-0000-4000-8000-000000000001",
