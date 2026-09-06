@@ -51,7 +51,12 @@ creates the stanza and verifies archiving before taking the initial full backup.
 Weekly full and daily differential timers follow. A recurring check exercises
 archive delivery and fails visibly in systemd if delivery does not complete.
 No WAL queue-size discard cutoff is configured. Storage exhaustion and failed
-checks still require the production alert integration.
+checks still require the production alert integration. The check also rejects
+missing, failed or previous-generation backup receipts, a latest completed
+backup older than 26 hours, a full backup older than nine days, and timestamps
+in the future. These are schedule-health thresholds, not RPO measurements.
+An explicit empty config-include directory prevents unrelated pgBackRest
+configuration fragments from overriding the managed repository settings.
 
 Automatic expiry is disabled until independently scoped deletion authority and
 restore proof are in place. The configured 30-day retention is the proposed
