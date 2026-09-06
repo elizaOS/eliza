@@ -4528,6 +4528,9 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     },
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  if (response.status === 401) {
+    await clearStoredStewardTokenIfCurrent(options.authToken);
+  }
   if (!response.ok) {
     throw Object.assign(
       new Error(
