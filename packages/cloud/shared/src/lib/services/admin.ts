@@ -5,6 +5,7 @@
  * Default anvil wallet is auto-admin in devnet (not production).
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { apiKeysRepository } from "../../db/repositories";
@@ -39,13 +40,22 @@ async function invalidateUserInferenceContext(userId: string): Promise<void> {
       columns: { steward_user_id: true, organization_id: true },
     }),
   ]);
-  await Promise.all([
+  const [, , outboundInvalidated] = await Promise.all([
     invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash)),
     invalidateInferenceSessionAuthContexts(user?.steward_user_id ? [user.steward_user_id] : []),
     user?.organization_id
       ? invalidateOutboundMessageStanding(user.organization_id, userId)
       : Promise.resolve(true),
   ]);
+  if (!outboundInvalidated) {
+    throw new ElizaError(
+      "Outbound moderation standing invalidation not confirmed; retry the moderation transition",
+      {
+        code: "MODERATION_OUTBOUND_INVALIDATION_UNCONFIRMED",
+        context: { userId, organizationId: user?.organization_id },
+      },
+    );
+  }
 }
 
 // Default anvil wallet - admin in devnet only
