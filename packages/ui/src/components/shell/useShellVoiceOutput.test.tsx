@@ -4,6 +4,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
+import type { VoiceTtsError } from "../../voice/voice-chat-types";
 
 // Hoisted so the vi.mock factories below (which are lifted above imports) can
 // reference them. `cfg` lets individual tests vary speaking / bootstrap state.
@@ -14,6 +15,7 @@ const hoisted = vi.hoisted(() => ({
   voiceChatOptions: null as Record<string, unknown> | null,
   cfg: {
     isSpeaking: false,
+    ttsError: null as VoiceTtsError | null,
     voiceBootstrapTick: 1,
     // Full voice config the useVoiceConfig mock returns; tests vary `asr` to
     // check the hook surfaces the resolved ASR provider for the capture path.
@@ -29,6 +31,7 @@ vi.mock("../../hooks/useVoiceChat", () => ({
       queueAssistantSpeech: hoisted.queueAssistantSpeech,
       stopSpeaking: hoisted.stopSpeaking,
       isSpeaking: hoisted.cfg.isSpeaking,
+      ttsError: hoisted.cfg.ttsError,
       // Unused by the output hook, present to satisfy the shape.
       isListening: false,
       captureMode: "idle",
@@ -105,6 +108,7 @@ beforeEach(() => {
   hoisted.speak.mockClear();
   hoisted.stopSpeaking.mockClear();
   hoisted.cfg.isSpeaking = false;
+  hoisted.cfg.ttsError = null;
   hoisted.cfg.voiceBootstrapTick = 1;
   hoisted.cfg.voiceConfig = { provider: "local-inference" };
   hoisted.voiceChatOptions = null;
@@ -113,6 +117,26 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useShellVoiceOutput", () => {
+  it("exposes a speech failure and clears it when the engine recovers", () => {
+    const { result, rerender } = render(BASE);
+    expect(result.current.ttsError).toBeNull();
+    hoisted.cfg.ttsError = {
+      engine: "speech-sequence",
+      atMs: 1,
+      message:
+        "The reply changed after speech was queued. Play the completed reply again.",
+    };
+    rerender({ ...BASE });
+    expect(result.current.ttsError?.message).toContain(
+      "Play the completed reply again",
+    );
+    act(() => result.current.speak("The completed reply."));
+    expect(hoisted.speak).toHaveBeenCalledWith("The completed reply.");
+    hoisted.cfg.ttsError = null;
+    rerender({ ...BASE });
+    expect(result.current.ttsError).toBeNull();
+  });
+
   it("routes manual shell playback through the realtime Cartesia gateway", () => {
     const { result } = render({ ...BASE, realtimeVoiceEnabled: true });
 

@@ -34,6 +34,7 @@ import {
 } from "motion/react";
 import * as React from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
+import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import {
   highlightSearchMatches,
   highlightSearchMessage,
@@ -1379,6 +1380,7 @@ export function ChatOverlay({
     setTranscriptSessionSink,
     setComposerHasDraft,
     needsAudioUnlock,
+    ttsError,
     unlockAudio,
     openSettings,
     navigateHome,
@@ -5847,6 +5849,12 @@ export function ChatOverlay({
           pointerEvents: "none",
         }}
       />
+
+      {ttsError ? (
+        <div className="pointer-events-auto relative mb-2 w-full max-w-3xl">
+          <ChatVoiceStatusBar status="idle" ttsError={ttsError} visible />
+        </div>
+      ) : null}
 
       {/* Audio-unlock prompt. When autoplay policy blocks the first spoken
           reply, the ambient overlay would otherwise go silent with no recourse

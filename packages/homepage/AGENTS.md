@@ -45,7 +45,6 @@ packages/homepage/
       brand/eliza-logo.tsx      Eliza SVG logo component (ElizaLogo)
       ShaderBackground/         react-three/fiber WebGL gradient wave (gradientWaveMaterial + ShaderBackground, lazy-loaded)
       ChatUI/renderChatToCanvas.ts  Canvas-rendered chat bubble surface for the onboarding demo
-      ModelViewers/ModelB.tsx   3D model viewer (react-three/fiber); eager import in leaderboard
       login/phone-number-input.tsx  E.164 phone input with country picker
       login/country-flag.tsx    Country flag glyph for the phone picker
       providers/query-provider.tsx  TanStack Query client wrapper
@@ -165,7 +164,7 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 
 - **`src/generated/release-data.ts` is auto-generated.** Never edit it by hand; it is overwritten on every `dev`/`build`. Run the generator script if you need fresh data.
 - **Vite aliases resolve `@elizaos/ui` sub-paths to source.** There is no bare `@elizaos/ui` alias; only explicit sub-path aliases (`@elizaos/ui/cloud-ui`, `@elizaos/ui/button`, `@elizaos/ui/input`, `@elizaos/ui/dropdown-menu`, `@elizaos/ui/i18n/region`, `@elizaos/ui/product-switcher`) map to `packages/ui/src/`. Use those sub-path imports; adding a new sub-path requires a new alias entry in `vite.config.ts`.
-- **ShaderBackground and VideoCall are lazy-loaded** in `landing.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL/canvas code. `ModelB` sits behind its own Suspense boundary because it drives the messaging surface but must not block the page chrome while its 3D asset loads.
+- **ShaderBackground is lazy-loaded** in `landing.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL code.
 - **`packages/app` is the only frontend host.** Do not restore homepage
   `dev`, `build`, `preview`, or Pages deployment scripts. Public headers,
   redirects, assets, and Functions behavior must be emitted by the app.

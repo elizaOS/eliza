@@ -316,6 +316,22 @@ describeE2E("Group D — /api/elevenlabs/stt", () => {
     expect(res.status).toBe(400);
   });
 
+  test("validation: malformed multipart with auth returns 400", async () => {
+    const res = await fetch(url("/api/elevenlabs/stt"), {
+      method: "POST",
+      headers: {
+        ...bearerOnlyHeaders(),
+        "Content-Type": "multipart/form-data",
+      },
+      body: "not a multipart body",
+      signal: AbortSignal.timeout(30_000),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "Invalid multipart form data",
+    });
+  });
+
   test("validation: non-multipart body with auth returns 400", async () => {
     const res = await api.post("/api/elevenlabs/stt", "not-json", {
       headers: { ...bearerHeaders(), "Content-Type": "application/json" },

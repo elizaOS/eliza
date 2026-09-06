@@ -1,19 +1,21 @@
 /**
- * Billing Settings API (v1)
- *
- * GET/PUT /api/v1/billing/settings
- * Manage auto-top-up and billing settings.
- *
- * Auto-top-up powers autonomous-agent continuity: when balance falls below
- * threshold, the saved Stripe payment method is charged. Configuring this via
- * API lets agents/integrators tune their own billing without the dashboard.
+ * Reads tenant billing settings and admits session-only manager changes.
+ * The service rechecks current authority after validation and persists the
+ * auto-top-up and earnings changes together before invalidating billing caches.
  */
 
 import { Hono } from "hono";
 import { z } from "zod";
 import { organizationsRepository } from "@/db/repositories";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  ApiError,
+  ForbiddenError,
+  failureResponse,
+} from "@/lib/api/cloud-worker-errors";
+import {
+  requireCurrentBillingManagerSession,
+  requireUserOrApiKeyWithOrg,
+} from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
@@ -21,6 +23,8 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AUTO_TOP_UP_LIMITS,
+  AutoTopUpSettingsPolicyError,
+  AutoTopUpSettingsUnavailableError,
   AutoTopUpSettingsValidationError,
   autoTopUpService,
 } from "@/lib/services/auto-top-up";
@@ -58,6 +62,14 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       organizationsRepository.findById(user.organization_id),
     ]);
 
+    if (!org) {
+      throw new ApiError(
+        503,
+        "service_unavailable",
+        "Billing settings are unavailable",
+      );
+    }
+    c.header("Cache-Control", "no-store");
     return c.json({
       success: true,
       settings: {
@@ -67,7 +79,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
           threshold: autoTopUpSettings.threshold,
           hasPaymentMethod: autoTopUpSettings.hasPaymentMethod,
         },
-        payAsYouGoFromEarnings: org?.pay_as_you_go_from_earnings ?? true,
+        payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
         limits: {
           minAmount: AUTO_TOP_UP_LIMITS.MIN_AMOUNT,
           maxAmount: AUTO_TOP_UP_LIMITS.MAX_AMOUNT,
@@ -77,6 +89,17 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       },
     });
   } catch (error) {
+    // error-policy:J1 transport boundary returns a sanitized failure.
+    if (error instanceof AutoTopUpSettingsUnavailableError) {
+      return failureResponse(
+        c,
+        new ApiError(
+          503,
+          "service_unavailable",
+          "Billing settings are unavailable",
+        ),
+      );
+    }
     logger.error("[Billing Settings API] Error getting settings:", error);
     return failureResponse(c, error);
   }
@@ -84,7 +107,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
 app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const user = await requireCurrentBillingManagerSession(c);
 
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {
@@ -107,71 +130,41 @@ app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
 
     const { autoTopUp, payAsYouGoFromEarnings } = validation.data;
 
-    if (autoTopUp) {
-      try {
-        await autoTopUpService.updateSettings(user.organization_id, {
-          enabled: autoTopUp.enabled,
-          amount: autoTopUp.amount,
-          threshold: autoTopUp.threshold,
-        });
-      } catch (err) {
-        if (err instanceof AutoTopUpSettingsValidationError) {
-          return c.json(
-            {
-              success: false,
-              error:
-                "Valid auto top-up values are required to replace corrupt settings.",
-              code: "validation_error" as const,
-            },
-            400,
-          );
-        }
-        // Allow domain-specific validation messages through (e.g. "Cannot
-        // enable auto-top-up without a payment method") — they don't leak
-        // internals.
-        const message = err instanceof Error ? err.message : "";
-        const isValidationError =
-          message.includes("Cannot enable") ||
-          message.includes("must be") ||
-          message.includes("cannot exceed");
-        if (isValidationError) {
-          return c.json(
-            {
-              success: false,
-              error: message,
-              code: "validation_error" as const,
-            },
-            400,
-          );
-        }
-        throw err;
+    const authorizeMutation = async (): Promise<void> => {
+      const current = await requireCurrentBillingManagerSession(c);
+      if (
+        current.id !== user.id ||
+        current.organization_id !== user.organization_id
+      ) {
+        throw ForbiddenError("Organization billing authority changed");
       }
-
-      logger.info("[Billing Settings API] Updated auto-top-up settings", {
-        organizationId: user.organization_id,
-        userId: user.id,
-        settings: autoTopUp,
-      });
-    }
-
-    if (payAsYouGoFromEarnings !== undefined) {
-      await organizationsRepository.update(user.organization_id, {
-        pay_as_you_go_from_earnings: payAsYouGoFromEarnings,
-        updated_at: new Date(),
-      });
-
-      logger.info("[Billing Settings API] Updated pay-as-you-go toggle", {
-        organizationId: user.organization_id,
-        userId: user.id,
-        enabled: payAsYouGoFromEarnings,
-      });
-    }
+    };
+    await autoTopUpService.updateSettings(
+      user.organization_id,
+      { ...autoTopUp, payAsYouGoFromEarnings },
+      authorizeMutation,
+    );
+    logger.info("[Billing Settings API] Updated billing settings", {
+      organizationId: user.organization_id,
+      userId: user.id,
+      command: "billing.settings.update",
+      decision: "authorized",
+      outcome: "persisted",
+    });
 
     const [updatedSettings, org] = await Promise.all([
       autoTopUpService.getSettings(user.organization_id),
       organizationsRepository.findById(user.organization_id),
     ]);
 
+    if (!org) {
+      throw new ApiError(
+        503,
+        "service_unavailable",
+        "Billing settings are unavailable",
+      );
+    }
+    c.header("Cache-Control", "no-store");
     return c.json({
       success: true,
       message: "Billing settings updated successfully",
@@ -182,10 +175,38 @@ app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
           threshold: updatedSettings.threshold,
           hasPaymentMethod: updatedSettings.hasPaymentMethod,
         },
-        payAsYouGoFromEarnings: org?.pay_as_you_go_from_earnings ?? true,
+        payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
       },
     });
   } catch (error) {
+    // error-policy:J1 transport boundary maps typed settings validation safely.
+    if (error instanceof AutoTopUpSettingsValidationError) {
+      return c.json(
+        {
+          success: false,
+          error:
+            "Valid auto top-up values are required to replace corrupt settings.",
+          code: "validation_error",
+        },
+        400,
+      );
+    }
+    if (error instanceof AutoTopUpSettingsPolicyError) {
+      return c.json(
+        { success: false, error: error.message, code: "validation_error" },
+        400,
+      );
+    }
+    if (error instanceof AutoTopUpSettingsUnavailableError) {
+      return failureResponse(
+        c,
+        new ApiError(
+          503,
+          "service_unavailable",
+          "Billing settings are unavailable",
+        ),
+      );
+    }
     logger.error("[Billing Settings API] Error updating settings:", error);
     return failureResponse(c, error);
   }

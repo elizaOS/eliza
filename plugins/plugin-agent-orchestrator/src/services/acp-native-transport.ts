@@ -235,6 +235,13 @@ export class NativeAcpClient {
         clientCapabilities: {
           fs: { readTextFile: true, writeTextFile: true },
           terminal: this.opts.terminal !== false,
+          // Codex ACP's negotiated extension keeps provider diagnostics separate
+          // from model response chunks; AcpService retains the typed records.
+          _meta: {
+            jetbrains: {
+              air: { version: 1, capabilities: ["sessionFailure"] },
+            },
+          },
         },
         clientInfo: {
           name: "@elizaos/plugin-agent-orchestrator",

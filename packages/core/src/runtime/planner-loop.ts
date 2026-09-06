@@ -45,6 +45,8 @@ import type {
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
 	hasAppliedUserFacingEffectProof,
+	resolveAppliedUserFacingEffectReceipts,
+	resolveUserFacingEffectReceipts,
 	revertedEffectReceiptIds,
 } from "../types/effects";
 import {
@@ -1724,7 +1726,7 @@ async function runPlannerLoopIterations(
 				}
 			}
 			// Loop-breaker: a non-terminal call that exactly repeats one already
-			// SUCCEEDED this turn (same name + args) cannot return new data, and one
+			// settled this turn (same name + args) must not repeat a mutation, and one
 			// that already FAILED with the structural non-retryable marker cannot
 			// start succeeding mid-turn. Execute only genuinely-fresh calls; when
 			// every call this iteration is such a repeat, count a dead round and —
@@ -1745,7 +1747,7 @@ async function runPlannerLoopIterations(
 					instructionParts.push(
 						"You already have a successful result this turn for " +
 							`${redundantCalls.map((call) => call.name).join(", ")} with these ` +
-							"exact arguments. Re-running it cannot return new information.",
+							"exact arguments. Do not repeat the settled operation; use its receipt.",
 					);
 				}
 				if (nonRetryableCalls.length > 0) {
@@ -2179,10 +2181,28 @@ async function runPlannerLoopIterations(
 			iteration,
 			redactDiagnosticText,
 		);
-		const protocolFailureRelay = deterministicEvaluatorProtocolFailureRelay(
-			evaluator,
-			trajectory,
-		);
+		// A malformed evaluator reply cannot complete explicitly pending work.
+		// A retryable boundary failure also permits replanning from the complete
+		// outcome; the model must choose safe recovery rather than having the loop
+		// replay a mutation. Existing failure and execution limits still apply.
+		const unresolvedFailure =
+			latestUnresolvedFailedNonTerminalToolStep(trajectory);
+		const retryableFailure =
+			unresolvedFailure?.result?.failureProvenance?.retryable === true;
+		const pendingInteraction =
+			retryableFailure && unresolvedFailure
+				? latestActionablePendingInteractionAfter(trajectory, unresolvedFailure)
+				: undefined;
+		const shouldReplanPendingWork =
+			(lastPlannerExplicitCompleted === false ||
+				trajectory.plannedQueue.length > 0) &&
+			(!unresolvedFailure || retryableFailure);
+		const protocolFailureRelay =
+			evaluator.protocolFailure === true && pendingInteraction !== undefined
+				? pendingInteraction
+				: shouldReplanPendingWork
+					? undefined
+					: deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
 		if (protocolFailureRelay) {
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
@@ -5873,16 +5893,12 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
 }
 
 /**
- * Split a set of planned non-terminal calls into those that are genuinely new
- * this turn and those that exactly repeat a call (same tool name + arguments)
- * which either already SUCCEEDED — a repeat cannot return new information — or
- * already FAILED with the structural `data.retryable === false` marker — a
- * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
- * that cannot change within the turn. Neither kind is re-executed. Legacy
- * archived steps still count, so a settled call stays settled after loading
- * an older persisted trajectory. In coding mode, a successful WRITE/EDIT
- * invalidates earlier successes because an identical inspection can now
- * return changed source.
+ * Separate settled operations from executable calls across the complete turn.
+ * Successful mutations and legacy unclassified results remain deduplicated.
+ * Canonical non-replayed no-op/preview receipts and explicit read-only results
+ * are observations, not immutable effects: repeat them to re-observe local or
+ * external state. Replayed no-ops retain their committed operation identity.
+ * Coding mutations retain the existing inspection invalidation behavior.
  */
 export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
@@ -5898,6 +5914,16 @@ export function partitionRedundantSucceededCalls(
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
 		if (step.result.success === true) {
+			const receipts = step.result.effectReceipts;
+			const observation =
+				receipts !== undefined && receipts.length > 0
+					? receipts.every(
+							(receipt) =>
+								(receipt.outcome === "noop" && !receipt.idempotency.replayed) ||
+								receipt.outcome === "preview",
+						)
+					: step.result.data?.readOnlyOperation === true;
+			if (observation) continue;
 			// A successful coding mutation can change the answer to any earlier
 			// inspection. Clear those settled identities before recording the
 			// mutation itself so READ-after-EDIT remains executable while an exact
@@ -6872,11 +6898,14 @@ function missingInputPlannerTerminalCandidates(
 function deterministicRequiresConfirmationRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...trajectory.steps].reverse()) {
+	const steps = allTrajectorySteps(trajectory);
+	for (let index = steps.length - 1; index >= 0; index--) {
+		const step = steps[index];
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		const result = step.result;
 		if (!result) continue;
 		if (!hasRequiresConfirmationMarker(result)) continue;
+		if (previewWasCommitted(step, index, steps)) continue;
 
 		const candidate = sanitizePlannerMessage(
 			result.userFacingText ?? result.text,
@@ -6957,6 +6986,52 @@ function allTrajectorySteps(
 	return [...(trajectory.archivedSteps ?? []), ...trajectory.steps];
 }
 
+/** A later bound commit supersedes only the same keyed operation preview. */
+function previewWasCommitted(
+	previewStep: PlannerStep,
+	previewIndex: number,
+	steps: PlannerStep[],
+): boolean {
+	if (!previewStep.result || !previewStep.toolCall) return false;
+	const previewReceipts = resolveUserFacingEffectReceipts(previewStep.result);
+	if (
+		!previewReceipts?.length ||
+		previewReceipts.some(
+			(receipt) =>
+				receipt.outcome !== "preview" || receipt.idempotency.key === null,
+		)
+	)
+		return false;
+	const allReceipts = steps.flatMap(
+		(step) => step.result?.effectReceipts ?? [],
+	);
+	return previewReceipts.every((preview) =>
+		steps.some((step, index) => {
+			if (
+				index <= previewIndex ||
+				step.result?.success !== true ||
+				step.toolCall?.name.toUpperCase() !==
+					previewStep.toolCall?.name.toUpperCase()
+			)
+				return false;
+			// Require proof owned by this later result, then check all-turn rollback.
+			const committed = resolveAppliedUserFacingEffectReceipts(step.result);
+			if (
+				!committed ||
+				!resolveAppliedUserFacingEffectReceipts(step.result, allReceipts)
+			)
+				return false;
+			return (
+				committed.some(
+					(receipt) =>
+						receipt.operation === preview.operation &&
+						receipt.idempotency.key === preview.idempotency.key,
+				) === true
+			);
+		}),
+	);
+}
+
 /**
  * Returns the canonical user-facing text from a trajectory whose
  * `verifiedUserFacing` opt-in is unambiguous: exactly one completed tool step
@@ -6967,7 +7042,8 @@ function allTrajectorySteps(
  * second tool emitted a verified canonical reply must still echo the verified
  * reply. LifeOps can draft more than once while refining a request; the latest
  * verified preview is the user-complete state even though `success:false`
- * correctly records that nothing was persisted yet.
+ * correctly records that nothing was persisted yet. A later canonical commit
+ * for every keyed preview operation releases that preview's reply authority.
  *
  * Tools that emit structured data the evaluator could paraphrase
  * incorrectly (paths, ids, counts, numeric metrics) set the flag so the
@@ -6979,7 +7055,9 @@ function allTrajectorySteps(
 export function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of allTrajectorySteps(trajectory).reverse()) {
+	const steps = allTrajectorySteps(trajectory);
+	for (let index = steps.length - 1; index >= 0; index--) {
+		const step = steps[index];
 		const result = step.result;
 		if (
 			result?.verifiedUserFacing === true &&
@@ -6988,7 +7066,10 @@ export function singleVerifiedUserFacingToolResultText(
 			const verifiedConfirmationPreviewText = getNonEmptyString(
 				result.userFacingText,
 			);
-			if (verifiedConfirmationPreviewText) {
+			if (
+				verifiedConfirmationPreviewText &&
+				!previewWasCommitted(step, index, steps)
+			) {
 				return verifiedConfirmationPreviewText;
 			}
 		}
@@ -7185,10 +7266,12 @@ function combinedVerifiedToolTextAndProse(
 	modelText: string | undefined,
 ): string | undefined {
 	if (!verifiedToolText || !modelText) return undefined;
-	const hasVerifiedConfirmationPreview = trajectory.steps.some(
-		(step) =>
+	const steps = allTrajectorySteps(trajectory);
+	const hasVerifiedConfirmationPreview = steps.some(
+		(step, index) =>
 			step.result?.verifiedUserFacing === true &&
-			hasRequiresConfirmationMarker(step.result),
+			hasRequiresConfirmationMarker(step.result) &&
+			!previewWasCommitted(step, index, steps),
 	);
 	if (hasVerifiedConfirmationPreview) return undefined;
 	const verified = verifiedToolText.trim();
@@ -7803,7 +7886,7 @@ function userSafeFailureReport(
 	// final-answer-only extensions ("Okay", "got it") open legitimate failure
 	// diagnoses, and rejecting those would regress #17948's
 	// model-diagnosis-over-generic-fallback contract.
-	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+	if (hasInFlightActionClaim(candidate)) {
 		return undefined;
 	}
 	if (PROGRESS_ONLY_OPENER_RE.test(candidate)) return undefined;
@@ -8049,12 +8132,52 @@ const REFUSAL_MARKERS = [
 // work happens, so any "I'm doing X now" is a false promise.
 const IN_FLIGHT_ACTION_CLAIM = [
 	/\blet me\b/i,
-	/\bI(?:'ll| will| am going to|'m going to|'m gonna| am gonna)\b/i,
 	/\bI'?m\s+(?:checking|fetching|searching|looking|pulling|reviewing|gathering|working|getting|grabbing|loading|digging|querying)\b/i,
 	/\b(?:one|just a)\s+(?:sec|second|moment|min|minute)\b/i,
 	/\bplease (?:hold|wait)\b/i,
 	/\b(?:be right back|brb|hang on)\b/i,
 ];
+
+/** Reject imminent work while allowing offers contingent on a new user input. */
+function hasInFlightActionClaim(candidate: string): boolean {
+	// Quoted examples and titles are data, not promises or user-input conditions.
+	// Mask them only for classification; the complete original answer is delivered.
+	const unquoted = candidate.replace(
+		/"(?:\\.|[^"\\])*"|“[^”]*”|‘[^’]*’|(?<!\w)'(?:\\.|[^'\\])*'(?!\w)|`[^`]*`/g,
+		(quoted) => " ".repeat(quoted.length),
+	);
+	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(unquoted)))
+		return true;
+	const future =
+		/\bI(?:['’]ll| will| am going to|['’]m going to|['’]m gonna| am gonna)\b/gi;
+	// These spans are only classification inputs; the delivered answer remains
+	// complete. Each promise must own its condition, rather than borrowing a
+	// condition from an unrelated sentence or a later promise in the same clause.
+	return (unquoted.match(/[^.!?;\n]+/g) ?? []).some((clause) => {
+		const promises = [...clause.matchAll(future)];
+		return promises.some((promise, index) => {
+			const before = index === 0 ? clause.substring(0, promise.index) : "";
+			const after = clause.substring(
+				promise.index + promise[0].length,
+				promises[index + 1]?.index ?? clause.length,
+			);
+			const precedingRequest =
+				/^\s*(?:if|when|once|after)\s+you\b/i.test(before) &&
+				/\b(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+					before,
+				);
+			const followingRequest =
+				/\b(?:if|when|once|after)\s+you\s+(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+					after,
+				);
+			const requestedInput =
+				/^\s*(?:(?:just|please)\s+)?(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b[\s\S]*\band\s*$/i.test(
+					before,
+				);
+			return !precedingRequest && !followingRequest && !requestedInput;
+		});
+	});
+}
 
 // Gate for surfacing native planner free-text as a forced-tool-exhaustion
 // refusal (#9874 item 3). Returns the sanitized message ONLY when it POSITIVELY
@@ -8075,7 +8198,7 @@ function userSafeRefusalCandidate(
 	}
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (looksLikePreToolThought(candidate)) return undefined;
-	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+	if (hasInFlightActionClaim(candidate)) {
 		return undefined;
 	}
 	return candidate;
@@ -8132,7 +8255,7 @@ function userSafeCapturedAnswerCandidate(
 	if (!candidate) return undefined;
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (looksLikePreToolThought(candidate)) return undefined;
-	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+	if (hasInFlightActionClaim(candidate)) {
 		return undefined;
 	}
 	if (PROGRESS_ONLY_ANSWER_REJECT.test(candidate)) return undefined;

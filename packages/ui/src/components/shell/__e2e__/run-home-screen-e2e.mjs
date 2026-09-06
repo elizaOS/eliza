@@ -540,7 +540,7 @@ async function readHomeDarkForegrounds(page) {
   });
 }
 const ATTENTION_HOME_TEST_IDS = [
-  "home-notification-center",
+  "notification-row",
   "chat-widget-todos",
   "todo-goal-attention-row",
   "chat-widget-calendar-upcoming",
@@ -1451,6 +1451,61 @@ try {
   }
   await perfMobile.close();
   await perfContext.close();
+
+  // A short window must scroll the dashboard from its header as well as cards.
+  const shortHome = await browser.newPage({
+    viewport: { width: 844, height: 390 },
+    reducedMotion: "reduce",
+  });
+  shortHome.on("pageerror", recordPageError);
+  await shortHome.goto(`${url}?homeData=attention`);
+  await shortHome.getByTestId("chat-widget-todos").waitFor();
+  const clockBefore = await shortHome.getByTestId("default-home-widgets").boundingBox();
+  await shortHome.mouse.move(140, 60);
+  await shortHome.mouse.wheel(0, 180);
+  await shortHome.waitForFunction(() => {
+    const column = document.querySelector('[data-testid="home-content-column"]');
+    return column?.parentElement?.scrollTop > 0;
+  }, undefined, { timeout: 3000 }).catch(() => {
+    // error-policy:J4 The geometry assertion below reports an unavailable scroll.
+    return false;
+  });
+  const clockAfter = await shortHome.getByTestId("default-home-widgets").boundingBox();
+  assert(
+    clockBefore && clockAfter && clockAfter.y < clockBefore.y - 40,
+    "short home scrolls from the clock instead of trapping Today in a tiny region",
+  );
+  for (const testId of ["todo-goal-attention-row", "today-todo-row"]) {
+    const row = shortHome.getByTestId(testId);
+    await row.scrollIntoViewIfNeeded();
+    const reachable = await row.evaluate((element) => {
+      const frame = document.querySelector("[data-home-scroll-frame]");
+      if (!frame) return false;
+      const bounds = frame.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return rect.top >= bounds.top && rect.bottom <= bounds.bottom && element.contains(hit);
+    });
+    assert(reachable, `short home exposes the complete ${testId} hit area above chat clearance`);
+  }
+  await snap(shortHome, "short-home-scrolled");
+  await shortHome.close();
+
+  const shortQuietHome = await browser.newPage({
+    viewport: { width: 844, height: 390 },
+    reducedMotion: "reduce",
+  });
+  shortQuietHome.on("pageerror", recordPageError);
+  await shortQuietHome.goto(`${url}?homeData=quiet`);
+  await shortQuietHome.getByTestId("notifications-empty").waitFor({ state: "attached" });
+  await dragVertical(shortQuietHome.getByTestId("home-screen"), 130);
+  await shortQuietHome.locator('[data-testid="home-notification-list"][data-shade-mode="expanded"]').waitFor({ timeout: 5000 });
+  assert(
+    await shortQuietHome.getByTestId("notifications-empty").isVisible(),
+    "short quiet home still reveals its empty notification shade through a pull gesture",
+  );
+  await snap(shortQuietHome, "short-home-empty-shade-expanded");
+  await shortQuietHome.close();
 
   // Desktop width
   const desktop = await browser.newPage({

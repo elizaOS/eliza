@@ -260,3 +260,14 @@ This is an explicit hardware/operator smoke rather than a pull-request check.
 Run it on the Linux host that owns the staged fused library and model assets.
 
 For agent-facing documentation see `CLAUDE.md` / `AGENTS.md` in this directory.
+
+### Complete Kokoro speech
+
+Kokoro speech requires a fused library with the ABI v14 IPA entry or newer.
+The backend preflights the entire utterance, divides oversized phoneme sequences
+at word boundaries, and synthesizes every segment in order. It dispatches the
+checked IPA directly even on espeak-linked hosts. An indivisible oversized word
+raises `KOKORO_PHRASE_TOO_LARGE` before any audio; unsupported older libraries
+raise `KOKORO_IPA_ABI_REQUIRED`. Rebuild the fused library to resolve that error.
+Audio allocation exhaustion is reported as `KOKORO_AUDIO_CAPACITY_EXCEEDED`;
+a clipped waveform is never returned as a complete phrase.

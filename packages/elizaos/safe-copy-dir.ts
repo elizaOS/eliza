@@ -6,17 +6,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export const DEFAULT_SKIP_ENTRIES = new Set([
-  ".DS_Store",
-  ".git",
-  ".turbo",
-  ".vite",
-  "artifacts",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-]);
+import { DEFAULT_SKIP_ENTRIES } from "./src/template-copy-policy.js";
+
+export { DEFAULT_SKIP_ENTRIES } from "./src/template-copy-policy.js";
 
 function assertCopyPathContained(
   root: string,

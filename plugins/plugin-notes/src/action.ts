@@ -130,6 +130,13 @@ function committed(data: Record<string, unknown>): ActionResult {
 
 export const notesAction: Action = {
   name: "NOTES",
+  tags: [
+    "resource:tracked-work",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+  ],
   contexts: ["notes", "general"],
   similes: [
     "NOTE",
@@ -196,7 +203,7 @@ export const notesAction: Action = {
               .includes(normalizedTopic),
           )
         : notes;
-      return committed({
+      const result = committed({
         op,
         count: matches.length,
         total: notes.length,
@@ -204,6 +211,17 @@ export const notesAction: Action = {
         ...(topic ? { topic } : {}),
         notes: matches,
       });
+      if (matches.length > 0) return result;
+      // Preserve the scoped read as model-facing evidence. The ordinary planner
+      // generates the reply; a filtered miss never authorizes a broader empty
+      // state claim or a preset action-owned answer.
+      return {
+        ...result,
+        data: {
+          ...result.data,
+          claimGrounding: ["empty_tracked_state"],
+        },
+      };
     }
 
     // The service still receives one user-authored content value. Providers

@@ -1,4 +1,5 @@
-// Defines cloud shared pricing behavior for backend service consumers.
+/** Resolves model billing identities and delegates costs to the authoritative pricing catalog. */
+import { CEREBRAS_NATIVE_TEXT_MODELS } from "./models/catalog";
 import { normalizeProviderKey } from "./providers/model-id-translation";
 import {
   calculateImageGenerationCostFromCatalog,
@@ -96,9 +97,7 @@ export function getProviderFromModel(model: string): string {
   }
 
   // Handle non-prefixed format: "gpt-5-mini"
-  if (model === "qwen-3.8-27b") return "cerebras";
-  if (model === "gemma-4-31b") return "cerebras";
-  if (model === "gpt-oss-120b") return "cerebras";
+  if (CEREBRAS_NATIVE_TEXT_MODELS.some((nativeModel) => nativeModel === model)) return "cerebras";
   // bge-* embeds on the platform-operated TEI sidecar
   // (packages/cloud/services/embeddings), matching its "selfhosted"
   // pricing/billing rows — not on an external provider.
