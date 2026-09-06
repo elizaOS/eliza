@@ -544,7 +544,7 @@ describe("Worker R2 immutable exact-key upload", () => {
       putImmutableObject({
         key,
         body: bytes(65),
-        deadline: new Date(Date.now() + 15),
+        deadline: new Date(Date.now() + 500),
       }),
       "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
     );
