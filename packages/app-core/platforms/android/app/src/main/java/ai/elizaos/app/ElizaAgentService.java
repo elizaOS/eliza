@@ -2432,9 +2432,12 @@ public class ElizaAgentService extends Service {
             }
             if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
                 agentEnv.put("ELIZA_AOSP_BUILD", "1");
-                agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
-                // Branded AOSP unconditionally opts the bun agent into native
-                // inference. If neither the fused libelizainference.so nor the
+                // Preserve JNI delegation selected above. ELIZA_LOCAL_LLAMA
+                // disables the mobile bridge and selects the musl FFI loader.
+                if (!delegateToBionicHost) {
+                    agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
+                }
+                // Branded AOSP requires a bundled native inference engine. If neither the fused libelizainference.so nor the
                 // legacy libllama.so + shim shipped in this APK, that opt-in
                 // cannot be honored — the bun agent's fused loader will fail at
                 // its first TEXT_* call. Surface the broken pipeline LOUDLY here
