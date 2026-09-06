@@ -490,6 +490,51 @@
         "maxPlayers": null
       }
     },
+    "@rh4cpu/plugin-rh4": {
+      "git": {
+        "repo": "giupy997/chipc",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@rh4cpu/plugin-rh4",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Give an agent a real processor: mint, power and read RH-4 chips — gate-level 8-bit CPUs (2,368 NAND gates) executing on-chain on Robinhood Chain. Each tick engraves one byte of the agent's choosing in the event log: a tamper-proof logbook. Every transaction is simulated before signing; read-only without a key.",
+      "homepage": "https://rh4cpu.tech",
+      "topics": [
+        "blockchain",
+        "evm",
+        "onchain-cpu",
+        "mining",
+        "robinhood-chain"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "eliza/plugin-rh4"
+    },
     "@seekdaseek/plugin-agentfeed": {
       "git": {
         "repo": "seekdaseek/plugin-agentfeed",
