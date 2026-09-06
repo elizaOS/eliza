@@ -122,6 +122,14 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "her",
   "us",
   "its",
+  // Subject and naming fillers that never discriminate a saved fact: the row
+  // binds the subject through its entity, and "named"/"called" only introduce
+  // the value (live 2026-09-06: `update query="sister named Dana"` required
+  // every term and missed "user has_sister Dana").
+  "user",
+  "users",
+  "named",
+  "called",
 ]);
 
 function fail(
@@ -1112,17 +1120,20 @@ async function doUpdate(
       ),
     );
     if (distinctTexts.size > 1) {
-      const lines = matched.map((candidate) => {
-        const item = toListItem(candidate.memory, candidate.type);
-        return `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`;
-      });
+      const candidates = matched.map((candidate) =>
+        toListItem(candidate.memory, candidate.type),
+      );
+      const lines = candidates.map(
+        (item) =>
+          `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`,
+      );
       return {
         success: false,
         text: [
           `Query "${query}" matches ${distinctTexts.size} distinct memories. Review all candidates and update each record affected by the user's correction by memoryId, preserving unrelated facts in each replacement:`,
           ...lines,
         ].join("\n"),
-        data: { error: "MEMORY_AMBIGUOUS_QUERY" },
+        data: { error: "MEMORY_AMBIGUOUS_QUERY", candidates },
       };
     }
     existingMemories = matched.map((candidate) => candidate.memory);
@@ -1321,16 +1332,17 @@ async function doDeleteByQuery(
   // Retrieval matches do not establish that distinct texts express the same
   // claim, even when their records share an author. Let the planner select ids.
   if (distinctTexts.size > 1) {
-    const lines = matched
-      .map((c) => toListItem(c.memory, c.type))
-      .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);
+    const candidates = matched.map((c) => toListItem(c.memory, c.type));
+    const lines = candidates.map(
+      (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
+    );
     return {
       success: false,
       text: [
         `Query "${query}" matches ${distinctTexts.size} distinct memories. Delete by memoryId instead:`,
         ...lines,
       ].join("\n"),
-      data: { error: "MEMORY_AMBIGUOUS_QUERY" },
+      data: { error: "MEMORY_AMBIGUOUS_QUERY", candidates },
     };
   }
 

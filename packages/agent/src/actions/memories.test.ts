@@ -1028,6 +1028,29 @@ describe("MEMORY op:update", () => {
     expect(rows).toEqual(before);
   });
 
+  it("updates an extractor relationship row through a natural query with filler words", async () => {
+    // Live 2026-09-06 20:52: the owner asked to anonymise their sister; the
+    // planner sent query "sister named Dana" and the update reported no match
+    // because "named" counted as a required term against "user has_sister Dana".
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, {
+      text: "user has_sister Dana",
+      entityId: USER_ID,
+      metadata: { source: "facts_and_relationships_stage" },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      query: "sister named Dana",
+      text: "the user has a sister but wants to keep her name anonymous",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    const updated = rows.find((row) => row.memory.id === id);
+    expect(updated?.memory.content.text).toBe(
+      "the user has a sister but wants to keep her name anonymous",
+    );
+  });
+
   it("updates saved knowledge by default without rewriting a matching chat message", async () => {
     const { runtime, rows } = makeRuntime();
     const text = "Indigo Finch review starts at 6 a.m.";
