@@ -633,6 +633,7 @@ describe("MEMORY op:delete by query scope", () => {
     expect(result.effectReceipts).toBeUndefined();
     expect(rows).toEqual(originalRows);
     for (const memoryId of targetIds) {
+      if (!memoryId) throw new Error("Seeded fact must have an id");
       const deletion = await runAction(runtime, makeMessage(), {
         action: "delete",
         memoryId,
