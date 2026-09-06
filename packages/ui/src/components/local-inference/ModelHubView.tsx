@@ -78,8 +78,14 @@ export function ModelHubView({
   useRenderGuard("ModelHubView");
   const { t } = useTranslation();
   const publishedCatalog = useMemo(
-    () => catalog.filter(isPublishedLocalModel),
-    [catalog],
+    () =>
+      catalog.filter(
+        (model) =>
+          isPublishedLocalModel(model) ||
+          Boolean(findInstalled(model, installed)) ||
+          Boolean(findDownload(model.id, downloads)),
+      ),
+    [catalog, installed, downloads],
   );
   const grouped = useMemo(
     () => groupByBucket(publishedCatalog),

@@ -35,6 +35,7 @@ import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
+import { findDownload, findInstalled } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import type {
   VoiceModelInstallationView,
@@ -331,7 +332,10 @@ export function LocalInferencePanel() {
   }
 
   const catalog = filterSettingsDefaultLocalModels(hub.catalog).filter(
-    isPublishedLocalModel,
+    (model) =>
+      isPublishedLocalModel(model) ||
+      Boolean(findInstalled(model, hub.installed)) ||
+      Boolean(findDownload(model.id, hub.downloads)),
   );
 
   return (
