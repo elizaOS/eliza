@@ -350,7 +350,9 @@ console.log(JSON.stringify({
   syscallResult,
 }));
 `,
-        { mode: 0o600 },
+        // The fresh host UID must read this non-secret probe source. Private
+        // credential and descriptor sentinels retain their separate 0600 mode.
+        { mode: 0o644 },
       );
       process.env.PROBE_PARENT_CREDENTIAL = "must-not-cross-boundary";
       const launch = sandboxCommand({
@@ -656,7 +658,9 @@ writeFileSync(process.env.TEARDOWN_READY_PATH, JSON.stringify({
 }));
 setInterval(() => {}, 1000);
 `,
-        { mode: 0o600 },
+        // The fresh host UID must read this non-secret probe source. Private
+        // credential and descriptor sentinels retain their separate 0600 mode.
+        { mode: 0o644 },
       );
       const environmentPath = await writeSandboxEnvironment(
         directory,
@@ -804,7 +808,8 @@ grant_search_acls "$directory/repo"
 if /usr/bin/setpriv --reuid "$SANDBOX_UID" --regid "$SANDBOX_GID" --clear-groups -- /usr/bin/test -r "$directory/repo"; then exit 91; fi
 if /usr/bin/setpriv --reuid "$SANDBOX_UID" --regid "$SANDBOX_GID" --clear-groups -- /bin/cat "$directory/secret"; then exit 92; fi
 /usr/bin/getfacl -cpn "$directory" | /usr/bin/grep -qx 'group::r-x'
-sandbox_cleanup
+sandbox_cleanup || exit 94
+set -e
 [ "$(/usr/bin/getfacl -cpn "$directory")" = "$before" ]
 [ "$(/usr/bin/getfacl -cpn "$directory/repo")" = "$repo_before" ]
 if /usr/bin/getent passwd "$name" >/dev/null; then exit 93; fi
