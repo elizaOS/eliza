@@ -100,6 +100,7 @@ function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
       { id: ROOM_ID, source: "discord", name: "general" },
     ]),
     reportError: vi.fn(),
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
     ...overrides,
   } as unknown as IAgentRuntime;
 }
