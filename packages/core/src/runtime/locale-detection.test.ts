@@ -89,3 +89,78 @@ describe("locale-detection", () => {
 		});
 	});
 });
+
+describe("locale-detection (edge cases)", () => {
+	describe("detectLocaleFromText", () => {
+		it("prefers Japanese kana even when Han characters are also present", () => {
+			// Mixed kanji + hiragana resolves to Japanese even though Han text is present.
+			expect(detectLocaleFromText("今日はいい天気ですね")).toBe("ja");
+		});
+
+		it("is case-insensitive for hint words", () => {
+			expect(detectLocaleFromText("HOLA GRACIAS")).toBe("es");
+			expect(detectLocaleFromText("Bonjour MERCI")).toBe("fr");
+		});
+
+		it("picks the language with more hint-word hits when both appear", () => {
+			expect(detectLocaleFromText("hola gracias mais")).toBe("es");
+			expect(detectLocaleFromText("hola merci oui")).toBe("fr");
+		});
+
+		it("abstains on a tied hint-word score", () => {
+			expect(detectLocaleFromText("hola merci")).toBeNull();
+		});
+
+		it("abstains when a diacritic is scored by both languages", () => {
+			// é signals both Spanish and French, so it cannot decide and the
+			// heuristic abstains rather than guess.
+			expect(detectLocaleFromText("café")).toBeNull();
+		});
+
+		it("decides via a diacritic unique to one language", () => {
+			// ñ uniquely signals Spanish; œ uniquely signals French.
+			expect(detectLocaleFromText("el niño")).toBe("es");
+			expect(detectLocaleFromText("cœur")).toBe("fr");
+		});
+
+		it("lets a unique diacritic break a one-hint-word tie", () => {
+			// Tied hint words: the Spanish-only ¿ breaks the tie.
+			expect(detectLocaleFromText("hola mais ¿")).toBe("es");
+		});
+	});
+
+	describe("resolveOwnerLocale", () => {
+		it("trims a whitespace-padded owner locale before accepting it", () => {
+			expect(
+				resolveOwnerLocale({ ownerLocale: "  ja  ", recentMessage: "hola" }),
+			).toBe("ja");
+		});
+
+		it("ignores a whitespace-only owner locale", () => {
+			expect(
+				resolveOwnerLocale({
+					ownerLocale: "   ",
+					recentMessage: "こんにちは",
+				}),
+			).toBe("ja");
+		});
+
+		it("defaults to en when the provided default is whitespace-only", () => {
+			expect(
+				resolveOwnerLocale({
+					recentMessage: "plain words",
+					defaultLocale: "  ",
+				}),
+			).toBe("en");
+		});
+
+		it("trims a padded valid default before returning it", () => {
+			expect(
+				resolveOwnerLocale({
+					recentMessage: "plain words",
+					defaultLocale: "  fr  ",
+				}),
+			).toBe("fr");
+		});
+	});
+});
