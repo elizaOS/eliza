@@ -504,9 +504,7 @@ describe("VIEWS action ownership after planner selection", () => {
 					values: { mode: "show", viewId: "notes" },
 				},
 			]);
-			expect(result.result.actionResults?.[0]).not.toHaveProperty(
-				"turnComplete",
-			);
+			expect(result.result.actionResults?.[0]?.turnComplete).toBe(false);
 			expect(result.result.actionResults?.[0]).not.toHaveProperty(
 				"userFacingText",
 			);

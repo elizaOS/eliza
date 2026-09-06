@@ -203,14 +203,8 @@ function ok(
   };
 }
 
-// TRIGGER never emits a mid-turn callback (see the handler note below), and
-// every committed mutation opts into `turnComplete`, so the action's own
-// humanized ack is the single user-facing message for a single-op turn — and
-// the planned-reply egress gate refuses any completion claim not bound to a
-// committed effect receipt with exact action-owned text. Every mutating op
-// therefore returns the full receipt contract; a bare {success,text} result
-// made even a genuine "reminder is set" ack structurally unverifiable, so it
-// was replaced with the unverified-effect fallback at egress.
+// Committed receipts ground the model's confirmation without prescribing its
+// wording. Replayed no-ops retain the same durable-state proof as fresh writes.
 //
 // The receiptId carries a random component: the planner can re-dispatch the
 // identical create within one turn (both invocations landing on the dedupe
@@ -249,12 +243,8 @@ function triggerReceipt(
       };
 }
 
-// Committed-mutation result: binds the canonical text to its receipt so the
-// egress verifier can ground a completion claim on it. `turnComplete` makes
-// this ack the turn's single user-facing message when the op was the turn's
-// sole tool — without it the planner-loop combines the verified text with the
-// evaluator's prose, double-speaking the same fact ("Created trigger … . on
-// it. set for 8am every morning." observed live).
+// Keep mutation evidence available to the planner; conversational wording is
+// generated after the action, rather than delivering this diagnostic text.
 function okCommitted(
   op: TriggerOp,
   text: string,
@@ -264,11 +254,8 @@ function okCommitted(
 ): ActionResult {
   return {
     ...ok(op, text, data, values),
-    userFacingText: text,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     effectReceipts: [receipt],
-    userFacingEffectReceiptIds: [receipt.receiptId],
   };
 }
 
@@ -1192,13 +1179,7 @@ export const triggerAction: Action = {
     }
     const op: TriggerOp = opRaw;
 
-    // The handler never emits user-visible text itself: every outcome reaches
-    // the planner through the ActionResult. A mid-turn callback here
-    // double-posts — the mechanical create line landed seconds before the
-    // planner's own confirmation of the same fact. For committed mutations
-    // the ActionResult additionally sets `turnComplete`, making the action's
-    // humanized ack the turn's single final message instead of being merged
-    // with the evaluator's restatement of it.
+    // Results and receipts feed the normal planner's model-generated reply.
     switch (op) {
       case "create":
         return opCreate(runtime, message, params);

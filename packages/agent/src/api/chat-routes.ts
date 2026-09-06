@@ -133,7 +133,6 @@ import {
   decodePathComponent,
   getErrorMessage,
   hasBlockedObjectKeyDeep,
-  maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   validateChatImages,
@@ -2826,17 +2825,12 @@ async function generateChatResponseWithTiming(
             message,
             opts?.preferredLanguage,
           );
-          const walletAugmentedMessage =
-            maybeAugmentChatMessageWithWalletContext(
-              runtime,
-              languageAugmentedMessage,
-            );
           const generationMessage = await timeInferenceSpan(
             "chat:document-augmentation",
             () =>
               maybeAugmentChatMessageWithDocuments(
                 runtime,
-                walletAugmentedMessage,
+                languageAugmentedMessage,
                 { signal: generationAbortController.signal },
               ),
             { phase: "pre-model" },

@@ -225,7 +225,7 @@ function setLogLevel(
   runtime: IAgentRuntime,
   message: Memory,
   params: LogsParams,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): ActionResult {
   const requested =
     typeof params.level === "string" ? params.level.toLowerCase() : "";
@@ -258,21 +258,10 @@ function setLogLevel(
   elizaLogger.info(`[LOGS] level set to ${level} for room ${targetRoomId}`);
 
   const changedText = `Log level changed to **${level.toUpperCase()}** for this room.`;
-  if (callback) {
-    callback({
-      text: changedText,
-      action: "LOGS_SET_LEVEL",
-    });
-  }
-  // The confirmation is the complete answer to a single-operation turn:
-  // verified + turnComplete make the callback the sole delivery instead of
-  // double-messaging with the evaluator.
   return {
     success: true,
     text: changedText,
-    userFacingText: changedText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     values: { level },
     data: { actionName: "LOGS", op: "set_level", level, roomId: targetRoomId },
   };

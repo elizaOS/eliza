@@ -44,6 +44,7 @@ export const uiContextProvider: Provider = {
 		const metadata = asRecord(message.content.metadata);
 		const uiView = asString(metadata?.uiView);
 		const uiTab = asString(metadata?.uiTab);
+		const uiViewSubview = asString(metadata?.uiViewSubview);
 		const uiViewPath = asString(metadata?.uiViewPath);
 		const uiViewCapabilities = asStringList(metadata?.uiViewCapabilities);
 		const uiViewActionNames = asStringList(metadata?.uiViewActionNames);
@@ -61,6 +62,7 @@ export const uiContextProvider: Provider = {
 			"# UI Context",
 			`view: ${uiView ?? "chat"}`,
 			uiTab ? `tab: ${uiTab}` : null,
+			uiViewSubview ? `subview: ${uiViewSubview}` : null,
 			uiViewPath ? `path: ${uiViewPath}` : null,
 			uiViewCapabilities.length > 0
 				? `view_capabilities: ${uiViewCapabilities.join(", ")}`
@@ -70,7 +72,7 @@ export const uiContextProvider: Provider = {
 				: null,
 			`active_contexts: ${activeContexts.join(", ") || "general"}`,
 			"Treat view_capabilities as available context, not as a request to invoke them.",
-			"If the user asks which view is open or what can be done here, answer directly from this UI Context without calling a tool.",
+			"This context identifies the view and available operations; it does not contain its displayed content or current record values. Only questions about view identity or available capabilities can be answered directly from it. For displayed text, balances, selections, or current settings, inspect the focused view using VIEWS get-text/list-elements or the relevant domain read action before answering. Never infer displayed values from route names or configuration diagnostics.",
 			"For an actual operation, prefer the focused domain action (for example NOTES for note records or CALENDAR for events). Use VIEWS for navigation, layout, or an explicit declared UI capability that has no dedicated domain action. Never claim an operation happened unless its action succeeded.",
 		].filter((line): line is string => line !== null);
 
@@ -79,6 +81,7 @@ export const uiContextProvider: Provider = {
 			values: {
 				uiView: uiView ?? "chat",
 				uiTab: uiTab ?? "",
+				uiViewSubview: uiViewSubview ?? "",
 				uiViewPath: uiViewPath ?? "",
 				uiViewCapabilities: uiViewCapabilities.join(", "),
 				uiViewActionNames: uiViewActionNames.join(", "),
@@ -87,6 +90,7 @@ export const uiContextProvider: Provider = {
 			data: {
 				uiView,
 				uiTab,
+				uiViewSubview,
 				uiViewPath,
 				uiViewCapabilities,
 				uiViewActionNames,

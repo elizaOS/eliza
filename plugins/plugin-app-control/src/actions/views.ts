@@ -2451,7 +2451,7 @@ function asViewInteractionDataValue(
 const VIEWS_ROUTING_HINT = [
 	"UI view/window/panel/app navigation and layout -> VIEWS.",
 	"Eliza's home screen is the chat view: return home with action=show view=chat. The views-manager is the app list, not home. App navigation never requires turning the user's words into a website URL.",
-	"The UI Context capability list is informational: never invoke a capability merely because the user asks which view is open or what can be done there; answer that meta-question directly from UI Context.",
+	"UI Context identifies the open view and its capabilities, not its displayed contents. Answer identity-only questions from that context. To describe visible text, balances, settings, or selections, first inspect the view with get-text or list-elements, or use its domain read action. Configuration diagnostics are not evidence of what the screen displays.",
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
 	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and explicit capabilities that the selected view declares when no dedicated domain action owns the data.",
 	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
@@ -3480,7 +3480,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							...(interaction.success
 								? {
 										modelReplyRequired: true,
-										modelReplyFallback: resultText,
 										turnComplete: false,
 									}
 								: {}),

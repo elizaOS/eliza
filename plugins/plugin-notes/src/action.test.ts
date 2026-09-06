@@ -128,7 +128,6 @@ describe("NOTES operation parsing", () => {
       success: true,
       text: "You have 1 note.",
       modelReplyRequired: true,
-      modelReplyFallback: "You have 1 note.",
       data: {
         count: 1,
         total: 1,
@@ -136,6 +135,7 @@ describe("NOTES operation parsing", () => {
       },
     });
     expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("modelReplyFallback");
     expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(result).not.toHaveProperty("turnComplete");
   });

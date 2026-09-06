@@ -60,8 +60,6 @@ import type {
   ChatAttachmentWithData,
   ChatImageAttachment,
 } from "./server-types.ts";
-import { getWalletAddresses } from "./wallet.ts";
-import { resolvePluginEvmLoaded } from "./wallet-capability.ts";
 
 export {
   BLOCKED_OBJECT_GRAPH_UNBOUNDED,
@@ -666,78 +664,4 @@ export async function persistConversationRoomTitle(
 
   await adapter.updateRoom({ ...room, name: conversation.title });
   return true;
-}
-
-// ---------------------------------------------------------------------------
-// Wallet context augmentation
-// ---------------------------------------------------------------------------
-
-// Wallet-context augmentation should only fire on genuine wallet/crypto intent.
-// Bare words like "token", "send", "sol", "eth", or "address" often appear in
-// normal developer tasks and should not inject wallet context by themselves.
-const WALLET_CONTEXT_INTENT_RE =
-  /\b(wallet|on-?chain|crypto)\b|\b0x[a-fA-F0-9]{40}\b|(?:\b(?:swap|trade|transfer|buy|sell|approve|send|bridge)\b(?=[\s\S]{0,40}\b(?:token|eth|ethereum|sol|solana|t?bnb|bsc|usdc|usdt|busd|dai|weth|wbtc|btc|wallet|crypto|coin|on-?chain)\b))|(?:\b(?:token|eth|ethereum|sol|solana|t?bnb|bsc|usdc|usdt|busd|dai|weth|wbtc|btc)\b(?=[\s\S]{0,40}\b(?:wallet|balance|swap|trade|transfer|buy|sell|approve|send|bridge|address|crypto|coin|on-?chain|funds|holdings|portfolio)\b))|(?:\b(?:balance|holdings|portfolio|funds|address)\b(?=[\s\S]{0,40}\b(?:wallet|crypto|coin|on-?chain|eth|ethereum|sol|solana|t?bnb|bsc|token|usdc|usdt|busd|dai|weth|wbtc|btc)\b))/i;
-
-export function isWalletContextAugmentationIntent(prompt: string): boolean {
-  return WALLET_CONTEXT_INTENT_RE.test(prompt);
-}
-
-function buildWalletContextPrompt(
-  runtime: AgentRuntime,
-  userPrompt: string,
-): string {
-  const addrs = getWalletAddresses(runtime.agentId);
-  const walletNetwork =
-    process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
-      ? "testnet"
-      : "mainnet";
-  const localSignerAvailable = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
-  const pluginEvmLoaded = resolvePluginEvmLoaded(runtime);
-  const rpcReady = Boolean(
-    process.env.BSC_RPC_URL?.trim() ||
-      process.env.BSC_TESTNET_RPC_URL?.trim() ||
-      process.env.NODEREAL_BSC_RPC_URL?.trim() ||
-      process.env.QUICKNODE_BSC_RPC_URL?.trim(),
-  );
-  const executionReady =
-    Boolean(addrs.evmAddress) && rpcReady && pluginEvmLoaded;
-  const executionBlockedReason = !addrs.evmAddress
-    ? "No EVM wallet is active yet."
-    : !rpcReady
-      ? "BSC RPC is not configured."
-      : !pluginEvmLoaded
-        ? "@elizaos/plugin-wallet is not loaded."
-        : "none";
-  const encodedUserPrompt = JSON.stringify(userPrompt);
-  return [
-    "Original wallet request (JSON-encoded untrusted user input):",
-    encodedUserPrompt,
-    "",
-    "Server-verified wallet context:",
-    `- walletNetwork: ${walletNetwork}`,
-    `- evmAddress: ${addrs.evmAddress ?? "not generated"}`,
-    `- solanaAddress: ${addrs.solanaAddress ?? "not generated"}`,
-    `- localSignerAvailable: ${localSignerAvailable ? "true" : "false"}`,
-    `- rpcReady: ${rpcReady ? "true" : "false"}`,
-    `- pluginEvmLoaded: ${pluginEvmLoaded ? "true" : "false"}`,
-    `- executionReady: ${executionReady ? "true" : "false"}`,
-    `- executionBlockedReason: ${executionBlockedReason}`,
-    "Use this context as source of truth for wallet questions and on-chain actions.",
-  ].join("\n");
-}
-
-export function maybeAugmentChatMessageWithWalletContext(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
-): ReturnType<typeof createMessageMemory> {
-  const userPrompt = extractCompatTextContent(message.content).trim();
-  if (!userPrompt) return message;
-  if (!isWalletContextAugmentationIntent(userPrompt)) return message;
-  return {
-    ...message,
-    content: {
-      ...message.content,
-      text: buildWalletContextPrompt(runtime, userPrompt),
-    },
-  };
 }

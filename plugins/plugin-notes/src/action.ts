@@ -81,8 +81,7 @@ function failure(text: string, code: string): ActionResult {
 
 /**
  * Notes return settled facts to the planner, then require one model-authored
- * closing reply. The fallback is deliberately short and truthful so a model
- * outage never turns an already-completed operation into a generic failure.
+ * closing reply. Durable receipts remain available if reply generation fails.
  */
 function committed(text: string, data: Record<string, unknown>): ActionResult {
   // Bind the mutation to an applied effect receipt so the reply-egress
@@ -112,7 +111,6 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
     success: true,
     text,
     modelReplyRequired: true,
-    modelReplyFallback: text,
     ...(effectReceipts
       ? {
           effectReceipts,

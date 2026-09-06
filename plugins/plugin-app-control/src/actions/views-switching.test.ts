@@ -322,7 +322,7 @@ describe("view switching — VIEWS action resolver", () => {
 		expect(navigation?.userFacingText).toBeUndefined();
 		expect(navigation?.verifiedUserFacing).toBeUndefined();
 		expect(navigation?.modelReplyRequired).toBe(true);
-		expect(navigation?.turnComplete).toBeUndefined();
+		expect(navigation?.turnComplete).toBe(false);
 	});
 
 	describe("structured navigation — registered targets reach the requested view", () => {
@@ -669,7 +669,7 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 			expect(result).not.toHaveProperty("userFacingText");
 			expect(result).not.toHaveProperty("verifiedUserFacing");
-			expect(result).not.toHaveProperty("turnComplete");
+			expect(result?.turnComplete).toBe(false);
 			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 				effect: "view_navigation",
 				status: "accepted",
@@ -696,7 +696,7 @@ describe("view switching — VIEWS action resolver", () => {
 					transcriptVisibility: "internal",
 					turnComplete: false,
 				});
-				expect(result).not.toHaveProperty("modelReplyRequired");
+				expect(result?.modelReplyRequired).toBe(true);
 				expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 					effect: "view_navigation",
 					status: "unsupported-route",

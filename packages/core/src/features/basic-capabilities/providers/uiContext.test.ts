@@ -13,6 +13,7 @@ describe("UI_CONTEXT", () => {
 					metadata: {
 						uiView: "notes",
 						uiTab: "views",
+						uiViewSubview: "general",
 						uiViewPath: "/notes",
 						uiViewCapabilities: ["view-actions", "inspect-view"],
 						uiViewActionNames: ["NOTES"],
@@ -28,6 +29,7 @@ describe("UI_CONTEXT", () => {
 
 		expect(result.text).toContain("view: notes");
 		expect(result.text).toContain("path: /notes");
+		expect(result.text).toContain("subview: general");
 		expect(result.text).toContain(
 			"view_capabilities: view-actions, inspect-view",
 		);
@@ -35,9 +37,7 @@ describe("UI_CONTEXT", () => {
 		expect(result.text).toContain(
 			"Treat view_capabilities as available context, not as a request",
 		);
-		expect(result.text).toContain(
-			"answer directly from this UI Context without calling a tool",
-		);
+		expect(result.text).toContain("it does not contain its displayed content");
 		expect(result.text).toContain("prefer the focused domain action");
 		expect(result.data).toMatchObject({
 			uiView: "notes",

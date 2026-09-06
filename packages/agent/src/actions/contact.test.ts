@@ -508,8 +508,9 @@ describe("CONTACT update", () => {
       { callback },
     );
     expect(added.success).toBe(true);
-    expect(added.turnComplete).toBe(true);
-    expect(callback).toHaveBeenCalledOnce();
+    expect(added.modelReplyRequired).toBe(true);
+    expect(added.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
     expect(updateContact).toHaveBeenLastCalledWith(contactId, {
       categories: ["friend", "founder"],
       tags: ["vip", "investor"],

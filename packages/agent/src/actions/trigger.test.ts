@@ -14,10 +14,8 @@
  * receipt for fresh mutations, a replayed no-op for the idempotent
  * already-exists path — so the planned-reply egress verifier can ground a
  * truthful completion claim, while failures stay receipt-less.
- * Also pins the reply contract: user text carries humanized schedules (no ISO
- * timestamps, no cron strings — those stay in `data`) and committed mutations
- * are turnComplete, making the action's ack the turn's single user-facing
- * message instead of double-speaking alongside the evaluator's prose.
+ * Reply text stays diagnostic. Committed effects require a model-generated
+ * confirmation backed by the preserved receipt, including idempotent replays.
  */
 
 import type {
@@ -781,22 +779,19 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
     expect(result.text).toContain('"stretch"');
   });
 
-  it("owns the turn: create is turnComplete so the ack is the single user-facing message", async () => {
-    // Without turnComplete the planner-loop combines the verified action text
-    // with the evaluator's prose — the observed 'Created trigger "…" (once at
-    // 2026-08-09T08:00:00Z). on it. set for 8am every morning.' double-speak.
+  it("leaves a committed create confirmation to the model", async () => {
     const { runtime } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
       instructions: "take vitamins",
       cronExpression: "0 8 * * *",
     });
     if (!result) throw new Error("expected a result");
-    expect(result.turnComplete).toBe(true);
-    expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText).toBe(result.text);
+    expect(result.modelReplyRequired).toBe(true);
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
   });
 
-  it("owns the turn on the idempotent replay too", async () => {
+  it("also uses the model for idempotent replay confirmations", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const first = await create(runtime, {
       instructions: "drink water",
@@ -821,8 +816,8 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
       delaySeconds: 90,
     });
     if (!replay) throw new Error("expected a result");
-    expect(replay.turnComplete).toBe(true);
-    expect(replay.userFacingText).toBe("Already set — you're covered.");
+    expect(replay.modelReplyRequired).toBe(true);
+    expect(replay.userFacingText).toBeUndefined();
   });
 });
 
@@ -1020,7 +1015,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(result?.success).toBe(true);
     expect(result?.text).toBe('Updated "hydrate" — every 2 minutes.');
-    expect(result?.turnComplete).toBe(true);
+    expect(result?.modelReplyRequired).toBe(true);
     expect(updates).toHaveLength(1);
     expect(updates[0].taskId).toBe(LIFECYCLE_TASK_ID);
     expect(updates[0].patch.description).toBe("Trigger: hydrate");
@@ -1170,7 +1165,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(result?.success).toBe(true);
     expect(result?.text).toBe('Deleted "water the plants".');
-    expect(result?.turnComplete).toBe(true);
+    expect(result?.modelReplyRequired).toBe(true);
     expect(deletions).toEqual([LIFECYCLE_TASK_ID]);
   });
 
@@ -1196,7 +1191,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(result?.success).toBe(true);
     expect(result?.text).toBe('Enabled "water the plants".');
-    expect(result?.turnComplete).toBe(true);
+    expect(result?.modelReplyRequired).toBe(true);
     expect(result?.data?.enabled).toBe(true);
     expect(updates).toHaveLength(1);
     expect(updates[0].patch.metadata?.trigger?.enabled).toBe(true);
@@ -1204,7 +1199,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
 });
 
 describe("TRIGGER effect receipts — completion-claim grounding", () => {
-  it("binds a fresh create to an applied receipt with the canonical ack text", async () => {
+  it("preserves an applied receipt without prescribing confirmation text", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
       instructions: "take vitamins",
@@ -1213,8 +1208,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     });
     if (!result) throw new Error("expected a result");
     expect(result.success).toBe(true);
-    expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText).toBe(result.text);
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
     const receipt = result.effectReceipts?.[0];
     expect(receipt).toMatchObject({
       operation: "trigger.create",
@@ -1222,8 +1217,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
       resource: { kind: "trigger.task", id: String(result.data?.taskId) },
       idempotency: { key: result.data?.dedupeKey, replayed: false },
     });
-    expect(result.userFacingEffectReceiptIds).toEqual([receipt?.receiptId]);
-    expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
+    expect(result.userFacingEffectReceiptIds).toBeUndefined();
+    expect(hasAppliedUserFacingEffectProof(result)).toBe(false);
     expect(createdTasks).toHaveLength(1);
   });
 
@@ -1251,8 +1246,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     });
     if (!second) throw new Error("expected a result");
     expect(second.success).toBe(true);
-    expect(second.verifiedUserFacing).toBe(true);
-    expect(second.userFacingText).toBe("Already set — you're covered.");
+    expect(second.verifiedUserFacing).toBeUndefined();
+    expect(second.userFacingText).toBeUndefined();
     expect(second.effectReceipts?.[0]).toMatchObject({
       operation: "trigger.create",
       outcome: "noop",
@@ -1262,10 +1257,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
       },
       idempotency: { key: second.data?.dedupeKey, replayed: true },
     });
-    // The replayed no-op is committed desired-state proof: the truthful
-    // "already covered" ack passes the planned-reply egress verifier instead
-    // of being swapped for the unverified-effect fallback.
-    expect(hasAppliedUserFacingEffectProof(second)).toBe(true);
+    // The model can cite the receipt; there is no action-owned final text.
+    expect(hasAppliedUserFacingEffectProof(second)).toBe(false);
     expect(createdTasks).toHaveLength(1);
   });
 
@@ -1370,13 +1363,13 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     );
     if (!result) throw new Error("expected a result");
     expect(result.success).toBe(true);
-    expect(result.userFacingText).toBe(result.text);
+    expect(result.userFacingText).toBeUndefined();
     expect(result.effectReceipts?.[0]).toMatchObject({
       operation: "trigger.delete",
       outcome: "applied",
       resource: { kind: "trigger.task", id: String(taskId) },
     });
-    expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
+    expect(hasAppliedUserFacingEffectProof(result)).toBe(false);
   });
 });
 
