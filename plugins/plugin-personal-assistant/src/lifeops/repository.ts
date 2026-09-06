@@ -5124,6 +5124,22 @@ export class LifeOpsRepository {
     return rows.length > 0;
   }
 
+  /** Resolve one immutable audit under its complete agent/resource identity. */
+  async getAuditEvent(
+    agentId: string,
+    ownerType: string,
+    ownerId: string,
+    auditId: string,
+  ): Promise<LifeOpsAuditEvent | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_lifeops.life_audit_events
+      WHERE agent_id = ${sqlQuote(agentId)} AND owner_type = ${sqlQuote(ownerType)}
+        AND owner_id = ${sqlQuote(ownerId)} AND id = ${sqlQuote(auditId)}`,
+    );
+    return rows[0] ? parseAuditEvent(rows[0]) : null;
+  }
+
   async listAuditEvents(
     agentId: string,
     ownerType: string,

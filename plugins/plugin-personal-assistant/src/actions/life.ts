@@ -3644,15 +3644,26 @@ async function latestLifeAudit(args: {
   ownerType: "definition" | "goal" | "occurrence";
   ownerId: string;
   eventTypes: readonly string[];
+  auditId?: string;
 }) {
   const service = new LifeOpsService(args.runtime);
-  const audits = await service.repository.listAuditEvents(
-    args.runtime.agentId,
-    args.ownerType,
-    args.ownerId,
-  );
-  const audit = audits.find((candidate) =>
-    args.eventTypes.includes(candidate.eventType),
+  const audits = args.auditId
+    ? [
+        await service.repository.getAuditEvent(
+          args.runtime.agentId,
+          args.ownerType,
+          args.ownerId,
+          args.auditId,
+        ),
+      ]
+    : await service.repository.listAuditEvents(
+        args.runtime.agentId,
+        args.ownerType,
+        args.ownerId,
+      );
+  const audit = audits.find(
+    (candidate) =>
+      candidate !== null && args.eventTypes.includes(candidate.eventType),
   );
   if (!audit) {
     throw new ElizaError(
@@ -3830,7 +3841,11 @@ async function lifeEffectReceiptForResult(args: {
     (todoTransition === "complete" || todoTransition === "reopen")
   ) {
     const base = {
-      receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
+      receiptId: lifeEffectReceiptId(
+        args.message,
+        operation,
+        `${definitionId}:${definitionUpdatedAt}`,
+      ),
       operation: `lifeops.definition.${todoTransition}`,
       resource: {
         kind: "lifeops.definition",
@@ -3849,10 +3864,17 @@ async function lifeEffectReceiptForResult(args: {
         ...base,
         reason: "The todo already has the requested completion state.",
       });
+    const transitionAuditId = lifeEffectString(data, "auditId");
+    if (!transitionAuditId)
+      throw new ElizaError(
+        "The todo transition omitted its committed audit identity.",
+        { code: "LIFEOPS_TODO_RECEIPT_MISMATCH", context: { definitionId } },
+      );
     const audit = await latestLifeAudit({
       runtime: args.runtime,
       ownerType: "definition",
       ownerId: definitionId,
+      auditId: transitionAuditId,
       eventTypes: [
         todoTransition === "complete"
           ? "definition_completed"
