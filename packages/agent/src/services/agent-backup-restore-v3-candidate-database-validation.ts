@@ -16,6 +16,7 @@ import {
 } from "./agent-backup-restore-v3-candidate-database";
 import {
   type AgentBackupRestoreV3CandidateFs,
+  type AgentBackupRestoreV3CandidateFsLock,
   isAgentBackupRestoreV3CandidateFs,
 } from "./agent-backup-restore-v3-candidate-fs";
 import {
@@ -71,6 +72,7 @@ function receiptFor(
 
 export async function validateAgentBackupRestoreV3CandidateDatabase(
   input: Readonly<AgentBackupRestoreV3CandidateDatabaseInput>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateDatabaseValidationReceipt>> {
   const exact = snapshotOwnDataRecord(
     input,
@@ -91,23 +93,28 @@ export async function validateAgentBackupRestoreV3CandidateDatabase(
   const control = snapshotOperationControl(
     exact.control as AgentBackupRestoreV3OperationControl,
   );
-  const source = await extractAgentBackupRestoreV3CandidateDatabase({
-    candidateFs,
-    session,
-    control,
-    receipt:
-      exact.receipt as AgentBackupRestoreV3CandidateDatabaseInput["receipt"],
-  });
+  const source = await extractAgentBackupRestoreV3CandidateDatabase(
+    {
+      candidateFs,
+      session,
+      control,
+      receipt:
+        exact.receipt as AgentBackupRestoreV3CandidateDatabaseInput["receipt"],
+    },
+    heldLock,
+  );
   const copiedInput = Object.freeze({
     candidateFs,
     session,
     control,
     receipt: source.component,
   });
-  const lock = await candidateFs.acquireLock(
-    ".restore-v3-validate-database.lock",
-    control,
-  );
+  const lock =
+    heldLock ??
+    (await candidateFs.acquireLock(
+      ".restore-v3-validate-database.lock",
+      control,
+    ));
   let result:
     | Readonly<AgentBackupRestoreV3CandidateDatabaseValidationReceipt>
     | undefined;
@@ -243,7 +250,7 @@ export async function validateAgentBackupRestoreV3CandidateDatabase(
     failure = cause;
   }
   try {
-    await lock.release(internalCleanupControl());
+    if (!heldLock) await lock.release(internalCleanupControl());
   } catch (cause) {
     // error-policy:J2 Both failures remain visible to the operation reconciler.
     if (failure !== undefined)
