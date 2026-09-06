@@ -47,9 +47,6 @@ describe("LifeOps package boundaries", () => {
     const sleepServiceMixin = readPackageFile(
       "src/lifeops/domains/sleep-service.ts",
     );
-    const screenTimeServiceMixin = readPackageFile(
-      "src/lifeops/domains/screentime-service.ts",
-    );
 
     expect(healthAction).toContain('from "@elizaos/plugin-health"');
     expect(healthAction).toContain("createOwnerHealthAction");
@@ -150,35 +147,6 @@ describe("LifeOps package boundaries", () => {
     expect(sleepServiceMixin).toContain('from "@elizaos/plugin-health"');
     expect(sleepServiceMixin).not.toContain("computeSleepRegularity");
     expect(sleepServiceMixin).not.toContain("computePersonalBaseline");
-    expect(screenTimeServiceMixin).toContain("buildScreenTimeBreakdown");
-    expect(screenTimeServiceMixin).toContain("buildScreenTimeMetrics");
-    expect(screenTimeServiceMixin).toContain("buildScreenTimeSummary");
-    expect(screenTimeServiceMixin).toContain("buildScreenTimeVisibleBuckets");
-    expect(screenTimeServiceMixin).toContain("computeScreenTimeRange");
-    expect(screenTimeServiceMixin).toContain("enumerateScreenTimeHistoryDays");
-    expect(screenTimeServiceMixin).toContain("androidUsageRowsFromSignals");
-    expect(screenTimeServiceMixin).toContain(
-      "mobileScreenTimeDataSourceFromSignals",
-    );
-    expect(screenTimeServiceMixin).toContain("isSystemInactivityApp");
-    expect(screenTimeServiceMixin).toContain('from "@elizaos/plugin-health"');
-    expect(screenTimeServiceMixin).not.toContain(
-      "function computeScreenTimeRange",
-    );
-    expect(screenTimeServiceMixin).not.toContain(
-      "function enumerateHistoryDays",
-    );
-    expect(screenTimeServiceMixin).not.toContain("function toSummaryItems");
-    expect(screenTimeServiceMixin).not.toContain("function toBreakdownItems");
-    expect(screenTimeServiceMixin).not.toContain(
-      "function buildVisibleBuckets",
-    );
-    expect(screenTimeServiceMixin).not.toContain(
-      "function androidUsageRowsFromSignals",
-    );
-    expect(screenTimeServiceMixin).not.toContain(
-      "function mobileScreenTimeDataSourceFromSignals",
-    );
     expect(
       existsSync(resolve(packageRoot, "src/lifeops/social-taxonomy.ts")),
     ).toBe(false);

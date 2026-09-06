@@ -18,6 +18,10 @@ export default defineConfig({
   resolve: {
     ...baseConfig.resolve,
     alias: [
+      {
+        find: /^@elizaos\/core\/edge$/,
+        replacement: toVitePath(resolve(coreSrc, "index.edge.ts")),
+      },
       // Changed-test coverage runs before workspace builds, so command imports
       // must resolve core from source rather than an absent dist entrypoint.
       {

@@ -11,6 +11,9 @@ export default defineConfig({
 	resolve: {
 		extensions: [".ts", ".tsx", ".mts", ".js", ".mjs", ".json"],
 		alias: {
+			"@elizaos/core/edge": fileURLToPath(
+				new URL("../../packages/core/src/index.edge.ts", import.meta.url),
+			),
 			// Pin the subpath before the bare core alias; otherwise Vite prefix-
 			// rewrites it to `index.node.ts/client-public` and fails with ENOTDIR.
 			"@elizaos/core/client-public": fileURLToPath(

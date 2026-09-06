@@ -11293,7 +11293,7 @@ export async function main(argv = process.argv.slice(2)) {
     );
     process.exit(1);
   }
-  await syncMobileTaskRunnerAssets();
+  await syncMobileTaskRunnerAssets({ buildTarget: target });
   if (target === "android") {
     await buildAndroid();
   } else if (target === "android-launcher") {

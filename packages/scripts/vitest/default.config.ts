@@ -505,7 +505,9 @@ const vitestResolveAlias: ModuleAlias[] = [
 export default defineConfig({
   plugins: [dependencySourcemapLoggerPlugin()],
   resolve: {
-    preserveSymlinks: true,
+    // Resolve installed dependencies through Bun's package store so their
+    // transitive imports use the owning package's dependency directory.
+    preserveSymlinks: false,
     dedupe: ["react", "react-dom", "ethers", "@elizaos/core"],
     alias: vitestResolveAlias,
   },

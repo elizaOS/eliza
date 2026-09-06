@@ -44,3 +44,23 @@ test("stages identical app-public, Android, and iOS runner bytes and rejects dri
     /mobile task runner assets are stale/u,
   );
 });
+
+test("artifact-only Android audit does not repopulate stripped runner assets", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "eliza-mobile-runner-audit-"));
+  roots.push(root);
+  const target = path.join(root, "runners", "eliza-tasks.js");
+  await syncMobileTaskRunnerAssets({
+    buildTarget: "android-cloud-audit",
+    targets: [target],
+  });
+  await assert.rejects(readFile(target), { code: "ENOENT" });
+  await writeFile(path.join(root, "preserved.js"), "existing packaged bytes");
+  await syncMobileTaskRunnerAssets({
+    buildTarget: "android-cloud-audit",
+    targets: [path.join(root, "preserved.js")],
+  });
+  assert.equal(
+    await readFile(path.join(root, "preserved.js"), "utf8"),
+    "existing packaged bytes",
+  );
+});

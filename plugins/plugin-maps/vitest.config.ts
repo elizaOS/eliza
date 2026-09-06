@@ -22,6 +22,10 @@ export default defineConfig({
     conditions: ["node"],
     alias: [
       {
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(root, "packages/core/src/index.edge.ts"),
+      },
+      {
         find: /^@elizaos\/core$/,
         replacement: path.join(root, "packages/core/src/index.node.ts"),
       },

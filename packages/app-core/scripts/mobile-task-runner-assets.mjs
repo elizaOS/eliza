@@ -59,7 +59,11 @@ export async function checkMobileTaskRunnerAssets({
 export async function syncMobileTaskRunnerAssets({
   source = MOBILE_TASK_RUNNER_SOURCE,
   targets = MOBILE_TASK_RUNNER_TARGETS,
+  buildTarget,
 } = {}) {
+  // Gradle invokes the artifact auditor after stripping embedded runtime assets.
+  // That read-only entry point must not put the runner back into the package.
+  if (buildTarget === "android-cloud-audit") return;
   const canonical = await readFile(source);
   for (const target of targets) {
     await mkdir(path.dirname(target), { recursive: true });

@@ -33,6 +33,10 @@ export default defineConfig({
 		dedupe: ["react", "react-dom"],
 		alias: [
 			{
+				find: /^@elizaos\/core\/edge$/,
+				replacement: path.join(coreSrc, "index.edge.ts"),
+			},
+			{
 				// @elizaos/ui DynamicViewLoader statically imports this plugin-health
 				// subpath; anchor it to source (no built plugin-health dist in the
 				// keyless lane). Self-contained so it needs no config-local path vars.
