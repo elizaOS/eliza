@@ -146,7 +146,26 @@ export type GenericBillingCommandPayload =
   | AdminBillingCommandPayload
   | OperatorBillingCommandPayload
   | DeletionCheckoutCommandPayload
-  | DeletionCancellationCommandPayload;
+  | DeletionCancellationCommandPayload
+  | DeletionCustomerCommandPayload;
+
+/** Freezes one customer-wide deletion intent; current execution authority is validated separately on every dispatch. */
+export interface DeletionCustomerCommandPayload {
+  version: 1;
+  domain: "account_deletion";
+  action: "delete_customer";
+  customerBindingId: string;
+  requestId: string;
+  requestDigest: string;
+  lifecycleRevision: number;
+  phaseReceiptId: string;
+  initiatingPhaseGeneration: number;
+  closureRequestId: string;
+  closureRequestDigest: string;
+  billingAccountId: string;
+  customerId: string;
+  providerAccountId: string;
+}
 export type AdminBillingCommandResult =
   | { kind: "merchant"; merchantId: string }
   | { kind: "merchant_onboarding"; url: string; expiresAt: string }
