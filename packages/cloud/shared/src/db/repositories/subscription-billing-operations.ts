@@ -42,6 +42,7 @@ import {
   validateTerminalReceipt,
   validateTerminalSource,
 } from "./subscription-lifecycle-finalization";
+import { enqueueCanceledNoticeInTransaction } from "./subscription-notices";
 
 export const SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT = "SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT";
 export const SUBSCRIPTION_BILLING_OPERATIONS_INVALID = "SUBSCRIPTION_BILLING_OPERATIONS_INVALID";
@@ -833,6 +834,9 @@ export class SubscriptionBillingOperationsRepository {
         sourceSubscriptionRevision: lifecycle.subscription.lifecycle_revision,
         expectedProjectionRevision: input.expectedProjectionRevision,
       });
+      if (lifecycle.subscription.status === "canceled") {
+        await enqueueCanceledNoticeInTransaction(tx, lifecycle.subscription);
+      }
       const applied = await this.applyEventInTransaction(tx, {
         organizationId: input.organizationId,
         receiptId: receipt.id,

@@ -57,6 +57,8 @@ beforeAll(async () => {
   for (const statement of [
     "CREATE TABLE organizations (id uuid PRIMARY KEY, name text NOT NULL)",
     "CREATE TABLE users (id uuid PRIMARY KEY, email text NOT NULL)",
+    "CREATE TABLE subscription_notice_intents (id uuid PRIMARY KEY, organization_id uuid NOT NULL, state text NOT NULL)",
+    "CREATE TABLE subscription_notice_attempts (id uuid PRIMARY KEY, organization_id uuid NOT NULL, status text NOT NULL)",
     `CREATE TABLE conversations (
       id uuid PRIMARY KEY,
       user_id uuid NOT NULL,
@@ -99,6 +101,8 @@ beforeAll(async () => {
     `INSERT INTO users VALUES
       ('${USER_ID}', 'owned@example.test'),
       ('${FOREIGN_USER_ID}', 'foreign@example.test')`,
+    `INSERT INTO subscription_notice_intents VALUES ('99999999-9999-4999-8999-999999999991','${ORGANIZATION_ID}','policy_unavailable'),('99999999-9999-4999-8999-999999999992','${FOREIGN_ORGANIZATION_ID}','foreign')`,
+    `INSERT INTO subscription_notice_attempts VALUES ('99999999-9999-4999-8999-999999999993','${ORGANIZATION_ID}','uncertain'),('99999999-9999-4999-8999-999999999994','${FOREIGN_ORGANIZATION_ID}','foreign')`,
     `INSERT INTO conversations VALUES
       ('33333333-3333-4333-8333-333333333331', '${USER_ID}', '${ORGANIZATION_ID}', 'Owned conversation'),
       ('33333333-3333-4333-8333-333333333332', '${FOREIGN_USER_ID}', '${FOREIGN_ORGANIZATION_ID}', 'Foreign conversation')`,
@@ -199,6 +203,12 @@ test("exports transitive owned rows and excludes cross-tenant rows through real 
   expect(new Set(accounts?.map((row) => row.app_id))).toEqual(
     new Set(["55555555-5555-4555-8555-555555555551", "55555555-5555-4555-8555-555555555552"]),
   );
+  expect(table("subscription_notice_intents")?.rows).toEqual([
+    expect.objectContaining({ organization_id: ORGANIZATION_ID, state: "policy_unavailable" }),
+  ]);
+  expect(table("subscription_notice_attempts")?.rows).toEqual([
+    expect.objectContaining({ organization_id: ORGANIZATION_ID, status: "uncertain" }),
+  ]);
   expect(JSON.stringify(artifact)).not.toContain("foreign");
   expect(JSON.stringify(artifact)).not.toContain("owned-secret");
 });

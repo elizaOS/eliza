@@ -1,4 +1,4 @@
-// Exercises cloud API tests stripe queue route.test behavior with deterministic Worker route fixtures.
+/** Exercises cron authentication, Stripe draining and notice sweep routing with deterministic boundary fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 // Spread the real module into the partial mock below — `mock.module` is
 // process-global, so dropping `isInvoiceExpanded` (and the other real exports)
@@ -22,6 +22,13 @@ if (!queueMockGlobal.__cloudApiRedisQueueMock) {
 const redisQueueMock = queueMockGlobal.__cloudApiRedisQueueMock;
 const { drain, queueLength } = redisQueueMock;
 const processStripeEvent = mock(async () => undefined);
+const sweepSubscriptionNotices = mock(async () => ({
+  inspected: 1,
+  policyUnavailable: 1,
+}));
+mock.module("@/lib/services/subscription-notices", () => ({
+  sweepSubscriptionNotices,
+}));
 
 // The migrated Stripe consumer suite owns terminal reconciliation; these credit/queue
 // contracts exercise retry behavior when that separate collaborator is unavailable.
@@ -66,6 +73,7 @@ describe("Stripe queue cron route", () => {
     drain.mockReset();
     queueLength.mockReset();
     processStripeEvent.mockClear();
+    sweepSubscriptionNotices.mockClear();
     queueLength.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
     drain.mockImplementation(async (_key, handler) => {
       await handler({
@@ -88,6 +96,7 @@ describe("Stripe queue cron route", () => {
     expect(queueLength).not.toHaveBeenCalled();
     expect(drain).not.toHaveBeenCalled();
     expect(processStripeEvent).not.toHaveBeenCalled();
+    expect(sweepSubscriptionNotices).not.toHaveBeenCalled();
   });
 
   test("drains the stripe-events queue with the bounded retry contract", async () => {
@@ -100,6 +109,7 @@ describe("Stripe queue cron route", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       queue: "stripe-events",
+      notices: { inspected: 1, policyUnavailable: 1 },
       before: 3,
       after: 1,
       processed: 1,

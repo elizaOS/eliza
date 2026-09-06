@@ -2,6 +2,7 @@
  * Email service for sending transactional emails via SendGrid or SMTP.
  */
 
+import { Socket } from "node:net";
 import sgMail from "@sendgrid/mail";
 import type { Transporter } from "nodemailer";
 import nodemailer from "nodemailer";
@@ -66,7 +67,10 @@ export function resolveSmtpPort(raw: string | undefined | null): number {
 
 /** Submission receipts are server-only; acceptance never proves recipient delivery. */
 export type EmailDispatchResult =
-  | { status: "unavailable"; reason: "not_configured" | "invalid_configuration" }
+  | {
+      status: "unavailable";
+      reason: "not_configured" | "invalid_configuration" | "bounded_transport_unavailable";
+    }
   | { status: "accepted"; provider: "smtp" | "sendgrid"; messageId: string }
   | { status: "rejected"; provider: "smtp" | "sendgrid"; reason: "provider_rejected" }
   | {
@@ -169,6 +173,89 @@ export class EmailService {
         return { status: "rejected", provider, reason: "provider_rejected" };
       }
       return { status: "uncertain", provider, reason: "transport_error", messageId: null };
+    }
+  }
+
+  /**
+   * Notice-only submission owns the physical TCP socket through closure. The
+   * absolute deadline destroys that socket, including any STARTTLS wrapper;
+   * awaiting close prevents an abandoned transport from submitting afterward.
+   * SendGrid has no owned cancellation contract here and remains unavailable.
+   */
+  async dispatchBounded(options: EmailOptions, deadlineMs: number): Promise<EmailDispatchResult> {
+    if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > 10_000)
+      return { status: "unavailable", reason: "invalid_configuration" };
+    const expiresAt = performance.now() + deadlineMs;
+    const isolated = new EmailService();
+    try {
+      isolated.initialize();
+    } catch (error) {
+      // error-policy:J1 configuration failure is explicit before transport starts.
+      if (error instanceof SmtpPortConfigError)
+        return { status: "unavailable", reason: "invalid_configuration" };
+      throw error;
+    }
+    if (!isolated.initialized) return { status: "unavailable", reason: "not_configured" };
+    if (!isolated.useSmtp || !isolated.smtpTransporter)
+      return { status: "unavailable", reason: "bounded_transport_unavailable" };
+    const host = process.env.SMTP_HOST;
+    if (!host) return { status: "unavailable", reason: "invalid_configuration" };
+    const port = resolveSmtpPort(process.env.SMTP_PORT);
+    if (performance.now() >= expiresAt)
+      return { status: "uncertain", provider: "smtp", reason: "transport_error", messageId: null };
+    const socket = new Socket();
+    const closed = new Promise<void>((resolve) => socket.once("close", resolve));
+    let socketFailure: Error | null = null;
+    socket.on("error", (error) => {
+      // error-policy:J5 retained for the getSocket callback if MIME preparation has not completed.
+      socketFailure = error;
+    });
+    let expired = false;
+    const deadline = setTimeout(
+      () => {
+        expired = true;
+        socket.destroy(new Error("SMTP submission deadline exceeded"));
+      },
+      Math.max(1, expiresAt - performance.now()),
+    );
+    isolated.smtpTransporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: false,
+      auth: { user: process.env.SMTP_USERNAME || "apikey", pass: process.env.SMTP_PASSWORD },
+      getSocket(
+        _config: SMTPTransport.Options,
+        callback: (error: Error | null, result: { connection: Socket } | false) => void,
+      ) {
+        let returned = false;
+        socket.once("error", (error) => {
+          // error-policy:J5 pre-connect errors reach this callback; post-connect
+          // errors also reach SMTPConnection and its awaited dispatch promise.
+          if (!returned) {
+            returned = true;
+            callback(error, false);
+          }
+        });
+        if (socket.destroyed) {
+          returned = true;
+          callback(socketFailure ?? new Error("SMTP submission deadline exceeded"), false);
+          return;
+        }
+        socket.connect(port, host, () => {
+          returned = true;
+          callback(null, { connection: socket });
+        });
+      },
+    });
+    try {
+      const result = await isolated.dispatch(options);
+      return expired
+        ? { status: "uncertain", provider: "smtp", reason: "transport_error", messageId: null }
+        : result;
+    } finally {
+      clearTimeout(deadline);
+      socket.destroy();
+      await closed;
     }
   }
 

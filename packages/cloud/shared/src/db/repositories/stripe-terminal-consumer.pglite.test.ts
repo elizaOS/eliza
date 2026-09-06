@@ -1,4 +1,5 @@
 /** Exercises the actual Stripe queue consumer and primary lifecycle finalizer on PGlite with only Stripe retrieval controlled at the external boundary. */
+import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, beforeEach, expect, mock, setDefaultTimeout, test } from "bun:test";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
@@ -52,6 +53,13 @@ beforeAll(async () => {
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
   await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+  const noticeMigration = await readFile(
+    new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of noticeMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  }
 });
 beforeEach(async () => {
   retrieve = async () => providerSubscription();

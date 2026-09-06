@@ -124,6 +124,16 @@ const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
     policy: "retained_security_audit",
     where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
   },
+  {
+    table: "subscription_notice_intents",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+  {
+    table: "subscription_notice_attempts",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
 ]);
 
 export interface AccountDeletionExportDependencies {

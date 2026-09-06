@@ -1,4 +1,4 @@
-// Handles scheduled cloud API cron process stripe queue route traffic with cron auth expectations.
+/** Drains Stripe deliveries and sweeps durable subscription notices through the authenticated cron owner. */
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { processStripeEvent } from "@/api-queue/stripe-event";
@@ -6,6 +6,7 @@ import type { StripeEventMessage } from "@/api-queue/types";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { drain, queueLength } from "@/lib/queue/redis-queue";
+import { sweepSubscriptionNotices } from "@/lib/services/subscription-notices";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -28,6 +29,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       { max: 25, budgetMs: 25_000, maxAttempts: 5 },
     );
     const after = await queueLength(STRIPE_QUEUE_KEY);
+    const notices = await sweepSubscriptionNotices();
 
     logger.info("[Stripe Queue] Redis drain complete", {
       before,
@@ -38,6 +40,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
     return c.json({
       success: true,
       queue: STRIPE_QUEUE_KEY,
+      notices,
       before,
       after,
       ...stats,

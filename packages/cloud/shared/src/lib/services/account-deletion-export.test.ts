@@ -256,6 +256,8 @@ describe("account deletion export", () => {
         [12, { id: "message-1", conversation_id: "conversation-1", content: "portable message" }],
         [14, { id: "analytics-1", app_id: "app-1", total_requests: 7 }],
         [16, { id: "audit-1", organization_id: ORGANIZATION_ID, action: "read" }],
+        [18, { id: "notice-1", organization_id: ORGANIZATION_ID, state: "policy_unavailable" }],
+        [20, { id: "attempt-1", organization_id: ORGANIZATION_ID, status: "uncertain" }],
       ]);
       return { rows: [rowsByCall.get(call)] };
     });
@@ -277,6 +279,8 @@ describe("account deletion export", () => {
       "organizations",
       "profiles",
       "secret_audit_log",
+      "subscription_notice_attempts",
+      "subscription_notice_intents",
       "users",
     ]);
     expect(

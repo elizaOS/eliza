@@ -47,6 +47,7 @@ beforeAll(async () => {
     "0374_subscription_funding_transaction_uniqueness.sql",
     "0379_subscription_account_authority.sql",
     "0380_organization_policy_authority.sql",
+    "0382_subscription_notice_intents.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),
@@ -88,9 +89,11 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(`
     INSERT INTO organizations(id) VALUES ('${ORGANIZATION_ID}');
     INSERT INTO billing_subscriptions (id, organization_id, provider_environment, stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start, current_period_end, lifecycle_revision, provider_object_digest)
-    VALUES ('${SUBSCRIPTION_ID}', '${ORGANIZATION_ID}', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'active', '2026-08-01Z', '2026-09-01Z', 1, '${"a".repeat(64)}');
+    VALUES ('${SUBSCRIPTION_ID}', '${ORGANIZATION_ID}', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'canceled', '2026-08-01Z', '2026-09-01Z', 1, '${"a".repeat(64)}');
     INSERT INTO billing_subscription_revisions (organization_id, subscription_id, revision, source, provider_environment, stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start, current_period_end, cancel_at_period_end, provider_object_digest)
-    VALUES ('${ORGANIZATION_ID}', '${SUBSCRIPTION_ID}', 1, 'webhook', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'active', '2026-08-01Z', '2026-09-01Z', false, '${"a".repeat(64)}');
+    VALUES ('${ORGANIZATION_ID}', '${SUBSCRIPTION_ID}', 1, 'webhook', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'canceled', '2026-08-01Z', '2026-09-01Z', false, '${"a".repeat(64)}');
+    INSERT INTO subscription_notice_intents(id,organization_id,subscription_id,source_revision) VALUES ('60000000-0000-4000-8000-000000000001','${ORGANIZATION_ID}','${SUBSCRIPTION_ID}',1);
+    INSERT INTO subscription_notice_attempts(notice_id,organization_id,policy_digest,expires_at) VALUES ('60000000-0000-4000-8000-000000000001','${ORGANIZATION_ID}','${"b".repeat(64)}',now()+interval '1 minute');
     UPDATE organization_subscription_authorities SET state='current', subscription_id='${SUBSCRIPTION_ID}' WHERE organization_id='${ORGANIZATION_ID}';
   `);
 });
@@ -123,6 +126,9 @@ describe("account deletion restrictive-grant terminal absence", () => {
             WHERE ${sql.raw(entry.column)} IS NOT NULL`,
       );
       expect(result.rows[0]?.count).toBe(0);
+    }
+    for (const table of ["subscription_notice_intents", "subscription_notice_attempts"]) {
+      expect((await getPgliteClientForTests().query(`SELECT id FROM ${table}`)).rows).toEqual([]);
     }
     await dbWrite.execute(sql`DELETE FROM organizations WHERE id=${ORGANIZATION_ID}`);
     const remaining = await dbWrite.execute(

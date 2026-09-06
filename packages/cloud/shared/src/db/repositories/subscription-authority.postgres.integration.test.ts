@@ -7,6 +7,7 @@
  */
 import { afterAll, beforeAll, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
@@ -214,7 +215,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await setupClient.query(`CREATE SCHEMA ${schemaName}`);
     await setupClient.query(`SET search_path TO ${schemaName}, public`);
     await setupClient.query(`
-      CREATE TABLE organizations (id uuid PRIMARY KEY, stripe_customer_id text, account_lifecycle_state text NOT NULL DEFAULT 'active', paid_work_fenced_at timestamptz);
+      CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true, stripe_customer_id text, account_lifecycle_state text NOT NULL DEFAULT 'active', paid_work_fenced_at timestamptz);
       CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
       CREATE TABLE credit_transactions (
@@ -226,6 +227,10 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await installOrganizationPolicyTestSchema(async (query) => {
       await setupClient!.query(query);
     });
+    const noticeMigration = await readFile(new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url), "utf8");
+    for (const statement of noticeMigration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await setupClient.query(statement);
+    }
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [LIVE_ORG]);
@@ -1074,4 +1079,111 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       await locker.end();
     }
   }, 30_000);
+
+  async function approvedNotice() {
+    const source = await seedFinalizerSubscription();
+    const input = await captureTerminalObservation(source, new Date("2026-08-25Z"), "d".repeat(64));
+    await operations.finalizeLifecycleEvent(input);
+    const result = await setupClient!.query<{ id: string }>(
+      "SELECT id FROM subscription_notice_intents WHERE subscription_id=$1 AND source_revision=2",
+      [source.subscriptionId],
+    );
+    const id = result.rows[0]?.id;
+    if (!id) throw new Error("Finalizer did not publish its atomic notice intent");
+    process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON = JSON.stringify([
+      {
+        approvalReference: "controlled-postgres-fixture",
+        organizationId: source.organizationId,
+        subscriptionId: source.subscriptionId,
+        sourceRevision: 2,
+        kind: "cancel_effective",
+        recipient: "fixture@example.test",
+        sendAt: new Date(Date.now() - 1000).toISOString(),
+        notAfter: new Date(Date.now() + 60000).toISOString(),
+        timezone: "Etc/UTC",
+        subject: "Controlled fixture",
+        text: "Controlled fixture",
+        html: "<p>Controlled fixture</p>",
+      },
+    ]);
+    return { ...source, id };
+  }
+  test("independent blocked notice claimers publish only one durable attempt", async () => {
+    const previous = process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON;
+    const source = await approvedNotice();
+    const { claimSubscriptionNotice } = await import("../../lib/services/subscription-notices");
+    const locker = await connect();
+    const pending: Array<ReturnType<typeof claimSubscriptionNotice>> = [];
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        source.organizationId,
+      ]);
+      pending.push(claimSubscriptionNotice(source.id), claimSubscriptionNotice(source.id));
+      await waitForFinalizerWaiters(2);
+      await locker.query("COMMIT");
+      expect((await Promise.all(pending)).filter(Boolean)).toHaveLength(1);
+      const readback = await setupClient!.query(
+        "SELECT status FROM subscription_notice_attempts WHERE notice_id=$1",
+        [source.id],
+      );
+      expect(readback.rows).toEqual([{ status: "dispatching" }]);
+    } finally {
+      await locker.query("ROLLBACK");
+      await Promise.all(pending);
+      await locker.end();
+      if (previous === undefined) delete process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON;
+      else process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON = previous;
+    }
+  }, 30000);
+  test("notice lease expiry during a real organization lock wait never starts transport", async () => {
+    const previous = process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON;
+    const source = await approvedNotice();
+    const { claimSubscriptionNotice, dispatchSubscriptionNotice } = await import(
+      "../../lib/services/subscription-notices"
+    );
+    const claim = await claimSubscriptionNotice(source.id, 5000);
+    if (!claim) throw new Error("Expected notice claim");
+    const transportKeys = ["SMTP_HOST", "SMTP_PASSWORD", "SENDGRID_API_KEY"] as const;
+    const transportEnvironment = transportKeys.map((key) => [key, process.env[key]] as const);
+    for (const key of transportKeys) delete process.env[key];
+    const locker = await connect();
+    let pending: Promise<void> | undefined;
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        source.organizationId,
+      ]);
+      pending = dispatchSubscriptionNotice(claim);
+      await waitForFinalizerWaiters(1);
+      await setupClient!.query(
+        "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM expires_at-clock_timestamp()))+0.05) FROM subscription_notice_attempts WHERE id=$1",
+        [claim.attemptId],
+      );
+      await locker.query("COMMIT");
+      await pending;
+      const readback = await setupClient!.query(
+        "SELECT status,provider,message_id,reason FROM subscription_notice_attempts WHERE id=$1",
+        [claim.attemptId],
+      );
+      expect(readback.rows).toEqual([
+        {
+          status: "uncertain",
+          provider: null,
+          message_id: null,
+          reason: "submission_outcome_unrecorded",
+        },
+      ]);
+    } finally {
+      await locker.query("ROLLBACK");
+      await pending;
+      await locker.end();
+      for (const [key, value] of transportEnvironment) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      if (previous === undefined) delete process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON;
+      else process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON = previous;
+    }
+  }, 30000);
 });
