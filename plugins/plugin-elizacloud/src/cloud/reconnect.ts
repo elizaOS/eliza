@@ -29,12 +29,15 @@ export class ConnectionMonitor {
   /**
    * Monotonic lifecycle token. `tick()` captures the current value before its
    * heartbeat await and threads it into `attemptReconnect()`; `stop()`
-   * increments it. After every `await` point the loop compares its captured
-   * token to the live one and early-returns without firing any callback when
-   * they differ — this is the only way to cancel a detached tick/retry loop
-   * that is mid-`heartbeat()`, mid-`provision()`, or mid-backoff-sleep when
-   * `stop()` runs, so no onStatusChange/onReconnect/onReconnectExhausted fires
-   * after teardown and a dead monitor's backoff sleep cannot keep it alive.
+   * increments it. After every `await` point — and after every public
+   * synchronous callback that could re-enter `stop()` (`onDisconnect`, each
+   * `onStatusChange`) — the loop compares its captured token to the live one and
+   * early-returns without firing any further callback when they differ. This is
+   * the only way to cancel a detached tick/retry loop that is mid-`heartbeat()`,
+   * mid-`provision()`, or mid-backoff-sleep, or that a caller tore down from
+   * inside a lifecycle callback, so no onStatusChange/onReconnect/
+   * onReconnectExhausted and no provision() request follows teardown and a dead
+   * monitor's backoff sleep cannot keep it alive.
    */
   private runToken = 0;
 
@@ -138,6 +141,12 @@ export class ConnectionMonitor {
 
     let delay = 3_000;
     for (let attempt = 1; attempt <= 10; attempt++) {
+      // onStatusChange is a public synchronous callback and may tear the
+      // monitor down (e.g. call stop()) — from the "reconnecting" emit above on
+      // the first pass, or from any status callback reachable on a later pass.
+      // Re-check at the loop top before the provision() network call so a
+      // stopped monitor issues no request, on this and every subsequent attempt.
+      if (this.runToken !== token) return;
       logger.info(`[cloud-monitor] Reconnect attempt ${attempt}/10...`);
       const ok = await this.client
         .provision(this.agentId)
@@ -154,6 +163,9 @@ export class ConnectionMonitor {
         this.consecutiveFailures = 0;
         this.reconnecting = false;
         this.callbacks.onStatusChange?.("connected");
+        // A caller may stop() synchronously from inside onStatusChange; don't
+        // fire onReconnect() into a torn-down manager after teardown.
+        if (this.runToken !== token) return;
         this.callbacks.onReconnect();
         return;
       }
@@ -170,6 +182,9 @@ export class ConnectionMonitor {
     logger.error("[cloud-monitor] Failed to reconnect after 10 attempts");
     this.reconnecting = false;
     this.callbacks.onStatusChange?.("disconnected");
+    // Same synchronous-teardown guard: a caller may stop() from inside the
+    // "disconnected" status callback; don't fire the exhaustion callback after.
+    if (this.runToken !== token) return;
     // error-policy:#14415 — the link is now durably down. Report exactly once
     // per exhaustion (not per failed attempt) so this is observable without
     // spamming. A throwing handler must not re-break the monitor.

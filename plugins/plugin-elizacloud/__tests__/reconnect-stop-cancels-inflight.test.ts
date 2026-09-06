@@ -306,4 +306,119 @@ describe("ConnectionMonitor.stop() cancels in-flight reconnect (#29941)", () => 
 
     monitor.stop();
   });
+
+  it('suppresses provision() when stop() runs synchronously inside onStatusChange("reconnecting")', async () => {
+    // onStatusChange is public and synchronous, exactly like onDisconnect. A
+    // caller may tear the monitor down from inside the "reconnecting" emit.
+    // Without the loop-top token recheck, attemptReconnect() still issues one
+    // provision() request on a stopped monitor.
+    const client = {
+      heartbeat: vi.fn().mockResolvedValue(false),
+      provision: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ConstructorParameters<typeof ConnectionMonitor>[0];
+
+    const statusChanges: string[] = [];
+    const onReconnect = vi.fn();
+    let monitor!: ConnectionMonitor;
+    const onStatusChange = vi.fn((s: string) => {
+      statusChanges.push(s);
+      if (s === "reconnecting") monitor.stop();
+    });
+    monitor = new ConnectionMonitor(
+      client,
+      "agent-sc-reconnecting",
+      { onDisconnect: vi.fn(), onReconnect, onStatusChange },
+      HEARTBEAT_INTERVAL_MS,
+      1
+    );
+
+    monitor.start();
+    // Failed heartbeat → attemptReconnect → emits "reconnecting" → caller stops.
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(monitor.isMonitoring()).toBe(false);
+    expect(statusChanges).toEqual(["reconnecting"]);
+    // A torn-down monitor must issue no provision() request.
+    expect((client.provision as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it('suppresses onReconnect() when stop() runs synchronously inside onStatusChange("connected")', async () => {
+    // The success branch emits "connected" then onReconnect(). If the caller
+    // stops from inside the "connected" callback, onReconnect() must not fire
+    // into a torn-down manager.
+    const client = {
+      heartbeat: vi.fn().mockResolvedValue(false),
+      provision: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ConstructorParameters<typeof ConnectionMonitor>[0];
+
+    const statusChanges: string[] = [];
+    const onReconnect = vi.fn();
+    let monitor!: ConnectionMonitor;
+    const onStatusChange = vi.fn((s: string) => {
+      statusChanges.push(s);
+      if (s === "connected") monitor.stop();
+    });
+    monitor = new ConnectionMonitor(
+      client,
+      "agent-sc-connected",
+      { onDisconnect: vi.fn(), onReconnect, onStatusChange },
+      HEARTBEAT_INTERVAL_MS,
+      1
+    );
+
+    monitor.start();
+    // Failed heartbeat → reconnect → provision() succeeds → emits "connected"
+    // → caller stops before onReconnect() would fire.
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(monitor.isMonitoring()).toBe(false);
+    expect(statusChanges).toEqual(["reconnecting", "connected"]);
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it('suppresses onReconnectExhausted() when stop() runs synchronously inside onStatusChange("disconnected")', async () => {
+    // The exhaustion branch emits "disconnected" then onReconnectExhausted(). A
+    // caller may stop from inside the "disconnected" callback; the exhaustion
+    // callback must not fire after teardown. maxFailures + a single attempt
+    // budget is not configurable, so drive real exhaustion with a rejecting
+    // provision() and flush all backoff timers.
+    const client = {
+      heartbeat: vi.fn().mockResolvedValue(false),
+      provision: vi.fn().mockRejectedValue(new Error("provision failed")),
+    } as unknown as ConstructorParameters<typeof ConnectionMonitor>[0];
+
+    const statusChanges: string[] = [];
+    const onReconnectExhausted = vi.fn();
+    let monitor!: ConnectionMonitor;
+    const onStatusChange = vi.fn((s: string) => {
+      statusChanges.push(s);
+      if (s === "disconnected") monitor.stop();
+    });
+    monitor = new ConnectionMonitor(
+      client,
+      "agent-sc-disconnected",
+      {
+        onDisconnect: vi.fn(),
+        onReconnect: vi.fn(),
+        onStatusChange,
+        onReconnectExhausted,
+      },
+      HEARTBEAT_INTERVAL_MS,
+      1
+    );
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+    // Flush all 10 attempts and their capped backoff sleeps to reach exhaustion.
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(statusChanges).toContain("disconnected");
+    expect(monitor.isMonitoring()).toBe(false);
+    // stop() ran inside the "disconnected" callback; the exhaustion callback
+    // must not fire after teardown.
+    expect(onReconnectExhausted).not.toHaveBeenCalled();
+  });
 });
