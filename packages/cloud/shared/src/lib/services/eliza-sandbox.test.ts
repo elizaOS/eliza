@@ -5238,6 +5238,54 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     return { mod, svc, spyTarget: svc as unknown as CaptureSpyTarget };
   }
 
+  for (const status of ["stopped", "deletion_pending", "deletion_failed"] as const) {
+    test(`retained ${status} state cannot bypass capture after compute allocation release`, async () => {
+      const { svc, spyTarget } = await makeCaptureSvc();
+      const rec: AgentSandbox = {
+        ...customSandbox(),
+        status,
+        bridge_url: null,
+        health_url: null,
+        deletion_allocation_counted: false,
+        local_state_retention: {
+          version: 1,
+          stopIntentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          nodeId: "retained-node",
+          nodeRecordId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          containerId: "a".repeat(64),
+          containerName: "eliza-retained",
+          agentId: customSandbox().id,
+          hostname: "192.0.2.10",
+          sshPort: 22,
+          sshUser: "root",
+          hostKeyFingerprint: "SHA256:fixture-host-key",
+          capturedAt: "2026-09-06T00:00:00.000Z",
+          bridgeUrl: "http://retained.invalid:3000",
+          healthUrl: "http://retained.invalid:3000/health",
+          state: "stopped",
+        },
+      };
+      const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+      const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+        ok: false,
+        error: "unexpected deletion admission",
+      });
+      try {
+        const result = await svc.deleteAgent(rec.id, rec.organization_id, {
+          authorization: "user_request",
+        });
+        expect(result.success).toBe(false);
+        expect(result.success === false && result.error).toContain(
+          "Refusing to delete without a current backup",
+        );
+        expect(prepare).not.toHaveBeenCalled();
+      } finally {
+        getForWrite.mockRestore();
+        prepare.mockRestore();
+      }
+    });
+  }
+
   test("a failing pre-deletion capture refuses the delete before deletion intent", async () => {
     const { svc, spyTarget } = await makeCaptureSvc();
     const rec = customSandbox();

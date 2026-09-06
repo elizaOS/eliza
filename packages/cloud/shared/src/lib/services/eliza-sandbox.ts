@@ -3062,6 +3062,10 @@ export class ElizaSandboxService {
    * live container while still failing closed on ambiguous legacy intents.
    */
   private requiresPreDeleteCapture(rec: AgentSandbox | null | undefined): rec is AgentSandbox {
+    // A retained stop deliberately keeps the only recoverable local copy when
+    // capture failed. Neither a stopped status nor released compute billing
+    // proves that deleting those bytes is safe.
+    if (rec?.local_state_retention) return true;
     if (
       !rec ||
       rec.execution_tier === "shared" ||
