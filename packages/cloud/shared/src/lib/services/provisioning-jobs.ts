@@ -5479,6 +5479,9 @@ export class ProvisioningJobService {
       job.id,
       authority.authorization,
       authority.lifecycleRevision,
+      job.execution_generation
+        ? { executionGeneration: job.execution_generation, executionOwnerId: this.executionOwnerId }
+        : undefined,
     );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;

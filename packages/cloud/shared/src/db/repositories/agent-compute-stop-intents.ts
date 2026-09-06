@@ -299,6 +299,27 @@ export async function carryConfirmedStopReceiptAcrossClaimInTransaction(
         AND lifecycle_revision = ${input.claimedRevision}::bigint)`,
       ),
     );
+  await tx
+    .update(agentComputeStopIntents)
+    .set({ lifecycle_revision: sql`${input.claimedRevision}::bigint` })
+    .where(
+      and(
+        eq(agentComputeStopIntents.job_id, input.jobId),
+        eq(agentComputeStopIntents.agent_id, input.agentId),
+        eq(agentComputeStopIntents.organization_id, input.organizationId),
+        inArray(agentComputeStopIntents.status, [
+          "pending",
+          "dispatching",
+          "retry",
+          "terminal_attention",
+        ]),
+        sql`${agentComputeStopIntents.lifecycle_revision} = ${input.previousRevision}::bigint`,
+        sql`EXISTS (SELECT 1 FROM ${agentSandboxes} WHERE id = ${input.agentId} AND organization_id = ${input.organizationId}
+      AND lifecycle_job_id = ${input.jobId} AND lifecycle_revision = ${input.claimedRevision}::bigint
+      AND local_state_retention->>'state' = 'stop_pending'
+      AND local_state_retention->>'stopIntentId' = ${agentComputeStopIntents.id}::text)`,
+      ),
+    );
 }
 
 /** Release only the owned job binding while preserving its exact confirmed stop receipt. */
@@ -339,16 +360,23 @@ export async function releaseAgentLifecycleBindingInTransaction(
       SET lifecycle_job_id = NULL, lifecycle_execution_generation = NULL
       FROM prior
       WHERE target.id = prior.id AND target.organization_id = prior.organization_id
-      RETURNING target.id, target.organization_id, target.status, target.lifecycle_revision,
+      RETURNING target.id, target.organization_id, target.status, target.lifecycle_revision, target.local_state_retention,
         prior.lifecycle_revision AS previous_revision
     )
     UPDATE ${agentComputeStopIntents} AS intent
-    SET provider_confirmed_lifecycle_revision = released.lifecycle_revision
+    SET provider_confirmed_lifecycle_revision = CASE WHEN intent.status = 'provider_confirmed'
+          THEN released.lifecycle_revision ELSE intent.provider_confirmed_lifecycle_revision END,
+        lifecycle_revision = CASE WHEN intent.status <> 'provider_confirmed'
+          THEN released.lifecycle_revision ELSE intent.lifecycle_revision END
     FROM released
     WHERE intent.agent_id = released.id AND intent.organization_id = released.organization_id
-      AND intent.job_id = ${input.jobId} AND intent.status = 'provider_confirmed'
-      AND released.status = 'stopped'
-      AND intent.provider_confirmed_lifecycle_revision = released.previous_revision
+      AND intent.job_id = ${input.jobId}
+      AND ((intent.status = 'provider_confirmed' AND released.status = 'stopped'
+        AND intent.provider_confirmed_lifecycle_revision = released.previous_revision)
+        OR (intent.status IN ('pending', 'dispatching', 'retry', 'terminal_attention')
+          AND intent.lifecycle_revision = released.previous_revision
+          AND released.local_state_retention->>'state' = 'stop_pending'
+          AND released.local_state_retention->>'stopIntentId' = intent.id::text))
   `);
 }
 

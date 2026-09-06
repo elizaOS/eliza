@@ -59,6 +59,11 @@ import {
 } from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
+  captureDockerRetainedContainer,
+  resumeDockerRetainedContainer,
+  stopDockerRetainingState,
+} from "./docker-retained-stop";
+import {
   allocatePort,
   BRIDGE_PORT_MAX,
   BRIDGE_PORT_MIN,
@@ -126,6 +131,10 @@ import type {
   SandboxHealthOutcome,
   SandboxProvider,
   SandboxReplacementCleanupLocator,
+  SandboxRetainedCaptureLocator,
+  SandboxRetainedResumeReceipt,
+  SandboxRetainedStopLocator,
+  SandboxRetainedStopReceipt,
 } from "./sandbox-provider-types";
 import {
   assertContainerBackedExecutionTier,
@@ -5243,6 +5252,75 @@ export class DockerSandboxProvider implements SandboxProvider {
       throw new Error(
         `[docker-sandbox] Cannot prove VPN registration settled for ${locator.containerName}`,
       );
+    }
+  }
+
+  async resumeRetainedContainer(
+    locator: SandboxRetainedStopLocator,
+  ): Promise<SandboxRetainedResumeReceipt> {
+    return this.withRetainedContainerConnection(locator, (ssh) =>
+      resumeDockerRetainedContainer(
+        (command, timeout) => ssh.exec(command, timeout),
+        locator.containerId,
+        locator.agentId,
+      ),
+    );
+  }
+
+  async captureRetainedContainer(locator: SandboxRetainedCaptureLocator): Promise<string> {
+    return this.withRetainedContainerConnection(locator, (ssh) =>
+      captureDockerRetainedContainer(
+        (command, timeout) => ssh.exec(command, timeout),
+        locator.containerName,
+        locator.agentId,
+      ),
+    );
+  }
+
+  async stopRetainingState(
+    locator: SandboxRetainedStopLocator,
+  ): Promise<SandboxRetainedStopReceipt> {
+    return this.withRetainedContainerConnection(locator, (ssh) =>
+      stopDockerRetainingState(
+        (command, timeout) => ssh.exec(command, timeout),
+        locator.containerId,
+        locator.agentId,
+      ),
+    );
+  }
+
+  private async withRetainedContainerConnection<T>(
+    locator: Omit<SandboxRetainedStopLocator, "containerId">,
+    operation: (ssh: DockerSSHClient) => Promise<T>,
+  ): Promise<T> {
+    if (
+      !locator.hostname.trim() ||
+      !locator.sshUser.trim() ||
+      !locator.hostKeyFingerprint.trim() ||
+      !Number.isSafeInteger(locator.sshPort) ||
+      locator.sshPort < 1 ||
+      locator.sshPort > 65_535
+    ) {
+      throw new ElizaError("Retained stop requires complete captured SSH authority", {
+        code: "SANDBOX_RETAINED_STOP_SSH_AUTHORITY_INVALID",
+      });
+    }
+    const ssh = DockerSSHClient.createDedicated(
+      locator.hostname,
+      locator.sshPort,
+      locator.hostKeyFingerprint,
+      locator.sshUser,
+    );
+    try {
+      return await operation(ssh);
+    } finally {
+      await ssh.disconnect().catch((error) => {
+        // error-policy:J6 connection teardown cannot invalidate a completed readback.
+        logger.warn("[docker-sandbox] Retained container connection teardown failed", {
+          agentId: locator.agentId,
+          error,
+        });
+      });
     }
   }
 
