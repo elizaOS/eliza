@@ -160,6 +160,41 @@ describe("VideoService.getTranscript empty-caption degradation", () => {
     expect(result.text).toBe("second variant");
   });
 
+  it("skips a leading url-less automatic_captions.en variant and consumes the next usable one", async () => {
+    const { service } = createServiceWithYtDlp({
+      title: "Multi Variant Auto Captions",
+      channel: "chan",
+      description: "desc",
+      categories: ["Music"],
+      subtitles: { en: [] },
+      automatic_captions: {
+        en: [{}, { url: "https://caption.example/auto-en.json" }],
+      },
+    });
+    const captionJson = JSON.stringify({
+      events: [{ segs: [{ utf8: "second auto variant\n" }] }],
+    });
+    const downloadCaption = vi
+      .spyOn(
+        service as unknown as {
+          downloadCaption: (u: string) => Promise<string>;
+        },
+        "downloadCaption",
+      )
+      .mockResolvedValue(captionJson);
+    const runtime = createRuntime();
+
+    const result = await service.processVideo(
+      "https://youtu.be/multi-variant-auto",
+      runtime,
+    );
+
+    expect(downloadCaption).toHaveBeenCalledWith(
+      "https://caption.example/auto-en.json",
+    );
+    expect(result.text).toBe("second auto variant ");
+  });
+
   it("still consumes a populated subtitles.en track ahead of the fallbacks", async () => {
     const { service } = createServiceWithYtDlp({
       title: "Real Subs",
