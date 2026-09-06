@@ -170,12 +170,11 @@ function isRecurringInvoice(object: object): boolean {
 
 /** Retrieve invoice authority before allowing a linked payment into legacy fulfillment. */
 async function hasLinkedInvoice(object: object): Promise<boolean> {
-  if (
-    !("invoice" in object) ||
-    object.invoice === null ||
-    object.invoice === undefined
-  )
-    return false;
+  // Basil removed invoice from PaymentIntent and Charge. Absence is ambiguous,
+  // not proof of a one-time purchase; retain it until versioned reconciliation
+  // can establish the provider linkage. Acacia explicitly uses null for none.
+  if (!("invoice" in object) || object.invoice === undefined) return true;
+  if (object.invoice === null) return false;
   const invoice = object.invoice;
   const id =
     typeof invoice === "string"

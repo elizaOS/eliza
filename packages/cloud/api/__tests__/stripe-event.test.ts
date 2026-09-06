@@ -160,6 +160,7 @@ function delivery(
       receivedAt: Date.now(),
       event: {
         id: `evt_${type}`,
+        api_version: "2024-11-20.acacia",
         type,
         data: { object },
       },
@@ -309,6 +310,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
           id: "pi_checkout_owned",
+          invoice: null,
           amount: 1000,
           amount_received: 1000,
           currency: "usd",
@@ -329,6 +331,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
           id: "pi_unknown",
+          invoice: null,
           amount: 1000,
           amount_received: 1000,
           currency: "usd",
@@ -346,6 +349,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
           id: "pi_one_time",
+          invoice: null,
           amount: 2500,
           amount_received: 2500,
           currency: "usd",
@@ -388,6 +392,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
           id: "pi_dup",
+          invoice: null,
           amount: 2500,
           amount_received: 2500,
           currency: "usd",
@@ -407,6 +412,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
           id: "pi_bad_meta",
+          invoice: null,
           amount: 1000,
           amount_received: 1000,
           currency: "usd",
@@ -422,6 +428,7 @@ describe("processStripeEvent payment_intent.succeeded one-time purchase", () => 
       await processStripeEvent(
         delivery("payment_intent.succeeded", {
           id: "pi_bad_affiliate",
+          invoice: null,
           amount: 1000,
           amount_received: 1000,
           currency: "usd",
@@ -467,6 +474,7 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
       await processStripeEvent(
         delivery("payment_intent.payment_failed", {
           id: "pi_failed",
+          invoice: null,
           status: "requires_payment_method",
           amount: 500,
           metadata: { organization_id: "org-1" },
@@ -481,6 +489,7 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
       await processStripeEvent(
         delivery("payment_intent.payment_failed", {
           id: "pi_app_failed",
+          invoice: null,
           status: "requires_payment_method",
           amount: 199,
           metadata: {
@@ -514,6 +523,7 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
       await processStripeEvent(
         delivery("payment_intent.payment_failed", {
           id: "pi_code_only",
+          invoice: null,
           status: "requires_payment_method",
           amount: 100,
           metadata: {
@@ -534,6 +544,7 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
       await processStripeEvent(
         delivery("payment_intent.payment_failed", {
           id: "pi_no_error",
+          invoice: null,
           status: "requires_payment_method",
           metadata: {
             source: "miniapp_app",
@@ -558,6 +569,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_no_pi",
+          invoice: null,
           amount_refunded: 500,
           payment_intent: null,
         }),
@@ -572,6 +584,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_zero",
+          invoice: null,
           amount_refunded: 0,
           payment_intent: "pi_1",
         }),
@@ -585,6 +598,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_expanded",
+          invoice: null,
           amount_refunded: 500,
           payment_intent: { id: "pi_expanded_refund" },
         }),
@@ -606,6 +620,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_bad_grant",
+          invoice: null,
           amount_refunded: 500,
           payment_intent: "pi_bad_grant",
         }),
@@ -622,6 +637,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_zero_grant",
+          invoice: null,
           amount_refunded: 500,
           payment_intent: "pi_zero_grant",
         }),
@@ -662,7 +678,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
         delivery("charge.dispute.funds_reinstated", {
           id: "dp_zero",
           amount: 4500,
-          charge: { id: "ch_1" },
+          charge: { id: "ch_1", invoice: null },
           payment_intent: { id: "pi_1" },
         }),
       ),
@@ -678,6 +694,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_not_found",
+          invoice: null,
           amount_refunded: 100,
           payment_intent: "pi_missing_org",
         }),
@@ -693,6 +710,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_invalid",
+          invoice: null,
           amount_refunded: 100,
           payment_intent: "pi_invalid",
         }),
@@ -706,6 +724,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_processed",
+          invoice: null,
           amount_refunded: 100,
           payment_intent: "pi_processed",
         }),
@@ -723,6 +742,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
           "charge.refunded",
           {
             id: "ch_timeout",
+            invoice: null,
             amount_refunded: 100,
             payment_intent: "pi_timeout",
           },
@@ -738,6 +758,7 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       await processStripeEvent(
         delivery("charge.refunded", {
           id: "ch_string_throw",
+          invoice: null,
           amount_refunded: 100,
           payment_intent: "pi_string_throw",
         }),
@@ -951,4 +972,73 @@ test("non-recurring invoice-backed purchases still settle through the legacy one
   expect(createInvoice).toHaveBeenCalledWith(
     expect.objectContaining({ stripe_invoice_id: "in_manual" }),
   );
+});
+
+test("retains Basil payment and refund deliveries without an invoice field", async () => {
+  for (const type of [
+    "payment_intent.succeeded",
+    "payment_intent.payment_failed",
+    "charge.refunded",
+  ]) {
+    const input = delivery(type, {
+      id: type.startsWith("payment_intent.") ? "pi_basil" : "ch_basil",
+      object: type.startsWith("payment_intent.") ? "payment_intent" : "charge",
+      amount: 9900,
+      amount_received: 9900,
+      amount_refunded: 9900,
+      currency: "usd",
+      customer: "cus_1",
+      payment_intent: "pi_basil",
+      metadata: { organization_id: "org-1", credits: "99", type: "one_time" },
+    });
+    input.body.event.api_version = "2025-03-31.basil";
+    expect(await processStripeEvent(input)).toBe("retry");
+  }
+  expect(addCredits).not.toHaveBeenCalled();
+  expect(clawbackCredits).not.toHaveBeenCalled();
+  expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
+  expect(failChargeAndEnqueue).not.toHaveBeenCalled();
+});
+
+test("retains missing or undefined linkage even on an Acacia delivery", async () => {
+  for (const linkage of [{}, { invoice: undefined }]) {
+    expect(
+      await processStripeEvent(
+        delivery("payment_intent.succeeded", {
+          id: "pi_ambiguous",
+          amount: 1000,
+          amount_received: 1000,
+          currency: "usd",
+          metadata: {
+            organization_id: "org-1",
+            credits: "10",
+            type: "one_time",
+          },
+          ...linkage,
+        }),
+      ),
+    ).toBe("retry");
+  }
+  expect(addCredits).not.toHaveBeenCalled();
+  expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
+});
+
+test("retains disputes with expanded charges whose invoice linkage is absent", async () => {
+  for (const type of [
+    "charge.dispute.funds_withdrawn",
+    "charge.dispute.funds_reinstated",
+  ]) {
+    const input = delivery(type, {
+      id: "dp_basil",
+      amount: 9900,
+      payment_intent: "pi_basil",
+      charge: { id: "ch_basil", object: "charge", payment_intent: "pi_basil" },
+    });
+    input.body.event.api_version = "2025-03-31.basil";
+    expect(await processStripeEvent(input)).toBe("retry");
+  }
+  expect(retrieveCharge).not.toHaveBeenCalled();
+  expect(getTransactionByStripePaymentIntent).not.toHaveBeenCalled();
+  expect(clawbackCredits).not.toHaveBeenCalled();
+  expect(refundCredits).not.toHaveBeenCalled();
 });

@@ -170,6 +170,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_1",
+              invoice: null,
               amount_refunded: 5000,
               payment_intent: "pi_1",
             },
@@ -217,6 +218,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_taxed",
+              invoice: null,
               amount_refunded: 5000,
               payment_intent: "pi_taxed",
             },
@@ -268,6 +270,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_pack",
+              invoice: null,
               amount_refunded: 250,
               payment_intent: "pi_pack",
             },
@@ -310,6 +313,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_1",
+              invoice: null,
               amount_refunded: 5000,
               payment_intent: "pi_1",
             },
