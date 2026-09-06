@@ -200,6 +200,7 @@ function stage1Response(fields: {
 	intents?: string[];
 	candidateActionNames?: string[];
 	replyText?: string;
+	replyEffectStatus?: unknown;
 }): CannedResponse {
 	return {
 		body: {
@@ -214,6 +215,9 @@ function stage1Response(fields: {
 						intents: fields.intents ?? [],
 						candidateActionNames: fields.candidateActionNames ?? [],
 						replyText: fields.replyText ?? "",
+						...(fields.replyEffectStatus !== undefined
+							? { replyEffectStatus: fields.replyEffectStatus }
+							: {}),
 						facts: [],
 						relationships: [],
 						addressedTo: [],
@@ -317,6 +321,195 @@ describe("v5 tiered action surface", () => {
 		}
 		_resetActionRolePolicyCacheForTests();
 	});
+
+	it.each(["none", " NONE "])(
+		"keeps a completed conversational correction out of Calendar planning with %j",
+		async (replyEffectStatus) => {
+			const answer =
+				"Corrected for this conversation: orange notebook, charger, and no water. No notes or calendar events changed.";
+			const handler = vi.fn(async () => ({ success: true }));
+			const runtime = makeRuntime({
+				actions: [makeAction({ name: "CALENDAR", handler })],
+				responses: [
+					stage1Response({
+						contexts: ["simple"],
+						replyEffectStatus,
+						replyText: answer,
+					}),
+					plannerToolResponse("CALENDAR"),
+					finishEvaluatorResponse(answer),
+				],
+			});
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(
+					"For our temporary walk QA, please correct the old packing detail: I am bringing the orange notebook, not green or blue. Keep the charger and no water. Do not change any notes or calendar events.",
+				),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind !== "direct_reply")
+				throw new Error("Expected direct reply");
+			expect(result.result.responseContent?.text).toBe(answer);
+			expect(handler).not.toHaveBeenCalled();
+			expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
+	it.each([
+		{
+			name: "model-selected Calendar action",
+			fields: { candidateActionNames: ["CALENDAR"] },
+		},
+		{ name: "declared mutation intent", fields: { intents: ["move lunch"] } },
+		{ name: "pending work", fields: { replyEffectStatus: "pending" as const } },
+		{
+			name: "claimed effect",
+			fields: { replyEffectStatus: "applied" as const },
+		},
+		{
+			name: "unapplied effect",
+			fields: { replyEffectStatus: "non_applied" as const },
+		},
+		{ name: "progress-only acknowledgment", fields: { replyText: "On it." } },
+		{
+			name: "legacy incomplete envelope",
+			fields: { replyEffectStatus: undefined },
+		},
+		{ name: "null effect status", fields: { replyEffectStatus: null } },
+		{
+			name: "unrecognized effect status",
+			fields: { replyEffectStatus: "unknown" },
+		},
+		{ name: "malformed effect status", fields: { replyEffectStatus: {} } },
+	])("preserves Calendar planning for $name", async ({ fields }) => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const runtime = makeRuntime({
+			actions: [makeAction({ name: "CALENDAR", handler })],
+			responses: [
+				stage1Response({
+					contexts: ["simple"],
+					replyEffectStatus: "none",
+					replyText: "The requested time is Friday at 1 PM.",
+					...fields,
+				}),
+				plannerToolResponse("CALENDAR"),
+				finishEvaluatorResponse("The Calendar tool returned."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("Move the lunch with Dana to Friday at 1 PM."),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it.each([
+		{ name: "mutation intent", fields: { intents: ["move lunch"] } },
+		{ name: "tool requirement", fields: { requiresTool: true } },
+	])("preserves nested legacy $name", async ({ fields }) => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const runtime = makeRuntime({
+			actions: [makeAction({ name: "CALENDAR", handler })],
+			responses: [
+				{
+					body: JSON.stringify({
+						processMessage: "RESPOND",
+						plan: {
+							contexts: ["simple"],
+							intents: [],
+							candidateActions: [],
+							replyEffectStatus: "none",
+							reply: "The requested time is Friday at 1 PM.",
+							...fields,
+						},
+					}),
+				},
+				plannerToolResponse("CALENDAR"),
+				finishEvaluatorResponse("The Calendar tool returned."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("Move the lunch with Dana to Friday at 1 PM."),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it.each([
+		{ replyEffectStatus: undefined, shouldPlan: true },
+		{ replyEffectStatus: "unknown", shouldPlan: true },
+		{ replyEffectStatus: "pending", shouldPlan: true },
+		{ replyEffectStatus: "none", shouldPlan: false },
+	])(
+		"preserves keyed-transcript effect status $replyEffectStatus at the planning boundary",
+		async ({ replyEffectStatus, shouldPlan }) => {
+			const answer =
+				"Corrected for this conversation: orange notebook, charger, and no water. No notes or calendar events changed.";
+			const handler = vi.fn(async () => ({ success: true }));
+			const runtime = makeRuntime({
+				actions: [makeAction({ name: "CALENDAR", handler })],
+				responses: [
+					{
+						body: [
+							"shouldRespond: RESPOND",
+							"contexts: simple",
+							...(replyEffectStatus === undefined
+								? []
+								: [`replyEffectStatus: ${replyEffectStatus}`]),
+							`replyText: ${answer}`,
+						].join("\n"),
+					},
+					plannerToolResponse("CALENDAR"),
+					finishEvaluatorResponse(answer),
+				],
+			});
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(
+					"For our temporary walk QA, please correct the old packing detail: I am bringing the orange notebook, not green or blue. Keep the charger and no water. Do not change any notes or calendar events.",
+				),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+
+			expect(result.kind).toBe(shouldPlan ? "planned_reply" : "direct_reply");
+			expect(handler).toHaveBeenCalledTimes(shouldPlan ? 1 : 0);
+			expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
+				shouldPlan
+					? [
+							ModelType.RESPONSE_HANDLER,
+							ModelType.ACTION_PLANNER,
+							ModelType.RESPONSE_HANDLER,
+						]
+					: [ModelType.RESPONSE_HANDLER],
+			);
+		},
+	);
 
 	it("uses a provider's lossless retrieval projection before an oversized planner dispatch", async () => {
 		const handler = vi.fn(async () => ({

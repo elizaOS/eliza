@@ -6264,6 +6264,12 @@ function normalizeRawParsedForFieldRegistry(
 	if (normalized.contexts === undefined) {
 		normalized.contexts = Array.isArray(plan?.contexts) ? plan.contexts : [];
 	}
+	if (normalized.intents === undefined) {
+		normalized.intents = Array.isArray(plan?.intents) ? plan.intents : [];
+	}
+	if (normalized.requiresTool === undefined && plan?.requiresTool === true) {
+		normalized.requiresTool = true;
+	}
 	if (normalized.candidateActionNames === undefined) {
 		normalized.candidateActionNames = Array.isArray(plan?.candidateActions)
 			? plan.candidateActions
@@ -6402,6 +6408,7 @@ export function messageHandlerFromFieldResult(
 		result.replyEffectStatus,
 	);
 	const declaredIntents = stringArrayProperty(result.intents);
+	const modelRequiresTool = result.requiresTool === true;
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -6433,9 +6440,10 @@ export function messageHandlerFromFieldResult(
 					currentMessageText,
 				)
 			: ({ names: [], kind: null } as DirectCurrentRequestCandidateInference);
-	// Text-derived view/goal hints cannot override a completed model answer
+	// Text-derived hints cannot override a completed model answer
 	// unless the model also declared work or an effect requiring verification.
 	const directCurrentCandidateActions =
+		!modelRequiresTool &&
 		shouldSuppressInferredCandidateEscalation({
 			inference: directCurrentInference,
 			stageOneContexts: rawContexts,
@@ -6553,7 +6561,7 @@ export function messageHandlerFromFieldResult(
 		processMessage === "RESPOND" &&
 		!preemptDirect &&
 		!subAgentCompletionRelay &&
-		replyEffectStatus === "pending";
+		(replyEffectStatus === "pending" || modelRequiresTool);
 	// A model-declared actionable outcome must not disappear just because the
 	// same payload says "simple" and omits an action name. The real planner owns
 	// action selection; do not infer an intent or fabricate a tool call here.
@@ -6734,6 +6742,7 @@ export function messageHandlerFromFieldResult(
 	// a repeated progress/fallback answer without ever executing delegation.
 	if (
 		shouldPlan &&
+		!modelRequiresTool &&
 		planCandidateActions.length > 0 &&
 		rawCandidateActions.length === 0 &&
 		directCurrentInference.kind !== "coding"
@@ -7294,8 +7303,8 @@ function inferDirectCurrentRequestCandidateInference(
 }
 
 /**
- * Keep answered simple turns out of planning when only inferred view/goal
- * metadata suggests a tool. Surface-word and goal matches also require the
+ * Keep answered simple turns out of planning when only inferred view or owner
+ * metadata suggests a tool. Surface-word and owner matches also require the
  * model's explicit no-effect classification and no declared intent; legacy
  * incomplete envelopes remain conservative. Model-selected actions and
  * pending/applied effects keep their normal planning and verification paths.
@@ -7312,7 +7321,8 @@ function shouldSuppressInferredCandidateEscalation(args: {
 		args.inference.kind !== "view-capability" &&
 		!(
 			(args.inference.kind === "view-surface" ||
-				args.inference.kind === "owner-goals") &&
+				args.inference.kind === "owner-goals" ||
+				args.inference.kind === "owner-scheduled-admin") &&
 			args.stageOneReplyEffectStatus === "none" &&
 			args.stageOneIntents.length === 0
 		)
@@ -9469,11 +9479,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
 		if (rawFieldParsed) {
+			const normalizedRawParsed =
+				normalizeRawParsedForFieldRegistry(rawFieldParsed);
 			fieldRunResult = await timeInferenceSpan(
 				"evaluators:response-handler-fields",
 				() =>
 					args.runtime.responseHandlerFieldRegistry.dispatch({
-						rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
+						rawParsed: normalizedRawParsed,
 						runtime: args.runtime,
 						message: args.message,
 						state: args.state,
@@ -9482,7 +9494,21 @@ export async function runV5MessageRuntimeStage1(args: {
 					}),
 			);
 			messageHandler = messageHandlerFromFieldResult(
-				fieldRunResult.parsed,
+				{
+					...fieldRunResult.parsed,
+					// Registry defaults are not an explicit model no-effect decision.
+					// Keep missing/malformed statuses conservative without discarding
+					// pending or applied statuses produced by field evaluators.
+					replyEffectStatus:
+						fieldRunResult.parsed.replyEffectStatus === "none" &&
+						!(
+							typeof normalizedRawParsed.replyEffectStatus === "string" &&
+							normalizedRawParsed.replyEffectStatus.trim().toLowerCase() ===
+								"none"
+						)
+							? undefined
+							: fieldRunResult.parsed.replyEffectStatus,
+				},
 				fieldRunResult,
 				{
 					actions: args.runtime.actions,

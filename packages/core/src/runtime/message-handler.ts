@@ -96,16 +96,16 @@ export function parseMessageHandlerOutput(
 	if (candidateActions === null || intents === null) return null;
 
 	const extract = parseExtract(parsed);
+	const replyEffectStatus = normalizeReplyEffectStatus(
+		parsed.replyEffectStatus,
+	);
 
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: replyRaw,
-		...(parsed.replyEffectStatus !== undefined
-			? {
-					replyEffectStatus: normalizeReplyEffectStatus(
-						parsed.replyEffectStatus,
-					),
-				}
+		...(typeof parsed.replyEffectStatus === "string" &&
+		parsed.replyEffectStatus.trim().toLowerCase() === replyEffectStatus
+			? { replyEffectStatus }
 			: {}),
 	};
 	if (candidateActions.length > 0) {
@@ -168,16 +168,16 @@ function parseMessageHandlerFieldTranscript(
 		addressedTo: splitTranscriptList(fields.addressedTo),
 		topics: splitTranscriptList(fields.topics),
 	});
+	const replyEffectStatus = normalizeReplyEffectStatus(
+		fields.replyEffectStatus,
+	);
 
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: replyRaw,
-		...(fields.replyEffectStatus !== undefined
-			? {
-					replyEffectStatus: normalizeReplyEffectStatus(
-						fields.replyEffectStatus,
-					),
-				}
+		...(typeof fields.replyEffectStatus === "string" &&
+		fields.replyEffectStatus.trim().toLowerCase() === replyEffectStatus
+			? { replyEffectStatus }
 			: {}),
 	};
 	if (candidateActions.length > 0) {

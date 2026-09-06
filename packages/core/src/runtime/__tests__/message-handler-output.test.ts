@@ -60,6 +60,22 @@ describe("message handler retrieval hint output", () => {
 		},
 	);
 
+	it.each([undefined, null, {}, "unknown", ""])(
+		"does not treat invalid effect status %j as an explicit no-effect decision",
+		(replyEffectStatus) => {
+			const parsed = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					replyText: "The requested time is Friday at 1 PM.",
+					replyEffectStatus,
+				}),
+			);
+			expect(parsed).not.toBeNull();
+			expect(parsed?.plan.replyEffectStatus).toBeUndefined();
+		},
+	);
+
 	it("strips leaked model tool-call markup out of replyText", () => {
 		// Weak models emit their native tool-call serialization as plain text;
 		// it must never reach the user. Cover closed, truncated-open, and
