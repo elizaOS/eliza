@@ -17,6 +17,12 @@ export async function prepareKokoroPhrases(
 	phonemizer: KokoroPhonemizer,
 ): Promise<PreparedKokoroPhrase[]> {
 	const phonemes = await phonemizer.phonemize(text, lang);
+	if (phonemes.phonemes.length === 0) {
+		throw new ElizaError(
+			"[Kokoro] A speech segment has no pronounceable phonemes. Remove the unsupported segment before retrying.",
+			{ code: "KOKORO_EMPTY_PHONEMES" },
+		);
+	}
 	// Each native IPA codepoint contributes at most one token. Counting every
 	// codepoint is conservative even when the native vocabulary ignores it.
 	if (Array.from(phonemes.phonemes).length <= 510) {

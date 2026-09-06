@@ -125,6 +125,33 @@ describe("KokoroTtsBackend", () => {
 		expect(onChunk).not.toHaveBeenCalled();
 	});
 
+	it("rejects a nonspoken suffix during full preflight before emitting the prefix", async () => {
+		const phonemizer: KokoroPhonemizer = {
+			id: "separator-aware",
+			async phonemize(text) {
+				return {
+					ids: new Int32Array(),
+					phonemes: /[a-z]/i.test(text) ? text : "",
+				};
+			},
+		};
+		const { backend, runtime } = makeBackend({ phonemizer });
+		const onChunk = vi.fn();
+		const text =
+			"This sentence has many ordinary spoken words. ".repeat(30) +
+			"--- ".repeat(300);
+		await expect(
+			backend.synthesizeStream({
+				phrase: makePhrase(text),
+				preset: makePreset(KOKORO_DEFAULT_VOICE_ID),
+				cancelSignal: { cancelled: false },
+				onChunk,
+			}),
+		).rejects.toMatchObject({ code: "KOKORO_EMPTY_PHONEMES" });
+		expect(runtime.calls).toBe(0);
+		expect(onChunk).not.toHaveBeenCalled();
+	});
+
 	it("cancels between long-utterance segments without dispatching the suffix", async () => {
 		const phonemizer: KokoroPhonemizer = {
 			id: "length-aware",
