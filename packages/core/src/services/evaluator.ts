@@ -170,6 +170,28 @@ ${part("providerContext")}
 `;
 }
 
+/**
+ * The composed state text with the RECENT_MESSAGES provider block replaced
+ * by a pointer to the shared transcript, or undefined when the state carries
+ * no such block (then the full text is used unchanged).
+ */
+function providerContextWithoutRoomTranscript(
+	state: State,
+): string | undefined {
+	const providers = isRecord(state.data) ? state.data.providers : undefined;
+	if (!isRecord(providers)) return undefined;
+	const entry = Object.entries(providers).find(
+		([name]) => name.trim().toUpperCase() === "RECENT_MESSAGES",
+	);
+	const block = entry && isRecord(entry[1]) ? entry[1].text : undefined;
+	if (typeof block !== "string" || block.trim().length === 0) return undefined;
+	const text = state.text;
+	if (!text.includes(block)) return undefined;
+	return text
+		.replace(block, `(room transcript: see "${ROOM_TRANSCRIPT_HEADING}" above)`)
+		.trim();
+}
+
 function renderEvaluatorSection(section: PromptSection): string {
 	const content = toWellFormedUnicode(
 		[section.description, "", section.body].join("\n"),
@@ -217,7 +239,17 @@ function buildPrompt(params: {
 	const actionResults = isRecord(state.data)
 		? state.data.actionResults
 		: undefined;
-	const providerContext = state.text.trim() || "(none)";
+	// The shared context renders the complete room transcript once; the
+	// RECENT_MESSAGES provider block in the composed state is that same
+	// transcript, so it is left out of the provider context whenever the
+	// transcript rendered (live 2026-09-06: three copies of a 273-message room
+	// in one 193K-char evaluator prompt). A failed transcript read keeps the
+	// full state text so nothing is lost.
+	const providerContext =
+		(params.roomTranscript !== null
+			? providerContextWithoutRoomTranscript(state)
+			: undefined) ??
+		(state.text.trim() || "(none)");
 	// The merged evaluator prompt uses complete model projections while the
 	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {

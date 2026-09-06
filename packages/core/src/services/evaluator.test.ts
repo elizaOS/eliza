@@ -224,6 +224,53 @@ describe("EvaluatorService", () => {
 		},
 	);
 
+	it("drops the RECENT_MESSAGES provider block from the provider context once the shared transcript is rendered", async () => {
+		// Live 2026-09-06: the composed state's "# Conversation Messages" block
+		// was the same room history the shared context already carried.
+		const runtime = makeRuntime();
+		runtime.getMemories = vi.fn(async () => [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "I moved to Lisbon last week", source: "test" },
+			} as Memory,
+		]) as AgentRuntime["getMemories"];
+		runtime.registerEvaluator({
+			name: "alpha",
+			description: "alpha evaluator",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "alpha section",
+			parse: (output) => output as never,
+		});
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_modelType, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true } };
+		}) as AgentRuntime["useModel"];
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {
+				providerOrder: ["FACTS", "RECENT_MESSAGES"],
+				providers: {
+					FACTS: { text: "FACTS-BLOCK" },
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nROOM-HISTORY-COPY",
+					},
+				},
+			},
+			text: "FACTS-BLOCK\n\n# Conversation Messages\nROOM-HISTORY-COPY",
+		});
+
+		expect(prompt).toContain("Room transcript");
+		expect(prompt).toContain("I moved to Lisbon last week");
+		expect(prompt).toContain("FACTS-BLOCK");
+		expect(prompt).not.toContain("ROOM-HISTORY-COPY");
+		expect(prompt).toContain('(room transcript: see "Room transcript" above)');
+	});
+
 	it("renders the room transcript once in the shared context for every section", async () => {
 		// Live 2026-09-05: five sections each embedded the whole room history.
 		const runtime = makeRuntime();

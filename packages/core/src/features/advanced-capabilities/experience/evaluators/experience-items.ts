@@ -16,6 +16,7 @@ import { logger } from "../../../../logger.ts";
 import { stringifyForDiagnostics } from "../../../../runtime/json-output.ts";
 import { compactExternalEnvelopeForPrompt } from "../../../../security/external-content.ts";
 import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
+import { ROOM_TRANSCRIPT_HEADING } from "../../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -486,7 +487,7 @@ export const experiencePatternEvaluator: Evaluator<
 			provenance: buildExperienceProvenance(message, recentMessages),
 		};
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
 		return `Extract reusable lessons from recent conversation.
 
 Emit only lessons useful for future behavior: success, failure, correction, discovery, validation, warning, hypothesis.
@@ -504,7 +505,11 @@ Detected extraction signal:
 ${prepared.signalSummary}
 
 Recent conversation:
-${prepared.conversationContext || "(none)"}
+${
+	shared?.roomTranscriptRendered
+		? `see "${ROOM_TRANSCRIPT_HEADING}" in the Shared Turn Context above.`
+		: prepared.conversationContext || "(none)"
+}
 
 Existing similar experiences:
 ${formatExistingExperiences(prepared.existingExperiences)}`;

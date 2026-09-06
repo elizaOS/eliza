@@ -6,8 +6,8 @@
  */
 
 import { logger } from "../../../logger.ts";
-import { compactExternalEnvelopeForPrompt } from "../../../security/external-content";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { recentMessagesSection } from "../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -86,22 +86,6 @@ async function shouldExtractLongTerm(
 		message.roomId,
 		currentMessageCount,
 	);
-}
-
-function formatMessages(runtime: IAgentRuntime, msgs: Memory[]): string {
-	return msgs
-		.map((msg) => {
-			const sender =
-				msg.entityId === runtime.agentId
-					? (runtime.character.name ?? "Agent")
-					: msg.content.senderName || msg.entityId || "User";
-			return `${sender}: ${
-				msg.content.text
-					? compactExternalEnvelopeForPrompt(msg.content.text)
-					: "[non-text message]"
-			}`;
-		})
-		.join("\n");
 }
 
 function parseLongTermOutput(output: unknown): LongTermMemoryOutput | null {
@@ -189,14 +173,13 @@ export const longTermMemoryEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareLongTermMemory(runtime, message);
 	},
-	prompt({ runtime, prepared }) {
+	prompt({ prepared, shared }) {
 		return `Extract every high-confidence persistent user memory. Categories: episodic, semantic, procedural. Keep only specific, concrete, user-unique info likely useful in 3+ months, confidence >=0.85, not already present. Skip one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, and synthetic historical artifacts.
 
 Existing long-term memories:
 ${prepared.existingMemories}
 
-Recent messages:
-${formatMessages(runtime, prepared.recentMessages)}`;
+${recentMessagesSection(shared, prepared.recentMessages)}`;
 	},
 	parse: parseLongTermOutput,
 	processors: [
