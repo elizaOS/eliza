@@ -1,67 +1,82 @@
-# Eliza Cloud Apps - shared infra (Hetzner)
+# elizaOS Cloud Apps — environment database infrastructure
 
-The **shared** half of the Apps (Product 2) data plane. Owns the resources
-that are physically a single piece of infrastructure across staging + production
-app worker nodes:
+This root provisions one private network, PostgreSQL host, PGDATA volume,
+firewall and database credentials for **one** of development, staging or
+production. Its name remains `apps-shared` because workers within that
+environment share the database host; environments must not share it.
 
-| Resource | Purpose |
-|---|---|
-| `hcloud_network.apps` (+ subnet) | Private network for apps + their tenant DB. **No overlap with the agent net.** |
-| `hcloud_server.tenant_db` (+ volume) | One self-managed Postgres holding thousands of per-tenant `DATABASE`+`ROLE` (`REVOKE CONNECT FROM PUBLIC` per tenant). Reachable **only** on the private net. |
-| `hcloud_firewall.tenant_db` | SSH from operators only — Postgres stays private-net only. |
-| `random_password.tenant_db_admin` | The tenant DB superuser password, used to build the admin DSN output. |
-| `random_password.pgbouncer_auth` | The pgbouncer `auth_user` credential (resolves per-tenant SCRAM via `auth_query`). |
+Use a separate Hetzner apps project and `eliza-terraform-state-<environment>`
+R2 bucket for each environment. Copy the matching
+`tfvars/<environment>.tfvars.example` and initialize with
+`backend-<environment>.hcl`. The required `environment` input is published
+in state; `apps-data-plane` rejects any missing or mismatched identity.
 
-Per-env app worker nodes + the `*.<apps_base_domain>` Cloudflare record live in
-the sibling [`apps-data-plane`](../apps-data-plane/) module, which consumes
-this module's outputs through a `terraform_remote_state` data source.
+The historical `backend.hcl` records the prior shared state location for
+migration readback. Do not initialize the current root against it or migrate
+that state into a new environment backend. Use the reviewed historical source
+for legacy resource administration until retirement.
 
-## Launch role
+## Migration and admission
 
-This module is the shared dependency for both staging and production app
-workers. It must exist before `apps-data-plane` can be applied in either
-environment, and its sensitive `tenant_db_admin_dsn` is what the apps daemon
-uses to create per-tenant roles and databases.
+1. Inventory and back up the existing shared tenant databases, roles, volume,
+   encryption keys and routing authority. Prove a restore before cutover.
+2. Provision new environment projects and bucket-scoped state credentials.
+   Plan this root against each new backend; the reviewed plan must create
+   isolated resources without modifying the old database, volume or network.
+3. Copy each environment's data and roles to its new database. Re-encrypt DSNs
+   with that environment's secrets and seed only its `tenant_db_clusters` rows.
+4. Validate own-tenant reads/writes, cross-tenant and cross-environment rejection,
+   backup capture and an isolated restore. Fence writes for final synchronization.
+5. Switch database authority and app routing under the existing lifecycle
+   controls. Preserve the old resources for a verified rollback window; their
+   retirement requires a separate ownership and retention review.
 
-**Why:** isolated app DB mode is only real when every deployed app receives a
-tenant-specific DSN created from this shared cluster. Without this state, the
-Worker can accept deploy requests but the daemon cannot provision isolated
-database access.
+Changing Terraform state does not move data or rewrite deployed credentials.
+The nightly backup implementation below does not meet the production plan's
+five-minute PITR target; continuous WAL backup and measured recovery remain
+required before production acceptance.
 
-## State
+Run `terraform init -backend=false`, `terraform validate`, and `terraform test`
+for local configuration checks. Tests use mocked provider effects; live
+provider plans, connectivity and recovery evidence remain separate requirements.
 
-Single shared backend file (`backend.hcl`) — there is no staging vs production
-copy of these resources, only one. Both env apply rounds of `apps-data-plane`
-read the same `hetzner/apps-shared/shared.tfstate`.
+## Bootstrap and empty-cluster initialization
 
-## Apply
+The host installs PostgreSQL 16 for the Ubuntu 24.04 image and validates the
+existing cluster's major before starting it. Bootstrap uses the exact volume
+ID supplied by Terraform, requires an ext4 filesystem, and verifies the mounted
+block-device identity. It never formats a volume. Missing attachment or package
+readiness is a failure retried by systemd, rather than a healthy empty host.
+
+A new empty volume needs a one-use authorization after its creation and identity
+have been verified in the reviewed plan/provider receipt. On that candidate host,
+use the new volume ID from that receipt in this root command:
 
 ```bash
-cd packages/cloud/infra/cloud/terraform/hetzner/apps-shared
-cp tfvars/shared.tfvars.example shared.tfvars   # fill in real values
-export HCLOUD_TOKEN=...      # the HCLOUD_APPS_TOKEN value
-export AWS_ACCESS_KEY_ID=... # R2 token for the tf state backend
-export AWS_SECRET_ACCESS_KEY=...
-terraform init -backend-config=backend.hcl
-terraform plan  -var-file=shared.tfvars
-terraform apply -var-file=shared.tfvars
+sudo bash -s -- /dev/disk/by-id/scsi-0HC_Volume_REPLACE_WITH_NEW_VOLUME_ID <<'SH'
+set -euo pipefail
+volume_device="$1"
+[[ "$volume_device" =~ ^/dev/disk/by-id/scsi-0HC_Volume_[0-9]+$ ]]
+test -b "$volume_device"
+systemctl stop tenant-db-init.service
+test ! -L /run/eliza-tenant-db-init
+install -d -m 0700 -o root -g root /run/eliza-tenant-db-init
+test ! -e /run/eliza-tenant-db-init/authorization.consumed
+umask 077
+set -o noclobber
+printf '%s\n' "$volume_device" > /run/eliza-tenant-db-init/authorization
+systemctl start tenant-db-init.service
+SH
 ```
 
-Or from CI:
-
-```bash
-gh workflow run terraform-apps-shared.yml --ref develop -f action=plan
-gh workflow run terraform-apps-shared.yml --ref develop -f action=apply
-```
-
-## After apply
-
-1. Encrypt `tenant_db_admin_dsn` and seed it into `tenant_db_clusters`
-   (`provider='direct_pg'`, `host=tenant_db_private_ip`). The runtime
-   `ClusterPool` allocates from it; the daemon's `DirectPgExecutor` runs
-   the per-tenant `CREATE ROLE/DATABASE/REVOKE CONNECT`.
-2. Run the `apps-data-plane` apply (staging then production) so app worker
-   nodes attach to the shared network published here.
+The receipt expires after five minutes, is bound to that exact volume and is
+consumed atomically before `initdb`. It is not recreated on reboot. A failed
+initialization leaves its consumed receipt and partial data intact; inspect and
+recover them instead of issuing another authorization blindly. Existing clusters
+do not need this receipt. Unknown directories, mismatched versions and recovered
+filesystem entries stop initialization and require the appropriate restore or
+migration path. Systemd/SSH/database readiness still needs a real host drill;
+local shell tests substitute those external boundaries.
 
 ## Connection pooling (pgbouncer) — #8321 P0 #2
 
@@ -119,8 +134,8 @@ gates every connection.
 
 ### Authority and data classification
 
-This module's tenant Postgres node is the single authority for every deployed
-app's tenant database (per-tenant `DATABASE`+`ROLE`, `REVOKE CONNECT FROM
+This module's tenant Postgres node is the authority for this environment's
+app tenant databases (per-tenant `DATABASE`+`ROLE`, `REVOKE CONNECT FROM
 PUBLIC`). The data is customer-owned application data — treat it as
 confidential. This README, the terraform files, and all job logs must never
 carry credentials, DSN values, host secrets, or tenant identifiers; tenant

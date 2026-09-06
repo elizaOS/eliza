@@ -15,7 +15,7 @@ locals {
 }
 
 import {
-  for_each = { "1" = local.adopt_headscale_record_id[var.environment] }
+  for_each = { for environment, record_id in local.adopt_headscale_record_id : "1" => record_id if environment == var.environment }
   to       = cloudflare_dns_record.headscale[each.key]
   id       = "${var.cloudflare_zone_id}/${each.value}"
 }

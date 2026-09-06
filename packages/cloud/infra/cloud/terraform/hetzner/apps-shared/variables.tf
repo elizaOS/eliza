@@ -1,14 +1,16 @@
-# ── Shared apps-project credentials ──────────────────────────────────────────
-# The apps-shared module owns the resources that are SHARED across staging +
-# production app nodes: the private network + the tenant Postgres node.
-# Per-env app worker nodes live in apps-data-plane and consume this module's
-# outputs via a `terraform_remote_state` data source.
-#
-# The provider picks up the token from this variable OR the HCLOUD_TOKEN env
-# var. GitHub Actions wires the REPO-LEVEL secret HCLOUD_APPS_TOKEN as
-# HCLOUD_TOKEN.
+variable "environment" {
+  description = "The single environment owning this network and tenant database."
+  type        = string
+  validation {
+    condition     = contains(["development", "staging", "production"], var.environment)
+    error_message = "Select development, staging, or production; shared tenant database state is not an environment."
+  }
+}
+
+# Use a project token scoped to this environment's apps infrastructure.
+# Worker and database roots share that project's network within one tier only.
 variable "hcloud_token" {
-  description = "Hetzner Cloud API token for the shared apps Hetzner project. Leave null to pick up from HCLOUD_TOKEN env var (the GHA pattern, sourced from repo-level secret HCLOUD_APPS_TOKEN)."
+  description = "Hetzner token for this environment apps project; null uses HCLOUD_TOKEN."
   type        = string
   default     = null
   sensitive   = true
@@ -87,7 +89,7 @@ variable "backup_s3_bucket" {
   type        = string
   default     = ""
   validation {
-    condition     = var.backup_s3_bucket != "eliza-terraform-state"
+    condition     = !startswith(var.backup_s3_bucket, "eliza-terraform-state")
     error_message = "backup_s3_bucket must be a dedicated backup bucket, never the terraform state bucket"
   }
 }
