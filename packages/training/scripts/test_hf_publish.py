@@ -392,8 +392,9 @@ def test_dataset_publish_skips_when_token_missing(publish_dataset, monkeypatch):
     assert rc == 1
 
 
+@pytest.mark.parametrize("lfs_shape", ["mapping", "object"])
 def test_dataset_publish_skips_files_with_matching_sha(
-    publish_dataset, monkeypatch, tmp_path
+    publish_dataset, monkeypatch, tmp_path, lfs_shape
 ):
     monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
 
@@ -413,7 +414,11 @@ def test_dataset_publish_skips_files_with_matching_sha(
     fake_api = MagicMock()
     sibling = SimpleNamespace(
         rfilename="train.jsonl",
-        lfs={"sha256": expected_sha},
+        lfs=(
+            {"sha256": expected_sha}
+            if lfs_shape == "mapping"
+            else SimpleNamespace(sha256=expected_sha)
+        ),
     )
     fake_api.repo_info.side_effect = [
         SimpleNamespace(siblings=[sibling]),  # exists

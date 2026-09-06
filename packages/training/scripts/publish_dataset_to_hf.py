@@ -42,6 +42,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.publish.hub_inventory import remote_lfs_shas
 DATA = ROOT / "data"
 DATASETS = ROOT / "datasets"
 
@@ -972,18 +976,7 @@ def publish(spec: DatasetSpec, repo_id: str, public: bool) -> int:
         log.info("done. https://huggingface.co/datasets/%s", repo_id)
         return 0
 
-    # Build remote sha index in one shot so we can skip unchanged LFS blobs.
-    remote_shas: dict[str, str] = {}
-    info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
-    for sib in getattr(info, "siblings", []) or []:
-        lfs = getattr(sib, "lfs", None)
-        if not lfs:
-            continue
-        sha = getattr(lfs, "sha256", None) or (
-            lfs.get("sha256") if isinstance(lfs, dict) else None
-        )
-        if sha:
-            remote_shas[sib.rfilename] = sha
+    remote_shas = remote_lfs_shas(api, repo_id)
 
     from huggingface_hub import CommitOperationAdd
 

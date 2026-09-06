@@ -35,6 +35,10 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.publish.hub_inventory import remote_lfs_shas
 
 # Top-level docs (bundled at the repo root).
 TOP_LEVEL_FILES: tuple[str, ...] = (
@@ -256,18 +260,7 @@ def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:
             exist_ok=False,
         )
 
-    # Build remote sha index in one shot so we can skip unchanged LFS blobs.
-    remote_shas: dict[str, str] = {}
-    info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
-    for sib in getattr(info, "siblings", []) or []:
-        lfs = getattr(sib, "lfs", None)
-        if not lfs:
-            continue
-        sha = getattr(lfs, "sha256", None) or (
-            lfs.get("sha256") if isinstance(lfs, dict) else None
-        )
-        if sha:
-            remote_shas[sib.rfilename] = sha
+    remote_shas = remote_lfs_shas(api, repo_id)
 
     operations: list[CommitOperationAdd] = [
         CommitOperationAdd(
