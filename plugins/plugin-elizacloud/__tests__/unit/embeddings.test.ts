@@ -371,6 +371,51 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
   });
 
+  it("throws on a duplicate response index instead of returning an undefined hole (bills nothing)", async () => {
+    // 3 inputs, server returns 3 vectors but repeats index 0 (indices 0,0,1):
+    // the count check passes, slot 0 is written twice, and slot 2 is never
+    // filled — an undefined hole that would escape to the runtime. The
+    // duplicate must be rejected before the width check and before usage emits.
+    requestRaw.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [
+            { embedding: vec(0.1), index: 0 },
+            { embedding: vec(0.9), index: 0 },
+            { embedding: vec(0.2), index: 1 },
+          ],
+          usage: { prompt_tokens: 3, total_tokens: 3 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    await expect(handleBatchTextEmbedding(makeRuntime(), ["a", "b", "c"])).rejects.toThrow(
+      /duplicate response index 0; a vector slot would be left unfilled/
+    );
+    expect(emitModelUsageEvent).not.toHaveBeenCalled();
+  });
+
+  it("maps a reordered response back to the correct input slots (guards against over-rejecting)", async () => {
+    // Positive control: a legitimate response may return indices out of natural
+    // order (here [1,0]). Each vector must still land in its own input slot and
+    // usage must emit exactly once — the duplicate guard must not reject this.
+    requestRaw.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [
+            { embedding: vec(0.8), index: 1 },
+            { embedding: vec(0.3), index: 0 },
+          ],
+          usage: { prompt_tokens: 2, total_tokens: 2 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const result = await handleBatchTextEmbedding(makeRuntime(), ["a", "b"]);
+    expect(result).toEqual([vec(0.3), vec(0.8)]);
+    expect(emitModelUsageEvent).toHaveBeenCalledTimes(1);
+  });
+
   it("throws on an out-of-range response index instead of crashing on undefined.originalIndex", async () => {
     // A malformed/cross-batch absolute index (5) for a single-item batch.
     requestRaw.mockResolvedValueOnce(
