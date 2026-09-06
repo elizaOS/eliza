@@ -26,6 +26,7 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import { seedStewardSession } from "./helpers/test-auth";
 
 /**
  * Cloud-surface aesthetic audit (#10725 / #11342) — the audit:app equivalent
@@ -1283,6 +1284,90 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       await writeFile(
         path.join(requestDir, `zero-credit-${viewport.name}.json`),
         JSON.stringify(fixture.requests, null, 2),
+        "utf8",
+      );
+    });
+  }
+
+  for (const viewport of VIEWPORTS) {
+    test(`agentless management full entry and account navigation ${viewport.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedStewardSession(page, {
+        jwt: true,
+        subject: "cloud-audit-smoke-user",
+        email: "cloud-audit-smoke@agent.local",
+      });
+      const fixture = await installCloudApiStubs(page, {
+        initialAgentState: "shared",
+        creditBalance: 0,
+        quoteCanActivate: false,
+      });
+      const pageErrors: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      const agentRequests: string[] = [];
+      page.on("request", (request) => {
+        const pathname = new URL(request.url()).pathname;
+        if (pathname.startsWith("/api/v1/eliza/")) {
+          agentRequests.push(`${request.method()} ${pathname}`);
+        }
+      });
+      // This URL boots full main, whereas /cloud/apps uses the public entry.
+      await page.goto("/settings?from=account-test#cloud-applications", {
+        waitUntil: "domcontentloaded",
+      });
+      await expect(page).toHaveURL(/\/cloud\/apps\?from=account-test$/);
+      await expect(page.getByText("Smoke App", { exact: true })).toBeVisible();
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem("elizaos:active-server"),
+        ),
+      ).toBeNull();
+      const screenshotDir = path.join(outputDir, viewport.name);
+      await mkdir(screenshotDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-apps.png"),
+        fullPage: true,
+      });
+      const accountMenu = page.getByRole("button", { name: /^Account menu/ });
+      await accountMenu.hover();
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-apps--hover.png"),
+        fullPage: true,
+      });
+      await accountMenu.click();
+      await page
+        .getByRole("menuitem", { name: "Account", exact: true })
+        .click();
+      await expect(page).toHaveURL(/\/cloud\/account$/);
+      await expect(
+        page.getByRole("heading", { name: "Account", exact: true }),
+      ).toBeVisible();
+      await expect(page.getByTestId("profile-email-input")).toHaveValue(
+        "cloud-audit-smoke@agent.local",
+      );
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-account.png"),
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: /^Account menu/ }).hover();
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-account--hover.png"),
+        fullPage: true,
+      });
+      expect(agentRequests).toEqual([]);
+      expect(fixture.agentState).toBe("shared");
+      expect(pageErrors).toEqual([]);
+      const requestDir = path.join(outputDir, "requests");
+      await mkdir(requestDir, { recursive: true });
+      await writeFile(
+        path.join(requestDir, `agentless-management-${viewport.name}.json`),
+        JSON.stringify(
+          { agentRequests, pageErrors, requests: fixture.requests },
+          null,
+          2,
+        ),
         "utf8",
       );
     });
