@@ -99,7 +99,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-apps": expected({
-    requireAll: ["Projects"],
+    requireAll: ["Apps"],
     requireAny: [
       "elizaOS apps",
       "Advanced",
@@ -125,7 +125,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-automations": expected({
-    requireAll: ["Automations"],
+    requireAll: ["Show"],
     requireAny: [
       "Nothing scheduled yet",
       "Active",
@@ -143,14 +143,15 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Wallet", "USDC", "Tokens", "Perps"],
   }),
   "builtin-documents": expected({
-    requireAny: ["Add Knowledge", "Search knowledge", "Knowledge"],
+    requireAll: ["Library", "Add"],
+    requireAny: ["Docs", "No documents yet"],
   }),
   "builtin-character-skills": expected({
-    requireAll: ["Character", "Skills"],
+    requireAll: ["Skills"],
     requireAny: ["proposed", "active", "abilities", "Browse the catalog"],
   }),
   "builtin-experience": expected({
-    requireAll: ["Character"],
+    requireAll: ["Experience"],
     requireAny: ["Captured", "Avg importance", "need review"],
   }),
   "builtin-files": expected({
@@ -168,7 +169,6 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-trajectories": expected({
-    requireAll: ["Trajectories"],
     requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
   }),
   "builtin-transcripts": expected({
@@ -213,17 +213,14 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Desktop workspace", "Electrobun desktop runtime"],
   }),
   "builtin-settings": expected({
-    requireAll: ["Settings"],
     requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
   }),
   "builtin-vault": expected({
-    // The audit intentionally captures routed views with the chat sheet open.
-    // Vault's non-interactive identity stays visible for orientation while its
-    // subtitle and every sensitive control are occluded in short landscapes.
-    requireAll: ["Vault"],
+    // The shared title bar is intentionally absent; verify the visible
+    // credential workspace description rather than requiring a removed title.
+    requireAll: ["Encrypted credentials", "references"],
   }),
   "builtin-logs": expected({
-    requireAll: ["Logs"],
     requireAny: ["INFO", "smoke", "All levels", "Search logs", "All tags"],
   }),
   "builtin-background": expected({
@@ -295,7 +292,6 @@ export const VIEW_OCR_POLICIES = {
     VIEW_REGISTRY_FALLBACK,
   ),
   "plugin-health-gui": expected({
-    requireAll: ["Health"],
     requireAny: ["Last sleep", "Regularity", "Baseline"],
   }),
   "plugin-inbox-gui": expected({
@@ -311,7 +307,7 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "plugin-maps-gui": expected({
-    requireAll: ["Maps", "Find somewhere worth going"],
+    requireAll: ["Find somewhere worth going"],
     requireAny: ["provider-neutral", "Search a place"],
     forbid: ["Google Maps", "Mapbox"],
   }),

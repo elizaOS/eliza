@@ -3,7 +3,7 @@
 //
 // jsdom tests for the Character family section strip (#13591): the fixed
 // host-owned tab set (Personality/Relationships/Skills/Experience), the
-// centered "Character" ViewHeader, active-tab resolution from the route
+// headerless navigation, active-tab resolution from the route
 // (including the legacy /character/relationships alias), click navigation, and
 // isCharacterSectionPath predicate coverage. Deterministic — no network, no
 // registry; the strip is a static declaration.
@@ -63,15 +63,13 @@ describe("isCharacterSectionPath", () => {
 });
 
 describe("CharacterSectionNav", () => {
-  it("renders a centered Character title header above the strip with an icon-only back", () => {
+  it("keeps section navigation without repeating a page title or launcher button", () => {
     renderCharacterSectionNav("/character");
-    const header = screen.getByTestId("view-header");
+    expect(screen.queryByTestId("view-header")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Character" })).toBeNull();
     expect(
-      within(header).getByRole("heading", { name: "Character" }),
-    ).toBeTruthy();
-    expect(
-      within(header).getByRole("button", { name: "Back to launcher" }),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
   });
 
   it("renders the four family tabs in order, and no Knowledge tab", () => {
