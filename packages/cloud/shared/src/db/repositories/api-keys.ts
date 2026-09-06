@@ -1,4 +1,4 @@
-// Persists api keys records for cloud services through the shared DB boundary.
+/** Persists API-key records and primary-consistent authorization reads for cloud services. */
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
@@ -175,6 +175,13 @@ export class ApiKeysRepository {
    */
   async listByUser(userId: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
+      where: eq(apiKeys.user_id, userId),
+    });
+  }
+
+  /** Lists every key on the primary before standing-cache invalidation. */
+  async listByUserConsistent(userId: string): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
       where: eq(apiKeys.user_id, userId),
     });
   }

@@ -8,7 +8,7 @@
  * authorize-return module are doubled to isolate the mount.
  */
 
-import { StewardApiError } from "@stwd/sdk";
+import { LoginApiError } from "@elizaos/login";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -186,7 +186,7 @@ describe("EmailCallbackPage", () => {
 
   it("identifies an upstream one-time-link rejection as expired or already used", async () => {
     callbackState.verifyEmailCallback.mockRejectedValue(
-      new StewardApiError("Invalid or expired magic link", 410),
+      new LoginApiError("Invalid or expired magic link", 410),
     );
 
     const firstMount = render(
@@ -232,7 +232,7 @@ describe("EmailCallbackPage", () => {
   it("resends an expired callback as a fresh challenge and shows the cooldown", async () => {
     const user = userEvent.setup();
     callbackState.verifyEmailCallback.mockRejectedValue(
-      new StewardApiError("expired", 410),
+      new LoginApiError("expired", 410),
     );
 
     render(
@@ -343,7 +343,7 @@ describe("EmailCallbackPage", () => {
   it("rejects a replayed callback without broadcasting when this tab already has a session", async () => {
     callbackState.isAuthenticated = true;
     callbackState.verifyEmailCallback.mockRejectedValue(
-      new StewardApiError("already used", 410),
+      new LoginApiError("already used", 410),
     );
 
     render(

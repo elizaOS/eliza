@@ -20,7 +20,7 @@ widgets, overlay-apps), and the component/primitive exports. React/react-dom are
 
 ```
 src/
-  index.ts                    Stable primitive root surface; feature APIs are subpath-only
+  index.ts                    Canonical primitive and login root surface; other features use subpaths
   styles.ts                   Renderer-only CSS entry (@elizaos/ui/styles) — kept
                               separate so Node plugin loaders can import the barrel
                               without evaluating .css
@@ -100,8 +100,9 @@ test/                           Test doubles (top-level, not under src/)
 
 ## Key exports / surface
 
-The root `@elizaos/ui` export is intentionally limited to stable primitives and
-`cn`. Feature consumers use the subpath entries declared in `package.json`:
+The root `@elizaos/ui` export includes stable primitives, `cn`, and the login
+components, providers and hooks. Other feature consumers use the subpath entries
+declared in `package.json`:
 
 - `@elizaos/ui/styles` and `@elizaos/ui/styles/*.css` — CSS (renderer-only)
 - `@elizaos/ui/cloud-ui`, `@elizaos/ui/cloud-ui/index.css` — Cloud console set
@@ -307,16 +308,15 @@ This package mostly reads config injected by the host, not raw env vars:
 - The build (`build:dist:unlocked`) is a multi-step `tsc --noCheck` +
   flatten/copy/rewrite pipeline driven by scripts in `../scripts/`; use
   `bun run build`, don't invoke `tsc` directly.
-- **Toasts & notifications — one system per surface.** The app shell's only
-  transient toast is `setActionNotice` (`state/action-notice.ts`, rendered by
-  `ShellOverlays`); cloud-ui's only toast is its themed `sonner` wrapper
-  (`cloud-ui/components/sonner.tsx`). Never mount both in one tree, and never
-  add a third toast library. Persistent notifications are the notification
-  store (`state/notifications/notification-store.ts`) rendered by the pinned
-  dashboard center (`components/shell/NotificationsHomeCenter.tsx`) — the one
-  in-app inbox surface; interrupt-worthy items reach the user through the
-  store's toast sink + the native/desktop bridges, not through a bespoke
-  banner.
+- **Toasts & notifications — shared native delivery.** Completed shell action
+  notices and plain Cloud feedback go through `bridge/notification-delivery.ts`.
+  Cloud callers import `bridge/toast.ts`; embedded pages use the active shell
+  feedback owner. Busy progress and interactive toasts remain in-app. Both
+  fallback renderers portal outside collapsible containers. Persistent agent
+  notifications stay in `state/notifications/notification-store.ts`, rendered
+  by the Home inbox independently of OS interrupts. Do not add another toast
+  library or a screen-overlay window. See [notification-policy.md](notification-policy.md)
+  for platform mapping, permission behavior, and native capability limits.
 - `ConnectionStatus` exists twice (cloud-ui string union vs. the composite
   component) — the cloud-ui one is intentionally NOT re-exported from the root
   barrel to avoid the collision (see comment in `index.ts`).

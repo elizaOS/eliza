@@ -23,6 +23,7 @@ import {
   EDGE_VOICE_GROUPS,
   ELEVENLABS_VOICE_GROUPS,
 } from "../character/character-voice-config";
+import { Alert, AlertDescription } from "../ui/alert";
 import { SaveFooter } from "../ui/save-footer";
 import { SettingsActionButton, SettingsSelectRow } from "./settings-agent-rows";
 import { useSettingsSave } from "./settings-control-primitives.hooks";
@@ -140,6 +141,7 @@ export function VoicePresetSettingsContent() {
   const [savedVoiceConfig, setSavedVoiceConfig] = useState<VoiceConfig>({});
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceTesting, setVoiceTesting] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -174,17 +176,19 @@ export function VoicePresetSettingsContent() {
   useEffect(() => {
     return () => {
       if (!audioRef.current) return;
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+      const audio = audioRef.current;
       audioRef.current = null;
+      audio.pause();
+      audio.currentTime = 0;
     };
   }, []);
 
   const stopVoicePreview = useCallback(() => {
     if (!audioRef.current) return;
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
+    const audio = audioRef.current;
     audioRef.current = null;
+    audio.pause();
+    audio.currentTime = 0;
     setVoiceTesting(false);
   }, []);
 
@@ -242,6 +246,7 @@ export function VoicePresetSettingsContent() {
   const handleVoiceSelect = useCallback(
     (presetId: string) => {
       stopVoicePreview();
+      setPreviewError(null);
       if (useElevenLabs) {
         const preset = PREMADE_VOICES.find((entry) => entry.id === presetId);
         if (!preset) return;
@@ -280,22 +285,32 @@ export function VoicePresetSettingsContent() {
   const handlePreviewVoice = useCallback(() => {
     if (!activeVoicePreset?.previewUrl) return;
     stopVoicePreview();
+    setPreviewError(null);
     setVoiceTesting(true);
     const audio = new Audio(activeVoicePreset.previewUrl);
     audioRef.current = audio;
     audio.onended = () => {
+      if (audioRef.current !== audio) return;
       audioRef.current = null;
       setVoiceTesting(false);
     };
-    audio.onerror = () => {
+    const failPreview = () => {
+      if (audioRef.current !== audio) return;
       audioRef.current = null;
       setVoiceTesting(false);
+      setPreviewError(
+        t("settings.identity.previewFailed", {
+          defaultValue:
+            "Couldn't play this voice preview. Check your connection and try again.",
+        }),
+      );
     };
+    audio.onerror = failPreview;
     audio.play().catch(() => {
-      audioRef.current = null;
-      setVoiceTesting(false);
+      // error-policy:J4 Playback rejection stays visible and retryable in Voice Settings.
+      failPreview();
     });
-  }, [activeVoicePreset, stopVoicePreview]);
+  }, [activeVoicePreset, stopVoicePreview, t]);
 
   const performSave = useCallback(async () => {
     if (!voiceDirty) return;
@@ -345,7 +360,6 @@ export function VoicePresetSettingsContent() {
             })),
           }))}
           onValueChange={handleVoiceSelect}
-          contentClassName="border-border/60 bg-bg/92"
           trailing={
             <SettingsActionButton
               agentId="identity-voice-preview"
@@ -374,6 +388,12 @@ export function VoicePresetSettingsContent() {
           }
         />
       </SettingsGroup>
+
+      {previewError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{previewError}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <SaveFooter
         dirty={dirty}

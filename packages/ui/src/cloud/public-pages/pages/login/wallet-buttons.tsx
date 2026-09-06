@@ -20,14 +20,14 @@
  * adapter contexts — shared with the billing crypto top-up).
  */
 
+import type {
+  LoginAuth,
+  LoginAuthResult,
+  LoginMfaRequiredResult,
+} from "@elizaos/login";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import type {
-  StewardAuth,
-  StewardAuthResult,
-  StewardMfaRequiredResult,
-} from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
 import { Button } from "../../../../components/ui/button";
@@ -64,8 +64,8 @@ function isHexAddress(value: string | undefined): value is HexAddress {
 // `mfaRequired` discriminant and surface a clear error instead of forwarding
 // an MFA challenge to onSuccess as if it carried tokens.
 function requireCompletedAuth(
-  result: StewardAuthResult | StewardMfaRequiredResult,
-): StewardAuthResult {
+  result: LoginAuthResult | LoginMfaRequiredResult,
+): LoginAuthResult {
   if ("mfaRequired" in result) {
     throw new Error("MFA required — not yet supported in this client.");
   }
@@ -173,12 +173,12 @@ export function WalletButtons({
   loadingProvider,
 }: {
   autoStart?: "ethereum" | "solana" | null;
-  auth: StewardAuth;
+  auth: LoginAuth;
   disabled: boolean;
   siwe?: boolean;
   siws?: boolean;
   onAutoStartHandled?: () => void;
-  onSuccess: (result: StewardAuthResult) => void | Promise<void>;
+  onSuccess: (result: LoginAuthResult) => void | Promise<void>;
   onError: (error: Error, kind: "ethereum" | "solana") => void;
   onLoadingChange: (kind: "ethereum" | "solana" | null) => void;
   loadingProvider: "ethereum" | "solana" | null;
@@ -226,11 +226,11 @@ function EthereumButton({
   onLoadingChange,
 }: {
   autoStart: boolean;
-  auth: StewardAuth;
+  auth: LoginAuth;
   disabled: boolean;
   loading: boolean;
   onAutoStartHandled?: () => void;
-  onSuccess: (result: StewardAuthResult) => void | Promise<void>;
+  onSuccess: (result: LoginAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
 }) {
@@ -388,11 +388,11 @@ function SolanaButton({
   onLoadingChange,
 }: {
   autoStart: boolean;
-  auth: StewardAuth;
+  auth: LoginAuth;
   disabled: boolean;
   loading: boolean;
   onAutoStartHandled?: () => void;
-  onSuccess: (result: StewardAuthResult) => void | Promise<void>;
+  onSuccess: (result: LoginAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
 }) {

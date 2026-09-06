@@ -11,7 +11,11 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
-import { type EndpointType, type OrgRateLimitConfig, recalculateOrgTier } from "./org-rate-limits";
+import {
+  type EndpointType,
+  type OrgRateLimitConfig,
+  readOrgTierFromSources,
+} from "./org-rate-limits";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
 
@@ -47,7 +51,7 @@ export async function loadInferenceAdmissionSnapshot(
   const balanceAt = Date.now();
   const [balance, tier, entitlement] = await Promise.all([
     creditsService.getOrganizationBalanceSnapshot(organizationId),
-    recalculateOrgTier(organizationId),
+    readOrgTierFromSources(organizationId),
     subscriptionEntitlementsRepository.find(organizationId),
   ]);
   const subscriptionFunded = entitlement !== undefined && entitlement.plan_key !== "free";

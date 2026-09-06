@@ -9,7 +9,10 @@ import { a2aTaskStoreService, type TaskStoreEntry } from "../../services/a2a-tas
 import { contentModerationService } from "../../services/content-moderation";
 import { resolveOutboundMessageStanding } from "../../services/outbound-message-standing";
 import { logger } from "../../utils/logger";
-import { parseUntrustedA2AMessageSendParams } from "./request-validation";
+import {
+  parseUntrustedA2AMessageSendParams,
+  UntrustedA2ATaskGetParamsSchema,
+} from "./request-validation";
 import {
   executeSkillBrowserSession,
   executeSkillChatCompletion,
@@ -29,6 +32,7 @@ import {
   executeSkillVideoGeneration,
   executeSkillWebSearch,
 } from "./skills";
+import { projectTaskHistory } from "./task-history";
 import {
   type A2AContext,
   type Artifact,
@@ -180,20 +184,15 @@ export async function handleMessageSend(
   await addMessageToHistory(taskId, ctx.user.organization_id, message);
 
   // Process the message
-  const result = await processA2AMessage(task, message, ctx, configuration);
+  const result = await processA2AMessage(task, message, ctx);
 
-  return result;
+  return projectTaskHistory(result, configuration?.historyLength);
 }
 
 /**
  * Process an A2A message and dispatch to appropriate skill
  */
-async function processA2AMessage(
-  task: Task,
-  message: Message,
-  ctx: A2AContext,
-  _configuration?: MessageSendParams["configuration"],
-): Promise<Task> {
+async function processA2AMessage(task: Task, message: Message, ctx: A2AContext): Promise<Task> {
   const textParts = message.parts.filter(
     (p): p is { type: "text"; text: string } => p.type === "text",
   );
@@ -317,20 +316,14 @@ async function processA2AMessage(
  * tasks/get - Get task status and history
  */
 export async function handleTasksGet(params: TaskGetParams, ctx: A2AContext): Promise<Task> {
-  const { id, historyLength } = params;
+  const { id, historyLength } = UntrustedA2ATaskGetParamsSchema.parse(params);
 
   const store = await getTaskStore(id, ctx.user.organization_id);
   if (!store) {
     throw new Error(`Task not found: ${id}`);
   }
 
-  const task = { ...store.task };
-
-  if (historyLength !== undefined && task.history) {
-    task.history = task.history.slice(-historyLength);
-  }
-
-  return task;
+  return projectTaskHistory(store.task, historyLength);
 }
 
 /**

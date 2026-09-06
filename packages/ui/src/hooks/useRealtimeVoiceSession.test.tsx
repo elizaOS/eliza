@@ -383,6 +383,58 @@ describe("useRealtimeVoiceSession", () => {
     });
   });
 
+  it("identifies a post-ready microphone setup timeout without blaming the connection", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const pendingMic = deferred<MediaStream>();
+      const stopTrack = vi.fn();
+      const { options, ws } = makeOptions({
+        getUserMedia: () => pendingMic.promise,
+      });
+      const { result } = renderHook(() =>
+        useRealtimeVoiceSession({ ...options, readyTimeoutMs: 30 }),
+      );
+
+      const startPromise = beginStart(result);
+      await vi.advanceTimersByTimeAsync(0);
+      const sock = ws.last();
+      await act(async () => {
+        sock.emitOpen();
+        await vi.advanceTimersByTimeAsync(0);
+        sock.emitControl({ t: "ready", sessionId: "sess-1", traceId: "T1" });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30);
+      });
+      expect(result.current.error?.kind).toBe("transport");
+      await expect(startPromise).resolves.toEqual({
+        kind: "fallback-to-batch",
+        reason: "transport",
+        message:
+          "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry.",
+      });
+      expect(result.current.error?.message).toMatch(
+        /microphone setup timed out/i,
+      );
+      expect(result.current.error?.message).not.toMatch(/connection/i);
+      expect(result.current.error?.actionable).toBe(true);
+
+      // If the non-abortable browser promise settles after teardown, its tracks
+      // are still released rather than leaking a hot microphone.
+      await act(async () => {
+        pendingMic.resolve({
+          getTracks: () => [{ stop: stopTrack }],
+        } as unknown as MediaStream);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("fallback: a mint 404 stays retryable and records the indicator reason", async () => {
     const { options } = makeOptions({ mintStatus: 404 });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));

@@ -108,6 +108,12 @@ export interface CartesiaSonicCompleteEvent {
   readonly frameCount: number;
 }
 
+export interface CartesiaSonicFlushCompleteEvent {
+  readonly contextId: string;
+  readonly traceId?: string;
+  readonly flushId?: number;
+}
+
 export interface CartesiaSonicProviderErrorEvent {
   readonly contextId?: string;
   readonly traceId?: string;
@@ -128,6 +134,8 @@ export interface CartesiaSonicCancelledEvent {
 export interface CartesiaSonicStreamCallbacks {
   readonly onFirstAudio?: (event: CartesiaSonicFirstAudioEvent) => void;
   readonly onAudioFrame?: (event: CartesiaSonicAudioFrameEvent) => void;
+  /** Natural provider phrase boundary emitted after a flushed continuation. */
+  readonly onFlushComplete?: (event: CartesiaSonicFlushCompleteEvent) => void;
   readonly onComplete?: (event: CartesiaSonicCompleteEvent) => void;
   readonly onProviderError?: (event: CartesiaSonicProviderErrorEvent) => void;
   readonly onCancelled?: (event: CartesiaSonicCancelledEvent) => void;
@@ -678,6 +686,14 @@ export class CartesiaSonicTtsStream {
     }
     if (message.type === "done") {
       this.handleDone(message);
+      return;
+    }
+    if (message.type === "flush_done") {
+      this.input.callbacks.onFlushComplete?.({
+        contextId: message.context_id ?? this.contextId,
+        traceId: this.input.traceId,
+        flushId: message.flush_id,
+      });
       return;
     }
     if (message.type === "error") {

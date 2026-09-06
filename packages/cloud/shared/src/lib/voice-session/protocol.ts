@@ -45,6 +45,20 @@ export interface ClientAudioMetaFrame {
   channels: number;
 }
 
+/**
+ * Verified browser audio-processing capabilities. This is sent only after
+ * getUserMedia resolves so the values describe the selected track, not merely
+ * requested constraints. The server still owns the rollout gate.
+ */
+export interface ClientAudioCapabilitiesFrame {
+  t: "audio_capabilities";
+  mode: "continuous_handoff";
+  echoCancellation: boolean;
+  noiseSuppression: boolean;
+  autoGainControl: boolean;
+  referenceAwarePlayback: boolean;
+}
+
 export interface ClientBargeInFrame {
   t: "barge_in";
 }
@@ -69,6 +83,7 @@ export interface ClientEndAudioFrame {
 export type ClientControlFrame =
   | ClientHelloFrame
   | ClientAudioMetaFrame
+  | ClientAudioCapabilitiesFrame
   | ClientBargeInFrame
   | ClientByeFrame
   | ClientEndAudioFrame;
@@ -83,6 +98,24 @@ export type ServerControlFrame =
   | { t: "llm_first_text"; traceId: string }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
+  | { t: "assistant_playing"; active: boolean; traceId: string }
+  | {
+      t: "human_double_talk" | "echo_rejected" | "user_eos" | "next_reply_ready";
+      traceId: string;
+    }
+  | {
+      t: "handoff_requested";
+      fromTraceId: string;
+      toTraceId: string;
+      crossfadeMs: number;
+      traceId: string;
+    }
+  | {
+      t: "handoff_completed";
+      fromTraceId: string;
+      toTraceId: string;
+      traceId: string;
+    }
   | {
       t: "navigate_view";
       viewId: string;
@@ -145,6 +178,8 @@ export function parseClientControlFrame(raw: unknown): ProtocolParseResult<Clien
       return parseHello(parsed);
     case "audio_meta":
       return parseAudioMeta(parsed);
+    case "audio_capabilities":
+      return parseAudioCapabilities(parsed);
     case "barge_in":
       return { ok: true, value: { t: "barge_in" } };
     case "bye":
@@ -154,6 +189,36 @@ export function parseClientControlFrame(raw: unknown): ProtocolParseResult<Clien
     default:
       return fail("control_unknown_type", `unsupported control frame type: ${parsed.t}`);
   }
+}
+
+function parseAudioCapabilities(
+  v: Record<string, unknown>,
+): ProtocolParseResult<ClientAudioCapabilitiesFrame> {
+  if (v.mode !== "continuous_handoff") {
+    return fail("audio_capabilities_bad_mode", "unsupported audio capability mode");
+  }
+  const booleanFields = [
+    "echoCancellation",
+    "noiseSuppression",
+    "autoGainControl",
+    "referenceAwarePlayback",
+  ] as const;
+  for (const field of booleanFields) {
+    if (typeof v[field] !== "boolean") {
+      return fail("audio_capabilities_bad_value", `${field} must be boolean`);
+    }
+  }
+  return {
+    ok: true,
+    value: {
+      t: "audio_capabilities",
+      mode: "continuous_handoff",
+      echoCancellation: v.echoCancellation as boolean,
+      noiseSuppression: v.noiseSuppression as boolean,
+      autoGainControl: v.autoGainControl as boolean,
+      referenceAwarePlayback: v.referenceAwarePlayback as boolean,
+    },
+  };
 }
 
 function parseHello(v: Record<string, unknown>): ProtocolParseResult<ClientHelloFrame> {

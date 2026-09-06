@@ -1,5 +1,6 @@
 "use client";
 
+import type { LoginProviders } from "@elizaos/login";
 /**
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */
@@ -7,8 +8,6 @@ import {
   clearStoredStewardToken,
   readStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
-import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invalidateStewardServerCookieSyncMarker } from "../../../cloud/lib/steward-session-cookie-sync-marker";
@@ -24,6 +23,12 @@ import {
 } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import {
+  DiscordIcon,
+  GoogleIcon,
+  LoginForm,
+  useAuth,
+} from "../../../login/index";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { CornerBrackets } from "../primitives";
@@ -66,7 +71,7 @@ type AppAuthorizeAuthState = {
   isAuthenticated: boolean;
   isLoading: boolean;
   isProvidersLoading: boolean;
-  providers: StewardProviders | null;
+  providers: LoginProviders | null;
   signInWithOAuth: AppAuthorizeOAuthSignIn;
   signOut: () => unknown;
 };
@@ -79,7 +84,7 @@ function isPlaywrightTestAuthEnabled(): boolean {
   );
 }
 
-const TEST_AUTH_PROVIDERS: StewardProviders = {
+const TEST_AUTH_PROVIDERS: LoginProviders = {
   passkey: true,
   email: true,
   siwe: false,
@@ -743,7 +748,7 @@ function SignedOutActions({
 }: {
   activeTenantId: string | null;
   onCancel: () => void;
-  providers: StewardProviders | null;
+  providers: LoginProviders | null;
   providersReady: boolean;
   signInWithOAuth: AppAuthorizeOAuthSignIn;
 }) {
@@ -787,7 +792,7 @@ function SignedOutActions({
     <div className="flex w-full flex-col items-center gap-4">
       {providersReady ? (
         <>
-          <StewardLogin
+          <LoginForm
             variant="inline"
             showPasskey={showPasskey}
             showEmail={showEmail}
