@@ -177,24 +177,16 @@ function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
 }
 
 /**
- * Letter-abbreviation dots and clock spacing are removed before matching so a
- * user's "6am" finds the extractor's "6a.m." and "6 am" (live 2026-09-06
- * 02:36: "forget that I usually wake up at 6am" scanned 20 rows and matched
- * nothing against "The user usually wakes up at 6a.m."). Only a dot that
- * follows a single letter and precedes a letter or the end of the token goes
- * ("a.m.", "p.m.", "U.S."); dots between digits ("1.5mg", "v1.2") and inside
- * words ("example.com") stay, so "15mg" cannot match a 1.5 mg dose (review
- * 2026-09-06, Discussion 30659).
+ * Normalize complete 12-hour clock tokens only. Dotted identifiers and
+ * numeric punctuation retain their mutation-target identity.
  */
 function normalizeMatchText(text: string): string {
   return text
     .toLowerCase()
     .replace(
-      /(?<![\p{L}\p{N}])(\p{L})\.(?=\p{L}\.|\p{L}(?![\p{L}\p{N}])|\s|$)/gu,
-      "$1",
-    )
-    .replace(/(?<=\d)([ap])\.m\b\.?/gu, "$1m")
-    .replace(/(\d)\s+([ap]m)\b/gu, "$1$2");
+      /(?<![\p{L}\p{N}_.:/-])((?:0?[1-9]|1[0-2])(?::[0-5]\d)?)[ \t]*([ap])\.?m\.?(?![\p{L}\p{N}_.:/-])/gu,
+      "$1$2m",
+    );
 }
 
 /** Distinct content terms of a query: length >= 2, stop words removed. */
