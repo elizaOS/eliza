@@ -51,6 +51,7 @@
     "twitter-text": "3.1.0"
   },
   "devDependencies": {
+    "@elizaos/plugin-sql": "workspace:*",
     "@biomejs/biome": "2.5.8",
     "@types/node": "^22.19.17",
     "@types/twitter-text": "3.1.10",
@@ -66,6 +67,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:real-runtime": "bunx vitest run --config vitest.real-runtime.config.ts",
     "prepack": "bun run build",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
