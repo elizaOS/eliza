@@ -2227,15 +2227,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/token/[platform]/route.ts",
   },
-  "GET /api/v1/outreachr": {
-    method: "GET",
-    path: "/api/v1/outreachr",
-    methodName: "getApiV1Outreachr",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/outreachr/route.ts",
-  },
   "GET /api/v1/payment-requests": {
     method: "GET",
     path: "/api/v1/payment-requests",
@@ -4725,15 +4716,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/initiate/route.ts",
   },
-  "POST /api/v1/outreachr": {
-    method: "POST",
-    path: "/api/v1/outreachr",
-    methodName: "postApiV1Outreachr",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/outreachr/route.ts",
-  },
   "POST /api/v1/payment-requests": {
     method: "POST",
     path: "/api/v1/payment-requests",
@@ -5881,7 +5863,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/status": Record<never, never>;
   "GET /api/v1/oauth/success-proof/verify": Record<never, never>;
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
-  "GET /api/v1/outreachr": Record<never, never>;
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
   "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
@@ -6270,7 +6251,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/oauth/callback/{provider}": { provider: string | number };
   "POST /api/v1/oauth/connect": Record<never, never>;
   "POST /api/v1/oauth/initiate": Record<never, never>;
-  "POST /api/v1/outreachr": Record<never, never>;
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
@@ -6638,7 +6618,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/oauth/status": never;
   "GET /api/v1/oauth/success-proof/verify": never;
   "GET /api/v1/oauth/token/{platform}": never;
-  "GET /api/v1/outreachr": never;
   "GET /api/v1/payment-requests": never;
   "GET /api/v1/payment-requests/{id}": never;
   "GET /api/v1/pii-scrub/jobs/{id}": never;
@@ -6923,7 +6902,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/oauth/callback/{provider}": never;
   "POST /api/v1/oauth/connect": never;
   "POST /api/v1/oauth/initiate": never;
-  "POST /api/v1/outreachr": never;
   "POST /api/v1/payment-requests": never;
   "POST /api/v1/payment-requests/{id}/cancel": never;
   "POST /api/v1/payment-requests/{id}/expire": never;
@@ -9404,15 +9382,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/oauth/token/{platform}", TResponse>(
       "GET /api/v1/oauth/token/{platform}",
-      options,
-    );
-  }
-
-  getApiV1Outreachr<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/outreachr"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/outreachr", TResponse>(
-      "GET /api/v1/outreachr",
       options,
     );
   }
@@ -11942,15 +11911,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  postApiV1Outreachr<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/outreachr"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/outreachr", TResponse>(
-      "POST /api/v1/outreachr",
-      options,
-    );
-  }
-
   postApiV1PaymentRequests<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/payment-requests"> = {},
   ): Promise<TResponse> {
@@ -14342,12 +14302,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/oauth/token/{platform}", options);
   }
 
-  getApiV1OutreachrRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/outreachr"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/outreachr", options);
-  }
-
   getApiV1PaymentRequestsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/payment-requests"> = {},
   ): Promise<Response> {
@@ -16215,12 +16169,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/oauth/initiate"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/oauth/initiate", options);
-  }
-
-  postApiV1OutreachrRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/outreachr"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/outreachr", options);
   }
 
   postApiV1PaymentRequestsRaw(
