@@ -203,6 +203,50 @@ test("actual consumer ignores stale payload fields and atomically publishes retr
   expect(await processStripeEvent(delivery())).toBe("ack");
   expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);
 });
+test("historical applied replay acknowledges its exact receipt without retrieving or changing current authority", async () => {
+  const first = delivery("evt_first");
+  const newer = delivery("evt_second", Date.parse("2026-08-26Z") / 1000);
+  expect(await processStripeEvent(first)).toBe("ack");
+  expect(await processStripeEvent(newer)).toBe("ack");
+  const current = await authority.findById(ORG_A, SUB_A);
+  const projection = await entitlements.find(ORG_A);
+  expect(current).toMatchObject({
+    lifecycle_revision: 3,
+    last_provider_event_id: "evt_second",
+    status: "canceled",
+  });
+  expect(projection).toMatchObject({ plan_key: "free", source_subscription_revision: 3 });
+  const revisions = await authority.listRevisions(ORG_A, SUB_A);
+  let requests = 0;
+  retrieve = async () => {
+    requests += 1;
+    throw new Error("Replay must not retrieve Stripe");
+  };
+  expect(await processStripeEvent(first)).toBe("ack");
+  expect(requests).toBe(0);
+  expect(await authority.findById(ORG_A, SUB_A)).toEqual(current);
+  expect(await entitlements.find(ORG_A)).toEqual(projection);
+  expect(await authority.listRevisions(ORG_A, SUB_A)).toEqual(revisions);
+  expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(false);
+  const altered = delivery("evt_first");
+  altered.body.event.data.object.metadata = { credits: "123" };
+  expect(await processStripeEvent(altered)).toBe("retry");
+  expect(await processStripeEvent(delivery("evt_unseenold"))).toBe("retry");
+  expect(requests).toBe(0);
+  expect(await authority.findById(ORG_A, SUB_A)).toEqual(current);
+  expect(await entitlements.find(ORG_A)).toEqual(projection);
+  expect(await rows("billing_subscription_event_receipts")).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ provider_event_id: "evt_first", status: "applied" }),
+      expect.objectContaining({ provider_event_id: "evt_second", status: "applied" }),
+      expect.objectContaining({
+        provider_event_id: "evt_unseenold",
+        status: "received",
+        lease_token: null,
+      }),
+    ]),
+  );
+});
 test("provider failures release the receipt for retry without publication", async () => {
   retrieve = async () => {
     throw new Error("Invalid request: subscription not found");

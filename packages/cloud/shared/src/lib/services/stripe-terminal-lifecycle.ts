@@ -108,11 +108,6 @@ export async function reconcileStripeTerminalLifecycle(message: StripeEventMessa
     )
     .limit(1);
   if (!source) reject("unknown_subscription");
-  if (
-    source.last_provider_event_created_at !== null &&
-    event.created * 1000 < source.last_provider_event_created_at.getTime()
-  )
-    reject("out_of_order_event_requires_reconciliation");
   const recorded = await operations.recordEvent({
     organizationId: source.organization_id,
     subscriptionId: source.id,
@@ -130,6 +125,12 @@ export async function reconcileStripeTerminalLifecycle(message: StripeEventMessa
     recorded.value.disposition === TERMINAL_LIFECYCLE_DISPOSITION
   )
     return;
+  // Historical receipt replay proves only prior application, not current source authority.
+  if (
+    source.last_provider_event_created_at !== null &&
+    event.created * 1000 < source.last_provider_event_created_at.getTime()
+  )
+    reject("out_of_order_event_requires_reconciliation");
   const lease = {
     organizationId: source.organization_id,
     receiptId: recorded.value.id,
