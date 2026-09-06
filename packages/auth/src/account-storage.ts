@@ -152,10 +152,7 @@ function resolvePhysicalPath(target: string): string {
     existingAncestor = parent;
   }
 
-  return path.resolve(
-    fs.realpathSync.native(existingAncestor),
-    ...missingSegments,
-  );
+  return path.resolve(fs.realpathSync(existingAncestor), ...missingSegments);
 }
 
 function assertContained(
@@ -512,7 +509,7 @@ function createAccountStoragePolicy(
     "state-root",
   );
   if (owner === "isolated-test") {
-    const canonicalTempRoot = fs.realpathSync.native(tmpdir());
+    const canonicalTempRoot = fs.realpathSync(tmpdir());
     if (
       canonicalStateRoot === canonicalTempRoot ||
       !isPathAtOrWithin(canonicalTempRoot, canonicalStateRoot)
@@ -614,7 +611,7 @@ function assertStoragePolicy(policy: AccountStoragePolicy): void {
   }
   assertContained(policy.stateRoot, policy.authRoot, "policy");
   if (policy.owner === "isolated-test") {
-    const canonicalTempRoot = fs.realpathSync.native(tmpdir());
+    const canonicalTempRoot = fs.realpathSync(tmpdir());
     if (!isPathAtOrWithin(canonicalTempRoot, policy.stateRoot)) {
       throw storageError(
         "AUTH_CREDENTIAL_ISOLATED_ROOT_REQUIRED",

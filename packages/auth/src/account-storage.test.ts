@@ -47,6 +47,33 @@ afterEach(() => {
 });
 
 describe("explicit account storage ownership", () => {
+  it("preserves account storage and symlink rejection without the native realpath extension", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      fs.realpathSync,
+      "native",
+    );
+    expect(descriptor).toBeDefined();
+    Object.defineProperty(fs.realpathSync, "native", {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const policy = createIsolatedAccountStoragePolicy(stateRoot);
+      saveAccount(record("portable"), policy);
+      expect(loadAccount("openai-codex", "portable", policy)?.id).toBe(
+        "portable",
+      );
+      deleteAccount("openai-codex", "portable", policy);
+      expect(listAccounts("openai-codex", policy)).toEqual([]);
+      const linked = path.join(stateRoot, "outside");
+      symlinkSync(path.parse(stateRoot).root, linked, "dir");
+      expect(() => createIsolatedAccountStoragePolicy(linked)).toThrow();
+    } finally {
+      if (descriptor)
+        Object.defineProperty(fs.realpathSync, "native", descriptor);
+    }
+  });
+
   it("performs every mutator inside the policy's canonical provider root", () => {
     const policy = createIsolatedAccountStoragePolicy(stateRoot);
     const providerRoot = path.join(stateRoot, "auth", "openai-codex");
