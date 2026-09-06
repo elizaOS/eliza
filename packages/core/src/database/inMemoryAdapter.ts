@@ -1953,7 +1953,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		).filter(
 			(memory) => !params.entityId || memory.entityId === params.entityId,
 		);
-		const limit = params.count ?? params.limit ?? 10;
+		const limit = params.count ?? params.limit;
 		// Same truthiness contract as plugin-sql: an absent or zero threshold
 		// applies no similarity floor.
 		const threshold = params.match_threshold;
@@ -1975,7 +1975,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			(left, right) => (right.similarity ?? -1) - (left.similarity ?? -1),
 		);
 		const offset = params.offset ?? 0;
-		return scored.slice(offset, offset + limit);
+		return scored.slice(
+			offset,
+			limit === undefined ? undefined : offset + limit,
+		);
 	}
 
 	// Batch memory methods
@@ -3046,7 +3049,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<ConnectorAccountRecord[]> {
 		const agentId = params.agentId ?? DEFAULT_UUID;
 		const offset = params.offset ?? 0;
-		const limit = params.limit ?? 100;
+		const limit = params.limit;
 		return Array.from(this.connectorAccountsById.values())
 			.filter((account) => account.agentId === agentId)
 			.filter((account) => account.deletedAt == null)
@@ -3065,7 +3068,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 						: 0;
 				return bTime - aTime || a.id.localeCompare(b.id);
 			})
-			.slice(offset, offset + limit)
+			.slice(offset, limit === undefined ? undefined : offset + limit)
 			.map((account) => ({
 				...account,
 				scopes: [...account.scopes],

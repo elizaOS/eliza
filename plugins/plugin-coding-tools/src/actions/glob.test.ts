@@ -50,7 +50,9 @@ async function buildRuntime(): Promise<RuntimeBundle> {
 }
 
 beforeEach(async () => {
-  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-"));
+  tmpRoot = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-")),
+  );
   blockedPath = path.join(tmpRoot, "_blocked");
   await fs.mkdir(blockedPath, { recursive: true });
   const fooDir = path.join(tmpRoot, "foo");
@@ -108,13 +110,24 @@ describe("GLOB", () => {
     expect(result.text).toMatch(/^3 files\n/);
   });
 
-  it("rejects a relative path", async () => {
+  it("resolves a relative search root against the conversation directory", async () => {
     const { runtime, message } = await buildRuntime();
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*.ts", path: "./foo" },
     });
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("invalid_param");
+    expect(result.success).toBe(true);
+    expect(result.data?.files).toEqual(
+      expect.arrayContaining([
+        path.join(tmpRoot, "foo", "a.ts"),
+        path.join(tmpRoot, "foo", "b.ts"),
+        path.join(tmpRoot, "foo", "sub", "c.ts"),
+      ]),
+    );
+    const denied = await globHandler(runtime, message, state, {
+      parameters: { pattern: "**/*", path: "./_blocked" },
+    });
+    expect(denied.success).toBe(false);
+    expect(denied.text).toContain("path_blocked");
   });
 
   it("rejects a path under the blocklist", async () => {

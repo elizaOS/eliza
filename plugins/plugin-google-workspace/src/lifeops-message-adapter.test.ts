@@ -92,6 +92,58 @@ function gmailMessage(overrides: Record<string, unknown> = {}) {
 }
 
 describe("GoogleGmailAdapter", () => {
+  it("preserves later provider pages for unbounded list, search, and uncached lookup", async () => {
+    const ids = Array.from({ length: 105 }, (_, index) => `message_${index}`);
+    const client = new GoogleGmailClient({
+      gmail: async () => ({
+        users: {
+          messages: {
+            list: async ({ pageToken, maxResults }: { pageToken?: string; maxResults: number }) => {
+              const offset = Number(pageToken ?? 0);
+              const page = ids.slice(offset, offset + Math.min(20, maxResults));
+              const next = offset + page.length;
+              return {
+                data: {
+                  messages: page.map((id) => ({ id })),
+                  ...(next < ids.length ? { nextPageToken: String(next) } : {}),
+                },
+              };
+            },
+            get: async ({ id }: { id: string }) => ({
+              data: {
+                id,
+                threadId: `thread_${id}`,
+                snippet: `body ${id}`,
+                labelIds: ["INBOX"],
+                internalDate: "0",
+                payload: {
+                  headers: [
+                    { name: "Subject", value: `subject ${id}` },
+                    { name: "From", value: "sender@example.com" },
+                    { name: "To", value: "owner@example.com" },
+                  ],
+                },
+              },
+            }),
+          },
+        },
+      }),
+    } as unknown as GoogleApiClientFactory);
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: client.listGmailTriageMessages.bind(client),
+      searchGmailMessages: client.searchGmailMessages.bind(client),
+    });
+    const listed = await new GoogleGmailAdapter().listMessages(runtime, {});
+    const searched = await new GoogleGmailAdapter().searchMessages(runtime, { content: "body" });
+    expect(listed.map((message) => message.externalId).sort()).toEqual([...ids].sort());
+    expect(searched.map((message) => message.externalId).sort()).toEqual([...ids].sort());
+    expect(await new GoogleGmailAdapter().getMessage(runtime, "gmail:message_104")).toMatchObject({
+      externalId: "message_104",
+      subject: "subject message_104",
+    });
+    const bounded = await new GoogleGmailAdapter().listMessages(runtime, { limit: 3 });
+    expect(bounded.map((message) => message.externalId).sort()).toEqual(ids.slice(0, 3));
+  });
   it.each(["byte", "line", "fragment"] as const)(
     "returns complete %s content with no implicit limit",
     async (unit) => {

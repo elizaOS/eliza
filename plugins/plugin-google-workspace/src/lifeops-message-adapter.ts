@@ -277,7 +277,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     const accountId = opts.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
     const messages = await service.listGmailTriageMessages({
       accountId,
-      maxResults: opts.limit ?? 50,
+      maxResults: opts.limit,
     });
     return this.cacheAndFilter(
       messages.map((message) => mapGmailMessage(accountId, message)),
@@ -288,7 +288,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
   protected async getMessageImpl(runtime: IAgentRuntime, id: string): Promise<MessageRef | null> {
     const cached = this.messageCache.get(id) ?? this.messageCache.get(refId(id));
     if (cached) return cached;
-    const messages = await this.listMessages(runtime, { limit: 100 });
+    const messages = await this.listMessages(runtime, {});
     return messages.find((message) => message.id === id || message.id === refId(id)) ?? null;
   }
 
@@ -512,7 +512,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       accountId,
       query: searchQuery(filters),
       includeSpamTrash: true,
-      maxResults: filters.limit ?? 25,
+      maxResults: filters.limit,
     });
     const refs = messages.map((message) => mapGmailMessage(accountId, message));
     return this.cacheAndFilter(refs, {

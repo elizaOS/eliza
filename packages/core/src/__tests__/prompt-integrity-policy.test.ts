@@ -310,7 +310,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/listMessages\(runtime,\s*\{\s*limit:\s*100\s*\}\)/,
 		/truncateWellFormed/,
 		/clip\(draft\.body/,
-		/GMAIL_READ_(?:DEFAULT|MAX)_(?:BYTES|UNITS)/,
+		/GMAIL_READ_DEFAULT_(?:BYTES|UNITS)/,
+		/request\.limit\s*\?\?\s*GMAIL_READ_MAX_(?:BYTES|UNITS)/,
 		/GMAIL_READ_UNIT_TOO_LARGE/,
 	],
 	"plugins/plugin-google-workspace/src/people.ts": [
@@ -809,15 +810,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-google-workspace/src/gmail-message-connector.ts": [
 		/SUBJECT_MAX_LENGTH/,
 	],
-	"plugins/plugin-google-workspace/src/lifeops-message-adapter.ts": [
-		/truncateWellFormed/,
-		/clip\(draft\.body/,
-	],
-	"plugins/plugin-discord/triage-adapter.ts": [
-		/truncateWellFormed/,
-		/SNIPPET_LENGTH/,
-		/clip\((?:text|draft\.body)/,
-	],
 	"plugins/plugin-discord/slash-commands.ts": [
 		/cleanedAnswer\.slice\(/,
 		/text\.slice\(0,\s*120\)/,
@@ -868,10 +860,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
 		/EVIDENCE_TEXT_CHAR_CAP/,
 	],
-	"packages/agent/src/api/chat-routes.ts": [
-		/\.slice\(-50\)/,
-		/maxTokens:\s*260/,
-	],
 	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
@@ -883,10 +871,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/agent/src/api/server-helpers-swarm.ts": [
 		/originalTask[^\n]*\.slice\(/,
 		/firstLine\.slice\(/,
-	],
-	"packages/agent/src/services/sandbox-manager.ts": [
-		/options\.command\.substring\(/,
-		/options\.command\.slice\(/,
 	],
 	"packages/agent/src/shared/conversation-format.ts": [
 		/room\.id\.slice\(/,
