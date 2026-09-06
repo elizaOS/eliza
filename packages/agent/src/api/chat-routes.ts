@@ -129,16 +129,13 @@ import {
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
 import {
-  buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
   hasBlockedObjectKeyDeep,
-  isWalletActionRequiredIntent,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
-  trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.ts";
 import {
@@ -873,144 +870,6 @@ function getLatestVisibleResponseMessageText(
   return "";
 }
 
-const EXACT_GROUNDED_VALUE_REQUEST =
-  /\b(?:exact|verbatim|copy|quoted?|identifier|codeword|return only|only the)\b/i;
-const DOCUMENT_VALUE_CAPTURE =
-  /\b(?:codeword|identifier|token|value)\s*(?:is|=|:)\s*([A-Za-z0-9][A-Za-z0-9._-]{1,127})\b/gi;
-const UPPERCASE_IDENTIFIER_CAPTURE = /\b[A-Z0-9]+(?:[-_][A-Z0-9]+)+\b/g;
-const UUID_IDENTIFIER_CAPTURE =
-  /\b[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\b/gi;
-
-function uniqueMatches(matches: Iterable<string>): string[] {
-  return Array.from(
-    new Set(Array.from(matches).map((value) => value.trim())),
-  ).filter((value) => value.length > 0);
-}
-
-function collectRegexMatches(
-  text: string,
-  pattern: RegExp,
-  groupIndex?: number,
-): string[] {
-  const regex = new RegExp(pattern.source, pattern.flags);
-  return Array.from(text.matchAll(regex), (match) =>
-    String(groupIndex === undefined ? match[0] : (match[groupIndex] ?? "")),
-  );
-}
-
-function extractExactGroundedValueFromText(
-  messageText: string,
-  documentText: string,
-): string | null {
-  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
-    return null;
-  }
-
-  if (!documentText) {
-    return null;
-  }
-
-  const capturedDocumentValues = uniqueMatches(
-    collectRegexMatches(documentText, DOCUMENT_VALUE_CAPTURE, 1),
-  );
-  if (capturedDocumentValues.length === 1) {
-    return capturedDocumentValues[0];
-  }
-
-  const uppercaseCandidates = uniqueMatches(
-    collectRegexMatches(documentText, UPPERCASE_IDENTIFIER_CAPTURE),
-  );
-  if (uppercaseCandidates.length === 1) {
-    return uppercaseCandidates[0];
-  }
-
-  const uuidCandidates = uniqueMatches(
-    collectRegexMatches(documentText, UUID_IDENTIFIER_CAPTURE),
-  );
-  if (uuidCandidates.length === 1) {
-    return uuidCandidates[0];
-  }
-
-  return null;
-}
-
-async function resolveExactDocumentValueForChat(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
-): Promise<string | null> {
-  const messageText =
-    typeof extractCompatTextContent(message.content) === "string"
-      ? extractCompatTextContent(message.content).trim()
-      : "";
-  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
-    return null;
-  }
-
-  const documentsService = runtime.getService("documents") as
-    | {
-        searchDocuments?: (
-          message: ReturnType<typeof createMessageMemory>,
-        ) => Promise<
-          Array<{
-            content?: { text?: string };
-            metadata?: Record<string, unknown>;
-          }>
-        >;
-      }
-    | null
-    | undefined;
-  if (
-    !documentsService ||
-    typeof documentsService.searchDocuments !== "function"
-  ) {
-    return null;
-  }
-
-  try {
-    const matches = await documentsService.searchDocuments(message);
-    if (!Array.isArray(matches) || matches.length === 0) {
-      return null;
-    }
-
-    const uploadedMatches = matches.filter((match) => {
-      const metadata =
-        match.metadata && typeof match.metadata === "object"
-          ? match.metadata
-          : null;
-      return metadata?.source === "upload";
-    });
-    const preferredMatches =
-      uploadedMatches.length > 0 ? uploadedMatches : matches;
-    const exactMatchCandidates = uniqueMatches(
-      preferredMatches
-        .map((match) =>
-          typeof match.content?.text === "string"
-            ? extractExactGroundedValueFromText(
-                messageText,
-                match.content.text.trim(),
-              )
-            : null,
-        )
-        .filter((value): value is string => typeof value === "string"),
-    );
-    if (exactMatchCandidates.length === 1) {
-      return exactMatchCandidates[0];
-    }
-
-    const documentsText = preferredMatches
-      .map((match) =>
-        typeof match.content?.text === "string"
-          ? match.content.text.trim()
-          : "",
-      )
-      .filter((text) => text.length > 0)
-      .join("\n\n");
-    return extractExactGroundedValueFromText(messageText, documentsText);
-  } catch {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Chat failure / no-response helpers
 // ---------------------------------------------------------------------------
@@ -1319,157 +1178,6 @@ function isProgressActionCallback(content: Content): boolean {
     status === "IN_PROGRESS" ||
     status === "PROGRESS"
   );
-}
-
-type WalletAttributedOperation =
-  | "APPROVE"
-  | "BALANCE"
-  | "BUY"
-  | "EXECUTE"
-  | "SELL"
-  | "SWAP"
-  | "TRADE"
-  | "TRANSFER";
-
-const WALLET_ROUTER_SUBACTION_OPERATIONS = new Map<
-  string,
-  readonly WalletAttributedOperation[]
->([
-  ["TRANSFER", ["TRANSFER"]],
-  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["BRIDGE", ["TRANSFER"]],
-  ["GOV", []],
-  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
-  ["TOKEN_INFO", []],
-  ["SEARCH_ADDRESS", ["BALANCE"]],
-]);
-
-const WALLET_GOV_OP_OPERATIONS = new Map<
-  string,
-  readonly WalletAttributedOperation[]
->([
-  ["PROPOSE", []],
-  ["VOTE", ["APPROVE"]],
-  ["QUEUE", []],
-  ["EXECUTE", ["EXECUTE"]],
-]);
-
-// This fail-closed boundary intentionally duplicates the wallet plugin's public
-// action names and similes so an unrelated action cannot gain wallet authority
-// merely by containing a financial verb.
-const WALLET_ACTION_OPERATIONS = new Map<
-  string,
-  readonly WalletAttributedOperation[]
->([
-  ["EVM_TRANSFER", ["TRANSFER"]],
-  ["SOLANA_TRANSFER", ["TRANSFER"]],
-  ["CROSS_CHAIN_TRANSFER", ["TRANSFER"]],
-  ["TRANSFER", ["TRANSFER"]],
-  ["TRANSFER_TOKEN", ["TRANSFER"]],
-  ["TRANSFER_TOKENS", ["TRANSFER"]],
-  ["TRANSFER_SOL", ["TRANSFER"]],
-  ["WALLET_TRANSFER", ["TRANSFER"]],
-  ["SEND_TOKEN", ["TRANSFER"]],
-  ["SEND_TOKENS", ["TRANSFER"]],
-  ["SEND_SOL", ["TRANSFER"]],
-  ["PREPARE_TRANSFER", ["TRANSFER"]],
-  ["PAY", ["TRANSFER"]],
-  ["EVM_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SOLANA_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_SOL", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_SOLANA", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_TOKEN", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["SWAP_TOKENS", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["WALLET_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["TOKEN_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
-  ["TRADE", ["TRADE", "BUY", "SELL"]],
-  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
-  ["PUMPFUN_BUY", ["BUY", "TRADE"]],
-  ["BUY_PUMP_FUN", ["BUY", "TRADE"]],
-  ["BUY_PUMPFUN", ["BUY", "TRADE"]],
-  ["CHECK_BALANCE", ["BALANCE"]],
-  ["WALLET_SEARCH_ADDRESS", ["BALANCE"]],
-  ["BIRDEYE_SEARCH", ["BALANCE"]],
-  ["BIRDEYE_LOOKUP", ["BALANCE"]],
-]);
-
-function walletActionMatchesIntent(
-  prompt: string,
-  successfulActionName: string,
-  result?: unknown,
-): boolean {
-  const actionName = normalizeActionName(successfulActionName);
-  if (!actionName) return false;
-  const record =
-    result && typeof result === "object"
-      ? (result as Record<string, unknown>)
-      : null;
-  const data =
-    record?.data && typeof record.data === "object"
-      ? (record.data as Record<string, unknown>)
-      : null;
-  const values =
-    record?.values && typeof record.values === "object"
-      ? (record.values as Record<string, unknown>)
-      : null;
-  const metadata =
-    data?.metadata && typeof data.metadata === "object"
-      ? (data.metadata as Record<string, unknown>)
-      : null;
-  const walletSubaction = normalizeActionName(
-    data?.subaction ??
-      data?.walletSubaction ??
-      values?.walletSubaction ??
-      values?.subaction,
-  );
-  const walletGovOp = normalizeActionName(
-    data?.op ?? metadata?.op ?? values?.walletGovOp,
-  );
-  const tradeHasExecutionEvidence =
-    values?.tradeActionPrepared === true ||
-    values?.tradeActionSucceeded === true ||
-    normalizeActionName(values?.tradeOutcome) === "SUBMITTED" ||
-    normalizeActionName(data?.outcome) === "SUBMITTED";
-  const attributedOperations =
-    actionName === "WALLET"
-      ? walletSubaction === "GOV"
-        ? WALLET_GOV_OP_OPERATIONS.get(walletGovOp)
-        : WALLET_ROUTER_SUBACTION_OPERATIONS.get(walletSubaction)
-      : actionName === "TRADE"
-        ? tradeHasExecutionEvidence
-          ? WALLET_ACTION_OPERATIONS.get(actionName)
-          : undefined
-        : WALLET_ACTION_OPERATIONS.get(actionName);
-  if (!attributedOperations) return false;
-  const matches = (operation: WalletAttributedOperation) =>
-    attributedOperations.includes(operation);
-
-  if (/\b(send|transfer)\b/i.test(prompt)) {
-    return matches("TRANSFER");
-  }
-  if (/\bswap\b/i.test(prompt)) {
-    return matches("SWAP");
-  }
-  if (/\btrade\b/i.test(prompt)) {
-    return matches("TRADE") || matches("BUY") || matches("SELL");
-  }
-  if (/\bbuy\b/i.test(prompt)) {
-    return matches("BUY");
-  }
-  if (/\bsell\b/i.test(prompt)) {
-    return matches("SELL");
-  }
-  if (/\bapprove\b/i.test(prompt)) {
-    return matches("APPROVE");
-  }
-  if (/\bexecute\b/i.test(prompt)) {
-    return matches("EXECUTE");
-  }
-  if (/\b(balance|portfolio|holdings|funds)\b/i.test(prompt)) {
-    return matches("BALANCE");
-  }
-  return attributedOperations.length > 0;
 }
 
 function sanitizeActionResultValue(
@@ -2856,7 +2564,6 @@ async function generateChatResponseWithTiming(
   let closeResponseFinalization: (() => void) | undefined;
   try {
     generationAbortController.signal.throwIfAborted();
-    const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
     // Snapshot consumers can replace prior text. Append-only transports need
@@ -3527,12 +3234,6 @@ async function generateChatResponseWithTiming(
     for (const actionName of fallbackSuccessfulActionNames) {
       successfulActionNames.add(actionName);
     }
-    const successfulTurnActionResults = listSuccessfulActionResults(
-      runtime,
-      typeof message.id === "string" ? message.id : undefined,
-      result?.actionResults,
-    );
-
     const responseMessageText = getLatestVisibleResponseMessageText(
       result?.responseMessages,
     );
@@ -3587,41 +3288,10 @@ async function generateChatResponseWithTiming(
       }
     }
 
-    if (
-      !terminalFailure &&
-      isWalletActionRequiredIntent(originalUserText) &&
-      !successfulTurnActionResults.some((actionResult) => {
-        const normalizedName = readActionResultName(actionResult);
-        const canonicalName =
-          actionNameLookup.get(normalizedName) ?? normalizedName;
-        return walletActionMatchesIntent(
-          originalUserText,
-          canonicalName,
-          actionResult,
-        );
-      })
-    ) {
-      const failureText = buildWalletActionNotExecutedReply(
-        runtime,
-        originalUserText.trim(),
-      );
-      if (opts?.onSnapshot) {
-        emitSnapshot(failureText);
-      } else {
-        responseText = failureText;
-      }
-    }
-
     const noResponseFallback = opts?.resolveNoResponseText?.();
-    const exactDocumentValue =
-      terminalFailure || generationAbortController.signal.aborted
-        ? null
-        : await resolveExactDocumentValueForChat(runtime, message);
-    const normalizedResponseText = trimWalletProgressPrefix(
-      terminalFailure
-        ? responseText
-        : exactDocumentValue || responseText || resultText || "",
-    );
+    const normalizedResponseText = terminalFailure
+      ? responseText
+      : responseText || resultText || "";
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,
       normalizedResponseText,

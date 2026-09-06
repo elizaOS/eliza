@@ -104,9 +104,9 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "contexts",
 	description:
-		'Routing tags from available_contexts. Use ["simple"] only for direct replies needing no tool/action/provider. Owner goals/habits/routines/todos/reminders are never simple; route to tasks/OWNER_* actions. Empty invalid when shouldRespond=RESPOND.',
+		'Routing tags from available_contexts. Use ["simple"] only for direct replies needing no tool/action/provider. Requests to inspect visible controls, displayed content, or current application values require the view read/inspection tools and are never simple: a route or section label does not supply its contents. Owner goals/habits/routines/todos/reminders are never simple; route to tasks/OWNER_* actions. Empty invalid when shouldRespond=RESPOND.',
 	descriptionCompressed:
-		'Ids from available_contexts. ["simple"]=direct reply, no tools; personal goals/habits/reminders route to tasks/actions.',
+		'Ids from available_contexts. ["simple"]=direct reply, no tools; visible controls/content/current values require view inspection, never infer them from a route; personal goals/habits/reminders route to tasks/actions.',
 	priority: 10,
 	schema: {
 		type: "array",

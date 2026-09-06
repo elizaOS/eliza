@@ -724,7 +724,7 @@ describe("view management actions", () => {
 		);
 		expect(result).toMatchObject({
 			success: true,
-			userFacingText: "Opened https://www.apple.com.",
+			modelReplyRequired: true,
 		});
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
@@ -1230,11 +1230,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened gui view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("resolves existing registered view targets for natural-language window and pin requests", async () => {
@@ -1482,11 +1478,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "Split views: Notes, Calendar (horizontal).",
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 
 		const tileResult = await action.handler(
 			runtime as never,
@@ -2121,11 +2113,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened tui view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("preserves explicit future spatial viewType in window navigation payloads", async () => {
@@ -2176,11 +2164,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened xr view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("routes create, edit, and delete through the unified VIEWS action dispatcher", async () => {
@@ -2274,11 +2258,7 @@ describe("view management actions", () => {
 					body: JSON.stringify({ name: "@local/plugin-ledger" }),
 				}),
 			);
-			expect(callback).toHaveBeenCalledWith(
-				expect.objectContaining({
-					text: expect.stringContaining("Deleted Remote Ledger"),
-				}),
-			);
+			expect(callback).not.toHaveBeenCalled();
 		} finally {
 			repo.cleanup();
 		}
@@ -2396,9 +2376,7 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed Settings." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
@@ -2439,9 +2417,7 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close-all", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed all views." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it('treats action=delete for "close calendar view" as non-destructive close', async () => {
@@ -2485,9 +2461,7 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed Calendar." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
@@ -4756,11 +4730,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "Placed Notes on the left.",
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("treats explicit create cancel as terminal even if the pending task is gone", async () => {

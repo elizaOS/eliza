@@ -159,8 +159,6 @@ import {
   decodePathComponent,
   getErrorMessage,
   resolveAppUserName,
-  resolveConversationGreetingText,
-  resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
@@ -2602,8 +2600,8 @@ async function ensureConversationGreetingStored(
 async function ensureConversationGreetingStoredUnlocked(
   state: ConversationRouteState,
   conv: ConversationMeta,
-  lang: string,
-  roomHandlerLease?: RoomHandlerLease,
+  _lang: string,
+  _roomHandlerLease?: RoomHandlerLease,
 ): Promise<{
   text: string;
   agentName: string;
@@ -2668,52 +2666,9 @@ async function ensureConversationGreetingStoredUnlocked(
     };
   }
 
-  const greeting = resolveConversationGreetingText(
-    runtime,
-    lang,
-    state.config.ui,
-  ).trim();
-  if (!greeting) {
-    return {
-      text: "",
-      agentName,
-      generated: false,
-      persisted: false,
-    };
-  }
-
-  try {
-    await persistConversationMemory(
-      runtime,
-      createMessageMemory({
-        id: crypto.randomUUID() as UUID,
-        entityId: runtime.agentId,
-        roomId: conv.roomId,
-        content: {
-          text: greeting,
-          source: MESSAGE_SOURCE_AGENT_GREETING,
-          channelType: ChannelType.DM,
-        },
-      }),
-      roomHandlerLease,
-    );
-  } catch (error) {
-    // error-policy:J2 greeting persistence is required before the route reports
-    // the greeting as stored.
-    throw new ElizaError("Failed to store conversation greeting", {
-      code: "CONVERSATION_GREETING_WRITE_FAILED",
-      cause: error,
-      context: { conversationId: conv.id },
-    });
-  }
-
-  conv.updatedAt = new Date().toISOString();
-  return {
-    text: greeting,
-    agentName,
-    generated: true,
-    persisted: true,
-  };
+  // Character examples are prompt material, never fabricated assistant turns.
+  // New conversations wait for a real turn through the Eliza pipeline.
+  return { text: "", agentName, generated: false, persisted: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -4509,10 +4464,6 @@ export async function handleConversationRoutes(
         }
 
         const routedUserMessage = withViewInteractionClient(userMessage, req);
-        const walletModeGuidance = resolveWalletModeGuidanceReply(
-          state,
-          prompt,
-        );
         const turnStartedAt = Date.now();
         try {
           assertConversationConnectionRuntime(
@@ -4539,82 +4490,6 @@ export async function handleConversationRoutes(
             `${connectionFailed ? "Failed to refresh conversation room" : "Failed to store user message"}: ${getErrorMessage(err)}`,
           );
           return handled;
-        }
-
-        if (walletModeGuidance) {
-          const endActiveChatTurn = beginActiveChatTurn(state);
-          try {
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            if (!disconnectTracker.isAborted()) {
-              tokenWriter.writeSnapshot(res, walletModeGuidance);
-              try {
-                assertConversationConnectionRuntime(
-                  state.runtime,
-                  connectionDescriptor,
-                );
-                const routeOwnedId = crypto.randomUUID() as UUID;
-                const persisted = await persistAssistantConversationMemory(
-                  runtime,
-                  conv.roomId,
-                  { text: walletModeGuidance, inReplyTo: messageToStore.id },
-                  channelType,
-                  turnStartedAt,
-                  routeOwnedId,
-                  runtimeTurnLease,
-                  assertLocalVoiceTurnFence,
-                );
-                assertConversationConnectionRuntime(
-                  state.runtime,
-                  connectionDescriptor,
-                );
-                conv.updatedAt = new Date().toISOString();
-                const outcome: ChatMessageIdOutcome = {
-                  text: walletModeGuidance,
-                  agentName: state.agentName,
-                  ...(persisted?.id ? { messageId: persisted.id } : {}),
-                  userMessageId: messageToStore.id,
-                };
-                await settleTurnReservation(outcome);
-                writeConversationDoneSse(res, outcome);
-              } catch (persistErr) {
-                releaseTurnReservation();
-                writeSse(res, {
-                  type: "error",
-                  message: getErrorMessage(persistErr),
-                });
-                return true;
-              }
-            }
-          } catch (err) {
-            if (isConversationConnectionError(err)) {
-              releaseTurnReservation();
-            }
-            if (!disconnectTracker.isAborted()) {
-              writeSse(res, {
-                type: "error",
-                message: isConversationConnectionError(err)
-                  ? `Failed to refresh conversation room: ${getErrorMessage(err)}`
-                  : getErrorMessage(err),
-              });
-            }
-          } finally {
-            if (
-              clientMessageId &&
-              !getChatMessageIdOutcome(chatIdempotencyScope, clientMessageId)
-            ) {
-              releaseTurnReservation();
-            }
-            clearInterval(heartbeatInterval);
-            try {
-              finishStreamResponse();
-            } finally {
-              endActiveChatTurn();
-            }
-          }
-          return true;
         }
 
         // ── Local runtime path (streaming) ───────────────────────
@@ -5590,10 +5465,6 @@ export async function handleConversationRoutes(
         }
 
         const routedUserMessage = withViewInteractionClient(userMessage, req);
-        const walletModeGuidance = resolveWalletModeGuidanceReply(
-          state,
-          prompt,
-        );
         const turnStartedAt = Date.now();
 
         try {
@@ -5618,51 +5489,6 @@ export async function handleConversationRoutes(
             `Failed to store user message: ${getErrorMessage(err)}`,
             500,
           );
-          return true;
-        }
-
-        if (walletModeGuidance) {
-          const endActiveChatTurn = beginActiveChatTurn(state);
-          try {
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            const routeOwnedId = crypto.randomUUID() as UUID;
-            const persisted = await persistAssistantConversationMemory(
-              runtime,
-              conv.roomId,
-              { text: walletModeGuidance, inReplyTo: messageToStore.id },
-              channelType,
-              turnStartedAt,
-              routeOwnedId,
-              runtimeTurnLease,
-            );
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            conv.updatedAt = new Date().toISOString();
-            const outcome: ChatMessageIdOutcome = {
-              text: walletModeGuidance,
-              agentName: state.agentName,
-              ...(persisted?.id ? { messageId: persisted.id } : {}),
-              userMessageId: messageToStore.id,
-            };
-            await settleTurnReservation(outcome);
-            json(res, buildConversationJsonOutcome(outcome));
-          } catch (persistErr) {
-            releaseTurnReservation();
-            error(res, getErrorMessage(persistErr), 500);
-          } finally {
-            if (
-              clientMessageId &&
-              !getChatMessageIdOutcome(chatIdempotencyScope, clientMessageId)
-            ) {
-              releaseTurnReservation();
-            }
-            endActiveChatTurn();
-          }
           return true;
         }
 

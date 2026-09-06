@@ -2400,25 +2400,27 @@ async function runViewsLayout({
 	};
 }
 
-function withViewsUserFacingText(result: ActionResult): ActionResult {
-	if (result.success !== true && result.userFacingText === undefined) {
-		return result;
-	}
-	if (
-		result.transcriptVisibility === "internal" &&
-		result.userFacingText === undefined
-	) {
-		return result;
-	}
+function isViewsInteractivePayload(text: string): boolean {
+	return ["[CHOICE:", "[FORM]", "[CONFIG:"].some((marker) =>
+		text.trim().startsWith(marker),
+	);
+}
+
+/** Only an interactive UI payload owns delivery; ordinary receipts go to the model. */
+function withViewsInteractivePayload(result: ActionResult): ActionResult {
 	const text = typeof result.text === "string" ? result.text.trim() : "";
-	if (!text) return result;
+	if (!isViewsInteractivePayload(text)) {
+		const {
+			userFacingText: _userFacingText,
+			verifiedUserFacing: _verifiedUserFacing,
+			...evidence
+		} = result;
+		return { ...evidence, turnComplete: false, modelReplyRequired: true };
+	}
 	return {
 		...result,
-		userFacingText: result.userFacingText ?? text,
-		verifiedUserFacing:
-			result.success === true
-				? (result.verifiedUserFacing ?? true)
-				: result.verifiedUserFacing,
+		userFacingText: text,
+		verifiedUserFacing: result.success === true,
 	};
 }
 
@@ -2980,8 +2982,17 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			message: Memory,
 			_state?: State,
 			options?: Record<string, unknown>,
-			callback?: HandlerCallback,
+			deliveryCallback?: HandlerCallback,
 		): Promise<ActionResult> => {
+			// Helpers may emit diagnostic prose for legacy callers. Only actual
+			// interactive payloads are delivered directly; normal receipts remain
+			// tool evidence for the Eliza evaluator's generated response.
+			const callback: HandlerCallback | undefined = deliveryCallback
+				? async (content, actionName) =>
+						isViewsInteractivePayload(content.text ?? "")
+							? deliveryCallback(content, actionName)
+							: []
+				: undefined;
 			const run = async (): Promise<ActionResult> => {
 				const actionOptions = normalizeActionOptions(options);
 				const client = clientFactory();
@@ -3096,7 +3107,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const resultText = currentView
 							? `Current view: ${currentView.viewLabel} (${currentView.viewType}) — ${currentView.viewId}${currentView.viewPath ? ` at ${currentView.viewPath}` : ""}.`
 							: "No current view has been reported yet.";
-						await callback?.({ text: resultText });
+
 						return {
 							success: true,
 							text: resultText,
@@ -3672,7 +3683,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 			};
 
-			return withViewsUserFacingText(await run());
+			return withViewsInteractivePayload(await run());
 		},
 
 		examples: [

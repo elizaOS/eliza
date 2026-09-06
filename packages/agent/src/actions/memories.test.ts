@@ -421,11 +421,11 @@ describe("MEMORY op:search terminal recall", () => {
     expect(result.userFacingText).toBeUndefined();
   });
 
-  it("owns a successful hit through the canonical terminal ActionResult contract when enabled", async () => {
+  it("keeps recall model-owned even when a legacy shortcut setting is present", async () => {
     const { runtime, rows } = makeRuntime({
       settings: { ELIZA_RECALL_SHORT_CIRCUIT: "1" },
     });
-    const memoryId = seedFact(rows, {
+    seedFact(rows, {
       text: "Royce taught Shadow guitar",
       entityId: USER_ID,
     });
@@ -436,12 +436,10 @@ describe("MEMORY op:search terminal recall", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.turnComplete).toBe(true);
-    expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText).toMatch(
-      /^I found 1 matching memory record\(s\):\n- \[facts\] at \d{4}-\d{2}-\d{2}T.*Z: Royce taught Shadow guitar$/,
-    );
-    expect(result.userFacingText).not.toContain(memoryId);
+    expect(result.turnComplete).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
+    expect(result.text).toContain("Royce taught Shadow guitar");
   });
 
   it("does not claim terminal authority for an empty search", async () => {
@@ -460,7 +458,7 @@ describe("MEMORY op:search terminal recall", () => {
     expect(result.userFacingText).toBeUndefined();
   });
 
-  it("preserves the complete canonical reply and treats instruction-like memory text as quoted result data", async () => {
+  it("preserves complete recall evidence for the model without direct delivery", async () => {
     const { runtime, rows } = makeRuntime({
       settings: { ELIZA_RECALL_SHORT_CIRCUIT: "yes" },
     });
@@ -477,9 +475,9 @@ describe("MEMORY op:search terminal recall", () => {
       limit: 40,
     });
 
-    const reply = result.userFacingText ?? "";
-    expect(result.turnComplete).toBe(true);
-    expect(reply.split("\n")).toHaveLength(41);
+    const reply = result.text ?? "";
+    expect(result.turnComplete).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
     expect(
       reply.split("\n").filter((line) => line.startsWith("- [facts] ")),
     ).toHaveLength(40);

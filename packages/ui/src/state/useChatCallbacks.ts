@@ -152,13 +152,12 @@ export interface HydrateInitialConversationDeps {
   seedSyntheticGreeting: boolean;
 }
 
-/** Native iOS presents chat as an on-demand utility, so a new thread should
- *  wait for the user's first turn instead of inventing one from postExamples. */
+/** New threads wait for real model-generated turns on every platform. */
 export function shouldSeedSyntheticConversationGreeting(
-  native: boolean,
-  ios: boolean,
+  _native: boolean,
+  _ios: boolean,
 ): boolean {
-  return !(native && ios);
+  return false;
 }
 
 function conversationRecency(conversation: Conversation): number {

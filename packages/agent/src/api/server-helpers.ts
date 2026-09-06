@@ -26,10 +26,8 @@ import {
 } from "@elizaos/core";
 import { decodeUrlPathComponent } from "@elizaos/shared";
 import {
-  normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-  resolveStylePresetByName,
 } from "@elizaos/shared/character-presets";
 import {
   CHAT_UPLOAD_MIME_TYPES,
@@ -61,13 +59,9 @@ import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
 import type {
   ChatAttachmentWithData,
   ChatImageAttachment,
-  ServerState,
 } from "./server-types.ts";
 import { getWalletAddresses } from "./wallet.ts";
-import {
-  resolvePluginEvmLoaded,
-  resolveWalletCapabilityStatus,
-} from "./wallet-capability.ts";
+import { resolvePluginEvmLoaded } from "./wallet-capability.ts";
 
 export {
   BLOCKED_OBJECT_GRAPH_UNBOUNDED,
@@ -308,62 +302,6 @@ export function patchTouchesProviderSelection(
 // ---------------------------------------------------------------------------
 // Conversation greeting
 // ---------------------------------------------------------------------------
-
-export function resolveConversationGreetingText(
-  runtime: AgentRuntime,
-  lang: string,
-  uiConfig?: ElizaConfig["ui"],
-): string {
-  const pickRandom = (values: string[] | undefined): string => {
-    const choices = (values ?? [])
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    if (choices.length === 0) {
-      return "";
-    }
-
-    return choices[Math.floor(Math.random() * choices.length)] ?? "";
-  };
-
-  const normalizedLanguage = normalizeCharacterLanguage(lang);
-  const characterName = runtime.character.name?.trim();
-  const assistantName = uiConfig?.assistant?.name?.trim();
-
-  // Prefer explicit UI selections over the loaded character card: users pick a
-  // style in first-run/roster (avatar + preset) while `runtime.character.name`
-  // can still reflect the bundled preset name until save/restart. presetId is
-  // checked before avatarIndex (matching the build-character paths): the id
-  // names one persona, while avatarIndex is a VRM art-asset index that several
-  // personas can share (Eliza and Chen both render asset 1), so the index
-  // alone cannot disambiguate the selected persona.
-  const preset =
-    resolveStylePresetById(uiConfig?.presetId, normalizedLanguage) ??
-    resolveStylePresetByAvatarIndex(
-      uiConfig?.avatarIndex,
-      normalizedLanguage,
-    ) ??
-    resolveStylePresetByName(assistantName, normalizedLanguage) ??
-    resolveStylePresetByName(characterName, normalizedLanguage);
-
-  const presetGreeting = pickRandom(preset?.postExamples);
-  if (presetGreeting) {
-    return presetGreeting;
-  }
-
-  const characterGreeting = pickRandom(runtime.character.postExamples);
-  if (characterGreeting) {
-    return characterGreeting;
-  }
-
-  // Last-resort default so the agent ALWAYS opens the conversation, even when no
-  // preset or character `postExamples` are configured (otherwise the greeting
-  // resolves to "" and the conversation starts empty).
-  const name = assistantName || characterName;
-  return name
-    ? `Hey, I'm ${name}. What can I help you with?`
-    : "Hey — what can I help you with?";
-}
 
 /**
  * Preset id to persist when a stream avatar selection is mirrored into
@@ -802,175 +740,4 @@ export function maybeAugmentChatMessageWithWalletContext(
       text: buildWalletContextPrompt(runtime, userPrompt),
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Wallet intent detection & replies
-// ---------------------------------------------------------------------------
-
-// Bare finance verbs (swap/trade/transfer) are NOT wallet evidence on their
-// own: "add a todo: swap the canon filter" is a chore, yet the bare-verb match
-// made isWalletActionRequiredIntent claim the turn, and the api layer then
-// REPLACED a successful OWNER_TODOS_CREATE reply with the wallet-not-executed
-// dump — internal wallet/RPC state leaked into chat and the real confirmation
-// was destroyed (observed live). The verbs count only with a crypto/wallet
-// object nearby, exactly like the existing `send` arm; wallet NOUNS anywhere
-// in the prompt still qualify the turn on their own.
-const WALLET_CHAT_INTENT_RE =
-  /\b(wallet|onchain|on-chain|address|balance|token|bnb|t?bnb|eth|sol)\b|(?:\b(?:send|swap|trade|transfer)\b(?=[\s\S]{0,40}\b(?:tokens?|eth|sol|t?bnb|wallet|crypto|coins?|usdc|usdt)\b))/i;
-
-export const WALLET_EXECUTION_INTENT_RE =
-  /\b(swap|trade|transfer|buy|sell|execute|approve)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
-
-const WALLET_IDENTITY_INTENT_RE = /\b(wallet\s*address|address)\b/i;
-
-const WALLET_ACTION_REQUIRED_INTENT_RE =
-  /\b(balance|portfolio|holdings|funds|swap|trade|transfer|send|buy|sell|execute|approve)\b/i;
-
-export const WALLET_PROGRESS_ONLY_RE =
-  /\b(let me|i(?:'| wi)ll|checking|fetching|looking up|pulling|one moment|just a second|hold on)\b[\s\S]{0,80}\b(check|look|fetch|pull|get|verify|see|review)\b/i;
-
-export function isWalletActionRequiredIntent(prompt: string): boolean {
-  return (
-    WALLET_CHAT_INTENT_RE.test(prompt) &&
-    !WALLET_IDENTITY_INTENT_RE.test(prompt) &&
-    WALLET_ACTION_REQUIRED_INTENT_RE.test(prompt)
-  );
-}
-
-export function buildWalletActionNotExecutedReply(
-  runtime: AgentRuntime,
-  userPrompt: string,
-): string {
-  const addrs = getWalletAddresses(runtime.agentId);
-  const walletNetwork =
-    process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
-      ? "testnet"
-      : "mainnet";
-  const pluginEvmLoaded = resolvePluginEvmLoaded(runtime);
-  const rpcReady = Boolean(
-    process.env.BSC_RPC_URL?.trim() ||
-      process.env.BSC_TESTNET_RPC_URL?.trim() ||
-      process.env.NODEREAL_BSC_RPC_URL?.trim() ||
-      process.env.QUICKNODE_BSC_RPC_URL?.trim(),
-  );
-  const executionBlockedReason = !addrs.evmAddress
-    ? "No EVM wallet is active yet."
-    : !rpcReady
-      ? "BSC RPC is not configured."
-      : !pluginEvmLoaded
-        ? "@elizaos/plugin-wallet is not loaded, so EVM wallet execution is unavailable."
-        : "A wallet action was not executed for this turn.";
-
-  return [
-    `I could not complete "${userPrompt}" because no wallet action actually ran.`,
-    `Wallet network: ${walletNetwork}.`,
-    `Detected wallets:`,
-    `- EVM: ${addrs.evmAddress ?? "not generated"}`,
-    `- Solana: ${addrs.solanaAddress ?? "not generated"}`,
-    `@elizaos/plugin-wallet: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
-    `RPC ready: ${rpcReady ? "yes" : "no"}.`,
-    `Blocked reason: ${executionBlockedReason}`,
-  ].join("\n");
-}
-
-const WALLET_PROGRESS_PREFIX_RE =
-  /^\s*(?:let me|i(?:'ll| will)|checking|fetching|looking up|pulling|one moment|just a second|hold on)[\s\S]{0,120}?(?:now|\.{3}|…)?\s*/i;
-
-export function trimWalletProgressPrefix(text: string): string {
-  const balanceIdx = text.indexOf("Wallet Balances:");
-  if (balanceIdx > 0) {
-    return text.slice(balanceIdx).trimStart();
-  }
-
-  const markers = [
-    "Action: TRANSFER_TOKEN",
-    "Action: EXECUTE_TRADE",
-    "Transfer",
-    "Swap",
-    "Trade",
-    "Tx hash:",
-    "Transaction hash:",
-  ];
-  for (const marker of markers) {
-    const idx = text.indexOf(marker);
-    if (idx <= 0) continue;
-    const prefix = text.slice(0, idx);
-    if (WALLET_PROGRESS_PREFIX_RE.test(prefix)) {
-      return text.slice(idx).trimStart();
-    }
-  }
-  return text;
-}
-
-export function resolveWalletModeGuidanceReply(
-  state: Pick<ServerState, "config" | "runtime">,
-  prompt: string,
-): string | null {
-  if (!WALLET_CHAT_INTENT_RE.test(prompt)) {
-    return null;
-  }
-
-  const capability = resolveWalletCapabilityStatus(state);
-  const {
-    automationMode,
-    evmAddress,
-    solanaAddress,
-    walletNetwork,
-    pluginEvmLoaded,
-    executionReady,
-    executionBlockedReason,
-  } = capability;
-  const walletSummary = `Detected wallets:
-- EVM: ${evmAddress ?? "not generated"}
-- Solana: ${solanaAddress ?? "not generated"}`;
-
-  if (automationMode === "connectors-only") {
-    if (!WALLET_EXECUTION_INTENT_RE.test(prompt)) {
-      return null;
-    }
-    return [
-      "I am in connectors-only mode, so wallet actions are disabled in chat right now.",
-      "Turn on full mode with one of these:",
-      '1) Settings -> Permissions -> Agent Automation Mode -> "Full".',
-      '2) API: PUT /api/permissions/automation-mode with {"mode":"full"}.',
-      "Then retry your wallet request.",
-      `Wallet network: ${walletNetwork}.`,
-      walletSummary,
-    ].join("\n");
-  }
-
-  if (
-    !evmAddress &&
-    !solanaAddress &&
-    WALLET_EXECUTION_INTENT_RE.test(prompt)
-  ) {
-    return [
-      "No wallet is active yet.",
-      "Open the Wallet page to set up Steward (Eliza Cloud) or a local wallet.",
-      walletSummary,
-    ].join("\n");
-  }
-
-  if (WALLET_IDENTITY_INTENT_RE.test(prompt)) {
-    return [
-      `Wallet network: ${walletNetwork}.`,
-      walletSummary,
-      `@elizaos/plugin-wallet: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
-      `Execution readiness: ${executionReady ? "ready for wallet actions" : (executionBlockedReason ?? "blocked")}.`,
-      `Automation mode: ${automationMode}.`,
-    ].join("\n");
-  }
-
-  if (WALLET_EXECUTION_INTENT_RE.test(prompt) && !executionReady) {
-    return [
-      `Wallet execution is currently blocked: ${executionBlockedReason ?? "unknown reason"}`,
-      `Wallet network: ${walletNetwork}.`,
-      walletSummary,
-      `@elizaos/plugin-wallet: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
-      `Automation mode: ${automationMode}.`,
-    ].join("\n");
-  }
-
-  return null;
 }

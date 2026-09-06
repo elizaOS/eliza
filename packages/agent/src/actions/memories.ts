@@ -454,15 +454,6 @@ async function readStableCompleteMemoryTable(
   return second;
 }
 
-const RECALL_TERMINAL_SETTING = "ELIZA_RECALL_SHORT_CIRCUIT";
-
-function recallTerminalEnabled(runtime: IAgentRuntime): boolean {
-  const raw = runtime.getSetting(RECALL_TERMINAL_SETTING);
-  return typeof raw === "boolean"
-    ? raw
-    : /^(?:1|true|yes|on)$/iu.test(String(raw ?? "").trim());
-}
-
 /**
  * Shared read scope for search and delete-by-query. The entity filter is
  * identity-cluster expanded via getRelatedEntityIds — the same expansion the
@@ -638,16 +629,6 @@ async function doSearch(
     (m) =>
       `- [${m.type}] ${m.id} at ${new Date(m.createdAt).toISOString()}: ${toWellFormedUnicode(m.text)}`,
   );
-  const userFacingText = items.length
-    ? [
-        `I found ${items.length} matching memory record(s):`,
-        ...items.map(
-          (item) =>
-            `- [${item.type}] at ${new Date(item.createdAt).toISOString()}: ${toWellFormedUnicode(item.text)}`,
-        ),
-      ].join("\n")
-    : undefined;
-
   const renderNote =
     limit === undefined
       ? `Showing all ${lines.length} match(es) found in the complete scan`
@@ -670,15 +651,6 @@ async function doSearch(
       ...lines,
       ...continuationNote,
     ].join("\n"),
-    ...(userFacingText &&
-    nextOffset === undefined &&
-    recallTerminalEnabled(runtime)
-      ? {
-          userFacingText,
-          verifiedUserFacing: true,
-          turnComplete: true,
-        }
-      : {}),
     values: {
       count: items.length,
       rendered: lines.length,
@@ -1124,7 +1096,8 @@ export const memoryAction: Action = {
     },
     {
       name: "type",
-      description: "search: filter by memory table type.",
+      description:
+        "search: optional table filter. Omit to search all record types. Conversation history is messages; memories is only explicitly saved memory records, not the whole store.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_TYPES] },
     },
