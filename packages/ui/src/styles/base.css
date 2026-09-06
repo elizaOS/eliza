@@ -197,6 +197,8 @@
   --radius-2xl: 22px;
   --radius-3xl: 28px;
   --radius-full: 9999px;
+  /* Search surfaces retain soft corners in compact theme variants. */
+  --radius-search: 1rem;
   --radius: var(--radius-md);
   --duration-normal: 150ms;
 
