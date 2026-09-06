@@ -133,6 +133,9 @@ export function isMaintainedSource(file) {
       rel,
     ) &&
     !/(^|\/)packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) &&
+    !/^packages\/app-core\/platforms\/android\/app\/src\/main\/assets(\/|$)/.test(
+      rel,
+    ) &&
     !/\.(stories|test|spec)\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
       rel,
@@ -172,6 +175,11 @@ function* walk(directory) {
     if (entry.isDirectory()) {
       const rel = relative(full);
       if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+        continue;
+      }
+      // Mobile builds stage compiled JavaScript here; it is not maintained
+      // React source and is absent from clean CI checkouts.
+      if (rel === "packages/app-core/platforms/android/app/src/main/assets") {
         continue;
       }
       yield* walk(full);

@@ -1,11 +1,16 @@
 /** Exercises stage android agent behavior with deterministic app-core test fixtures. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  resolvePinnedBunArtifact,
+  stagePinnedBunArtifact,
+} from "./lib/pinned-android-bun.mjs";
 
 import {
   __testables,
@@ -358,4 +363,147 @@ test("runtime provenance records external artifacts by basename only", () => {
     path: "bun-linux-riscv64-musl.zip",
     path_provenance: "external_artifact_basename",
   });
+});
+
+function pinnedBunFixture() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-pinned-bun-"));
+  const dir = "bun-linux-x64-musl";
+  fs.mkdirSync(path.join(tmp, dir));
+  const bytes = Buffer.from("known executable fixture bytes\n");
+  fs.writeFileSync(path.join(tmp, dir, "bun"), bytes);
+  const archive = path.join(tmp, "fixture.zip");
+  execFileSync("zip", ["-q", "-r", archive, dir], { cwd: tmp });
+  const sha = (value) => createHash("sha256").update(value).digest("hex");
+  const artifact = {
+    ...resolvePinnedBunArtifact("canary", "x64"),
+    archiveSha256: sha(fs.readFileSync(archive)),
+    binarySha256: sha(bytes),
+  };
+  return { tmp, archive, artifact, bytes, cacheDir: path.join(tmp, "cache") };
+}
+
+test("Android Bun pins resolve immutable asset IDs and accurate channel metadata", () => {
+  for (const channel of ["stable", "canary"]) {
+    for (const arch of ["x64", "aarch64"]) {
+      const pin = resolvePinnedBunArtifact(channel, arch);
+      assert.match(
+        pin.url,
+        /^https:\/\/api.github.com\/repos\/oven-sh\/bun\/releases\/assets\/[0-9]+$/,
+      );
+      assert.match(pin.archiveSha256, /^[a-f0-9]{64}$/);
+      assert.match(pin.binarySha256, /^[a-f0-9]{64}$/);
+      assert.match(pin.revision, /^[a-f0-9]{40}$/);
+    }
+  }
+  assert.equal(
+    resolvePinnedBunArtifact("canary", "x64").version,
+    "1.4.3-canary.1",
+  );
+  assert.equal(resolvePinnedBunArtifact("stable", "x64").version, "1.3.14");
+  assert.throws(
+    () => resolvePinnedBunArtifact("canary", "unknown"),
+    /Missing or invalid/,
+  );
+});
+
+test("pinned Bun verifies a real ZIP and cache bytes independently of age", async () => {
+  const f = pinnedBunFixture();
+  try {
+    const download = () => {
+      throw new Error("unexpected network request");
+    };
+    const result = await stagePinnedBunArtifact({
+      ...f,
+      sourceFile: f.archive,
+      download,
+    });
+    assert.deepEqual(fs.readFileSync(result.bunPath), f.bytes);
+    assert.equal(result.source.artifact_sha256, f.artifact.archiveSha256);
+    fs.utimesSync(result.bunPath, new Date(0), new Date(0));
+    const cached = await stagePinnedBunArtifact({ ...f, download });
+    assert.equal(cached.source.kind, "cache");
+    fs.writeFileSync(result.bunPath, "altered cached executable");
+    await assert.rejects(
+      stagePinnedBunArtifact({ ...f, download }),
+      /Cached Bun binary SHA-256 mismatch/,
+    );
+  } finally {
+    removePathRecursive(f.tmp);
+  }
+});
+
+test("pinned Bun rejects modified archives even with a previously valid cache", async () => {
+  const f = pinnedBunFixture();
+  try {
+    await stagePinnedBunArtifact({ ...f, sourceFile: f.archive });
+    fs.appendFileSync(f.archive, "tampered archive");
+    await assert.rejects(
+      stagePinnedBunArtifact({ ...f, sourceFile: f.archive }),
+      /Bun archive SHA-256 mismatch/,
+    );
+  } finally {
+    removePathRecursive(f.tmp);
+  }
+});
+
+test("pinned Bun verifies downloaded ZIP and extracted executable before cache publication", async () => {
+  const f = pinnedBunFixture();
+  try {
+    const download = async (url, target, options) => {
+      assert.equal(url, f.artifact.url);
+      assert.equal(options.headers.Accept, "application/octet-stream");
+      fs.copyFileSync(f.archive, target);
+    };
+    await assert.rejects(
+      stagePinnedBunArtifact({
+        ...f,
+        artifact: { ...f.artifact, binarySha256: "0".repeat(64) },
+        download,
+      }),
+      /Bun executable SHA-256 mismatch/,
+    );
+    assert.deepEqual(fs.readdirSync(f.cacheDir), []);
+    const result = await stagePinnedBunArtifact({ ...f, download });
+    assert.deepEqual(fs.readFileSync(result.bunPath), f.bytes);
+  } finally {
+    removePathRecursive(f.tmp);
+  }
+});
+
+test("pinned Bun fails closed on a corrupted download without publishing cache bytes", async () => {
+  const f = pinnedBunFixture();
+  try {
+    await assert.rejects(
+      stagePinnedBunArtifact({
+        ...f,
+        download: async (_url, target) =>
+          fs.writeFileSync(target, "not the pinned archive"),
+      }),
+      /Bun archive SHA-256 mismatch/,
+    );
+    assert.deepEqual(fs.readdirSync(f.cacheDir), []);
+  } finally {
+    removePathRecursive(f.tmp);
+  }
+});
+
+test("artifact downloads preserve GitHub binary content negotiation", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bun-headers-"));
+  try {
+    const target = path.join(tmp, "artifact.zip");
+    await __testables.downloadFile(
+      "https://api.github.com/repos/oven-sh/bun/releases/assets/1",
+      target,
+      {
+        headers: { Accept: "application/octet-stream" },
+        fetchImpl: async (_url, options) => {
+          assert.equal(options.headers.Accept, "application/octet-stream");
+          return new Response("archive transport fixture");
+        },
+      },
+    );
+    assert.equal(fs.readFileSync(target, "utf8"), "archive transport fixture");
+  } finally {
+    removePathRecursive(tmp);
+  }
 });

@@ -58,6 +58,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
+import { packagedRuntimeFiles } from "./lib/apk-runtime-provenance.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -2140,24 +2141,27 @@ export function injectNoCompressTarGz(content) {
  * exist on disk under nativeLibraryDir for ProcessBuilder to execute them.
  */
 export function injectNativeLibLegacyPackaging(content) {
-  if (/useLegacyPackaging\s*=\s*true/.test(content)) return content;
+  const assignment = "useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'";
+  if (/useLegacyPackaging\s*=/.test(content)) {
+    return content.replace(/useLegacyPackaging\s*=[^\n]*/, assignment);
+  }
   if (/jniLibs\s*\{/.test(content)) {
     return content.replace(
       /jniLibs\s*\{/,
-      "jniLibs {\n            useLegacyPackaging = true",
+      "jniLibs {\n            useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'",
     );
   }
   if (/packaging\s*\{/.test(content)) {
     return content.replace(
       /packaging\s*\{/,
-      "packaging {\n        jniLibs {\n            useLegacyPackaging = true\n        }",
+      "packaging {\n        jniLibs {\n            useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'\n        }",
     );
   }
 
   const block =
     `\n    packaging {\n` +
     `        jniLibs {\n` +
-    `            useLegacyPackaging = true\n` +
+    `            useLegacyPackaging = project.findProperty('elizaAospBuild') != 'true'\n` +
     `        }\n` +
     `    }\n`;
   const androidOpen = content.search(/\n\s*android\s*\{/);
@@ -10955,6 +10959,8 @@ function writeAndroidSystemProvenance(apkPath) {
             ? sha256File(runtimeProvenancePath)
             : null,
           runtime_provenance: runtimeProvenance,
+          runtime_provenance_stage: "pre_gradle_inputs",
+          packaged_runtime_files: packagedRuntimeFiles(apkPath),
           android_system_variant: APP.appName,
           android_package: APP.appId,
           claim_boundary:

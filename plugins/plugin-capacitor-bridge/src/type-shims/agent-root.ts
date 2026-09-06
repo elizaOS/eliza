@@ -18,7 +18,7 @@ export function startEliza(_options: {
 	throw new Error("Type shim only");
 }
 
-export const dispatchRoute: AndroidDispatchRoute = () => {
+export const dispatchApiRoute: AndroidDispatchRoute = () => {
 	throw new Error("Type shim only");
 };
 

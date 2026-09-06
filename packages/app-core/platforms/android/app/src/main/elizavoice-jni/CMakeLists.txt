@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
+set(ANDROID_STL c++_shared)
 project(elizavoice-jni)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -22,15 +23,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #     ELIZAVOICE_FFI_INCLUDE_DIR (passed from build.gradle) with a sane
 #     in-tree fallback.
 
-if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
-    # Phase 3a only validates arm64-v8a. Other ABIs get a no-op stub so the
+if(NOT ANDROID_ABI STREQUAL "arm64-v8a" AND NOT ANDROID_ABI STREQUAL "x86_64")
+    # arm64-v8a and x86_64 use the real bridge. Other ABIs get a stub so the
     # multi-ABI app build does not fail before the per-ABI .so is staged.
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/elizavoice-stub.cpp"
         "extern \"C\" int elizavoice_jni_stub() { return 0; }\n")
     add_library(elizavoicejni SHARED "${CMAKE_CURRENT_BINARY_DIR}/elizavoice-stub.cpp")
     find_library(LOG_LIB log)
     target_link_libraries(elizavoicejni PRIVATE ${LOG_LIB})
-    message(STATUS "[elizavoice-jni] building no-op stub for ${ANDROID_ABI} (Phase 3a: arm64-v8a only)")
+    message(STATUS "[elizavoice-jni] building no-op stub for ${ANDROID_ABI} (unsupported ABI)")
     return()
 endif()
 
