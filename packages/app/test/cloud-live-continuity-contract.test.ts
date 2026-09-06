@@ -238,6 +238,8 @@ describe("forbidden Cloud agent mutations", () => {
       completedDedicatedQuoteResponseBodyCount: 0,
       parsedDedicatedQuoteResponseBodyCount: 0,
       decodedDedicatedQuoteResponseCount: 0,
+      dedicatedCutoverResponseStatus: null,
+      dedicatedCutoverResponseCode: null,
       uninspectableDedicatedQuoteResponseBodyCount: 0,
       dedicatedActivationPostRequestCount: 0,
       successfulDedicatedActivationPostResponseCount: 0,
@@ -277,6 +279,19 @@ describe("forbidden Cloud agent mutations", () => {
       decodedUnavailableDedicatedAdoptionQuoteCount: 0,
       uninspectableDedicatedAdoptionQuoteResponseBodyCount: 0,
       dedicatedAdoptionConfirmationPostRequestCount: 0,
+      dedicatedAdoptionConfirmationPostResponseCount: 0,
+      failedDedicatedAdoptionConfirmationPostRequestCount: 0,
+      pendingDedicatedAdoptionConfirmationPostRequestCount: 0,
+      dedicatedAdoptionConfirmationResponseStatus: null,
+      dedicatedAdoptionConfirmationResponseCode: null,
+      dedicatedAdoptionConfirmationElapsedMs: null,
+      dedicatedProvisionJobGetRequestCount: 0,
+      dedicatedProvisionJobGetResponseCount: 0,
+      failedDedicatedProvisionJobGetRequestCount: 0,
+      pendingDedicatedProvisionJobGetRequestCount: 0,
+      dedicatedProvisionJobResponseStatus: null,
+      dedicatedProvisionJobResponseCode: null,
+      dedicatedProvisionJobStatus: null,
       dedicatedApprovalBindingPresent: false,
       dedicatedLifecycleBindingMismatchCount: 0,
       historyGetRequestCount: 1,
@@ -436,6 +451,8 @@ describe("forbidden Cloud agent mutations", () => {
       uninspectableDedicatedActivationResponseBodyCount: 0,
       dedicatedActivationResponseStatus: 202,
       dedicatedActivationResponseCode: null,
+      dedicatedCutoverResponseStatus: 200,
+      dedicatedCutoverResponseCode: null,
       dedicatedCutoverPostRequestCount: 2,
       successfulDedicatedCutoverPostResponseCount: 1,
       clientErrorDedicatedCutoverPostResponseCount: 1,
@@ -493,6 +510,175 @@ describe("forbidden Cloud agent mutations", () => {
       "dedicated_quote_changed",
     );
     expect(JSON.stringify(snapshot)).not.toMatch(/private user detail|quoteId/);
+  });
+
+  it("classifies Dedicated adoption and provisioning-job terminals without payloads", async () => {
+    let now = 1_000;
+    const audit = createCloudLiveNetworkAudit(() => now);
+    const provisionJobId = "11111111-1111-4111-8111-111111111111";
+    const adoption =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier/adopt-existing";
+    audit.observeRequest(
+      "POST",
+      adoption,
+      JSON.stringify({ quoteId: "private-quote" }),
+    );
+    now = 1_250;
+    audit.observeResponse(
+      "POST",
+      adoption,
+      202,
+      boundedJsonBody({
+        success: true,
+        data: { jobId: provisionJobId },
+      }).responseBody,
+    );
+    const job = `https://api.test/api/v1/jobs/${provisionJobId}`;
+    audit.observeRequest("GET", job);
+    now = 1_500;
+    audit.observeResponse(
+      "GET",
+      job,
+      200,
+      boundedJsonBody({
+        success: true,
+        data: {
+          status: "failed",
+          error: "private provisioning failure detail",
+        },
+      }).responseBody,
+    );
+    const unrelatedJob =
+      "https://api.test/api/v1/jobs/33333333-3333-4333-8333-333333333333";
+    audit.observeRequest("GET", unrelatedJob);
+    audit.observeResponse(
+      "GET",
+      unrelatedJob,
+      200,
+      boundedJsonBody({
+        success: true,
+        data: { status: "completed" },
+      }).responseBody,
+    );
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot).toMatchObject({
+      dedicatedAdoptionConfirmationPostRequestCount: 1,
+      dedicatedAdoptionConfirmationPostResponseCount: 1,
+      failedDedicatedAdoptionConfirmationPostRequestCount: 0,
+      pendingDedicatedAdoptionConfirmationPostRequestCount: 0,
+      dedicatedAdoptionConfirmationResponseStatus: 202,
+      dedicatedAdoptionConfirmationResponseCode: null,
+      dedicatedAdoptionConfirmationElapsedMs: 250,
+      dedicatedProvisionJobGetRequestCount: 1,
+      dedicatedProvisionJobGetResponseCount: 1,
+      failedDedicatedProvisionJobGetRequestCount: 0,
+      pendingDedicatedProvisionJobGetRequestCount: 0,
+      dedicatedProvisionJobResponseStatus: 200,
+      dedicatedProvisionJobResponseCode: null,
+      dedicatedProvisionJobStatus: "failed",
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(
+      /private-job|private-quote|provisioning failure detail/,
+    );
+  });
+
+  it("keeps the latest correlated job poll when older body parsing finishes last", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const provisionJobId = "44444444-4444-4444-8444-444444444444";
+    const adoption =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier/adopt-existing";
+    audit.observeRequest("POST", adoption);
+    audit.observeResponse(
+      "POST",
+      adoption,
+      202,
+      boundedJsonBody({ success: true, data: { jobId: provisionJobId } })
+        .responseBody,
+    );
+    const job = `https://api.test/api/v1/jobs/${provisionJobId}`;
+    let releaseOlderBody: (() => void) | null = null;
+    const olderBytes = textEncoder.encode(
+      JSON.stringify({ success: true, data: { status: "failed" } }),
+    );
+    audit.observeRequest("GET", job);
+    audit.observeResponse("GET", job, 200, {
+      contentType: "application/json",
+      read: async () =>
+        await new Promise<Uint8Array>((resolve) => {
+          releaseOlderBody = () => resolve(olderBytes);
+        }),
+    });
+    audit.observeRequest("GET", job);
+    audit.observeResponse(
+      "GET",
+      job,
+      200,
+      boundedJsonBody({ success: true, data: { status: "completed" } })
+        .responseBody,
+    );
+    await Promise.resolve();
+    releaseOlderBody?.();
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot.dedicatedProvisionJobGetRequestCount).toBe(2);
+    expect(snapshot.dedicatedProvisionJobGetResponseCount).toBe(2);
+    expect(snapshot.dedicatedProvisionJobStatus).toBe("completed");
+  });
+
+  it("distinguishes failed and pending Dedicated adoption requests", async () => {
+    let now = 2_000;
+    const audit = createCloudLiveNetworkAudit(() => now);
+    const adoption =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier/adopt-existing";
+    audit.observeRequest("POST", adoption, JSON.stringify({ quoteId: "a" }));
+    now = 2_300;
+    audit.observeRequestFailure("POST", adoption, "private timeout detail");
+    now = 3_000;
+    audit.observeRequest("POST", adoption, JSON.stringify({ quoteId: "b" }));
+    const job =
+      "https://api.test/api/v1/jobs/22222222-2222-4222-8222-222222222222";
+    audit.observeRequest("GET", job);
+    audit.observeRequestFailure("GET", job, "private transport detail");
+    now = 3_450;
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot).toMatchObject({
+      dedicatedAdoptionConfirmationPostRequestCount: 2,
+      dedicatedAdoptionConfirmationPostResponseCount: 0,
+      failedDedicatedAdoptionConfirmationPostRequestCount: 1,
+      pendingDedicatedAdoptionConfirmationPostRequestCount: 1,
+      dedicatedAdoptionConfirmationResponseStatus: null,
+      dedicatedAdoptionConfirmationResponseCode: null,
+      dedicatedAdoptionConfirmationElapsedMs: 450,
+      dedicatedProvisionJobGetRequestCount: 0,
+      dedicatedProvisionJobGetResponseCount: 0,
+      failedDedicatedProvisionJobGetRequestCount: 0,
+      pendingDedicatedProvisionJobGetRequestCount: 0,
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(/private|timeout|transport/);
+  });
+
+  it("retains only the latest bounded Dedicated cutover status and error code", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const cutover =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier/cutover";
+    audit.observeRequest("POST", cutover);
+    audit.observeResponse(
+      "POST",
+      cutover,
+      409,
+      boundedJsonBody({
+        success: false,
+        code: "dedicated_not_healthy",
+        error: "private operator detail",
+      }).responseBody,
+    );
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot.dedicatedCutoverResponseStatus).toBe(409);
+    expect(snapshot.dedicatedCutoverResponseCode).toBe("dedicated_not_healthy");
+    expect(JSON.stringify(snapshot)).not.toMatch(/private operator detail/);
   });
 
   it("fails closed when an approved quote is followed by another agent target", async () => {

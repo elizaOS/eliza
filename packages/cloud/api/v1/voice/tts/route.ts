@@ -268,25 +268,6 @@ async function __hono_POST(c: AppContext) {
         },
         { status: 400 },
       );
-    } else if (providerSelection && !providerSelection.ok) {
-      logger.warn?.("[Voice TTS API] TTS provider selection failed", {
-        provider: providerSelection.provider,
-        fallbackReason: providerSelection.fallbackReason,
-        code: providerSelection.code,
-      });
-      pendingResponse = Response.json(
-        {
-          error: providerSelection.error,
-          code: providerSelection.code,
-        },
-        {
-          status: providerSelection.status,
-          headers: buildTtsObservabilityHeaders(
-            providerSelection.provider,
-            timings,
-          ),
-        },
-      );
     }
 
     const willAdmit =
@@ -318,6 +299,27 @@ async function __hono_POST(c: AppContext) {
         }
       }
       return pendingResponse;
+    }
+    if (providerSelection && !providerSelection.ok) {
+      logger.warn?.("[Voice TTS API] TTS provider selection failed", {
+        provider: providerSelection.provider,
+        fallbackReason: providerSelection.fallbackReason,
+        code: providerSelection.code,
+      });
+      timings.admissionMs = Date.now() - admissionStart;
+      return Response.json(
+        {
+          error: providerSelection.error,
+          code: providerSelection.code,
+        },
+        {
+          status: providerSelection.status,
+          headers: buildTtsObservabilityHeaders(
+            providerSelection.provider,
+            timings,
+          ),
+        },
+      );
     }
     if (!body || !providerSelection?.ok) {
       throw new Error("Validated TTS request was not retained");
@@ -676,6 +678,7 @@ async function __hono_POST(c: AppContext) {
         admissionSnapshot,
         credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
+        atomicProviderBoundary: true,
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;

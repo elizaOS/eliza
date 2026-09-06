@@ -177,10 +177,15 @@ type InferenceStandingDecisionSource = "authoritative" | "cache" | "session_reso
 interface ApiKeyHydration {
   readonly decision: Promise<InferenceAuthResolution | undefined>;
   readonly projection: Promise<void>;
+  authoritativeTelemetry(): InferenceAuthTelemetry;
+  projectionTelemetry(): InferenceAuthCacheWriteTelemetry | undefined;
 }
 
 const apiKeyHydrations = new Map<string, ApiKeyHydration>();
 const SKIP_CACHE_PROJECTION_WRITE = Symbol("skip-cache-projection-write");
+// A cold request owns the canonical denial log after consuming its nested
+// authoritative continuation; hydration diagnostics have a distinct log scope.
+const SUPPRESS_STANDING_DENIAL_LOG = Symbol("suppress-standing-denial-log");
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 const DEFAULT_HYDRATION_DEADLINE_MS = 10_000;
 const DEFAULT_INLINE_CONTINUATION_DEADLINE_MS = 2_500;
@@ -383,6 +388,8 @@ function getOrCreateApiKeyHydration(
   }
 
   let authoritativeRejectionReason: InferenceAuthRejectionReason | undefined;
+  let authoritativeTelemetry: InferenceAuthTelemetry | undefined;
+  let projectionTelemetry: InferenceAuthCacheWriteTelemetry | undefined;
 
   // The authoritative decision and its cache projection are separate promises.
   // A request may consume the decision immediately and carry its credential to
@@ -390,12 +397,17 @@ function getOrCreateApiKeyHydration(
   // projection barrier, including its standalone strong credential check.
   const hydrationOptions: ResolveInferenceAuthOptions & {
     [SKIP_CACHE_PROJECTION_WRITE]: true;
+    [SUPPRESS_STANDING_DENIAL_LOG]: true;
   } = {
     traceId: options.traceId,
     cacheOnly: false,
     forceAuthoritative: true,
     deferStrongCredentialCheck: true,
     [SKIP_CACHE_PROJECTION_WRITE]: true,
+    [SUPPRESS_STANDING_DENIAL_LOG]: true,
+    onTelemetry: (telemetry) => {
+      authoritativeTelemetry = telemetry;
+    },
     onAuthoritativeRejection: (reason) => {
       authoritativeRejectionReason = reason;
     },
@@ -457,8 +469,8 @@ function getOrCreateApiKeyHydration(
         const startedAt = performance.now();
         const write = await writeInferenceAuthContext(result.ctx);
         const telemetry = freezeCacheWriteTrace(options.traceId, write, startedAt);
-        logger.info("[InferenceAuth] trace", telemetry);
-        options.onCacheWriteTelemetry?.(telemetry);
+        projectionTelemetry = telemetry;
+        logger.info("[InferenceAuth] hydration cache write", telemetry);
         if (write.kind !== "written") {
           logger.warn("[InferenceAuth] positive decision cache write failed", {
             traceId: boundedTraceId(options.traceId),
@@ -491,7 +503,20 @@ function getOrCreateApiKeyHydration(
       });
     });
 
-  const hydration: ApiKeyHydration = { decision, projection };
+  const hydration: ApiKeyHydration = {
+    decision,
+    projection,
+    authoritativeTelemetry: () => {
+      if (!authoritativeTelemetry) {
+        throw new ElizaError("Authoritative hydration completed without telemetry", {
+          code: "INFERENCE_AUTH_HYDRATION_TELEMETRY_MISSING",
+          context: { traceId: boundedTraceId(options.traceId) },
+        });
+      }
+      return authoritativeTelemetry;
+    },
+    projectionTelemetry: () => projectionTelemetry,
+  };
   apiKeyHydrations.set(keyHash, hydration);
   options.executionCtx.waitUntil(projection);
   const clearDeadline = () => {
@@ -505,6 +530,33 @@ function getOrCreateApiKeyHydration(
   };
   projection.then(clearProjection, clearProjection);
   return hydration;
+}
+
+/** Correlate one shared projection to each request that consumed its decision. */
+function observeHydrationProjection(
+  hydration: ApiKeyHydration,
+  options: ResolveInferenceAuthOptions & {
+    executionCtx: { waitUntil(promise: Promise<unknown>): void };
+  },
+  canonical: boolean,
+): void {
+  const observed = hydration.projection
+    .then(() => {
+      const completed = hydration.projectionTelemetry();
+      // Projection failures are already reported by the hydration boundary.
+      if (!completed) return;
+      const telemetry = Object.freeze({ ...completed, traceId: boundedTraceId(options.traceId) });
+      if (canonical) logger.audit("[InferenceAuth] trace", telemetry);
+      options.onCacheWriteTelemetry?.(telemetry);
+    })
+    .catch((error) => {
+      // error-policy:J7 diagnostic callbacks must not reject the observed projection.
+      logger.warn("[InferenceAuth] deferred projection telemetry failed", {
+        traceId: boundedTraceId(options.traceId),
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    });
+  options.executionCtx.waitUntil(observed);
 }
 
 async function consumeInlineAuthContinuation(
@@ -650,6 +702,15 @@ export async function resolveInferenceAuthContext(
     source: InferenceStandingDecisionSource;
   }): void => {
     standingDenialLogged = true;
+    if (
+      (
+        options as ResolveInferenceAuthOptions & {
+          [SUPPRESS_STANDING_DENIAL_LOG]?: true;
+        }
+      )[SUPPRESS_STANDING_DENIAL_LOG]
+    ) {
+      return;
+    }
     const reason =
       typeof params.reason === "string" && /^[a-z0-9_:-]{1,64}$/.test(params.reason)
         ? params.reason
@@ -817,10 +878,12 @@ export async function resolveInferenceAuthContext(
         );
         if (options.executionCtx) {
           if (Date.now() - cached.ctx.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
-            getOrCreateApiKeyHydration(req, keyHash, {
+            const hydrationOptions = {
               ...options,
               executionCtx: options.executionCtx,
-            });
+            };
+            const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
+            observeHydrationProjection(hydration, hydrationOptions, false);
           }
         }
         trace.result = "authorized_cache";
@@ -837,7 +900,7 @@ export async function resolveInferenceAuthContext(
           ? { kind: "suspended", reason: cached.reason }
           : { kind: "rejected", status: cached.status, reason: cached.reason };
       }
-    } else {
+    } else if (!cacheAvailable) {
       trace.cacheRead = "unavailable";
     }
 
@@ -854,6 +917,12 @@ export async function resolveInferenceAuthContext(
           options,
           trace.authSource,
         );
+        if (continued) {
+          const authoritative = hydration.authoritativeTelemetry();
+          trace.timings.keyLookupMs = authoritative.timings.keyLookupMs;
+          trace.timings.userOrgLookupMs = authoritative.timings.userOrgLookupMs;
+          trace.timings.moderationMs = authoritative.timings.moderationMs;
+        }
         if (continued?.kind === "authorized") {
           if (!deferStrongCredentialCheck && "keyHash" in continued.ctx) {
             try {
@@ -880,6 +949,12 @@ export async function resolveInferenceAuthContext(
           }
           trace.authoritative = "authorized";
           trace.result = "authorized_origin";
+          trace.cacheWrite = "deferred";
+          observeHydrationProjection(
+            hydration,
+            { ...options, executionCtx: options.executionCtx },
+            true,
+          );
           observeInferenceApiKeyUsage(continued, options.executionCtx);
           return deferStrongCredentialCheck
             ? continued
@@ -1054,7 +1129,7 @@ export async function resolveInferenceAuthContext(
       const observedWrite = cacheWrite.then(
         (write) => {
           const telemetry = freezeCacheWriteTrace(options.traceId, write, cacheWriteStartedAt);
-          logger.info("[InferenceAuth] trace", telemetry);
+          logger.audit("[InferenceAuth] trace", telemetry);
           options.onCacheWriteTelemetry?.(telemetry);
         },
         (error) => {
@@ -1112,7 +1187,11 @@ export async function resolveInferenceAuthContext(
     throw error;
   } finally {
     const telemetry = freezeTrace(options.traceId, trace, totalStartedAt);
-    logger.info("[InferenceAuth] trace", telemetry);
+    const nested = (
+      options as ResolveInferenceAuthOptions & { [SUPPRESS_STANDING_DENIAL_LOG]?: true }
+    )[SUPPRESS_STANDING_DENIAL_LOG];
+    if (nested) logger.info("[InferenceAuth] hydration trace", telemetry);
+    else logger.audit("[InferenceAuth] trace", telemetry);
     options.onTelemetry?.(telemetry);
   }
 }

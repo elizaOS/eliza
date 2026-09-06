@@ -11,6 +11,7 @@ import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
@@ -272,18 +273,41 @@ async function __hono_POST(
   request: Request,
   env: AppEnv["Bindings"],
   { params }: { params: Promise<{ agentId: string }> },
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void },
+  resolvedTraceId?: string,
 ) {
+  const startedAt = performance.now();
+  const traceId = resolvedTraceId ?? resolveElizaTraceId(request.headers);
+  let phase = "auth";
+  let sourceAgentId = "unavailable";
+  let orgId = "unavailable";
+  let userId = "unavailable";
+  const phaseTimingsMs: Record<string, number> = {};
+  const timed = async <T>(name: string, operation: () => Promise<T>) => {
+    phase = name;
+    const phaseStartedAt = performance.now();
+    try {
+      return await operation();
+    } finally {
+      phaseTimingsMs[name] = Math.round(performance.now() - phaseStartedAt);
+    }
+  };
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user } = await timed("auth", () =>
+      requireAuthOrApiKeyWithOrg(request),
+    );
+    orgId = user.organization_id;
+    userId = user.id;
     const { agentId } = await params;
-    const sourceAgentId = resolvePersonalSourceId(agentId, user);
-    if (!sourceAgentId) {
+    const resolvedSourceAgentId = resolvePersonalSourceId(agentId, user);
+    if (!resolvedSourceAgentId) {
       return json({ success: false, error: "Agent not found" }, 404);
     }
+    sourceAgentId = resolvedSourceAgentId;
 
     let rawConfirmation: unknown;
     try {
-      rawConfirmation = await request.json();
+      rawConfirmation = await timed("confirmation_parse", () => request.json());
     } catch {
       // error-policy:J3 malformed JSON is explicitly invalid confirmation.
       rawConfirmation = null;
@@ -301,11 +325,15 @@ async function __hono_POST(
       );
     }
 
-    const resolution = await resolveForOwner(sourceAgentId, user);
+    const resolution = await timed("owner_resolution", () =>
+      resolveForOwner(sourceAgentId, user),
+    );
     const invalid = resolutionError(resolution);
     if (invalid) return invalid;
     const resolved = resolution as ResolvedAdoption;
-    const quote = await adoptionQuote(sourceAgentId, user, resolved);
+    const quote = await timed("quote", () =>
+      adoptionQuote(sourceAgentId, user, resolved),
+    );
     if (confirmation.data.quoteId !== quote.quoteId) {
       return json(
         {
@@ -331,8 +359,8 @@ async function __hono_POST(
           409,
         );
       }
-      const credit = await checkAgentTierUpgradeCreditGate(
-        user.organization_id,
+      const credit = await timed("credit_recheck", () =>
+        checkAgentTierUpgradeCreditGate(user.organization_id),
       );
       return json(
         insufficientCredits402(
@@ -350,11 +378,13 @@ async function __hono_POST(
     }
 
     if (quote.startsCompute) {
-      const workerHealth = resolved.selectionActivationAuthority
-        ? await checkProvisioningWorkerCapability(
-            REVIEWED_BACKUP_RESTORE_CAPABILITY,
-          )
-        : await checkProvisioningWorkerHealth();
+      const workerHealth = await timed("worker_health", () =>
+        resolved.selectionActivationAuthority
+          ? checkProvisioningWorkerCapability(
+              REVIEWED_BACKUP_RESTORE_CAPABILITY,
+            )
+          : checkProvisioningWorkerHealth(),
+      );
       if (!workerHealth.ok) {
         logger.warn(
           "[agent-tier-adoption] Adoption blocked: provisioning worker unavailable",
@@ -376,35 +406,76 @@ async function __hono_POST(
       ReturnType<typeof adoptPersonalDedicatedTargetWithProvision>
     >;
     try {
-      result = await adoptPersonalDedicatedTargetWithProvision({
-        organizationId: user.organization_id,
-        userId: user.id,
-        sourceAgentId,
-        expectedTargetId: resolved.agent.id,
-        expectedLifecycleRevision: resolved.agent.lifecycle_revision,
-        expectedStatus: resolved.agent.status,
-        expectedBalance: quote.balanceUsd,
-        expectedHourlyRate: quote.hourlyRateUsd,
-        expectedDailyRate: quote.dailyRateUsd,
-        expectedMinimumBalance: quote.minimumBalanceUsd,
-        expectedMinimumRunwayDays: quote.minimumRunwayDays,
-        expectedActivationAuthorityKey: personalDedicatedActivationAuthorityKey(
-          resolved.selectionActivationAuthority,
-        ),
-      });
+      result = await timed("adoption_transaction", () =>
+        adoptPersonalDedicatedTargetWithProvision({
+          organizationId: user.organization_id,
+          userId: user.id,
+          sourceAgentId,
+          expectedTargetId: resolved.agent.id,
+          expectedLifecycleRevision: resolved.agent.lifecycle_revision,
+          expectedStatus: resolved.agent.status,
+          expectedBalance: quote.balanceUsd,
+          expectedHourlyRate: quote.hourlyRateUsd,
+          expectedDailyRate: quote.dailyRateUsd,
+          expectedMinimumBalance: quote.minimumBalanceUsd,
+          expectedMinimumRunwayDays: quote.minimumRunwayDays,
+          expectedActivationAuthorityKey:
+            personalDedicatedActivationAuthorityKey(
+              resolved.selectionActivationAuthority,
+            ),
+        }),
+      );
     } catch (error) {
       // error-policy:J1 the route maps typed adoption conflicts while every
       // other failure continues to the outer HTTP boundary.
       if (error instanceof PersonalDedicatedAdoptionError) {
+        logger.warn("[agent-tier-adoption] Adoption transaction rejected", {
+          sourceAgentId,
+          dedicatedAgentId: resolved.agent.id,
+          orgId: user.organization_id,
+          userId: user.id,
+          phase,
+          durationMs: Math.round(performance.now() - startedAt),
+          phaseTimingsMs,
+          traceId,
+          code: error.code,
+          error: error.message,
+        });
         return adoptionServiceError(error);
       }
       throw error;
     }
 
     if (result.jobCreated) {
-      void provisioningJobService.triggerImmediate(env).catch(() => {
-        // error-policy:J5 the durable job remains observable by the worker poll.
-      });
+      if (typeof executionCtx?.waitUntil === "function") {
+        const trigger = provisioningJobService
+          .triggerImmediate(env)
+          .catch((error) => {
+            // error-policy:J7 the durable job remains observable by the daemon;
+            // retain the failed nudge as a structured operational diagnostic.
+            logger.warn(
+              "[agent-tier-adoption] Immediate provisioning nudge failed",
+              {
+                sourceAgentId,
+                dedicatedAgentId: result.agent.id,
+                orgId: user.organization_id,
+                jobId: result.job?.id ?? null,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+          });
+        executionCtx.waitUntil(trigger);
+      } else {
+        logger.warn(
+          "[agent-tier-adoption] Immediate provisioning nudge unavailable; daemon polling retained",
+          {
+            sourceAgentId,
+            dedicatedAgentId: result.agent.id,
+            orgId: user.organization_id,
+            jobId: result.job?.id ?? null,
+          },
+        );
+      }
     }
 
     logger.info("[agent-tier-adoption] Existing Dedicated target adopted", {
@@ -414,6 +485,9 @@ async function __hono_POST(
       alreadyAdopted: result.alreadyAdopted,
       jobId: result.job?.id ?? null,
       startsCompute: quote.startsCompute,
+      durationMs: Math.round(performance.now() - startedAt),
+      phaseTimingsMs,
+      traceId,
     });
 
     const response = {
@@ -442,6 +516,26 @@ async function __hono_POST(
   } catch (error) {
     // error-policy:J1 the HTTP boundary translates request and service
     // failures without fabricating a successful adoption.
+    logger.error("[agent-tier-adoption] Adoption request failed", {
+      sourceAgentId,
+      orgId,
+      userId,
+      phase,
+      durationMs: Math.round(performance.now() - startedAt),
+      phaseTimingsMs,
+      traceId,
+      errorName: error instanceof Error ? error.name : "NonErrorThrown",
+      error: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? (error.stack ?? null) : null,
+      cause:
+        error instanceof Error && error.cause instanceof Error
+          ? {
+              name: error.cause.name,
+              message: error.cause.message,
+              stack: error.cause.stack ?? null,
+            }
+          : null,
+    });
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }
@@ -453,10 +547,27 @@ app.get("/", async (c) =>
     params: Promise.resolve({ agentId: c.req.param("agentId")! }),
   }),
 );
-app.post("/", async (c) =>
-  __hono_POST(c.req.raw, c.env, {
-    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
-  }),
-);
+app.post("/", async (c) => {
+  let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    // Hono test and non-Worker adapters may not expose an execution context.
+    // The durable daemon poll remains authoritative in that case.
+    executionCtx = undefined;
+  }
+  const traceId = c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers);
+  const response = await __hono_POST(
+    c.req.raw,
+    c.env,
+    {
+      params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+    },
+    executionCtx,
+    traceId,
+  );
+  response.headers.set("x-eliza-trace-id", traceId);
+  return response;
+});
 
 export default app;

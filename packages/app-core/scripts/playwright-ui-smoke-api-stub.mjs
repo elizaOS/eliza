@@ -4781,8 +4781,12 @@ function broadcastWsEvent(payload) {
 }
 
 server.listen(port, "127.0.0.1", () => {
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("UI smoke stub did not bind a TCP port");
+  }
   console.log(
-    `[playwright-ui-smoke-api-stub] listening on http://127.0.0.1:${port}`,
+    `[playwright-ui-smoke-api-stub] listening on http://127.0.0.1:${address.port}`,
   );
 });
 

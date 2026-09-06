@@ -239,9 +239,13 @@ describe("CONTACT exports and dispatch", () => {
 describe("CONTACT create", () => {
   it("creates an entity with sanitized metadata and promotes rich contact data", async () => {
     const entityId = stringToUuid("created-contact");
-    const addContact = vi.fn(async () => true);
+    const createContact = vi.fn(async (entity, fields) => ({
+      entity,
+      contact: { ...fields, entityId: entity.id },
+      created: true,
+    }));
     const { runtime, createEntity } = makeRuntime({
-      relationships: makeGraph({ addContact }),
+      relationships: makeGraph({ createContact }),
     });
 
     const result = await invoke(runtime, {
@@ -269,15 +273,41 @@ describe("CONTACT create", () => {
         company: "Acme",
       },
     });
-    expect(createEntity).toHaveBeenCalledWith(
+    expect(createEntity).not.toHaveBeenCalled();
+    expect(createContact).toHaveBeenCalledWith(
       expect.objectContaining({ id: entityId, names: ["Alice"] }),
+      {
+        categories: ["friend", "founder"],
+        tags: [],
+        preferences: {
+          timezone: "UTC",
+          language: "en",
+          notes: "met at launch",
+        },
+        customFields: { displayName: "Alice" },
+      },
     );
-    expect(addContact).toHaveBeenCalledWith(
-      entityId,
-      ["friend", "founder"],
-      { timezone: "UTC", language: "en", notes: "met at launch" },
-      { displayName: "Alice" },
+  });
+
+  it("propagates entity lookup errors without attempting creation", async () => {
+    const { runtime, createEntity } = makeRuntime();
+    vi.mocked(runtime.getEntityById).mockRejectedValue(
+      new Error("database unavailable"),
     );
+    const result = await invoke(runtime, { action: "create", name: "Alice" });
+    expect(result.success).toBe(false);
+    expect(createEntity).not.toHaveBeenCalled();
+  });
+
+  it("rejects rich creation before writing when the required service is absent", async () => {
+    const { runtime, createEntity } = makeRuntime({ relationships: null });
+    const result = await invoke(runtime, {
+      action: "create",
+      name: "Alice",
+      tags: ["friend"],
+    });
+    expect(result.success).toBe(false);
+    expect(createEntity).not.toHaveBeenCalled();
   });
 
   it("does not recreate an existing explicit entity", async () => {

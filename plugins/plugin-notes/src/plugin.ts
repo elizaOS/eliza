@@ -28,7 +28,7 @@ const NOTES_CONTEXT: ContextDefinition = {
   id: "notes",
   label: "Notes",
   description:
-    "The user's saved notes — short facts and reminders-to-self they asked to write down ('note that…', 'jot this down') and read back ('what notes do i have', 'do i have a note about…', 'what did my note say'). Covers reading, searching, updating, and deleting those notes. A note is not a long-form document, not a todo, and not a calendar event; a notes read must never classify as documents, contacts, or memory.",
+    "The user's saved Notes records, including temporary or titled notes. All Notes record operations use context notes and a promoted action candidate: create -> NOTES_CREATE; read, search, list, or count -> NOTES_LIST; edit or replace -> NOTES_UPDATE; remove -> NOTES_DELETE. Name the matching child instead of the NOTES umbrella so its required fields reach the planner. Explicit Notes records belong here; generic requests to remember durable facts or preferences use memory, and document/file work uses documents. A note is not a todo or calendar event. Add VIEWS only when the user also requests navigation.",
   descriptionCompressed:
     "User's saved notes: write down, read back, search, update, delete",
   sensitivity: "personal",

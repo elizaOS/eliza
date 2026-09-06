@@ -593,8 +593,9 @@ function hasTextHandlerRegistered(
           entry.modelType === ModelType.TEXT_LARGE) &&
         entry.provider === provider,
     );
-  } catch {
-    // error-policy:J7 diagnostics must not kill the serving-truth resolver.
+  } catch (error) {
+    // error-policy:J7 Report diagnostics failure while withholding serving proof.
+    runtime.reportError("model-config.serving-truth", error);
     return false;
   }
 }
@@ -645,8 +646,9 @@ function isConfiguredCerebrasMode(
       },
     });
     return isCerebrasMode(settingsRuntime);
-  } catch {
-    // error-policy:J7 diagnostics must not kill the serving-truth resolver.
+  } catch (error) {
+    // error-policy:J7 Report diagnostics failure while withholding serving proof.
+    runtime.reportError("model-config.serving-truth", error);
     return false;
   }
 }
@@ -668,8 +670,11 @@ function hasDirectProviderServingEvidence(
     let runtimeCredential: unknown;
     try {
       runtimeCredential = runtime.getSetting(credentialKey);
-    } catch {
-      // error-policy:J7 diagnostics must not kill the serving-truth resolver.
+    } catch (error) {
+      // error-policy:J7 Report credential lookup failure without claiming readiness.
+      runtime.reportError("model-config.serving-truth", error, {
+        credentialKey,
+      });
       return false;
     }
     if (isUsableProviderCredential(runtimeCredential)) return true;

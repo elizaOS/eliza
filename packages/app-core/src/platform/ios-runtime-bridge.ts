@@ -295,6 +295,61 @@ async function withIosFullBunSmokeTimeout<T>(
   }
 }
 
+/** Exercise Fetch cancellation and watchdog recovery on the installed native bridge. */
+async function verifyIosFetchContract(): Promise<Record<string, unknown>> {
+  const url = "eliza-local-agent://ipc/api/health";
+  const reason = new Error("iOS Fetch smoke cancellation");
+  const preAbort = await fetch(url, { signal: AbortSignal.abort(reason) }).then(
+    () => {
+      throw new Error("An aborted native request resolved");
+    },
+    (error: unknown) => {
+      if (error !== reason) throw error;
+      return String(error);
+    },
+  );
+  const inherited = new Request(url, {
+    method: "HEAD",
+    signal: AbortSignal.abort(reason),
+  });
+  const overridden = await fetch(inherited, {
+    method: "GET",
+    signal: new AbortController().signal,
+    headers: { accept: "application/json" },
+  });
+  const overrideHealth = await overridden.json();
+  if (overrideHealth.ready !== true || overrideHealth.runtime !== "ok") {
+    throw new Error("RequestInit overrides did not reach native health");
+  }
+  const controller = new AbortController();
+  const buffered = await fetch(url, { signal: controller.signal });
+  controller.abort(reason);
+  const postHeaderAbort = await buffered.text().then(
+    () => {
+      throw new Error("An aborted native response body was readable");
+    },
+    (error: unknown) => {
+      if (error !== reason) throw error;
+      return String(error);
+    },
+  );
+  window.dispatchEvent(
+    new CustomEvent("eliza:local-agent-restart-requested", {
+      detail: { source: "ios-fetch-contract-smoke", attempt: 1 },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("eliza:local-agent-restart-requested", {
+      detail: { source: "ios-fetch-contract-smoke", attempt: 2 },
+    }),
+  );
+  const watchdogHealth = await (await fetch(url)).json();
+  if (watchdogHealth.ready !== true || watchdogHealth.runtime !== "ok") {
+    throw new Error("Native health did not recover after the watchdog events");
+  }
+  return { preAbort, overrideHealth, postHeaderAbort, watchdogHealth };
+}
+
 /**
  * If the host has requested the iOS full-Bun smoke (via localStorage or
  * Capacitor Preferences), boot the in-process Bun runtime and drive the
@@ -328,6 +383,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     return false;
   }
   iosFullBunSmokeStarted = true;
+  let fetchContract: Record<string, unknown> | undefined;
   try {
     window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
   } catch {
@@ -493,6 +549,18 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       fetchHealth,
     });
 
+    fetchContract = await withIosFullBunSmokeTimeout(
+      "Native Fetch contract",
+      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+      verifyIosFetchContract(),
+    );
+    await writeIosFullBunSmokeResult({
+      ok: false,
+      phase: "running",
+      step: "fetch-contract-ok",
+      fetchContract,
+    });
+
     const localInferenceHub = await fetchIosFullBunSmokeJson<
       Record<string, unknown>
     >(
@@ -639,6 +707,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       bridgeStatus: bridgeStatus.result,
       directHealth,
       fetchHealth,
+      fetchContract,
       localInference: {
         hub: localInferenceHub,
         providers: localInferenceProviders,
@@ -731,6 +800,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       bridgeStatus: bridgeStatus.result,
       directHealth,
       fetchHealth,
+      fetchContract,
       localInference: {
         hub: localInferenceHub,
         providers: localInferenceProviders,
@@ -755,6 +825,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       phase: "failed",
       finishedAt: new Date().toISOString(),
       error: errorMessage,
+      fetchContract,
     });
     renderIosFullBunSmokeStatus(
       `iOS full Bun backend smoke failed: ${errorMessage}`,

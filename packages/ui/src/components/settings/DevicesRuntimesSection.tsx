@@ -697,10 +697,12 @@ function AdvancedSsh({
         className="grid gap-4 sm:grid-cols-2"
         onSubmit={(event) => {
           event.preventDefault();
+          if (busy || !valid) return;
           if (!inspection || !inspectedTarget) {
             void onInspect({ target: target.trim(), sshPort: Number(sshPort) });
             return;
           }
+          if (inspection.changed) return;
           void (async () => {
             await onConnect({
               label: label.trim(),

@@ -1057,6 +1057,23 @@ export function parseAgentBackupRestoreV3CandidateSealAuthorizationRequest(
   );
 }
 
+/** Canonical preimage retained only as a digest by the seal-authority repository. */
+export function canonicalizeAgentBackupRestoreV3CandidateSealAuthorizationRequest(
+  request: Readonly<AgentBackupRestoreV3CandidateSealAuthorizationRequest>,
+): string {
+  return canonicalJson(
+    parseAgentBackupRestoreV3CandidateSealAuthorizationRequest(request),
+  );
+}
+
+export async function computeAgentBackupRestoreV3CandidateSealAuthorizationRequestSha256(
+  request: Readonly<AgentBackupRestoreV3CandidateSealAuthorizationRequest>,
+): Promise<string> {
+  return sha256Hex(
+    canonicalizeAgentBackupRestoreV3CandidateSealAuthorizationRequest(request),
+  );
+}
+
 export function parseAgentBackupRestoreV3CandidateSealAuthorization(
   value: unknown,
 ): Readonly<AgentBackupRestoreV3CandidateSealAuthorization> {

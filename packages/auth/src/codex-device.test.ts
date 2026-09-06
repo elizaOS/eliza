@@ -75,6 +75,18 @@ function accessToken(exp: number): string {
   return `header.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.signature`;
 }
 
+async function deviceLoginFromAuthJson(authJson: unknown) {
+  const child = mockChild();
+  const start = startCodexDeviceLogin();
+  const codexHome = spawnedCodexHome();
+  child.process.emit("spawn");
+  emitPrompt(child);
+  const flow = await start;
+  writeFileSync(path.join(codexHome, "auth.json"), JSON.stringify(authJson));
+  child.process.emit("close", 0, null);
+  return { credentials: flow.credentials, codexHome };
+}
+
 afterEach(() => {
   for (const temporaryHome of temporaryHomes) {
     if (existsSync(temporaryHome)) {
@@ -319,6 +331,110 @@ describe("startCodexDeviceLogin", () => {
     await expect(flow.credentials).rejects.toMatchObject({
       code: "codex_device.process_failed",
       context: { exitCode: null, signal: "SIGTERM" },
+    });
+    expect(existsSync(codexHome)).toBe(false);
+    expect(rmSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["non-object root", null],
+    ["non-object token block", { tokens: [] }],
+    [
+      "numeric access token",
+      { tokens: { access_token: 7, refresh_token: "refresh" } },
+    ],
+    [
+      "blank access token",
+      { tokens: { access_token: " ", refresh_token: "refresh" } },
+    ],
+    [
+      "numeric refresh token",
+      {
+        tokens: {
+          access_token: accessToken(2_000_000_000),
+          refresh_token: 7,
+        },
+      },
+    ],
+    [
+      "blank refresh token",
+      {
+        tokens: {
+          access_token: accessToken(2_000_000_000),
+          refresh_token: " ",
+        },
+      },
+    ],
+    [
+      "numeric ID token",
+      {
+        tokens: {
+          access_token: accessToken(2_000_000_000),
+          refresh_token: "refresh",
+          id_token: 7,
+        },
+      },
+    ],
+  ])("rejects auth.json with a %s", async (_name, authJson) => {
+    const { credentials, codexHome } = await deviceLoginFromAuthJson(authJson);
+    await expect(credentials).rejects.toMatchObject({
+      code: "codex_device.credentials_invalid",
+    });
+    expect(existsSync(codexHome)).toBe(false);
+    expect(rmSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["zero", 0],
+    ["negative", -1],
+    ["overflowing", 1e308],
+  ])("rejects an access token with a %s exp claim", async (_name, exp) => {
+    const { credentials, codexHome } = await deviceLoginFromAuthJson({
+      tokens: {
+        access_token: accessToken(exp),
+        refresh_token: "refresh",
+      },
+    });
+    await expect(credentials).rejects.toMatchObject({
+      code: "codex_device.invalid_access_token",
+    });
+    expect(existsSync(codexHome)).toBe(false);
+    expect(rmSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["null", null],
+    ["empty", ""],
+  ])("omits an %s optional ID token", async (_name, idToken) => {
+    const { credentials, codexHome } = await deviceLoginFromAuthJson({
+      tokens: {
+        access_token: accessToken(2_000_000_000),
+        refresh_token: "refresh",
+        id_token: idToken,
+      },
+    });
+    await expect(credentials).resolves.toEqual({
+      access: accessToken(2_000_000_000),
+      refresh: "refresh",
+      expires: 2_000_000_000_000,
+    });
+    expect(existsSync(codexHome)).toBe(false);
+    expect(rmSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a whitespace-only ID token for compatibility", async () => {
+    const { credentials, codexHome } = await deviceLoginFromAuthJson({
+      tokens: {
+        access_token: accessToken(2_000_000_000),
+        refresh_token: "refresh",
+        id_token: " ",
+      },
+    });
+    await expect(credentials).resolves.toEqual({
+      access: accessToken(2_000_000_000),
+      refresh: "refresh",
+      expires: 2_000_000_000_000,
+      idToken: " ",
     });
     expect(existsSync(codexHome)).toBe(false);
     expect(rmSyncMock).toHaveBeenCalledTimes(1);

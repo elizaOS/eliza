@@ -103,6 +103,28 @@ binary, and text routes return `Response` from the primary generated method;
 mixed routes such as chat completions keep the JSON method and use `Raw` when
 the request asks for streaming.
 
+Parsed `request()` calls require an explicit JSON media type
+(`application/json` or a structured `+json` type) and preserve every JSON
+value, including primitives and `null`. Successful text, missing media types,
+malformed JSON, and unexpectedly empty data responses throw `CloudApiError`;
+use `requestRaw()` for text or binary bodies. `HEAD`, `204`, and `205`
+responses are the deliberate bodyless exceptions and resolve to `undefined`.
+The generic `get`, `post`, `put`, `patch`, `delete`, and
+`postUnauthenticated` helpers preserve this behavior. Use `requestData` when
+a caller requires JSON data even on a successful status.
+Generated endpoints that deliberately return either JSON or `204` expose the
+same `T | undefined` result, while data-required helpers reject a bodyless
+response instead of hiding it behind their DTO type.
+Older SDK releases could replace successful text or empty bodies with an
+invented `{ success: true }` object; callers relying on that fallback must use
+an explicit bodyless status or return a JSON response instead.
+
+`pollJob` and `waitForCliLogin` enforce a total timeout through every request,
+response-body read, and polling interval. Their timeout and interval options
+accept integers from 0 through 2,147,483,647 milliseconds; zero timeout expires
+immediately. Login cancellation also interrupts an in-flight request or wait.
+Direct `getJob` and `pollCliLogin` calls accept optional `timeoutMs` and `signal`.
+
 Refresh and verify route coverage after adding or changing API routes:
 
 ```bash

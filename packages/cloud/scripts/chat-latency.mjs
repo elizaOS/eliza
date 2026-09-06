@@ -508,6 +508,7 @@ export async function probeOpenAi({
       reasoningEffort: probeCase.reasoningEffort,
       maxTokens: probeCase.maxTokens,
       traceId: response.headers.get("x-eliza-trace-id") || traceId,
+      status: response.status,
       responseHeadersMs,
       totalMs: round(performance.now() - startedAt),
       headers,
@@ -699,6 +700,7 @@ export async function probeDedicated({
         traceId:
           response.headers.get("x-eliza-trace-id") ||
           (requestMode === "instrumented" ? traceId : null),
+        status: response.status,
         responseHeadersMs,
         totalMs: round(performance.now() - startedAt),
         headers,

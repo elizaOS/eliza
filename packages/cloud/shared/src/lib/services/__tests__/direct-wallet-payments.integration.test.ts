@@ -1767,8 +1767,14 @@ describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
     test("confirm rejects an expired payment even with a valid real signature", async () => {
       await resetTable();
       const { proofAccount, payment, signature } = await createSignedBscPayment();
+      // `crypto_payments.expires_at` is `timestamp` WITHOUT time zone, and the
+      // service writes it as a JS Date, which Drizzle stores and reads back as
+      // UTC wall-clock. Plain `now()` is a timestamptz: casting it into a naive
+      // column applies the session TimeZone, so on a non-UTC machine the stored
+      // value is offset and this row can land in the FUTURE. `AT TIME ZONE
+      // 'UTC'` produces the same UTC wall-clock the reader assumes.
       await dbWrite.execute(
-        `UPDATE crypto_payments SET expires_at = now() - interval '1 hour' WHERE id = '${payment.id}'`,
+        `UPDATE crypto_payments SET expires_at = (now() AT TIME ZONE 'UTC') - interval '1 hour' WHERE id = '${payment.id}'`,
       );
       const meta = payment.metadata as Record<string, unknown>;
       const hash = `0x${"98".repeat(32)}`;

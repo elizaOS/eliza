@@ -115,7 +115,6 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "with",
   "you",
   "your",
-  ,
   "their",
   "his",
   "her",

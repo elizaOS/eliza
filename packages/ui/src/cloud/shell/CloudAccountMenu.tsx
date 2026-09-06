@@ -5,8 +5,8 @@
  */
 
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,33 +29,46 @@ export function CloudAccountMenu({
 }: CloudAccountMenuProps): React.JSX.Element {
   const navigate = useNavigate();
   const t = useCloudT();
+  const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const signOutPending = useRef(false);
   const accountLabel = t("cloud.nav.account", { defaultValue: "Account" });
 
   const signOut = async () => {
-    if (onSignOut) {
-      await onSignOut();
-      return;
-    }
+    if (signOutPending.current) return;
+    signOutPending.current = true;
+    setSigningOut(true);
+    setSignOutError(null);
     try {
+      if (onSignOut) {
+        await onSignOut();
+        return;
+      }
       const { signOutFromSsoBridgedHost } = await import(
         "../sso-bridge/sso-bridge"
       );
       await signOutFromSsoBridgedHost();
       navigate("/login", { replace: true });
     } catch {
-      // error-policy:J4 a failed canonical teardown stays on the authenticated
-      // surface and gives the user a retry instead of claiming sign-out.
-      toast.error(
+      // error-policy:J4 keep the authenticated route and a visible menu retry when teardown fails.
+      setSignOutError(
         t("cloud.userMenu.signOutFailed", {
           defaultValue: "Could not sign out safely. Please try again.",
         }),
       );
+      setOpen(true);
+    } finally {
+      signOutPending.current = false;
+      setSigningOut(false);
     }
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
+        disabled={signingOut}
+        aria-busy={signingOut || undefined}
         aria-label={email ? `Account menu for ${email}` : "Account menu"}
         className="keyboard-focus-surface flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-txt transition-colors hover:bg-bg-hover"
       >
@@ -69,6 +82,14 @@ export function CloudAccountMenu({
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
+        {signOutError && (
+          <p
+            role="alert"
+            className="max-w-64 px-2 py-2 text-sm text-destructive"
+          >
+            {signOutError}
+          </p>
+        )}
         <DropdownMenuItem onSelect={() => navigate("/cloud/account")}>
           {accountLabel}
         </DropdownMenuItem>
@@ -78,6 +99,7 @@ export function CloudAccountMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="text-destructive"
+          disabled={signingOut}
           onSelect={() => void signOut()}
         >
           <LogOut className="mr-2 size-3.5" aria-hidden />

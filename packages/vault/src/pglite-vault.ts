@@ -356,67 +356,57 @@ export class PgliteVaultImpl implements Vault {
       throw new TypeError("vault.quarantineUnreadable: reason required");
     }
     const db = await this.db();
-    await db.exec("BEGIN");
-    try {
-      const row = (
-        await db.query<EntryRow>(
-          `SELECT key, kind, value, ciphertext, ref_source, ref_path, last_modified
-             FROM vault_entries WHERE key = $1 LIMIT 1`,
-          [key],
-        )
-      ).rows[0];
-      if (!row) {
-        await db.exec("COMMIT");
-        return false;
-      }
-      if (storedEntryIdentity(row) !== expectedEntryIdentity) {
-        await db.exec("COMMIT");
-        return false;
-      }
-      const moved = await db.query<{ original_key: string }>(
-        `WITH exact_unreadable_row AS (
-           DELETE FROM vault_entries
-            WHERE key = $2
-              AND kind = $3
-              AND value IS NOT DISTINCT FROM $4
-              AND ciphertext IS NOT DISTINCT FROM $5
-              AND ref_source IS NOT DISTINCT FROM $6
-              AND ref_path IS NOT DISTINCT FROM $7
-              AND last_modified = $8
-          RETURNING key, kind, value, ciphertext, ref_source, ref_path,
-                    last_modified
-         )
-         INSERT INTO vault_quarantined_entries (
-           quarantine_id, original_key, kind, value, ciphertext, ref_source,
-           ref_path, last_modified, quarantined_at, reason
-         )
-         SELECT $1, key, kind, value, ciphertext, ref_source, ref_path,
-                last_modified, $9, $10
-           FROM exact_unreadable_row
-         RETURNING original_key`,
-        [
-          randomUUID(),
-          row.key,
-          row.kind,
-          row.value,
-          row.ciphertext,
-          row.ref_source,
-          row.ref_path,
-          row.last_modified,
-          Date.now(),
-          truncateWellFormed(toWellFormedUnicode(normalizedReason), 500),
-        ],
-      );
-      if (moved.rows.length === 0) {
-        await db.exec("COMMIT");
-        return false;
-      }
-      await db.exec("COMMIT");
-    } catch (error) {
-      // error-policy:J2 The original row must remain active unless its opaque
-      // bytes were preserved successfully; roll back and surface the failure.
-      await db.exec("ROLLBACK");
-      throw error;
+    const row = (
+      await db.query<EntryRow>(
+        `SELECT key, kind, value, ciphertext, ref_source, ref_path, last_modified
+           FROM vault_entries WHERE key = $1 LIMIT 1`,
+        [key],
+      )
+    ).rows[0];
+    if (!row) {
+      return false;
+    }
+    if (storedEntryIdentity(row) !== expectedEntryIdentity) {
+      return false;
+    }
+    // One SQL statement makes the move atomic without sharing a manual
+    // transaction with unrelated callers on this single PGlite connection.
+    const moved = await db.query<{ original_key: string }>(
+      `WITH exact_unreadable_row AS (
+         DELETE FROM vault_entries
+          WHERE key = $2
+            AND kind = $3
+            AND value IS NOT DISTINCT FROM $4
+            AND ciphertext IS NOT DISTINCT FROM $5
+            AND ref_source IS NOT DISTINCT FROM $6
+            AND ref_path IS NOT DISTINCT FROM $7
+            AND last_modified = $8
+        RETURNING key, kind, value, ciphertext, ref_source, ref_path,
+                  last_modified
+       )
+       INSERT INTO vault_quarantined_entries (
+         quarantine_id, original_key, kind, value, ciphertext, ref_source,
+         ref_path, last_modified, quarantined_at, reason
+       )
+       SELECT $1, key, kind, value, ciphertext, ref_source, ref_path,
+              last_modified, $9, $10
+         FROM exact_unreadable_row
+       RETURNING original_key`,
+      [
+        randomUUID(),
+        row.key,
+        row.kind,
+        row.value,
+        row.ciphertext,
+        row.ref_source,
+        row.ref_path,
+        row.last_modified,
+        Date.now(),
+        truncateWellFormed(toWellFormedUnicode(normalizedReason), 500),
+      ],
+    );
+    if (moved.rows.length === 0) {
+      return false;
     }
     await this.audit.record({
       action: "quarantine",

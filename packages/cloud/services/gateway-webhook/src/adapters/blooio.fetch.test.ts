@@ -28,7 +28,7 @@ describe("blooioFetch — bounded Blooio hops fail closed and compose caller sig
     const start = Date.now();
     await expect(
       blooioFetch("https://api.blooio.com/v4/messages", undefined, 100),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
@@ -55,7 +55,7 @@ describe("blooioFetch — bounded Blooio hops fail closed and compose caller sig
         },
         100,
       ),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(Date.now() - start).toBeLessThan(5_000);
     expect(controller.signal.aborted).toBe(false);
   });

@@ -356,6 +356,7 @@ describe("job interruption catalog preflight", () => {
     expect(generatedPreflight).toBeGreaterThan(environmentFile);
     expect(schemaPreflight).toBeGreaterThan(generatedPreflight);
     expect(workerStart).toBeGreaterThan(schemaPreflight);
+    expect(service).toContain("Environment=SKIP_AGENT_SANDBOX_ENSURE=1");
     expect(service).toContain("TimeoutStartSec=8min");
     expect(service).toContain("Restart=always");
 

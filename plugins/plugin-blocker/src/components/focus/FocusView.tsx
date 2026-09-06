@@ -17,7 +17,11 @@ import { client } from "@elizaos/ui/api";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";
-import { type FocusSnapshot, FocusSpatialView } from "./FocusSpatialView.tsx";
+import {
+  type FocusRequestState,
+  type FocusSnapshot,
+  FocusSpatialView,
+} from "./FocusSpatialView.tsx";
 
 interface FocusViewProps {
   /** Test/host injection seam. Defaults to a real `/api/website-blocker` GET. */
@@ -115,6 +119,8 @@ export function FocusView({
 }: FocusViewProps = {}) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [releasing, setReleasing] = useState(false);
+  const [request, setRequest] = useState<FocusRequestState>({ phase: "idle" });
+  const requestPending = useRef(false);
   const fetchRef = useRef(fetchStatus);
   fetchRef.current = fetchStatus;
   const releaseRef = useRef(releaseBlock);
@@ -173,6 +179,40 @@ export function FocusView({
     };
   }, [load]);
 
+  const requestFocusSession = useCallback(async () => {
+    if (requestPending.current) return;
+    requestPending.current = true;
+    setRequest({ phase: "pending" });
+    try {
+      const response = await client.sendChatRest(
+        "Start a focus session for me.",
+      );
+      if (!response.text.trim()) {
+        setRequest({
+          phase: "error",
+          message: "Eliza returned no reply. Try again.",
+        });
+        return;
+      }
+      setRequest({
+        phase: response.failureKind ? "error" : "complete",
+        message: response.text,
+      });
+      load(true);
+    } catch (error) {
+      // error-policy:J4 Keep failed focus requests visible and retryable.
+      setRequest({
+        phase: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not request a focus session.",
+      });
+    } finally {
+      requestPending.current = false;
+    }
+  }, [load]);
+
   const onAction = useCallback(
     (action: string) => {
       switch (action) {
@@ -182,12 +222,15 @@ export function FocusView({
         case "release":
           release();
           return;
+        case "start":
+          void requestFocusSession();
+          return;
       }
     },
-    [load, release],
+    [load, release, requestFocusSession],
   );
 
-  const snapshot = toSnapshot(state, releasing);
+  const snapshot = { ...toSnapshot(state, releasing), request };
 
   return <FocusSpatialView snapshot={snapshot} onAction={onAction} />;
 }

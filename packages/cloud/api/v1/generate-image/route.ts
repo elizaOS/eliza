@@ -129,6 +129,7 @@ export async function handleGenerateImagePOST(
             executionCtx,
             admissionSnapshot,
             credential: credentialGuard.credentialForAdmission(),
+            atomicProviderBoundary: true,
             metadata: {
               endpoint: "apps.generate-image",
               numImages: request.numImages,
@@ -143,6 +144,7 @@ export async function handleGenerateImagePOST(
           cost,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
         });
         return { kind: "organization" as const, admission };
       },

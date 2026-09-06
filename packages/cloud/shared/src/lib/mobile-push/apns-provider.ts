@@ -66,6 +66,44 @@ function pkcs8Bytes(pem: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+// Only documented wire reasons may enter logs; unexpected provider text can
+// contain request data. See Apple's Handling notification responses from APNs.
+const APNS_RECEIPT_REASONS = new Set<string>([
+  "BadCollapseId",
+  "BadDeviceToken",
+  "BadExpirationDate",
+  "BadMessageId",
+  "BadPriority",
+  "BadTopic",
+  "DeviceTokenNotForTopic",
+  "DuplicateHeaders",
+  "IdleTimeout",
+  "InvalidPushType",
+  "MissingDeviceToken",
+  "MissingTopic",
+  "PayloadEmpty",
+  "TopicDisallowed",
+  "BadCertificate",
+  "BadCertificateEnvironment",
+  "ExpiredProviderToken",
+  "Forbidden",
+  "InvalidProviderToken",
+  "MissingProviderToken",
+  "UnrelatedKeyIdInToken",
+  "BadEnvironmentKeyIdInToken",
+  "BadPath",
+  "MethodNotAllowed",
+  "ExpiredToken",
+  "Unregistered",
+  "PayloadTooLarge",
+  "TooManyProviderTokenUpdates",
+  "TooManyRequests",
+  "InternalServerError",
+  "ServiceUnavailable",
+  "Shutdown",
+]);
+const APNS_RECEIPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export class CloudApnsProvider {
   private cachedToken?: CachedProviderToken;
   private importedKey?: Promise<CryptoKey>;
@@ -87,13 +125,25 @@ export class CloudApnsProvider {
     payloadBytes: number,
     apnsId?: string,
   ): MobilePushDeliveryResult {
+    const receiptId = result.outcome === "accepted" ? result.apnsId : apnsId;
+    const reason = result.outcome === "accepted" ? undefined : result.reason;
     logger.warn("[CloudApnsProvider] delivery receipt", {
       src: "cloud-apns",
       environment: this.config.production ? "production" : "sandbox",
       topic: this.config.topic,
       payloadBytes,
-      ...result,
-      ...(apnsId ? { apnsId } : {}),
+      outcome: result.outcome,
+      ...(result.outcome === "rejected" ? { status: result.status } : {}),
+      ...(reason === undefined
+        ? {}
+        : APNS_RECEIPT_REASONS.has(reason)
+          ? { reason }
+          : { unrecognizedProviderReason: true }),
+      ...(receiptId === undefined
+        ? {}
+        : APNS_RECEIPT_ID.test(receiptId)
+          ? { apnsId: receiptId }
+          : { invalidApnsId: true }),
     });
     return result;
   }

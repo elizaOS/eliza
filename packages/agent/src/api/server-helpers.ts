@@ -54,7 +54,6 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
-import { extractCompatTextContent } from "./compat-utils.ts";
 import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
 import type {
   ChatAttachmentWithData,

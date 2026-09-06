@@ -14,6 +14,11 @@
   --color-bg-hover: var(--bg-hover);
   --color-bg-muted: var(--bg-muted);
   --color-card: var(--card);
+  --color-bg-card-hover: color-mix(
+    in srgb,
+    var(--card) 92%,
+    var(--text-strong)
+  );
   --color-card-fg: var(--card-foreground);
   --color-surface: var(--surface);
   --color-inverse: var(--inverse);
@@ -146,6 +151,7 @@
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+  --radius-search: var(--radius-search);
   --radius-2xl: var(--radius-2xl);
   --radius-3xl: var(--radius-3xl);
   --radius-4xl: var(--radius-xs);

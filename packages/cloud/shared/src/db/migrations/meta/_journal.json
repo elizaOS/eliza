@@ -2514,6 +2514,27 @@
       "when": 1796083200002,
       "tag": "0375_voice_clone_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 359,
+      "version": "7",
+      "when": 1796083200003,
+      "tag": "0376_outreachr_delegations",
+      "breakpoints": true
+    },
+    {
+      "idx": 360,
+      "version": "7",
+      "when": 1796083200004,
+      "tag": "0377_agent_backup_restore_v3_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 361,
+      "version": "7",
+      "when": 1796083200005,
+      "tag": "0378_agent_backup_restore_v3_candidate_guards",
+      "breakpoints": true
     }
   ]
 }

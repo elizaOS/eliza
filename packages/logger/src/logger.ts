@@ -799,17 +799,27 @@ let _promptLogFd: number | null = null;
 let _chatLogFd: number | null = null;
 let _promptLogCounter = 0;
 
+/** Load a Node builtin synchronously without breaking browser source imports. */
+function getNodeBuiltin<T>(id: string): T | null {
+  if (
+    typeof process === "undefined" ||
+    typeof process.getBuiltinModule !== "function"
+  ) {
+    return null;
+  }
+  try {
+    return (process.getBuiltinModule(id) as T | undefined) ?? null;
+  } catch {
+    // error-policy:J7 optional Node diagnostics must not prevent logger startup.
+    return null;
+  }
+}
+
 let _fs: typeof import("node:fs") | null = null;
 function getFs(): typeof import("node:fs") | null {
   if (_fs) return _fs;
-  try {
-    _fs = require("node:fs");
-    return _fs;
-  } catch {
-    // error-policy:J7 logger is a leaf and cannot report through itself; no
-    // node:fs (browser build) legitimately means "no file sink", not a failure.
-    return null;
-  }
+  _fs = getNodeBuiltin<typeof import("node:fs")>("node:fs");
+  return _fs;
 }
 
 /**
@@ -872,7 +882,8 @@ function ensureFileLog(): boolean {
 
     const fs = getFs();
     if (!fs) return false;
-    const pathMod = require("node:path");
+    const pathMod = getNodeBuiltin<typeof import("node:path")>("node:path");
+    if (!pathMod) return false;
     const isBooleanFlag = ["true", "1", "yes", "on"].includes(
       logFileEnv.trim().toLowerCase(),
     );
@@ -1394,8 +1405,8 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     let hostname = "unknown";
     if (typeof process !== "undefined" && process.platform) {
       // Node.js environment
-      const os = require("node:os");
-      hostname = os.hostname();
+      const os = getNodeBuiltin<typeof import("node:os")>("node:os");
+      if (os) hostname = os.hostname();
     } else {
       // Browser environment
       const browserLocation = (

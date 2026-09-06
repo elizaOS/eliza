@@ -1367,9 +1367,7 @@ function PluginListView({
         <PagePanel.ContentArea>
           <main className="chat-native-scrollbar flex h-full flex-col overflow-y-auto px-4 pb-32 pt-5 sm:px-6 lg:px-8">
             <header className="mb-5">
-              <h1 className="sr-only">
-                {pluginSectionTitle}
-              </h1>
+              <h1 className="sr-only">{pluginSectionTitle}</h1>
 
               <ChatSearchHint
                 noun="plugins"

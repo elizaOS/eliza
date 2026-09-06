@@ -68,7 +68,8 @@ describe("workspace-diff — real git capture", () => {
       const cs = await captureChangeSet(plain, undefined, ["deploy.txt"]);
       expect(cs).toBeDefined();
       expect(cs?.changedFiles).toEqual(["deploy.txt"]);
-      expect(cs?.diffStat).toBe("1 file(s) changed");
+      expect(cs?.diffStat).toMatch(/1 file changed/);
+      expect(cs?.diffStat).toContain("deploy.txt");
       expect(cs?.diff).toContain("deployed");
     } finally {
       rmSync(plain, { recursive: true, force: true });
@@ -207,7 +208,8 @@ describe("workspace-diff — real git capture", () => {
     expect(cs).toBeDefined();
     expect(cs?.changedFiles).toContain("new.html");
     expect(cs?.changedFiles).not.toContain("index.html"); // pre-existing dirty
-    expect(cs?.diffStat).toBe("1 file(s) changed");
+    expect(cs?.diffStat).toMatch(/1 file changed/);
+    expect(cs?.diffStat).not.toContain("index.html");
   });
 
   it("keeps a pre-existing-dirty file if the agent DID write it this session", async () => {
@@ -385,12 +387,14 @@ describe("workspace-diff — unborn-HEAD scoop flood (#11605)", () => {
     expect(cs?.truncated).toBe(false);
   }, 20_000);
 
-  it("parseLsFiles drops the truncated garbage tail of an over-maxBuffer listing", () => {
-    // A complete `git ls-files` listing always ends with a newline; output cut
-    // at maxBuffer (ENOBUFS) ends mid-path instead.
-    expect(parseLsFiles("a.txt\nb.txt\nnode_mod")).toEqual(["a.txt", "b.txt"]);
+  it("rejects incomplete legacy filename listings instead of returning a prefix", () => {
+    expect(() => parseLsFiles("a.txt\nb.txt\nnode_mod")).toThrow(
+      "Incomplete Git filename output",
+    );
     expect(parseLsFiles("a.txt\nb.txt\n")).toEqual(["a.txt", "b.txt"]);
-    expect(parseLsFiles("partial-only-no-newline")).toEqual([]);
+    expect(() => parseLsFiles("partial-only-no-newline")).toThrow(
+      "Incomplete Git filename output",
+    );
     expect(parseLsFiles(undefined)).toEqual([]);
   });
 });

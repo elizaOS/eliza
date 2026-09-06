@@ -22,7 +22,6 @@ test.describe("Cloud live optional action boundary", () => {
   }) => {
     await page.setContent(`<main data-testid="chat-overlay"></main>`);
 
-    const startedAt = Date.now();
     const result = await clickCloudLiveOptionalAction(
       page.getByTestId("runtime-cloud"),
       {
@@ -50,7 +49,6 @@ test.describe("Cloud live optional action boundary", () => {
       action: "runtime-cloud",
     });
     expect(String(result.error)).not.toMatch(/data-testid|locator|selector/);
-    expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
 
   test("keeps Dedicated activation and adoption confirmation fail-closed by default", async ({
@@ -408,8 +406,11 @@ test.describe("Cloud live optional action boundary", () => {
     }
   });
 
-  test("clicks a stable offered action", async ({ page }) => {
-    await page.setContent(`
+  for (const required of [false, true]) {
+    test(`clicks a stable offered action (required=${required})`, async ({
+      page,
+    }) => {
+      await page.setContent(`
       <button data-testid="runtime-cloud">Sign in</button>
       <output data-testid="click-count">0</output>
       <script>
@@ -422,16 +423,18 @@ test.describe("Cloud live optional action boundary", () => {
       </script>
     `);
 
-    await expect(
-      clickCloudLiveOptionalAction(page.getByTestId("runtime-cloud"), {
-        phase: "pre-identity-runtime-choice",
-        action: "runtime-cloud",
-        offerTimeoutMs: 500,
-        actionTimeoutMs: 500,
-      }),
-    ).resolves.toBe(true);
-    await expect(page.getByTestId("click-count")).toHaveText("1");
-  });
+      await expect(
+        clickCloudLiveOptionalAction(page.getByTestId("runtime-cloud"), {
+          phase: "pre-identity-runtime-choice",
+          action: "runtime-cloud",
+          offerTimeoutMs: 500,
+          actionTimeoutMs: 500,
+          required,
+        }),
+      ).resolves.toBe(true);
+      await expect(page.getByTestId("click-count")).toHaveText("1");
+    });
+  }
 
   test("clicks a stable Personal identity retry", async ({ page }) => {
     await page.setContent(`

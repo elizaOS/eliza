@@ -423,6 +423,13 @@ const vitestResolveAlias: ModuleAlias[] = [
           ),
         },
         {
+          find: /^@elizaos\/core\/errors$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts") ? "errors.ts" : "errors.js",
+          ),
+        },
+        {
           // Same story for the atomic-json subpath (agent's
           // app-package-modules imports it directly).
           find: /^@elizaos\/core\/atomic-json$/,

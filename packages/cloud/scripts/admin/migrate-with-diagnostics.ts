@@ -127,6 +127,25 @@ type IdentityResultReporter = (
 
 type PostMigrationConvergence = (client: MigrationClient) => Promise<void>;
 
+/** Publish identity evidence without mistaking output I/O for a database failure. */
+export async function publishMigrationIdentityResult(
+  config: DatabaseIdentityConfig,
+  result: IdentityPreflightResult,
+  publish: typeof publishDatabaseIdentityResult = publishDatabaseIdentityResult,
+): Promise<void> {
+  try {
+    await publish(config, result);
+  } catch (error) {
+    // error-policy:J1 only enforcement requires a durable receipt. Report/off
+    // modes have already made a non-blocking identity decision; failure to
+    // append GitHub's step summary is not a database or migration failure.
+    if (config.mode === "enforce") throw error;
+    process.stdout.write(
+      "::warning::database identity report output unavailable; inspect protected operator logs\n",
+    );
+  }
+}
+
 /** Executes the historical agent-sandbox drift repair on the locked migration session. */
 export async function convergeAgentSandboxSchemaOnMigrationClient(
   migrationClient: MigrationClient,
@@ -1494,18 +1513,7 @@ async function main(): Promise<void> {
     migrations,
     retryOptions,
     identityConfig,
-    async (config, result) => {
-      try {
-        await publishDatabaseIdentityResult(config, result);
-      } catch (error) {
-        // error-policy:J1 report mode must not turn an evidence-output failure
-        // into permission to skip or block the migration identity decision.
-        if (config.mode !== "report") throw error;
-        process.stdout.write(
-          "::warning::database identity report output unavailable; inspect protected operator logs\n",
-        );
-      }
-    },
+    publishMigrationIdentityResult,
     convergeAgentSandboxSchemaOnMigrationClient,
   );
 }

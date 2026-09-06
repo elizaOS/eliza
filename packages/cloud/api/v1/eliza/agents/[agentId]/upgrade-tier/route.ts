@@ -36,7 +36,7 @@
  *    re-arms, for stopped/sleeping/dead-job targets) durable state.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -84,6 +84,35 @@ type AgentRow = NonNullable<
 type AuthedUser = Awaited<
   ReturnType<typeof requireAuthOrApiKeyWithOrg>
 >["user"];
+
+type ProvisioningExecutionContext = Pick<
+  Context<AppEnv>["executionCtx"],
+  "waitUntil"
+>;
+
+async function retainProvisioningNudge(
+  env: AppEnv["Bindings"],
+  executionCtx: ProvisioningExecutionContext | undefined,
+  context: {
+    sharedAgentId: string;
+    dedicatedAgentId: string;
+    orgId: string;
+    jobId: string;
+  },
+): Promise<void> {
+  const trigger = provisioningJobService
+    .triggerImmediate(env)
+    .catch((error) => {
+      // error-policy:J7 the committed job remains owned by the daemon; retain
+      // the failed latency nudge as an operational diagnostic at this boundary.
+      logger.warn("[agent-upgrade-tier] Immediate provisioning nudge failed", {
+        ...context,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  if (executionCtx) executionCtx.waitUntil(trigger);
+  else await trigger;
+}
 
 interface UpgradeSource {
   id: string;
@@ -269,6 +298,7 @@ async function respondToLiveTarget(
   user: AuthedUser,
   env: AppEnv["Bindings"],
   confirmedQuoteId: string,
+  executionCtx: ProvisioningExecutionContext | undefined,
 ): Promise<Response> {
   logger.info("[agent-upgrade-tier] Reattaching to in-flight upgrade", {
     sharedAgentId,
@@ -342,9 +372,11 @@ async function respondToLiveTarget(
     agentName: target.agent_name ?? target.id,
   });
   if (reattach.created) {
-    void provisioningJobService.triggerImmediate(env).catch(() => {
-      // error-policy:J5 fire-and-forget nudge; the job is persisted and the
-      // provisioning cron is the safety net (failure logged in the service).
+    await retainProvisioningNudge(env, executionCtx, {
+      sharedAgentId,
+      dedicatedAgentId: target.id,
+      orgId: user.organization_id,
+      jobId: reattach.job.id,
     });
   }
   return json(
@@ -391,6 +423,7 @@ async function __hono_GET(
       data: await dedicatedQuote(source, user, existingTarget),
     });
   } catch (error) {
+    // error-policy:J1 translate authentication and quote failures at HTTP.
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }
@@ -399,6 +432,7 @@ async function __hono_POST(
   request: Request,
   env: AppEnv["Bindings"],
   { params }: { params: Promise<{ agentId: string }> },
+  executionCtx: ProvisioningExecutionContext | undefined,
 ) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
@@ -411,6 +445,7 @@ async function __hono_POST(
     const sourceError = invalidUpgradeSource(source);
     if (sourceError) return sourceError;
 
+    // error-policy:J3 malformed JSON is an explicitly invalid confirmation.
     const confirmation = ActivationBody.safeParse(
       await request.json().catch(() => null),
     );
@@ -438,6 +473,7 @@ async function __hono_POST(
         user,
         env,
         confirmation.data.quoteId,
+        executionCtx,
       );
     }
 
@@ -522,6 +558,8 @@ async function __hono_POST(
         ),
       });
     } catch (error) {
+      // error-policy:J1 translate known activation refusals; propagate others
+      // to the outer HTTP error boundary.
       if (error instanceof AgentQuotaExceededError) {
         logger.warn("[agent-upgrade-tier] Upgrade blocked: org quota", {
           sharedAgentId: source.id,
@@ -575,14 +613,17 @@ async function __hono_POST(
         user,
         env,
         confirmation.data.quoteId,
+        executionCtx,
       );
     }
     const dedicated = result.agent;
     const job = result.job;
 
-    void provisioningJobService.triggerImmediate(env).catch(() => {
-      // error-policy:J5 fire-and-forget nudge; the job is persisted and the
-      // provisioning cron is the safety net (failure logged in the service).
+    await retainProvisioningNudge(env, executionCtx, {
+      sharedAgentId: source.id,
+      dedicatedAgentId: dedicated.id,
+      orgId: user.organization_id,
+      jobId: job.id,
     });
 
     logger.info("[agent-upgrade-tier] Upgrade started", {
@@ -615,6 +656,7 @@ async function __hono_POST(
       202,
     );
   } catch (error) {
+    // error-policy:J1 preserve the structured HTTP failure contract.
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }
@@ -626,9 +668,22 @@ __hono_app.get("/", async (c) =>
     params: Promise.resolve({ agentId: c.req.param("agentId")! }),
   }),
 );
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, c.env, {
-    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  let executionCtx: ProvisioningExecutionContext | undefined;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    // error-policy:J4 non-Worker Hono adapters lack this context; the route
+    // awaits the nudge before returning instead of leaving work unobserved.
+    executionCtx = undefined;
+  }
+  return __hono_POST(
+    c.req.raw,
+    c.env,
+    {
+      params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+    },
+    executionCtx,
+  );
+});
 export default __hono_app;

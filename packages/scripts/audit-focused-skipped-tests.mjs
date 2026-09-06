@@ -311,7 +311,14 @@ function bindingIdentifiers(name, identifiers = []) {
   return identifiers;
 }
 
+// Source ASTs are immutable. Cache per scope so every global runner lookup
+// does not rescan the same file; weak keys release completed source trees.
+const directScopeBindingCache = new WeakMap();
+const hoistedVarBindingCache = new WeakMap();
+
 function directScopeBindings(scope) {
+  const cached = directScopeBindingCache.get(scope);
+  if (cached) return cached;
   const bindings = new Map();
   const statements =
     ts.isSourceFile(scope) || ts.isBlock(scope) || ts.isModuleBlock(scope)
@@ -345,6 +352,7 @@ function directScopeBindings(scope) {
       bindings.set(statement.name.text, statement.name);
     }
   }
+  directScopeBindingCache.set(scope, bindings);
   return bindings;
 }
 
@@ -380,9 +388,10 @@ function loopInitializerBinding(scope, identifier) {
 function hoistedVarBinding(scope, identifier) {
   const root = ts.isSourceFile(scope) ? scope : scope.body;
   if (!root || (!ts.isBlock(root) && !ts.isSourceFile(root))) return undefined;
-  let binding;
+  const cached = hoistedVarBindingCache.get(scope);
+  if (cached) return cached.get(identifier.text);
+  const bindings = new Map();
   const visit = (node) => {
-    if (binding) return;
     if (
       node !== root &&
       (ts.isFunctionLike(node) ||
@@ -396,15 +405,15 @@ function hoistedVarBinding(scope, identifier) {
       ts.isVariableDeclarationList(node.parent) &&
       !(node.parent.flags & ts.NodeFlags.BlockScoped)
     ) {
-      binding = bindingIdentifiers(node.name).find(
-        (candidate) => candidate.text === identifier.text,
-      );
-      if (binding) return;
+      for (const binding of bindingIdentifiers(node.name)) {
+        if (!bindings.has(binding.text)) bindings.set(binding.text, binding);
+      }
     }
     ts.forEachChild(node, visit);
   };
   visit(root);
-  return binding;
+  hoistedVarBindingCache.set(scope, bindings);
+  return bindings.get(identifier.text);
 }
 
 function nearestBinding(identifier) {
@@ -684,7 +693,12 @@ function staticPrimitive(node) {
   if (value.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (value.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (value.kind === ts.SyntaxKind.NullKeyword) return null;
-  if (ts.isIdentifier(value) && value.text === "undefined") return undefined;
+  if (
+    ts.isIdentifier(value) &&
+    value.text === "undefined" &&
+    nearestBinding(value) === undefined
+  )
+    return undefined;
   if (ts.isStringLiteralLike(value)) return value.text;
   if (ts.isNumericLiteral(value)) return Number(value.text);
   if (ts.isBigIntLiteral(value)) return BigInt(value.text.slice(0, -1));
@@ -1088,7 +1102,9 @@ function nodeOptionDisposition(node) {
   if (
     ts.isCallExpression(value) &&
     ts.isIdentifier(value.expression) &&
-    value.expression.text === "Boolean"
+    value.expression.text === "Boolean" &&
+    nearestBinding(value.expression) === undefined &&
+    !hasPriorWriteToImplicitRoot(value.expression)
   ) {
     const firstArgument = value.arguments[0];
     if (!firstArgument) return NODE_OPTION_RUN;
@@ -1222,6 +1238,8 @@ function staticTruthiness(node) {
     ts.isCallExpression(value) &&
     ts.isIdentifier(value.expression) &&
     value.expression.text === "Boolean" &&
+    nearestBinding(value.expression) === undefined &&
+    !hasPriorWriteToImplicitRoot(value.expression) &&
     value.arguments.length === 1
   ) {
     return staticTruthiness(value.arguments[0]);

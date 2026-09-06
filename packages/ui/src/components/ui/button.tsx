@@ -66,6 +66,8 @@ const buttonVariants = cva(
           "h-auto w-full justify-start whitespace-normal rounded-sm bg-transparent px-3 py-2 text-left font-mono text-xs-tight text-muted-strong hover:bg-surface hover:text-txt",
         dangerOutline:
           "border border-danger/30 bg-transparent text-danger hover:border-danger/50 hover:bg-danger/10 hover:text-danger",
+        searchResult:
+          "rounded-search bg-transparent text-muted hover:bg-bg-card-hover hover:text-txt data-[surface=card]:bg-card data-[surface=card]:text-txt-strong data-[surface=card]:hover:bg-bg-card-hover data-[state=on]:bg-bg-card-hover data-[state=on]:text-txt-strong disabled:text-muted-strong",
         ghostMuted:
           "bg-transparent text-muted hover:bg-transparent hover:text-txt",
         selectionNeutral:

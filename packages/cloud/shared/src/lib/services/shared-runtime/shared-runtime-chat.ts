@@ -1102,6 +1102,7 @@ async function admitTurn(
       estimatedOutputTokens: 500,
       executionCtx,
       admissionSnapshot,
+      atomicProviderBoundary: Boolean(executionCtx),
     });
   } catch (error) {
     // error-policy:J1 translate the billing-cache boundary into the shared
@@ -1249,8 +1250,28 @@ function observeProviderCancellationOffPath(
   });
 }
 
+function providerBoundaryAdmissionFailure(
+  error: unknown,
+): InsufficientCreditsError | InferenceAdmissionUnavailableError | null {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 12 && current !== undefined; depth += 1) {
+    if (seen.has(current)) return null;
+    seen.add(current);
+    if (
+      current instanceof InsufficientCreditsError ||
+      current instanceof InferenceAdmissionUnavailableError
+    ) {
+      return current;
+    }
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return null;
+}
+
 function isProvablyZeroProviderFailure(error: unknown): boolean {
   return (
+    providerBoundaryAdmissionFailure(error) !== null ||
     isInferenceAdmissionDispatchMarkError(error) ||
     isKnownPreDispatchProviderConfigurationError(error) ||
     isKnownUnacceptedProviderError(error)
@@ -1448,6 +1469,22 @@ export class SharedRuntimeChatService {
         error,
         "bridge provider invocation failed",
       );
+      const admissionFailure = providerBoundaryAdmissionFailure(error);
+      if (admissionFailure instanceof InsufficientCreditsError) {
+        return {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: {
+            code: BRIDGE_INSUFFICIENT_CREDITS_CODE,
+            message: `Insufficient credits. Required: $${admissionFailure.required.toFixed(4)}, Available: $${admissionFailure.available.toFixed(4)}`,
+          },
+        };
+      }
+      if (admissionFailure instanceof InferenceAdmissionUnavailableError) {
+        throw new SharedRuntimeCacheWarmingError(
+          "Billing authorization is warming. Retry shortly.",
+        );
+      }
       throw error;
     }
 
@@ -1732,6 +1769,17 @@ export class SharedRuntimeChatService {
       );
       if (turnTimedOut) {
         return withTurnTimingHeaders(sseError("Shared runtime stream timed out"), timings);
+      }
+      const admissionFailure = providerBoundaryAdmissionFailure(error);
+      if (admissionFailure instanceof InsufficientCreditsError) {
+        throw new InsufficientCreditsApiError(
+          `Insufficient credits. Required: $${admissionFailure.required.toFixed(4)}, Available: $${admissionFailure.available.toFixed(4)}`,
+        );
+      }
+      if (admissionFailure instanceof InferenceAdmissionUnavailableError) {
+        throw new SharedRuntimeCacheWarmingError(
+          "Billing authorization is warming. Retry shortly.",
+        );
       }
       throw error;
     }

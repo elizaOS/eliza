@@ -178,7 +178,7 @@ export function BrowserTabFoldControl({
  * whole picker into an accent-colored status surface. Both the switch and close
  * targets are ≥44px touch surfaces.
  */
-function BrowserTabCard({
+export function BrowserTabCard({
   tab,
   active,
   section,

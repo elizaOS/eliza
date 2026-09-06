@@ -44,6 +44,7 @@ let deferredEnabled = false;
 let ledgerAdmits = true;
 let reserveCreditsThrows: Error | null = null;
 let organizationAdmissionError: Error | null = null;
+let dispatchAdmissionError: Error | null = null;
 let strongRevocationEnabled = true;
 const callOrder: string[] = [];
 
@@ -71,6 +72,7 @@ const organizationSettler = mock(async (_actualCostUsd: number) => null);
 const organizationUnknownSettler = mock(async () => null);
 const markProviderDispatched = mock(async () => {
   callOrder.push("dispatch");
+  if (dispatchAdmissionError) throw dispatchAdmissionError;
 });
 type OrganizationAdmissionParams = Parameters<
   typeof organizationAdmissionActual.admitOrganizationInference
@@ -392,9 +394,9 @@ describe("chat/completions cache-only organization admission", () => {
     ledgerAdmits = true;
     reserveCreditsThrows = null;
     organizationAdmissionError = null;
+    dispatchAdmissionError = null;
     strongRevocationEnabled = true;
     callOrder.length = 0;
-    billingDeferredActual.__clearDeferredAdmissionState();
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
     createOptimisticDebitSettler.mockClear();
@@ -544,6 +546,7 @@ describe("chat/completions cache-only organization admission", () => {
       >
     )[0]?.[0];
     expect(admission?.executionCtx).toBeDefined();
+    expect(admission?.atomicProviderBoundary).toBe(true);
     expect(admission?.credential).toEqual({
       kind: "api_key",
       credentialId: API_KEY_ID,
@@ -711,6 +714,55 @@ describe("chat/completions cache-only organization admission", () => {
     expect(reserveCredits).not.toHaveBeenCalled();
     expect(writePendingInferenceCharge).not.toHaveBeenCalled();
     expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+  });
+
+  test("a provider-boundary admission timeout returns 503 without invoking the provider", async () => {
+    dispatchAdmissionError =
+      new organizationAdmissionActual.InferenceAdmissionUnavailableError({
+        cause: new Error("combined lease acknowledgement lost"),
+      });
+    const captured: Promise<unknown>[] = [];
+
+    const response = await driveWithCtx(captured);
+    await Promise.all(captured);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "inference_admission_unavailable" },
+    });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(organizationSettler).toHaveBeenCalledWith(0);
+  });
+
+  test("provider-boundary balance and credential denials remain typed before provider work", async () => {
+    for (const candidate of [
+      {
+        error: new aiBillingActual.InsufficientCreditsError(0.05, 0.01),
+        status: 402,
+      },
+      {
+        error:
+          new inferenceCredentialRevocationActual.InferenceCredentialRevokedError(
+            "organization_disabled",
+          ),
+        status: 403,
+      },
+    ]) {
+      dispatchAdmissionError = candidate.error;
+      const captured: Promise<unknown>[] = [];
+      const response = await driveWithCtx(captured);
+      await Promise.all(captured);
+
+      expect(response.status).toBe(candidate.status);
+      expect(generateText).not.toHaveBeenCalled();
+      expect(organizationSettler).toHaveBeenCalledWith(0);
+
+      dispatchAdmissionError = null;
+      organizationSettler.mockClear();
+      markProviderDispatched.mockClear();
+      callOrder.length = 0;
+    }
   });
 
   test("a cached insufficient-balance decision returns 402 without provider dispatch or DB fallback", async () => {

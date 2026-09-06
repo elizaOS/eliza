@@ -20,6 +20,7 @@ import type {
 	PlannerLoopParams,
 	PlannerRuntime,
 	PlannerToolResult,
+	PlannerTrajectory,
 } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
@@ -714,6 +715,195 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		)?.[1];
 		return JSON.stringify(request?.messages);
 	};
+
+	it.each([false, true])(
+		"reuses the verified evaluator reply for scope-only REPLY (mixed batch: %s)",
+		async (mixedBatch) => {
+			const reply = "Tu sesión de gimnasio está en el calendario.";
+			const response = finish(reply, true, [appliedReceipt.receiptId]);
+			const usage = { promptTokens: 1400, completionTokens: 84 };
+			const h = harness({
+				plans: [
+					{
+						text: "",
+						toolCalls: [
+							call("CALENDAR", "more_work_pending"),
+							...(mixedBatch ? [call("NAVIGATE", "final")] : []),
+						],
+					},
+					{ text: "", toolCalls: [call("REPLY", "final")] },
+				],
+				evaluations: [
+					...(mixedBatch
+						? [
+								JSON.stringify({
+									thought: "The queued navigation remains.",
+									success: false,
+									decision: "NEXT_RECOMMENDED",
+									recommendedToolCallId: "navigate",
+								}),
+							]
+						: []),
+					{ text: response, usage },
+				],
+				results: [internalCalendarResult()],
+				intents: ["add gym session to calendar"],
+			});
+			const onModelUsage = vi.fn();
+			const onEvaluation = vi.fn();
+			const messageToUser = vi.fn();
+			const result = await runWithStreamingContext({ onEvaluation }, () =>
+				h.run({ onModelUsage, evaluatorEffects: { messageToUser } }),
+			);
+			expect(h.executed).toEqual([
+				"CALENDAR",
+				...(mixedBatch ? ["NAVIGATE"] : []),
+			]);
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+				...(mixedBatch ? [ModelType.RESPONSE_HANDLER] : []),
+				ModelType.ACTION_PLANNER,
+			]);
+			expect(result.finalMessage).toBe(reply);
+			expect(result.evaluator).toMatchObject({
+				decision: "FINISH",
+				success: true,
+				effectReceiptIds: [appliedReceipt.receiptId],
+				raw: { messageToUser: reply },
+			});
+			expect(onModelUsage).toHaveBeenCalledExactlyOnceWith(usage);
+			expect(onEvaluation).toHaveBeenCalledTimes(mixedBatch ? 2 : 1);
+			expect(messageToUser).toHaveBeenCalledExactlyOnceWith(reply);
+		},
+	);
+
+	it("does not reuse a rejected FINISH if context changes during the scope-release planner call", async () => {
+		let activeTrajectory: PlannerTrajectory | undefined;
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("CALENDAR", "more_work_pending")] },
+				{ text: "", toolCalls: [call("REPLY", "final")] },
+			],
+			evaluations: [
+				finish("Your gym session is in the calendar.", true, [
+					appliedReceipt.receiptId,
+				]),
+				finish("The event is saved; I need to check the new request.", false),
+			],
+			intents: ["add gym session to calendar"],
+		});
+		const model = h.useModel.getMockImplementation();
+		if (!model) throw new Error("Missing deterministic model adapter");
+		h.useModel.mockImplementation(async (...args) => {
+			if (args[0] === ModelType.ACTION_PLANNER && activeTrajectory) {
+				activeTrajectory.context = {
+					...activeTrajectory.context,
+					events: [
+						...activeTrajectory.context.events,
+						{
+							id: "new-input",
+							type: "message",
+							message: { role: "user", content: "Wait, one more thing." },
+						},
+					],
+				};
+			}
+			return model(...args);
+		});
+		const result = await h.run({
+			executeToolCall: (_call, { trajectory }) => {
+				activeTrajectory = trajectory;
+				return internalCalendarResult();
+			},
+		});
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+		expect(result.finalMessage).toBe(
+			"The event is saved; I need to check the new request.",
+		);
+	});
+
+	it.each(["more_work_pending", undefined] as const)(
+		"does not reuse a rejected FINISH for REPLY with scope %s",
+		async (scope) => {
+			const h = harness({
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{ text: "", toolCalls: [call("REPLY", scope)] },
+					{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+				],
+				evaluations: [
+					finish("The record was read."),
+					continueWork("The destination still needs to open."),
+					finish("The record was read and the destination is open."),
+				],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["READ", "NAVIGATE"]);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(3);
+			expect(result.finalMessage).toBe(
+				"The record was read and the destination is open.",
+			);
+		},
+	);
+
+	it.each([true, false])(
+		"does not reuse an old FINISH after queued work executes with success=%s",
+		async (success) => {
+			const finalReply = success
+				? "The record was read and updated."
+				: "The record was read, but the update failed.";
+			const h = harness({
+				plans: [
+					{
+						text: "",
+						toolCalls: [
+							call("READ", "more_work_pending"),
+							call("UPDATE", "more_work_pending"),
+						],
+					},
+					{ text: "", toolCalls: [call("REPLY", "final")] },
+				],
+				evaluations: [
+					finish("Only the record was read."),
+					continueWork("The changed result needs a final response."),
+					finish(finalReply, success),
+				],
+				results: [
+					{ success: true, text: "Read the record." },
+					{
+						success,
+						text: success ? "Updated the record." : "Update failed.",
+						...(success ? {} : { error: "WRITE_FAILED" }),
+					},
+				],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["READ", "UPDATE"]);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(3);
+			expect(result.evaluator?.success).toBe(success);
+			expect(result.finalMessage).toBe(finalReply);
+		},
+	);
+
+	it("does not reuse a rejected FINISH when the next planner requests new work", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+			],
+			evaluations: [
+				finish("Only the record was read."),
+				finish("The record was read and the destination is open."),
+			],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+		expect(result.finalMessage).toBe(
+			"The record was read and the destination is open.",
+		);
+	});
 
 	it("preserves prior-turn preferences and character in one canonical receipt evaluation", async () => {
 		const preference =

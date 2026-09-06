@@ -8,7 +8,30 @@
  * a spend limit and must pass through to the provider unchanged.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let entitlementLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  entitlementLookup.mockRestore();
+});
 
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global and leaks into sibling test files in the same batch process
@@ -140,7 +163,25 @@ let generateTextResult: {
 let authResolution:
   | {
       kind: "authorized";
-      ctx: { userId: string; orgId: string; apiKeyId: string };
+      ctx: {
+        userId: string;
+        orgId: string;
+        apiKeyId: string;
+        admission: {
+          subscriptionFunded: boolean;
+          balance: {
+            balanceUsd: number;
+            balanceAt: number;
+            balanceRevision: string;
+          };
+          rateLimits: {
+            completionsRpm: number;
+            embeddingsRpm: number;
+            standardRpm: number;
+            strictRpm: number;
+          };
+        };
+      };
     }
   | { kind: "suspended" }
   | { kind: "miss" };
@@ -347,7 +388,6 @@ mock.module("@/lib/services/inference-billing-deferred", () => ({
   ...inferenceBillingDeferredActual,
   createDeferredAdmissionSettler: () => async () => null,
   isDeferredAdmissionEnabled: () => false,
-  isOrgAdmissionRefused: () => false,
 }));
 
 mock.module("@/lib/services/inference-passthrough", () => ({
@@ -404,7 +444,25 @@ beforeEach(() => {
   catalogSupportedParameters = ["max_tokens", "reasoning"];
   authResolution = {
     kind: "authorized",
-    ctx: { userId: USER, orgId: ORG, apiKeyId: API_KEY_ID },
+    ctx: {
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+      admission: {
+        subscriptionFunded: false,
+        balance: {
+          balanceUsd: 100,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+        },
+        rateLimits: {
+          completionsRpm: 60,
+          embeddingsRpm: 60,
+          standardRpm: 60,
+          strictRpm: 60,
+        },
+      },
+    },
   };
   providerConfigured = true;
   shouldBlockUser = false;

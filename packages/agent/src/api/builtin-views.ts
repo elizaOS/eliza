@@ -12,6 +12,7 @@ import type { ViewDeclaration } from "@elizaos/core";
 export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "wallet",
+    fallbackFor: "@elizaos/plugin-wallet",
     viewKind: "system",
     label: "Wallet",
     description:

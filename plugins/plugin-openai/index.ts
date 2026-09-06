@@ -26,7 +26,7 @@ import type {
   TextEmbeddingParams,
   TokenizeTextParams,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { EventType, logger, ModelType } from "@elizaos/core";
 import {
   handleActionPlanner,
   handleImageDescription,
@@ -151,44 +151,43 @@ function warnWhenApiKeyIsMissing(runtime: IAgentRuntime): void {
   );
 }
 
-/**
- * Warm the provider connection while the turn's state composition runs, so the
- * first model call after an idle gap does not pay DNS+TCP+TLS on the hot path
- * (measured ~600ms first-call TTFT penalty vs a kept-alive connection). Bun's
- * fetch.preconnect opens the connection without sending a request; throttled so
- * chatty rooms do not preconnect per message. No-op where preconnect is absent.
- */
-const PRECONNECT_MIN_INTERVAL_MS = 15_000;
-let lastPreconnectAt = 0;
+/** Warm the configured endpoint during message preparation without dispatching HTTP. */
+const providerPreconnects = new WeakMap<IAgentRuntime, { baseURL: string; attemptedAt: number }>();
+
 function preconnectProvider(runtime: IAgentRuntime): void {
-  const preconnect = (globalThis.fetch as typeof fetch & { preconnect?: (url: string) => void })
-    .preconnect;
+  const preconnect = (
+    globalThis.fetch as typeof fetch & {
+      preconnect?: (url: string) => void;
+    }
+  ).preconnect;
   if (typeof preconnect !== "function") return;
-  const now = Date.now();
-  if (now - lastPreconnectAt < PRECONNECT_MIN_INTERVAL_MS) return;
-  lastPreconnectAt = now;
   try {
-    preconnect(getBaseURL(runtime));
+    const baseURL = getBaseURL(runtime);
+    const now = Date.now();
+    const previous = providerPreconnects.get(runtime);
+    if (
+      previous?.baseURL === baseURL &&
+      now >= previous.attemptedAt &&
+      now - previous.attemptedAt < 15_000
+    )
+      return;
+    providerPreconnects.set(runtime, { baseURL, attemptedAt: now });
+    preconnect(baseURL);
   } catch {
-    // Connection warming is opportunistic; the model call itself still works.
+    // Connection warming is optional. Reporting an agent error here triggers
+    // proactive user notifications even when the actual model request succeeds.
+    // The model request owns provider failures; retain a quiet debug diagnostic.
+    logger.debug("[OpenAI] Connection warm-up unavailable; continuing with normal model requests.");
   }
 }
 
 export const openaiPlugin: Plugin = {
+  events: {
+    [EventType.MESSAGE_RECEIVED]: [async ({ runtime }) => preconnectProvider(runtime)],
+    [EventType.VOICE_MESSAGE_RECEIVED]: [async ({ runtime }) => preconnectProvider(runtime)],
+  },
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",
-  events: {
-    MESSAGE_RECEIVED: [
-      async (payload) => {
-        preconnectProvider(payload.runtime);
-      },
-    ],
-    VOICE_MESSAGE_RECEIVED: [
-      async (payload) => {
-        preconnectProvider(payload.runtime);
-      },
-    ],
-  },
   autoEnable: {
     envKeys: ["OPENAI_API_KEY", "CEREBRAS_API_KEY", "EVOLINK_API_KEY"],
   },

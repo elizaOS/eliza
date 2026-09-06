@@ -33,9 +33,11 @@ import {
   type AgentBackupRestoreV3SourceAuthority,
   canonicalizeAgentBackupRestoreV3AuthorityFence,
   canonicalizeAgentBackupRestoreV3CandidateReceipt,
+  canonicalizeAgentBackupRestoreV3CandidateSealAuthorizationRequest,
   canonicalizeAgentBackupRestoreV3ExactReadReceiptProof,
   canonicalizeAgentBackupRestoreV3SourceAuthority,
   computeAgentBackupRestoreV3CandidateReceiptSha256,
+  computeAgentBackupRestoreV3CandidateSealAuthorizationRequestSha256,
   computeAgentBackupRestoreV3ExactReadReceiptSha256,
   computeAgentBackupRestoreV3SourceAuthoritySha256,
   createAgentBackupRestoreV3CandidateSealAuthorizationRequest,
@@ -831,6 +833,20 @@ describe("agent backup restore-v3 stream contract", () => {
     expect(validated.binding.objectCount).toBe(6);
     expect(validated.binding.candidateReceiptSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(request.candidate).toEqual(validated.binding);
+    const reorderedRequest = {
+      candidate: request.candidate,
+      sessionExecutionToken: request.sessionExecutionToken,
+      authority: request.authority,
+    };
+    expect(
+      canonicalizeAgentBackupRestoreV3CandidateSealAuthorizationRequest(
+        request,
+      ),
+    ).toBe(
+      canonicalizeAgentBackupRestoreV3CandidateSealAuthorizationRequest(
+        reorderedRequest,
+      ),
+    );
     expect(Object.isFrozen(validated.sourceAuthority.objects)).toBe(true);
     const canonical = canonicalizeAgentBackupRestoreV3SourceAuthority(
       validated.sourceAuthority,
@@ -840,8 +856,14 @@ describe("agent backup restore-v3 stream contract", () => {
     expect(canonical).not.toContain('"endpointAlias":');
   });
 
-  test("pins the three canonical wire digests to stable literal goldens", async () => {
+  test("pins the four canonical wire digests to stable literal goldens", async () => {
     const fixture = await candidateContextFixture();
+    const validated =
+      await validateAgentBackupRestoreV3CandidateContext(fixture);
+    const request = createAgentBackupRestoreV3CandidateSealAuthorizationRequest(
+      validated,
+      "execution-token",
+    );
     const firstProof = fixture.exactReadProofs[0];
     if (!firstProof)
       throw new Error("Fixture omitted its first exact-read proof");
@@ -860,6 +882,13 @@ describe("agent backup restore-v3 stream contract", () => {
       computeAgentBackupRestoreV3CandidateReceiptSha256(fixture.receipt),
     ).resolves.toBe(
       "f9c5855a91551f65b5504bfc0e19d8affb7eabc055b3dca8a86fc76ff52e69a0",
+    );
+    await expect(
+      computeAgentBackupRestoreV3CandidateSealAuthorizationRequestSha256(
+        request,
+      ),
+    ).resolves.toBe(
+      "93b9ce39e2407035b1a913933394500979c360f145196f67f67ae925f4e9ccdc",
     );
   });
 

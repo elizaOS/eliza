@@ -248,6 +248,7 @@ app.post("/", async (c) => {
         cost,
         admissionSnapshot,
         credential: credentialGuard.credentialForAdmission(),
+        atomicProviderBoundary: true,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

@@ -5686,16 +5686,15 @@ export class AcpService extends Service {
     const paths: string[] = [];
     for (const key of AcpService.EDIT_PATH_KEYS) {
       const value = rawInput[key];
-      if (typeof value === "string" && value.trim()) paths.push(value.trim());
+      if (typeof value === "string" && value.length > 0) paths.push(value);
     }
     for (const location of toolCall.locations ?? []) {
-      if (typeof location?.path === "string" && location.path.trim())
-        paths.push(location.path.trim());
+      if (typeof location?.path === "string" && location.path.length > 0)
+        paths.push(location.path);
     }
     if (paths.length === 0) return;
     const set = this.changedPathsBySession.get(sessionId) ?? new Set<string>();
     for (const path of paths) {
-      if (set.size >= 500) break;
       set.add(path);
     }
     this.changedPathsBySession.set(sessionId, set);

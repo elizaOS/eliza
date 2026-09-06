@@ -11,6 +11,7 @@
 
 import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
+import { pollUntil } from "./poll.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import type {
   CreateRedemptionRequest,
@@ -53,6 +54,7 @@ import {
   type CliLoginStartOptions,
   type CliLoginStartResponse,
   type CloudRequestOptions,
+  type CloudResponse,
   type ContainerCredentialsResponse,
   type ContainerGetResponse,
   type ContainerHealthResponse,
@@ -329,7 +331,23 @@ export class ElizaCloudClient {
       defaultHeaders: options.defaultHeaders,
       fetchImpl: options.fetchImpl,
     });
-    this.routes = new ElizaCloudPublicRoutesClient(this);
+    this.routes = new ElizaCloudPublicRoutesClient({
+      request: <TResponse>(
+        method: HttpMethod,
+        path: string,
+        requestOptions?: CloudRequestOptions,
+      ) => this.http.request<TResponse>(method, path, requestOptions),
+      requestData: <TResponse>(
+        method: HttpMethod,
+        path: string,
+        requestOptions?: CloudRequestOptions,
+      ) => this.http.requestData<TResponse>(method, path, requestOptions),
+      requestRaw: (
+        method: HttpMethod,
+        path: string,
+        requestOptions?: CloudRequestOptions,
+      ) => this.http.requestRaw(method, path, requestOptions),
+    });
   }
 
   setApiKey(apiKey: string | undefined): void {
@@ -346,7 +364,7 @@ export class ElizaCloudClient {
     method: HttpMethod,
     path: string,
     options?: CloudRequestOptions,
-  ): Promise<TResponse> {
+  ): Promise<CloudResponse<TResponse>> {
     return this.http.request<TResponse>(method, path, options);
   }
 
@@ -358,11 +376,19 @@ export class ElizaCloudClient {
     return this.http.requestRaw(method, path, options);
   }
 
+  private requestData<TResponse>(
+    method: HttpMethod,
+    path: string,
+    options?: CloudRequestOptions,
+  ): Promise<TResponse> {
+    return this.http.requestData<TResponse>(method, path, options);
+  }
+
   callEndpoint<TResponse>(
     method: HttpMethod,
     pathTemplate: string,
     options: EndpointCallOptions = {},
-  ): Promise<TResponse> {
+  ): Promise<CloudResponse<TResponse>> {
     const { pathParams, ...requestOptions } = options;
     return this.request<TResponse>(
       method,
@@ -372,7 +398,7 @@ export class ElizaCloudClient {
   }
 
   getOpenApiSpec(options: CloudRequestOptions = {}): Promise<OpenApiSpec> {
-    return this.request<OpenApiSpec>("GET", "/api/openapi.json", options);
+    return this.requestData<OpenApiSpec>("GET", "/api/openapi.json", options);
   }
 
   startCliLogin(
@@ -386,7 +412,7 @@ export class ElizaCloudClient {
       ? `?returnTo=${encodeURIComponent(options.returnTo)}`
       : "";
 
-    return this.request<{
+    return this.requestData<{
       sessionId: string;
       status?: string;
       expiresAt?: string;
@@ -411,11 +437,14 @@ export class ElizaCloudClient {
     });
   }
 
-  pollCliLogin(sessionId: string): Promise<CliLoginPollResponse> {
-    return this.request<CliLoginPollResponse>(
+  pollCliLogin(
+    sessionId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<CliLoginPollResponse> {
+    return this.requestData<CliLoginPollResponse>(
       "GET",
       `/api/auth/cli-session/${encodePathParam(sessionId)}`,
-      { skipAuth: true },
+      { ...options, skipAuth: true },
     );
   }
 
@@ -441,29 +470,26 @@ export class ElizaCloudClient {
       signal?: AbortSignal;
     } = {},
   ): Promise<CliLoginPollResponse> {
-    const timeoutMs = options.timeoutMs ?? 300_000;
-    const intervalMs = options.intervalMs ?? 2_000;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      if (options.signal?.aborted) {
-        throw new Error("Eliza Cloud sign-in was cancelled");
-      }
-      const result = await this.pollCliLogin(sessionId);
-      if (result.status === "authenticated") {
-        return result;
-      }
-      if (result.status === "expired" || result.status === "error") {
-        throw new Error(result.error ?? `Eliza Cloud sign-in ${result.status}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-
-    throw new Error("Timed out waiting for Eliza Cloud sign-in");
+    return pollUntil({
+      read: (requestOptions) => this.pollCliLogin(sessionId, requestOptions),
+      isComplete: (result) => {
+        if (result.status === "expired" || result.status === "error") {
+          throw new Error(
+            result.error ?? `Eliza Cloud sign-in ${result.status}`,
+          );
+        }
+        return result.status === "authenticated";
+      },
+      timeoutMs: options.timeoutMs ?? 300_000,
+      intervalMs: options.intervalMs ?? 2_000,
+      signal: options.signal,
+      timeoutMessage: "Timed out waiting for Eliza Cloud sign-in",
+      cancellationMessage: "Eliza Cloud sign-in was cancelled",
+    });
   }
 
   pairWithToken(token: string, origin: string): Promise<AuthPairResponse> {
-    return this.request<AuthPairResponse>("POST", "/api/auth/pair", {
+    return this.requestData<AuthPairResponse>("POST", "/api/auth/pair", {
       json: { token },
       headers: { Origin: origin },
       skipAuth: true,
@@ -471,34 +497,37 @@ export class ElizaCloudClient {
   }
 
   listModels(): Promise<ModelListResponse> {
-    return this.v1.get<ModelListResponse>("/models", { skipAuth: true });
+    return this.v1.requestData<ModelListResponse>("GET", "/models", {
+      skipAuth: true,
+    });
   }
 
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {
-    return this.v1.get<SubscriptionPlansResponse>("/subscriptions/plans", {
-      skipAuth: true,
-    });
+    return this.v1.requestData<SubscriptionPlansResponse>(
+      "GET",
+      "/subscriptions/plans",
+      { skipAuth: true },
+    );
   }
 
   createResponse(
     request: ResponsesCreateRequest,
     options: InferenceCallOptions = {},
   ): Promise<ResponsesCreateResponse> {
-    return this.v1.post<ResponsesCreateResponse>(
-      "/responses",
-      request,
-      inferenceRequestOptions(options),
-    );
+    return this.v1.requestData<ResponsesCreateResponse>("POST", "/responses", {
+      ...inferenceRequestOptions(options),
+      json: request,
+    });
   }
 
   createChatCompletion(
     request: ChatCompletionRequest,
     options: InferenceCallOptions = {},
   ): Promise<ChatCompletionResponse> {
-    return this.v1.post<ChatCompletionResponse>(
+    return this.v1.requestData<ChatCompletionResponse>(
+      "POST",
       "/chat/completions",
-      request,
-      inferenceRequestOptions(options),
+      { ...inferenceRequestOptions(options), json: request },
     );
   }
 
@@ -506,21 +535,20 @@ export class ElizaCloudClient {
     request: EmbeddingsRequest,
     options: InferenceCallOptions = {},
   ): Promise<EmbeddingsResponse> {
-    return this.v1.post<EmbeddingsResponse>(
-      "/embeddings",
-      request,
-      inferenceRequestOptions(options),
-    );
+    return this.v1.requestData<EmbeddingsResponse>("POST", "/embeddings", {
+      ...inferenceRequestOptions(options),
+      json: request,
+    });
   }
 
   generateImage(
     request: GenerateImageRequest,
     options: InferenceCallOptions = {},
   ): Promise<GenerateImageResponse> {
-    return this.v1.post<GenerateImageResponse>(
+    return this.v1.requestData<GenerateImageResponse>(
+      "POST",
       "/generate-image",
-      request,
-      inferenceRequestOptions(options),
+      { ...inferenceRequestOptions(options), json: request },
     );
   }
 
@@ -542,7 +570,7 @@ export class ElizaCloudClient {
     if (request.languageCode !== undefined) {
       form.append("languageCode", request.languageCode);
     }
-    return this.v1.request<VoiceSttResponse>("POST", "/voice/stt", {
+    return this.v1.requestData<VoiceSttResponse>("POST", "/voice/stt", {
       ...inferenceRequestOptions(options),
       body: form,
     });
@@ -551,7 +579,7 @@ export class ElizaCloudClient {
   getCreditsBalance(
     options: { fresh?: boolean } = {},
   ): Promise<CreditBalanceResponse> {
-    return this.request<CreditBalanceResponse>(
+    return this.requestData<CreditBalanceResponse>(
       "GET",
       "/api/v1/credits/balance",
       {
@@ -562,7 +590,7 @@ export class ElizaCloudClient {
   }
 
   getCreditsSummary(): Promise<CreditSummaryResponse> {
-    return this.request<CreditSummaryResponse>(
+    return this.requestData<CreditSummaryResponse>(
       "GET",
       "/api/v1/credits/summary",
     );
@@ -571,7 +599,7 @@ export class ElizaCloudClient {
   createCreditsCheckout(
     request: CreateCreditsCheckoutRequest,
   ): Promise<CreateCreditsCheckoutResponse> {
-    return this.request<CreateCreditsCheckoutResponse>(
+    return this.requestData<CreateCreditsCheckoutResponse>(
       "POST",
       "/api/v1/credits/checkout",
       {
@@ -581,7 +609,7 @@ export class ElizaCloudClient {
   }
 
   getAppCreditsBalance(appId: string): Promise<AppCreditsBalanceResponse> {
-    return this.request<AppCreditsBalanceResponse>(
+    return this.requestData<AppCreditsBalanceResponse>(
       "GET",
       "/api/v1/app-credits/balance",
       {
@@ -593,7 +621,7 @@ export class ElizaCloudClient {
   createAppCreditsCheckout(
     request: CreateAppCreditsCheckoutRequest,
   ): Promise<CreateAppCreditsCheckoutResponse> {
-    return this.request<CreateAppCreditsCheckoutResponse>(
+    return this.requestData<CreateAppCreditsCheckoutResponse>(
       "POST",
       "/api/v1/app-credits/checkout",
       {
@@ -605,7 +633,7 @@ export class ElizaCloudClient {
   verifyAppCreditsCheckout(
     sessionId: string,
   ): Promise<VerifyAppCreditsCheckoutResponse> {
-    return this.request<VerifyAppCreditsCheckoutResponse>(
+    return this.requestData<VerifyAppCreditsCheckoutResponse>(
       "GET",
       "/api/v1/app-credits/verify",
       {
@@ -615,7 +643,7 @@ export class ElizaCloudClient {
   }
 
   getX402Supported(): Promise<X402SupportedResponse> {
-    return this.request<X402SupportedResponse>("GET", "/api/v1/x402", {
+    return this.requestData<X402SupportedResponse>("GET", "/api/v1/x402", {
       skipAuth: true,
     });
   }
@@ -623,7 +651,7 @@ export class ElizaCloudClient {
   verifyX402Payment(
     request: X402FacilitatorPaymentRequest,
   ): Promise<X402VerifyResponse> {
-    return this.request<X402VerifyResponse>("POST", "/api/v1/x402/verify", {
+    return this.requestData<X402VerifyResponse>("POST", "/api/v1/x402/verify", {
       json: request,
       skipAuth: true,
     });
@@ -632,7 +660,7 @@ export class ElizaCloudClient {
   settleX402Payment(
     request: X402FacilitatorPaymentRequest,
   ): Promise<X402SettleResponse> {
-    return this.request<X402SettleResponse>("POST", "/api/v1/x402/settle", {
+    return this.requestData<X402SettleResponse>("POST", "/api/v1/x402/settle", {
       json: request,
       skipAuth: true,
     });
@@ -641,7 +669,7 @@ export class ElizaCloudClient {
   createX402PaymentRequest(
     request: CreateX402PaymentRequest,
   ): Promise<CreateX402PaymentRequestResponse> {
-    return this.request<CreateX402PaymentRequestResponse>(
+    return this.requestData<CreateX402PaymentRequestResponse>(
       "POST",
       "/api/v1/x402/requests",
       {
@@ -651,14 +679,14 @@ export class ElizaCloudClient {
   }
 
   listX402PaymentRequests(): Promise<ListX402PaymentRequestsResponse> {
-    return this.request<ListX402PaymentRequestsResponse>(
+    return this.requestData<ListX402PaymentRequestsResponse>(
       "GET",
       "/api/v1/x402/requests",
     );
   }
 
   getX402PaymentRequest(id: string): Promise<GetX402PaymentRequestResponse> {
-    return this.request<GetX402PaymentRequestResponse>(
+    return this.requestData<GetX402PaymentRequestResponse>(
       "GET",
       `/api/v1/x402/requests/${encodePathParam(id)}`,
       { skipAuth: true },
@@ -669,7 +697,7 @@ export class ElizaCloudClient {
     id: string,
     paymentPayload: JsonObject,
   ): Promise<SettleX402PaymentRequestResponse> {
-    return this.request<SettleX402PaymentRequestResponse>(
+    return this.requestData<SettleX402PaymentRequestResponse>(
       "POST",
       `/api/v1/x402/requests/${encodePathParam(id)}/settle`,
       { json: { paymentPayload }, skipAuth: true },
@@ -680,7 +708,7 @@ export class ElizaCloudClient {
     appId: string,
     request: CreateAppChargeRequest,
   ): Promise<CreateAppChargeResponse> {
-    return this.request<CreateAppChargeResponse>(
+    return this.requestData<CreateAppChargeResponse>(
       "POST",
       `/api/v1/apps/${encodePathParam(appId)}/charges`,
       { json: request },
@@ -691,7 +719,7 @@ export class ElizaCloudClient {
     appId: string,
     options: { limit?: number } = {},
   ): Promise<ListAppChargesResponse> {
-    return this.request<ListAppChargesResponse>(
+    return this.requestData<ListAppChargesResponse>(
       "GET",
       `/api/v1/apps/${encodePathParam(appId)}/charges`,
       {
@@ -702,7 +730,7 @@ export class ElizaCloudClient {
   }
 
   getAppCharge(appId: string, chargeId: string): Promise<GetAppChargeResponse> {
-    return this.request<GetAppChargeResponse>(
+    return this.requestData<GetAppChargeResponse>(
       "GET",
       `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}`,
       { skipAuth: true },
@@ -714,7 +742,7 @@ export class ElizaCloudClient {
     chargeId: string,
     request: CreateAppChargeCheckoutRequest,
   ): Promise<CreateAppChargeCheckoutResponse> {
-    return this.request<CreateAppChargeCheckoutResponse>(
+    return this.requestData<CreateAppChargeCheckoutResponse>(
       "POST",
       `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}/checkout`,
       { json: request },
@@ -722,29 +750,37 @@ export class ElizaCloudClient {
   }
 
   getAffiliateCode(): Promise<AffiliateCodeResponse> {
-    return this.request<AffiliateCodeResponse>("GET", "/api/v1/affiliates");
+    return this.requestData<AffiliateCodeResponse>("GET", "/api/v1/affiliates");
   }
 
   createAffiliateCode(
     request: UpsertAffiliateCodeRequest,
   ): Promise<AffiliateCodeResponse> {
-    return this.request<AffiliateCodeResponse>("POST", "/api/v1/affiliates", {
-      json: request,
-    });
+    return this.requestData<AffiliateCodeResponse>(
+      "POST",
+      "/api/v1/affiliates",
+      {
+        json: request,
+      },
+    );
   }
 
   updateAffiliateCode(
     request: UpsertAffiliateCodeRequest,
   ): Promise<AffiliateCodeResponse> {
-    return this.request<AffiliateCodeResponse>("PUT", "/api/v1/affiliates", {
-      json: request,
-    });
+    return this.requestData<AffiliateCodeResponse>(
+      "PUT",
+      "/api/v1/affiliates",
+      {
+        json: request,
+      },
+    );
   }
 
   linkAffiliateCode(
     request: LinkAffiliateRequest,
   ): Promise<LinkAffiliateResponse> {
-    return this.request<LinkAffiliateResponse>(
+    return this.requestData<LinkAffiliateResponse>(
       "POST",
       "/api/v1/affiliates/link",
       {
@@ -757,7 +793,7 @@ export class ElizaCloudClient {
     appId: string,
     options: { days?: number } = {},
   ): Promise<AppEarningsResponse> {
-    return this.request<AppEarningsResponse>(
+    return this.requestData<AppEarningsResponse>(
       "GET",
       `/api/v1/apps/${encodePathParam(appId)}/earnings`,
       {
@@ -770,7 +806,7 @@ export class ElizaCloudClient {
     appId: string,
     options: { limit?: number; offset?: number; type?: string } = {},
   ): Promise<AppEarningsHistoryResponse> {
-    return this.request<AppEarningsHistoryResponse>(
+    return this.requestData<AppEarningsHistoryResponse>(
       "GET",
       `/api/v1/apps/${encodePathParam(appId)}/earnings/history`,
       { query: options },
@@ -781,7 +817,7 @@ export class ElizaCloudClient {
     appId: string,
     request: WithdrawAppEarningsRequest,
   ): Promise<WithdrawAppEarningsResponse> {
-    return this.request<WithdrawAppEarningsResponse>(
+    return this.requestData<WithdrawAppEarningsResponse>(
       "POST",
       `/api/v1/apps/${encodePathParam(appId)}/earnings/withdraw`,
       { json: request },
@@ -789,7 +825,7 @@ export class ElizaCloudClient {
   }
 
   getRedemptionBalance(): Promise<RedemptionBalanceResponse> {
-    return this.request<RedemptionBalanceResponse>(
+    return this.requestData<RedemptionBalanceResponse>(
       "GET",
       "/api/v1/redemptions/balance",
     );
@@ -811,7 +847,7 @@ export class ElizaCloudClient {
       typeof requestOrNetwork === "string"
         ? { network: requestOrNetwork, pointsAmount }
         : requestOrNetwork;
-    return this.request<RedemptionQuoteResponse>(
+    return this.requestData<RedemptionQuoteResponse>(
       "GET",
       "/api/v1/redemptions/quote",
       {
@@ -824,7 +860,7 @@ export class ElizaCloudClient {
   }
 
   getRedemptionStatus(): Promise<RedemptionStatusResponse> {
-    return this.request<RedemptionStatusResponse>(
+    return this.requestData<RedemptionStatusResponse>(
       "GET",
       "/api/v1/redemptions/status",
       {
@@ -836,7 +872,7 @@ export class ElizaCloudClient {
   createRedemption(
     request: CreateRedemptionRequest,
   ): Promise<CreateRedemptionResponse> {
-    return this.request<CreateRedemptionResponse>(
+    return this.requestData<CreateRedemptionResponse>(
       "POST",
       "/api/v1/redemptions",
       {
@@ -848,9 +884,14 @@ export class ElizaCloudClient {
   listRedemptions(
     options: { limit?: number } = {},
   ): Promise<ListRedemptionsResponse> {
-    return this.request<ListRedemptionsResponse>("GET", "/api/v1/redemptions", {
-      query: options.limit === undefined ? undefined : { limit: options.limit },
-    });
+    return this.requestData<ListRedemptionsResponse>(
+      "GET",
+      "/api/v1/redemptions",
+      {
+        query:
+          options.limit === undefined ? undefined : { limit: options.limit },
+      },
+    );
   }
 
   // ─── Apps (Eliza Cloud Apps product) ──────────────────────────────────────
@@ -944,7 +985,7 @@ export class ElizaCloudClient {
     appId: string,
     input: DeployAppFrontendInput,
   ): Promise<DeployAppFrontendResponse> {
-    return this.request<DeployAppFrontendResponse>(
+    return this.requestData<DeployAppFrontendResponse>(
       "POST",
       `/api/v1/apps/${encodeURIComponent(appId)}/frontend`,
       { json: input },
@@ -955,7 +996,7 @@ export class ElizaCloudClient {
   listAppFrontendDeployments(
     appId: string,
   ): Promise<ListAppFrontendDeploymentsResponse> {
-    return this.request<ListAppFrontendDeploymentsResponse>(
+    return this.requestData<ListAppFrontendDeploymentsResponse>(
       "GET",
       `/api/v1/apps/${encodeURIComponent(appId)}/frontend`,
     );
@@ -969,7 +1010,7 @@ export class ElizaCloudClient {
     appId: string,
     deploymentId: string,
   ): Promise<ActivateAppFrontendResponse> {
-    return this.request<ActivateAppFrontendResponse>(
+    return this.requestData<ActivateAppFrontendResponse>(
       "POST",
       `/api/v1/apps/${encodeURIComponent(appId)}/frontend/${encodeURIComponent(deploymentId)}/activate`,
     );
@@ -1050,7 +1091,7 @@ export class ElizaCloudClient {
   }
 
   listContainers(): Promise<ContainerListResponse> {
-    return this.request<ContainerListResponse>("GET", "/api/v1/containers");
+    return this.requestData<ContainerListResponse>("GET", "/api/v1/containers");
   }
 
   /**
@@ -1058,7 +1099,7 @@ export class ElizaCloudClient {
    * from serving ads on its surface (SSP, #10687).
    */
   createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
-    return this.request<CreateAdSlotResponse>(
+    return this.requestData<CreateAdSlotResponse>(
       "POST",
       "/api/v1/marketing/inventory",
       {
@@ -1069,7 +1110,7 @@ export class ElizaCloudClient {
 
   /** `GET /api/v1/marketing/inventory` — list the org's ad slots. */
   listAdSlots(): Promise<ListAdSlotsResponse> {
-    return this.request<ListAdSlotsResponse>(
+    return this.requestData<ListAdSlotsResponse>(
       "GET",
       "/api/v1/marketing/inventory",
     );
@@ -1079,7 +1120,7 @@ export class ElizaCloudClient {
   getAdCampaignDayparting(
     campaignId: string,
   ): Promise<CampaignDaypartingResponse> {
-    return this.request<CampaignDaypartingResponse>(
+    return this.requestData<CampaignDaypartingResponse>(
       "GET",
       `/api/v1/advertising/campaigns/${encodeURIComponent(campaignId)}/dayparting`,
     );
@@ -1090,7 +1131,7 @@ export class ElizaCloudClient {
     campaignId: string,
     input: UpdateCampaignDaypartingInput,
   ): Promise<CampaignDaypartingResponse> {
-    return this.request<CampaignDaypartingResponse>(
+    return this.requestData<CampaignDaypartingResponse>(
       "PUT",
       `/api/v1/advertising/campaigns/${encodeURIComponent(campaignId)}/dayparting`,
       { json: input },
@@ -1102,7 +1143,7 @@ export class ElizaCloudClient {
     campaignId: string,
     input: DuplicateAdCampaignInput = {},
   ): Promise<DuplicateAdCampaignResponse> {
-    return this.request<DuplicateAdCampaignResponse>(
+    return this.requestData<DuplicateAdCampaignResponse>(
       "POST",
       `/api/v1/advertising/campaigns/${encodeURIComponent(campaignId)}/duplicate`,
       { json: input },
@@ -1113,7 +1154,7 @@ export class ElizaCloudClient {
   getAdCampaignAttribution(
     campaignId: string,
   ): Promise<AdCampaignAttributionResponse> {
-    return this.request<AdCampaignAttributionResponse>(
+    return this.requestData<AdCampaignAttributionResponse>(
       "GET",
       `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/attribution`,
     );
@@ -1129,7 +1170,7 @@ export class ElizaCloudClient {
     if (options.startDate) query.set("startDate", options.startDate);
     if (options.endDate) query.set("endDate", options.endDate);
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<CampaignPerformanceReportResponse>(
+    return this.requestData<CampaignPerformanceReportResponse>(
       "GET",
       `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/report${suffix}`,
     );
@@ -1140,7 +1181,7 @@ export class ElizaCloudClient {
     campaignId: string,
     input: CreateCampaignReportShareInput = {},
   ): Promise<CreateCampaignReportShareResponse> {
-    return this.request<CreateCampaignReportShareResponse>(
+    return this.requestData<CreateCampaignReportShareResponse>(
       "POST",
       `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/report/share`,
       { json: input },
@@ -1152,7 +1193,7 @@ export class ElizaCloudClient {
     campaignId: string,
     shareId: string,
   ): Promise<RevokeCampaignReportShareResponse> {
-    return this.request<RevokeCampaignReportShareResponse>(
+    return this.requestData<RevokeCampaignReportShareResponse>(
       "DELETE",
       `/api/v1/advertising/campaigns/${encodePathParam(campaignId)}/report/share/${encodePathParam(shareId)}`,
     );
@@ -1162,7 +1203,7 @@ export class ElizaCloudClient {
   createInfluencerProfile(
     input: CreateInfluencerProfileInput,
   ): Promise<CreateInfluencerProfileResponse> {
-    return this.request<CreateInfluencerProfileResponse>(
+    return this.requestData<CreateInfluencerProfileResponse>(
       "POST",
       "/api/v1/marketing/influencers",
       {
@@ -1174,7 +1215,7 @@ export class ElizaCloudClient {
   /** `GET /api/v1/marketing/influencers` — browse active influencer profiles. */
   listInfluencers(niche?: string): Promise<ListInfluencersResponse> {
     const q = niche ? `?niche=${encodeURIComponent(niche)}` : "";
-    return this.request<ListInfluencersResponse>(
+    return this.requestData<ListInfluencersResponse>(
       "GET",
       `/api/v1/marketing/influencers${q}`,
     );
@@ -1182,7 +1223,7 @@ export class ElizaCloudClient {
 
   /** `POST /api/v1/marketing/influencers/bookings` — fund an escrowed influencer booking (#10687). */
   createBooking(input: CreateBookingInput): Promise<CreateBookingResponse> {
-    return this.request<CreateBookingResponse>(
+    return this.requestData<CreateBookingResponse>(
       "POST",
       "/api/v1/marketing/influencers/bookings",
       {
@@ -1195,7 +1236,7 @@ export class ElizaCloudClient {
   createPressRelease(
     input: CreatePressReleaseInput,
   ): Promise<CreatePressReleaseResponse> {
-    return this.request<CreatePressReleaseResponse>(
+    return this.requestData<CreatePressReleaseResponse>(
       "POST",
       "/api/v1/marketing/pr",
       { json: input },
@@ -1204,7 +1245,7 @@ export class ElizaCloudClient {
 
   /** `GET /api/v1/marketing/pr` — list the org's press release drafts and submissions. */
   listPressReleases(): Promise<ListPressReleasesResponse> {
-    return this.request<ListPressReleasesResponse>(
+    return this.requestData<ListPressReleasesResponse>(
       "GET",
       "/api/v1/marketing/pr",
     );
@@ -1212,7 +1253,7 @@ export class ElizaCloudClient {
 
   /** `GET /api/v1/marketing/pr/:releaseId` — read one press release. */
   getPressRelease(releaseId: string): Promise<GetPressReleaseResponse> {
-    return this.request<GetPressReleaseResponse>(
+    return this.requestData<GetPressReleaseResponse>(
       "GET",
       `/api/v1/marketing/pr/${encodePathParam(releaseId)}`,
     );
@@ -1223,7 +1264,7 @@ export class ElizaCloudClient {
     releaseId: string,
     input: UpdatePressReleaseInput,
   ): Promise<UpdatePressReleaseResponse> {
-    return this.request<UpdatePressReleaseResponse>(
+    return this.requestData<UpdatePressReleaseResponse>(
       "PATCH",
       `/api/v1/marketing/pr/${encodePathParam(releaseId)}`,
       { json: input },
@@ -1235,7 +1276,7 @@ export class ElizaCloudClient {
     releaseId: string,
     input: SubmitPressReleaseInput = {},
   ): Promise<SubmitPressReleaseResponse> {
-    return this.request<SubmitPressReleaseResponse>(
+    return this.requestData<SubmitPressReleaseResponse>(
       "POST",
       `/api/v1/marketing/pr/${encodePathParam(releaseId)}/submit`,
       { json: input },
@@ -1244,7 +1285,7 @@ export class ElizaCloudClient {
 
   /** `POST /api/v1/marketing/pr/:releaseId/cancel` — cancel a draft or ready press release. */
   cancelPressRelease(releaseId: string): Promise<UpdatePressReleaseResponse> {
-    return this.request<UpdatePressReleaseResponse>(
+    return this.requestData<UpdatePressReleaseResponse>(
       "POST",
       `/api/v1/marketing/pr/${encodePathParam(releaseId)}/cancel`,
     );
@@ -1252,7 +1293,7 @@ export class ElizaCloudClient {
 
   /** `GET /api/v1/marketing/pr/:releaseId/coverage` — list tracked coverage for a release. */
   listPressCoverage(releaseId: string): Promise<ListPressCoverageResponse> {
-    return this.request<ListPressCoverageResponse>(
+    return this.requestData<ListPressCoverageResponse>(
       "GET",
       `/api/v1/marketing/pr/${encodePathParam(releaseId)}/coverage`,
     );
@@ -1260,7 +1301,7 @@ export class ElizaCloudClient {
 
   /** `GET /api/v1/apps/:id/backup` — export a secret-free app config snapshot (#10204). */
   exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
-    return this.request<ExportAppBackupResponse>(
+    return this.requestData<ExportAppBackupResponse>(
       "GET",
       `/api/v1/apps/${appId}/backup`,
     );
@@ -1271,7 +1312,7 @@ export class ElizaCloudClient {
     backup: AppBackupSnapshot,
     name?: string,
   ): Promise<RestoreAppBackupResponse> {
-    return this.request<RestoreAppBackupResponse>(
+    return this.requestData<RestoreAppBackupResponse>(
       "POST",
       "/api/v1/apps/backup/restore",
       {
@@ -1283,13 +1324,17 @@ export class ElizaCloudClient {
   createContainer(
     request: CreateContainerRequest,
   ): Promise<CreateContainerResponse> {
-    return this.request<CreateContainerResponse>("POST", "/api/v1/containers", {
-      json: request,
-    });
+    return this.requestData<CreateContainerResponse>(
+      "POST",
+      "/api/v1/containers",
+      {
+        json: request,
+      },
+    );
   }
 
   getContainer(containerId: string): Promise<ContainerGetResponse> {
-    return this.request<ContainerGetResponse>(
+    return this.requestData<ContainerGetResponse>(
       "GET",
       `/api/v1/containers/${encodePathParam(containerId)}`,
     );
@@ -1299,7 +1344,7 @@ export class ElizaCloudClient {
     containerId: string,
     request: UpdateContainerRequest,
   ): Promise<ContainerGetResponse> {
-    return this.request<ContainerGetResponse>(
+    return this.requestData<ContainerGetResponse>(
       "PATCH",
       `/api/v1/containers/${encodePathParam(containerId)}`,
       { json: request },
@@ -1309,21 +1354,21 @@ export class ElizaCloudClient {
   deleteContainer(
     containerId: string,
   ): Promise<{ success: boolean; message?: string }> {
-    return this.request(
+    return this.requestData(
       "DELETE",
       `/api/v1/containers/${encodePathParam(containerId)}`,
     );
   }
 
   getContainerHealth(containerId: string): Promise<ContainerHealthResponse> {
-    return this.request<ContainerHealthResponse>(
+    return this.requestData<ContainerHealthResponse>(
       "GET",
       `/api/v1/containers/${encodePathParam(containerId)}/health`,
     );
   }
 
   getContainerMetrics(containerId: string): Promise<Record<string, unknown>> {
-    return this.request(
+    return this.requestData(
       "GET",
       `/api/v1/containers/${encodePathParam(containerId)}/metrics`,
     );
@@ -1354,14 +1399,14 @@ export class ElizaCloudClient {
   getContainerDeployments(
     containerId: string,
   ): Promise<Record<string, unknown>> {
-    return this.request(
+    return this.requestData(
       "GET",
       `/api/v1/containers/${encodePathParam(containerId)}/deployments`,
     );
   }
 
   getContainerQuota(): Promise<ContainerQuotaResponse> {
-    return this.request<ContainerQuotaResponse>(
+    return this.requestData<ContainerQuotaResponse>(
       "GET",
       "/api/v1/containers/quota",
     );
@@ -1370,7 +1415,7 @@ export class ElizaCloudClient {
   createContainerCredentials(
     request: Record<string, unknown> = {},
   ): Promise<ContainerCredentialsResponse> {
-    return this.request<ContainerCredentialsResponse>(
+    return this.requestData<ContainerCredentialsResponse>(
       "POST",
       "/api/v1/containers/credentials",
       {
@@ -1380,17 +1425,21 @@ export class ElizaCloudClient {
   }
 
   listAgents(): Promise<AgentListResponse> {
-    return this.request<AgentListResponse>("GET", "/api/v1/eliza/agents");
+    return this.requestData<AgentListResponse>("GET", "/api/v1/eliza/agents");
   }
 
   createAgent(request: CreateAgentRequest): Promise<CreateAgentResponse> {
-    return this.request<CreateAgentResponse>("POST", "/api/v1/eliza/agents", {
-      json: request,
-    });
+    return this.requestData<CreateAgentResponse>(
+      "POST",
+      "/api/v1/eliza/agents",
+      {
+        json: request,
+      },
+    );
   }
 
   getAgent(agentId: string): Promise<AgentResponse> {
-    return this.request<AgentResponse>(
+    return this.requestData<AgentResponse>(
       "GET",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}`,
     );
@@ -1400,7 +1449,7 @@ export class ElizaCloudClient {
     agentId: string,
     request: Partial<CreateAgentRequest>,
   ): Promise<AgentResponse> {
-    return this.request<AgentResponse>(
+    return this.requestData<AgentResponse>(
       "PATCH",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}`,
       { json: request },
@@ -1408,28 +1457,28 @@ export class ElizaCloudClient {
   }
 
   deleteAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request(
+    return this.requestData(
       "DELETE",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}`,
     );
   }
 
   provisionAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/provision`,
     );
   }
 
   suspendAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/suspend`,
     );
   }
 
   resumeAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/resume`,
     );
@@ -1440,7 +1489,7 @@ export class ElizaCloudClient {
     snapshotType: SnapshotType = "manual",
     metadata?: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/snapshot`,
       {
@@ -1450,7 +1499,7 @@ export class ElizaCloudClient {
   }
 
   listAgentBackups(agentId: string): Promise<SnapshotListResponse> {
-    return this.request(
+    return this.requestData(
       "GET",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/backups`,
     );
@@ -1460,7 +1509,7 @@ export class ElizaCloudClient {
     agentId: string,
     backupId?: string,
   ): Promise<Record<string, unknown>> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/restore`,
       {
@@ -1470,7 +1519,9 @@ export class ElizaCloudClient {
   }
 
   getAgentPairingToken(agentId: string): Promise<PairingTokenResponse> {
-    return this.request<PairingTokenResponse | { data: PairingTokenResponse }>(
+    return this.requestData<
+      PairingTokenResponse | { data: PairingTokenResponse }
+    >(
       "POST",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/pairing-token`,
     ).then((response) => ("data" in response ? response.data : response));
@@ -1480,9 +1531,10 @@ export class ElizaCloudClient {
     runtimeAgentId: string;
     agentName?: string;
   }): Promise<RegisterGatewayRelaySessionResponse> {
-    return this.v1.post<RegisterGatewayRelaySessionResponse>(
+    return this.v1.requestData<RegisterGatewayRelaySessionResponse>(
+      "POST",
       "/eliza/gateway-relay/sessions",
-      request,
+      { json: request },
     );
   }
 
@@ -1490,7 +1542,8 @@ export class ElizaCloudClient {
     sessionId: string,
     timeoutMs?: number,
   ): Promise<PollGatewayRelayResponse> {
-    return this.v1.get<PollGatewayRelayResponse>(
+    return this.v1.requestData<PollGatewayRelayResponse>(
+      "GET",
       `/eliza/gateway-relay/sessions/${encodePathParam(sessionId)}/next`,
       { query: timeoutMs === undefined ? undefined : { timeoutMs } },
     );
@@ -1501,64 +1554,65 @@ export class ElizaCloudClient {
     requestId: string,
     response: GatewayRelayResponse,
   ): Promise<{ success: boolean }> {
-    return this.v1.post(
+    return this.v1.requestData(
+      "POST",
       `/eliza/gateway-relay/sessions/${encodePathParam(sessionId)}/responses`,
-      {
-        requestId,
-        response,
-      },
+      { json: { requestId, response } },
     );
   }
 
   disconnectGatewayRelaySession(
     sessionId: string,
   ): Promise<{ success: boolean }> {
-    return this.v1.delete(
+    return this.v1.requestData(
+      "DELETE",
       `/eliza/gateway-relay/sessions/${encodePathParam(sessionId)}`,
     );
   }
 
-  getJob(jobId: string): Promise<JobStatus> {
-    return this.request("GET", `/api/v1/jobs/${encodePathParam(jobId)}`);
+  getJob(
+    jobId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<JobStatus> {
+    return this.requestData(
+      "GET",
+      `/api/v1/jobs/${encodePathParam(jobId)}`,
+      options,
+    );
   }
 
   async pollJob(
     jobId: string,
     options: { timeoutMs?: number; intervalMs?: number } = {},
-  ) {
-    const timeoutMs = options.timeoutMs ?? 120_000;
-    const intervalMs = options.intervalMs ?? 2_000;
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-      const job = await this.getJob(jobId);
-      if (job.status === "completed" || job.status === "failed") {
-        return job;
-      }
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-
-    throw new Error(`Timed out waiting for Eliza Cloud job ${jobId}`);
+  ): Promise<JobStatus> {
+    return pollUntil({
+      read: (requestOptions) => this.getJob(jobId, requestOptions),
+      isComplete: (job) =>
+        job.status === "completed" || job.status === "failed",
+      timeoutMs: options.timeoutMs ?? 120_000,
+      intervalMs: options.intervalMs ?? 2_000,
+      timeoutMessage: `Timed out waiting for Eliza Cloud job ${jobId}`,
+    });
   }
 
   getUser(): Promise<UserProfileResponse> {
-    return this.request("GET", "/api/v1/user");
+    return this.requestData("GET", "/api/v1/user");
   }
 
   updateUser(request: Record<string, unknown>): Promise<UserProfileResponse> {
-    return this.request("PATCH", "/api/v1/user", { json: request });
+    return this.requestData("PATCH", "/api/v1/user", { json: request });
   }
 
   listApiKeys(): Promise<ApiKeyListResponse> {
-    return this.request("GET", "/api/v1/api-keys");
+    return this.requestData("GET", "/api/v1/api-keys");
   }
 
   createApiKey(request: ApiKeyCreateRequest): Promise<ApiKeyCreateResponse> {
-    return this.request("POST", "/api/v1/api-keys", { json: request });
+    return this.requestData("POST", "/api/v1/api-keys", { json: request });
   }
 
   updateApiKey(apiKeyId: string, request: Partial<ApiKeyCreateRequest>) {
-    return this.request(
+    return this.requestData(
       "PATCH",
       `/api/v1/api-keys/${encodePathParam(apiKeyId)}`,
       {
@@ -1570,14 +1624,14 @@ export class ElizaCloudClient {
   deleteApiKey(
     apiKeyId: string,
   ): Promise<{ success?: boolean; message?: string }> {
-    return this.request(
+    return this.requestData(
       "DELETE",
       `/api/v1/api-keys/${encodePathParam(apiKeyId)}`,
     );
   }
 
   regenerateApiKey(apiKeyId: string): Promise<ApiKeyCreateResponse> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/api-keys/${encodePathParam(apiKeyId)}/regenerate`,
     );
@@ -1590,7 +1644,7 @@ export class ElizaCloudClient {
    * `unknown` here to avoid drift.
    */
   listWorkflows(agentId: string): Promise<unknown> {
-    return this.request(
+    return this.requestData(
       "GET",
       `/api/v1/agents/${encodePathParam(agentId)}/workflows`,
     );
@@ -1600,7 +1654,7 @@ export class ElizaCloudClient {
     agentId: string,
     body: Record<string, unknown>,
   ): Promise<unknown> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/agents/${encodePathParam(agentId)}/workflows`,
       {
@@ -1610,7 +1664,7 @@ export class ElizaCloudClient {
   }
 
   getWorkflow(agentId: string, workflowId: string): Promise<unknown> {
-    return this.request(
+    return this.requestData(
       "GET",
       `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}`,
     );
@@ -1621,7 +1675,7 @@ export class ElizaCloudClient {
     workflowId: string,
     body: Record<string, unknown>,
   ): Promise<unknown> {
-    return this.request(
+    return this.requestData(
       "PUT",
       `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}`,
       { json: body },
@@ -1629,7 +1683,7 @@ export class ElizaCloudClient {
   }
 
   deleteWorkflow(agentId: string, workflowId: string): Promise<unknown> {
-    return this.request(
+    return this.requestData(
       "DELETE",
       `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}`,
     );
@@ -1640,7 +1694,7 @@ export class ElizaCloudClient {
     workflowId: string,
     body: Record<string, unknown> = {},
   ): Promise<unknown> {
-    return this.request(
+    return this.requestData(
       "POST",
       `/api/v1/agents/${encodePathParam(agentId)}/workflows/${encodePathParam(workflowId)}/run`,
       { json: body },
@@ -1648,7 +1702,7 @@ export class ElizaCloudClient {
   }
 
   getWorkflowExecution(agentId: string, executionId: string): Promise<unknown> {
-    return this.request(
+    return this.requestData(
       "GET",
       `/api/v1/agents/${encodePathParam(agentId)}/workflows/executions/${encodePathParam(executionId)}`,
     );

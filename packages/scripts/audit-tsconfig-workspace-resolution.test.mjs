@@ -321,6 +321,6 @@ test("historic app and Electrobun mappings are real red-green controls", {
   });
   assert.match(
     electrobunBroken.violations.join("\n"),
-    /platforms\/electrobun\/tsconfig\.json: unresolved @elizaos\/capacitor-bun-runtime imported by packages\/app-core\/src\/api\/ios-local-agent-transport\.ts/,
+    /platforms\/electrobun\/tsconfig\.json: unresolved @elizaos\/capacitor-bun-runtime imported by packages\/app-core\/src\/platform\/ios-runtime-bridge\.ts/,
   );
 });

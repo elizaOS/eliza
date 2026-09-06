@@ -176,11 +176,16 @@ export const defaultSpawn: SpawnFn = (argv, opts) =>
       closeStdinFd();
     };
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
+    // Preserve code points split across OS pipe reads before accumulating:
+    // stdout is the model's reply, so a per-chunk decode would hand the user
+    // U+FFFD wherever a multi-byte character straddled a 64 KiB boundary.
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderr += chunk;
     });
     child.on("error", (err) => {
       clearTimers();

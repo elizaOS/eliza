@@ -729,6 +729,7 @@ describe("admitFlatGenerativeOperation", () => {
       apiKeyId: "key-1",
       cost: FLAT_COST,
       admissionSnapshot: snapshot,
+      atomicProviderBoundary: true,
     });
 
     expect(result).toBe(workerAdmission);
@@ -742,7 +743,29 @@ describe("admitFlatGenerativeOperation", () => {
       executionCtx,
       flatCost: FLAT_COST,
       admissionSnapshot: snapshot,
+      atomicProviderBoundary: true,
     });
+  });
+
+  test("keeps legacy Worker admission when the caller has no explicit provider boundary", async () => {
+    const { c } = workerContext();
+    admitOrganizationInference.mockResolvedValueOnce({
+      mode: "durable_object_debit",
+      settle: async () => null,
+      settleUnknown: async () => null,
+    });
+
+    await admitFlatGenerativeOperation({
+      c: c as never,
+      context: billingContext(),
+      apiKeyId: null,
+      cost: FLAT_COST,
+      admissionSnapshot: admissionSnapshot(),
+    });
+
+    expect(admitOrganizationInference).toHaveBeenCalledWith(
+      expect.objectContaining({ atomicProviderBoundary: false }),
+    );
   });
 
   test("threads the exact deferred credential into Worker flat admission", async () => {

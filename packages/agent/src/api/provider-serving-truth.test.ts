@@ -36,6 +36,7 @@ function runtimeWith(options: {
   throwOnSetting?: string;
 }): AgentRuntime {
   return {
+    reportError: vi.fn(),
     getSetting: (key: string) => {
       if (key === options.throwOnSetting) throw new Error("lookup unavailable");
       if (key === "CEREBRAS_API_KEY") return options.credential ?? null;
@@ -136,14 +137,19 @@ describe("provider serving truth", () => {
     ).toBeNull();
   });
 
-  it("fails closed when runtime credential lookup throws despite an env key", () => {
+  it("reports failed runtime credential lookup without falling back to an env key", () => {
+    const runtime = runtimeWith({ throwOnSetting: "CEREBRAS_API_KEY" });
     expect(
       resolveActiveChat(
         cerebrasConfig(),
         { CEREBRAS_API_KEY: "deterministic-env-credential" },
-        runtimeWith({ throwOnSetting: "CEREBRAS_API_KEY" }),
+        runtime,
       ),
     ).toBeNull();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "model-config.serving-truth",
+      expect.objectContaining({ message: "lookup unavailable" }),
+    );
   });
 
   it("does not let an env key override an authoritative runtime vault sentinel", () => {

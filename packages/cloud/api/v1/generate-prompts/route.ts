@@ -100,6 +100,7 @@ Random seed: ${promptSeed}`;
       executionCtx,
       admissionSnapshot: caller.admissionSnapshot,
       credential: credentialGuard.credentialForAdmission(),
+      atomicProviderBoundary: Boolean(executionCtx),
     });
     await admission.markProviderDispatched?.();
     providerDispatchStarted = true;

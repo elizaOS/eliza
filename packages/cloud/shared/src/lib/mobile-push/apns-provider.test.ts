@@ -188,7 +188,7 @@ describe("CloudApnsProvider", () => {
       async () =>
         new Response(null, {
           status: 200,
-          headers: { "apns-id": "provider-receipt-id" },
+          headers: { "apns-id": "123e4567-e89b-12d3-a456-4266554400a0" },
         }),
     );
 
@@ -205,7 +205,7 @@ describe("CloudApnsProvider", () => {
         environment: "sandbox",
         topic: ELIZA_IOS_BUNDLE_ID,
         outcome: "accepted",
-        apnsId: "provider-receipt-id",
+        apnsId: "123e4567-e89b-12d3-a456-4266554400a0",
         payloadBytes: expect.any(Number),
       }),
     );
@@ -222,13 +222,13 @@ describe("CloudApnsProvider", () => {
     const terminal = new CloudApnsProvider(config, async () =>
       Response.json(
         { reason: "Unregistered" },
-        { status: 410, headers: { "apns-id": "terminal-id" } },
+        { status: 410, headers: { "apns-id": "123e4567-e89b-12d3-a456-4266554400a1" } },
       ),
     );
     const retryable = new CloudApnsProvider(config, async () =>
       Response.json(
         { reason: "TooManyRequests" },
-        { status: 429, headers: { "apns-id": "retryable-id" } },
+        { status: 429, headers: { "apns-id": "123e4567-e89b-12d3-a456-4266554400a2" } },
       ),
     );
 
@@ -241,7 +241,7 @@ describe("CloudApnsProvider", () => {
         environment: "production",
         outcome: "unregistered",
         reason: "Unregistered",
-        apnsId: "terminal-id",
+        apnsId: "123e4567-e89b-12d3-a456-4266554400a1",
       }),
     );
     expect(warning).toHaveBeenCalledWith(
@@ -251,11 +251,46 @@ describe("CloudApnsProvider", () => {
         outcome: "rejected",
         status: 429,
         reason: "TooManyRequests",
-        apnsId: "retryable-id",
+        apnsId: "123e4567-e89b-12d3-a456-4266554400a2",
       }),
     );
     const logged = JSON.stringify(warning.mock.calls);
     expect(logged).not.toContain("terminal-token");
     expect(logged).not.toContain("retryable-token");
   });
+  test.each([200, 429])(
+    "excludes unexpected provider strings from the %s receipt",
+    async (status) => {
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const { config } = await fixture();
+      const privateValue =
+        "private-device-token private notification body eliza://private-destination";
+      const provider = new CloudApnsProvider(config, async () =>
+        Response.json({ reason: privateValue }, { status, headers: { "apns-id": privateValue } }),
+      );
+      const result = await provider.send("private-device-token", {
+        title: "private notification body",
+      });
+      expect(result).toEqual(
+        status === 200
+          ? { outcome: "accepted", apnsId: privateValue }
+          : { outcome: "rejected", status: 429, reason: privateValue },
+      );
+      expect(warning).toHaveBeenCalledWith(
+        "[CloudApnsProvider] delivery receipt",
+        expect.objectContaining({
+          invalidApnsId: true,
+          ...(status === 429 ? { unrecognizedProviderReason: true } : {}),
+        }),
+      );
+      const logged = JSON.stringify(warning.mock.calls);
+      for (const privateText of [
+        "private-device-token",
+        "private notification body",
+        "eliza://private-destination",
+      ]) {
+        expect(logged).not.toContain(privateText);
+      }
+    },
+  );
 });

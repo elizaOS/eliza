@@ -225,8 +225,10 @@ interaction geometry**, **safe-area clearance**, and **tap-target minimums**
   (`bun run test:widget-cert-e2e`) mounts the widgets in real Chromium/WebKit
   and runs the SAME sweep against real layout, emitting evidence
   (`output-widget-cert/{widget-cert.json,widget-cert.txt,<engine>.png}`).
-  Playwright is flaky in CI — the runner SKIPs (exit 0) if the browser can't
-  launch; the vitest static layer is the always-green gate.
+  Dependency, bundling, browser, and execution failures exit nonzero and clear
+  prior output before starting. Completed layout findings remain diagnostic;
+  set `FAIL_ON_VIOLATIONS=1` to make those findings fail the command. The fixture
+  compiles the local Tailwind theme and requires both widget roots to render.
 
 **To certify a NEW widget:**
 
@@ -347,3 +349,14 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+### iOS local-agent transport ownership
+
+`@elizaos/ui/api/ios-local-agent-transport` owns the shared native runtime,
+fetch interception, boot progress and watchdog restart state. App-core's
+`./api/ios-local-agent-transport` subpath re-exports that owner for compatibility.
+Do not introduce another transport singleton or watchdog listener in the host.
+The fetch boundary applies standard RequestInit overrides and observes caller
+cancellation; cancellation cannot undo native side effects already dispatched.
+Native stream failures propagate without replay. Buffered compatibility is
+selected only before dispatch when streaming events are unavailable.

@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ViewHeader } from "./ViewHeader";
+
 afterEach(cleanup);
 describe("ViewHeader", () => {
   it("does not render a title, back button, or empty row", () => {
@@ -16,7 +17,11 @@ describe("ViewHeader", () => {
     render(
       <ViewHeader
         title="Notes"
-        right={<button onClick={add}>Add note</button>}
+        right={
+          <button type="button" onClick={add}>
+            Add note
+          </button>
+        }
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Add note" }));

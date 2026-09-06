@@ -1656,8 +1656,9 @@ async function handleRefreshUsage(
   // Drive the canonical `pollAnthropicUsage` / `pollCodexUsage` through
   // the pool — same singleton used by the runtime, so health flips and
   // usage snapshots are consistent across UI and inference paths. Falls
-  // back to an inline 1-token probe only if the pool throws (network
-  // failure to the provider's usage endpoint, etc.).
+  // back to an inline 1-token probe for transport failures. Invalid provider
+  // data is terminal because a successful model probe cannot reconstruct the
+  // missing usage fields or safely replace the existing snapshot.
   try {
     await pool.refreshUsage(accountId, accessToken, {
       providerId,
@@ -1673,6 +1674,16 @@ async function handleRefreshUsage(
       return true;
     }
   } catch (err) {
+    if (
+      err instanceof ElizaError &&
+      (err.code === "anthropic_usage.invalid_shape" ||
+        err.code === "anthropic_usage.invalid_json")
+    ) {
+      // error-policy:J1 translate malformed upstream data at the HTTP boundary
+      // without running a fallback that could fabricate a healthy usage state.
+      error(res, err.message, 502);
+      return true;
+    }
     logger.debug(`[accounts] pool.refreshUsage failed: ${String(err)}`);
   }
 

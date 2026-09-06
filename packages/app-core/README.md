@@ -51,3 +51,20 @@ from another workspace. Stop an old instance explicitly before reusing its ports
 Startup checks optional camera tools without installing them. To install those
 tools intentionally, run `node packages/app-core/scripts/ensure-vision-deps.mjs --install` from the repository root. Ollama is a separately managed, optional
 provider; Eliza does not need its daemon for in-process local inference.
+
+## Native inference setup
+
+A normal root `bun install` initializes the pinned fused inference submodule,
+ensures the host library and its companion libraries are current, and provisions
+the hash-verified default embedding model. Setup then loads the native library
+and computes a local embedding before reporting readiness. The runtime discovers these artifacts
+under the same state directory without additional environment configuration.
+Relative `ELIZA_STATE_DIR` paths resolve from the current working directory;
+`~` expands to the user's home directory.
+
+Reuse checks cover every staged native library, host architecture, and native
+source changes. Missing or altered companions trigger a rebuild on install;
+setup failures fail the install instead of reporting inference as ready.
+`ELIZA_SKIP_FUSED_INFERENCE_SETUP=1` is an explicit escape hatch and does not
+establish runtime readiness. Android and iOS packaging use their platform build
+lanes to produce the corresponding NDK or Apple artifacts.

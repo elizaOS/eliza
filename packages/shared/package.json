@@ -543,6 +543,16 @@
       "import": "./dist/terminal/palette.js",
       "default": "./dist/terminal/palette.js"
     },
+    "./crypto/token-encryption": {
+      "types": "./dist/crypto/token-encryption.d.ts",
+      "eliza-source": {
+        "types": "./src/crypto/token-encryption.ts",
+        "import": "./src/crypto/token-encryption.ts",
+        "default": "./src/crypto/token-encryption.ts"
+      },
+      "import": "./dist/crypto/token-encryption.js",
+      "default": "./dist/crypto/token-encryption.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

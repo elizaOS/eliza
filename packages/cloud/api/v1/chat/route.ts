@@ -238,6 +238,9 @@ app.post("/", async (c) => {
   let commitAnonymousMessageSlot: (() => Promise<void>) | null = null;
   let markAnonymousMessageSlotDispatched: (() => Promise<void>) | null = null;
   let providerDispatchStarted = false;
+  let providerLogContext:
+    | { requestId: string; userId: string; model: string }
+    | undefined;
 
   try {
     const decodedBody = await decodeRequestJson(c.req);
@@ -528,6 +531,11 @@ app.post("/", async (c) => {
     }
 
     const requestId = crypto.randomUUID();
+    providerLogContext = {
+      requestId,
+      userId: user.id,
+      model: selectedModel,
+    };
     if (isAnonymous && anonymousSession) {
       if (executionCtx && anonymousCredential) {
         const leaseResolution = await reserveAnonymousChatSlot(
@@ -628,6 +636,7 @@ app.post("/", async (c) => {
           executionCtx,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: Boolean(executionCtx),
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
@@ -949,6 +958,32 @@ app.post("/", async (c) => {
         },
         credentialDenial.status,
       );
+    }
+    if (error instanceof InsufficientCreditsError) {
+      logger.error("chat-api", "Provider dispatch admission denied", {
+        ...providerLogContext,
+        phase: "provider_dispatch",
+        error: error.message,
+      });
+      return c.json(
+        { error: "Insufficient balance", details: error.message },
+        402,
+      );
+    }
+    if (
+      error instanceof InferenceAdmissionUnavailableError ||
+      error instanceof InferenceBalanceCacheWarmingError
+    ) {
+      logger.error("chat-api", "Provider dispatch admission failed closed", {
+        ...providerLogContext,
+        phase: "provider_dispatch",
+        error: error.message,
+        cause:
+          error.cause instanceof Error
+            ? `${error.cause.name}: ${error.cause.message}`
+            : undefined,
+      });
+      return retryableWarmingResponse(c, "Billing");
     }
     logger.error("chat-api", "Error processing chat", {
       error: error instanceof Error ? error.message : String(error),

@@ -142,7 +142,8 @@ describe("setEntityRoleCas against the real in-memory adapter", () => {
 		});
 		expect(first.status).toBe("committed");
 		const before = await storedWorld(adapter);
-		const revisionBefore = (before?.metadata as Record<string, unknown>)[
+		if (!before?.metadata) throw new Error("Expected persisted world metadata");
+		const revisionBefore = (before.metadata as Record<string, unknown>)[
 			WORLD_METADATA_REVISION_KEY
 		];
 
@@ -156,8 +157,9 @@ describe("setEntityRoleCas against the real in-memory adapter", () => {
 			expect(again.roles[TARGET_ID]).toBe("ADMIN");
 		}
 		const after = await storedWorld(adapter);
+		if (!after?.metadata) throw new Error("Expected persisted world metadata");
 		expect(
-			(after?.metadata as Record<string, unknown>)[WORLD_METADATA_REVISION_KEY],
+			(after.metadata as Record<string, unknown>)[WORLD_METADATA_REVISION_KEY],
 		).toBe(revisionBefore);
 		expect(await adapter.getLogs({ type: "role_audit" })).toHaveLength(1);
 	});

@@ -20,6 +20,7 @@ import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelector } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
+import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
@@ -153,14 +154,17 @@ export function ActionNoticeToast({
       <span className="min-w-0 text-left leading-snug">
         {actionNotice.text}
       </span>
-      <button
+      <Button
         type="button"
+        variant="ghostMuted"
+        size="icon-lg"
+        shape="circle"
         aria-label="Dismiss notification"
-        className="pointer-events-auto flex size-11 shrink-0 items-center justify-center rounded-full text-muted-strong transition-colors hover:text-card-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        className="pointer-events-auto shrink-0"
         onClick={onDismiss}
       >
         <X size={16} aria-hidden="true" />
-      </button>
+      </Button>
     </div>
   );
 }

@@ -384,4 +384,48 @@ describe("VoiceSectionMount — mount preserves explicit local consent when the 
       window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
     ).toBe("always-on");
   });
+
+  it("lets an explicit server false revoke stale local opt-ins, both legs", async () => {
+    clientMock.getConfig.mockResolvedValue({
+      messages: {
+        voice: {
+          osIntentAutoStartVoice: false,
+          osIntentAutoStartTranscription: false,
+        },
+      },
+    });
+    window.localStorage.setItem(
+      "eliza:voice:os-intent-auto-start-voice",
+      "true",
+    );
+    window.localStorage.setItem(
+      "eliza:voice:os-intent-auto-start-transcription",
+      "true",
+    );
+    render(<VoiceSectionMount />);
+    const voiceToggle = await screen.findByTestId(
+      "voice-section-intent-autostart-voice",
+    );
+    const transcriptionToggle = await screen.findByTestId(
+      "voice-section-intent-autostart-transcription",
+    );
+    await waitFor(() => {
+      expect(voiceToggle.getAttribute("aria-checked")).toBe("false");
+      expect(transcriptionToggle.getAttribute("aria-checked")).toBe("false");
+    });
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: false,
+      transcription: false,
+    });
+    // The routing authority reads the on-disk mirror, so the stale opt-in
+    // must be rewritten there too — not just overridden in React state.
+    expect(
+      window.localStorage.getItem("eliza:voice:os-intent-auto-start-voice"),
+    ).toBe("false");
+    expect(
+      window.localStorage.getItem(
+        "eliza:voice:os-intent-auto-start-transcription",
+      ),
+    ).toBe("false");
+  });
 });
