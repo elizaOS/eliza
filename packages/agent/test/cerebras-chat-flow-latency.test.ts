@@ -3,7 +3,14 @@
  * by the live Cerebras harness; provider execution remains in the live lane.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,6 +18,7 @@ import {
   type BenchmarkTurnObservation,
   captureModelInput,
   distribution,
+  finalizeBenchmarkReport,
   modelUsageEvidence,
   observeBenchmarkTurn,
   percentile,
@@ -43,6 +51,83 @@ function createCleanRepository(): string {
 }
 
 describe("Cerebras chat-flow latency helpers", () => {
+  it("withholds a successful receipt until owned shutdown completes", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "benchmark-finalization-"));
+    const reportPath = join(directory, "report.json");
+    const barrier = Promise.withResolvers<void>();
+    const report = {
+      status: "success" as const,
+      turns: [{ wallMs: 123, output: "complete reply" }],
+    };
+    const finalizing = finalizeBenchmarkReport(
+      report,
+      () => barrier.promise,
+      async (result) => {
+        writeFileSync(reportPath, JSON.stringify(result));
+      },
+    );
+    try {
+      await Promise.resolve();
+      expect(existsSync(reportPath)).toBe(false);
+      barrier.resolve();
+      await finalizing;
+      expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
+        ...report,
+        teardown: { status: "success", error: null },
+      });
+    } finally {
+      barrier.resolve();
+      await finalizing;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["success", "failed"] as const)(
+    "retains %s measurements in a failed receipt when shutdown rejects",
+    async (status) => {
+      const directory = mkdtempSync(join(tmpdir(), "benchmark-finalization-"));
+      const reportPath = join(directory, "report.json");
+      const report = {
+        status,
+        error: status === "failed" ? "later isolation failed" : null,
+        turns: [
+          { wallMs: 123, output: "complete measured output ".repeat(1000) },
+        ],
+        wireEvidence: [
+          { partialResponse: "received bytes before transport failure" },
+        ],
+      };
+      const failure = new Error("database close rejected");
+      try {
+        await expect(
+          finalizeBenchmarkReport(
+            report,
+            async () => {
+              throw failure;
+            },
+            async (result) => {
+              writeFileSync(reportPath, JSON.stringify(result));
+            },
+          ),
+        ).rejects.toMatchObject({
+          code: "BENCHMARK_TEARDOWN_FAILED",
+          cause: failure,
+        });
+        const result = JSON.parse(readFileSync(reportPath, "utf8"));
+        expect(result).toMatchObject({
+          status: "failed",
+          error: report.error,
+          teardown: { status: "failed" },
+        });
+        expect(result.teardown.error).toContain(failure.message);
+        expect(result.turns).toEqual(report.turns);
+        expect(result.wireEvidence).toEqual(report.wireEvidence);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("retains completed receipts and partial failed output after a later proof mismatch", async () => {
     const observations: BenchmarkTurnObservation<{
       proof: string;

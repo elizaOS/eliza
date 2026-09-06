@@ -19,6 +19,7 @@ import {
   ChannelType,
   createMessageMemory,
   drainPostDeliveryTasks,
+  ElizaError,
   EventType,
   type InferenceFlowStage,
   type InferenceHistogramSummary,
@@ -35,6 +36,7 @@ import {
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
+import { shutdownRuntime } from "../src/runtime/eliza.ts";
 import {
   applyCacheExperiment,
   type CacheExperimentMode,
@@ -48,6 +50,47 @@ import {
 
 const DEFAULT_SAMPLES = 30;
 const DEFAULT_WARMUPS = 3;
+
+export interface BenchmarkTeardown {
+  status: "success" | "failed";
+  error: string | null;
+}
+
+/** Publish complete measurements only after strict owned shutdown has settled. */
+export async function finalizeBenchmarkReport<
+  T extends { status: "success" | "failed" },
+>(
+  report: T,
+  shutdown: () => Promise<void>,
+  publish: (
+    report: Omit<T, "status"> & {
+      status: "success" | "failed";
+      teardown: BenchmarkTeardown;
+    },
+  ) => Promise<void>,
+): Promise<void> {
+  let failure: ElizaError | null = null;
+  try {
+    await shutdown();
+  } catch (cause) {
+    // error-policy:J1 Retain failed teardown alongside all measurements before failing the CLI.
+    failure = new ElizaError("Benchmark runtime teardown failed", {
+      code: "BENCHMARK_TEARDOWN_FAILED",
+      cause,
+    });
+  }
+  await publish({
+    ...report,
+    status: failure ? "failed" : report.status,
+    teardown: {
+      status: failure ? "failed" : "success",
+      error: failure
+        ? `${failure.message}: ${failure.cause instanceof Error ? failure.cause.message : String(failure.cause)}`
+        : null,
+    },
+  });
+  if (failure) throw failure;
+}
 const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
   ".ts",
   ".tsx",
@@ -740,10 +783,12 @@ async function main(): Promise<void> {
     "../../../plugins/plugin-openai/index.ts"
   );
   process.stderr.write("[cerebras-benchmark] initializing runtime\n");
-  const { runtime, cleanup } = await createTestRuntime({
+  const previousPgliteDir = process.env.PGLITE_DATA_DIR;
+  const { runtime, pgliteDir } = await createTestRuntime({
     characterName: "CerebrasLatencyAudit",
     plugins: [openaiPlugin],
     embeddingDimensions: embedding.dimensions,
+    removePgliteDirOnCleanup: false,
   });
   const originalFetch = globalThis.fetch;
   const wireEvidence: ProviderWireEvidence[] = [];
@@ -772,6 +817,8 @@ async function main(): Promise<void> {
     durationMs: number;
     outcome: "success" | "error";
   }> = [];
+  let finalReport: { status: "success" | "failed" } = { status: "failed" };
+  let runFailure: { error: unknown } | null = null;
   try {
     if (bootNative) {
       process.stderr.write(
@@ -1372,7 +1419,7 @@ async function main(): Promise<void> {
       cacheMode,
     );
     const report = {
-      status: "success",
+      status: "success" as const,
       turnObservations,
       generatedAt: new Date().toISOString(),
       sourceRevision,
@@ -1396,7 +1443,7 @@ async function main(): Promise<void> {
       errorRatePercent: 0,
       errorRateScope:
         "All samples passed; any failure aborts this command and cannot produce a successful report",
-      wireEvidence: jsonEvidence(wireEvidence),
+      wireEvidence,
       modelExecutions,
       path: {
         kind: pathKind,
@@ -1464,49 +1511,54 @@ async function main(): Promise<void> {
       inferenceTurns: chatTelemetry.turns,
       flows: chatTelemetry.flows,
     };
-    const json = `${JSON.stringify(report, null, 2)}\n`;
-    const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();
-    if (reportPath)
-      await writeFile(reportPath, json, { encoding: "utf8", mode: 0o600 });
-    process.stdout.write(json);
+    finalReport = report;
   } catch (error) {
-    // error-policy:J1 Preserve the failed run as evidence before CLI failure translation.
-    const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();
-    if (reportPath) {
-      await writeFile(
-        reportPath,
-        `${JSON.stringify(
-          jsonEvidence({
-            status: "failed",
-            sourceRevision,
-            model,
-            pathKind,
-            condition,
-            cacheMode,
-            embedding: { ...embedding, nativeProvenance },
-            wireEvidence,
-            modelInputs,
-            modelExecutions,
-            returnedChatResponses,
-            turnObservations,
-            requestedSamples: sampleCount,
-            requestedWarmups: warmupCount,
-            requestedIdleMs: idleMs,
-            failedStage: runStage,
-            elapsedMs: rounded(performance.now() - runStartedAt),
-            error: error instanceof Error ? error.message : String(error),
-          }),
-          null,
-          2,
-        )}\n`,
-        { encoding: "utf8", mode: 0o600 },
-      );
-    }
-    throw error;
+    // error-policy:J1 Preserve the failed run until teardown and terminal publication finish.
+    runFailure = { error };
+    const report = {
+      status: "failed" as const,
+      sourceRevision,
+      model,
+      pathKind,
+      condition,
+      cacheMode,
+      embedding: { ...embedding, nativeProvenance },
+      wireEvidence,
+      modelInputs,
+      modelExecutions,
+      returnedChatResponses,
+      turnObservations,
+      requestedSamples: sampleCount,
+      requestedWarmups: warmupCount,
+      requestedIdleMs: idleMs,
+      failedStage: runStage,
+      elapsedMs: rounded(performance.now() - runStartedAt),
+      error: error instanceof Error ? error.message : String(error),
+    };
+    finalReport = report;
   } finally {
-    globalThis.fetch = originalFetch;
-    await cleanup();
+    try {
+      await finalizeBenchmarkReport(
+        finalReport,
+        () => shutdownRuntime(runtime, "Cerebras benchmark shutdown"),
+        async (report) => {
+          const json = `${JSON.stringify(jsonEvidence({ ...report, databaseDirectory: pgliteDir }), null, 2)}\n`;
+          const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();
+          if (reportPath)
+            await writeFile(reportPath, json, {
+              encoding: "utf8",
+              mode: 0o600,
+            });
+          process.stdout.write(json);
+        },
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousPgliteDir === undefined) delete process.env.PGLITE_DATA_DIR;
+      else process.env.PGLITE_DATA_DIR = previousPgliteDir;
+    }
   }
+  if (runFailure) throw runFailure.error;
 }
 
 // error-policy:J1 CLI boundary translates failure into a non-zero process.
