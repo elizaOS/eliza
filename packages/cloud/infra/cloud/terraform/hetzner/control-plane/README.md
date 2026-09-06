@@ -54,6 +54,32 @@ scp packages/cloud/shared/.env.local root@<vm-ip>:/opt/eliza/cloud/.env.local
 #    (workflow: deploy-eliza-provisioning-worker.yml, manual dispatch).
 ```
 
+## Development control-plane provisioning
+
+Development uses `tfvars/development.tfvars.example`, its own Hetzner project,
+and `backend-development.hcl`. Create the dedicated
+`eliza-terraform-state-development` R2 bucket and use credentials scoped to that
+bucket before initializing state. Never initialize development against an
+existing staging or production state key.
+
+The module creates development Headscale DNS records without importing a
+legacy record from another tier. Both Headscale hostnames must match the selected
+environment, and a development host must follow `develop`. Development workflow
+admission and service configuration must be wired before operational use; this
+module alone does not establish a working cloud tier.
+
+Run the Terraform boundary tests without cloud credentials:
+
+```bash
+terraform init -backend=false -input=false
+terraform validate
+terraform test
+```
+
+These tests exercise the real Terraform graph with mocked provider operations;
+they do not provision hosts or prove live routing, database, or credential
+isolation. A real reviewed plan and subsequent runtime readback remain required.
+
 ## Adopt the existing production VM into Terraform
 
 The current prod manager VM (`89.167.63.246`, a legacy hand-assigned

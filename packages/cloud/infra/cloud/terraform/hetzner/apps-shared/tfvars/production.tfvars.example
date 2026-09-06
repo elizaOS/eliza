@@ -1,5 +1,5 @@
-# Copy to shared.tfvars (gitignored) and fill in real values.
-# Single shared tfvars: this module is NOT per-env.
+# Copy to production.tfvars (gitignored) and fill in real values.
+environment = "production"
 
 hcloud_location = "fsn1"
 
@@ -27,7 +27,7 @@ ssh_public_keys = [
 # The passphrase (>= 32 chars) lives in the org password manager; losing it
 # makes every off-host backup unreadable.
 # backup_s3_endpoint           = "https://<account>.r2.cloudflarestorage.com"
-# backup_s3_bucket             = "eliza-tenant-db-backups"
+# backup_s3_bucket             = "eliza-tenant-db-backups-production"
 # backup_s3_prefix             = "tenant-db"
 # backup_s3_access_key         = "<r2-access-key-id>"
 # backup_s3_secret_key         = "<r2-secret-access-key>"

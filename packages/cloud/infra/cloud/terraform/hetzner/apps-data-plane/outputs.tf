@@ -1,6 +1,4 @@
-# tenant_db_* outputs now live in ../apps-shared (one tenant DB, shared across
-# staging + production app nodes). Read them via terraform_remote_state if you
-# need them in another module.
+# Publishes this environment app worker addresses and ingress to operators.
 
 output "app_node_ips" {
   description = "Public IPs of the app worker nodes (the daemon SSHes here to run app containers; ingress also lands here)."
