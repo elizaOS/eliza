@@ -849,19 +849,18 @@ export function useFirstRunConductor(): void {
     [runtimeChooserEnabled, seedTurn],
   );
 
-  // Explicit, non-finish escape hatch out of onboarding: flip the real gate and
-  // land the user in Settings so they can wire a model provider by hand. Used
-  // ONLY by the error-recovery "Configure in Settings" choice, so a broken
-  // finish never traps the user in the loop. Latched by completedRef so a
-  // double-tap can't flip the gate twice.
+  // Open configuration after a failed finish. Native Settings can recover
+  // setup without marking an uninitialized backend ready for chat.
   const exitToSettings = React.useCallback(() => {
     if (completedRef.current) return;
     completedRef.current = true;
     if (isElectrobunRuntime()) {
       void openDesktopSettingsWindow().then(
         () => {
-          completeFirstRun("chat");
-          resumePendingFirstRunText();
+          completedRef.current = false;
+          seedError(
+            "Finish configuring your connection in Settings, then try again.",
+          );
         },
         (error: unknown) => {
           // error-policy:J4 keep onboarding recoverable when the native window cannot open
