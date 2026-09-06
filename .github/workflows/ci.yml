@@ -129,10 +129,22 @@ jobs:
         run: bun run test:scripts
 
   tests_server:
-    name: Tests (server)
+    name: Tests (server, ${{ matrix.partition }})
     needs: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Agent's process-isolated suite must not compete with the core and app
+    # runtime suites on the same small hosted runner.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - partition: agent
+            filter: '^@elizaos/agent \(packages/agent\)#test$'
+          - partition: remaining
+            filter: '^(?!@elizaos/agent \(packages/agent\)#test$)'
+    env:
+      TEST_PACKAGE_FILTER: ${{ matrix.filter }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
