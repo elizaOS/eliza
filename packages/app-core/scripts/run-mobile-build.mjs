@@ -85,6 +85,7 @@ import {
   inspectAndroidAppBundle,
   resolveAndroidArtifactKind,
 } from "./lib/android-cloud-artifact-audit.mjs";
+import { injectAndroidRuntimeBytePreservation } from "./lib/android-runtime-packaging.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
@@ -358,11 +359,13 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "pglite.data",
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
+  "pg_trgm.tar.gz",
   "plugins-manifest.json",
 ];
 export const IOS_AGENT_ROOT_EXTENSION_ASSETS = [
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
+  "pg_trgm.tar.gz",
 ];
 // Extension targets stripped for personal-team builds: personal-team
 // entitlements are emptied (no App Groups), so every extension whose
@@ -1535,7 +1538,7 @@ function stageIosAgentRuntime({
   }
   // PGlite resolves extension bundles via new URL("../vector.tar.gz",
   // import.meta.url) from public/agent/agent-bundle.js, so iOS must stage
-  // these two assets at public/ as well as keeping the manifest copy under
+  // the extension assets at public/ as well as keeping the manifest copy under
   // public/agent for build diagnostics.
   const publicDir = path.dirname(targetDir);
   for (const file of assetPlan.rootAssets) {
@@ -1566,6 +1569,7 @@ function removeIosLocalExecutionAssets() {
     path.join(publicDir, "agent"),
     path.join(publicDir, "vector.tar.gz"),
     path.join(publicDir, "fuzzystrmatch.tar.gz"),
+    path.join(publicDir, "pg_trgm.tar.gz"),
   ];
   let removed = 0;
   for (const target of targets) {
@@ -4327,6 +4331,7 @@ function patchAndroidGradle({ cloudBuild = false } = {}) {
     patched = injectAndroidSmsGatewayBuildConfigFields(patched);
     patched = injectNoCompressTarGz(patched);
     patched = injectNativeLibLegacyPackaging(patched);
+    patched = injectAndroidRuntimeBytePreservation(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
     patched = injectAndroidBackgroundRunnerAarFlatDir(patched);
