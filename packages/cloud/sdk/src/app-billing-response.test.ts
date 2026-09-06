@@ -17,7 +17,13 @@ beforeAll(() => {
         requests.push({ path, body: await request.json() });
         return Response.json({
           success: true,
-          data: { id: "resolved-account" },
+          data: {
+            id: "resolved-account",
+            appId: "registered",
+            displayName: "Workspace",
+            externalReference: "workspace-original",
+            role: "administrator",
+          },
         });
       }
       if (
@@ -43,7 +49,13 @@ test("account resolution reaches the registered endpoint with the original works
     client().appBilling("registered").resolveAccount(input),
   ).resolves.toEqual({
     success: true,
-    data: { id: "resolved-account" },
+    data: {
+      id: "resolved-account",
+      appId: "registered",
+      displayName: "Workspace",
+      externalReference: "workspace-original",
+      role: "administrator",
+    },
   });
   expect(requests).toEqual([
     { path: "/api/v1/apps/registered/billing/accounts/resolve", body: input },
