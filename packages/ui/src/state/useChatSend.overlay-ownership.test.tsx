@@ -14,9 +14,12 @@ import type {
 } from "../api";
 import { resetCompletedActionNavigationForTests } from "../completed-action-navigation";
 import { NAVIGATE_VIEW_EVENT } from "../events";
+import { dispatchConversationResync } from "./AppContext.hooks";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
+import { hydrateInitialConversation } from "./useChatCallbacks";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
+import { useResyncReconcile } from "./useResyncReconcile";
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -26,7 +29,9 @@ const mocks = vi.hoisted(() => ({
     getConfig: vi.fn(async () => ({ ui: {} })),
     getConversationMessages: vi.fn(),
     listCustomActions: vi.fn(),
-    listConversations: vi.fn(async () => ({ conversations: [] })),
+    listConversations: vi.fn(async () => ({
+      conversations: [] as Conversation[],
+    })),
     renameConversation: vi.fn(async () => undefined),
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
@@ -1128,8 +1133,14 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
     },
   );
 
-  it.each(["plain", "cached-pending", "around"] as const)(
-    "reconciles one persisted user after interrupted SSE and reconnect (%s history)",
+  it.each([
+    "startup",
+    "startup-repeat",
+    "plain",
+    "cached-pending",
+    "around",
+  ] as const)(
+    "automatically reconciles persisted users after interrupted SSE and one reconnect (%s history)",
     async (historyMode) => {
       const text =
         "Read-only recovery check Juniper. Explain rain without tools.";
@@ -1137,7 +1148,7 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
         {
           id: "prior-user",
           role: "user",
-          text: "Earlier question",
+          text: historyMode === "startup-repeat" ? text : "Earlier question",
           timestamp: Date.now() - 2_000,
         },
       ];
@@ -1159,11 +1170,46 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       const harness = makeHarness();
       harness.activeConversationIdRef.current = "conv-a";
       const hook = mountComposed(harness);
+      const resync = renderHook(() =>
+        useResyncReconcile({
+          activeConversationIdRef: harness.activeConversationIdRef,
+          loadConversationMessages:
+            hook.result.current.loaders.loadConversationMessages,
+        }),
+      );
       let send: Promise<void> | undefined;
       try {
-        await act(async () => {
-          await hook.result.current.loaders.loadConversationMessages("conv-a");
-        });
+        if (historyMode.startsWith("startup")) {
+          mocks.client.listConversations.mockResolvedValue({
+            conversations: [conversation("conv-a")],
+          });
+          await act(async () => {
+            await hydrateInitialConversation({
+              client: mocks.client,
+              conversationHydrationEpochRef:
+                harness.sendDepsBase.conversationHydrationEpochRef,
+              activeConversationIdRef: harness.activeConversationIdRef,
+              greetingFiredRef: harness.loaderDeps.greetingFiredRef,
+              conversationMessagesRef: harness.conversationMessagesRef,
+              loadedConversationIdRef:
+                hook.result.current.loaders.loadedConversationIdRef,
+              claimConversationMessagesOwnership:
+                hook.result.current.loaders.claimConversationMessagesOwnership,
+              setConversations: harness.sendDepsBase.setConversations,
+              setActiveConversationId:
+                harness.sendDepsBase.setActiveConversationId,
+              setConversationMessages: harness.setConversationMessages,
+              uiLanguage: "en",
+              seedSyntheticGreeting: false,
+            });
+          });
+        } else {
+          await act(async () => {
+            await hook.result.current.loaders.loadConversationMessages(
+              "conv-a",
+            );
+          });
+        }
         if (historyMode === "around") {
           await act(async () => {
             await hook.result.current.loaders.loadConversationMessagesAround(
@@ -1201,20 +1247,31 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
           false,
         );
         historyUnavailable = false;
-        for (let reload = 0; reload < 2; reload += 1) {
-          await act(async () => {
-            await hook.result.current.loaders.loadConversationMessages(
-              "conv-a",
-            );
+        const historyCallsBeforeReconnect =
+          mocks.client.getConversationMessages.mock.calls.length;
+        act(() => {
+          dispatchConversationResync({
+            conversationId: "conv-a",
+            reason: "connection-recovered",
           });
-        }
+        });
+        await vi.waitFor(() =>
+          expect(
+            harness.conversationMessagesRef.current
+              .filter(
+                (message) => message.role === "user" && message.text === text,
+              )
+              .map((message) => message.id),
+          ).toEqual(
+            historyMode === "startup-repeat"
+              ? ["prior-user", "durable-restart-user"]
+              : ["durable-restart-user"],
+          ),
+        );
         expect(
-          harness.conversationMessagesRef.current
-            .filter(
-              (message) => message.role === "user" && message.text === text,
-            )
-            .map((message) => message.id),
-        ).toEqual(["durable-restart-user"]);
+          mocks.client.getConversationMessages.mock.calls.length -
+            historyCallsBeforeReconnect,
+        ).toBe(historyMode === "around" ? 2 : 1);
         expect(
           harness.conversationMessagesRef.current.some((message) =>
             message.id.startsWith("temp-resp-"),
@@ -1226,6 +1283,7 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       } finally {
         finishStream?.({ text: "", completed: false });
         await send;
+        resync.unmount();
         hook.unmount();
       }
     },

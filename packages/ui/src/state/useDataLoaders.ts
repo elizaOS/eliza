@@ -1101,7 +1101,14 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           ),
       );
       const precedingServerUserIds =
-        (cached !== undefined || conversationId === null) &&
+        (cached !== undefined ||
+          conversationId === null ||
+          (loadedConversationIdRef.current === conversationId &&
+            visibleConversationMessagesContentOwnerRef.current ===
+              conversationId &&
+            !textFallbackBlockedConversationIdsRef.current.has(
+              conversationId,
+            ))) &&
         (conversationId === null ||
           textFallbackBlockedConversationIdsRef.current.get(conversationId) !==
             "mutation")
@@ -1469,7 +1476,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   }, [setConversations]);
 
   const loadConversationMessages = useCallback(
-    async (convId: string): Promise<LoadConversationMessagesResult> => {
+    async function loadNewestConversationMessages(
+      convId: string,
+      confirmGuardedRead = true,
+    ): Promise<LoadConversationMessagesResult> {
       // This is the visible transcript loader, not a background fetch. A late
       // send/retry failure can request reconciliation after the user has moved
       // on; reject it before invalidating the current fence, claiming ownership,
@@ -1541,8 +1551,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       // server clone. Materialize that pre-request state before snapshotting so
       // the response fence compares against the exact revision it followed.
       captureVisibleConversationMessageOverlay(convId);
+      const textFallbackBarrier =
+        textFallbackBlockedConversationIdsRef.current.get(convId);
       const textFallbackContextIsCanonical =
-        canonicalNewestConversationMessageContentOwnerRef.current === convId &&
+        (canonicalNewestConversationMessageContentOwnerRef.current === convId ||
+          loadedConversationIdRef.current === convId) &&
         visibleConversationMessagesContentOwnerRef.current === convId &&
         !textFallbackBlockedConversationIdsRef.current.has(convId);
 
@@ -1595,6 +1608,33 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
         markConversationHistoryApplied(true);
+        // A guarded around-window recovery establishes canonical history but
+        // cannot retire a temp user on that first response. Confirm once when
+        // that history contains a safely matchable copy of a registered turn.
+        // Do not poll merely pending sends, and never bypass a newer owner/load.
+        if (
+          confirmGuardedRead &&
+          !textFallbackContextIsCanonical &&
+          textFallbackBarrier !== "mutation" &&
+          currentOverlay &&
+          isCurrentConversationMessageFence(fence)
+        ) {
+          const candidates = resolvedLocalOverlayServerIndexes(
+            serverMessages,
+            nextMessages,
+            currentOverlay,
+          );
+          const hasUnresolvedUserCopy = [...currentOverlay].some(
+            ([lineage, record]) =>
+              record.message?.role === "user" &&
+              record.message.id.startsWith("temp-") &&
+              record.precedingServerUserIds !== undefined &&
+              fence.overlayRevisionsAtStart.get(lineage) === record.revision &&
+              candidates.has(record.message.id),
+          );
+          if (hasUnresolvedUserCopy)
+            return loadNewestConversationMessages(convId, false);
+        }
         return { ok: true };
       } catch (err) {
         // A newer load aborted this one (fast swipe); the newer load owns the

@@ -1571,6 +1571,112 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     });
   });
 
+  it.each(["failure", "navigation", "newer-around", "authority"] as const)(
+    "bounds automatic around confirmation and respects %s",
+    async (interruption) => {
+      const oldUser = { ...userMsg("old-user"), timestamp: 1_000 };
+      const pending = {
+        ...userMsg("temp-confirm"),
+        text: "pending recovery",
+        timestamp: 2_000,
+      };
+      const persisted = { ...pending, id: "durable-confirm" };
+      let finishConfirmation:
+        | ((messages: ConversationMessage[]) => void)
+        | undefined;
+      let failConfirmation: ((error: Error) => void) | undefined;
+      let confirmationSignal: AbortSignal | undefined;
+      mocks.client.getConversationMessages
+        .mockResolvedValueOnce({ messages: [oldUser] })
+        .mockResolvedValueOnce({ messages: [oldUser] })
+        .mockResolvedValueOnce({ messages: [oldUser, persisted] })
+        .mockImplementationOnce(
+          (_id: string, options?: { signal?: AbortSignal }) =>
+            new Promise((resolve, reject) => {
+              confirmationSignal = options?.signal;
+              finishConfirmation = (messages) => resolve({ messages });
+              failConfirmation = reject;
+            }),
+        )
+        .mockResolvedValue({ messages: [userMsg("new-window")] });
+      const { deps, conversationMessagesRef, activeConversationIdRef } =
+        makeDeps();
+      activeConversationIdRef.current = "conv-a";
+      const hook = renderHook(() => useDataLoaders(deps));
+      let reload: Promise<unknown> | undefined;
+      try {
+        await act(async () => {
+          await hook.result.current.loadConversationMessages("conv-a");
+        });
+        act(() => {
+          conversationMessagesRef.current = [oldUser, pending];
+          hook.result.current.registerConversationMessageOverlay("conv-a", [
+            pending.id,
+          ]);
+        });
+        await act(async () => {
+          await hook.result.current.loadConversationMessagesAround(
+            "conv-a",
+            oldUser.id,
+          );
+        });
+        act(() => {
+          reload = hook.result.current.loadConversationMessages("conv-a");
+        });
+        await vi.waitFor(() =>
+          expect(finishConfirmation).toEqual(expect.any(Function)),
+        );
+        expect(mocks.client.getConversationMessages).toHaveBeenCalledTimes(4);
+        if (interruption === "failure") {
+          await act(async () => {
+            failConfirmation?.(
+              Object.assign(new Error("API unavailable"), { status: 502 }),
+            );
+            await reload;
+          });
+          expect(
+            conversationMessagesRef.current.map((message) => message.id),
+          ).toContain(pending.id);
+        } else {
+          if (interruption === "navigation") {
+            act(() => {
+              hook.result.current.claimConversationMessagesOwnership("conv-b");
+              activeConversationIdRef.current = "conv-b";
+            });
+            await act(async () => {
+              await hook.result.current.loadConversationMessages("conv-b");
+            });
+          } else if (interruption === "newer-around") {
+            await act(async () => {
+              await hook.result.current.loadConversationMessagesAround(
+                "conv-a",
+                "new-window",
+              );
+            });
+          } else {
+            act(() => {
+              runtimeAuthoritySwitchListener?.("before");
+            });
+          }
+          expect(confirmationSignal?.aborted).toBe(true);
+          const winningMessages = [...conversationMessagesRef.current];
+          await act(async () => {
+            finishConfirmation?.([oldUser, persisted]);
+            await reload;
+          });
+          expect(conversationMessagesRef.current).toEqual(winningMessages);
+        }
+        expect(mocks.client.getConversationMessages).toHaveBeenCalledTimes(
+          interruption === "failure" || interruption === "authority" ? 4 : 5,
+        );
+      } finally {
+        finishConfirmation?.([oldUser, persisted]);
+        await reload;
+        hook.unmount();
+      }
+    },
+  );
+
   it("uses exact ids for around windows and the first newest response after around even from a canonical view", async () => {
     const oldUser = {
       ...userMsg("old-yes"),
