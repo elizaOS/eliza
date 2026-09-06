@@ -336,8 +336,14 @@ class FakeTodosService {
     return execution;
   }
 
-  async listMutationRecords(): Promise<[]> {
-    return [];
+  async listMutationRecords(_scope: {
+    entityId: string;
+    agentId: string;
+  }): Promise<Array<{ idempotencyKey: string; applied: boolean }>> {
+    return [...this.mutationLedger.values()].map((entry) => ({
+      idempotencyKey: entry.execution.idempotencyKey,
+      applied: true,
+    }));
   }
 
   async readCutoverState(): Promise<{ todos: StoredTodo[]; mutations: [] }> {
@@ -479,7 +485,7 @@ describe("TODO action", () => {
         todoId,
       );
       expectAppliedMutation(
-        await invoke(runtime, { action: "clear" }),
+        await invoke(runtime, { action: "clear", confirm: true }),
         "clear",
         `${AGENT}:${ENTITY}`,
       );
@@ -491,7 +497,7 @@ describe("TODO action", () => {
       expect(list.effectReceipts).toBeUndefined();
       expect(list.userFacingEffectReceiptIds).toBeUndefined();
 
-      const clear = await invoke(runtime, { action: "clear" });
+      const clear = await invoke(runtime, { action: "clear", confirm: true });
       expect(clear.data).toMatchObject({
         actionName: "TODO",
         action: "clear",
@@ -501,6 +507,31 @@ describe("TODO action", () => {
       expect(clear.verifiedUserFacing).toBeUndefined();
       expect(clear.turnComplete).toBe(true);
       expect(clear.continueChain).toBe(false);
+    });
+
+    it("returns a confirmation preview for unconfirmed clear", async () => {
+      const created = await invoke(runtime, {
+        action: "create",
+        content: "preview me",
+      });
+      expect(created.success).toBe(true);
+      const preview = await invoke(runtime, { action: "clear" });
+      expect(preview.data).toMatchObject({
+        actionName: "TODO",
+        action: "clear",
+        op: "preview",
+        count: 1,
+        requiresConfirmation: true,
+      });
+      expect(preview.effectReceipts).toBeUndefined();
+      // The todo is still present: preview is not a mutation.
+      const list = await invoke(runtime, {
+        action: "list",
+        includeCompleted: true,
+      });
+      expect(list.data.todos.some((t) => t.content === "preview me")).toBe(
+        true,
+      );
     });
 
     it("replays one committed mutation with a stable noop receipt", async () => {
@@ -677,16 +708,16 @@ describe("TODO action", () => {
 
     it("clear counts what it removed and says so when nothing was there", async () => {
       await seed("Buy trash bags");
-      const one = await confirm({ action: "clear" });
+      const one = await confirm({ action: "clear", confirm: true });
       expect(one.result.text).toBe("Cleared 1 todo from your list.");
       expect(one.result.userFacingText).toBe(one.result.text);
 
       await seed("a");
       await seed("b");
-      const many = await confirm({ action: "clear" });
+      const many = await confirm({ action: "clear", confirm: true });
       expect(many.result.text).toBe("Cleared 2 todos from your list.");
 
-      const none = await confirm({ action: "clear" });
+      const none = await confirm({ action: "clear", confirm: true });
       expect(none.result.text).toBe("Your list was already empty.");
     });
 
@@ -956,6 +987,60 @@ describe("TODO action", () => {
       expect(service.rows[0]?.status).toBe("in_progress");
     });
 
+    it("renames via targetContent while content carries the replacement", async () => {
+      await invoke(runtime, { action: "create", content: "old name" });
+      const result = await invoke(runtime, {
+        action: "update",
+        targetContent: "old name",
+        content: "new name",
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows[0]?.content).toBe("new name");
+    });
+
+    it("complete without id locates by targetContent", async () => {
+      await invoke(runtime, { action: "create", content: "ship it" });
+      const result = await invoke(runtime, {
+        action: "complete",
+        targetContent: "ship it",
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows[0]?.status).toBe("completed");
+    });
+
+    it("returns a bounded clarification for duplicate visible content", async () => {
+      await invoke(runtime, { action: "create", content: "dup" });
+      await invoke(runtime, {
+        action: "create",
+        content: "dup",
+        allowDuplicate: true,
+      });
+      const result = await invoke(runtime, {
+        action: "complete",
+        targetContent: "dup",
+      });
+      expect(result.success).toBe(false);
+      expect(String(result.error?.message ?? "")).toContain("ambiguous_match");
+      expect(service.rows.every((r) => r.status === "pending")).toBe(true);
+    });
+
+    it("picks one duplicate with matchIndex", async () => {
+      await invoke(runtime, { action: "create", content: "dup" });
+      await invoke(runtime, {
+        action: "create",
+        content: "dup",
+        allowDuplicate: true,
+      });
+      const result = await invoke(runtime, {
+        action: "complete",
+        targetContent: "dup",
+        matchIndex: 2,
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows[1]?.status).toBe("completed");
+      expect(service.rows[0]?.status).toBe("pending");
+    });
+
     it("rejects updates for another user's todo", async () => {
       service.rows.push({
         id: "foreign",
@@ -1106,7 +1191,7 @@ describe("TODO action", () => {
     it("removes all todos for the user in this room", async () => {
       await invoke(runtime, { action: "create", content: "a" });
       await invoke(runtime, { action: "create", content: "b" });
-      const result = await invoke(runtime, { action: "clear" });
+      const result = await invoke(runtime, { action: "clear", confirm: true });
       expect(result.success).toBe(true);
       expect(service.rows.length).toBe(0);
     });
