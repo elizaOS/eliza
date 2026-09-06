@@ -1,6 +1,7 @@
 /**
  * Private one-operation wire contract for a quarantined Agent materializer.
  * Stdin carries a length-prefixed JSON authority followed by raw record bytes;
+ * stdin remains open as the operation's liveness channel after the frame;
  * stdout carries only the digest of the exact completed receipt. This is not
  * public authentication: the coordinator must exclusively own the transport.
  */
@@ -30,7 +31,7 @@ const IdentitySchema = z.strictObject({
   inode: z.string().regex(/^[1-9][0-9]*$/),
 });
 const authority = {
-  version: z.literal(1),
+  version: z.literal(2),
   trustedRoot: z.string().min(1).max(4096),
   attemptRoot: z.string().min(1).max(4096),
   trustedRootIdentity: IdentitySchema,
@@ -70,7 +71,11 @@ export function materializerReceiptDigest(receipt: unknown): string {
     .digest("hex");
 }
 
-/** Owns and zeroes ingress buffers, including malformed/trailing input. */
+/**
+ * Owns and zeroes ingress buffers. Stops at one complete frame without closing
+ * stdin: EOF means cancellation, not successful request delivery. The caller
+ * must monitor the remaining stream for disconnect or forbidden trailing data.
+ */
 export async function readMaterializerRequest(
   input: Readable,
 ): Promise<{ request: MaterializerRequest; payload: Uint8Array }> {
@@ -82,7 +87,7 @@ export async function readMaterializerRequest(
   let request: MaterializerRequest | undefined;
   let payload: Uint8Array | undefined;
   try {
-    for await (const value of input) {
+    for await (const value of input.iterator({ destroyOnReturn: false })) {
       if (!Buffer.isBuffer(value)) throw materializerWireError("INPUT_INVALID");
       try {
         let offset = 0;
@@ -135,16 +140,17 @@ export async function readMaterializerRequest(
       } finally {
         value.fill(0);
       }
+      if (request && payload && payloadBytes === payload.length) {
+        if (
+          request.method === "stageRecord" &&
+          createHash("sha256").update(payload).digest("hex") !==
+            request.receipt.payloadSha256
+        )
+          throw materializerWireError("INPUT_INVALID");
+        return { request, payload };
+      }
     }
-    if (!request || !payload || payloadBytes !== payload.length)
-      throw materializerWireError("INPUT_INVALID");
-    if (
-      request.method === "stageRecord" &&
-      createHash("sha256").update(payload).digest("hex") !==
-        request.receipt.payloadSha256
-    )
-      throw materializerWireError("INPUT_INVALID");
-    return { request, payload };
+    throw materializerWireError("INPUT_INVALID");
   } catch {
     // error-policy:J1 Never expose private metadata, session tokens or parser input.
     payload?.fill(0);
