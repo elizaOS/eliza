@@ -597,6 +597,43 @@ describe("useVoiceChat TTS playback across providers", () => {
     }
   });
 
+  it("keeps the next turn when cancelled preparation rejects late", async () => {
+    let rejectCancelled: ((error: Error) => void) | undefined;
+    fetchWithCsrf.mockImplementation(async (url, init) => {
+      if (!String(url).includes("/api/tts/"))
+        return new Response(null, { status: 204 });
+      if (JSON.parse(init.body).text === "Old preparation.") {
+        return new Promise<Response>((_, reject) => {
+          rejectCancelled = reject;
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+    });
+    const onPlaybackStart = vi.fn();
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        onPlaybackStart,
+        voiceConfig: { provider: "local-inference" },
+      }),
+    );
+    act(() => result.current.speak("Old preparation."));
+    await waitFor(() => expect(rejectCancelled).toBeDefined());
+    act(() => {
+      result.current.stopSpeaking();
+      result.current.speak("New authorized turn.");
+    });
+    await act(async () => {
+      rejectCancelled?.(new Error("Late cancelled transport error"));
+    });
+    await waitFor(() => expect(onPlaybackStart).toHaveBeenCalledTimes(1));
+    expect(onPlaybackStart.mock.calls[0]?.[0].text).toBe(
+      "New authorized turn.",
+    );
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+    expect(result.current.ttsError).toBeNull();
+  });
+
   it("cancels an in-flight lookahead and never plays its late response in the next turn", async () => {
     finishPlaybackAutomatically = false;
     let release: ((response: Response) => void) | undefined;
