@@ -5051,7 +5051,10 @@ const calendarAction: CalendarHandlerAction = {
           text: `${messageText(message)} ${intent}`,
         });
         if (!explicitEventId) {
-          const titleHint = searchQueries[0];
+          // A structured deletion title identifies the target too; unlike an
+          // update title, it cannot mean a requested rename. Keep explicit
+          // query precedence and the existing unique-match checks below.
+          const titleHint = searchQueries[0] ?? explicitTitle;
           if (!titleHint) {
             return respond({
               success: false,

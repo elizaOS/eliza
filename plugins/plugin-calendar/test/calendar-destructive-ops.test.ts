@@ -224,6 +224,76 @@ describe("CALENDAR delete_event disambiguation", () => {
     service = stubService([LUNCH_MAYA, LUNCH_GRANDMA]);
   });
 
+  it.each(["title", "details.title"])(
+    "uses %s as the deletion target without a redundant query",
+    async (field) => {
+      const result = await runHandler({
+        service,
+        text: "delete lunch with grandma",
+        parameters: {
+          subaction: "delete_event",
+          ...(field === "title"
+            ? { title: "Lunch with Grandma" }
+            : {
+                details: { title: "Lunch with Grandma", calendarId: "primary" },
+              }),
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(service.cancelApproval).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ targetEvent: LUNCH_GRANDMA }),
+      );
+      expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not choose between duplicate supplied titles", async () => {
+    service = stubService([
+      LUNCH_GRANDMA,
+      event({ externalId: "evt-duplicate", title: LUNCH_GRANDMA.title }),
+    ]);
+    const result = await runHandler({
+      service,
+      text: "delete lunch with grandma",
+      parameters: {
+        subaction: "delete_event",
+        details: { title: LUNCH_GRANDMA.title },
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(replyFacts(result)).toContain("multiple");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not mutate when the supplied title has no match", async () => {
+    const result = await runHandler({
+      service,
+      text: "delete standup",
+      parameters: { subaction: "delete_event", title: "Standup" },
+    });
+    expect(result.success).toBe(false);
+    expect(replyFacts(result)).toContain("couldn't find");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicit query ahead of the title fallback", async () => {
+    const result = await runHandler({
+      service,
+      text: "delete lunch with maya",
+      parameters: {
+        subaction: "delete_event",
+        query: "Maya",
+        title: "Lunch with Grandma",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.cancelApproval).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ targetEvent: LUNCH_MAYA }),
+    );
+  });
+
   it("ambiguous fuzzy title → clarification, and nothing is deleted", async () => {
     const result = await runHandler({
       service,
