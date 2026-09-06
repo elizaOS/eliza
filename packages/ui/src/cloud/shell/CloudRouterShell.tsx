@@ -138,6 +138,17 @@ const LEGACY_SETTINGS_TAB_TARGETS: Readonly<Record<string, string>> = {
   agents: "/cloud/agents",
 };
 
+/** Settings sections whose bodies already have a standalone Cloud route. */
+const CLOUD_SETTINGS_SECTION_TARGETS: Readonly<Record<string, string>> = {
+  "#cloud-account": "/cloud/account",
+  "#cloud-billing": "/cloud/billing",
+  "#cloud-api-keys": "/cloud/api-keys",
+  "#cloud-applications": "/cloud/apps",
+  "#cloud-monetization": "/cloud/monetization",
+  "#cloud-organization": "/cloud/organization",
+  "#cloud-plugin-grants": "/cloud/security/permissions",
+};
+
 function LegacySettingsTabRedirect(): React.JSX.Element {
   const location = useLocation();
   const target = resolveLegacyCloudSettingsTarget(location.search);
@@ -508,6 +519,15 @@ export function AppCatchAllRoute({
 }): React.JSX.Element {
   const { ready, authenticated } = useSessionAuth();
   const location = useLocation();
+  // Consume only known Cloud section anchors before any agent entry gate.
+  // Native settings never mount this web router and keep their embedded bodies.
+  const managementTarget =
+    location.pathname === "/settings"
+      ? CLOUD_SETTINGS_SECTION_TARGETS[location.hash]
+      : undefined;
+  if (managementTarget) {
+    return <Navigate to={`${managementTarget}${location.search}`} replace />;
+  }
   if (isApexControlPlaneHost()) {
     if (!ready) {
       return <RouteChunkFallback />;
