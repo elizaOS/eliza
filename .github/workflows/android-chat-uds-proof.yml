@@ -57,6 +57,8 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts 2>&1 | tee evidence/30785/install.log
       - name: Generate required localization sources
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs 2>&1 | tee evidence/30785/generated-sources.log
+      - name: Build required workspace exports
+        run: bun packages/scripts/build-private-workspace-packages.mjs 2>&1 | tee evidence/30785/workspace-build.log
       - name: Validate combined source inventory exclusions
         run: node --test packages/ui/scripts/find-duplicate-components.test.mjs 2>&1 | tee evidence/30785/source-inventory-tests.log
       - name: Exercise registered loader and real Linux abstract sockets
