@@ -1,7 +1,7 @@
 /**
- * Exercises the real Calendar and Cloud renderers under the smoke server's registered
- * surface contract. Desktop and mobile must have one navigation owner; its
- * back control must remain reachable and return to the launcher.
+ * Exercises real Calendar, Cloud and Messages renderers with deterministic HTTP
+ * feeds. Navigation has one owner, and short landscape screens must keep event
+ * editing and the message composer reachable through ordinary scrolling.
  */
 import { expect, test } from "@playwright/test";
 import { findRemoteBundleDeclaration } from "./aesthetic-audit-rules";
@@ -95,6 +95,15 @@ test("Calendar landscape scrolling exposes an event for opening", async ({
   await expect(event).toBeInViewport();
   await event.click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  await page.mouse.move(600, 180);
+  await page.mouse.wheel(0, 2000);
+  const cancel = page.getByRole("button", {
+    name: "Cancel event editor",
+    exact: true,
+  });
+  await expect(cancel).toBeInViewport();
+  await cancel.click({ timeout: 15_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("Messages landscape keeps status separate and composer reachable", async ({
