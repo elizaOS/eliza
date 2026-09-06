@@ -15,19 +15,21 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+import * as quotaPolicyActual from "@/lib/services/organization-quota-policy";
+import { purchasedCreditPolicyFixture } from "./purchased-credit-policy-fixture";
 
-// These purchased-credit fixtures have no paid subscription. Keep the real
-// funding selector and reservation path while supplying that repository state.
-let entitlementLookup: ReturnType<typeof spyOn>;
+// These route billing fixtures model purchased-credit funding with no subscription.
+// The primary policy reader is the external boundary; reservation, provider health,
+// settlement and reconciliation below remain the real implementations.
+let policyLookup: ReturnType<typeof spyOn>;
 beforeEach(() => {
-  entitlementLookup = spyOn(
-    subscriptionEntitlementsRepository,
-    "find",
-  ).mockResolvedValue(undefined);
+  policyLookup = spyOn(
+    quotaPolicyActual,
+    "readOrganizationQuotaPolicy",
+  ).mockResolvedValue(purchasedCreditPolicyFixture());
 });
 afterEach(() => {
-  entitlementLookup.mockRestore();
+  policyLookup.mockRestore();
 });
 
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";

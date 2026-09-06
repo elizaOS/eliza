@@ -19,6 +19,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "@/db/repositories/organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -224,6 +225,10 @@ beforeAll(async () => {
     for (const ddl of TIER_UPGRADE_TEST_TABLES) {
       await dbWrite.execute(ddl);
     }
+    const { getPgliteClientForTests } = await import("@/db/client");
+    await installOrganizationPolicyTestSchema((query) =>
+      getPgliteClientForTests().exec(query),
+    );
     const { userCharacters } = await import("@/db/schemas/user-characters");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
 
