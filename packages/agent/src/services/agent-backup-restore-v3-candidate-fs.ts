@@ -52,6 +52,10 @@ import {
   cleanupCandidateFsVolatile,
   proveCandidateFsTree,
 } from "./agent-backup-restore-v3-candidate-fs-tree";
+import {
+  type AgentBackupRestoreV3GenerationPromotion,
+  settleCandidateGenerationPromotion,
+} from "./agent-backup-restore-v3-generation-promotion";
 
 const CANDIDATE_FS_CONSTRUCTION_AUTHORITY = Symbol(
   "candidate-fs-construction-authority",
@@ -405,6 +409,20 @@ export class AgentBackupRestoreV3CandidateFs {
       snapshotOperationControl(control),
       sourceLock,
       targetLock,
+    );
+  }
+
+  /** The commit service must journal the exact intent before allowing a move. */
+  async settleGenerationPromotion(
+    promotion: Readonly<AgentBackupRestoreV3GenerationPromotion>,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    lock: AgentBackupRestoreV3CandidateFsLock,
+  ): Promise<void> {
+    return settleCandidateGenerationPromotion(
+      this.#control,
+      promotion,
+      control,
+      lock,
     );
   }
 }

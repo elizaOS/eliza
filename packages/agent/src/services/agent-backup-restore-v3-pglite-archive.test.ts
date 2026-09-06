@@ -445,6 +445,12 @@ describe("physical PGlite archive", () => {
     await expect(parse(hidden)).rejects.toMatchObject({
       code: "AGENT_BACKUP_RESTORE_V3_PGLITE_ARCHIVE_HEADER_INVALID",
     });
+    const reserved = archive(minimumEntries);
+    reserved[505] = 7;
+    checksum(reserved.subarray(0, 512));
+    await expect(parse(reserved)).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_PGLITE_ARCHIVE_HEADER_INVALID",
+    });
     const padding = archive(minimumEntries);
     padding[520] = 1;
     await expect(parse(padding)).rejects.toMatchObject({

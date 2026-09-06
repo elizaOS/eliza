@@ -61,10 +61,28 @@ or rewriting a previously prepared generation.
 
 The prepared-layout receipt is not a generation activation or boot grant. Both
 roots remain unavailable to a running workload. Production integration must still
-promote the exact layout outside the candidate authority, select its database and
-character explicitly, verify Agent readiness/functionality, and gate activation
-and routes. Opening the prepared directory directly with a live runtime would
-violate the quarantine contract.
+select the committed database and character explicitly, verify Agent
+readiness/functionality, and gate activation and routes. Opening the prepared
+directory directly with a live runtime would violate the quarantine contract.
+
+`commitAgentBackupRestoreV3Generation` performs the local filesystem handoff. It
+requires the exact prepared receipt and an existing, same-filesystem private
+runtime parent outside the quarantine roots. That parent must remain exclusively
+controller-owned and inaccessible to workloads/non-cooperating writers; the
+runtime receives only its committed generation. The destination name is derived
+from the prepared receipt, including the candidate's inode authority.
+
+Under the candidate lock, commit validates the full tree and journals an immutable
+intent before renaming it. It revalidates the moved tree and fsyncs both parents
+before publishing the committed receipt. A crash between rename and receipt is
+reconciled without copying. Terminal replay verifies the retained authority and
+directory identity only: it must not rehash or overwrite a database that has
+already accepted new runtime writes. Replacement directories fail closed.
+
+This is not the coordinator's PRIMARY commit, a boot grant or a running Agent.
+The production bootstrap and exact coordinator transport still need to consume
+the local receipt, enforce the parent/workload isolation and explicitly select
+the committed paths before boot. No restore feature is enabled by these helpers.
 
 ## Research tasks
 

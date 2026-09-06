@@ -217,6 +217,75 @@ afterEach(async () => {
 
 // Explicit Docker lane: ordinary unit runs must not create containers or pull images.
 describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
+  it("reconciles an actual Linux process death after generation rename without replacing later live writes", async () => {
+    const f = await fixture();
+    // Synthetic preparation authority isolates the real rename/lock crash
+    // boundary; the assembly suite proves all five actual restored components.
+    const setup = `
+      import fs from "node:fs/promises";
+      import {createHash} from "node:crypto";
+      import {openAgentBackupRestoreV3CandidateFs} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-candidate-fs.js";
+      import {candidateFsCanonicalJson} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-candidate-fs-json.js";
+      import {commitAgentBackupRestoreV3Generation} from "/repo/packages/agent/dist/services/agent-backup-restore-v3-generation-commit.js";
+      const control = {signal:new AbortController().signal, deadlineEpochMs:Date.now()+30000};
+      const identity = async p => {const s=await fs.stat(p,{bigint:true});return {device:String(s.dev),inode:String(s.ino)}};
+    `;
+    remote(
+      f.id,
+      `${setup}
+      await fs.mkdir("/restore/private/attempt", {recursive:true,mode:0o700});
+      await fs.mkdir("/restore/runtime", {mode:0o700});
+      const candidate=await openAgentBackupRestoreV3CandidateFs({trustedRoot:"/restore/private",attemptRoot:"/restore/private/attempt",control});
+      const lock=await candidate.acquireLock(".restore-v3-generation.lock",control);
+      try {
+        const writer=await candidate.createFileTreeFile("generation",{path:"state/fact.txt",sizeBytes:8,mode:0o600,mtimeMs:0},undefined,control,lock);
+        await writer.write(new TextEncoder().encode("restored"),control); await writer.finalize(control);
+        const tree=await candidate.inspectFileTree("generation",control,lock);
+        const body={version:1,format:"elizaos.agent-backup.restore-v3-generation-prepared.v1",assemblySha256:"a".repeat(64),sourceTreeSha256:"b".repeat(64),targetRoot:candidate.attemptRootIdentity,paths:{character:"generation/character/character.json",database:"generation/database",state:"generation/state"},treeSha256:tree.sha256,files:tree.files,directories:tree.directories,bytes:tree.bytes};
+        const prepared={...body,receiptSha256:createHash("sha256").update(candidateFsCanonicalJson(body)).digest("hex")};
+        await candidate.publishDurableJson(".restore-v3-generation-prepared.json",prepared,{maximumBytes:16384},control,lock);
+      } finally {await lock.release(control); await candidate.close()}
+    `,
+    );
+    const request = `
+      const candidate=await openAgentBackupRestoreV3CandidateFs({trustedRoot:"/restore/private",attemptRoot:"/restore/private/attempt",control});
+      const preparedReceipt=JSON.parse(await fs.readFile("/restore/private/attempt/.restore-v3-generation-prepared.json","utf8"));
+      const request={generationFs:candidate,preparedReceipt,runtimeRoot:"/restore/runtime",runtimeRootIdentity:await identity("/restore/runtime"),control};
+    `;
+    expect(() =>
+      remote(
+        f.id,
+        `${setup}${request}
+      const rename=fs.rename.bind(fs);
+      fs.rename=async (source,target)=>{await rename(source,target); process.kill(process.pid,"SIGKILL");};
+      await commitAgentBackupRestoreV3Generation(request);
+    `,
+      ),
+    ).toThrow();
+    const proof = JSON.parse(
+      remote(
+        f.id,
+        `${setup}${request}
+      const first=await commitAgentBackupRestoreV3Generation(request);
+      const file=first.paths.state+"/fact.txt";
+      const restored=await fs.readFile(file,"utf8");
+      await fs.writeFile(file,"written by live runtime");
+      const marker="/restore/private/attempt/.restore-v3-generation-committed.json";
+      const before=await fs.stat(marker,{bigint:true});
+      const replay=await commitAgentBackupRestoreV3Generation(request);
+      const after=await fs.stat(marker,{bigint:true});
+      process.stdout.write(JSON.stringify({restored,live:await fs.readFile(file,"utf8"),sameReceipt:JSON.stringify(first)===JSON.stringify(replay),markerUnchanged:before.ino===after.ino&&before.mtimeNs===after.mtimeNs,quarantineNames:await fs.readdir(candidate.attemptRoot)}));
+      await candidate.close();
+    `,
+      ),
+    );
+    expect(proof.restored).toBe("restored");
+    expect(proof.live).toBe("written by live runtime");
+    expect(proof.sameReceipt).toBe(true);
+    expect(proof.markerUnchanged).toBe(true);
+    expect(proof.quarantineNames).not.toContain("generation");
+  }, 45_000);
+
   it("copies generation files under two actual Linux inode locks without sharing source inodes", async () => {
     const f = await fixture();
     const proof = JSON.parse(

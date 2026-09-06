@@ -27,6 +27,7 @@ import {
   boundedInternalCleanup,
   CANDIDATE_FS_IO_CHUNK_BYTES,
   type CandidateFsExactStats,
+  type CandidateFsOpenedDirectory,
   candidateFsByteView,
   candidateFsError,
   candidateFsIdentity,
@@ -1647,6 +1648,7 @@ async function walkCandidateFsFileTree(
   control: Readonly<AgentBackupRestoreV3OperationControl>,
   heldLock?: AgentBackupRestoreV3CandidateFsLock,
   inspectOnly = false,
+  promotionRoot?: Readonly<CandidateFsOpenedDirectory>,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeInventory>> {
   const exactControl = snapshotOperationControl(control);
   const limits = resolveLimits(limitsValue);
@@ -1731,6 +1733,41 @@ async function walkCandidateFsFileTree(
     relativeDirectory,
     "candidate file-tree directory",
   ).split(path.sep);
+  const openRoot = async (): Promise<Readonly<CandidateFsOpenedDirectory>> => {
+    if (!promotionRoot)
+      return authority.openDirectorySegments(rootSegments, exactControl);
+    const handle = await controlledAcquire(
+      () =>
+        fs.open(
+          promotionRoot.anchor,
+          constants.O_RDONLY | constants.O_DIRECTORY,
+        ),
+      (lateHandle) => lateHandle.close(),
+      exactControl,
+    );
+    try {
+      const stats = await controlled(() => fileStatExact(handle), exactControl);
+      requirePrivateDirectory(
+        stats,
+        "Pending promoted generation is no longer private",
+      );
+      if (!sameIdentity(stats, promotionRoot.stats))
+        fileTreeError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_INODE_CHANGED",
+          "Pending promoted generation changed identity",
+        );
+      return {
+        handle,
+        stats,
+        anchor: authority.directoryAnchor(handle, promotionRoot.testPath),
+        testPath: promotionRoot.testPath,
+      };
+    } catch (cause) {
+      // error-policy:J2 Close the owned directory descriptor before rethrowing the failed proof.
+      await boundedInternalCleanup(() => handle.close());
+      throw cause;
+    }
+  };
   await authority.assertAuthority(exactControl);
   const operationLock = await authority.operationLock(
     `.prove-files-${createHash("sha256")
@@ -1751,10 +1788,7 @@ async function walkCandidateFsFileTree(
   let releaseLockUse: (() => void) | null = null;
   try {
     releaseLockUse = authority.beginLockUse(activeLock);
-    const root = await authority.openDirectorySegments(
-      rootSegments,
-      exactControl,
-    );
+    const root = await openRoot();
     rootHandle = root.handle;
     const observed: AgentBackupRestoreV3CandidateFileTreeFileProof[] = [];
     const stableFiles: Array<{
@@ -2009,10 +2043,7 @@ async function walkCandidateFsFileTree(
       }
     }
     await authority.assertLockHeld(activeLock, exactControl);
-    const reboundRoot = await authority.openDirectorySegments(
-      rootSegments,
-      exactControl,
-    );
+    const reboundRoot = await openRoot();
     try {
       const nestedDirectories = stableDirectories.filter(
         (entry) => entry.relativePath !== ".",
@@ -2153,6 +2184,25 @@ export async function inspectCandidateFsFileTree(
     control,
     heldLock,
     true,
+  );
+}
+
+/** Read-only proof during promotion, before the destination is handed to a live runtime. */
+export async function inspectPendingPromotedFileTree(
+  authority: AgentBackupRestoreV3CandidateFsControl,
+  root: Readonly<CandidateFsOpenedDirectory>,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  heldLock: AgentBackupRestoreV3CandidateFsLock,
+): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeInventory>> {
+  return walkCandidateFsFileTree(
+    authority,
+    "generation",
+    [],
+    undefined,
+    control,
+    heldLock,
+    true,
+    root,
   );
 }
 

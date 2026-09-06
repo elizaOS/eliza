@@ -708,7 +708,7 @@ export function candidateFsIdentity(
   });
 }
 
-async function resolveDirectoryAuthority(
+export async function resolveDirectoryAuthority(
   requested: string,
   field: string,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
