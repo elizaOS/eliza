@@ -32,6 +32,8 @@ describe("app-hero-art", () => {
       "CS",
     );
     expect(getAppHeroMonogram({ name: "" })).toBe("?");
+    expect(getAppHeroMonogram({ name: "🚀Rocket Space" }).isWellFormed()).toBe(true);
+
   });
 
   it("categorizes apps into appropriate theme keys", () => {
