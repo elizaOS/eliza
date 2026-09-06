@@ -14,8 +14,17 @@
  * failure this gate must catch.
  */
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +33,7 @@ interface FamilyManifest {
   version: string;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
 }
 
 interface ResolvedFamilyManifest extends FamilyManifest {
@@ -33,7 +43,7 @@ interface ResolvedFamilyManifest extends FamilyManifest {
 /** Resolve the installed manifest that `fromFile` can reach through its
  *  nearest node_modules chain. Reading the manifest path directly also covers
  *  packages whose export map intentionally has no root entry point. */
-function resolvedManifest(fromFile: string, name: string): ResolvedFamilyManifest {
+function findManifest(fromFile: string, name: string): ResolvedFamilyManifest | null {
   let dir = path.dirname(fromFile);
   for (;;) {
     const manifestPath = path.join(dir, 'node_modules', name, 'package.json');
@@ -44,11 +54,61 @@ function resolvedManifest(fromFile: string, name: string): ResolvedFamilyManifes
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
-      throw new Error(`cannot resolve ${name}'s package.json from ${fromFile}`);
+      return null;
     }
     dir = parent;
   }
 }
+
+function resolvedManifest(fromFile: string, name: string): ResolvedFamilyManifest {
+  const manifest = findManifest(fromFile, name);
+  if (!manifest) throw new Error(`cannot resolve ${name}'s package.json from ${fromFile}`);
+  return manifest;
+}
+
+function resolveEdge(
+  dependent: ResolvedFamilyManifest,
+  name: string
+): ResolvedFamilyManifest | null {
+  // Optional peers may be absent in a clean install. Installed peers still
+  // participate in version and module-identity checks; dependencies stay required.
+  const optional =
+    dependent.dependencies?.[name] === undefined &&
+    dependent.peerDependenciesMeta?.[name]?.optional === true;
+  return optional ? findManifest(dependent.entry, name) : resolvedManifest(dependent.entry, name);
+}
+
+test('optional peer resolution permits absence but validates an installed package', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'workflow-peer-'));
+  const dependent: ResolvedFamilyManifest = {
+    name: 'consumer',
+    version: '1.0.0',
+    entry: path.join(root, 'package.json'),
+    peerDependencies: { '@smthrs/review': '0.35.0' },
+    peerDependenciesMeta: { '@smthrs/review': { optional: true } },
+  };
+  try {
+    expect(resolveEdge(dependent, '@smthrs/review')).toBeNull();
+    expect(() =>
+      resolveEdge({ ...dependent, dependencies: { '@smthrs/review': '0.35.0' } }, '@smthrs/review')
+    ).toThrow('cannot resolve');
+    const installed = path.join(root, 'node_modules/@smthrs/review');
+    mkdirSync(installed, { recursive: true });
+    writeFileSync(
+      path.join(installed, 'package.json'),
+      JSON.stringify({
+        name: '@smthrs/review',
+        version: '0.35.0',
+        dependencies: { effect: '4.0.0-beta.105' },
+      })
+    );
+    const peer = resolveEdge(dependent, '@smthrs/review');
+    if (!peer) throw new Error('installed optional peer was not resolved');
+    expect(() => resolveEdge(peer, 'effect')).toThrow('cannot resolve');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function entryOf(manifest: ResolvedFamilyManifest): string {
   return manifest.entry;
@@ -98,8 +158,10 @@ describe('spawned-worker Effect family peer coherence (#18810)', () => {
       if (seen.has(name)) continue;
       const isFamily = FAMILY.has(name);
       if (!isFamily && name !== 'smthrs' && !name.startsWith('@smthrs/')) continue;
+      const resolved = resolveEdge(dependent, name);
+      if (!resolved) continue;
       seen.add(name);
-      chain.push(resolvedManifest(entryOf(dependent), name));
+      chain.push(resolved);
     }
   }
 
