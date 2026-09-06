@@ -5,7 +5,15 @@
 
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,6 +24,7 @@ import {
   requireAuthSecrets,
   requirePairedSecrets,
   requireTraceSecrets,
+  runTraces,
   validateAuthEvidence,
   validatePairedEvidence,
   verifyExactDeployment,
@@ -461,5 +470,88 @@ test("trace credentials fail closed without exposing configured values", () => {
         return true;
       },
     );
+  }
+});
+
+test("trace API denial survives private cleanup without retaining upstream secrets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "eliza-trace-denial-test-"));
+  const outputDir = join(root, "output");
+  const privateRoot = join(root, "capture");
+  await mkdir(outputDir);
+  await mkdir(privateRoot);
+  const secret = "upstream-private-value";
+  const options = {
+    deploySha: SHA,
+    outputDir,
+    env: {
+      RUNNER_TEMP: privateRoot,
+      CLOUDFLARE_API_TOKEN: secret,
+      CLOUDFLARE_ACCOUNT_ID: secret,
+    },
+    pairedRecords: Array.from({ length: 22 }, (_, index) => ({
+      target: "gateway",
+      sequence: index + 1,
+      observedAt: new Date(1_780_000_000_000 + index * 500).toISOString(),
+      headers: {
+        "cf-ray": `${(index + 1).toString(16).padStart(16, "0")}-ORD`,
+      },
+    })),
+  };
+  const fetchImpl = async () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        errors: [
+          {
+            code: 10000,
+            message: secret,
+            documentation_url: `https://example.invalid/${secret}`,
+          },
+        ],
+        token: secret,
+      }),
+      { status: 403 },
+    );
+  try {
+    await assert.rejects(runTraces(options, { fetchImpl }), (error) => {
+      assert.equal(error.diagnostic.endpoint, "keys");
+      assert.equal(error.diagnostic.httpStatus, 403);
+      assert.ok(!error.message.includes(secret));
+      return true;
+    });
+    const artifact = await readFile(
+      join(outputDir, "trace-denial.json"),
+      "utf8",
+    );
+    assert.deepEqual(JSON.parse(artifact), {
+      kind: "cloudflare_trace_api_denial",
+      endpoint: "keys",
+      httpStatus: 403,
+      errorCodes: [10000],
+      documentationUrls: [],
+    });
+    assert.ok(!artifact.includes(secret));
+    assert.deepEqual(await readdir(privateRoot), []);
+    assert.equal(existsSync(join(outputDir, "inference-traces.json")), false);
+    assert.equal(
+      (await stat(join(outputDir, "trace-denial.json"))).mode & 0o777,
+      0o600,
+    );
+
+    await assert.rejects(runTraces(options, { fetchImpl }), (error) => {
+      assert.equal(
+        error.message,
+        "Cloudflare trace denial evidence could not be retained",
+      );
+      assert.equal(error.cause.errors[0].diagnostic.httpStatus, 403);
+      return true;
+    });
+    assert.equal(
+      await readFile(join(outputDir, "trace-denial.json"), "utf8"),
+      artifact,
+    );
+    assert.deepEqual(await readdir(privateRoot), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
