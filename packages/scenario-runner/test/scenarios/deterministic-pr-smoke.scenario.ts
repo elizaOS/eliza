@@ -3,6 +3,7 @@
  * in one pass. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -14,7 +15,6 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 type RuntimeWithScenarioModelFixtures = {
   scenarioModelFixtures?: {
@@ -142,6 +142,18 @@ export default scenario({
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         runtime.scenarioModelFixtures?.register(
+          {
+            name: "pr-smoke-contextual-navigation-greeting",
+            match: {
+              modelType: ModelType.TEXT_SMALL,
+              input: /Complete user request: "hello deterministic provider"/,
+            },
+            response: JSON.stringify({
+              disposition: "none",
+              reason: "A greeting does not request a view.",
+            }),
+            times: 1,
+          },
           // The simple-reply path answers straight from the stage-1 router
           // response (`replyText`); no follow-up TEXT_SMALL call fires. The
           // router fixture is therefore the required one, and the direct
@@ -154,7 +166,8 @@ export default scenario({
               modelType: ModelType.TEXT_SMALL,
               input: "hello deterministic provider",
             },
-            response: "deterministic-test-response: hello deterministic provider",
+            response:
+              "deterministic-test-response: hello deterministic provider",
             required: false,
             times: { min: 0, max: 1 },
           },
@@ -410,7 +423,16 @@ export default scenario({
           },
         ];
 
-        const actual = readAppControlHttpRequests((request) =>
+        // The view-context evaluator may discover views independently of an
+        // action. Compare ordered effects without counting those read-only polls.
+        const isDiscoveryRead = (request: {
+          method: string;
+          pathname: string;
+        }) => request.method === "GET" && request.pathname === "/api/views";
+        const expectedEffects = expected.filter(
+          (request) => !isDiscoveryRead(request),
+        );
+        const observed = readAppControlHttpRequests((request) =>
           request.pathname.startsWith("/api/views"),
         ).map((request) => ({
           body: request.body,
@@ -419,10 +441,25 @@ export default scenario({
           response: request.response,
           search: request.search,
         }));
+        const expectedReads = expected.filter(isDiscoveryRead);
+        const observedReads = observed.filter(isDiscoveryRead);
+        if (
+          observedReads.length < expectedReads.length ||
+          observedReads.some(
+            (request) =>
+              !expectedReads.some(
+                (expectedRead) =>
+                  JSON.stringify(request) === JSON.stringify(expectedRead),
+              ),
+          )
+        ) {
+          return `view discovery response contract failed: ${JSON.stringify(observedReads)}`;
+        }
+        const actual = observed.filter((request) => !isDiscoveryRead(request));
 
-        return JSON.stringify(actual) === JSON.stringify(expected)
+        return JSON.stringify(actual) === JSON.stringify(expectedEffects)
           ? undefined
-          : `expected exact view shell API requests ${JSON.stringify(expected)}, saw ${JSON.stringify(actual)}`;
+          : `expected exact view shell API effects ${JSON.stringify(expectedEffects)}, saw ${JSON.stringify(actual)}`;
       },
     },
   ],
