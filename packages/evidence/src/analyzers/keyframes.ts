@@ -84,7 +84,7 @@ export async function extractKeyframes(
       videoPath,
       "-vf",
       "select='gt(scene,0.3)'",
-      "-vsync",
+      "-fps_mode",
       "vfr",
       "-frames:v",
       String(maxSceneFrames),
