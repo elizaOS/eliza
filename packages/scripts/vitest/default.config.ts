@@ -229,6 +229,13 @@ const vitestInlineDeps = [
 
 const vitestResolveAlias: ModuleAlias[] = [
   {
+    find: /^@elizaos\/login$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages/login/src/sdk/index.ts",
+    ),
+  },
+  {
     // Resolve @elizaos/logger to source (it is re-exported by source-aliased
     // @elizaos/core); avoids depending on logger's dist being built per test job.
     find: /^@elizaos\/logger$/,
