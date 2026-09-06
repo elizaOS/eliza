@@ -7,6 +7,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import {
 	lifeOpsPassiveConnectorsEnabled,
+	toWellFormedUnicode,
 	truncateWellFormed,
 } from "@elizaos/core";
 import { listEnabledDiscordAccounts } from "./accounts";
@@ -264,10 +265,18 @@ export interface BannerOptions {
 }
 
 function mask(v: string): string {
-	if (!v || v.length <= 8) {
+	const wellFormed = toWellFormedUnicode(v);
+	if (!wellFormed || wellFormed.length <= 8) {
 		return "••••••••";
 	}
-	return `${v.slice(0, 4)}${"•".repeat(Math.min(12, v.length - 8))}${v.slice(-4)}`;
+	const start = truncateWellFormed(wellFormed, 4);
+	let endCut = wellFormed.length - 4;
+	const code = wellFormed.charCodeAt(endCut);
+	if (code >= 0xdc00 && code <= 0xdfff) {
+		endCut += 1;
+	}
+	const end = wellFormed.slice(endCut);
+	return `${start}${"•".repeat(Math.min(12, wellFormed.length - 8))}${end}`;
 }
 
 /**
