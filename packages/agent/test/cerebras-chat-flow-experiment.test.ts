@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { describe, expect, it } from "vitest";
+import { replayRequest } from "../scripts/cerebras-cache-wire-replay";
 import {
   applyCacheExperiment,
   measuredProviderFetch,
@@ -260,13 +261,29 @@ describe("real chat cache experiment", () => {
       throw new Error("Missing test server address");
     const base = `http://127.0.0.1:${address.port}/v1`;
     const evidence: ProviderWireEvidence[] = [];
-    const body = {
+    const sourceBody = {
+      prompt_cache_key: "original-shared-affinity",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "complete_tool",
+            parameters: {
+              type: "object",
+              properties: { requiredTail: { type: "string" } },
+            },
+          },
+        },
+      ],
       model: "test",
       messages: [
         { role: "user", content: `${"context ".repeat(30_000)}REQUIRED-TAIL` },
       ],
       stream: true,
     };
+    const body = replayRequest(sourceBody, "automatic", "run", "room");
+    expect(sourceBody.prompt_cache_key).toBe("original-shared-affinity");
+    expect(body).not.toHaveProperty("prompt_cache_key");
     const measured = measuredProviderFetch(
       fetch,
       { text: base, embedding: base },
