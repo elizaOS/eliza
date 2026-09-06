@@ -1299,6 +1299,7 @@ export async function ensureVolumeVaultPassphrase(
   timeoutMs: number,
   operatorOverride?: string,
   replacementAttemptId?: string,
+  fencedPreparationCommands: readonly string[] = [],
 ): Promise<void> {
   // Validate the raw value before trim or SSH. Shell variables cannot carry
   // NUL, and the remote create-if-absent step may durably link its stdin file
@@ -1339,7 +1340,12 @@ export async function ensureVolumeVaultPassphrase(
     // Keep temporary artifacts attributable to the caller-owned attempt so
     // exact cleanup can prove that plaintext did not outlive the fence.
     await execStdin(
-      buildVolumeVaultPassphraseCommand(volumePath, overrideBytes, replacementAttemptId),
+      buildVolumeVaultPassphraseCommand(
+        volumePath,
+        overrideBytes,
+        replacementAttemptId,
+        fencedPreparationCommands,
+      ),
       framedOverride,
       timeoutMs,
     );
