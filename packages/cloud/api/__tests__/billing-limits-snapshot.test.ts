@@ -43,6 +43,7 @@ const readPrimaryAccountBillingSnapshot = mock(
   async (organizationId: string) => {
     seenOrgIds.push(organizationId);
     return {
+      subscription: { state: "none" as const },
       observedAt: "2026-08-20T12:00:00.000Z",
       organization: {
         creditBalance: "15.000000",

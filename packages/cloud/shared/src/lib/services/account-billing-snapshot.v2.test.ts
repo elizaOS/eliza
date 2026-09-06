@@ -21,6 +21,7 @@ function healthyPrimary(
   overrides: Partial<PrimaryAccountBillingReadModel> = {},
 ): PrimaryAccountBillingReadModel {
   return {
+    subscription: { state: "none" },
     observedAt: PRIMARY_OBSERVED_AT,
     organization: {
       creditBalance: "9.000000",

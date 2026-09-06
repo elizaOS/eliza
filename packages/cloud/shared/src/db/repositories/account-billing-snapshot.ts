@@ -37,6 +37,10 @@ import { organizations } from "../schemas/organizations";
 import { userCharacters } from "../schemas/user-characters";
 import { requireAccountBillingAggregateRow } from "./account-billing-snapshot-aggregates";
 import { requireCustomerBindingAuthoritativeRow } from "./account-billing-snapshot-primary-values";
+import {
+  type PrimaryOrganizationSubscription,
+  readPrimaryOrganizationSubscription,
+} from "./account-billing-snapshot-subscription";
 
 export interface PrimaryStatusCounts {
   used: string;
@@ -54,6 +58,7 @@ export interface PrimaryComputeRateSegment {
 
 export interface PrimaryAccountBillingReadModel {
   observedAt: string;
+  subscription: PrimaryOrganizationSubscription;
   organization: {
     creditBalance: string;
     balanceRevision: string;
@@ -420,9 +425,11 @@ export async function readPrimaryAccountBillingSnapshot(
       }
 
       const control = controlRows[0];
+      const subscription = await readPrimaryOrganizationSubscription(tx, organizationId);
 
       return {
         observedAt,
+        subscription,
         organization: {
           creditBalance: String(organization.creditBalance),
           balanceRevision: exactInteger(

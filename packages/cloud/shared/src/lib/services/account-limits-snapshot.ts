@@ -37,6 +37,7 @@ import type {
   SandboxLimitItem,
   StorageLimitItem,
 } from "../../types/account-billing-snapshot";
+import { buildOrganizationSubscriptionSnapshot } from "./account-subscription-snapshot";
 
 export type {
   AccountBillingSnapshot,
@@ -659,6 +660,7 @@ function allUnavailableV2(
     snapshotStartedAt,
     snapshotCompletedAt,
     balance: primary(),
+    subscription: primary(),
     paymentMethodPresence: primary(),
     billingReadiness: primary(),
     autoTopUp: {
@@ -1523,6 +1525,7 @@ export async function buildAccountBillingSnapshot(
 
     const snapshotCompletedAt = sources.now().toISOString();
     const v2: AccountBillingSnapshotV2 = {
+      subscription: buildOrganizationSubscriptionSnapshot(primary.subscription, observedAt),
       snapshotStartedAt,
       snapshotCompletedAt,
       balance,

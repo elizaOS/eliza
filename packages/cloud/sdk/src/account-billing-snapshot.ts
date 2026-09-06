@@ -295,10 +295,52 @@ export interface AccountBillingLimitsV2 {
   };
 }
 
+/** Organization infrastructure billing only; never an app subscriber's merchant account. */
+export interface OrganizationSubscriptionSnapshot {
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  lifecycleRevision: string;
+  projectionRevision: string;
+  state:
+    | "pending"
+    | "incomplete"
+    | "active"
+    | "grace"
+    | "past_due"
+    | "unpaid"
+    | "canceled"
+    | "incomplete_expired";
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+  pendingPlanKey: "plus_monthly" | "pro_monthly" | null;
+  /** These are persisted lifecycle timestamps, not a forecast of the next charge or access. */
+  graceExpiresAt: string | null;
+  dunningStartedAt: string | null;
+  allowance: Observed<{
+    sourceLifecycleRevision: string;
+    periodStart: string;
+    periodEnd: string;
+    expiresAt: string;
+    state: "open" | "expired" | "clawed_back" | "closed";
+    granted: string;
+    adjustments: string;
+    unreserved: string;
+    reserved: string;
+    settled: string;
+    expired: string;
+    clawedBack: string;
+    /** Exact USD available within the observed period; restricted to eligible funding classes. */
+    effectiveRemaining: string;
+    currency: "USD";
+  }>;
+}
+
 export interface AccountBillingSnapshotV2 {
   snapshotStartedAt: string;
   snapshotCompletedAt: string;
   balance: Observed<AccountBalanceSnapshot>;
+  subscription: Observed<OrganizationSubscriptionSnapshot>;
   paymentMethodPresence: Observed<PaymentMethodPresenceSnapshot>;
   billingReadiness: Observed<BillingReadinessSnapshot>;
   autoTopUp: AutoTopUpSnapshot;
