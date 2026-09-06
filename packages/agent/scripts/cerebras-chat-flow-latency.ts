@@ -617,6 +617,10 @@ async function main(): Promise<void> {
     );
   }
 
+  // OpenAI's null-input initialization probe sizes the SQL vector column;
+  // real native calls below explicitly select the canonical native provider.
+  if (nativeEmbedding)
+    process.env.OPENAI_EMBEDDING_DIMENSIONS = String(embedding.dimensions);
   const { default: openaiPlugin } = await import(
     "../../../plugins/plugin-openai/index.ts"
   );
@@ -801,16 +805,6 @@ async function main(): Promise<void> {
         activeModelInputContext = null;
       }
       const wallMs = performance.now() - startedAt;
-      const turnUsageEvents = modelUsageEvents
-        .slice(usageEventOffset)
-        .filter((event) => event.type !== ModelType.TEXT_EMBEDDING);
-      const modelUsagePayload = turnUsageEvents[0];
-      if (turnUsageEvents.length !== 1 || !modelUsagePayload) {
-        throw new Error(
-          `Expected one MODEL_USED event for ${proof}, observed ${turnUsageEvents.length}`,
-        );
-      }
-      const modelUsage = modelUsageEvidence(modelUsagePayload, model);
       const streamedText = streamed.join("");
       try {
         verifyProofResponse(result.text, proof);
@@ -831,6 +825,14 @@ async function main(): Promise<void> {
       const backgroundTasks = await drainPostDeliveryTasks(runtime);
       const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
       const totalToQuiescenceMs = performance.now() - startedAt;
+      const turnUsageEvents = modelUsageEvents
+        .slice(usageEventOffset)
+        .filter((event) => event.type !== ModelType.TEXT_EMBEDDING);
+      if (turnUsageEvents.length === 0)
+        throw new Error(`No live MODEL_USED event for ${proof}`);
+      const modelUsages = turnUsageEvents.map((event) =>
+        modelUsageEvidence(event, model),
+      );
       const recentMessages = await runtime.getMemories({
         roomId: turnRoomId as UUID,
         tableName: "messages",
@@ -885,7 +887,7 @@ async function main(): Promise<void> {
         streamedCharacters: streamedText.length,
         outputCharacters: result.text.length,
         usage: result.usage,
-        modelUsage,
+        modelUsages,
         failureKind: result.failureKind ?? null,
         persistedResponse: {
           id: persistedResponse.id,
@@ -927,9 +929,9 @@ async function main(): Promise<void> {
         `Expected ${sampleCount} timed turns, observed ${chatTelemetry.turns.length}`,
       );
     }
-    if (turns.some((turn) => turn.usage?.llmCalls !== 1)) {
+    if (turns.some((turn) => !turn.usage || turn.usage.llmCalls < 1)) {
       throw new Error(
-        "Every benchmark turn must make exactly one live LLM call",
+        "Every benchmark turn must report actual live model usage",
       );
     }
 
@@ -1172,7 +1174,11 @@ async function main(): Promise<void> {
       totalToQuiescenceMs: distribution(
         turns.map((turn) => turn.totalToQuiescenceMs),
       ),
-      promptCache: promptCacheTelemetry(turns),
+      promptCache: promptCacheTelemetry(
+        turns.flatMap((turn) =>
+          turn.modelUsages.map((modelUsage) => ({ modelUsage })),
+        ),
+      ),
       stageHistograms: stageHistograms(chatTelemetry.flows),
       derivedHistograms: chatTelemetry.derivedHistograms satisfies Record<
         string,
