@@ -1,7 +1,7 @@
 /**
  * Exercises `AgentRuntime.useModel` provider failover: an exhausted
  * (rate-limited) provider falls through to the next registration, an
- * `ELIZA_BRAIN_PROVIDER` pin is preferred yet still failed past when limited,
+ * `ELIZA_BRAIN_PROVIDER` pin never switches providers when limited,
  * and neither ordinary errors nor an explicitly requested provider trigger
  * failover. A real runtime over the in-memory adapter drives stub handlers that
  * throw the live subscription-limit envelope — no network model call.
@@ -99,35 +99,30 @@ describe("AgentRuntime.useModel provider failover", () => {
 		expect(backupHandler).not.toHaveBeenCalled();
 	});
 
-	it("fails over past an ELIZA_BRAIN_PROVIDER override when it is rate-limited", async () => {
-		// The owner pinned the chat brain to the subscription CLI route. When that
-		// provider throws its limit envelope the pin must NOT strand the brain —
-		// the remaining registered providers are the backup tier (#10893).
-		const runtime = makeRuntime({ ELIZA_BRAIN_PROVIDER: "cli-inference" });
-		const exhaustedHandler = vi.fn(async () => {
-			throw new Error(CLI_INFERENCE_LIMIT_ERROR);
-		});
-		const backupHandler = vi.fn(async () => "backup response");
+	it.each(["elizacloud", "eliza-local-inference"])(
+		"never switches a rate-limited brain pin to %s",
+		async (backup) => {
+			const runtime = makeRuntime({ ELIZA_BRAIN_PROVIDER: "cli-inference" });
+			const exhaustedHandler = vi.fn(async () => {
+				throw new Error(CLI_INFERENCE_LIMIT_ERROR);
+			});
+			const backupHandler = vi.fn(async () => "backup response");
 
-		runtime.registerModel(
-			ModelType.TEXT_LARGE,
-			exhaustedHandler,
-			"cli-inference",
-			100,
-		);
-		runtime.registerModel(
-			ModelType.TEXT_LARGE,
-			backupHandler,
-			"elizacloud",
-			10,
-		);
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				exhaustedHandler,
+				"cli-inference",
+				100,
+			);
+			runtime.registerModel(ModelType.TEXT_LARGE, backupHandler, backup, 10);
 
-		await expect(
-			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
-		).resolves.toBe("backup response");
-		expect(exhaustedHandler).toHaveBeenCalledTimes(1);
-		expect(backupHandler).toHaveBeenCalledTimes(1);
-	});
+			await expect(
+				runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+			).rejects.toThrow(CLI_INFERENCE_LIMIT_ERROR);
+			expect(exhaustedHandler).toHaveBeenCalledTimes(1);
+			expect(backupHandler).not.toHaveBeenCalled();
+		},
+	);
 
 	it("still prefers the ELIZA_BRAIN_PROVIDER override when it is healthy", async () => {
 		const runtime = makeRuntime({ ELIZA_BRAIN_PROVIDER: "cli-inference" });

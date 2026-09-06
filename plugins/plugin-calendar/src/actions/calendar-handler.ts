@@ -2047,12 +2047,16 @@ export function calendarTitleMatchesHint(title: string, hint: string): boolean {
  * permission to mutate a different day's event. Destination-only dates on an
  * update never identify its target, including when echoed into the query.
  */
-function resolveCalendarMutationCandidates(args: {
+export function resolveCalendarMutationCandidates(args: {
   action: "update" | "delete";
   events: LifeOpsCalendarEvent[];
   titleHint: string | undefined;
   texts: (string | undefined)[];
   timeZone: string;
+  /** Model-authored `details.date`, so a contradiction only it causes can be told apart from one the user stated. */
+  explicitDate?: string;
+  /** Target text with the planner's date field excluded by provenance. */
+  nonPlannerDateTexts?: (string | undefined)[];
 }): LifeOpsCalendarEvent[] {
   const titleHint = args.titleHint;
   const byTitle = titleHint
@@ -2086,13 +2090,33 @@ function resolveCalendarMutationCandidates(args: {
   if (!constrainedDate) {
     return byTitle;
   }
-  return byTitle.filter(
+  const onDate = byTitle.filter(
     (event) =>
       compareLocalDates(
         calendarEventLocalDate(event, args.timeZone),
         constrainedDate,
       ) === 0,
   );
+  if (
+    onDate.length === 0 &&
+    byTitle.length === 1 &&
+    titleHint?.trim() &&
+    args.explicitDate &&
+    args.nonPlannerDateTexts
+  ) {
+    // The only date came from the planner's `details.date` and it contradicts
+    // the single event carrying the requested title. The user's own words name
+    // no day, so the title identifies the target and the detail was a
+    // mis-resolved weekday. A day the user
+    // stated, or several title matches, still take the strict paths above.
+    const userStatedDate = resolveStatedTargetLocalDate({
+      action: args.action,
+      texts: args.nonPlannerDateTexts,
+      timeZone: args.timeZone,
+    });
+    if (!userStatedDate) return byTitle;
+  }
+  return onDate;
 }
 
 function resolveCreateEventCalendarTimeZone(
@@ -2358,8 +2382,11 @@ function mutationTargetTexts(args: {
   currentMessage: string;
   intent: string;
   timeZone: string;
+  excludePlannerDate?: boolean;
 }): (string | undefined)[] {
-  const explicitDate = detailString(args.details, "date");
+  const explicitDate = args.excludePlannerDate
+    ? undefined
+    : detailString(args.details, "date");
   const message = args.currentMessage.trim();
   const intent =
     args.intent.trim() && args.intent.trim() !== message
@@ -5019,6 +5046,14 @@ const calendarAction: CalendarHandlerAction = {
               intent,
               timeZone: planningTimeZone,
             }),
+            explicitDate: detailString(details, "date"),
+            nonPlannerDateTexts: mutationTargetTexts({
+              details,
+              currentMessage: messageText(message),
+              intent,
+              timeZone: planningTimeZone,
+              excludePlannerDate: true,
+            }),
             timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {
@@ -5365,6 +5400,14 @@ const calendarAction: CalendarHandlerAction = {
               currentMessage: messageText(message),
               intent,
               timeZone: planningTimeZone,
+            }),
+            explicitDate: detailString(details, "date"),
+            nonPlannerDateTexts: mutationTargetTexts({
+              details,
+              currentMessage: messageText(message),
+              intent,
+              timeZone: planningTimeZone,
+              excludePlannerDate: true,
             }),
             timeZone: planningTimeZone,
           });

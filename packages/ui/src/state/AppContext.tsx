@@ -1327,6 +1327,8 @@ function AppProviderInner({
         uiLanguage: setUiLanguage as (v: AppState["uiLanguage"]) => void,
         autonomousRunHealthByRunId: setAutonomousRunHealthByRunId,
         startupError: setStartupError,
+        actionNotice: (value) =>
+          lifecycle.dispatch({ type: "SET_ACTION_NOTICE", value }),
         pairingEnabled: setPairingEnabled,
         pairingExpiresAt: setPairingExpiresAt,
         pairingCodeInput: setPairingCodeInput,

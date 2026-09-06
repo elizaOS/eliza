@@ -15225,6 +15225,10 @@ export class DefaultMessageService implements IMessageService {
 				runtime.reportError("MessageService.v5Runtime", error, {
 					entityId: message.entityId,
 					roomId: message.roomId,
+					// This boundary owns user-facing failure delivery, including when
+					// a fallback masks the original provider error. Retain diagnostics
+					// without escalating a second, raw technical message into chat.
+					diagnosticOnly: true,
 					...(providerErrorDetail
 						? { providerError: providerErrorDetail as JsonValue }
 						: {}),

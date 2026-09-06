@@ -6,8 +6,8 @@
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Refuses occupied ports without terminating another workspace or service.
- * Starts the API and Vite together. The UI can compile and serve before the
- * runtime is ready; proxied requests recover as soon as the API comes online.
+ * Starts API and Vite concurrently unless credentialed local voice needs its
+ * gateway ready before the UI's initial capability probe.
  *
  * Usage:
  *   bun eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
@@ -725,6 +725,19 @@ if (acpHotReloadProbeArg) {
 // ---------------------------------------------------------------------------
 
 await assertDevPortsAvailable(uiOnly ? [UI_PORT] : [UI_PORT, API_PORT]);
+if (!uiOnly && process.env.CARTESIA_API_KEY?.trim()) {
+  const port = Number(process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT ?? 31338);
+  if (
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535 ||
+    port === UI_PORT ||
+    port === API_PORT
+  ) {
+    throw new Error("Local voice gateway requires a distinct valid TCP port.");
+  }
+  await assertDevPortsAvailable([port]);
+}
 
 let visionDepsProcess = null;
 let visionDepsCheckStarted = false;
@@ -761,6 +774,7 @@ function startVisionDepsCheck() {
 
 let apiProcess = null;
 let viteProcess = null;
+let voiceGatewayProcess = null;
 /** @type {{ count: number, close: () => void } | null} */
 let sourceWatcher = null;
 let shuttingDown = false;
@@ -827,6 +841,7 @@ function cleanup(exitCode = 0) {
     children: [
       { name: "vite", child: viteProcess },
       { name: "api", child: apiProcess },
+      { name: "voice-gateway", child: voiceGatewayProcess },
       { name: "vision-deps", child: visionDepsProcess },
     ],
     drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
@@ -1264,10 +1279,65 @@ if (uiOnly) {
     isShuttingDown: () => shuttingDown,
   });
 
-  // Start Vite before the source-watcher directory scan. The proxy has no
-  // boot-time dependency on the API, and both children can warm their module
-  // graphs while the parent installs hot-reload watches.
-  startVite();
+  // Keep the optional, credentialed voice gateway under this supervisor so
+  // ordinary dev starts and shutdowns do not leave voice on a separate lane.
+  const voiceGatewayScript = path.join(
+    apiSpawnCwd,
+    "packages/cloud/api/scripts/local-voice-gateway.ts",
+  );
+  if (process.env.CARTESIA_API_KEY?.trim() && existsSync(voiceGatewayScript)) {
+    const voicePort = Number(
+      process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT ?? 31338,
+    );
+    process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT = String(voicePort);
+    // Local-development eligibility only; consent and gateway health still
+    // gate microphone ownership. Do not propagate this into deployed builds.
+    process.env.VITE_VOICE_REALTIME_FORCE ??= "1";
+    void waitForPort(API_PORT)
+      .then(async () => {
+        const deadline = Date.now() + 300_000;
+        while (!shuttingDown && !(await probeApiHealth(API_PORT)).healthy) {
+          if (Date.now() >= deadline)
+            throw new Error("Local API readiness timed out");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        if (shuttingDown) return;
+        voiceGatewayProcess = spawn(
+          which("bun") ?? "bun",
+          ["--conditions=eliza-source", voiceGatewayScript],
+          {
+            cwd: apiSpawnCwd,
+            env: {
+              ...process.env,
+              ELIZA_LOCAL_API_ORIGIN: `http://127.0.0.1:${API_PORT}`,
+            },
+            stdio: ["ignore", "inherit", "inherit"],
+          },
+        );
+        voiceGatewayProcess.on("error", () => {
+          console.error("[eliza] Realtime voice gateway could not start.");
+        });
+        voiceGatewayProcess.on("exit", (code) => {
+          if (!shuttingDown)
+            console.error(
+              `[eliza] Voice gateway exited (${code}); voice is unavailable.`,
+            );
+        });
+        // The UI probes capability on mount. Do not let that first probe
+        // race gateway startup and leave this session on batch capture.
+        await waitForPort(voicePort, { timeout: 15_000 });
+      })
+      // error-policy:J4 Voice remains unavailable when local startup fails;
+      // text development stays available and gateway health cannot pass.
+      .catch(() =>
+        console.error("[eliza] Voice gateway waiting for local API failed."),
+      )
+      .finally(() => {
+        if (!shuttingDown) startVite();
+      });
+  } else {
+    startVite();
+  }
 
   // Agent hot-reload: bounce the API child when backend source changes. The
   // watcher only sees `*/src` (never `dist/`), and a restart fires only when the

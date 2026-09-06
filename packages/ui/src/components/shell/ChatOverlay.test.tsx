@@ -1048,6 +1048,66 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("keeps routed-view clearance fixed while the collapsed sheet is dragged open", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    let panelHeight = 72;
+    let publishPanelResize: (() => void) | undefined;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(
+        () =>
+          ({
+            width: 380,
+            height: panelHeight,
+            x: 0,
+            y: 0,
+            top: 0,
+            right: 380,
+            bottom: panelHeight,
+            left: 0,
+            toJSON: () => ({}),
+          }) as DOMRect,
+      );
+    class TestResizeObserver {
+      constructor(private callback: () => void) {}
+      observe(target: Element) {
+        if (target.getAttribute("data-testid") === "chat-sheet") {
+          publishPanelResize = this.callback;
+        }
+      }
+      disconnect() {}
+    }
+    try {
+      vi.stubGlobal("ResizeObserver", TestResizeObserver);
+      render(<ChatOverlay controller={makeController()} />);
+      const clearance = () =>
+        document.documentElement.style.getPropertyValue(
+          "--eliza-chat-clearance",
+        );
+      expect(clearance()).toBe("80px");
+      expect(publishPanelResize).toBeTypeOf("function");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+      await act(async () => {
+        await new Promise(requestAnimationFrame);
+      });
+      panelHeight = 212;
+      // A delivery queued before the observer disconnects must not publish the
+      // growing sheet as the resting composer footprint.
+      act(() => publishPanelResize?.());
+      expect(clearance()).toBe("80px");
+      fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+      act(() => publishPanelResize?.());
+      expect(clearance()).toBe("80px");
+    } finally {
+      cleanup();
+      rectSpy.mockRestore();
+      vi.stubGlobal("ResizeObserver", originalResizeObserver);
+      document.documentElement.style.removeProperty("--eliza-chat-clearance");
+    }
+  });
+
   // #14331: the waveform reflects only spoken-conversation capture. Dedicated
   // transcription replaces it with the neutral activity presentation below.
   describe("voice activity cues while capture is hot (#14331)", () => {
