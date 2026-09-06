@@ -6862,22 +6862,29 @@ function hasInFlightActionClaim(candidate: string): boolean {
 	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate)))
 		return true;
 	const future =
-		/^(.*?)\bI(?:['’]ll| will| am going to|['’]m going to|['’]m gonna| am gonna)\b(.*)$/i;
-	// Classify each clause independently: a conditional offer cannot excuse an
-	// unconditional promise elsewhere. This projection never changes delivered text.
+		/\bI(?:['’]ll| will| am going to|['’]m going to|['’]m gonna| am gonna)\b/gi;
+	// These spans are only classification inputs; the delivered answer remains
+	// complete. Each promise must own its condition, rather than borrowing a
+	// condition from an unrelated sentence or a later promise in the same clause.
 	return (candidate.match(/[^.!?;\n]+/g) ?? []).some((clause) => {
-		const promise = future.exec(clause);
-		if (!promise) return false;
-		const userInput =
-			/\b(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i;
-		const conditional = /\b(?:if|when|once|after)\s+you\b/i;
-		const precedingRequest =
-			conditional.test(promise[1]) && userInput.test(promise[1]);
-		const followingRequest =
-			/\b(?:if|when|once|after)\s+you\s+(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
-				promise[2],
+		const promises = [...clause.matchAll(future)];
+		return promises.some((promise, index) => {
+			const before = index === 0 ? clause.substring(0, promise.index) : "";
+			const after = clause.substring(
+				promise.index + promise[0].length,
+				promises[index + 1]?.index ?? clause.length,
 			);
-		return !precedingRequest && !followingRequest;
+			const precedingRequest =
+				/\b(?:if|when|once|after)\s+you\b/i.test(before) &&
+				/\b(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+					before,
+				);
+			const followingRequest =
+				/\b(?:if|when|once|after)\s+you\s+(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+					after,
+				);
+			return !precedingRequest && !followingRequest;
+		});
 	});
 }
 

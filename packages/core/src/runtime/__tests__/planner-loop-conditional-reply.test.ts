@@ -71,6 +71,9 @@ describe("conditional offers after completed navigation", () => {
 	it.each([
 		"I'll save a note now.",
 		"I’ll save a note now.",
+		"I will send your notes now and I will save a copy once you confirm.",
+		"I will save a copy once you confirm and I will send your notes now.",
+		"If you share the title, I will save it and I will send your notes now.",
 		"If you like the workspace, I'll send your notes now.",
 		"If you want a note, tell me. I'll save it now.",
 		"If you want a note, tell me; I'll save it now.",
