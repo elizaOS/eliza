@@ -2549,6 +2549,13 @@
       "when": 1796083200007,
       "tag": "0362_agent_compute_stop_confirmed_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1788669950623,
+      "tag": "0363_agent_local_state_retention",
+      "breakpoints": true
     }
   ]
 }

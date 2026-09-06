@@ -86,6 +86,33 @@ export interface SandboxDeletionLocator {
   hostKeyFingerprint?: string;
 }
 
+/** Captured host and immutable container authority for a non-destructive stop. */
+export interface SandboxRetainedStopLocator {
+  agentId: string;
+  containerId: string;
+  hostname: string;
+  sshPort: number;
+  sshUser: string;
+  hostKeyFingerprint: string;
+}
+
+/** Read-only capture target; immutable identity must be persisted before stop. */
+export type SandboxRetainedCaptureLocator = Omit<SandboxRetainedStopLocator, "containerId"> & {
+  containerName: string;
+};
+
+export interface SandboxRetainedResumeReceipt {
+  containerId: string;
+  state: "running";
+  restartPolicy: "no";
+}
+
+export interface SandboxRetainedStopReceipt {
+  containerId: string;
+  restartPolicy: "no";
+  state: "exited" | "created";
+}
+
 export interface SandboxReplacementCleanupLocator {
   sandboxId: string;
   nodeId: string;
@@ -283,6 +310,16 @@ export interface SandboxProvider {
    * unreachable container would create two live agents after the node returns.
    */
   stopForReplacement?(sandboxId: string): Promise<void>;
+  /**
+   * Stops an exact container without removal, capacity release or credential
+   * teardown. The caller must persist local-state retention and hold current
+   * lifecycle authority before dispatch; a receipt does not authorize cleanup.
+   */
+  captureRetainedContainer?(locator: SandboxRetainedCaptureLocator): Promise<string>;
+  resumeRetainedContainer?(
+    locator: SandboxRetainedStopLocator,
+  ): Promise<SandboxRetainedResumeReceipt>;
+  stopRetainingState?(locator: SandboxRetainedStopLocator): Promise<SandboxRetainedStopReceipt>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This
    * bypasses sandbox-id lookup because the routed agent row may still point at

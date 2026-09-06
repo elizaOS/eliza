@@ -79,6 +79,25 @@ export const agentBackupCatalogAuthorities = pgTable(
   }),
 );
 
+/** Durable protection for the only local state copy during payment suspension. */
+export interface AgentLocalStateRetention {
+  version: 1;
+  stopIntentId: string;
+  nodeId: string;
+  nodeRecordId: string;
+  containerId: string;
+  containerName: string;
+  agentId: string;
+  hostname: string;
+  sshPort: number;
+  sshUser: string;
+  hostKeyFingerprint: string;
+  capturedAt: string;
+  bridgeUrl: string | null;
+  healthUrl: string | null;
+  state: "stop_pending" | "stopped" | "resumed";
+}
+
 export type AgentSandboxStatus =
   | "pending"
   | "provisioning"
@@ -361,6 +380,8 @@ export const agentSandboxes = pgTable(
     // Docker infrastructure columns (added by 0047_docker_nodes migration)
     node_id: text("node_id"),
     container_name: text("container_name"),
+    /** Retains exact local state independently of canonical status or placement. */
+    local_state_retention: jsonb("local_state_retention").$type<AgentLocalStateRetention>(),
     bridge_port: integer("bridge_port"),
     web_ui_port: integer("web_ui_port"),
     headscale_ip: text("headscale_ip"),

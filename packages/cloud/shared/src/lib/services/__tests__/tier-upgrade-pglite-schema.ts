@@ -223,6 +223,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "lifecycle_revision" bigint NOT NULL DEFAULT 0,
   "node_id" text,
   "container_name" text,
+  "local_state_retention" jsonb,
   "bridge_port" integer,
   "web_ui_port" integer,
   "headscale_ip" text,
