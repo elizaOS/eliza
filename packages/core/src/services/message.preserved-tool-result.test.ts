@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import type { PlannerToolResult } from "../runtime/planner-loop";
 import type {
@@ -25,6 +26,7 @@ import type {
 } from "../types";
 import { ModelType } from "../types";
 import { ChannelType } from "../types/primitives";
+import { PROVIDER_CONTEXT_OVERFLOW } from "../utils/model-errors";
 import {
 	answerlessToolTurnReport,
 	DefaultMessageService,
@@ -47,7 +49,7 @@ const EVALUATOR_FAILURE = new Error(
 	"[cli-inference:sdk] subscription rate limit reached: session limit hit",
 );
 
-function stageOneToolTurn() {
+function stageOneToolTurn(replyEffectStatus: "none" | "non_applied" = "none") {
 	return {
 		text: "",
 		toolCalls: [
@@ -61,6 +63,7 @@ function stageOneToolTurn() {
 					intents: ["look up entry"],
 					candidateActionNames: ["LOOKUP"],
 					replyText: "",
+					replyEffectStatus,
 					facts: [],
 					relationships: [],
 					addressedTo: [],
@@ -335,6 +338,83 @@ describe("planner-loop death after a completed tool", () => {
 		expect(visibleTexts(harness.callbacks)).toEqual([]);
 		expect(harness.reportedScopes).not.toContain("MessageService.plannerLoop");
 	});
+
+	it.each([false, true])(
+		"preserves the provider context boundary with a settled tool: %s",
+		async (settled) => {
+			let actionCalls = 0;
+			const harness = await createHarness({
+				actionResult: {
+					success: true,
+					text: USER_FACING,
+					data: { userFacingText: USER_FACING },
+				},
+				actionGate: async () => {
+					actionCalls++;
+				},
+			});
+			const stageOne = stageOneToolTurn("non_applied");
+			const preliminary =
+				"Setting it up: 25 pushups, 3 a day, no fixed times, counted whenever you get them in.";
+			stageOne.toolCalls[0].arguments.replyText = settled ? "" : preliminary;
+			const overflow = new ElizaError(
+				"Complete planner request exceeds provider capacity",
+				{
+					code: PROVIDER_CONTEXT_OVERFLOW,
+					context: { requestedTokens: 177751, limit: 131072 },
+				},
+			);
+			harness.runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				async () => {
+					throw overflow;
+				},
+				"overflow-test",
+				200,
+			);
+			let stageCalls = 0;
+			harness.runtime.registerModel(
+				ModelType.RESPONSE_HANDLER,
+				async () => {
+					if (stageCalls++ === 0) return stageOne;
+					throw overflow;
+				},
+				"overflow-test",
+				200,
+			);
+			const completeRequest =
+				"look up the requested entry " +
+				"complete background context ".repeat(600) +
+				"END-OF-COMPLETE-REQUEST";
+			let plannerCalls = 0;
+			harness.runtime.registerModel(
+				ModelType.ACTION_PLANNER,
+				async (_runtime, params) => {
+					plannerCalls++;
+					expect(JSON.stringify(params)).toContain(completeRequest);
+					if (settled) return plannerCalendarCall();
+					throw overflow;
+				},
+				"overflow-test",
+				200,
+			);
+			await new DefaultMessageService().handleMessage(
+				harness.runtime,
+				makeMessage(harness.runtime, completeRequest),
+				harness.callback,
+			);
+			expect(plannerCalls).toBeGreaterThan(0);
+			expect(actionCalls).toBe(settled ? 1 : 0);
+			expect(harness.callbacks).toContainEqual(
+				expect.objectContaining({
+					failureKind: "context_overflow",
+					transient: false,
+				}),
+			);
+			expect(visibleTexts(harness.callbacks)).not.toContain(preliminary);
+			expect(visibleTexts(harness.callbacks)).not.toContain(USER_FACING);
+		},
+	);
 
 	it("delivers the completed tool's user-facing result instead of the canned failure", async () => {
 		const harness = await createHarness({
