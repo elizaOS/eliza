@@ -2679,8 +2679,8 @@ async function generateTextByModelType(
     // empty stream (or as a throw on the first pull), and at that point
     // nothing has reached the user, so a fresh attempt is invisible. Once a
     // token has been delivered a failure stays fatal — replaying a partial
-    // stream would double-deliver text. The first item is pre-pulled here and
-    // replayed by the generator below; abandoned attempts get their companion
+    // stream would double-deliver text. The prefix through the first forwarded
+    // delta is pre-pulled and replayed below; abandoned attempts get their companion
     // promises defused so an errored, unconsumed result cannot surface as an
     // unhandled rejection.
     let result!: Awaited<ReturnType<typeof streamText>>;
@@ -2693,8 +2693,10 @@ async function generateTextByModelType(
     let streamCompanions!: ReturnType<typeof observeStreamCompanions>;
     let streamIterator!: AsyncIterator<unknown>;
     let firstItem: IteratorResult<unknown> | undefined;
+    let attemptPrefix: unknown[] = [];
     for (let attempt = 0; ; attempt++) {
       capturedStreamError = undefined;
+      attemptPrefix = [];
       attestLlmInputSubstring(details);
       result = await streamText({
         ...generateParams,
@@ -2709,8 +2711,24 @@ async function generateTextByModelType(
       const source = params.streamStructured === true ? result.fullStream : result.textStream;
       streamIterator = (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
       try {
-        firstItem = await streamIterator.next();
+        for (;;) {
+          firstItem = await streamIterator.next();
+          if (firstItem.done) break;
+          attemptPrefix.push(firstItem.value);
+          if (params.streamStructured !== true) break;
+          // fullStream emits lifecycle frames before the HTTP request settles.
+          // Retain the prefix until an argument delta can reach the caller;
+          // otherwise a start frame would commit a still-retryable attempt.
+          const part = firstItem.value as {
+            type: string;
+            inputTextDelta?: string;
+            delta?: string;
+          };
+          if (part.type === "tool-input-delta" && (part.inputTextDelta ?? part.delta)) break;
+        }
       } catch (error) {
+        // error-policy:J2 the captured provider failure is classified below and
+        // rethrown by the stream boundary when recovery is not permitted.
         firstItem = undefined;
         capturedStreamError ??= error;
       }
@@ -2747,9 +2765,9 @@ async function generateTextByModelType(
         state: retryState,
       });
     }
-    // Replays the pre-pulled first item, then continues the committed attempt.
+    // Replay every retained frame of the selected attempt in its original order.
     const iterateStream = async function* (): AsyncGenerator<unknown> {
-      if (firstItem && !firstItem.done) yield firstItem.value;
+      yield* attemptPrefix;
       if (firstItem?.done) return;
       for (;;) {
         const next = await streamIterator.next();

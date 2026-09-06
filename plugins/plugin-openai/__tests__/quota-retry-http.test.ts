@@ -25,7 +25,10 @@ async function fixture(
   code: string,
   recover: boolean,
   retryAfter?: string,
-  streamRecovery = false
+  streamRecovery = false,
+  structured = false,
+  status = 429,
+  failAfterOutput = false
 ) {
   let requests = 0;
   const requestTimes: number[] = [];
@@ -34,9 +37,9 @@ async function fixture(
     requests++;
     requestTimes.push(performance.now());
     response.setHeader("Content-Type", "application/json");
-    if (!recover || requests === 1) {
+    if (!failAfterOutput && (!recover || requests === 1)) {
       if (retryAfter) response.setHeader("Retry-After", retryAfter);
-      response.writeHead(429);
+      response.writeHead(status);
       response.end(
         JSON.stringify({ error: { message: "Provider rejected request", type: code, code } })
       );
@@ -52,8 +55,10 @@ async function fixture(
       };
       response.end(
         [
-          `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: { role: "assistant", content: "Recovered" }, finish_reason: null }] })}\n\n`,
-          `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\n`,
+          `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: structured ? { role: "assistant", tool_calls: [{ index: 0, id: "call_test", type: "function", function: { name: "reply", arguments: '{"text":"Recovered"}' } }] } : { role: "assistant", content: "Recovered" }, finish_reason: null }] })}\n\n`,
+          failAfterOutput
+            ? `data: ${JSON.stringify({ error: { message: "Stream failed after output", type: "server_error", code: "server_error" } })}\n\n`
+            : `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: structured ? "tool_calls" : "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\n`,
           "data: [DONE]\n\n",
         ].join("")
       );
@@ -99,6 +104,8 @@ describe("provider quota retry HTTP boundary", () => {
     ["credit_balance_exhausted", "live"],
     ["insufficient_quota", "buffered"],
     ["credit_balance_exhausted", "buffered"],
+    ["insufficient_quota", "structured"],
+    ["credit_balance_exhausted", "structured"],
   ])(
     "does not retry %s in %s mode",
     async (code, mode) => {
@@ -109,6 +116,7 @@ describe("provider quota retry HTTP boundary", () => {
           prompt: "Reply briefly.",
           signal: AbortSignal.timeout(5000),
           stream: mode !== "generate",
+          streamStructured: mode === "structured",
         });
         if (typeof result !== "string") {
           for await (const chunk of result.textStream) {
@@ -151,11 +159,69 @@ describe("provider quota retry HTTP boundary", () => {
     expect(test.requests()).toBe(2);
   }, 10000);
 
-  it("cancels a provider-directed retry wait without another request", async () => {
-    const test = await fixture("rate_limit_exceeded", true, "30");
+  it.each([429, 500])(
+    "recovers structured live output after HTTP %s",
+    async (status) => {
+      const test = await fixture("rate_limit_exceeded", true, "0.01", true, true, status);
+      vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+      const result = await handleTextSmall(test.runtime, {
+        prompt: "Reply briefly.",
+        stream: true,
+        streamStructured: true,
+        tools: [
+          {
+            name: "reply",
+            description: "Return reply",
+            parameters: {
+              type: "object",
+              properties: { text: { type: "string" } },
+              required: ["text"],
+            },
+          },
+        ],
+      });
+      if (typeof result === "string") throw new Error("Expected streamed result");
+      let text = "";
+      for await (const chunk of result.textStream) text += chunk;
+      expect(text).toBe('{"text":"Recovered"}');
+      expect(test.requests()).toBe(2);
+    },
+    10000
+  );
+
+  it("never retries structured output after an argument delta reached the caller", async () => {
+    const test = await fixture("server_error", false, undefined, true, true, 500, true);
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+    const result = await handleTextSmall(test.runtime, {
+      prompt: "Reply briefly.",
+      stream: true,
+      streamStructured: true,
+    });
+    if (typeof result === "string") throw new Error("Expected streamed result");
+    let text = "";
     await expect(
-      handleTextSmall(test.runtime, { prompt: "Reply briefly.", signal: AbortSignal.timeout(1000) })
+      (async () => {
+        for await (const chunk of result.textStream) text += chunk;
+      })()
     ).rejects.toThrow();
+    expect(text).toBe('{"text":"Recovered"}');
     expect(test.requests()).toBe(1);
   }, 10000);
+
+  it.each([false, true])(
+    "cancels provider-directed retry wait (structured=%s)",
+    async (structured) => {
+      const test = await fixture("rate_limit_exceeded", true, "30");
+      await expect(
+        handleTextSmall(test.runtime, {
+          prompt: "Reply briefly.",
+          signal: AbortSignal.timeout(1000),
+          stream: structured,
+          streamStructured: structured,
+        })
+      ).rejects.toThrow();
+      expect(test.requests()).toBe(1);
+    },
+    10000
+  );
 });
