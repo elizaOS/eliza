@@ -7,6 +7,7 @@
  * report retains synthetic prompts and outputs so reviewers can verify that
  * each live response was distinct rather than served by a fabricated fallback.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -124,7 +125,7 @@ export interface PromptCacheTelemetry {
 }
 
 export interface ModelInputContext {
-  phase: "warmup" | "sample" | "cancellation";
+  phase: "warmup" | "sample" | "cancellation" | "isolation";
   index?: number;
   proof: string;
   roomId?: string;
@@ -632,14 +633,14 @@ async function main(): Promise<void> {
   });
   const originalFetch = globalThis.fetch;
   const wireEvidence: ProviderWireEvidence[] = [];
-  let activeModelInputContext: ModelInputContext | null = null;
+  const modelContext = new AsyncLocalStorage<ModelInputContext>();
   globalThis.fetch = measuredProviderFetch(
     originalFetch,
     {
       text: process.env.CEREBRAS_BASE_URL as string,
       embedding: embedding.endpoint,
     },
-    () => activeModelInputContext,
+    () => modelContext.getStore() ?? null,
     (evidence) => wireEvidence.push(evidence),
   );
   try {
@@ -650,9 +651,15 @@ async function main(): Promise<void> {
       await bootNative(runtime);
     }
     process.stderr.write("[cerebras-benchmark] runtime ready\n");
-    const modelUsageEvents: ModelEventPayload[] = [];
+    const modelUsageEvents: Array<{
+      payload: ModelEventPayload;
+      context: ModelInputContext | null;
+    }> = [];
     runtime.registerEvent(EventType.MODEL_USED, async (payload) => {
-      modelUsageEvents.push(payload);
+      modelUsageEvents.push({
+        payload,
+        context: modelContext.getStore() ?? null,
+      });
     });
     const modelInputs: ModelInputEvidence[] = [];
     const modelExecutions: Array<{
@@ -663,6 +670,7 @@ async function main(): Promise<void> {
     }> = [];
     const measuredUseModel = runtime.useModel.bind(runtime);
     runtime.useModel = (async (modelType, params, provider) => {
+      const activeModelInputContext = modelContext.getStore() ?? null;
       const isTextModel = isTextGenerationModelType(modelType);
       const measuredParams = isTextModel
         ? applyCacheExperiment(params, {
@@ -759,9 +767,12 @@ async function main(): Promise<void> {
       index: number,
       warmup: boolean,
       turnRoomId: string = roomId,
+      fixture?: { proof: string; prompt: string },
     ) => {
-      const proof = `SPEED-${warmup ? "W" : "S"}-${index}`;
-      const prompt = `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`;
+      const proof = fixture?.proof ?? `SPEED-${warmup ? "W" : "S"}-${index}`;
+      const prompt =
+        fixture?.prompt ??
+        `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`;
       const message = createMessageMemory({
         id: randomUUID() as UUID,
         entityId,
@@ -781,15 +792,15 @@ async function main(): Promise<void> {
           ? null
           : startedAt - previousCompletedAt;
       let firstTextAt: number | null = null;
-      activeModelInputContext = {
-        phase: warmup ? "warmup" : "sample",
+      const context: ModelInputContext = {
+        phase: fixture ? "isolation" : warmup ? "warmup" : "sample",
         index,
         proof,
         roomId: turnRoomId,
       };
       let result: Awaited<ReturnType<typeof generateChatResponse>>;
-      try {
-        result = await generateChatResponse(
+      result = await modelContext.run(context, () =>
+        generateChatResponse(
           runtime,
           message as Memory,
           runtime.character.name ?? "CerebrasLatencyAudit",
@@ -800,10 +811,8 @@ async function main(): Promise<void> {
               streamed.push(chunk);
             },
           },
-        );
-      } finally {
-        activeModelInputContext = null;
-      }
+        ),
+      );
       const wallMs = performance.now() - startedAt;
       const streamedText = streamed.join("");
       try {
@@ -827,7 +836,12 @@ async function main(): Promise<void> {
       const totalToQuiescenceMs = performance.now() - startedAt;
       const turnUsageEvents = modelUsageEvents
         .slice(usageEventOffset)
-        .filter((event) => event.type !== ModelType.TEXT_EMBEDDING);
+        .filter(
+          (event) =>
+            event.context?.proof === proof &&
+            event.payload.type !== ModelType.TEXT_EMBEDDING,
+        )
+        .map((event) => event.payload);
       if (turnUsageEvents.length === 0)
         throw new Error(`No live MODEL_USED event for ${proof}`);
       const modelUsages = turnUsageEvents.map((event) =>
@@ -935,6 +949,38 @@ async function main(): Promise<void> {
       );
     }
 
+    const isolationRooms = await Promise.all([prepareRoom(), prepareRoom()]);
+    const isolationProofs = [
+      `PARCEL-A-${randomUUID()}`,
+      `PARCEL-B-${randomUUID()}`,
+    ];
+    const isolationPriming = await Promise.all(
+      isolationRooms.map((room, index) => {
+        const proof = isolationProofs[index];
+        if (!proof) throw new Error("Missing room isolation fixture");
+        return runTurn(index, true, room, {
+          proof,
+          prompt: `My parcel reference for this conversation is ${proof}. Confirm the reference so I know you have it.`,
+        });
+      }),
+    );
+    const isolationResumption = await Promise.all(
+      isolationRooms.map((room, index) => {
+        const proof = isolationProofs[index];
+        if (!proof) throw new Error("Missing room isolation fixture");
+        return runTurn(index, false, room, {
+          proof,
+          prompt:
+            "What parcel reference did I give you earlier in this conversation?",
+        });
+      }),
+    );
+    for (const [index, turn] of isolationResumption.entries()) {
+      const otherProof = isolationProofs[1 - index];
+      if (otherProof && turn.output.includes(otherProof))
+        throw new Error("Concurrent recall leaked the other room's reference");
+    }
+
     const cancellationProof = `CANCEL-${randomUUID()}`;
     const cancellationMessage = createMessageMemory({
       id: randomUUID() as UUID,
@@ -979,22 +1025,24 @@ async function main(): Promise<void> {
 
     const cancellationStartedAt = performance.now();
     let cancellationError: unknown;
-    activeModelInputContext = {
+    const cancellationContext: ModelInputContext = {
       phase: "cancellation",
       proof: cancellationProof,
+      roomId,
     };
     try {
-      await generateChatResponse(
-        runtime,
-        cancellationMessage as Memory,
-        runtime.character.name ?? "CerebrasLatencyAudit",
-        { abortSignal: cancellationController.signal },
+      await modelContext.run(cancellationContext, () =>
+        generateChatResponse(
+          runtime,
+          cancellationMessage as Memory,
+          runtime.character.name ?? "CerebrasLatencyAudit",
+          { abortSignal: cancellationController.signal },
+        ),
       );
       throw new Error("Cancellation probe unexpectedly completed");
     } catch (error) {
       cancellationError = error;
     } finally {
-      activeModelInputContext = null;
       runtime.useModel = originalUseModel;
       if (cancellationTimer) clearTimeout(cancellationTimer);
     }
@@ -1197,6 +1245,10 @@ async function main(): Promise<void> {
       spanHistograms: chatTelemetry.spanHistograms,
       providerTelemetry: chatTelemetry.providers,
       modelInputs,
+      concurrentRoomRecall: {
+        priming: isolationPriming,
+        resumption: isolationResumption,
+      },
       cancellationProbe,
       allProviderSweep: {
         execution:
