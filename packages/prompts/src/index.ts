@@ -774,6 +774,8 @@ thought is internal rationale, not shown to user.
 extract OPTIONAL. Populate ONLY durable fact about user/person/relationship.
 - worth extracting: "my birthday is March 5", "Alice is my manager", "I live in Brooklyn"
 - skip: questions, requests, ephemeral state, agent self-talk, anything obvious from agent persona
+- extract only newly stated information from the latest user message, never facts recalled from conversation history to answer a question
+- explicit requests to remember, save, correct, or forget a fact belong to the selected MEMORY action: do not also put that same claim in extract.facts or extract.relationships. This avoids a competing background write, including recreating a fact the user asked to forget. Still extract independently stated new facts from the same message when they are not part of that memory operation.
 - extract.facts: complete self-contained facts in the user's voice
 - extract.relationships: subject-predicate-object; short entities; snake_case predicate
 - extract.addressedTo: UUIDs preferred or participant names addressed. Agent id/name when user talks to agent; other participant by name/@mention. Empty/omit if broadcast/unclear. Do not guess.
