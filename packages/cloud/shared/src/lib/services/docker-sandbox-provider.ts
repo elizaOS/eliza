@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -328,6 +329,86 @@ const EXACT_RESTORE_QUARANTINE_COMMAND = [
   "/usr/local/bin/node",
   "/app/packages/agent/dist/services/agent-backup-restore-v3-quarantine-host.js",
 ] as const;
+
+/** Inspect and start only the retained quarantine host; never create or boot a workload. */
+export function buildExactRestoreQuarantineStartCommand(
+  input: Readonly<{
+    agentId: string;
+    replacementAttemptId: string;
+    containerId: string;
+    exactRestore: SandboxExactRestoreCreateConfig;
+  }>,
+): Readonly<{ command: string; receiptDigest: string }> {
+  validateAgentId(input.agentId);
+  assertSandboxReplacementAttemptId(input.replacementAttemptId);
+  const containerId = extractExactRestoreDockerContainerId(input.containerId);
+  const exact = freezeExactRestoreConfig(input.exactRestore);
+  const containerName = exactRestoreContainerName(input.agentId, exact.restoreAttemptId);
+  const imageName = exact.imageReference.slice(0, exact.imageReference.indexOf("@"));
+  const labels = [
+    [REPLACEMENT_ATTEMPT_LABEL, input.replacementAttemptId],
+    [EXACT_RESTORE_ATTEMPT_LABEL, exact.restoreAttemptId],
+    [EXACT_RESTORE_NODE_RECORD_LABEL, exact.target.nodeRecordId],
+    [EXACT_RESTORE_NODE_INCARNATION_LABEL, exact.target.nodeIncarnation],
+    [EXACT_RESTORE_NODE_HISTORY_LABEL, exact.target.nodeHistoryId],
+    [EXACT_RESTORE_IMAGE_DIGEST_LABEL, exact.imageDigest],
+    [EXACT_RESTORE_QUARANTINE_LABEL, "true"],
+  ] as const;
+  const format = [
+    "{{.Id}}",
+    "{{.Name}}",
+    "{{.Config.Image}}",
+    "{{.ImageManifestDescriptor.digest}}",
+    "{{.ImageManifestDescriptor.platform.os}}/{{.ImageManifestDescriptor.platform.architecture}}",
+    "{{.HostConfig.NetworkMode}}",
+    "{{.HostConfig.RestartPolicy.Name}}",
+    "{{len .HostConfig.PortBindings}}",
+    "{{json .Config.Healthcheck.Test}}",
+    "{{json .Config.Entrypoint}}",
+    "{{json .Config.Cmd}}",
+    ...labels.map(([key]) => `{{index .Config.Labels ${JSON.stringify(key)}}}`),
+  ].join("|");
+  const expected = [
+    containerId,
+    `/${containerName}`,
+    `${imageName}@${exact.imagePlatformDigest}`,
+    exact.imagePlatformDigest,
+    exact.target.platform,
+    "none",
+    "no",
+    "0",
+    '["NONE"]',
+    JSON.stringify([EXACT_RESTORE_QUARANTINE_ENTRYPOINT]),
+    JSON.stringify(EXACT_RESTORE_QUARANTINE_COMMAND),
+    ...labels.map(([, value]) => value),
+  ].join("|");
+  const receiptDigest = createHash("sha256")
+    .update("eliza.agent-backup-restore.quarantine-running.v1\n")
+    .update(expected)
+    .digest("hex");
+  const inspect = `docker inspect --format ${shellQuote(format)} ${shellQuote(containerId)}`;
+  const probe = `import fs from "node:fs/promises";
+try {
+  const title = (await fs.readFile("/proc/1/cmdline", "utf8")).split("\\0").filter(Boolean);
+  if (title.length !== 1 || title[0] !== "eliza-restore-quarantine-v1" || (await fs.readFile("/proc/1/environ")).length !== 0) process.exitCode = 78;
+} catch {
+  // error-policy:J1 Reject the process probe without exposing container diagnostics.
+  process.exitCode = 78;
+}`;
+  const command = buildExactRestoreDockerBootFencedCommand(
+    exact.target.nodeIncarnation,
+    [
+      `test "$(${inspect})" = ${shellQuote(expected)}`,
+      `quarantine_state=$(docker inspect --format '{{.State.Status}}' ${shellQuote(containerId)})`,
+      `case "$quarantine_state" in created|exited) docker start ${shellQuote(containerId)} >/dev/null ;; running) : ;; *) exit 78 ;; esac`,
+      `test "$(${inspect})" = ${shellQuote(expected)}`,
+      `test "$(docker inspect --format '{{.State.Running}}' ${shellQuote(containerId)})" = true`,
+      `docker exec ${shellQuote(containerId)} /usr/bin/env -i /usr/local/bin/node --input-type=module -e ${shellQuote(probe)}`,
+      `printf '%s' ${shellQuote(receiptDigest)}`,
+    ].join("; "),
+  );
+  return Object.freeze({ command, receiptDigest });
+}
 
 function freezeExactRestoreTarget(target: SandboxExactRestoreTarget): SandboxExactRestoreTarget {
   if (
@@ -2998,7 +3079,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       const inspectFormat =
-        "{{.Id}}|{{.Name}}|{{.State.Running}}|{{.State.Status}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.RestartPolicy.Name}}|{{json .HostConfig.PortBindings}}|{{.Config.Image}}|{{.Image}}|{{.Platform}}|{{.ImageManifestDescriptor.Digest}}|{{.ImageManifestDescriptor.Platform.OS}}/{{.ImageManifestDescriptor.Platform.Architecture}}|{{json .Config.Entrypoint}}|{{json .Config.Cmd}}";
+        "{{.Id}}|{{.Name}}|{{.State.Running}}|{{.State.Status}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.RestartPolicy.Name}}|{{json .HostConfig.PortBindings}}|{{.Config.Image}}|{{.Image}}|{{.Platform}}|{{.ImageManifestDescriptor.digest}}|{{.ImageManifestDescriptor.platform.os}}/{{.ImageManifestDescriptor.platform.architecture}}|{{json .Config.Entrypoint}}|{{json .Config.Cmd}}";
       const proof = await ssh.exec(
         exactDockerRemoteCommand(
           `docker inspect --format ${shellQuote(inspectFormat)} ${shellQuote(containerId)}`,

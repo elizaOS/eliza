@@ -264,7 +264,7 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
     expect(inspectHost()).toEqual({
       entries: [],
       environment: "",
-      command: ["/usr/local/bin/node", quarantineHost],
+      command: ["eliza-restore-quarantine-v1"],
       listeners: [],
     });
     const retained = "retained candidate is not an empty agent";
@@ -278,7 +278,7 @@ describe.skipIf(!enabled)("native Docker restore worker stdio", () => {
     expect(inspectHost()).toEqual({
       entries: ["retained"],
       environment: "",
-      command: ["/usr/local/bin/node", quarantineHost],
+      command: ["eliza-restore-quarantine-v1"],
       listeners: [],
     });
     expect(

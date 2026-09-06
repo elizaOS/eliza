@@ -27,4 +27,6 @@ if (
   };
   process.once("SIGTERM", stop);
   process.once("SIGINT", stop);
+  // A private exec probe reads the live PID 1 title, not a stale log/ready file.
+  process.title = "eliza-restore-quarantine-v1";
 }

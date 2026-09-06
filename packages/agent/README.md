@@ -61,12 +61,19 @@ files or an ordinary startup command in the container configuration. Older
 images without this compiled host fail to start instead of falling back.
 The provider reads back the exact entrypoint and argument vector from Docker
 before accepting create settlement. Existing containers are not rewritten;
-future start/replay callers must verify this contract rather than trusting the
-quarantine label alone.
+start/replay verifies this contract rather than trusting the quarantine label
+alone. After initialization the host sets its Linux process title to
+`eliza-restore-quarantine-v1`; the start probe reads that live PID 1 title and
+its empty environment, not retained logs or a stale readiness file.
 
-This host is only a quarantine execution environment, not the production
-coordinator's authorized start effect or a runtime supervisor. The current
-quarantined-create turn still leaves the container stopped. Generation selection,
+This host is only a quarantine execution environment, not a runtime supervisor.
+The Cloud `startAgentBackupRestoreQuarantine` service starts an already-settled
+exact container under the existing PRIMARY lock order and a live lease/claim.
+It holds authority through the bounded SSH effect and rejects ambiguous outcomes;
+exact retry probes an already-running host without replacing its process. It
+does not advance the operation phase, boot a workload or publish any route.
+The quarantined-create turn still leaves the container stopped; its coordinator
+continuation must explicitly call the start service. Generation selection,
 controller/workload isolation, boot grants and post-boot publication still need
 the explicit coordinator integration; there is no boot command in this host.
 

@@ -1,6 +1,16 @@
 /** Real-primary-DB proofs for the dormant restore activation quarantine. */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import {
@@ -22,6 +32,8 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { startAgentBackupRestoreQuarantine } from "../../../lib/services/agent-backup-restore-quarantine-start";
+import { DockerSSHClient } from "../../../lib/services/docker-ssh";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
@@ -584,6 +596,42 @@ function combinedIntentInput(targetNodeHistoryId: string) {
   } as const;
 }
 
+/** Real intent/create/settlement writers; the vault/image rows are fixture authority. */
+async function settledQuarantineStartFixture() {
+  const history = await resetLegacyReservationForCombinedIntent();
+  const intent = await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+    combinedIntentInput(history),
+  );
+  await dbWrite
+    .update(agentBackupRestoreOperations)
+    .set({ phase: "vault_seeded" })
+    .where(eq(agentBackupRestoreOperations.id, operationId));
+  await bindExactImagePlatformAuthorityFixture();
+  const boundary = {
+    operationId,
+    ownerId: "restore-worker",
+    claimGeneration: initialClaimGeneration,
+    replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+  };
+  await markAgentSandboxExactRestoreProviderStarted({ ...boundary, locator: intent.locator });
+  const locator = { ...intent.locator, containerId: CONTAINER_A };
+  await recordAgentSandboxExactRestoreProviderCreated({ ...boundary, locator });
+  await recordAgentSandboxExactRestoreProviderSucceeded({
+    ...boundary,
+    locator,
+    receiptDigest: HASH,
+  });
+  const claim = await claimAgentBackupRestoreOperation({
+    operationId,
+    ownerId: "restore-worker",
+    claimMs: 60_000,
+  });
+  return {
+    authority: { ...combinedIntentInput(history), claimGeneration: claim.claimGeneration },
+    control: { signal: new AbortController().signal, deadlineEpochMs: Date.now() + 30_000 },
+  };
+}
+
 beforeAll(async () => {
   try {
     manifestFixture = await buildManifestFixture();
@@ -649,6 +697,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  mock.restore();
   await dbWrite.execute(
     sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_exact_image_authority_guard
       ON agent_backup_restore_operations`),
@@ -664,6 +713,136 @@ afterAll(async () => {
 });
 
 describe("restore activation quarantine", () => {
+  test(
+    "starts only a settled quarantine under PRIMARY authority and replays a lost SSH response without phase or capacity change",
+    async () => {
+      const input = await settledQuarantineStartFixture();
+      const calls: string[] = [];
+      let loseResponse = true;
+      const disconnect = mock(async () => {});
+      spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+        () =>
+          ({
+            execStdinAbortable: async (
+              command: string,
+              bytes: Buffer,
+              signal: AbortSignal,
+              timeout: number,
+              digest: string,
+            ) => {
+              calls.push(command);
+              expect(bytes.byteLength).toBe(0);
+              expect(signal.aborted).toBe(false);
+              expect(timeout).toBeGreaterThan(0);
+              expect(timeout).toBeLessThanOrEqual(30_000);
+              expect(digest).toMatch(/^[a-f0-9]{64}$/);
+              if (loseResponse) {
+                loseResponse = false;
+                throw new Error("lost quarantine start response");
+              }
+            },
+            disconnect,
+          }) as unknown as DockerSSHClient,
+      );
+      await expect(
+        startAgentBackupRestoreQuarantine({ ...input, enabled: false }),
+      ).resolves.toEqual({ status: "disabled" });
+      expect(calls).toHaveLength(0);
+      await expect(startAgentBackupRestoreQuarantine({ ...input, enabled: true })).rejects.toThrow(
+        "lost quarantine start response",
+      );
+      const result = await startAgentBackupRestoreQuarantine({ ...input, enabled: true });
+      expect(result).toMatchObject({ status: "quarantine_running", containerId: CONTAINER_A });
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toBe(calls[1]);
+      expect(disconnect).toHaveBeenCalledTimes(2);
+      const rows = await readRows();
+      expect(rows.operation.phase).toBe("container_created");
+      expect(rows.operation.claim_generation).toBe(input.authority.claimGeneration);
+      expect(rows.sandbox.activation_phase).toBe("restore_pending");
+      expect(rows.node.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test.each(["lease", "claim", "node", "cleanup", "deadline", "unsettled"] as const)(
+    "rejects changed %s authority before creating an SSH client",
+    async (kind) => {
+      const input = await settledQuarantineStartFixture();
+      const create = spyOn(DockerSSHClient, "createDedicated").mockImplementation(() => {
+        throw new Error("unexpected SSH effect");
+      });
+      if (kind === "lease") {
+        await dbWrite
+          .update(agentBackupRestoreLeases)
+          .set({ expires_at: new Date(Date.now() - 1000) })
+          .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+      } else if (kind === "claim") {
+        await releaseAgentBackupRestoreOperationClaim({
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: input.authority.claimGeneration,
+        });
+      } else if (kind === "node") {
+        await dbWrite
+          .update(dockerNodes)
+          .set({ node_incarnation: crypto.randomUUID() })
+          .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      } else if (kind === "deadline") {
+        input.control.deadlineEpochMs = Date.now() - 1;
+      } else if (kind === "unsettled") {
+        await dbWrite
+          .update(agentSandboxReplacementAttempts)
+          .set({
+            state: "in_flight_unresolved",
+            provider_succeeded_at: null,
+            provider_receipt_digest: null,
+          })
+          .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+      } else {
+        await beginAgentSandboxExactRestoreCleanup({
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: input.authority.claimGeneration,
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        });
+      }
+      await expect(
+        startAgentBackupRestoreQuarantine({ ...input, enabled: true }),
+      ).rejects.toThrow();
+      expect(create).not.toHaveBeenCalled();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "does not report quarantine success after caller cancellation during SSH settlement",
+    async () => {
+      const input = await settledQuarantineStartFixture();
+      const abort = new AbortController();
+      const disconnect = mock(async () => {});
+      spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+        () =>
+          ({
+            execStdinAbortable: async () => {
+              abort.abort();
+            },
+            disconnect,
+          }) as unknown as DockerSSHClient,
+      );
+      await expect(
+        startAgentBackupRestoreQuarantine({
+          ...input,
+          enabled: true,
+          control: { ...input.control, signal: abort.signal },
+        }),
+      ).rejects.toThrow();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect((await readRows()).operation.phase).toBe("container_created");
+    },
+    TIMEOUT,
+  );
+
   test("keeps both writers on backup-operation-lease-sandbox-node-catalogue lock order", () => {
     expectCanonicalQuarantineLockOrder(
       quarantineTransactionBody(

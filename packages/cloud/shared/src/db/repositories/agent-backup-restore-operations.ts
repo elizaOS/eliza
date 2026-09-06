@@ -11,6 +11,7 @@
  */
 
 import { Buffer } from "node:buffer";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
 import { and, eq, gt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
@@ -48,6 +49,11 @@ import {
   recordAgentBackupRestoreQuarantinedContainerForLockedAuthoritiesInTransaction,
   verifyAgentBackupRestoreQuarantineForLockedAuthorities,
 } from "./agent-backup-restore-quarantine";
+import {
+  applyAgentBackupRestoreV3TransactionDeadline,
+  assertAgentBackupRestoreV3OperationControl,
+  snapshotAgentBackupRestoreV3OperationControl,
+} from "./agent-backup-restore-v3-candidate-database-control";
 import {
   type AgentSandboxReplacementLocatorInput,
   beginAgentSandboxExactRestoreCleanupForLockedAuthoritiesInTransaction,
@@ -1146,6 +1152,52 @@ export async function releaseAgentBackupRestoreOperationClaim(params: {
 export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
   input: ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput,
 ): Promise<ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult> {
+  return loadOrReserveExactRestoreAuthority(input);
+}
+
+/**
+ * Run a quarantine-only effect under the existing complete PRIMARY lock order.
+ * This never creates an intent or reserves capacity: only a settled, exact
+ * container_created authority is admissible. The effect must honor the bounded
+ * control and join remote settlement before returning, including on failure.
+ * No phase, runtime-boot or route-publication authority is granted here.
+ */
+export async function withAgentBackupRestoreQuarantineAuthority<T>(
+  input: ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput,
+  controlInput: Readonly<AgentBackupRestoreV3OperationControl>,
+  effect: (
+    authority: ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+  ) => Promise<T>,
+): Promise<T> {
+  const control = snapshotAgentBackupRestoreV3OperationControl(controlInput);
+  assertAgentBackupRestoreV3OperationControl(control, "Restore quarantine effect");
+  if (typeof effect !== "function") {
+    throw new AgentBackupCatalogConflictError("Restore quarantine effect is required");
+  }
+  let completed: { value: T } | undefined;
+  await loadOrReserveExactRestoreAuthority(input, {
+    control,
+    async run(authority, boundedControl) {
+      completed = { value: await effect(authority, boundedControl) };
+    },
+  });
+  if (!completed) {
+    throw new AgentBackupCatalogConflictError("Restore quarantine effect did not settle");
+  }
+  return completed.value;
+}
+
+async function loadOrReserveExactRestoreAuthority(
+  input: ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput,
+  effect?: Readonly<{
+    control: Readonly<AgentBackupRestoreV3OperationControl>;
+    run: (
+      authority: ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult,
+      control: Readonly<AgentBackupRestoreV3OperationControl>,
+    ) => Promise<void>;
+  }>,
+): Promise<ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult> {
   const operationId = requireUuid(input.operationId, "operationId");
   const claimGeneration = requireUuid(input.claimGeneration, "claimGeneration");
   const targetNodeRecordId = requireUuid(input.targetNodeRecordId, "targetNodeRecordId");
@@ -1173,6 +1225,13 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
   }
 
   return await dbWrite.transaction(async (tx) => {
+    if (effect) {
+      await applyAgentBackupRestoreV3TransactionDeadline(
+        tx,
+        effect.control,
+        "Restore quarantine effect",
+      );
+    }
     // Global multi-authority order: organization -> backup -> operation ->
     // lease -> sandbox -> mutable node -> immutable occurrence -> catalogue.
     // All mutations happen only after that entire proof and a post-lock clock.
@@ -1257,6 +1316,11 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
     }
     if (!immutableOperationAuthorityMatches(operation, operationAuthority)) {
       throw new AgentBackupCatalogConflictError("Restore operation authority changed before lock");
+    }
+    if (effect && operation.phase !== "container_created") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore quarantine effect requires a created container",
+      );
     }
     if (
       operation.phase !== "reserved" &&
@@ -1708,7 +1772,7 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
       vpnNodeId: replacement.attempt.locator_vpn_node_id,
     });
 
-    return Object.freeze({
+    const authority = Object.freeze({
       operation: Object.freeze(operationForIntent),
       target,
       sandbox: sandboxCreateAuthority(quarantinedSandbox, operationForIntent),
@@ -1720,6 +1784,47 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
         replacementIntent: replacement.replayed,
       }),
     });
+    if (effect) {
+      if (
+        !targetAlreadyRecorded ||
+        !replacement.replayed ||
+        replacement.attempt.state !== "provider_succeeded" ||
+        replacement.attempt.provider_succeeded_at === null ||
+        replacement.attempt.provider_receipt_digest === null ||
+        operationForIntent.expected_container_id === null ||
+        operationForIntent.expected_image_reference === null ||
+        operationForIntent.expected_image_platform_digest === null ||
+        operationForIntent.claim_expires_at === null
+      ) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore quarantine effect requires settled provider authority",
+        );
+      }
+      const boundedControl = Object.freeze({
+        signal: effect.control.signal,
+        deadlineEpochMs: Math.min(
+          effect.control.deadlineEpochMs,
+          lease.expires_at.getTime(),
+          operationForIntent.claim_expires_at.getTime(),
+        ),
+      });
+      const beforeEffect = await readPostLockDatabaseNow(tx);
+      assertAgentBackupRestoreV3OperationControl(boundedControl, "Restore quarantine effect");
+      if (beforeEffect.getTime() >= boundedControl.deadlineEpochMs) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore quarantine authority expired before effect",
+        );
+      }
+      await effect.run(authority, boundedControl);
+      const afterEffect = await readPostLockDatabaseNow(tx);
+      assertAgentBackupRestoreV3OperationControl(boundedControl, "Restore quarantine effect");
+      if (afterEffect.getTime() >= boundedControl.deadlineEpochMs) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore quarantine authority expired during effect",
+        );
+      }
+    }
+    return authority;
   });
 }
 

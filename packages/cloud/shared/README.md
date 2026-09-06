@@ -62,6 +62,27 @@ There is no build step here (`build:linked-workspaces` defers to the repo-root `
 
 `db/database-url.ts` resolves the Postgres URL: explicit `DATABASE_URL` / `TEST_DATABASE_URL` (Railway in production) wins; otherwise local dev falls back to a file-backed PGlite store at `pglite://<cwd>/.eliza/.pgdata` (override the path with `PGLITE_DATA_DIR` / `LOCAL_DATABASE_PATH`). The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, BitRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra). See `.env.example` for the full set.
 
+## Exact restore quarantine start
+
+`startAgentBackupRestoreQuarantine` is a disabled-first service for a coordinator
+that already owns a restore operation claim. It admits only `container_created`
+with settled provider authority, using the existing PRIMARY lock order to check
+the source, lease, claim, sandbox, node occurrence and replacement. Locks remain
+held through a deadline-bounded dedicated SSH session. No phase or capacity
+advance is performed; ambiguous transport or transaction outcomes require exact
+retry. This is not a workload boot, activation or routing grant.
+
+The remote command verifies the exact container, child image manifest, startup
+arguments and quarantine settings, then starts only that retained ID. Running
+replay checks the live quarantine PID 1 without restarting it. The opt-in
+`restore-quarantine-start.docker.test.ts` suite executes this generated command
+against local Docker. Build the Agent package and preload `node:24.15.0-alpine`
+plus its native child-manifest reference before running with
+`AGENT_RESTORE_V3_DOCKER_TESTS=1`. The harness translates the Linux boot-id path
+and Docker socket for the local machine; it is not a real SSH, remote boot-fence,
+PostgreSQL concurrency or restored-runtime proof. Test-owned containers and
+temporary files are removed after each test; no image is pulled implicitly.
+
 ## More
 
 See [CLAUDE.md](./CLAUDE.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.
