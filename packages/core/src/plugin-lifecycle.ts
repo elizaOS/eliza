@@ -273,6 +273,13 @@ function pushUniqueRef<T extends object>(items: T[], item: T): void {
 	}
 }
 
+/** Records a normalized route against the plugin registration active in this async context. */
+export function trackPluginRouteRegistration(route: RuntimeRoute): void {
+	const capture = pluginRegistrationContext.getStore();
+	if (!capture) return;
+	pushUniqueRef(capture.ownership.routes, route);
+}
+
 /**
  * Neutralizes a declared `override: true` on a component being registered
  * through the plugin lifecycle (#12658).
@@ -852,22 +859,15 @@ async function teardownPluginOwnership(
 	}
 }
 
-function trackRoutesAndPluginRef(
+function trackRegisteredPluginRef(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 	pluginsBefore: Set<Plugin>,
-	routesBefore: Set<RuntimeRoute>,
 ): void {
 	for (const plugin of runtime.plugins) {
 		if (!pluginsBefore.has(plugin) && plugin.name === ownership.pluginName) {
 			ownership.registeredPlugin = plugin;
 			break;
-		}
-	}
-
-	for (const route of runtime.routes) {
-		if (!routesBefore.has(route)) {
-			pushUniqueRef(ownership.routes, route);
 		}
 	}
 }
@@ -1085,7 +1085,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	runtimeWithLifecycle.registerPlugin = (async (plugin: Plugin) => {
 		const pluginsBefore = new Set(runtimeWithLifecycle.plugins);
-		const routesBefore = new Set(runtimeWithLifecycle.routes);
 		const serviceClassCountsBefore = new Map<RuntimeServiceClass, number>();
 		for (const classes of privateState.serviceTypes.values()) {
 			for (const serviceClass of classes) {
@@ -1122,11 +1121,10 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
 			});
-			trackRoutesAndPluginRef(
+			trackRegisteredPluginRef(
 				runtimeWithLifecycle,
 				capture.ownership,
 				pluginsBefore,
-				routesBefore,
 			);
 			captureDeclaredServices();
 			if (
@@ -1150,11 +1148,10 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		} catch (error) {
 			// error-policy:J2 Roll back partial plugin ownership before preserving
 			// the original registration failure.
-			trackRoutesAndPluginRef(
+			trackRegisteredPluginRef(
 				runtimeWithLifecycle,
 				capture.ownership,
 				pluginsBefore,
-				routesBefore,
 			);
 			captureDeclaredServices();
 			await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
