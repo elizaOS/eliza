@@ -1,3 +1,4 @@
+/** Tests startup update notices with deterministic provider and terminal fixtures. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

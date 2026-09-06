@@ -4,7 +4,14 @@
  */
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -77,19 +84,43 @@ describe("RoutingMatrix hardware-tier failure", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps routing controls usable and consumes the rejected tier promise", async () => {
+  it("shows loading, reports unavailable hardware, and recovers on retry", async () => {
+    const initialRead = Promise.withResolvers<never>();
+    clientMock.getLocalInferenceDeviceTier.mockReturnValueOnce(
+      initialRead.promise,
+    );
     await act(async () => {
       render(<RoutingMatrix />);
       await Promise.resolve();
     });
 
     expect(screen.getByRole("heading", { name: "Model routing" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Checking device hardware",
+    );
+    await act(async () =>
+      initialRead.reject(new Error("malformed hardware probe")),
+    );
     await waitFor(() =>
       expect(clientMock.getLocalInferenceDeviceTier).toHaveBeenCalledTimes(1),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(screen.queryByText(/Auto: /)).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Hardware details are unavailable",
+    );
+    clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+      tier: "GOOD",
+      reason: "Device supports local inference",
+      cpuOnly: false,
+      mobile: false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(screen.getAllByText(/Auto: on-device/).length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
     expect(unhandled).toEqual([]);
   });
 });

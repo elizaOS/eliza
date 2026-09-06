@@ -11,6 +11,7 @@
 import {
   type CloudApiErrorBody,
   type CloudRequestOptions,
+  type CloudResponse,
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
   type ElizaCloudClientOptions,
   type HttpMethod,
@@ -82,19 +83,15 @@ function resolveUrl(
   return appendQuery(url, query).toString();
 }
 
-/**
- * A body the server labelled `application/json` but that failed to parse. The
- * raw text is retained so error responses can still surface it in their message;
- * on a 2xx response `request()` promotes this to a thrown failure rather than
- * fabricating a success — a malformed JSON body is a broken response, not data.
- */
-const malformedJsonBodyBrand = Symbol("MalformedJsonBody");
-
-interface MalformedJsonBody {
-  readonly [malformedJsonBodyBrand]: true;
-  readonly kind: "malformed-json";
-  readonly text: string;
-}
+type ParsedResponseBody =
+  | { readonly kind: "empty" }
+  | { readonly kind: "json"; readonly value: unknown }
+  | {
+      readonly kind: "text";
+      readonly text: string;
+      readonly contentType: string | null;
+    }
+  | { readonly kind: "malformed-json"; readonly text: string };
 
 const MAX_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_RESPONSE_BODY_CHUNKS = 8_192;
@@ -106,13 +103,49 @@ interface RequestDeadline {
   close(): void;
 }
 
-function isMalformedJsonBody(value: unknown): value is MalformedJsonBody {
+const MEDIA_TYPE_RESTRICTED_NAME =
+  /^[0-9a-z](?:[!#$&+.^_0-9a-z-]{0,125}[0-9a-z])?$/;
+
+function isJsonMediaType(contentType: string | null): boolean {
+  if (contentType === null) return false;
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  if (!mediaType) return false;
+
+  const slashIndex = mediaType.indexOf("/");
+  if (slashIndex <= 0 || slashIndex !== mediaType.lastIndexOf("/")) {
+    return false;
+  }
+  const type = mediaType.slice(0, slashIndex);
+  const subtype = mediaType.slice(slashIndex + 1);
+  if (
+    !MEDIA_TYPE_RESTRICTED_NAME.test(type) ||
+    !MEDIA_TYPE_RESTRICTED_NAME.test(subtype)
+  ) {
+    return false;
+  }
   return (
-    isRecord(value) &&
-    (value as { [malformedJsonBodyBrand]?: unknown })[
-      malformedJsonBodyBrand
-    ] === true
+    (type === "application" && subtype === "json") ||
+    (subtype.length > "+json".length && subtype.endsWith("+json"))
   );
+}
+
+function parsedBodyValue(body: ParsedResponseBody): unknown {
+  switch (body.kind) {
+    case "json":
+      return body.value;
+    case "text":
+    case "malformed-json":
+      return body.text;
+    case "empty":
+      return undefined;
+  }
+}
+
+function isSuccessfulBodylessResponse(
+  method: HttpMethod,
+  status: number,
+): boolean {
+  return method === "HEAD" || status === 204 || status === 205;
 }
 
 function responseBodyTooLarge(response: Response): CloudApiError {
@@ -241,7 +274,21 @@ async function readBoundedResponseText(
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return new TextDecoder().decode(bytes);
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch (cause) {
+      // error-policy:J2 Invalid UTF-8 is a broken response representation, not
+      // JSON data with silently substituted replacement characters.
+      throw new CloudApiError(
+        response.status,
+        {
+          success: false,
+          error: `HTTP ${response.status}: response body is not valid UTF-8`,
+          code: "invalid_response_encoding",
+        },
+        { cause },
+      );
+    }
   } catch (error) {
     // error-policy:J2 Preserve the selected read or abort failure through teardown.
     failure = error;
@@ -255,25 +302,21 @@ async function readBoundedResponseText(
 async function parseResponseBody(
   response: Response,
   signal: AbortSignal | undefined,
-): Promise<unknown> {
+): Promise<ParsedResponseBody> {
   const text = await readBoundedResponseText(response, signal);
-  if (!text) return undefined;
+  if (!text) return { kind: "empty" };
 
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    return text;
+  const contentType = response.headers.get("content-type");
+  if (!isJsonMediaType(contentType)) {
+    return { kind: "text", text, contentType };
   }
 
   try {
-    return JSON.parse(text);
+    return { kind: "json", value: JSON.parse(text) };
   } catch {
-    // error-policy:J3 declared-JSON parse failure returns a typed marker; the
+    // error-policy:J3 declared-JSON parse failure returns an explicit state; the
     // caller surfaces it (error path) or throws (2xx), never a fake success.
-    return {
-      [malformedJsonBodyBrand]: true,
-      kind: "malformed-json",
-      text,
-    } satisfies MalformedJsonBody;
+    return { kind: "malformed-json", text };
   }
 }
 
@@ -379,12 +422,6 @@ function normalizeErrorBody(
   statusText: string,
   body: unknown,
 ): CloudApiErrorBody {
-  if (isMalformedJsonBody(body)) {
-    return {
-      success: false,
-      error: `HTTP ${status}: ${body.text}`,
-    };
-  }
   if (isRecord(body)) {
     const rawError = body.error;
     const errorObject = isRecord(rawError) ? rawError : null;
@@ -509,8 +546,12 @@ export class CloudApiError extends Error {
   readonly statusCode: number;
   readonly errorBody: CloudApiErrorBody;
 
-  constructor(statusCode: number, body: CloudApiErrorBody) {
-    super(body.error);
+  constructor(
+    statusCode: number,
+    body: CloudApiErrorBody,
+    options?: ErrorOptions,
+  ) {
+    super(body.error, options);
     this.name = "CloudApiError";
     this.statusCode = statusCode;
     this.errorBody = body;
@@ -656,53 +697,108 @@ export class ElizaCloudHttpClient {
     }
   }
 
-  async request<TResponse>(
+  private requestParsed<TResponse>(
     method: HttpMethod,
     path: string,
-    options: CloudRequestOptions = {},
-  ): Promise<TResponse> {
+    options: CloudRequestOptions,
+    allowBodyless: false,
+  ): Promise<TResponse>;
+  private requestParsed<TResponse>(
+    method: HttpMethod,
+    path: string,
+    options: CloudRequestOptions,
+    allowBodyless: true,
+  ): Promise<CloudResponse<TResponse>>;
+  private async requestParsed<TResponse>(
+    method: HttpMethod,
+    path: string,
+    options: CloudRequestOptions,
+    allowBodyless: boolean,
+  ): Promise<CloudResponse<TResponse>> {
     const { response, deadline } = await this.dispatchRequest(
       method,
       path,
       options,
     );
     try {
+      if (
+        response.ok &&
+        isSuccessfulBodylessResponse(method, response.status)
+      ) {
+        cancelBodyDetached(
+          response.body,
+          "Successful HTTP response is defined as bodyless",
+        );
+        if (allowBodyless) return undefined;
+        throw new CloudApiError(response.status, {
+          success: false,
+          error: `HTTP ${response.status}: expected a JSON response body but the response is defined as bodyless`,
+          code: "empty_response_body",
+        });
+      }
+
       const body = await parseResponseBody(response, deadline.signal);
 
       if (!response.ok) {
         const errorBody = normalizeErrorBody(
           response.status,
           response.statusText,
-          body,
+          parsedBodyValue(body),
         );
         throw response.status === 402
           ? new InsufficientCreditsError(errorBody)
           : new CloudApiError(response.status, errorBody);
       }
 
-      // A 2xx that promised JSON but delivered unparseable bytes is a broken
-      // response, not a success — surface it instead of fabricating one.
-      if (isMalformedJsonBody(body)) {
-        throw new CloudApiError(response.status, {
-          success: false,
-          error: `HTTP ${response.status}: malformed JSON response body: ${body.text}`,
-        });
+      switch (body.kind) {
+        case "empty":
+          throw new CloudApiError(response.status, {
+            success: false,
+            error: `HTTP ${response.status}: expected a JSON response body but received an empty response`,
+            code: "empty_response_body",
+          });
+        case "text": {
+          const received = body.contentType?.trim() || "no Content-Type";
+          throw new CloudApiError(response.status, {
+            success: false,
+            error: `HTTP ${response.status}: expected a JSON response body but received ${received}`,
+            code: "unexpected_response_content_type",
+          });
+        }
+        case "malformed-json":
+          throw new CloudApiError(response.status, {
+            success: false,
+            error: `HTTP ${response.status}: malformed JSON response body: ${body.text}`,
+            code: "malformed_json_response",
+          });
+        case "json":
+          return body.value as TResponse;
       }
-
-      if (body === undefined || typeof body === "string") {
-        return { success: true } as TResponse;
-      }
-
-      return body as TResponse;
     } finally {
       deadline.close();
     }
   }
 
+  async request<TResponse>(
+    method: HttpMethod,
+    path: string,
+    options: CloudRequestOptions = {},
+  ): Promise<CloudResponse<TResponse>> {
+    return this.requestParsed<TResponse>(method, path, options, true);
+  }
+
+  async requestData<TResponse>(
+    method: HttpMethod,
+    path: string,
+    options: CloudRequestOptions = {},
+  ): Promise<TResponse> {
+    return this.requestParsed<TResponse>(method, path, options, false);
+  }
+
   async get<TResponse>(
     path: string,
     options?: CloudRequestOptions,
-  ): Promise<TResponse> {
+  ): Promise<CloudResponse<TResponse>> {
     return this.request<TResponse>("GET", path, options);
   }
 
@@ -710,15 +806,18 @@ export class ElizaCloudHttpClient {
     path: string,
     body?: unknown,
     options: Omit<CloudRequestOptions, "json"> = {},
-  ): Promise<TResponse> {
-    return this.request<TResponse>("POST", path, { ...options, json: body });
+  ): Promise<CloudResponse<TResponse>> {
+    return this.request<TResponse>("POST", path, {
+      ...options,
+      json: body,
+    });
   }
 
   async put<TResponse>(
     path: string,
     body?: unknown,
     options: Omit<CloudRequestOptions, "json"> = {},
-  ): Promise<TResponse> {
+  ): Promise<CloudResponse<TResponse>> {
     return this.request<TResponse>("PUT", path, { ...options, json: body });
   }
 
@@ -726,14 +825,17 @@ export class ElizaCloudHttpClient {
     path: string,
     body?: unknown,
     options: Omit<CloudRequestOptions, "json"> = {},
-  ): Promise<TResponse> {
-    return this.request<TResponse>("PATCH", path, { ...options, json: body });
+  ): Promise<CloudResponse<TResponse>> {
+    return this.request<TResponse>("PATCH", path, {
+      ...options,
+      json: body,
+    });
   }
 
   async delete<TResponse>(
     path: string,
     options?: CloudRequestOptions,
-  ): Promise<TResponse> {
+  ): Promise<CloudResponse<TResponse>> {
     return this.request<TResponse>("DELETE", path, options);
   }
 }
@@ -753,7 +855,7 @@ export class CloudApiClient extends ElizaCloudHttpClient {
   async postUnauthenticated<TResponse>(
     path: string,
     body: unknown,
-  ): Promise<TResponse> {
+  ): Promise<CloudResponse<TResponse>> {
     return this.post<TResponse>(path, body, { skipAuth: true });
   }
 }

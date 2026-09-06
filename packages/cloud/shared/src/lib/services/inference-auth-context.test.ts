@@ -122,6 +122,7 @@ const {
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
 const { logger } = await import("../utils/logger");
+const { withInferenceAuthTelemetry } = await import("../observability/http-telemetry");
 const {
   hashApiKey,
   readInferenceAuthContext,
@@ -309,6 +310,103 @@ describe("resolveInferenceAuthContext", () => {
     expect(serialized).not.toContain("org-1");
   });
 
+  test("controlled cold hydration emits complete HTTP timings and one trace per concurrent caller", async () => {
+    process.env.INFERENCE_AUTH_PROBE_TOKEN = "unit-probe-token";
+    const waited: Promise<unknown>[] = [];
+    const cacheRead = spyOn(cache, "getWithOutcome");
+    const originalWrite = cache.setWithOutcome.bind(cache);
+    let finishWrite = (): void => {};
+    const writeBarrier = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    const cacheWrite = spyOn(cache, "setWithOutcome").mockImplementation(async (...args) => {
+      await writeBarrier;
+      return originalWrite(...args);
+    });
+    const info = spyOn(logger, "audit").mockImplementation(() => undefined);
+    const traces: import("./inference-auth-context").InferenceAuthTelemetry[] = [];
+    const traceIds = ["a".repeat(32), "b".repeat(32)];
+    try {
+      const results = await Promise.all(
+        traceIds.map(async (traceId) => {
+          const request = reqWithApiKey();
+          request.headers.set("X-Eliza-Auth-Probe", `unit-probe-token:${traceId}`);
+          return resolveInferenceAuthContext(request, {
+            traceId,
+            cacheOnly: true,
+            deferStrongCredentialCheck: true,
+            executionCtx: { waitUntil: (promise) => waited.push(promise) },
+            onTelemetry: (value) => traces.push(value),
+          });
+        }),
+      );
+      expect(results.every((result) => result.kind === "authorized")).toBe(true);
+      expect(cacheRead).toHaveBeenCalledTimes(2);
+      expect(authBoundaryCalls).toEqual([KEY]);
+      expect(cacheWrite).toHaveBeenCalledTimes(1);
+      for (const telemetry of traces) {
+        const response = withInferenceAuthTelemetry(
+          new Response("{}", { status: 400 }),
+          telemetry.traceId,
+          telemetry,
+        );
+        expect(response.headers.get("x-eliza-auth-trace")).toContain(
+          "read=miss;authoritative=authorized;write=deferred;result=authorized_origin",
+        );
+        for (const metric of [
+          "auth_extract",
+          "auth_cache_available",
+          "auth_cache_read",
+          "auth_key_lookup",
+          "auth_user_org",
+          "auth_moderation",
+          "auth_resolve",
+        ]) {
+          expect(response.headers.get("server-timing")).toMatch(
+            new RegExp(`(?:^|, )${metric};dur=\\d`),
+          );
+        }
+        expect(response.headers.get("server-timing")).not.toContain("auth_cache_write");
+      }
+      finishWrite();
+      await Promise.all(waited);
+      const canonical = info.mock.calls
+        .filter(([message]) => message === "[InferenceAuth] trace")
+        .map(([, context]) => context);
+      for (const traceId of traceIds) {
+        expect(canonical.filter((record) => record.traceId === traceId)).toEqual([
+          expect.objectContaining({ traceId, result: "authorized_origin", cacheWrite: "deferred" }),
+          expect.objectContaining({ traceId, kind: "cache_write", cacheWrite: "written" }),
+        ]);
+      }
+      expect(cacheRead).toHaveBeenCalledTimes(2);
+      expect(cacheWrite).toHaveBeenCalledTimes(1);
+      let warmTrace: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+      const warm = await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+        onTelemetry: (value) => {
+          warmTrace = value;
+        },
+      });
+      expect(warm).toMatchObject({ kind: "authorized", source: "cache" });
+      expect(warmTrace).toMatchObject({
+        result: "authorized_cache",
+        cacheWrite: "not_run",
+        timings: { keyLookupMs: null, userOrgLookupMs: null, moderationMs: null },
+      });
+      expect(cacheRead).toHaveBeenCalledTimes(3);
+      expect(authBoundaryCalls).toEqual([KEY]);
+    } finally {
+      finishWrite();
+      await Promise.all(waited);
+      delete process.env.INFERENCE_AUTH_PROBE_TOKEN;
+      cacheRead.mockRestore();
+      cacheWrite.mockRestore();
+      info.mockRestore();
+    }
+  });
+
   test("cache-only miss consumes the authoritative continuation after one cache read", async () => {
     let chainCalls = 0;
     authImpl = async () => {
@@ -438,6 +536,7 @@ describe("resolveInferenceAuthContext", () => {
   });
 
   test("a cold request safely joins a refresh-created flight and retains its lease credential", async () => {
+    const info = spyOn(logger, "audit").mockImplementation(() => undefined);
     await writeInferenceAuthContext({
       v: 3,
       cachedAt: 1,
@@ -466,12 +565,14 @@ describe("resolveInferenceAuthContext", () => {
     const executionCtx = { waitUntil: (promise: Promise<unknown>) => waited.push(promise) };
 
     const warm = await resolveInferenceAuthContext(reqWithApiKey(), {
+      traceId: "c".repeat(32),
       cacheOnly: true,
       executionCtx,
     });
     expect(warm).toMatchObject({ kind: "authorized", source: "cache" });
     await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
     const coldPromise = resolveInferenceAuthContext(reqWithApiKey(), {
+      traceId: "d".repeat(32),
       cacheOnly: true,
       deferStrongCredentialCheck: true,
       executionCtx,
@@ -485,6 +586,27 @@ describe("resolveInferenceAuthContext", () => {
       credential: { kind: "api_key", credentialId: "key-1", userId: "user-1" },
     });
     await Promise.all(waited);
+    const canonical = info.mock.calls
+      .filter(([message]) => message === "[InferenceAuth] trace")
+      .map(([, context]) => context);
+    expect(canonical).toEqual([
+      expect.objectContaining({
+        traceId: "c".repeat(32),
+        result: "authorized_cache",
+        cacheWrite: "not_run",
+      }),
+      expect.objectContaining({
+        traceId: "d".repeat(32),
+        result: "authorized_origin",
+        cacheWrite: "deferred",
+        timings: expect.objectContaining({ keyLookupMs: 1, userOrgLookupMs: 2 }),
+      }),
+      expect.objectContaining({
+        traceId: "d".repeat(32),
+        kind: "cache_write",
+        cacheWrite: "written",
+      }),
+    ]);
     expect(chainCalls).toBe(1);
     // One check serves the warm cached request; the projection performs its
     // own check, while the cold request carries its proof to admission.
@@ -543,6 +665,8 @@ describe("resolveInferenceAuthContext", () => {
     };
     const waited: Promise<unknown>[] = [];
     const cacheRead = spyOn(cache, "getWithOutcome");
+    const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
+    const infoSpy = spyOn(logger, "audit").mockImplementation(() => undefined);
     try {
       const result = await resolveInferenceAuthContext(reqWithApiKey(), {
         cacheOnly: true,
@@ -555,37 +679,103 @@ describe("resolveInferenceAuthContext", () => {
         reason: "credential_invalid",
       });
       expect(cacheRead).toHaveBeenCalledTimes(1);
+      const denialLogs = errorSpy.mock.calls.filter(
+        ([message]) => message === "[InferenceAuth] account standing denied inference",
+      );
+      expect(denialLogs).toHaveLength(1);
+      expect(denialLogs[0]).toEqual([
+        "[InferenceAuth] account standing denied inference",
+        expect.objectContaining({
+          status: 401,
+          reason: "credential_invalid",
+          cacheRead: "miss",
+          source: "authoritative",
+        }),
+      ]);
+      const authTraces = infoSpy.mock.calls
+        .filter(([message]) => message === "[InferenceAuth] trace")
+        .map(([, context]) => context);
+      expect(authTraces).toEqual([
+        expect.objectContaining({
+          cacheRead: "miss",
+          authoritative: "rejected",
+          timings: expect.objectContaining({ keyLookupMs: 1 }),
+        }),
+      ]);
+      expect(authTraces).not.toContainEqual(expect.objectContaining({ cacheRead: "unavailable" }));
       await Promise.all(waited);
     } finally {
       cacheRead.mockRestore();
+      errorSpy.mockRestore();
+      infoSpy.mockRestore();
     }
   });
 
   test("authoritative suspension converges to a cached fail-closed decision", async () => {
+    let telemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
     let moderationCalls = 0;
     shouldBlock = async () => {
       moderationCalls++;
       return true;
     };
     const waited: Promise<unknown>[] = [];
+    const cacheRead = spyOn(cache, "getWithOutcome");
+    const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
 
-    const cold = await resolveInferenceAuthContext(reqWithApiKey(), {
-      cacheOnly: true,
-      executionCtx: { waitUntil: (promise) => waited.push(promise) },
-    });
-    expect(cold).toEqual({
-      kind: "suspended",
-      userId: "user-1",
-      reason: "moderation_blocked",
-    });
-    await Promise.all(waited);
-    expect(moderationCalls).toBe(1);
+    try {
+      const cold = await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+        onTelemetry: (value) => {
+          telemetry = value;
+        },
+      });
+      expect(cold).toEqual({
+        kind: "suspended",
+        userId: "user-1",
+        reason: "moderation_blocked",
+      });
+      expect(telemetry).toMatchObject({
+        result: "suspended",
+        authoritative: "suspended",
+        cacheWrite: "not_run",
+        timings: { keyLookupMs: 1, userOrgLookupMs: 2, moderationMs: expect.any(Number) },
+      });
+      await Promise.all(waited);
+      expect(moderationCalls).toBe(1);
+      expect(cacheRead).toHaveBeenCalledTimes(1);
+      expect(errorSpy.mock.calls).toEqual([
+        [
+          "[InferenceAuth] account standing denied inference",
+          expect.objectContaining({
+            status: 403,
+            reason: "moderation_blocked",
+            cacheRead: "miss",
+            source: "authoritative",
+          }),
+        ],
+      ]);
 
-    const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
-      cacheOnly: true,
-    });
-    expect(retry).toEqual({ kind: "suspended", reason: "moderation_blocked" });
-    expect(moderationCalls).toBe(1);
+      const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+      });
+      expect(retry).toEqual({ kind: "suspended", reason: "moderation_blocked" });
+      expect(moderationCalls).toBe(1);
+      expect(cacheRead).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenLastCalledWith(
+        "[InferenceAuth] account standing denied inference",
+        expect.objectContaining({
+          status: 403,
+          reason: "moderation_blocked",
+          cacheRead: "rejected",
+          source: "cache",
+        }),
+      );
+    } finally {
+      cacheRead.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   test("inline continuation deadline returns warming after one cache read", async () => {

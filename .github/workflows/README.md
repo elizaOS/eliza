@@ -46,8 +46,10 @@ their evidence can be reused.
 After the exact aggregate succeeds, `develop-full.yml` hands its SHA and run ID
 to the non-cancelable, dispatch-only `develop-reconcile.yml` authority. The
 reconciler revalidates the successful Develop Full push and its exact manifests,
-then records agent-image, Cloud staging, apps-worker staging, and provisioning-
-worker staging effects in GitHub Deployments. `.github/develop-effects.json`
+then records agent-image, apps-worker staging, provisioning-worker staging, and
+Cloud staging effects in GitHub Deployments. Both daemons deploy before the
+Cloud release runs its live renderer gate, so that gate verifies the current
+release against its provisioning and app workers. `.github/develop-effects.json`
 binds every effect to its validation-surface digests, immutable workflow bytes,
 and typed inputs. A current exact success is idempotent; matching prior input is
 re-ledgered for the current SHA. An interrupted dispatch is resumed only when
@@ -123,6 +125,11 @@ title check cover narrower contracts. None replaces the required
 `All Tests Passed` aggregate.
 Representative examples:
 
+- `cloud-tests.yml` distributes the complete unit manifest across four jobs with
+  `ELIZA_CLOUD_TEST_SHARD=index/total`. Each API unit file runs in a fresh process
+  to isolate module mocks and request bindings. The Vitest-only suites run once
+  on shard 1; every unit shard must succeed. Omit the shard variable for the full
+  local `bun run test:cloud` lane.
 - `gitleaks.yml` scans the develop tip inside Develop Full. `pr-static-smoke.yml` owns the
   equivalent diff-scoped pull-request secret scan on a hosted runner.
 - `quality.yml` supplies the extended homepage build and workspace format gate
@@ -333,13 +340,14 @@ exists for the exact new head (the canonical-source guard reports
 `superseded=true`, every deploy job skips, and no certification is uploaded).
 Ancestry without a successor run, production staleness, divergence, or any
 unverifiable source still fails the run. After every successful, non-superseded
-automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
-14-day immutable certification whose JSON names the repository, workflow,
+`develop` Cloud release, `cloud-cf-deploy.yml` uploads a 14-day immutable
+certification whose JSON names the repository, workflow,
 source SHA, root Git tree, run/attempt, environment, and deterministic artifact
 name. A production dispatch checks out the exact requested `main` SHA and must
 resolve that tree's non-expired artifact from a completed successful
-`push`/`develop` run before the protected `production` approval job is even
-reachable. The artifact id, GitHub digest, owning run, payload, current workflow
+`develop` run admitted by `push` or `workflow_dispatch` before the protected
+`production` approval job is even reachable. The artifact id, GitHub digest,
+owning run, payload, current workflow
 bytes, and expiry are all checked. Different merge commits are accepted only
 when their root trees are byte-identical; `force` never bypasses this gate.
 

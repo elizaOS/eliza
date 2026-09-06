@@ -15,7 +15,15 @@
  * or computes — it displays label/value rows and dispatches actions.
  */
 
-import { Button, Card, Escape, HStack, Text } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Escape,
+  Field,
+  HStack,
+  Text,
+  VStack,
+} from "@elizaos/ui/spatial";
 import type { CSSProperties } from "react";
 
 /** A single label/value summary row, already projected to display strings. */
@@ -80,7 +88,7 @@ export function HealthSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1} grow={1}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       <WindowRange windowDays={snapshot.windowDays} dispatch={dispatch} />
 
       {snapshot.state === "loading" ? (
@@ -106,22 +114,19 @@ function WindowRange({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <HStack gap={1} align="center" padding={{ left: 12 }}>
-      {WINDOW_OPTIONS.map((days) => {
-        const selected = days === windowDays;
-        return (
-          <Button
-            key={days}
-            agent={`window-${days}`}
-            tone={selected ? "primary" : "default"}
-            variant={selected ? "solid" : "outline"}
-            onPress={dispatch(`window:${days}`)}
-          >
-            {`${days}d`}
-          </Button>
+    <Field
+      kind="select"
+      label="Range"
+      value={`Last ${windowDays} days`}
+      options={WINDOW_OPTIONS.map((days) => `Last ${days} days`)}
+      agent="health-range-filter"
+      onChange={(label) => {
+        const selected = WINDOW_OPTIONS.find(
+          (days) => `Last ${days} days` === label,
         );
-      })}
-    </HStack>
+        if (selected) dispatch(`window:${selected}`)();
+      }}
+    />
   );
 }
 
@@ -148,7 +153,16 @@ function HealthErrorBody({
 }
 
 function HealthEmptyBody() {
-  return <Text bold>None</Text>;
+  return (
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        No sleep data yet
+      </Text>
+      <Text tone="muted" style="caption" align="center">
+        Connect a health source or record sleep to see patterns here.
+      </Text>
+    </VStack>
+  );
 }
 
 function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {
@@ -193,15 +207,17 @@ const proactiveLineStyle: CSSProperties = {
 const readyGridStyle: CSSProperties = {
   alignItems: "start",
   display: "grid",
-  gap: "0.5rem",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(12rem, 100%), 1fr))",
+  columnGap: "2rem",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(20rem, 100%), 1fr))",
   minWidth: 0,
+  rowGap: "1.25rem",
 };
 
 const domSectionStyle: CSSProperties = {
+  borderTop: "1px solid var(--border, rgba(255, 255, 255, 0.12))",
   boxSizing: "border-box",
   minWidth: 0,
-  padding: "0.25rem 0.125rem",
+  padding: "0.75rem 0 0",
 };
 
 const domSectionTitleStyle: CSSProperties = {
@@ -209,12 +225,12 @@ const domSectionTitleStyle: CSSProperties = {
   fontSize: "0.72rem",
   fontWeight: 600,
   lineHeight: 1.15,
-  margin: "0 0 0.25rem",
+  margin: "0 0 0.625rem",
 };
 
 const definitionListStyle: CSSProperties = {
   display: "grid",
-  gap: "0.16rem",
+  gap: "0.4rem",
   margin: 0,
   minWidth: 0,
 };

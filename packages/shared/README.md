@@ -54,6 +54,7 @@ import "@elizaos/shared/brand.css";
 | `@elizaos/shared/runtime-env` | Port and security config resolvers |
 | `@elizaos/shared/config/allowed-hosts` | Allowed-hosts config helper |
 | `@elizaos/shared/contracts/synthetic-environment-lease` | Lease, generation, receipt, and guarded-write contract for synthetic environments |
+| `@elizaos/shared/crypto/token-encryption` | Node-only connector-token encryption; excluded from the browser-safe root barrel |
 
 Synthetic environment leases and subprocess control envelopes share the exact
 namespace checked by `isSyntheticEnvironmentNamespace`: 1-512 non-control

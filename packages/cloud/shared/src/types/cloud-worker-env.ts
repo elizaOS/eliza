@@ -23,6 +23,13 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Registered Outreachr app, narrow BFF client secret digest, and exact hosted origin. */
+  OUTREACHR_APP_ID?: string;
+  OUTREACHR_CLIENT_SECRET_SHA256?: string;
+  OUTREACHR_ORIGIN?: string;
+  OUTREACHR_STRIPE_SOL_PRICE?: string;
+  OUTREACHR_STRIPE_ASTRA_PRICE?: string;
+  OUTREACHR_STRIPE_WEBHOOK_SECRET?: string;
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
@@ -586,7 +593,7 @@ export interface Bindings {
   // Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
   // (ledger insert / KV pending charge) off the pre-forward critical path via
   // executionCtx.waitUntil, keeping a cached balance gate (15s org-balance hint
-  // + in-isolate refusal blocklist) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
+  // + revision-aware Durable Object lease) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
   INFERENCE_DEFERRED_ADMISSION?: string;
   // Tier-3 in-isolate decision caches (#9899): "true" enables the org
   // rate-limit lease (convergent — leased requests are carried back into the

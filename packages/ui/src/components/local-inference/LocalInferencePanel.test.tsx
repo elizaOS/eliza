@@ -79,7 +79,32 @@ vi.mock("../settings/settings-control-primitives", () => ({
 
 import { LocalInferencePanel } from "./LocalInferencePanel";
 
-const initialHub = {
+const unassignedSlot = {
+  assigned: false,
+  assignedModelId: null,
+  displayName: null,
+  primaryDownloaded: false,
+  downloaded: false,
+  active: false,
+  ready: false,
+  state: "unassigned" as const,
+  requiredModelIds: [],
+  missingModelIds: [],
+  installedBytes: 0,
+  expectedBytes: 0,
+  errors: [],
+  download: {
+    state: "missing" as const,
+    receivedBytes: 0,
+    totalBytes: 0,
+    percent: null,
+    bytesPerSec: 0,
+    etaMs: null,
+    updatedAt: null,
+    errors: [],
+  },
+};
+const initialHub: ModelHubSnapshot = {
   active: {
     loadedAt: "2026-08-28T00:00:00.000Z",
     modelId: "eliza-1-initial",
@@ -87,9 +112,27 @@ const initialHub = {
   },
   catalog: [],
   downloads: [],
-  hardware: {},
+  hardware: {
+    totalRamGb: 16,
+    freeRamGb: 8,
+    gpu: null,
+    cpuCores: 8,
+    platform: "linux",
+    arch: "x64",
+    appleSilicon: false,
+    recommendedBucket: "small",
+    source: "os-fallback",
+  },
+  assignments: {},
+  textReadiness: {
+    updatedAt: "2026-08-28T00:00:00.000Z",
+    slots: {
+      TEXT_SMALL: { ...unassignedSlot, slot: "TEXT_SMALL" },
+      TEXT_LARGE: { ...unassignedSlot, slot: "TEXT_LARGE" },
+    },
+  },
   installed: [],
-} as unknown as ModelHubSnapshot;
+};
 
 beforeEach(() => {
   clientMock.getLocalInferenceHub.mockReset();
@@ -111,17 +154,14 @@ afterEach(() => {
 
 describe("LocalInferencePanel stream snapshots", () => {
   it("preserves authoritative active state when a downloads snapshot omits it", async () => {
-    let resolveHub: (hub: ModelHubSnapshot) => void = () => {};
-    const hubPromise = new Promise<ModelHubSnapshot>((resolve) => {
-      resolveHub = resolve;
-    });
+    const { promise: hubPromise, resolve: resolveHub } =
+      Promise.withResolvers<ModelHubSnapshot>();
     clientMock.getLocalInferenceHub.mockReturnValue(hubPromise);
 
     render(<LocalInferencePanel />);
     await act(async () => {
       resolveHub(initialHub);
       await hubPromise;
-      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     await waitFor(() => {
@@ -131,9 +171,11 @@ describe("LocalInferencePanel stream snapshots", () => {
     });
 
     act(() => {
-      eventSourceMock.source.onmessage?.({
-        data: JSON.stringify({ downloads: [], type: "snapshot" }),
-      } as MessageEvent);
+      eventSourceMock.source.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({ downloads: [], type: "snapshot" }),
+        }),
+      );
     });
 
     expect(screen.getByTestId("active-model").textContent).toBe(
@@ -141,18 +183,33 @@ describe("LocalInferencePanel stream snapshots", () => {
     );
 
     act(() => {
-      eventSourceMock.source.onmessage?.({
-        data: JSON.stringify({
-          active: {
-            loadedAt: "2026-08-28T00:01:00.000Z",
-            modelId: "eliza-1-next",
-            status: "ready",
-          },
-          type: "active",
+      eventSourceMock.source.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            active: {
+              loadedAt: "2026-08-28T00:01:00.000Z",
+              modelId: "eliza-1-next",
+              status: "ready",
+            },
+            type: "active",
+          }),
         }),
-      } as MessageEvent);
+      );
     });
 
     expect(screen.getByTestId("active-model").textContent).toBe("eliza-1-next");
+
+    act(() => {
+      eventSourceMock.source.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            type: "snapshot",
+            downloads: [],
+            active: { modelId: null, loadedAt: null, status: "idle" },
+          }),
+        }),
+      );
+    });
+    expect(screen.getByTestId("active-model").textContent).toBe("none");
   });
 });

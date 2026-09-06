@@ -90,6 +90,7 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-fused-inference: "true"
 
       - name: Build exact Electrobun desktop tree
         run: node packages/app-core/scripts/desktop-build.mjs build

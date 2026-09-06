@@ -23,6 +23,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { extractRows } from "@elizaos/shared/db/raw-sql";
 
 export const INBOX_MIGRATION_LOG_PREFIX = "[Inbox]";
 export const INBOX_MIGRATION_SERVICE_TYPE = "inbox_migration";
@@ -196,25 +197,6 @@ function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
     );
   }
   return db;
-}
-
-function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result.filter(
-      (row): row is Record<string, unknown> =>
-        typeof row === "object" && row !== null && !Array.isArray(row),
-    );
-  }
-  if (result && typeof result === "object" && "rows" in result) {
-    const rows = (result as { rows: unknown }).rows;
-    if (Array.isArray(rows)) {
-      return rows.filter(
-        (row): row is Record<string, unknown> =>
-          typeof row === "object" && row !== null && !Array.isArray(row),
-      );
-    }
-  }
-  return [];
 }
 
 /**

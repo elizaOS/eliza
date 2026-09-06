@@ -29,7 +29,30 @@
  *      #10423 reservation semantics on the app-credits path are unchanged).
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let entitlementLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  entitlementLookup.mockRestore();
+});
 
 // Spread the real modules: bun's `mock.module` replaces the registry entry
 // process-wide, so dropping the other real exports would strand later test

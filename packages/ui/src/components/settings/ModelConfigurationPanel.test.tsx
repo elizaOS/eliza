@@ -289,6 +289,46 @@ describe("catalog load states", () => {
     );
   });
 
+  it.each(["catalog", "config"] as const)(
+    "cancels the pending sibling when the %s request fails and can retry",
+    async (failedRequest) => {
+      const failed = deferred<never>();
+      let siblingCancelled = false;
+      const pending = (init: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => {
+              siblingCancelled = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      const failing =
+        failedRequest === "catalog"
+          ? clientMock.getModelsCatalog
+          : clientMock.getModelsConfig;
+      const sibling =
+        failedRequest === "catalog"
+          ? clientMock.getModelsConfig
+          : clientMock.getModelsCatalog;
+      failing.mockImplementationOnce(() => failed.promise);
+      sibling.mockImplementationOnce(pending);
+      render(<ModelConfigurationPanel />);
+      await act(async () => failed.reject(new Error("bootstrap unavailable")));
+      await waitFor(() =>
+        expect(screen.getByText(/bootstrap unavailable/)).toBeTruthy(),
+      );
+      expect(siblingCancelled).toBe(true);
+      act(() => agentButton("models-retry").click());
+      await waitFor(() =>
+        expect(agentElements.has("models-small-provider")).toBe(true),
+      );
+      expect(screen.queryByText(/bootstrap unavailable/)).toBeNull();
+    },
+  );
+
   it("reaches ready after the StrictMode effect lifecycle replay", async () => {
     render(
       <StrictMode>

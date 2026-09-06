@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import net from "node:net";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
 
@@ -12,70 +12,75 @@ const stubUrl = new URL("./playwright-ui-smoke-api-stub.mjs", import.meta.url);
 let child;
 let origin;
 
-async function reserveEphemeralPort() {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  assert.notEqual(address, null);
-  assert.equal(typeof address, "object");
-  const port = address.port;
-  await new Promise((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
-  return port;
-}
-
 async function waitForStubReady(processHandle) {
   let output = "";
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`UI smoke stub did not become ready: ${output}`));
-    }, 15_000);
-    processHandle.once("error", (error) => {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
       clearTimeout(timer);
+      processHandle.off("error", onError);
+      processHandle.off("exit", onExit);
+      processHandle.stdout.off("data", onOutput);
+      processHandle.stderr.off("data", onErrorOutput);
+    };
+    const fail = (error) => {
+      cleanup();
       reject(error);
-    });
-    processHandle.once("exit", (code, signal) => {
-      clearTimeout(timer);
-      reject(
+    };
+    const onError = (error) => fail(error);
+    const onExit = (code, signal) =>
+      fail(
         new Error(
           `UI smoke stub exited before ready: code=${code} signal=${signal} ${output}`,
         ),
       );
-    });
-    processHandle.stdout.on("data", (chunk) => {
+    const onErrorOutput = (chunk) => {
       output += chunk.toString();
-      if (!output.includes("listening on")) return;
-      clearTimeout(timer);
-      resolve();
-    });
-    processHandle.stderr.on("data", (chunk) => {
+    };
+    const onOutput = (chunk) => {
       output += chunk.toString();
-    });
+      const address = output.match(
+        /listening on (http:\/\/127\.0\.0\.1:\d+)/,
+      )?.[1];
+      if (!address) return;
+      cleanup();
+      resolve(address);
+    };
+    const timer = setTimeout(
+      () => fail(new Error(`UI smoke stub did not become ready: ${output}`)),
+      15_000,
+    );
+    processHandle.once("error", onError);
+    processHandle.once("exit", onExit);
+    processHandle.stdout.on("data", onOutput);
+    processHandle.stderr.on("data", onErrorOutput);
   });
 }
 
 beforeAll(async () => {
-  const port = await reserveEphemeralPort();
-  origin = `http://127.0.0.1:${port}`;
-  child = spawn(process.execPath, [stubUrl.pathname], {
+  child = spawn(process.execPath, [fileURLToPath(stubUrl)], {
     env: {
       ...process.env,
-      ELIZA_UI_SMOKE_API_PORT: String(port),
+      ELIZA_UI_SMOKE_API_PORT: "0",
+      ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "0",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  await waitForStubReady(child);
+  origin = await waitForStubReady(child);
+  child.stdout.resume();
+  child.stderr.resume();
 });
 
 afterAll(async () => {
-  if (!child || child.exitCode !== null) return;
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null)
+    return;
   const exited = new Promise((resolve) => child.once("exit", resolve));
-  child.kill("SIGTERM");
-  await exited;
+  const forceStop = setTimeout(() => child.kill("SIGKILL"), 2_000);
+  try {
+    child.kill("SIGTERM");
+    await exited;
+  } finally {
+    clearTimeout(forceStop);
+  }
 });
 
 async function jsonGet(pathname) {

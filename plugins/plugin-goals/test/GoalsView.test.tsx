@@ -120,6 +120,12 @@ function queryAgent(agentId: string): HTMLElement | null {
   ) as HTMLElement | null;
 }
 
+async function selectStatus(label: string): Promise<void> {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+  fireEvent.keyDown(agent("goal-status-filter"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("option", { name: label }));
+}
+
 afterEach(() => {
   cleanup();
   sendChatMessage.mockClear();
@@ -164,9 +170,8 @@ describe("GoalsView — spatial GUI wrapper", () => {
       screen.getByText(/weekly · 21km continuous run · 2 linked/),
     ).toBeTruthy();
     expect(screen.getByText("Learn Spanish")).toBeTruthy();
-    // The status-filter chips are present and addressable by the agent surface.
-    expect(agent("filter:active")).toBeTruthy();
-    expect(agent("filter:paused")).toBeTruthy();
+    // The compact status filter is addressable by the agent surface.
+    expect(agent("goal-status-filter")).toBeTruthy();
   });
 
   it("shows the empty state when zero goals exist (no fabricated goals)", async () => {
@@ -260,8 +265,8 @@ describe("GoalsView — spatial GUI wrapper", () => {
     await screen.findByText("Run a half marathon");
     expect(screen.getByText("Learn Spanish")).toBeTruthy();
 
-    // Toggle the "Paused" filter: only the paused group should remain.
-    fireEvent.click(agent("filter:paused"));
+    // Select "Paused": only the paused group should remain.
+    await selectStatus("Paused");
     await waitFor(() =>
       expect(screen.queryByText("Run a half marathon")).toBeNull(),
     );

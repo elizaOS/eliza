@@ -22,7 +22,31 @@
  * throws, because the 402 gate — not the settle — is the observation point).
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let entitlementLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  entitlementLookup.mockRestore();
+});
+
 import * as affiliatesActual from "@/db/repositories/affiliates";
 import * as pricingActual from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";

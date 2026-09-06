@@ -24,9 +24,10 @@ const engine = vi.mocked(localInferenceEngine, true) as unknown as {
 };
 
 /** Minimal mono PCM16 16 kHz WAV with four samples. */
-function wavBytes(): Uint8Array {
+function wavBytes(fmtChunkBytes = 16): Uint8Array {
 	const pcm = new Int16Array([0, 900, -900, 0]);
-	const buffer = new ArrayBuffer(44 + pcm.length * 2);
+	const dataChunkOffset = 20 + fmtChunkBytes + (fmtChunkBytes % 2);
+	const buffer = new ArrayBuffer(dataChunkOffset + 8 + pcm.length * 2);
 	const view = new DataView(buffer);
 	const writeAscii = (offset: number, value: string) => {
 		for (let i = 0; i < value.length; i += 1) {
@@ -34,20 +35,21 @@ function wavBytes(): Uint8Array {
 		}
 	};
 	writeAscii(0, "RIFF");
-	view.setUint32(4, 36 + pcm.length * 2, true);
+	view.setUint32(4, buffer.byteLength - 8, true);
 	writeAscii(8, "WAVE");
 	writeAscii(12, "fmt ");
-	view.setUint32(16, 16, true);
+	view.setUint32(16, fmtChunkBytes, true);
 	view.setUint16(20, 1, true);
 	view.setUint16(22, 1, true);
 	view.setUint32(24, 16_000, true);
 	view.setUint32(28, 16_000 * 2, true);
 	view.setUint16(32, 2, true);
 	view.setUint16(34, 16, true);
-	writeAscii(36, "data");
-	view.setUint32(40, pcm.length * 2, true);
+	if (fmtChunkBytes >= 18) view.setUint16(36, 0, true);
+	writeAscii(dataChunkOffset, "data");
+	view.setUint32(dataChunkOffset + 4, pcm.length * 2, true);
 	for (let i = 0; i < pcm.length; i += 1) {
-		view.setInt16(44 + i * 2, pcm[i] ?? 0, true);
+		view.setInt16(dataChunkOffset + 8 + i * 2, pcm[i] ?? 0, true);
 	}
 	return new Uint8Array(buffer);
 }
@@ -89,6 +91,26 @@ describe("transcribeWavWithWords", () => {
 				{ text: "world", startMs: 500, endMs: 1000 },
 			],
 		});
+	});
+
+	it("transcribes PCM16 WAV with an 18-byte fmt chunk", async () => {
+		engine.available.mockResolvedValue(true);
+		engine.ensureActiveBundleAsrReady.mockResolvedValue(undefined);
+		engine.transcribePcmTimed.mockResolvedValue({
+			text: "hello world",
+			words: [],
+		});
+
+		const result = await transcribeWavWithWords(
+			{ useModel: vi.fn() } as unknown as AgentRuntime,
+			wavBytes(18),
+		);
+
+		expect(engine.transcribePcmTimed).toHaveBeenCalledWith(
+			expect.objectContaining({ sampleRate: 16_000 }),
+			undefined,
+		);
+		expect(result).toEqual({ text: "hello world", words: [] });
 	});
 
 	it("falls back to the useModel provider chain when the engine is inactive", async () => {

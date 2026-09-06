@@ -230,6 +230,16 @@ export class DockerNodesRepository {
     return r ?? null;
   }
 
+  /** Primary-authority lookup for destructive teardown identity. */
+  async findByNodeIdOnPrimary(nodeId: string): Promise<DockerNode | null> {
+    const [r] = await dbWrite
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.node_id, nodeId))
+      .limit(1);
+    return r ?? null;
+  }
+
   async findById(id: string): Promise<DockerNode | null> {
     const [r] = await dbRead.select().from(dockerNodes).where(eq(dockerNodes.id, id)).limit(1);
     return r ?? null;

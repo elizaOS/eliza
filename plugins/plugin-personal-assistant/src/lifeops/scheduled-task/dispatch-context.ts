@@ -14,10 +14,11 @@ import {
   type Memory,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import type {
-  OwnerFactsView,
-  ScheduledTaskDispatchRecord,
-  ScheduledTaskResolvedContext,
+import {
+  normalizeScheduledEventPayload,
+  type OwnerFactsView,
+  type ScheduledTaskDispatchRecord,
+  type ScheduledTaskResolvedContext,
 } from "@elizaos/plugin-scheduling";
 import { createRecentTaskStatesProvider } from "../../providers/recent-task-states.js";
 import {
@@ -27,24 +28,8 @@ import {
 import { readActivityProfile } from "./activity-gates.js";
 import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 
-const EVENT_PAYLOAD_LIMIT = 16_000;
 const CONTEXT_ID_LIMIT = 100;
 const CONTEXT_LOOKBACK_HOURS_LIMIT = 24 * 365;
-
-function normalizeEventPayload(value: unknown): unknown {
-  try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) return { unavailable: "not_serializable" };
-    if (serialized.length > EVENT_PAYLOAD_LIMIT) {
-      return { unavailable: "payload_too_large" };
-    }
-    return JSON.parse(serialized) as unknown;
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — the renderer receives an
-    // explicit unavailable marker, never a fabricated event payload.
-    return { unavailable: "not_serializable" };
-  }
-}
 
 function contextError(
   message: string,
@@ -409,9 +394,13 @@ export async function resolveScheduledTaskDispatchContext(
 
   if (
     request.includeEventPayload === true &&
-    Object.hasOwn(record, "eventPayload")
+    Object.hasOwn(record, "eventPayload") &&
+    record.eventPayload !== undefined
   ) {
-    resolved.eventPayload = normalizeEventPayload(record.eventPayload);
+    resolved.eventPayload = normalizeScheduledEventPayload(
+      record.eventPayload,
+      record.taskId,
+    );
   }
 
   return Object.keys(resolved).length > 0 ? resolved : undefined;

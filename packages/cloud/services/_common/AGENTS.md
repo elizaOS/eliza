@@ -30,6 +30,9 @@ structured logging, and Kubernetes ServiceAccount helpers. Private
   LINK-code recognition and user-facing confirmation results.
 - `src/gateway-auth.ts` (`./gateway-auth`) — strict short-lived gateway token
   response validation plus shared refresh and jittered retry timing.
+- `src/bounded-fetch.ts` (`./bounded-fetch`) — Web-standard REST transport
+  owning deadlines, bounded decoded response reads and cancellation cleanup.
+  Cloud shared and gateway adapters supply limits and public error factories.
 - `src/response-attempts.ts` (`./response-attempts`) — bounded observable HTTP
   retry behavior shared across transport runtimes.
 - `src/telegram-connector.ts` (`./telegram-connector`) — Web-standard Telegram

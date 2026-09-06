@@ -755,3 +755,15 @@ describe("anti-larp test discovery", () => {
     );
   });
 });
+
+test("does not fold shadowed globals into a running test", () => {
+  const sources = [
+    'import test from "node:test"; function define(undefined) { test("hidden", { skip: undefined }, () => {}); } define(true);',
+    'import test from "node:test"; const Boolean = () => true; test("hidden", { skip: Boolean(false) }, () => {});',
+  ];
+  for (const source of sources) {
+    expect(findViolations("fixture.test.ts", source)).toEqual([
+      expect.objectContaining({ kind: "orphaned-skip" }),
+    ]);
+  }
+});

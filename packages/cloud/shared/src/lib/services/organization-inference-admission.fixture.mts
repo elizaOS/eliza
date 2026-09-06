@@ -146,7 +146,6 @@ const optimisticSettle = mock(async () => null);
 const admitInferenceChargeViaLedger = mock(async () => ({ admitted: true }));
 let gateBalance = 50;
 let eligible = true;
-let orgRefused = false;
 let subscriptionFunded = false;
 let leaseFailure: Error | undefined;
 const isSubscriptionFundedOrganization = mock(async () => subscriptionFunded);
@@ -164,6 +163,7 @@ const acquireInferenceAdmissionLease = mock(
   },
 );
 const settleInferenceAdmissionLease = mock(async () => undefined);
+const markInferenceAdmissionLeaseDispatched = mock(async () => undefined);
 
 class TestInferenceBalanceCacheWarmingError extends Error {}
 class TestInferenceAdmissionGateUnavailableError extends Error {}
@@ -225,7 +225,7 @@ mock.module("./inference-admission-gate", () => ({
     readonly requiredUsd = 1;
     readonly availableUsd = 0;
   },
-  markInferenceAdmissionLeaseDispatched: async () => undefined,
+  markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 }));
 mock.module("./inference-billing-ledger", () => ({
@@ -235,10 +235,6 @@ mock.module("./inference-billing-ledger", () => ({
 }));
 mock.module("./inference-billing-deferred", () => ({
   isDeferredAdmissionEnabled: () => true,
-  isOrgAdmissionRefused: () => orgRefused,
-  markOrgAdmissionRefused: () => {
-    orgRefused = true;
-  },
 }));
 
 const { admitOrganizationInference, InferenceAdmissionUnavailableError } = await import(
@@ -256,7 +252,7 @@ function nextModel(): string {
 function admissionParams(
   model: string,
   background: Promise<unknown>[],
-  overrides: { affiliateCode?: string } = {},
+  overrides: { affiliateCode?: string; atomicProviderBoundary?: boolean } = {},
 ) {
   return {
     context: {
@@ -289,7 +285,6 @@ beforeEach(() => {
   __clearPersistedPricingCache();
   gateBalance = 50;
   eligible = true;
-  orgRefused = false;
   subscriptionFunded = false;
   leaseFailure = undefined;
   isSubscriptionFundedOrganization.mockClear();
@@ -311,6 +306,7 @@ beforeEach(() => {
   optimisticSettle.mockClear();
   acquireInferenceAdmissionLease.mockClear();
   settleInferenceAdmissionLease.mockClear();
+  markInferenceAdmissionLeaseDispatched.mockClear();
   isOptimisticEligible.mockClear();
   listActiveEntriesForProviderModelPairs.mockClear();
   listActiveEntries.mockClear();
@@ -384,9 +380,8 @@ test("subscriber cache miss resolves authority before purchased-credit admission
   expect(isSubscriptionFundedOrganization).toHaveBeenCalledTimes(1);
 });
 
-test("subscriber inference bypasses stale purchased-credit refusal state", async () => {
+test("subscriber inference bypasses purchased-credit admission", async () => {
   subscriptionFunded = true;
-  orgRefused = true;
 
   const admission = await admitOrganizationInference({
     ...admissionParams(nextModel(), []),
@@ -495,6 +490,21 @@ test("strong proof on and off each acquire exactly one Durable Object lease", as
     expect(acquireInferenceAdmissionLease.mock.calls[0]?.[0].credential).toEqual(strongProof);
   }
   expect(reserveCredits).not.toHaveBeenCalled();
+});
+
+test("audited provider boundaries defer the lease commit until the required marker", async () => {
+  const model = nextModel();
+  await hydratePricing(model);
+  const admission = await admitOrganizationInference(
+    admissionParams(model, [], { atomicProviderBoundary: true }),
+  );
+
+  expect(acquireInferenceAdmissionLease.mock.calls[0]?.[0]).toMatchObject({
+    deferCommitUntilDispatch: true,
+  });
+  expect(markInferenceAdmissionLeaseDispatched).not.toHaveBeenCalled();
+  await admission.markProviderDispatched?.();
+  expect(markInferenceAdmissionLeaseDispatched).toHaveBeenCalledTimes(1);
 });
 
 test("flat Worker admission leases the fixed catalog cost without token pricing reads", async () => {
@@ -657,16 +667,19 @@ test("cached unaffordable balance rejects without a database reservation", async
   expect(reserveCredits).not.toHaveBeenCalled();
 });
 
-test("a previously refused org fails closed and hydrates balance off path", async () => {
-  orgRefused = true;
+test("warm balance projection reaches the Durable Object without background hydration", async () => {
+  const model = nextModel();
+  await hydratePricing(model);
+  pairReads = 0;
+  fallbackReads = 0;
+  catalogReads = 0;
   const background: Promise<unknown>[] = [];
 
-  await expect(
-    admitOrganizationInference(admissionParams(nextModel(), background)),
-  ).rejects.toMatchObject({
-    name: "InferenceAdmissionUnavailableError",
-  });
-  expect(background).toHaveLength(1);
+  const admission = await admitOrganizationInference(admissionParams(model, background));
+
+  expect(admission.mode).toBe("durable_object_debit");
+  expect(acquireInferenceAdmissionLease).toHaveBeenCalledTimes(1);
+  expect(background).toHaveLength(0);
   expect(pairReads).toBe(0);
   expect(affiliateReads).toBe(0);
   expect(reserveCredits).not.toHaveBeenCalled();
@@ -831,7 +844,6 @@ test("affiliate settlement retries the same post-provider amount after infrastru
   expect(collectAffiliateInferenceFallback).toHaveBeenCalledTimes(1);
   expect(collectAffiliateInferenceFallback.mock.calls[0]?.[0].actualCost).toBe(0.02);
   expect(settleInferenceAdmissionLease).not.toHaveBeenCalled();
-  expect(orgRefused).toBe(false);
 
   affiliateDebitError = null;
   await expect(admission.settle(99)).resolves.toMatchObject({

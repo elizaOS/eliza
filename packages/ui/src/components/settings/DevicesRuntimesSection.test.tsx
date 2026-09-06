@@ -1,6 +1,6 @@
 /** Interaction and accessibility coverage for the Devices & Runtimes surface. */
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -224,6 +224,7 @@ describe("DevicesRuntimesSection", () => {
   it("requires inspection before connect and blocks a changed host key", async () => {
     const user = userEvent.setup();
     const onInspectSsh = vi.fn();
+    const onConnectSsh = vi.fn();
     const changed: SshHostInspection = {
       target: "eliza@vps.example",
       host: "vps.example",
@@ -236,7 +237,7 @@ describe("DevicesRuntimesSection", () => {
       changed: true,
     };
     const view = render(
-      <DevicesRuntimesSection {...props({ onInspectSsh })} />,
+      <DevicesRuntimesSection {...props({ onInspectSsh, onConnectSsh })} />,
     );
     await user.click(screen.getByText("Advanced SSH"));
     await user.type(screen.getByLabelText("Name"), "Production VPS");
@@ -251,7 +252,7 @@ describe("DevicesRuntimesSection", () => {
 
     view.rerender(
       <DevicesRuntimesSection
-        {...props({ sshInspection: changed, onInspectSsh })}
+        {...props({ sshInspection: changed, onInspectSsh, onConnectSsh })}
       />,
     );
     expect(
@@ -271,6 +272,10 @@ describe("DevicesRuntimesSection", () => {
     ).toBe(true);
 
     const targetInput = screen.getByLabelText("SSH target");
+    const form = targetInput.closest("form");
+    if (!form) throw new Error("SSH target is not inside its submission form");
+    fireEvent.submit(form);
+    expect(onConnectSsh).not.toHaveBeenCalled();
     await user.clear(targetInput);
     await user.type(targetInput, "eliza@replacement.example");
     const inspectReplacement = screen.getByRole("button", {
@@ -282,6 +287,7 @@ describe("DevicesRuntimesSection", () => {
       target: "eliza@replacement.example",
       sshPort: 22,
     });
+    expect(onConnectSsh).not.toHaveBeenCalled();
 
     await user.clear(screen.getByLabelText("SSH target"));
     await user.type(screen.getByLabelText("SSH target"), "eliza@vps.example");
@@ -295,5 +301,13 @@ describe("DevicesRuntimesSection", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
+    await user.click(
+      screen.getByRole("button", { name: "Inspect fingerprint" }),
+    );
+    expect(onInspectSsh).toHaveBeenLastCalledWith({
+      target: "eliza@vps.example",
+      sshPort: 2222,
+    });
+    expect(onConnectSsh).not.toHaveBeenCalled();
   });
 });

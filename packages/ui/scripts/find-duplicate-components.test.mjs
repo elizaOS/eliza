@@ -57,6 +57,84 @@ test("local Eliza runtime artifacts are outside maintained source", () => {
   );
 });
 
+test("generated mobile platform bundles and staging roots are outside maintained source", () => {
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../agent/dist-mobile-ios/agent-bundle.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/ios/App/App/public/agent/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/android/app/src/main/assets/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL("../../app/electrobun/src/Widget.tsx", import.meta.url),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
+          "../../app-core/platforms/electrobun/src/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    true,
+  );
+});
+
+test("Android build output does not duplicate maintained React source", () => {
+  const source = fileURLToPath(
+    new URL("../src/components/ui/button.tsx", import.meta.url),
+  );
+  const outputRoot = fileURLToPath(
+    new URL("../../agent/dist-mobile/", import.meta.url),
+  );
+  fs.mkdirSync(outputRoot, { recursive: true });
+  const output = fs.mkdtempSync(path.join(outputRoot, "inventory-probe-"));
+  try {
+    const bundledSource = path.join(output, "button.tsx");
+    fs.copyFileSync(source, bundledSource);
+    const files = listMaintainedSourceFiles();
+    assert.ok(
+      files.includes(source),
+      "the maintained source must remain visible",
+    );
+    assert.equal(files.includes(bundledSource), false);
+  } finally {
+    fs.rmSync(output, { recursive: true, force: true });
+  }
+});
+
 test("the atomic inventory is deterministic and repository-wide", () => {
   const first = buildInventory();
   const second = buildInventory();

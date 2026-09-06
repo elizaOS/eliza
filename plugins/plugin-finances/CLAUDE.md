@@ -26,8 +26,7 @@ and on `@elizaos/plugin-elizacloud` for the managed Plaid / PayPal clients.
   `FinancesServiceError` (HTTP status) on invalid input.
 - `FinancesRepository` (`src/db/finances-repository.ts`) — raw SQL over
   `app_finances` (payment sources / transactions + subscription audits /
-  candidates / cancellations). Uses the self-contained `src/db/sql.ts` helpers
-  (runtime DB handle). PA's `LifeOpsRepository` delegates its finance methods
+  candidates / cancellations). Uses `src/db/sql.ts` for the runtime DB handle and shared SQL primitives. PA's `LifeOpsRepository` delegates its finance methods
   here so the PA subscriptions mixin reaches the finance tables unchanged.
 - `SubscriptionsService` (`src/services/subscriptions-service.ts`) — standalone
   successor to PA's `withSubscriptions` mixin. Handles subscription audit /
@@ -86,7 +85,7 @@ src/
     finances.ts                   runPaymentsHandler + OWNER_FINANCES param schema
   db/
     schema.ts                     pgSchema("app_finances") + finance tables
-    sql.ts                        Self-contained raw-SQL helpers (runtime DB)
+    sql.ts                        Runtime DB lookup and shared raw-SQL helpers
     finances-repository.ts        FinancesRepository (raw SQL over app_finances)
     index.ts                      re-exports schema.ts
   services/
@@ -179,9 +178,9 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
 - **No import of `@elizaos/plugin-personal-assistant`.** Cross-domain capability
   the finance back-end needs (Gmail, browser bridge) is accessed via runtime-service
   seams, not PA internals.
-- **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
-  back-end carries no PA dependency). Keep it in sync only if a correctness fix
-  applies to both; do not add PA-specific logic.
+- **`src/db/sql.ts` delegates common SQL primitives to `@elizaos/shared/db/raw-sql`.**
+  Runtime database lookup and finance transaction requirements stay local.
+  Invalid adapter results fail explicitly; no PA dependency is introduced.
 - See the root `CLAUDE.md` for repo-wide architecture rules, logger
   requirements, ESM/module standards, and git workflow.
 

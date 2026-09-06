@@ -77,6 +77,14 @@ function pathParamTypeLine(endpoint) {
   return `  ${quote(endpoint.key)}: { ${fields} };`;
 }
 
+const JSON_OR_EMPTY_ROUTES = new Set([
+  "DELETE /api/v1/apis/storage/objects/_",
+  "GET /api/v1/advertising/conversions/track",
+  "GET /api/v1/marketing/inventory/serve",
+  "GET /api/v1/remote/sessions/{id}/commands",
+  "POST /api/v1/twilio/voice/status",
+]);
+
 function responseModeFor(method, route, source) {
   if (
     route === "/api/v1/apis/storage/objects/_" &&
@@ -84,12 +92,22 @@ function responseModeFor(method, route, source) {
   )
     return "binary";
   if (route.endsWith("/tts")) return "binary";
+  if (
+    method === "GET" &&
+    route === "/api/v1/apps/{id}/frontend/preview/{[...path]}"
+  )
+    return "binary";
+  if (method === "GET" && route === "/api/v1/hosted-frontend/serve/{[...path]}")
+    return "binary";
   if (source.includes('"Content-Type": "text/html')) return "text";
+  if (/\bc\.text\s*\(/.test(source)) return "text";
   if (route.includes("/stream") || route.endsWith("/logs/stream"))
     return "stream";
   if (route.endsWith("/terminal") && method === "GET") return "stream";
   if (source.includes("text/event-stream") || source.includes("SSE_HEADERS"))
     return "mixed";
+  if (method === "HEAD" || JSON_OR_EMPTY_ROUTES.has(`${method} ${route}`))
+    return "json-or-empty";
   return "json";
 }
 
@@ -133,6 +151,15 @@ function routeMethod(endpoint) {
       `    ${optionsArg}`,
       "  ): Promise<Response> {",
       `    return this.callRaw(${quote(endpoint.key)}, options);`,
+      "  }",
+    ].join("\n");
+  }
+  if (endpoint.responseMode === "json-or-empty") {
+    return [
+      `  ${endpoint.methodName}<TResponse = unknown>(`,
+      `    ${optionsArg}`,
+      "  ): Promise<CloudResponse<TResponse>> {",
+      `    return this.callBodyless<${quote(endpoint.key)}, TResponse>(${quote(endpoint.key)}, options);`,
       "  }",
     ].join("\n");
   }
@@ -209,7 +236,7 @@ const source = `/* eslint-disable @typescript-eslint/no-explicit-any */
 // The exported PublicRoute* names are retained for backward compatibility.
 // Do not edit by hand.
 
-import type { CloudRequestOptions, HttpMethod } from "./types.js";
+import type { CloudRequestOptions, CloudResponse, HttpMethod } from "./types.js";
 
 export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
 ${endpoints.map(endpointLine).join("\n")}
@@ -256,6 +283,11 @@ export type PublicRouteCallOptions<TKey extends PublicRouteKey> =
 
 interface ElizaCloudPublicRouteTransport {
   request<TResponse>(
+    method: HttpMethod,
+    path: string,
+    options?: CloudRequestOptions
+  ): Promise<CloudResponse<TResponse>>;
+  requestData?<TResponse>(
     method: HttpMethod,
     path: string,
     options?: CloudRequestOptions
@@ -336,6 +368,25 @@ export class ElizaCloudPublicRoutesClient {
     key: TKey,
     options?: PublicRouteCallOptions<TKey>
   ): Promise<TResponse> {
+    const endpoint = ELIZA_CLOUD_PUBLIC_ENDPOINTS[key];
+    const method = endpoint.method as HttpMethod;
+    const path = buildPublicRoutePath(key, options);
+    const requestOptions = toRequestOptions(options);
+    if (this.client.requestData) {
+      return this.client.requestData<TResponse>(method, path, requestOptions);
+    }
+    return this.client.request<TResponse>(method, path, requestOptions).then((response) => {
+      if (response === undefined) {
+        throw new Error(\`Expected a data response for \${key}\`);
+      }
+      return response;
+    });
+  }
+
+  private callBodyless<TKey extends PublicRouteKey, TResponse = unknown>(
+    key: TKey,
+    options?: PublicRouteCallOptions<TKey>
+  ): Promise<CloudResponse<TResponse>> {
     const endpoint = ELIZA_CLOUD_PUBLIC_ENDPOINTS[key];
     return this.client.request<TResponse>(
       endpoint.method as HttpMethod,

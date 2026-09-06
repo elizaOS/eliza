@@ -10,6 +10,8 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const aiActual = require("ai") as Record<string, unknown>;
+const aiBillingActual = { ...(await import("@/lib/services/ai-billing")) };
+const creditsActual = { ...(await import("@/lib/services/credits")) };
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -99,6 +101,8 @@ const billUsage = mock();
 const estimateInputTokens = mock();
 const recordUsageAnalytics = mock();
 mock.module("@/lib/services/ai-billing", () => ({
+  ...aiBillingActual,
+  isSubscriptionFundedOrganization: mock(async () => false),
   InsufficientCreditsError: TestInsufficientCreditsError,
   billUsage,
   estimateInputTokens,
@@ -138,6 +142,7 @@ mock.module("@/lib/services/ai-billing", () => ({
 }));
 
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   COST_BUFFER: 1.5,
   InsufficientCreditsError: TestInsufficientCreditsError,
   MIN_RESERVATION: 0.01,
@@ -170,6 +175,8 @@ mock.module("@/lib/services/apps", () => ({
 }));
 
 const admitAppInferenceCacheOnly = mock();
+const settleAppAdmission = mock(async () => null);
+const markAppProviderDispatched = mock(async () => undefined);
 class TestInferenceAppAffiliateUnsupportedError extends Error {}
 const assertInferenceAppAffiliateSupported = mock(
   (_appId: string, affiliateCode: string | null | undefined) => {
@@ -234,6 +241,10 @@ beforeEach(() => {
   getAuthorizedMonetizedAppForUser.mockReset();
   getAuthorizedMonetizedAppForUserCacheOnly.mockReset();
   admitAppInferenceCacheOnly.mockReset();
+  settleAppAdmission.mockReset();
+  settleAppAdmission.mockResolvedValue(null);
+  markAppProviderDispatched.mockReset();
+  markAppProviderDispatched.mockResolvedValue(undefined);
   assertInferenceAppAffiliateSupported.mockClear();
   createCreditReservationSettler.mockReset();
   generateText.mockReset();
@@ -263,8 +274,9 @@ beforeEach(() => {
   admitAppInferenceCacheOnly.mockResolvedValue({
     mode: "deferred_app_reservation",
     estimatedTotalCostUsd: 0.002,
-    settle: async () => null,
-    settleUnknown: async () => null,
+    settle: settleAppAdmission,
+    settleUnknown: settleAppAdmission,
+    markProviderDispatched: markAppProviderDispatched,
   });
   reserveCredits.mockResolvedValue({
     reservedAmount: 0.01,
@@ -385,8 +397,36 @@ describe("/v1/messages IAC fast path", () => {
       }),
       expect.any(Number),
       16,
+      { subscriptionFunded: false },
     );
     expect(generateText).toHaveBeenCalledTimes(1);
+  });
+
+  test("late app dispatch admission denial returns Anthropic 402 before the model call", async () => {
+    const app = {
+      id: "00000000-0000-4000-8000-0000000000dd",
+      organization_id: ORG,
+      created_by_user_id: USER,
+      monetization_enabled: true,
+      inference_markup_percentage: "100",
+    };
+    getAuthorizedMonetizedAppForUserCacheOnly.mockResolvedValueOnce({
+      kind: "ready",
+      app,
+    });
+    markAppProviderDispatched.mockRejectedValueOnce(
+      new TestInsufficientCreditsError(0.002),
+    );
+
+    const response = await postMessagesInWorker({ "X-App-Id": app.id });
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toMatchObject({
+      type: "error",
+      error: { type: "billing_error" },
+    });
+    expect(settleAppAdmission).toHaveBeenCalledWith(0);
+    expect(generateText).not.toHaveBeenCalled();
   });
 
   test("Worker requests fail closed while the API-key cache warms", async () => {
@@ -692,6 +732,7 @@ describe("/v1/messages IAC fast path", () => {
         appId: app.id,
         organizationId: ORG,
         userId: USER,
+        atomicProviderBoundary: true,
       }),
     );
     expect(reserveInferenceCredits).not.toHaveBeenCalled();

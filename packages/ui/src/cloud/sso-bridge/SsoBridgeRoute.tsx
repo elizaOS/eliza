@@ -18,19 +18,23 @@
  *  - every other hostname (localhost, previews, per-agent subdomains): inert —
  *    an immediate local redirect home, no bridge code paths reachable.
  *
- * Every failure path lands on the app origin's OWN /login (the loop-guard
- * marker set at initiation keeps that login from bouncing back here), and the
- * transient legs use replace-style navigation so Back never re-enters the
- * handshake.
+ * Expected failures return to the app origin's own login; unexpected mint
+ * failures use the distinct authentication-error page with a retry destination.
+ * The loop guard suppresses repeated handshakes, and replace-style navigation
+ * keeps Back from re-entering a completed bridge leg.
  */
 
+import { ElizaError } from "@elizaos/core";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Card } from "../../components/ui/card";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { hasHydratableStewardToken } from "../lib/steward-session";
 import {
   buildBridgeExchangeUrl,
+  buildSsoBridgeErrorUrl,
   burnSsoBridgeCode,
   consumeSsoBridgeState,
   consumeSsoBridgeVerifier,
@@ -138,6 +142,117 @@ function referrerIsPairedAppOrigin(
   }
 }
 
+type MintedCodeHandoff = {
+  /** Recheck the minting account at the navigation boundary. */
+  isCurrent(): boolean;
+  /** Destroy the code while this document still owns it. Idempotent. */
+  burn(): void;
+  /** Relinquish custody after the browser accepts the app-origin navigation. */
+  transfer(): void;
+};
+
+type MintLegOutcome =
+  | { kind: "not-initiated" }
+  | { handoff?: MintedCodeHandoff; kind: "redirect"; url: string };
+
+/** Run one challenge-bound mint transaction for the component lifetime. */
+async function runMintLegOperation(
+  hostname: string,
+  state: string,
+  challenge: string,
+  returnTo: string,
+): Promise<MintLegOutcome> {
+  const appOrigin = pairedAppOrigin(hostname);
+  if (!appOrigin) return { kind: "not-initiated" };
+
+  const referrer = document.referrer;
+  const appInitiated = referrerIsPairedAppOrigin(appOrigin, referrer);
+  const remembered = hasRememberedMintIntent(state);
+  if (!appInitiated && !remembered) {
+    if (!referrer) {
+      // Referrer-stripping privacy settings make a legitimate app handoff
+      // indistinguishable from a direct visit. Keep minting fail-closed, but
+      // send the user to the app's ordinary login instead of stranding them
+      // on the public homepage.
+      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+    }
+    // Not a handshake the app origin initiated (direct visit, or a
+    // third-party page forcing a signed-in user here): mint nothing.
+    return { kind: "not-initiated" };
+  }
+
+  if (appInitiated && !remembered && !rememberMintIntent(state)) {
+    return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+  }
+
+  if (!hasHydratableStewardToken()) {
+    // Login is owned by this public/auth origin. Preserve the exact bridge
+    // leg as a same-origin returnTo; once Steward succeeds, the remembered
+    // referrer-approved intent permits minting and sends the user back to
+    // the managed app. No credential is ever entered on the app host.
+    const bridgeReturnTo = `${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(returnTo)}`;
+    return {
+      kind: "redirect",
+      url: `/login?returnTo=${encodeURIComponent(bridgeReturnTo)}`,
+    };
+  }
+
+  forgetMintIntent(state);
+  const mintingToken = readStoredStewardToken();
+  let mintedCode: string | null = null;
+  const burnMintedCodeOnce = (): void => {
+    if (!mintedCode) return;
+    const code = mintedCode;
+    mintedCode = null;
+    burnSsoBridgeCode(code, hostname);
+  };
+
+  try {
+    const result = await mintSsoCode(hostname, challenge);
+    if (!result.ok) {
+      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+    }
+
+    mintedCode = result.code;
+    if (
+      readStoredStewardToken() !== mintingToken ||
+      !hasHydratableStewardToken()
+    ) {
+      burnMintedCodeOnce();
+      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+    }
+    const url = buildBridgeExchangeUrl(hostname, result.code, state, returnTo);
+    if (!url) {
+      burnMintedCodeOnce();
+      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+    }
+
+    return {
+      handoff: {
+        isCurrent: () =>
+          readStoredStewardToken() === mintingToken &&
+          hasHydratableStewardToken(),
+        burn: burnMintedCodeOnce,
+        transfer: () => {
+          mintedCode = null;
+        },
+      },
+      kind: "redirect",
+      url,
+    };
+  } catch (error) {
+    // error-policy:J2 a late failure after mint first relinquishes local code
+    // custody, then reaches the UI boundary as a typed failure with its cause.
+    burnMintedCodeOnce();
+    throw new ElizaError("SSO mint handoff failed after code issuance", {
+      code: "SSO_BRIDGE_MINT_HANDOFF_FAILED",
+      cause: error,
+      severity: "fatal",
+      context: { hostname },
+    });
+  }
+}
+
 function MintLeg({
   hostname,
   state,
@@ -149,59 +264,120 @@ function MintLeg({
   challenge: string;
   returnTo: string;
 }): React.JSX.Element {
-  const startedRef = useRef(false);
+  const operationRef = useRef<{
+    activeEffects: Set<number>;
+    key: string;
+    promise: Promise<MintLegOutcome>;
+  } | null>(null);
+  const effectGenerationRef = useRef(0);
   const [notInitiated, setNotInitiated] = useState(false);
+  const [unexpectedFailure, setUnexpectedFailure] = useState(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    const appOrigin = pairedAppOrigin(hostname);
-    if (!appOrigin) return;
+    const effectGeneration = effectGenerationRef.current + 1;
+    effectGenerationRef.current = effectGeneration;
+    const effectIsCurrent = () =>
+      effectGenerationRef.current === effectGeneration;
+    const operationKey = JSON.stringify([hostname, state, challenge, returnTo]);
+    const previousOperation = operationRef.current;
+    const operation =
+      previousOperation?.key === operationKey
+        ? previousOperation
+        : {
+            activeEffects: new Set<number>(),
+            key: operationKey,
+            promise: runMintLegOperation(hostname, state, challenge, returnTo),
+          };
+    operationRef.current = operation;
+    operation.activeEffects.add(effectGeneration);
 
-    const referrer = document.referrer;
-    const appInitiated = referrerIsPairedAppOrigin(appOrigin, referrer);
-    const remembered = hasRememberedMintIntent(state);
-    if (!appInitiated && !remembered) {
-      if (!referrer) {
-        // Referrer-stripping privacy settings make a legitimate app handoff
-        // indistinguishable from a direct visit. Keep minting fail-closed, but
-        // send the user to the app's ordinary login instead of stranding them
-        // on the public homepage.
-        appModeNavigation.replace(appLoginUrl(appOrigin, returnTo));
-        return;
+    const redirectToAppLogin = (): boolean => {
+      const appOrigin = pairedAppOrigin(hostname);
+      try {
+        appModeNavigation.replace(
+          appOrigin ? appLoginUrl(appOrigin, returnTo) : "/",
+        );
+        return true;
+      } catch (error) {
+        // error-policy:J1 the UI navigation boundary reports the browser error;
+        // its caller renders the distinct authentication-error route.
+        reportRendererDiagnostic({
+          scope: "steward.sso-bridge.login-navigation",
+          error,
+          severity: "error",
+        });
+        return false;
       }
-      // Not a handshake the app origin initiated (direct visit, or a
-      // third-party page forcing a signed-in user here): mint nothing.
-      setNotInitiated(true);
-      return;
-    }
+    };
 
-    if (appInitiated && !remembered && !rememberMintIntent(state)) {
-      appModeNavigation.replace(appLoginUrl(appOrigin, returnTo));
-      return;
-    }
+    void operation.promise
+      .then((outcome) => {
+        if (!effectIsCurrent()) {
+          if (outcome.kind === "redirect" && outcome.handoff) {
+            // StrictMode immediately re-subscribes to the same operation. A
+            // microtask distinguishes that replay from a real abandonment.
+            queueMicrotask(() => {
+              if (operation.activeEffects.size === 0) outcome.handoff?.burn();
+            });
+          }
+          return;
+        }
+        if (outcome.kind === "not-initiated") {
+          setNotInitiated(true);
+          return;
+        }
+        if (outcome.handoff && !outcome.handoff.isCurrent()) {
+          outcome.handoff.burn();
+          if (!redirectToAppLogin()) setUnexpectedFailure(true);
+          return;
+        }
+        try {
+          appModeNavigation.replace(outcome.url);
+          outcome.handoff?.transfer();
+        } catch (error) {
+          // error-policy:J1 report the failed handoff navigation at the UI
+          // boundary before burning custody. Only the expected browser-policy
+          // rejection degrades to the safe login path.
+          reportRendererDiagnostic({
+            scope: "steward.sso-bridge.handoff-navigation",
+            error,
+            severity: "error",
+          });
+          outcome.handoff?.burn();
+          if (
+            !(
+              error instanceof DOMException && error.name === "SecurityError"
+            ) ||
+            !redirectToAppLogin()
+          ) {
+            setUnexpectedFailure(true);
+          }
+        }
+      })
+      .catch((error) => {
+        // error-policy:J1 an unforeseen lifecycle rejection is reported and
+        // becomes a visibly distinct error route rather than ordinary login.
+        reportRendererDiagnostic({
+          scope: "steward.sso-bridge.mint-lifecycle",
+          error,
+          severity: "error",
+        });
+        if (effectIsCurrent()) setUnexpectedFailure(true);
+      });
 
-    if (!hasHydratableStewardToken()) {
-      // Login is owned by this public/auth origin. Preserve the exact bridge
-      // leg as a same-origin returnTo; once Steward succeeds, the remembered
-      // referrer-approved intent permits minting and sends the user back to
-      // the managed app. No credential is ever entered on the app host.
-      const bridgeReturnTo = `${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(returnTo)}`;
-      appModeNavigation.replace(
-        `/login?returnTo=${encodeURIComponent(bridgeReturnTo)}`,
-      );
-      return;
-    }
-
-    forgetMintIntent(state);
-    void mintSsoCode(hostname, challenge).then((result) => {
-      const url = result.ok
-        ? buildBridgeExchangeUrl(hostname, result.code, state, returnTo)
-        : null;
-      appModeNavigation.replace(url ?? appLoginUrl(appOrigin, returnTo));
-    });
+    return () => {
+      operation.activeEffects.delete(effectGeneration);
+      if (effectIsCurrent()) {
+        effectGenerationRef.current = effectGeneration + 1;
+      }
+    };
   }, [hostname, state, challenge, returnTo]);
 
+  if (unexpectedFailure) {
+    return (
+      <Navigate to={buildSsoBridgeErrorUrl("auth_failed", returnTo)} replace />
+    );
+  }
   if (notInitiated) {
     return <Navigate to="/" replace />;
   }

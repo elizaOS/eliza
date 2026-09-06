@@ -1854,12 +1854,12 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     ).resolves.toMatchObject({ semanticReady: false });
 
     await viewRoot.evaluate((root) => {
-      root.textContent = "Idle";
+      root.textContent = "No focus session active";
     });
     await expect(
       readViewPaint(viewRoot, overlay, focusPolicy.expectation),
     ).resolves.toEqual({
-      readableChars: "Idle".length,
+      readableChars: "No focus session active".length,
       semanticReady: true,
       overlayPresent: true,
       loadingStateLabels: [],

@@ -1,13 +1,12 @@
 /**
  * Cache-gated admission for organization-funded inference.
  *
- * Admission reads current subscription authority before refusal state so a
- * newly funded subscriber cannot be trapped by a stale purchased-credit
- * refusal or any optimistic purchased-credit-only lane. Non-subscribers then
+ * Admission reads current subscription authority first. Non-subscribers then
  * use pricing, affiliate-policy, and balance caches before acquiring a Durable
- * Object lease. Post-provider accounting replays one deterministic debit
- * identity; the lease alarm is the durable backstop when a response-side task
- * disappears.
+ * Object lease. The revision-aware lease, not isolate-local cache projection
+ * state, is the dispatch fence. Post-provider accounting replays one
+ * deterministic debit identity; the lease alarm is the durable backstop when
+ * a response-side task disappears.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -47,7 +46,7 @@ import {
   getCachedInferenceAffiliateAttribution,
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
-import { isDeferredAdmissionEnabled, isOrgAdmissionRefused } from "./inference-billing-deferred";
+import { isDeferredAdmissionEnabled } from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
   debitInferenceCost,
@@ -58,7 +57,6 @@ import {
   isOptimisticBillingEnabled,
   isOptimisticEligible,
   resolveSafeBalanceThresholdUsd,
-  scheduleOrgBalanceHintHydration,
   writePendingInferenceCharge,
 } from "./inference-billing-fast-path";
 import {
@@ -112,6 +110,11 @@ export interface OrganizationInferenceAdmissionParams {
   admissionSnapshot?: InferenceAdmissionSnapshot;
   /** Strong standing proof consumed atomically by the primary admission gate. */
   credential?: InferenceCredentialCheck;
+  /**
+   * Prepare the lease locally and commit it with dispatch at an audited
+   * provider boundary. Limited to callers whose dispatch callback is required.
+   */
+  atomicProviderBoundary?: boolean;
 }
 
 /** Retryable signal preserving route compatibility while identifying pricing hydration. */
@@ -213,18 +216,54 @@ async function reserveSynchronously(
 function attachInferenceAdmissionLease(
   admission: OrganizationInferenceAdmission,
   lease: InferenceAdmissionLease,
+  params: OrganizationInferenceAdmissionParams,
 ): OrganizationInferenceAdmission {
   const settleAuthoritatively = admission.settle;
   const settleUnknownAuthoritatively = admission.settleUnknown;
   type SettlementChoice = { kind: "actual"; actualCostUsd: number } | { kind: "unknown" };
   let choice: SettlementChoice | undefined;
   let settlement: Promise<CreditReconciliationResult | null> | null = null;
-  const markProviderDispatched = () => markInferenceAdmissionLeaseDispatched(lease);
+  const markProviderDispatched = async (): Promise<void> => {
+    try {
+      await markInferenceAdmissionLeaseDispatched(lease);
+    } catch (error) {
+      // error-policy:J2 add request identity and preserve the established
+      // transport-facing standing, balance, and availability error types.
+      if (error instanceof InferenceCredentialRevokedError) {
+        logger.warn(
+          "[OrganizationInferenceAdmission] blocked provider dispatch at combined credential and balance gate",
+          {
+            organizationId: params.context.organizationId,
+            userId: params.context.userId,
+            requestId: params.context.requestId,
+            credentialKind: params.credential?.kind ?? "unavailable",
+            reason: error.reason,
+          },
+        );
+        throw error;
+      }
+      if (error instanceof InferenceAdmissionLeaseRejectedError) {
+        throw new InsufficientCreditsError(
+          error.requiredUsd,
+          error.availableUsd,
+          "cached_balance_gate",
+        );
+      }
+      if (error instanceof InferenceAdmissionGateUnavailableError) {
+        throw admissionUnavailable(params, error);
+      }
+      throw error;
+    }
+  };
   const run = (requestedChoice: SettlementChoice): Promise<CreditReconciliationResult | null> => {
     choice ??= requestedChoice;
     if (settlement) return settlement;
     const selected = choice;
     const current = (async () => {
+      if (selected.kind === "actual" && selected.actualCostUsd === 0 && !lease.providerDispatched) {
+        await settleInferenceAdmissionLease(lease, 0, 0);
+        return null;
+      }
       if (selected.kind === "unknown" || selected.actualCostUsd > 0) {
         await markProviderDispatched();
       }
@@ -288,14 +327,6 @@ export async function admitOrganizationInference(
     (await isSubscriptionFundedOrganization(params.context.organizationId));
   if (subscriptionFunded) {
     return await reserveSynchronously(params, true);
-  }
-  if (workerHotPath && executionCtx && isOrgAdmissionRefused(params.context.organizationId)) {
-    // A prior deferred write or fallback charge was refused. Its settler
-    // invalidated the balance hint, so a later retry will hydrate authoritative
-    // state under waitUntil; this request must not bypass the refusal with a
-    // synchronous database reserve on the model hot path.
-    scheduleOrgBalanceHintHydration(params.context.organizationId, executionCtx);
-    throw admissionUnavailable(params);
   }
   if (!workerHotPath && affiliateMarked) {
     return await reserveSynchronously(params, false);
@@ -435,6 +466,7 @@ export async function admitOrganizationInference(
         },
         credential: params.credential,
         executionCtx: params.executionCtx,
+        deferCommitUntilDispatch: params.atomicProviderBoundary === true,
       });
     } catch (error) {
       if (error instanceof InferenceCredentialRevokedError) {
@@ -524,7 +556,7 @@ export async function admitOrganizationInference(
         },
         affiliateAttribution,
       };
-      return attachInferenceAdmissionLease(result, inferenceLease);
+      return attachInferenceAdmissionLease(result, inferenceLease, params);
     }
 
     const settle = async (actualCostUsd: number): Promise<CreditReconciliationResult> => {
@@ -563,6 +595,7 @@ export async function admitOrganizationInference(
         affiliateAttribution: null,
       },
       inferenceLease,
+      params,
     );
   }
 

@@ -226,7 +226,7 @@ describe("mid-session account failover", () => {
       const router = await SubAgentRouter.start(runtime);
 
       acp.emit("s-1", "error", { message: "429 rate limit exceeded" });
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await vi.waitFor(() => expect(acp.spawnSession).toHaveBeenCalledTimes(1));
 
       const spawnArgs = acp.spawnSession.mock.calls[0]?.[0] as {
         initialTask: string;

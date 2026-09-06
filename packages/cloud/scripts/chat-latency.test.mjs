@@ -450,6 +450,7 @@ test("probeOpenAi reduces HTTP and network errors to safe metadata", async () =>
     type: "invalid_request_error",
     code: "bad_model",
   });
+  assert.equal(http.status, 400);
   assert.doesNotMatch(JSON.stringify(http), /private upstream detail/);
 
   const network = await probeOpenAi({

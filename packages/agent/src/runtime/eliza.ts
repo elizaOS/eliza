@@ -179,7 +179,11 @@ import {
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
-import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
+import {
+  type AgentHostBridge,
+  getAgentHostBridge,
+  hasDurableHostVault,
+} from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
 // pool, build variant) are INJECTED downward by the app-core host via
@@ -4194,7 +4198,9 @@ export async function startEliza(
     const { sharedVault } = await importAppCoreRuntime();
     const vault = sharedVault();
 
-    if (!process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY) {
+    // Standalone hosts without a durable vault use the baseline prompts;
+    // the no-op bridge cannot persist an integrity key for optimized prompts.
+    if (!process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY && hasDurableHostVault()) {
       process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY =
         await resolveOptimizedPromptIntegrityKey(vault);
     }

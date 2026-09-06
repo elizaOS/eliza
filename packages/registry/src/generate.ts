@@ -1,25 +1,14 @@
 /**
- * Generate `generated-registry.json` — the wire format the runtime fetches —
- * from the source `entries/third-party/*.json` files.
- *
- * Run directly (`bun run src/generate.ts`) to regenerate the committed output.
+ * Converts validated community registry entries into the generated wire format.
+ * This module is import-safe; filesystem output belongs to the separate CLI entrypoint.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadThirdPartyEntries } from "./loader.ts";
 import type {
   GeneratedRegistry,
   GeneratedRegistryEntry,
   RegistryEntry,
 } from "./types.ts";
-
-const packageRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-const OUTPUT_PATH = path.join(packageRoot, "generated-registry.json");
 
 function repoSlug(repository: string): string {
   return repository.replace(/^github:/, "");
@@ -95,20 +84,4 @@ export function generateRegistry(
     registry[entry.package] = toGeneratedEntry(entry);
   }
   return { registry };
-}
-
-function main(): void {
-  const registry = generateRegistry();
-  fs.writeFileSync(OUTPUT_PATH, `${JSON.stringify(registry, null, 2)}\n`);
-  const count = Object.keys(registry.registry).length;
-  console.log(`Generated ${OUTPUT_PATH} (${count} third-party entries)`);
-}
-
-function isDirectExecution(): boolean {
-  const entry = process.argv[1];
-  return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
-}
-
-if (isDirectExecution()) {
-  main();
 }

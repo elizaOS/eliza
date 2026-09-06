@@ -290,7 +290,7 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
       computeVerdict(
         finding({
           slug: "plugin-focus-gui",
-          readableChars: "Idle".length,
+          readableChars: "No focus session active".length,
           semanticReady: true,
         }),
       ),
@@ -304,7 +304,7 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
     expect(
       computeVerdict(
         finding({
-          readableChars: "Idle".length,
+          readableChars: "No focus session active".length,
           semanticReady: true,
           qualityIssues: ["blank pixels"],
         }),

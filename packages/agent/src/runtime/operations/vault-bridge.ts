@@ -1,20 +1,12 @@
 /**
- * Vault bridge — the only place runtime-ops talks to `@elizaos/vault`.
- *
- * Enforces:
- *   1. The naming convention for provider API key vault entries
- *      (`providers.<normalizedProvider>.api-key`).
- *   2. Sensitive flag on every write (so the secret is encrypted at rest).
- *   3. Caller tagging for the audit log so a reader of
- *      `<stateDir>/audit/vault.jsonl` can attribute every access to a
- *      runtime-ops phase.
- *
- * The bridge owns NO mutable state. Either pass an explicit
- * SecretsManager (tests), or call `defaultSecretsManager()` (production)
- * which constructs a fresh manager backed by the OS-keychain vault.
+ * Resolves runtime-operation credentials and the optimized-prompt integrity key
+ * through the vault. Sensitive writes retain caller attribution; integrity-key
+ * recovery quarantines only the exact unreadable row and verifies its replacement.
+ * Concurrent integrity-key resolutions share one in-flight result per vault.
  */
 
 import { randomBytes } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   createManager,
   type SecretsManager,
@@ -101,15 +93,17 @@ function isOptimizedPromptIntegrityKeyDecryptionFailure(
 
 function assertOptimizedPromptIntegrityKey(value: string): string {
   if (value.length === 0 || value.length % 4 !== 0) {
-    throw new Error(
+    throw new ElizaError(
       "[runtime-ops:vault] optimized-prompt integrity key has an invalid encoded shape",
+      { code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID", severity: "fatal" },
     );
   }
   const decoded = Buffer.from(value, "base64");
   try {
     if (decoded.length !== 32 || decoded.toString("base64") !== value) {
-      throw new Error(
+      throw new ElizaError(
         "[runtime-ops:vault] optimized-prompt integrity key must be canonical base64 for exactly 32 bytes",
+        { code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID", severity: "fatal" },
       );
     }
   } finally {
@@ -141,8 +135,12 @@ async function quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(
   const winner = await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
   assertOptimizedPromptIntegrityKey(winner);
   if (inserted && winner !== replacement) {
-    throw new Error(
+    throw new ElizaError(
       "[runtime-ops:vault] optimized-prompt integrity-key recovery failed exact read-back verification",
+      {
+        code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_READBACK_MISMATCH",
+        severity: "fatal",
+      },
     );
   }
   return winner;

@@ -478,11 +478,14 @@ async function dispatchWebhook(
   });
 }
 
-const INTERNAL_DISCORD_GATEWAY_PATH =
-  "/api/internal/discord/eliza-app/messages";
+const INTERNAL_DISCORD_GATEWAY_PATHS = new Set([
+  "/api/internal/auth/token",
+  "/api/internal/discord/eliza-app/messages",
+  "/api/internal/discord/eliza-app/pending-greetings",
+]);
 
 export function isInternalDiscordGatewayPath(pathname: string): boolean {
-  return pathname === INTERNAL_DISCORD_GATEWAY_PATH;
+  return INTERNAL_DISCORD_GATEWAY_PATHS.has(pathname);
 }
 
 async function getDiscordGatewayApp(): Promise<Hono<AppEnv>> {

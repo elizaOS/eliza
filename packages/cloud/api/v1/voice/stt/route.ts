@@ -604,6 +604,7 @@ async function __hono_POST(c: AppContext) {
           cost: sttCost,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
@@ -1235,6 +1236,7 @@ async function __hono_POST(c: AppContext) {
         cost: sttCost,
         admissionSnapshot,
         credential: credentialGuard.credentialForAdmission(),
+        atomicProviderBoundary: true,
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;

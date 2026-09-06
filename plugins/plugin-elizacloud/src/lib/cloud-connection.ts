@@ -87,6 +87,7 @@ const CLOUD_AUTH_CLEAR_METHODS = [
 
 type CloudClientLike = {
   get?: (path: string) => Promise<unknown>;
+  requestData?: (method: "GET", path: string) => Promise<unknown>;
 };
 
 export type CloudAuthLike = {
@@ -428,15 +429,31 @@ export async function fetchCloudCredits(
   }
 
   const cloudClient = snapshot.cloudAuth?.getClient?.();
-  if (snapshot.authConnected && typeof cloudClient?.get === "function") {
+  if (
+    snapshot.authConnected &&
+    (typeof cloudClient?.requestData === "function" ||
+      typeof cloudClient?.get === "function")
+  ) {
     try {
-      const creditResponse = (await cloudClient.get("/credits/balance")) as {
-        balance?: unknown;
-        data?: { balance?: unknown };
-      };
+      const creditResponse =
+        typeof cloudClient.requestData === "function"
+          ? await cloudClient.requestData("GET", "/credits/balance")
+          : await cloudClient.get?.("/credits/balance");
+      const nestedData =
+        typeof creditResponse === "object" && creditResponse !== null
+          ? Reflect.get(creditResponse, "data")
+          : undefined;
       const rawBalance =
-        coerceCloudBalance(creditResponse?.balance) ??
-        coerceCloudBalance(creditResponse?.data?.balance);
+        coerceCloudBalance(
+          typeof creditResponse === "object" && creditResponse !== null
+            ? Reflect.get(creditResponse, "balance")
+            : undefined,
+        ) ??
+        coerceCloudBalance(
+          typeof nestedData === "object" && nestedData !== null
+            ? Reflect.get(nestedData, "balance")
+            : undefined,
+        );
 
       if (typeof rawBalance === "number") {
         return withCreditFlags(rawBalance, topUpUrl);

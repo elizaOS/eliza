@@ -23,6 +23,11 @@ ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.s
 # also covers systemd recovery after a crash or host reboot. A worker must never
 # load job-interruption readers against an unverified catalog or migration hash.
 ExecStartPre=/usr/bin/env bun --conditions=eliza-source /opt/eliza/packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts
+# Canonical migrations plus the preflight above own schema convergence. Running
+# the legacy multi-statement runtime DDL guard on the first repository lookup can
+# wait behind live table locks while an agent_delete is already leased, preventing
+# teardown metadata resolution before the job budget expires.
+Environment=SKIP_AGENT_SANDBOX_ENSURE=1
 ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/scripts/admin/daemons/provisioning-worker.ts
 
 Restart=always

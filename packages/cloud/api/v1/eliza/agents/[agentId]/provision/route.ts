@@ -511,8 +511,20 @@ async function __hono_POST(
     // for the next cron tick. Fire-and-forget; the cron is the safety net.
     if (created) {
       const triggerEnv = ctx?.env;
-      const triggerPromise =
-        provisioningJobService.triggerImmediate(triggerEnv);
+      const triggerPromise = provisioningJobService
+        .triggerImmediate(triggerEnv)
+        .catch((err) => {
+          // error-policy:J7 the durable job remains observable by the daemon;
+          // retain a failed best-effort nudge as an operational diagnostic.
+          logger.warn(
+            "[provision] provisioning triggerImmediate nudge failed",
+            {
+              agentId,
+              jobId: job.id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          );
+        });
       let executionCtx: AppContext["executionCtx"] | undefined;
       try {
         executionCtx = ctx?.executionCtx;
@@ -526,15 +538,7 @@ async function __hono_POST(
         // the provisioning job is already persisted, so a failed immediate nudge only
         // defers execution to the next poll. Log it rather than swallow so a stuck
         // orchestrator surfaces.
-        // error-policy:J7 nudge failure only delays an already-enqueued job; logged, not fatal.
-        triggerPromise.catch((err) =>
-          logger.warn(
-            "[provision] provisioning triggerImmediate nudge failed",
-            {
-              error: err instanceof Error ? err.message : String(err),
-            },
-          ),
-        );
+        void triggerPromise;
       }
     }
 

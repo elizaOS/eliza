@@ -342,8 +342,17 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
         },
       }),
     );
-    const eventPayload = { documentTitle: "Board packet" };
+    const eventPayload = {
+      documentTitle: "Board packet",
+      document: `${"Complete agenda and supporting notes. ".repeat(5_000)}Final decision: defer the vote.`,
+    };
     h.queueDispatchResults(
+      {
+        ok: false,
+        reason: "rate_limited",
+        retryAfterMinutes: 1,
+        userActionable: false,
+      },
       {
         ok: false,
         reason: "disconnected",
@@ -355,25 +364,104 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     const first = await h.runner.fireWithResult(task.taskId, { eventPayload });
     expect(first.kind).toBe("dispatch_deferred");
     if (first.kind !== "dispatch_deferred") throw new Error("unreachable");
+    const persisted = await h.store.get(task.taskId);
+    expect(
+      JSON.parse(JSON.stringify(persisted?.metadata?.pendingDispatch))
+        .eventPayload,
+    ).toEqual(eventPayload);
     h.setNow(first.nextAttemptAtIso);
+    const retried = await h.runner.fireWithResult(task.taskId);
+    expect(retried.kind).toBe("dispatch_deferred");
+    if (retried.kind !== "dispatch_deferred") throw new Error("unreachable");
+    h.setNow(retried.nextAttemptAtIso);
     await h.runner.fireWithResult(task.taskId);
 
-    expect(h.dispatches).toHaveLength(2);
+    expect(h.dispatches).toHaveLength(3);
     expect(h.dispatches[0]?.record.eventPayload).toEqual(eventPayload);
     expect(h.dispatches[1]?.record.eventPayload).toEqual(eventPayload);
-    expect(h.dispatches[1]?.record.channelKey).toBe("push");
+    expect(h.dispatches[2]?.record.eventPayload).toEqual(eventPayload);
+    expect(h.dispatches[2]?.record.channelKey).toBe("push");
   });
 
-  it("marks non-serializable event payloads unavailable before persistence", async () => {
+  it("rejects non-serializable event payloads before claiming or dispatching", async () => {
     const h = makeHarness();
     const task = await h.runner.schedule(reminderInput());
     const circular: Record<string, unknown> = {};
     circular.self = circular;
 
-    await h.runner.fireWithResult(task.taskId, { eventPayload: circular });
+    await expect(
+      h.runner.fireWithResult(task.taskId, { eventPayload: circular }),
+    ).rejects.toMatchObject({
+      code: "SCHEDULED_EVENT_PAYLOAD_NOT_SERIALIZABLE",
+    });
+    expect(h.dispatches).toEqual([]);
+    expect((await h.store.get(task.taskId))?.state.status).toBe("scheduled");
+  });
 
-    expect(h.dispatches[0]?.record.eventPayload).toEqual({
-      unavailable: "not_serializable",
+  it.each([
+    ["Map", { facts: new Map([["decision", "defer"]]) }],
+    ["Set", { facts: new Set(["defer"]) }],
+    ["Date", { at: new Date("2026-05-11T12:00:00.000Z") }],
+    ["invalid Date", { at: new Date(Number.NaN) }],
+    ["symbol key", { [Symbol("decision")]: "defer" }],
+    ["undefined property", { decision: undefined }],
+    ["non-finite number", { amount: Number.POSITIVE_INFINITY }],
+    ["sparse array", { facts: Array(1) }],
+    [
+      "array property",
+      { facts: Object.assign(["defer"], { reason: "quorum" }) },
+    ],
+    [
+      "hidden property",
+      Object.defineProperty({}, "decision", { value: "defer" }),
+    ],
+    [
+      "accessor",
+      {
+        get decision() {
+          return "defer";
+        },
+      },
+    ],
+    ["toJSON conversion", { decision: "defer", toJSON: () => ({}) }],
+  ])(
+    "rejects %s event data before claiming the task",
+    async (_label, eventPayload) => {
+      const h = makeHarness();
+      const task = await h.runner.schedule(reminderInput());
+      const before = await h.store.get(task.taskId);
+
+      await expect(
+        h.runner.fireWithResult(task.taskId, { eventPayload }),
+      ).rejects.toMatchObject({
+        code: "SCHEDULED_EVENT_PAYLOAD_NOT_SERIALIZABLE",
+      });
+
+      expect(h.dispatches).toEqual([]);
+      expect(await h.store.get(task.taskId)).toEqual(before);
+    },
+  );
+
+  it("preserves repeated plain data and prototype-named keys through dispatch", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(reminderInput());
+    const facts = Object.assign(Object.create(null), { decision: "defer" });
+    const eventPayload = {
+      first: facts,
+      second: facts,
+      records: [facts, null, false, 0, ""],
+      ...JSON.parse('{"__proto__":{"reason":"quorum"}}'),
+    };
+
+    await h.runner.fireWithResult(task.taskId, { eventPayload });
+    const dispatched = h.dispatches[0]?.record.eventPayload;
+    expect(JSON.parse(JSON.stringify(dispatched))).toEqual(
+      JSON.parse(JSON.stringify(eventPayload)),
+    );
+    facts.decision = "approve";
+    expect(dispatched).toMatchObject({
+      first: { decision: "defer" },
+      second: { decision: "defer" },
     });
   });
 

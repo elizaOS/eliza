@@ -728,6 +728,7 @@
         "@electric-sql/pglite-socket": "0.1.6",
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/cloud-sdk": "workspace:*",
+        "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-doordash": "workspace:*",

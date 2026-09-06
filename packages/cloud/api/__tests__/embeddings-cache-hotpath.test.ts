@@ -49,6 +49,7 @@ mock.module("@/lib/providers/language-model", () => ({
 }));
 
 const settleAdmission = mock(async () => null);
+const markProviderDispatched = mock(async () => undefined);
 const admitOrganizationInference = mock();
 mock.module("@/lib/services/organization-inference-admission", () => ({
   ...admissionActual,
@@ -136,6 +137,8 @@ beforeEach(() => {
   resolveInferenceAuthContext.mockReset();
   admitOrganizationInference.mockReset();
   settleAdmission.mockClear();
+  markProviderDispatched.mockReset();
+  markProviderDispatched.mockResolvedValue(undefined);
   billUsage.mockReset();
   usageCreate.mockReset();
   embed.mockReset();
@@ -158,6 +161,7 @@ beforeEach(() => {
     mode: "deferred_kv_ledger",
     settle: settleAdmission,
     settleUnknown: settleAdmission,
+    markProviderDispatched,
   });
   billUsage.mockResolvedValue({
     inputCost: 0.001,
@@ -229,6 +233,7 @@ describe("POST /api/v1/embeddings Worker cache hot path", () => {
           mode: "deferred_kv_ledger",
           settle: settleAdmission,
           settleUnknown: settleAdmission,
+          markProviderDispatched,
         };
       },
     );
@@ -259,6 +264,7 @@ describe("POST /api/v1/embeddings Worker cache hot path", () => {
       expect.objectContaining({
         apiKeyId: API_KEY_ID,
         executionCtx: ctx,
+        atomicProviderBoundary: true,
         context: expect.objectContaining({
           organizationId: ORG,
           userId: USER,
@@ -273,6 +279,28 @@ describe("POST /api/v1/embeddings Worker cache hot path", () => {
 
     authoritativeAdmission.resolve();
     await Promise.all(scheduled);
+  });
+
+  test("late dispatch admission failure returns 503 without invoking the embedder", async () => {
+    markProviderDispatched.mockRejectedValueOnce(
+      new admissionActual.InferenceAdmissionUnavailableError({
+        cause: new Error("dispatch marker unavailable"),
+      }),
+    );
+    const { ctx, scheduled } = makeExecutionCtx();
+
+    const response = await post(ctx);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "inference_admission_unavailable" },
+    });
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
+    expect(embed).not.toHaveBeenCalled();
+    expect(embedMany).not.toHaveBeenCalled();
+    await Promise.all(scheduled);
+    expect(settleAdmission).toHaveBeenCalledWith(0);
   });
 
   test("warm Steward session stays cache-only and attributes no API key", async () => {

@@ -9,12 +9,9 @@
  * graph for a single helper (and breaking callers that mock `db/helpers` at
  * its previous, narrower boundary).
  *
- * Its dependencies are leaves already used by both settlers:
- * `inference-auth-cache` and the isolate-local
- * `inference-admission-refusal`.
+ * Its dependency is the cache projection leaf already used by both settlers.
  */
 
-import { clearOrgAdmissionRefused } from "./inference-admission-refusal";
 import { republishOrgBalanceHint } from "./inference-auth-cache";
 
 /**
@@ -52,5 +49,4 @@ export async function republishOrgBalanceHintAfterDebit(
 ): Promise<void> {
   const balanceAt = Date.now();
   await republishOrgBalanceHint(organizationId, balanceUsd, balanceAt, balanceRevision);
-  clearOrgAdmissionRefused(organizationId);
 }

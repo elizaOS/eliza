@@ -232,7 +232,7 @@ describe("PgliteVaultImpl", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("does not quarantine a healthy replacement for a stale cross-process failure", async () => {
+  it("does not quarantine a healthy replacement for a stale failure", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vault-pglite-quarantine-cas-"));
     const dataDir = join(dir, ".vault-pglite");
     const auditPath = join(dir, "audit", "vault.jsonl");
@@ -280,6 +280,50 @@ describe("PgliteVaultImpl", () => {
     expect(Number(quarantined.rows[0]?.n)).toBe(1);
     await db.close();
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it("keeps concurrent quarantine failures isolated and preserves both rows", async () => {
+    await vault.set("blocked", "retained-secret", { sensitive: true });
+    await vault.set("movable", "quarantined-secret", { sensitive: true });
+    await vault.close();
+    const dataDir = join(workDir, ".vault-pglite");
+    const setup = await PGlite.create(dataDir);
+    await setup.exec(
+      "ALTER TABLE vault_quarantined_entries ADD CONSTRAINT reject_blocked CHECK (original_key <> 'blocked')",
+    );
+    await setup.close();
+    vault = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath: join(workDir, "audit", "vault.jsonl"),
+    });
+    const blocked = await captureDecryptionFailure(vault, "blocked");
+    const movable = await captureDecryptionFailure(vault, "movable");
+    const outcomes = await Promise.allSettled([
+      vault.quarantineUnreadable(
+        "blocked",
+        blocked.entryIdentity,
+        "forced insert failure",
+        "test",
+      ),
+      vault.quarantineUnreadable(
+        "movable",
+        movable.entryIdentity,
+        "concurrent recovery",
+        "test",
+      ),
+    ]);
+    expect(outcomes[0].status).toBe("rejected");
+    expect(outcomes[1]).toEqual({ status: "fulfilled", value: true });
+    expect(await vault.has("blocked")).toBe(true);
+    expect(await vault.has("movable")).toBe(false);
+    await vault.close();
+    const inspection = await PGlite.create(dataDir);
+    const retained = await inspection.query<{ original_key: string }>(
+      "SELECT original_key FROM vault_quarantined_entries",
+    );
+    expect(retained.rows).toEqual([{ original_key: "movable" }]);
+    await inspection.close();
   });
 
   it("rejects corrupt persisted rows instead of returning null-ish values", async () => {

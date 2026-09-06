@@ -9,11 +9,35 @@
  *  - per-model duration cap → 400,
  *  - provider not configured → 503, no reserve,
  *  - insufficient credits → 402,
- *  - pre-settle provider failure → full refund,
- *  - post-settle DB failure → charge NOT refunded (money-leak guard).
+ *  - ambiguous provider failure retains the admitted charge,
+ *  - receipt persistence failure is visible without refunding delivered audio.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { subscriptionEntitlementsRepository } from "@/db/repositories/subscription-entitlements";
+
+// These purchased-credit fixtures have no paid subscription. Keep the real
+// funding selector and reservation path while supplying that repository state.
+let entitlementLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  entitlementLookup = spyOn(
+    subscriptionEntitlementsRepository,
+    "find",
+  ).mockResolvedValue(undefined);
+});
+afterEach(() => {
+  entitlementLookup.mockRestore();
+});
+
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import * as audioRegistryActual from "@/lib/providers/audio/registry";
@@ -277,7 +301,7 @@ describe("generate-sfx — validation gates (no money moves)", () => {
 });
 
 describe("generate-sfx — settlement", () => {
-  test("pre-settle provider failure refunds in full", async () => {
+  test("ambiguous provider failure retains the admitted charge", async () => {
     const ledger = makeLedgerReservation(10, COST);
     reserve.mockResolvedValue(ledger.reservation);
     generate.mockRejectedValue(new Error("upstream 503"));
@@ -287,11 +311,11 @@ describe("generate-sfx — settlement", () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(generationsCreate).not.toHaveBeenCalled();
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.lastActual).toBe(0);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.lastActual).toBe(COST);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - COST, 10);
   });
 
-  test("post-settle DB failure does NOT refund the settled charge", async () => {
+  test("receipt persistence failure is visible without refunding generated audio", async () => {
     const ledger = makeLedgerReservation(10, COST);
     const blob = makeFakeBlob();
     reserve.mockResolvedValue(ledger.reservation);
@@ -307,7 +331,7 @@ describe("generate-sfx — settlement", () => {
       { BLOB: blob.binding },
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.lastActual).toBeCloseTo(COST, 10);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - COST, 10);

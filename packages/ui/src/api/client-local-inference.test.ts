@@ -129,24 +129,16 @@ describe("getLocalInferenceHub", () => {
     );
     const client = new ElizaClient("http://127.0.0.1:31337", "token");
 
-    let thrown: unknown;
-    try {
-      await client.getLocalInferenceHub();
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(ElizaError);
-    expect(thrown).toMatchObject({
+    const request = client.getLocalInferenceHub();
+    await expect(request).rejects.toBeInstanceOf(ElizaError);
+    await expect(request).rejects.toMatchObject({
+      message: expect.stringContaining("Hardware details are unavailable"),
       code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
       context: {
         path: "response.hardware.totalRamGb",
         expected: "a finite non-negative number",
       },
     });
-    expect((thrown as Error).message).toContain(
-      "Hardware details are unavailable",
-    );
   });
 
   it.each([

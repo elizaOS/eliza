@@ -258,10 +258,27 @@ test.describe("walkthrough capture smoke", () => {
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
     await injectFullCapabilityHost(page);
     await installDefaultAppRoutes(page);
+    // Desktop prewarms sign-in before a click; capture must not contact Cloud.
+    await page.route("**/api/auth/cli-session", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await fulfillJson(route, 200, {
+        sessionId: "11111111-1111-4111-8111-111111111111",
+      });
+    });
     const firstRun = await installMutableFirstRunStatus(page);
     await installWalkthroughConversationStore(page);
 
+    const desktopLoginWarmup = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/auth/cli-session" &&
+        response.request().method() === "POST" &&
+        response.status() === 200,
+    );
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    await desktopLoginWarmup;
     const onboarding = page.getByTestId("chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(FIRST_RUN_SIGN_IN_PROMPT)).toBeVisible({

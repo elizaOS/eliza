@@ -11,6 +11,7 @@ import {
   type Agent,
   type DocumentMutationResult,
   type DocumentRevisionReplaceParams,
+  ElizaError,
   type Entity,
   logger,
   type Memory,
@@ -31,6 +32,15 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   private manager: PGliteClientManager;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   protected readonly databaseBackend = "pglite";
+
+  private notifyWrite(
+    table: string,
+    operation: "insert" | "upsert" | "delete",
+    row: Record<string, unknown>
+  ): void {
+    const snapshot = structuredClone(row);
+    this.publishCommittedWrite(() => this.manager.notifyWrite(table, operation, snapshot));
+  }
 
   constructor(agentId: UUID, manager: PGliteClientManager) {
     super(agentId);
@@ -186,19 +196,19 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     // readers therefore see either the complete old generation or the
     // complete new one when asynchronous Electric write-back catches up.
     for (const fragment of params.fragments) {
-      this.manager.notifyWrite("memories", "upsert", {
+      this.notifyWrite("memories", "upsert", {
         ...fragment,
         id: fragment.id,
       } as Record<string, unknown>);
     }
-    this.manager.notifyWrite("memories", "upsert", {
+    this.notifyWrite("memories", "upsert", {
       ...params.replacement,
       id: params.documentId,
     } as Record<string, unknown>);
     const replacementIds = new Set(params.fragments.map(({ id }) => String(id)));
     for (const id of result.removedFragmentIds ?? []) {
       if (!replacementIds.has(String(id))) {
-        this.manager.notifyWrite("memories", "delete", { id });
+        this.notifyWrite("memories", "delete", { id });
       }
     }
     return result;
@@ -207,10 +217,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async createAgent(agent: Agent): Promise<boolean> {
     const ok = await super.createAgent(agent);
     if (ok && agent.id) {
-      this.manager.notifyWrite("agents", "insert", { ...agent, id: agent.id } as Record<
-        string,
-        unknown
-      >);
+      this.notifyWrite("agents", "insert", { ...agent, id: agent.id } as Record<string, unknown>);
     }
     return ok;
   }
@@ -218,10 +225,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     const ok = await super.updateAgent(agentId, agent);
     if (ok) {
-      this.manager.notifyWrite("agents", "upsert", { ...agent, id: agentId } as Record<
-        string,
-        unknown
-      >);
+      this.notifyWrite("agents", "upsert", { ...agent, id: agentId } as Record<string, unknown>);
     }
     return ok;
   }
@@ -229,7 +233,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async deleteAgent(agentId: UUID): Promise<boolean> {
     const ok = await super.deleteAgent(agentId);
     if (ok) {
-      this.manager.notifyWrite("agents", "delete", { id: agentId });
+      this.notifyWrite("agents", "delete", { id: agentId });
     }
     return ok;
   }
@@ -238,7 +242,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const ok = await super.deleteAgents(agentIds);
     if (ok) {
       for (const id of agentIds) {
-        this.manager.notifyWrite("agents", "delete", { id });
+        this.notifyWrite("agents", "delete", { id });
       }
     }
     return ok;
@@ -247,7 +251,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async createEntities(entities: Entity[]): Promise<UUID[]> {
     const ids = await super.createEntities(entities);
     for (let i = 0; i < entities.length && i < ids.length; i++) {
-      this.manager.notifyWrite("entities", "insert", { ...entities[i], id: ids[i] } as Record<
+      this.notifyWrite("entities", "insert", { ...entities[i], id: ids[i] } as Record<
         string,
         unknown
       >);
@@ -258,7 +262,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async updateEntity(entity: Entity): Promise<void> {
     await super.updateEntity(entity);
     if (entity.id) {
-      this.manager.notifyWrite("entities", "upsert", { ...entity, id: entity.id } as Record<
+      this.notifyWrite("entities", "upsert", { ...entity, id: entity.id } as Record<
         string,
         unknown
       >);
@@ -267,52 +271,43 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
 
   async deleteEntity(entityId: UUID): Promise<void> {
     await super.deleteEntity(entityId);
-    this.manager.notifyWrite("entities", "delete", { id: entityId });
+    this.notifyWrite("entities", "delete", { id: entityId });
   }
 
   async createWorld(world: World): Promise<UUID> {
     const id = await super.createWorld(world);
-    this.manager.notifyWrite("worlds", "insert", { ...world, id } as Record<string, unknown>);
+    this.notifyWrite("worlds", "insert", { ...world, id } as Record<string, unknown>);
     return id;
   }
 
   async updateWorld(world: World): Promise<void> {
     await super.updateWorld(world);
     if (world.id) {
-      this.manager.notifyWrite("worlds", "upsert", { ...world, id: world.id } as Record<
-        string,
-        unknown
-      >);
+      this.notifyWrite("worlds", "upsert", { ...world, id: world.id } as Record<string, unknown>);
     }
   }
 
   async removeWorld(id: UUID): Promise<void> {
     await super.removeWorld(id);
-    this.manager.notifyWrite("worlds", "delete", { id });
+    this.notifyWrite("worlds", "delete", { id });
   }
 
   async createRooms(rooms: Room[]): Promise<UUID[]> {
     const ids = await super.createRooms(rooms);
     for (let i = 0; i < rooms.length && i < ids.length; i++) {
-      this.manager.notifyWrite("rooms", "insert", { ...rooms[i], id: ids[i] } as Record<
-        string,
-        unknown
-      >);
+      this.notifyWrite("rooms", "insert", { ...rooms[i], id: ids[i] } as Record<string, unknown>);
     }
     return ids;
   }
 
   async updateRoom(room: Room): Promise<void> {
     await super.updateRoom(room);
-    this.manager.notifyWrite("rooms", "upsert", { ...room, id: room.id } as Record<
-      string,
-      unknown
-    >);
+    this.notifyWrite("rooms", "upsert", { ...room, id: room.id } as Record<string, unknown>);
   }
 
   async deleteRoom(roomId: UUID): Promise<void> {
     await super.deleteRoom(roomId);
-    this.manager.notifyWrite("rooms", "delete", { id: roomId });
+    this.notifyWrite("rooms", "delete", { id: roomId });
   }
 
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
@@ -320,30 +315,23 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     if (ok) {
       // Query the actual DB-generated id so the write-back ID matches the
       // local row. The base adapter returns boolean, not UUID.
-      let participantId: string | null = null;
-      try {
-        const result = await this.manager
-          .getConnection()
-          .query(
-            `SELECT id FROM participants WHERE entity_id = $1 AND room_id = $2 AND agent_id = $3 ORDER BY created_at DESC LIMIT 1`,
-            [entityId, roomId, this.agentId]
-          );
-        const rows = result.rows as Array<{ id: string }>;
-        participantId = rows[0]?.id ?? null;
-      } catch (err) {
-        logger.debug(
-          { src: "plugin:sql", error: err instanceof Error ? err.message : String(err) },
-          "Failed to look up participant id for write-back"
-        );
-      }
-      if (participantId) {
-        this.manager.notifyWrite("participants", "insert", {
-          id: participantId,
-          entity_id: entityId,
-          room_id: roomId,
-          agent_id: this.agentId,
+      const result = await this.db.execute(
+        sql`SELECT id FROM participants WHERE entity_id = ${entityId} AND room_id = ${roomId} AND agent_id = ${this.agentId} ORDER BY created_at DESC LIMIT 1`
+      );
+      const rows = result.rows as Array<{ id: string }>;
+      const participantId = rows[0]?.id;
+      if (!participantId) {
+        throw new ElizaError("Persisted participant is unavailable for write-back.", {
+          code: "WRITE_BACK_ROW_UNAVAILABLE",
+          context: { table: "participants", agentId: this.agentId },
         });
       }
+      this.notifyWrite("participants", "insert", {
+        id: participantId,
+        entity_id: entityId,
+        room_id: roomId,
+        agent_id: this.agentId,
+      });
     }
     return ok;
   }
@@ -351,7 +339,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     const ok = await super.removeParticipant(entityId, roomId);
     if (ok) {
-      this.manager.notifyWrite("participants", "delete", { entity_id: entityId, room_id: roomId });
+      this.notifyWrite("participants", "delete", { entity_id: entityId, room_id: roomId });
     }
     return ok;
   }
@@ -364,7 +352,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     // `tableName` is the logical memory type (e.g. "messages"/"facts"), stored
     // in the `type` column of the single physical `memories` table — the
     // write-back target is always the physical table.
-    this.manager.notifyWrite("memories", "insert", { ...memory, id } as Record<string, unknown>);
+    this.notifyWrite("memories", "insert", { ...memory, id } as Record<string, unknown>);
     return id;
   }
 
@@ -374,7 +362,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const ids = await super.createMemories(memories);
     for (let index = 0; index < memories.length; index++) {
       const memory = memories[index].memory;
-      this.manager.notifyWrite("memories", "insert", {
+      this.notifyWrite("memories", "insert", {
         ...memory,
         id: ids[index],
       } as Record<string, unknown>);
@@ -387,7 +375,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   ): Promise<boolean> {
     const ok = await super.updateMemory(memory);
     if (ok) {
-      this.manager.notifyWrite("memories", "upsert", { ...memory, id: memory.id } as Record<
+      this.notifyWrite("memories", "upsert", { ...memory, id: memory.id } as Record<
         string,
         unknown
       >);
@@ -397,13 +385,13 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
 
   async deleteMemory(memoryId: UUID): Promise<void> {
     await super.deleteMemory(memoryId);
-    this.manager.notifyWrite("memories", "delete", { id: memoryId });
+    this.notifyWrite("memories", "delete", { id: memoryId });
   }
 
   async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
     await super.deleteManyMemories(memoryIds);
     for (const id of memoryIds) {
-      this.manager.notifyWrite("memories", "delete", { id });
+      this.notifyWrite("memories", "delete", { id });
     }
   }
 
@@ -415,24 +403,14 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const roomIds = Array.isArray(roomIdsOrRoomId) ? roomIdsOrRoomId : [roomIdsOrRoomId];
     let deletedIds: string[] = [];
     if (roomIds.length > 0) {
-      try {
-        const result = await this.manager
-          .getConnection()
-          .query(
-            `SELECT id FROM memories WHERE room_id = ANY($1::uuid[]) AND type = $2 AND agent_id = $3`,
-            [roomIds, tableName, this.agentId]
-          );
-        deletedIds = (result.rows as Array<{ id: string }>).map((r) => r.id);
-      } catch (err) {
-        logger.debug(
-          { src: "plugin:sql", error: err instanceof Error ? err.message : String(err) },
-          "Failed to look up deleted memory ids for write-back"
-        );
-      }
+      const result = await this.db.execute(
+        sql`SELECT id FROM memories WHERE room_id = ANY(${sql.param(roomIds)}::uuid[]) AND type = ${tableName} AND agent_id = ${this.agentId}`
+      );
+      deletedIds = (result.rows as Array<{ id: string }>).map((row) => row.id);
     }
     await super.deleteAllMemories(roomIdsOrRoomId as never, tableName);
     for (const id of deletedIds) {
-      this.manager.notifyWrite("memories", "delete", { id });
+      this.notifyWrite("memories", "delete", { id });
     }
   }
 
@@ -446,39 +424,32 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     if (ok) {
       // Query the actual DB-generated id so the write-back ID matches the
       // local row. The base adapter returns boolean, not UUID.
-      let relationshipId: string | null = null;
-      try {
-        const result = await this.manager
-          .getConnection()
-          .query(
-            `SELECT id FROM relationships WHERE source_entity_id = $1 AND target_entity_id = $2 AND agent_id = $3 ORDER BY created_at DESC LIMIT 1`,
-            [params.sourceEntityId, params.targetEntityId, this.agentId]
-          );
-        const rows = result.rows as Array<{ id: string }>;
-        relationshipId = rows[0]?.id ?? null;
-      } catch (err) {
-        logger.debug(
-          { src: "plugin:sql", error: err instanceof Error ? err.message : String(err) },
-          "Failed to look up relationship id for write-back"
-        );
-      }
-      if (relationshipId) {
-        this.manager.notifyWrite("relationships", "insert", {
-          id: relationshipId,
-          source_entity_id: params.sourceEntityId,
-          target_entity_id: params.targetEntityId,
-          agent_id: this.agentId,
-          tags: params.tags ?? [],
-          metadata: params.metadata ?? {},
+      const result = await this.db.execute(
+        sql`SELECT id FROM relationships WHERE source_entity_id = ${params.sourceEntityId} AND target_entity_id = ${params.targetEntityId} AND agent_id = ${this.agentId} ORDER BY created_at DESC LIMIT 1`
+      );
+      const rows = result.rows as Array<{ id: string }>;
+      const relationshipId = rows[0]?.id;
+      if (!relationshipId) {
+        throw new ElizaError("Persisted relationship is unavailable for write-back.", {
+          code: "WRITE_BACK_ROW_UNAVAILABLE",
+          context: { table: "relationships", agentId: this.agentId },
         });
       }
+      this.notifyWrite("relationships", "insert", {
+        id: relationshipId,
+        source_entity_id: params.sourceEntityId,
+        target_entity_id: params.targetEntityId,
+        agent_id: this.agentId,
+        tags: params.tags ?? [],
+        metadata: params.metadata ?? {},
+      });
     }
     return ok;
   }
 
   async updateRelationship(relationship: Relationship): Promise<void> {
     await super.updateRelationship(relationship);
-    this.manager.notifyWrite("relationships", "upsert", {
+    this.notifyWrite("relationships", "upsert", {
       ...relationship,
       id: relationship.id,
     } as Record<string, unknown>);
@@ -487,23 +458,23 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
     await super.deleteRelationships(relationshipIds);
     for (const id of relationshipIds) {
-      this.manager.notifyWrite("relationships", "delete", { id });
+      this.notifyWrite("relationships", "delete", { id });
     }
   }
 
   async createTask(task: Task): Promise<UUID> {
     const id = await super.createTask(task);
-    this.manager.notifyWrite("tasks", "insert", { ...task, id } as Record<string, unknown>);
+    this.notifyWrite("tasks", "insert", { ...task, id } as Record<string, unknown>);
     return id;
   }
 
   async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
     await super.updateTask(id, task);
-    this.manager.notifyWrite("tasks", "upsert", { ...task, id } as Record<string, unknown>);
+    this.notifyWrite("tasks", "upsert", { ...task, id } as Record<string, unknown>);
   }
 
   async deleteTask(id: UUID): Promise<void> {
     await super.deleteTask(id);
-    this.manager.notifyWrite("tasks", "delete", { id });
+    this.notifyWrite("tasks", "delete", { id });
   }
 }

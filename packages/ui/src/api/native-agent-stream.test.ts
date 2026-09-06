@@ -356,4 +356,62 @@ describe("createNativeStreamingResponse", () => {
     await reader.read();
     expect(listenerCount()).toBe(0);
   });
+
+  it.each(["event", "promise"])(
+    "keeps unread bytes cancellable after native completion by %s",
+    async (completionKind) => {
+      let complete!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        complete = resolve;
+      });
+      const { agent, emit, listenerCount } = makeFakeAgent(
+        "s1",
+        completionKind === "promise" ? completion : undefined,
+      );
+      const abort = new AbortController();
+      const pending = createNativeStreamingResponse(
+        agent,
+        { path: "/x" },
+        abort.signal,
+      );
+      await vi.waitFor(() => expect(listenerCount()).toBe(3));
+      emit("agentStreamResponse", { streamId: "s1", status: 200 });
+      const response = await pending;
+      emit("agentStreamChunk", {
+        streamId: "s1",
+        dataBase64: b64("queued result"),
+      });
+      if (completionKind === "event")
+        emit("agentStreamComplete", { streamId: "s1" });
+      else complete();
+      await vi.waitFor(() => expect(listenerCount()).toBe(0));
+      const reason = new Error("cancel unread result");
+      abort.abort(reason);
+      await expect(response.text()).rejects.toBe(reason);
+    },
+  );
+
+  it("cancels remaining bytes after a partial read without discarding a completed read", async () => {
+    const { agent, emit, listenerCount } = makeFakeAgent();
+    const abort = new AbortController();
+    const pending = createNativeStreamingResponse(
+      agent,
+      { path: "/x" },
+      abort.signal,
+    );
+    await vi.waitFor(() => expect(listenerCount()).toBe(3));
+    emit("agentStreamResponse", { streamId: "s1", status: 200 });
+    const response = await pending;
+    if (!response.body) throw new Error("Expected native response body");
+    const reader = response.body.getReader();
+    emit("agentStreamChunk", { streamId: "s1", dataBase64: b64("first") });
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toBe("first");
+    emit("agentStreamChunk", { streamId: "s1", dataBase64: b64("remaining") });
+    emit("agentStreamComplete", { streamId: "s1" });
+    const reason = new Error("cancel remaining result");
+    abort.abort(reason);
+    await expect(reader.read()).rejects.toBe(reason);
+    expect(listenerCount()).toBe(0);
+  });
 });
