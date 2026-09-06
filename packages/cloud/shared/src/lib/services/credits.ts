@@ -2188,9 +2188,11 @@ export class CreditsService {
           snapshot.revision,
         );
       } catch (cause) {
+        // error-policy:J2 preserve the failed publication after invalidating its cache projection.
         try {
           await invalidateOrgBalanceHint(params.organizationId);
         } catch (invalidationError) {
+          // error-policy:J6 failed-handoff cache cleanup is best-effort; the publication error is rethrown.
           logger.error(
             "[CreditsService] Failed to invalidate affiliate balance handoff after publication failure",
             {
