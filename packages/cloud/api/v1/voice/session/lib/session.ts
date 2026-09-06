@@ -1563,6 +1563,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.send({ t: "speaking_end", traceId });
         this.finishTurn(traceId);
       },
+      onFlushComplete: () => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.beginPreparedOverlapHandoff();
+      },
       onProviderError: (error) => {
         if (this.currentVoiceTurnId !== traceId) return;
         this.send({
@@ -1574,7 +1578,21 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       },
     });
     this.ttsStream = stream;
-    stream.sendPhrase({ text, continueContext: false });
+    const aggregator = new PhraseAggregator({
+      minEmitChars: 1,
+      preferWordBoundaryAtMax: true,
+    });
+    const phrases = aggregator.push(text);
+    const tail = aggregator.flush();
+    if (tail !== null) phrases.push(tail);
+    for (const [index, phrase] of phrases.entries()) {
+      const continues = index < phrases.length - 1;
+      stream.sendPhrase({
+        text: phrase,
+        continueContext: continues,
+        ...(continues ? { flush: true } : {}),
+      });
+    }
   }
 
   /** Speak a fixed live opener while the first agent context is warming. */
@@ -1955,8 +1973,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.currentVoiceTurnId !== traceId) return;
         this.noteLlmDelta(traceId);
         modelOutputChars += delta.length;
-        this.assistantReferenceText =
-          `${this.assistantReferenceText}${delta}`.slice(-2_000);
+        this.assistantReferenceText += delta;
         if (SPOKEN_TRANSCRIPT_RE.test(delta)) {
           modelSpeakableContentSeen = true;
         }
@@ -2420,7 +2437,7 @@ function isLikelyAssistantEcho(
   assistantReference: string,
 ): boolean {
   const heard = normalizeVoiceWords(transcript);
-  const reference = normalizeVoiceWords(assistantReference).slice(-120);
+  const reference = normalizeVoiceWords(assistantReference);
   if (heard.length < 3 || reference.length < heard.length) return false;
   for (let start = 0; start <= reference.length - heard.length; start += 1) {
     let matches = 0;

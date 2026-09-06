@@ -2331,7 +2331,10 @@ describe("voice-session WS lifecycle", () => {
     const client = new FakeClientSocket();
     const reply =
       "The assistant is speaking a deliberately long first clause for overlap testing. " +
-      "It keeps talking while the human asks a new and unrelated question.";
+      "It keeps talking while the human asks a new and unrelated question. " +
+      "Additional generated explanation remains queued beyond the audible opening. ".repeat(
+        40,
+      );
     await connectSession({
       client,
       fetchImpl: makeSseFetch([reply]),
@@ -2389,6 +2392,25 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(client.controlTypes()).toContain("handoff_requested");
     expect(client.controlTypes()).toContain("handoff_completed");
+
+    const handoffsBeforeThirdTurn = client.controlFrames.filter(
+      (frame) => frame.t === "handoff_completed",
+    ).length;
+    const sonic = FakeCartesiaSocket.instances.at(-1)!;
+    expect(
+      sonic.sent
+        .map((message) => JSON.parse(message))
+        .some((message) => message.flush === true && message.continue === true),
+    ).toBe(true);
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "Please now explain a completely different topic");
+    await flush();
+    await flush();
+    sonic.emitFlushDone();
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "handoff_completed"),
+    ).toHaveLength(handoffsBeforeThirdTurn + 1);
   });
 
   test("continuous handoff reports human double-talk only after assistant audio starts", async () => {
