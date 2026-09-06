@@ -124,8 +124,8 @@ export function LoginProvider({
     return unsubscribe;
   }, [authInstance]);
 
-  const signOut = useCallback(() => {
-    authInstance?.signOut();
+  const signOut = useCallback(async () => {
+    await authInstance?.revokeSession();
   }, [authInstance]);
 
   const guestState = authInstance?.getGuestState() ?? {

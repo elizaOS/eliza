@@ -1,18 +1,18 @@
-/**
- * <LoginUserButton /> branch coverage.
- *
- * The dropdown is gated behind `open` state (starts false) and the
- * click-outside listener runs in an effect, so SSR renders only the closed
- * trigger. We assert on the trigger derivation logic:
- *   - returns null when there is no user (and no session fallback)
- *   - derives display name + gravatar avatar from email
- *   - derives an initials avatar + truncated wallet when there is no email
- *   - falls back to session fields when auth.user is null (post-refresh)
- */
+/** Verifies account rendering and sign-out acknowledgement, failure and retry with a deterministic authentication context. */
 
+// @vitest-environment jsdom
+import {
+  cleanup,
+  fireEvent,
+  render as mount,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import * as React from "react";
 import { renderToString } from "react-dom/server";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
+
+afterEach(cleanup);
 
 const { LoginUserButton } = await import("../components/LoginUserButton.js");
 const { LoginAuthContext } = await import("../provider.js");
@@ -46,6 +46,36 @@ function render(value: unknown, props: Record<string, unknown> = {}) {
 }
 
 describe("<LoginUserButton /> branch coverage", () => {
+  test("reports failed revocation and waits for a successful retry before completing sign-out", async () => {
+    let attempts = 0;
+    let completed = 0;
+    mount(
+      React.createElement(
+        LoginAuthContext.Provider,
+        {
+          value: ctx({
+            user: { id: "u1", email: "alice@example.test" },
+            signOut: async () => {
+              attempts += 1;
+              if (attempts === 1) throw new Error("Service unavailable");
+            },
+          }),
+        },
+        React.createElement(LoginUserButton, {
+          onSignOut: () => {
+            completed += 1;
+          },
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "alice@example.test" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign Out" }));
+    await screen.findByRole("alert");
+    expect(completed).toBe(0);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign Out" }));
+    await waitFor(() => expect(completed).toBe(1));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
   test("renders nothing when there is no user and no session", () => {
     expect(render(ctx({ user: null, session: null }))).toBe("");
   });

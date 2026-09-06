@@ -7,6 +7,10 @@ The authentication client supports passkeys, email, SMS, WhatsApp, OAuth,
 Telegram, Farcaster, EVM and Solana wallet signatures, custom JWT/OIDC,
 guest accounts, device authorization, MFA and recovery.
 
+React sign-out waits for server revocation and reports failures for retry.
+SDK consumers use `revokeSession()` for server sign-out; `signOut()` only
+clears local credentials and the proxy cookie.
+
 The source is derived from Steward-Fi/steward at
 `7a977336687217e2601b77c20c3d343e540b9c14` under the included MIT license.
 Persisted session keys and wire identifiers retain compatibility with existing

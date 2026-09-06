@@ -1164,7 +1164,14 @@ async function rotateRefreshTokenForUserSession(
   raw: string,
   requestedTenantId?: string,
 ): Promise<RefreshRotationResult> {
-  const tokenHash = hashToken(raw);
+  const subject = await resolveRefreshTokenSubject(hashToken(raw));
+  if (!subject) return { status: "invalid" };
+  return withVerifiedAuthTenant(subject.tenantId, subject.userId, () =>
+    rotateRefreshTokenInsideTenant(raw, requestedTenantId),
+  );
+}
+
+async function resolveRefreshTokenSubject(tokenHash: string) {
   const result = await getDb().execute(sql`
     SELECT user_id, tenant_id
     FROM steward_bootstrap.auth_refresh_subject(${tokenHash})
@@ -1179,10 +1186,8 @@ async function rotateRefreshTokenForUserSession(
     : await readMfaJson<UsedRefreshTokenRecord>(`refresh:used:${tokenHash}`);
   const tenantId = subject?.tenant_id ?? used?.tenantId;
   const userId = subject?.user_id ?? used?.userId;
-  if (!tenantId || !userId) return { status: "invalid" };
-  return withVerifiedAuthTenant(tenantId, userId, () =>
-    rotateRefreshTokenInsideTenant(raw, requestedTenantId),
-  );
+  if (!tenantId || !userId) return null;
+  return { tenantId, userId };
 }
 
 async function rotateRefreshTokenInsideTenant(
@@ -9755,10 +9760,16 @@ auth.post("/logout", async (c) => {
     }
   }
   if (body?.refreshToken) {
-    const [revokedRefresh] = await getDb()
-      .delete(refreshTokens)
-      .where(eq(refreshTokens.tokenHash, hashToken(body.refreshToken)))
-      .returning();
+    const tokenHash = hashToken(body.refreshToken);
+    const subject = await resolveRefreshTokenSubject(tokenHash);
+    const [revokedRefresh] = subject
+      ? await withVerifiedAuthTenant(subject.tenantId, subject.userId, () =>
+          getDb()
+            .delete(refreshTokens)
+            .where(eq(refreshTokens.tokenHash, tokenHash))
+            .returning(),
+        )
+      : [];
     if (!auditCtx.tenantId && revokedRefresh) {
       auditCtx = {
         tenantId: revokedRefresh.tenantId,
@@ -9921,33 +9932,41 @@ auth.post("/revoke", async (c) => {
     );
   }
 
-  const db = getDb();
   const tokenHash = hashToken(body.refreshToken);
-  const revoked = await db.transaction(async (tx) => {
-    const [candidate] = await tx
-      .select()
-      .from(refreshTokens)
-      .where(eq(refreshTokens.tokenHash, tokenHash));
-    const usedBeforeLock = candidate
-      ? null
-      : await readMfaJson<UsedRefreshTokenRecord>(`refresh:used:${tokenHash}`);
-    const userId = candidate?.userId ?? usedBeforeLock?.userId;
-    if (userId) await lockUserSession(tx, userId);
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${`refresh_token_${tokenHash}`}, 0))`,
-    );
-    // Re-read after both locks: rotation may have replaced the candidate while
-    // this revoke waited for the user-wide session lock.
-    const used = await readMfaJson<UsedRefreshTokenRecord>(
-      `refresh:used:${tokenHash}`,
-    );
-    const hashes = [tokenHash];
-    if (used?.successorTokenHash) hashes.push(used.successorTokenHash);
-    return tx
-      .delete(refreshTokens)
-      .where(inArray(refreshTokens.tokenHash, hashes))
-      .returning();
-  });
+  const subject = await resolveRefreshTokenSubject(tokenHash);
+  if (!subject) return c.json<ApiResponse>({ ok: true });
+  const revoked = await withVerifiedAuthTenant(
+    subject.tenantId,
+    subject.userId,
+    () =>
+      getDb().transaction(async (tx) => {
+        const [candidate] = await tx
+          .select()
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, tokenHash));
+        const usedBeforeLock = candidate
+          ? null
+          : await readMfaJson<UsedRefreshTokenRecord>(
+              `refresh:used:${tokenHash}`,
+            );
+        const userId = candidate?.userId ?? usedBeforeLock?.userId;
+        if (userId) await lockUserSession(tx, userId);
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`refresh_token_${tokenHash}`}, 0))`,
+        );
+        // Re-read after both locks: rotation may have replaced the candidate while
+        // this revoke waited for the user-wide session lock.
+        const used = await readMfaJson<UsedRefreshTokenRecord>(
+          `refresh:used:${tokenHash}`,
+        );
+        const hashes = [tokenHash];
+        if (used?.successorTokenHash) hashes.push(used.successorTokenHash);
+        return tx
+          .delete(refreshTokens)
+          .where(inArray(refreshTokens.tokenHash, hashes))
+          .returning();
+      }),
+  );
   const existing = revoked[0];
   if (existing) {
     await writeAuditEvent({

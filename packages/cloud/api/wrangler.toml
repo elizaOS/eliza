@@ -545,6 +545,7 @@ binding = "BROWSER"
 
 [env.staging.vars]
 NODE_ENV = "production"
+LOGIN_API_URL = "https://steward-api-staging.up.railway.app"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed
 # HTTPS origin, never a request-derived host. Keep this committed so any
 # Wrangler deployment preserves inbound voice instead of failing closed.
@@ -862,6 +863,7 @@ __filename = '"/worker.js"'
 binding = "BROWSER"
 
 [env.production.vars]
+LOGIN_API_URL = "https://steward-api-production-115d.up.railway.app"
 NODE_ENV = "production"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed
 # HTTPS origin, never a request-derived host. Keep this committed so any

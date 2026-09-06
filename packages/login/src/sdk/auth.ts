@@ -742,26 +742,41 @@ export class LoginAuth {
   }
 
   /**
-   * Revoke the stored refresh token on the server (single-device sign out).
-   * Also clears local session state.
+   * Revoke this device's access and refresh tokens before clearing local state.
+   * A failed server acknowledgement rejects so the caller can offer a retry.
    */
   async revokeSession(): Promise<void> {
+    const token = this.getToken();
+    const refreshToken = this.getRefreshToken();
     this.sessionGeneration += 1;
-    if (this.authProxyUrl) {
-      this.publishLogoutEpoch();
-      this.clearLocalTokens();
-      this.notifyListeners(null);
-    }
-    await this.runSerializedRotation(async () => this.revokeSessionOnce());
+    this.publishLogoutEpoch();
+    await this.runSerializedRotation(async () =>
+      this.revokeSessionOnce(token, refreshToken),
+    );
   }
 
-  private async revokeSessionOnce(): Promise<void> {
-    // The rotation queue guarantees we revoke the newest token, not the stale
-    // predecessor of an in-flight refresh. Invalidate any later response too.
+  private async revokeSessionOnce(
+    token: string | null,
+    refreshToken: string | null,
+  ): Promise<void> {
+    // The server follows a rotated token's successor; capture authority before
+    // the cross-tab logout notification clears another instance's storage.
+    if (token) {
+      const result = await authRequest(
+        this.baseUrl,
+        "/auth/logout",
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        },
+        token,
+      );
+      if (!result.ok) throw new LoginApiError(result.error, result.status);
+    }
     if (this.authProxyUrl) {
       await this.runProxyMutation(async () => {
         // The proxy injects the cookie-held refresh token and clears the cookie.
-        await authRequest(
+        const result = await authRequest(
           requireLoginValue(this.authProxyUrl, "this.authProxyUrl"),
           "/revoke",
           {
@@ -769,22 +784,19 @@ export class LoginAuth {
             headers: AUTH_PROXY_HEADERS,
             body: JSON.stringify({}),
           },
-        ).catch(() => {
-          /* best-effort */
-        });
+        );
+        if (!result.ok) throw new LoginApiError(result.error, result.status);
       });
       this.clearLocalTokens();
       this.notifyListeners(null);
       return;
     }
-    const refreshToken = this.getRefreshToken();
     if (refreshToken) {
-      await authRequest(this.baseUrl, "/auth/revoke", {
+      const result = await authRequest(this.baseUrl, "/auth/revoke", {
         method: "POST",
         body: JSON.stringify({ refreshToken }),
-      }).catch(() => {
-        /* best-effort */
       });
+      if (!result.ok) throw new LoginApiError(result.error, result.status);
     }
     this.clearLocalTokens();
     this.notifyListeners(null);

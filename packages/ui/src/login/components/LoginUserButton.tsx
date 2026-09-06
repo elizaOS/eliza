@@ -65,6 +65,8 @@ export function LoginUserButton({
         }
       : null);
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
@@ -93,10 +95,19 @@ export function LoginUserButton({
     : null;
   const displayName = displayEmail ?? displayWallet ?? "User";
 
-  const handleSignOut = () => {
-    setOpen(false);
-    signOut();
-    onSignOut?.();
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    setSignOutError(null);
+    try {
+      await signOut();
+      setOpen(false);
+      onSignOut?.();
+    } catch {
+      // error-policy:J4 keep failed server revocation visible and allow retry.
+      setSignOutError("Sign out could not be completed. Please try again.");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (
@@ -188,12 +199,14 @@ export function LoginUserButton({
           )}
           <Button
             className="stwd-user-button__dropdown-item stwd-user-button__dropdown-item--signout"
-            onClick={handleSignOut}
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
             type="button"
             role="menuitem"
           >
-            Sign Out
+            {signingOut ? "Signing out…" : "Sign Out"}
           </Button>
+          {signOutError && <p role="alert">{signOutError}</p>}
         </div>
       )}
     </div>

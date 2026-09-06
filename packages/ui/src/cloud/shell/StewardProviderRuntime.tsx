@@ -365,7 +365,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         // scrub those too — otherwise the token survives at rest there.
         scrubPersistedActiveServerToken();
         scrubPersistedAgentProfileTokens();
-        auth.signOut();
+        return auth.signOut();
       },
       getToken: () => auth.getToken(),
       verifyEmailCallback: async (token: string, email: string) => {

@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { LoginAuth } from "../../sdk/auth";
 
 const databaseUrl = process.env.LOGIN_TEST_DATABASE_URL;
 
@@ -107,9 +108,10 @@ test.skipIf(!databaseUrl)(
         }),
       });
       expect(exchange.status).toBe(200);
-      const { token, userId } = (await exchange.json()) as {
+      const { token, userId, refreshToken } = (await exchange.json()) as {
         token: string;
         userId: string;
+        refreshToken: string;
       };
       const auditRows = await owner`
         SELECT tenant_id AS "tenantId", actor_id AS "actorId"
@@ -132,15 +134,76 @@ test.skipIf(!databaseUrl)(
         authenticated: true,
         address: account.address.toLowerCase(),
       });
+      const tokens = new Map([
+        ["steward_session_token", token],
+        ["steward_refresh_token", refreshToken],
+      ]);
+      const client = new LoginAuth({
+        baseUrl: base,
+        storage: {
+          getItem: (key) => tokens.get(key) ?? null,
+          setItem: (key, value) => {
+            tokens.set(key, value);
+          },
+          removeItem: (key) => {
+            tokens.delete(key);
+          },
+        },
+      });
+      await client.revokeSession();
+      expect(client.getToken()).toBeNull();
+      expect(
+        (
+          await fetch(`${base}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken }),
+          })
+        ).status,
+      ).toBe(401);
+      const nextNonce = await (
+        await fetch(`${base}/auth/nonce`, {
+          headers: { Origin: "https://eliza.app" },
+        })
+      ).json();
+      const nextMessage = message.replace(
+        `Nonce: ${nonce}`,
+        `Nonce: ${nextNonce.nonce}`,
+      );
+      const nextLogin = await fetch(`${base}/auth/verify`, {
+        method: "POST",
+        headers: {
+          Origin: "https://eliza.app",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: nextMessage,
+          signature: await account.signMessage({ message: nextMessage }),
+        }),
+      });
+      expect(nextLogin.status).toBe(200);
+      const nextSession = await nextLogin.json();
       expect(
         (
           await fetch(`${base}/auth/logout`, {
             method: "POST",
-            headers,
-            body: "{}",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${nextSession.token}`,
+            },
+            body: JSON.stringify({ refreshToken: nextSession.refreshToken }),
           })
         ).status,
       ).toBe(200);
+      expect(
+        (
+          await fetch(`${base}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken: nextSession.refreshToken }),
+          })
+        ).status,
+      ).toBe(401);
       await server.stop();
       server = undefined;
       server = await startLoginServer({ port: 0 });

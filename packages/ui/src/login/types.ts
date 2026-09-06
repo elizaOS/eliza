@@ -395,7 +395,7 @@ export interface LoginAuthContextValue {
   isProvidersLoading: boolean;
   /** Current guest lifecycle state, including 30-day expiry messaging. */
   guestState: import("@elizaos/login").LoginGuestState;
-  signOut: () => void;
+  signOut: () => void | Promise<void>;
   /** Create a bounded guest account session. */
   signInAsGuest: (
     options?: import("@elizaos/login").LoginGuestSignInOptions,

@@ -1,3 +1,4 @@
+/** Exercises SDK session custody and revocation over deterministic HTTP endpoints. */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -212,7 +213,7 @@ describe("LoginAuth authProxyUrl (SEC-018: HttpOnly refresh-token custody)", () 
           },
         };
       }
-      if (req.path === "/proxy/revoke") {
+      if (req.path === "/proxy/revoke" || req.path === "/auth/logout") {
         return { json: { ok: true } };
       }
       return { status: 404, json: { ok: false, error: "not found" } };
@@ -657,6 +658,30 @@ describe("LoginAuth authProxyUrl (SEC-018: HttpOnly refresh-token custody)", () 
     expect(proxyRequests("/proxy/revoke", "POST")).toHaveLength(1);
     expect(storage.getItem("steward_session_token")).toBeNull();
   });
+
+  test.each(["/auth/logout", "/proxy/revoke"])(
+    "revokeSession reports a failed %s acknowledgement",
+    async (failedPath) => {
+      await server?.close();
+      server = await startServer((request) =>
+        request.path === failedPath
+          ? {
+              status: 503,
+              json: { ok: false, error: "Revocation unavailable" },
+            }
+          : { json: { ok: true } },
+      );
+      const auth = new LoginAuth({
+        baseUrl: server.baseUrl,
+        storage,
+        authProxyUrl: `${server.baseUrl}/proxy`,
+      });
+      storage.setItem("steward_session_token", fakeJwt());
+      await expect(auth.revokeSession()).rejects.toThrow(
+        "Revocation unavailable",
+      );
+    },
+  );
 
   test("without authProxyUrl the refresh token still goes to storage (default unchanged)", async () => {
     const auth = new LoginAuth({
