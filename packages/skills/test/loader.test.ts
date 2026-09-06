@@ -4,10 +4,12 @@
  * dangling symlinks and read errors.
  */
 import assert from "node:assert";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { formatSkillsForPrompt } from "../src/formatter.js";
 import {
   loadSkillEntries,
@@ -32,6 +34,25 @@ describe("loadSkillsFromDir", () => {
     });
     assert.deepStrictEqual(result.skills, []);
     assert.deepStrictEqual(result.diagnostics, []);
+  });
+
+  it("visits cyclic and aliased directories once while retaining nested skills", () => {
+    const tempDir = createTempDir("skill-loader-cycle");
+    try {
+      const skillDir = join(tempDir, "real-skill");
+      mkdirSync(skillDir);
+      writeFileSync(
+        join(skillDir, "SKILL.md"),
+        "---\nname: real-skill\ndescription: Nested instructions\n---\nbody",
+      );
+      symlinkSync(tempDir, join(skillDir, "cycle"), "dir");
+      symlinkSync(skillDir, join(tempDir, "alias"), "dir");
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+      assert.strictEqual(result.skills.length, 1);
+      assert.strictEqual(result.skills[0].description, "Nested instructions");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("loads valid skills from direct markdown files and SKILL.md subdirectories", () => {
@@ -225,6 +246,50 @@ invalid: : : yaml syntax error
 });
 
 describe("loadSkills and loadSkillEntries", () => {
+  it("loads explicit paths from an installation without bundled skills", () => {
+    const fixtureRoot = createTempDir("skills-no-bundle");
+    try {
+      const packageRoot = resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+      );
+      const installation = join(fixtureRoot, "installation");
+      cpSync(join(packageRoot, "src"), join(installation, "src"), {
+        recursive: true,
+      });
+      symlinkSync(
+        resolve(packageRoot, "../../node_modules"),
+        join(installation, "node_modules"),
+        "dir",
+      );
+      const skillPath = join(fixtureRoot, "explicit.md");
+      writeFileSync(
+        skillPath,
+        "---\nname: explicit\ndescription: Explicit installation skill\n---\nbody",
+      );
+      const runner = join(installation, "check.ts");
+      writeFileSync(
+        runner,
+        [
+          'import { loadSkills } from "./src/loader.ts";',
+          `const result = loadSkills({ includeDefaults: false, skillPaths: [${JSON.stringify(skillPath)}] });`,
+          "console.log(JSON.stringify(result.skills.map(skill => skill.description)));",
+        ].join("\n"),
+      );
+      const env = { ...process.env };
+      delete env.ELIZAOS_BUNDLED_SKILLS_DIR;
+      const output = execFileSync(process.execPath, [runner], {
+        env,
+        encoding: "utf8",
+      });
+      assert.deepStrictEqual(JSON.parse(output.trim()), [
+        "Explicit installation skill",
+      ]);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it("detects name collisions across skill sources", () => {
     const tempDir1 = createTempDir("skill-source-1");
     const tempDir2 = createTempDir("skill-source-2");

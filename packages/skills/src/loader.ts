@@ -168,6 +168,7 @@ function loadSkillsFromDirInternal(
   dir: string,
   source: string,
   includeRootFiles: boolean,
+  visitedDirectories = new Set<string>(),
 ): LoadSkillsResult {
   const skills: Skill[] = [];
   const diagnostics: SkillDiagnostic[] = [];
@@ -178,6 +179,9 @@ function loadSkillsFromDirInternal(
 
   let entries: import("node:fs").Dirent[];
   try {
+    const realDirectory = realpathSync(dir);
+    if (visitedDirectories.has(realDirectory)) return { skills, diagnostics };
+    visitedDirectories.add(realDirectory);
     entries = readdirSync(dir, { withFileTypes: true });
   } catch (err: unknown) {
     // error-policy:J3 unreadable skills directory on untrusted filesystem becomes a warning diagnostic with no skills
@@ -220,7 +224,12 @@ function loadSkillsFromDirInternal(
     }
 
     if (isDirectory) {
-      const subResult = loadSkillsFromDirInternal(fullPath, source, false);
+      const subResult = loadSkillsFromDirInternal(
+        fullPath,
+        source,
+        false,
+        visitedDirectories,
+      );
       skills.push(...subResult.skills);
       diagnostics.push(...subResult.diagnostics);
       continue;
@@ -310,7 +319,6 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
   } = options;
 
   const resolvedAgentDir = agentDir ?? DEFAULT_AGENT_DIR;
-  const resolvedBundledDir = bundledSkillsDir ?? getSkillsDir();
   const resolvedManagedDir =
     managedSkillsDir ?? join(resolvedAgentDir, "skills");
   const projectSkillsDir = resolve(cwd, CONFIG_DIR_NAME, "skills");
@@ -360,6 +368,7 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
   }
 
   if (includeDefaults) {
+    const resolvedBundledDir = bundledSkillsDir ?? getSkillsDir();
     if (resolvedBundledDir) {
       addSkills(loadSkillsFromDirInternal(resolvedBundledDir, "bundled", true));
     }

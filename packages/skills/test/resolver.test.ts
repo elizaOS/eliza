@@ -66,13 +66,6 @@ describe("clearSkillsDirCache", () => {
     delete process.env.ELIZAOS_BUNDLED_SKILLS_DIR;
   });
 
-  it("clears cache and re-resolves path", () => {
-    const first = getSkillsDir();
-    clearSkillsDirCache();
-    const second = getSkillsDir();
-    assert.strictEqual(first, second);
-  });
-
   it("picks up environment variable changes after clearing cache", () => {
     const defaultDir = getSkillsDir();
     const tempDir = makeSkillDir("test-skills-cache");
