@@ -2994,16 +2994,25 @@ async function generateTextByModelType(
     let firstItem: IteratorResult<unknown> | undefined;
     let attemptTiming: StreamAttemptTiming | undefined;
     for (let attempt = 0; ; attempt++) {
+      assertModelNotCoolingDown(modelCooldowns, modelName);
       capturedStreamError = undefined;
       attestLlmInputSubstring(details);
       attemptTiming = streamTiming?.(attempt + 1);
-      result = await streamText({
-        ...generateParams,
-        onError: ({ error }: { error: unknown }) => {
-          capturedStreamError = error;
-        },
-        ...(attemptTiming ? { onChunk: attemptTiming.onChunk, includeRawChunks: true } : {}),
-      });
+      try {
+        result = await streamText({
+          ...generateParams,
+          onError: ({ error }: { error: unknown }) => {
+            capturedStreamError = error;
+            noteRateLimitCooldown(modelCooldowns, modelName, error);
+          },
+          ...(attemptTiming ? { onChunk: attemptTiming.onChunk, includeRawChunks: true } : {}),
+        });
+      } catch (error) {
+        // error-policy:J2 retain the provider failure and its cooldown even
+        // when dispatch rejects before exposing an iterable or onError event.
+        noteRateLimitCooldown(modelCooldowns, modelName, error);
+        throw error;
+      }
       // Companion promises can reject at the same instant as the first stream
       // pull. Observe them before that pull so an owner abort never becomes an
       // unhandled rejection while textStream remains the authoritative error.
@@ -3013,7 +3022,11 @@ async function generateTextByModelType(
       try {
         firstItem = await streamIterator.next();
       } catch (error) {
+        // error-policy:J2 the returned stream rethrows this first-pull failure.
         firstItem = undefined;
+        if (capturedStreamError === undefined) {
+          noteRateLimitCooldown(modelCooldowns, modelName, error);
+        }
         capturedStreamError ??= error;
       }
       const failedBeforeFirstToken =
@@ -3206,12 +3219,18 @@ async function generateTextByModelType(
           // error-policy:J2 context-adding rethrow — capture the stream-iteration
           // error so `finally` can finalize telemetry, then rethrow it below.
           streamIterationError = error;
+          if (error !== capturedStreamError) {
+            noteRateLimitCooldown(modelCooldowns, modelName, error);
+          }
         } finally {
           await finalizeStreamingTelemetry();
         }
         const streamError = enrichProviderCallError(
           streamIterationError ?? capturedStreamError ?? companionStreamError
         );
+        if (streamError && !streamIterationError && !capturedStreamError) {
+          noteRateLimitCooldown(modelCooldowns, modelName, streamError);
+        }
         settleStructuredText(streamError);
         if (streamError) throw streamError;
       })(),
