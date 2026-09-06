@@ -37,7 +37,8 @@ concurrency:
 
 jobs:
   token-identity-preflight:
-    if: ${{ inputs.token_identity_preflight && github.ref == 'refs/heads/develop' }}
+    # The protected staging environment selects the live canonical branch during cutover.
+    if: ${{ inputs.token_identity_preflight && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/staging') }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     environment: staging
@@ -57,7 +58,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF" != "refs/heads/develop" ]]; then
+          if [[ "$GITHUB_REF" != "refs/heads/develop" && "$GITHUB_REF" != "refs/heads/staging" ]]; then
             echo '{"failure":"untrusted_ref"}'
             exit 1
           fi
