@@ -126,8 +126,10 @@ async function startOwnedLogin(options: {
       }
       process.env.STEWARD_DB_MODE = "postgres";
       process.env.STEWARD_EMBEDDED = "false";
-      const { runMigrations } = await import("./db/src/migrate");
-      await runMigrations();
+      const { initializeLoginSchema } = await import(
+        "./db/src/schema-readiness"
+      );
+      await initializeLoginSchema();
     }
     setEmbeddedAuthDatabase(options.mode === "embedded");
     setDatabaseRevocationStore(new DatabaseRevocationStore());

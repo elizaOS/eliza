@@ -1,0 +1,4105 @@
+{
+  "manifestVersion": 2,
+  "repairVersion": "prod-core-0082-0110-v1",
+  "sourceHead": "53399910ab9288297981e1b5679b293ec732e414",
+  "schemas": {
+    "public": {
+      "serverVersionNum": "180006",
+      "existing0083": {
+        "keyCount": 47,
+        "keys": [
+          {
+            "kind": "column",
+            "objectName": "approval_queue.quorum_approvals_count"
+          },
+          {
+            "kind": "column",
+            "objectName": "approval_queue.quorum_eligible_user_ids"
+          },
+          {
+            "kind": "column",
+            "objectName": "approval_queue.quorum_threshold"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.action_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.approval_commitment_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.approval_queue_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.approver_user_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.binding_revision_at_decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.decision_idempotency_key_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.decision_request_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.intent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.mfa_age_ms_at_decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.mfa_verified_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.reason"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.reason_code"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.request_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.workspace_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "approval_queue.approval_queue_quorum_approvals_count_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "approval_queue.approval_queue_quorum_eligible_user_ids_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "approval_queue.approval_queue_quorum_shape_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_action_dige"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_approval_co"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_approval_qu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_approver_us"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_binding_rev"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_created_at_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_ch"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_re"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_intent_id_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_queue_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_request_has"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_tenant_id_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_workspace_i"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_approver_un"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_idem_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_intent_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_queue_idx"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_action_approvals"
+          }
+        ],
+        "beforeHash": "89f3d3d0c64fb982ad4e798468afdfd4f484fa232fd919b12e078456e837e995",
+        "afterHash": "2d92900d1f8a0064f5497367b01f8b2e35c642e8f1b9d5d683dc92ca239843fd",
+        "deltaHash": "295f7f5f23f6425df141b2f74cc3b91a5cf8096eb0b3a868ce75bf82272e6433"
+      },
+      "changes0082": {
+        "keyCount": 47,
+        "beforeHash": "b97bd85ebb84276ea663d5c12f290ef3899c99aee838ea7880f624b04c768ae2",
+        "afterHash": "dd8686baaaacdf91d58627965624289ecf579fb14d685c616dbd7797ac517e2f",
+        "deltaHash": "07b1ee7c7c98e3ddd4593e5bde6d19302b8eedb57b28b148fc5595dd0554ddf0"
+      },
+      "changes0084To0110": {
+        "keyCount": 348,
+        "beforeHash": "f740d47891375e4f1be174891a411863fd4c7eb2df2530c9157b68f309972a06",
+        "afterHash": "8d3e884beaff55f01d9401e2414c353962806ab4505981445272b04fa1b545ba",
+        "deltaHash": "7b06f533f850486379328660a5d1c4fa3b5399f23e65262e5544ca050c4efb0b",
+        "semanticFinalCounts": {
+          "column": 152,
+          "constraint": 70,
+          "enum": 1,
+          "function": 14,
+          "index": 39,
+          "relation": 12,
+          "trigger": 14
+        }
+      },
+      "changes": {
+        "keyCount": 392,
+        "keys": [
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.archive_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.byte_length"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.chunk_index"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.event_count"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.from_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.jsonl"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.sha256"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.to_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_key_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_sha256"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_signature"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.event_count"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.from_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.manifest"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.manifest_sha256"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.pruned_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.public_key"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.retention_policy_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.sealed_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.signature"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.signing_key_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.source"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.status"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.to_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_checkpoints.anchor_proof"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_checkpoints.anchor_verified_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.archive_chunk_size"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.enabled"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.retention_days"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.updated_by"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_inflight.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.chain_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.claimed_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.wallet_address"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonces.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.action_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.backend_identity_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.commitment_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.dispatch_state"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.dispatched_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.execution_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.grant_dependency_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.intent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.key_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.operation_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.operation_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.outcome_recorded_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.provider_account_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.provider_idempotency_key"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.request_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.route_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.route_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.secret_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.secret_version"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.version"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.agent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.amount_base_units"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.destination"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.finalized_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.idempotency_key"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.rail"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.status"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_decision_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_decision_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_evaluated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_revision_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.attempts"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.claimed_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.claimed_by"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.generation"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.handles"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.intent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.last_error"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.next_retry_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.phase"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.reconciled_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.state"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.agent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.auto_freeze"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.currency"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.dimension"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.enabled"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.max"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.window_seconds"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.attempts"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.credential_secret_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.expected_account_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.kind"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.last_error_code"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.provider_account_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.state"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.attempts"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.credential_secret_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.disabled_routes"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.expected_account_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.kind"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.last_error_code"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.next_retry_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.provider_account_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.state"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.authority_mode"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.injection_config"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.injection_strategy"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.provider_operation_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "transactions.execution_backend"
+          },
+          {
+            "kind": "column",
+            "objectName": "transactions.execution_backend_identity_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "transactions.receipt_polled_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.action"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.lease_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.metadata"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.agent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.authority_checked_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.authority_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.capability_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.delivered_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.expires_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.grant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.idempotency_key_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.issuer"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.last_error"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.resource"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.resource_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.revoked_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.status"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_auth_tag"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_ciphertext"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_iv"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_salt"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.workspace_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_archive_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_archive_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_byte_length_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_bytes_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_chunk_index_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_count_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_created_at_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_event_count_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_from_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_jsonl_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_pk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_range_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_sha256_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_to_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_count_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_created_at_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_durability_ack_complete"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_event_count_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_from_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_manifest_transport_bound"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_policy_revision_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_range_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_sealed_fields_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_source_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_source_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_status_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_status_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_tenant_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_tenant_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_to_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_updated_at_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_checkpoints.audit_checkpoints_anchor_complete"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_chunk_bounds"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_days_bounds"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_archive_chunk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_created_at_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_enabled_not_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_retention_day"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_revision_not_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_tenant_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_tenant_id_not"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_updated_at_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_revision_positive"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_owner_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_tenant_id_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_address_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_chain_id_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_claimed_at_not_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_tenant_id_fkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_tenant_id_not_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_wallet_address_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonces.evm_wallet_nonces_owner_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonces.evm_wallet_nonces_tenant_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_dispatch_shape_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_dispatch_state_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_intent_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_operation_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_route_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_secret_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_v2_arm_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_version_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.execution_auth_external_identity"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.execution_authorization_nonces_d"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.execution_authorization_nonces_v"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_am"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_ra"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_st"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_a"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_c"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_d"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_i"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_p"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_r"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_s"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_t"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_actor_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_approval_shap"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_execution_pol"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_profile_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_state_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_status_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_reservation_generations.provider_action_reserva"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_agent_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_agent_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_auto_freeze_not_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_created_at_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_dimension_not_nul"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_enabled_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_max_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_revision_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_shape_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_tenant_id_not_nul"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_updated_at_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_window_seconds_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_workspace_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_google_credential_lifecycles.provider_google_credentia"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_google_credential_lifecycles.provider_google_lifecycle"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_credential_lifecycl"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_account_f"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_disabled_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_kind_chec"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_refresh_b"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_retry_che"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_revision_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_secret_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_secret_st"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_state_che"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_workspace"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_authority_mode_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_governed_operation_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_config_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_config_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_strategy_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_strategy_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_provider_operation_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "transactions.transactions_external_identity_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_lease_events.upstream_credential_lease_even"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_agent_id_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_authority"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_capabilit"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_created_a"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_grant_id_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_id_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_idempoten"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_issuer_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_resource_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_ch"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_tenant_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_updated_a"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_workspace"
+          },
+          {
+            "kind": "enum",
+            "objectName": "secret_route_authority_mode.governed_v2"
+          },
+          {
+            "kind": "enum",
+            "objectName": "secret_route_authority_mode.legacy"
+          },
+          {
+            "kind": "enum",
+            "objectName": "transaction_status.outcome_unknown"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_bump_provider_agent_budget_revision()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_bump_secret_route_authority_revision()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_agent_authority_creation()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_provider_action_agent()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_provider_action_intent_tenant()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_upstream_lease_workspace()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_agent_delete()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_audit_archive_immutability()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_audit_checkpoint_immutability()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_workspace_delete()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_lock_tenant_deletion(target_tenant text)"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_provider_action_binding_guard()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_provider_reservation_generation_guard()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_reject_upstream_lease_evidence_mutation()"
+          },
+          {
+            "kind": "index",
+            "objectName": "approval_queue.approval_queue_agent_status_requested_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_pk"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_native_authority_unique"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_resumable_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_tenant_created_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_retention_policies.audit_retention_policies_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_key_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_reclaim_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_tenant_key_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonces.evm_wallet_nonces_wallet_chain_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_execution_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_intent_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_provider_idem_u"
+          },
+          {
+            "kind": "index",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_ag"
+          },
+          {
+            "kind": "index",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_re"
+          },
+          {
+            "kind": "index",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_p"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_reservation_generations.provider_action_reserva"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_identity_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_lookup_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_google_credential_lifecycles.provider_google_credentia"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_google_credential_lifecycles.provider_google_lifecycle"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_operations.provider_operations_tenant_id_id_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_credential_lifecycl"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_account_s"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_active_re"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_recovery_"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_lease_events.upstream_credential_lease_even"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_binding_i"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_replay_un"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_au"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_ex"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_up"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_tenant_id"
+          },
+          {
+            "kind": "relation",
+            "objectName": "audit_archive_chunks"
+          },
+          {
+            "kind": "relation",
+            "objectName": "audit_archives"
+          },
+          {
+            "kind": "relation",
+            "objectName": "audit_retention_policies"
+          },
+          {
+            "kind": "relation",
+            "objectName": "evm_wallet_nonce_inflight"
+          },
+          {
+            "kind": "relation",
+            "objectName": "evm_wallet_nonce_owners"
+          },
+          {
+            "kind": "relation",
+            "objectName": "operator_transfer_reservations"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_action_reservation_generations"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_agent_budgets"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_google_credential_lifecycles"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_x_credential_lifecycles"
+          },
+          {
+            "kind": "relation",
+            "objectName": "upstream_credential_lease_events"
+          },
+          {
+            "kind": "relation",
+            "objectName": "upstream_credential_leases"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "agents.agents_delete_authority_guard"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "audit_archives.audit_archives_immutability_guard"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "audit_checkpoints.audit_checkpoints_immutability_guard"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "intents.provider_action_intents_tenant_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "pending_proxy_requests.pending_proxy_requests_agent_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "provider_action_bindings.provider_action_bindings_agent_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "provider_action_reservation_generations.provider_action_reserva"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_bump_revision"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "secret_routes.secret_routes_agent_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_lease_events.upstream_credential_lease_even"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_agent_fen"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_no_delete"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_workspace"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "workspaces.workspaces_delete_authority_guard"
+          }
+        ],
+        "beforeHash": "60b8302f4af0d6d44797906f98b9e03099d7e750a5affa401364bca51ee580f5",
+        "afterHash": "bd5598e76cd0e2d1fd87bca53ddb101ee9a30b784c4f9a623d08bf232d323929",
+        "deltaHash": "0e55e57bdd61ec7ad78617a20727bf0b644f20e2d040607c0dd8703b266360c1"
+      },
+      "nonInternalTriggers": {
+        "before": {
+          "recordCount": 7,
+          "records": [
+            {
+              "kind": "trigger",
+              "objectName": "provider_accounts.provider_accounts_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_accounts_immutable_owner BEFORE UPDATE ON provider_accounts FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_bindings.provider_action_bindings_immutable",
+              "definition": "O|CREATE TRIGGER provider_action_bindings_immutable BEFORE UPDATE ON provider_action_bindings FOR EACH ROW EXECUTE FUNCTION steward_provider_action_binding_guard()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_grants.provider_grants_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_grants_immutable_owner BEFORE UPDATE ON provider_grants FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_operations.provider_operations_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_operations_immutable_owner BEFORE UPDATE ON provider_operations FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_role_bindings.provider_role_bindings_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_role_bindings_immutable_owner BEFORE UPDATE ON provider_role_bindings FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "secret_routes.secret_routes_bump_authority_revision",
+              "definition": "O|CREATE TRIGGER secret_routes_bump_authority_revision BEFORE UPDATE ON secret_routes FOR EACH ROW EXECUTE FUNCTION steward_bump_secret_route_authority_revision()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "workspaces.workspaces_immutable_owner",
+              "definition": "O|CREATE TRIGGER workspaces_immutable_owner BEFORE UPDATE ON workspaces FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            }
+          ],
+          "hash": "e8c3c8a5721ada6a16f062de631eca655ce597fefe4fcf51edc2bc25e04e6bc8"
+        },
+        "after": {
+          "recordCount": 21,
+          "records": [
+            {
+              "kind": "trigger",
+              "objectName": "agents.agents_delete_authority_guard",
+              "definition": "O|CREATE TRIGGER agents_delete_authority_guard BEFORE DELETE ON agents FOR EACH ROW EXECUTE FUNCTION steward_guard_agent_delete()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "audit_archives.audit_archives_immutability_guard",
+              "definition": "O|CREATE TRIGGER audit_archives_immutability_guard BEFORE UPDATE ON audit_archives FOR EACH ROW EXECUTE FUNCTION steward_guard_audit_archive_immutability()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "audit_checkpoints.audit_checkpoints_immutability_guard",
+              "definition": "O|CREATE TRIGGER audit_checkpoints_immutability_guard BEFORE DELETE OR UPDATE ON audit_checkpoints FOR EACH ROW EXECUTE FUNCTION steward_guard_audit_checkpoint_immutability()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "intents.provider_action_intents_tenant_fence",
+              "definition": "O|CREATE TRIGGER provider_action_intents_tenant_fence BEFORE INSERT OR UPDATE OF tenant_id, intent_type ON intents FOR EACH ROW EXECUTE FUNCTION steward_fence_provider_action_intent_tenant()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "pending_proxy_requests.pending_proxy_requests_agent_fence",
+              "definition": "O|CREATE TRIGGER pending_proxy_requests_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, agent_id, status ON pending_proxy_requests FOR EACH ROW EXECUTE FUNCTION steward_fence_agent_authority_creation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_accounts.provider_accounts_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_accounts_immutable_owner BEFORE UPDATE ON provider_accounts FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_bindings.provider_action_bindings_agent_fence",
+              "definition": "O|CREATE TRIGGER provider_action_bindings_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, actor_agent_id, status ON provider_action_bindings FOR EACH ROW EXECUTE FUNCTION steward_fence_provider_action_agent()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_bindings.provider_action_bindings_immutable",
+              "definition": "O|CREATE TRIGGER provider_action_bindings_immutable BEFORE UPDATE ON provider_action_bindings FOR EACH ROW EXECUTE FUNCTION steward_provider_action_binding_guard()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_reservation_generations.provider_action_reserva",
+              "definition": "O|CREATE TRIGGER provider_action_reservation_generation_guard BEFORE UPDATE ON provider_action_reservation_generations FOR EACH ROW EXECUTE FUNCTION steward_provider_reservation_generation_guard()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_agent_budgets.provider_agent_budgets_bump_revision",
+              "definition": "O|CREATE TRIGGER provider_agent_budgets_bump_revision BEFORE UPDATE ON provider_agent_budgets FOR EACH ROW EXECUTE FUNCTION steward_bump_provider_agent_budget_revision()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_grants.provider_grants_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_grants_immutable_owner BEFORE UPDATE ON provider_grants FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_operations.provider_operations_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_operations_immutable_owner BEFORE UPDATE ON provider_operations FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_role_bindings.provider_role_bindings_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_role_bindings_immutable_owner BEFORE UPDATE ON provider_role_bindings FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "secret_routes.secret_routes_agent_fence",
+              "definition": "O|CREATE TRIGGER secret_routes_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, agent_id, enabled ON secret_routes FOR EACH ROW WHEN (new.agent_id IS NOT NULL AND new.enabled) EXECUTE FUNCTION steward_fence_agent_authority_creation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "secret_routes.secret_routes_bump_authority_revision",
+              "definition": "O|CREATE TRIGGER secret_routes_bump_authority_revision BEFORE UPDATE ON secret_routes FOR EACH ROW EXECUTE FUNCTION steward_bump_secret_route_authority_revision()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_lease_events.upstream_credential_lease_even",
+              "definition": "O|CREATE TRIGGER upstream_credential_lease_events_immutable BEFORE DELETE OR UPDATE ON upstream_credential_lease_events FOR EACH ROW EXECUTE FUNCTION steward_reject_upstream_lease_evidence_mutation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_leases.upstream_credential_leases_agent_fen",
+              "definition": "O|CREATE TRIGGER upstream_credential_leases_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, agent_id, status, token_hash, token_ciphertext, token_iv, token_auth_tag, token_salt ON upstream_credential_leases FOR EACH ROW EXECUTE FUNCTION steward_fence_agent_authority_creation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_leases.upstream_credential_leases_no_delete",
+              "definition": "O|CREATE TRIGGER upstream_credential_leases_no_delete BEFORE DELETE ON upstream_credential_leases FOR EACH ROW EXECUTE FUNCTION steward_reject_upstream_lease_evidence_mutation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_leases.upstream_credential_leases_workspace",
+              "definition": "O|CREATE TRIGGER upstream_credential_leases_workspace_fence BEFORE INSERT OR UPDATE OF tenant_id, workspace_id, status ON upstream_credential_leases FOR EACH ROW EXECUTE FUNCTION steward_fence_upstream_lease_workspace()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "workspaces.workspaces_delete_authority_guard",
+              "definition": "O|CREATE TRIGGER workspaces_delete_authority_guard BEFORE DELETE ON workspaces FOR EACH ROW EXECUTE FUNCTION steward_guard_workspace_delete()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "workspaces.workspaces_immutable_owner",
+              "definition": "O|CREATE TRIGGER workspaces_immutable_owner BEFORE UPDATE ON workspaces FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            }
+          ],
+          "hash": "5ce8efa533dab0f4b087f5bdc53fd8296ee082720f62e2f713be8e71c8ebc654"
+        }
+      },
+      "nonInternalTriggerFunctions": {
+        "before": {
+          "recordCount": 3,
+          "records": [
+            {
+              "kind": "function",
+              "objectName": "public.steward_bump_secret_route_authority_revision()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_bump_secret_route_authority_revision()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   -- Increment authority_revision by exactly 1 whenever any bound route field   -- changes. Mirror PR4 §1.2: host_pattern, path_pattern, method, inject_as,   -- inject_key, inject_format, secret_id, enabled changing all bump the   -- revision. (authority_mode / provider_operation_id land in PR4's 0082; when   -- that migration adds them it will extend this function's predicate.)   IF (     OLD.\"host_pattern\"  IS DISTINCT FROM NEW.\"host_pattern\"  OR     OLD.\"path_pattern\"  IS DISTINCT FROM NEW.\"path_pattern\"  OR     OLD.\"method\"        IS DISTINCT FROM NEW.\"method\"        OR     OLD.\"inject_as\"     IS DISTINCT FROM NEW.\"inject_as\"     OR     OLD.\"inject_key\"    IS DISTINCT FROM NEW.\"inject_key\"    OR     OLD.\"inject_format\" IS DISTINCT FROM NEW.\"inject_format\" OR     OLD.\"secret_id\"     IS DISTINCT FROM NEW.\"secret_id\"     OR     OLD.\"enabled\"       IS DISTINCT FROM NEW.\"enabled\"   ) THEN     NEW.\"authority_revision\" := OLD.\"authority_revision\" + 1;   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_provider_action_binding_guard()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_provider_action_binding_guard()  RETURNS trigger  LANGUAGE plpgsql AS $function$ DECLARE   frozen_old jsonb;   frozen_new jsonb;   mutable text[] := ARRAY[     'status','binding_revision','approval_actor_user_id','approval_queue_id',     'approval_commitment_hash','approved_at','denied_at','expired_at','stale_at',     'stale_reason_code','resume_actor','resume_attempt_id','resume_validated_at','updated_at'   ];   col text; BEGIN   -- Freeze every PR2 immutable column. Strip the mutable lifecycle columns from   -- both projections; any residual difference is a frozen-column mutation.   frozen_old := to_jsonb(OLD);   frozen_new := to_jsonb(NEW);   FOREACH col IN ARRAY mutable LOOP     frozen_old := frozen_old - col;     frozen_new := frozen_new - col;   END LOOP;   IF frozen_old IS DISTINCT FROM frozen_new THEN     RAISE EXCEPTION 'provider_action_bindings frozen column mutated' USING ERRCODE = '23514';   END IF;   -- Transition allowlist.   IF OLD.status IS DISTINCT FROM NEW.status THEN     IF (OLD.status = 'allowed_stub' AND NEW.status IN ('stub_succeeded','stub_failed')) THEN       -- PR2 stub lineage: does NOT participate in the binding_revision optimistic       -- lock (PR2 sets only status/updated_at). Leave binding_revision unchanged.       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN         RAISE EXCEPTION 'provider_action_bindings stub transition must not change binding_revision'           USING ERRCODE = '23514';       END IF;     ELSIF (       -- PR3 approval lifecycle.       (OLD.status = 'pending_approval' AND NEW.status IN ('approved','approval_denied','approval_expired','approval_stale')) OR       (OLD.status = 'approved'         AND NEW.status IN ('execution_ready','approval_expired','approval_stale'))     ) THEN       -- Every PR3 lifecycle transition increments binding_revision by exactly 1.       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision + 1 THEN         RAISE EXCEPTION 'provider_action_bindings binding_revision must increment by exactly one on transition'           USING ERRCODE = '23514';       END IF;     ELSE       RAISE EXCEPTION 'illegal provider_action_bindings status transition'         USING ERRCODE = '23514';     END IF;   ELSE     -- No status change: binding_revision must not move (the only writer of the     -- lifecycle is the transition path; a no-op update cannot bump it).     IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN       RAISE EXCEPTION 'provider_action_bindings binding_revision changed without a status transition'         USING ERRCODE = '23514';     END IF;   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_reject_provider_scope_move()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_reject_provider_scope_move()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id THEN     RAISE EXCEPTION 'provider authority tenant ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'workspace_id') IS DISTINCT FROM (to_jsonb(NEW)->>'workspace_id') THEN     RAISE EXCEPTION 'provider authority workspace ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'provider_account_id') IS DISTINCT FROM (to_jsonb(NEW)->>'provider_account_id') THEN     RAISE EXCEPTION 'provider account ownership is immutable' USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            }
+          ],
+          "hash": "100d64ed9b1879ad927b96dad87838ecc05e5c549a15c1d77b77a0af7ecefb2e"
+        },
+        "after": {
+          "recordCount": 14,
+          "records": [
+            {
+              "kind": "function",
+              "objectName": "public.steward_bump_provider_agent_budget_revision()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_bump_provider_agent_budget_revision()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR      OLD.workspace_id IS DISTINCT FROM NEW.workspace_id OR      OLD.agent_id IS DISTINCT FROM NEW.agent_id OR      OLD.dimension IS DISTINCT FROM NEW.dimension OR      OLD.window_seconds IS DISTINCT FROM NEW.window_seconds OR      OLD.max IS DISTINCT FROM NEW.max OR      OLD.currency IS DISTINCT FROM NEW.currency OR      OLD.auto_freeze IS DISTINCT FROM NEW.auto_freeze OR      OLD.enabled IS DISTINCT FROM NEW.enabled THEN     NEW.revision := OLD.revision + 1;     NEW.updated_at := now();   ELSIF NEW.revision IS DISTINCT FROM OLD.revision THEN     RAISE EXCEPTION 'provider budget revision changed without configuration mutation'       USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_bump_secret_route_authority_revision()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_bump_secret_route_authority_revision()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF (     OLD.\"host_pattern\"          IS DISTINCT FROM NEW.\"host_pattern\"          OR     OLD.\"path_pattern\"          IS DISTINCT FROM NEW.\"path_pattern\"          OR     OLD.\"method\"                IS DISTINCT FROM NEW.\"method\"                OR     OLD.\"inject_as\"             IS DISTINCT FROM NEW.\"inject_as\"             OR     OLD.\"inject_key\"            IS DISTINCT FROM NEW.\"inject_key\"            OR     OLD.\"inject_format\"         IS DISTINCT FROM NEW.\"inject_format\"         OR     OLD.\"injection_strategy\"    IS DISTINCT FROM NEW.\"injection_strategy\"    OR     OLD.\"injection_config\"      IS DISTINCT FROM NEW.\"injection_config\"      OR     OLD.\"secret_id\"             IS DISTINCT FROM NEW.\"secret_id\"             OR     OLD.\"enabled\"               IS DISTINCT FROM NEW.\"enabled\"               OR     OLD.\"authority_mode\"        IS DISTINCT FROM NEW.\"authority_mode\"        OR     OLD.\"provider_operation_id\" IS DISTINCT FROM NEW.\"provider_operation_id\"   ) THEN     NEW.\"authority_revision\" := OLD.\"authority_revision\" + 1;   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_fence_agent_authority_creation()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, public|CREATE OR REPLACE FUNCTION public.steward_fence_agent_authority_creation()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'public' AS $function$ BEGIN   PERFORM public.steward_lock_tenant_deletion(NEW.tenant_id);   PERFORM 1   FROM public.agents   WHERE tenant_id = NEW.tenant_id AND id = NEW.agent_id   FOR KEY SHARE;   IF NOT FOUND THEN     RAISE EXCEPTION 'agent authority parent does not exist'       USING ERRCODE = '23503';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_fence_provider_action_agent()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, public|CREATE OR REPLACE FUNCTION public.steward_fence_provider_action_agent()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'public' AS $function$ BEGIN   PERFORM public.steward_lock_tenant_deletion(NEW.tenant_id);   IF TG_OP = 'UPDATE' AND NEW.status NOT IN (     'pending_approval', 'approved', 'allowed_stub',     'execution_ready', 'executing', 'outcome_unknown'   ) THEN     RETURN NEW;   END IF;   PERFORM 1   FROM public.agents   WHERE tenant_id = NEW.tenant_id AND id = NEW.actor_agent_id   FOR KEY SHARE;   IF NOT FOUND THEN     RAISE EXCEPTION 'provider action agent does not exist'       USING ERRCODE = '23503';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_fence_provider_action_intent_tenant()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, public|CREATE OR REPLACE FUNCTION public.steward_fence_provider_action_intent_tenant()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'public' AS $function$ BEGIN   IF TG_OP = 'INSERT' THEN     IF NEW.intent_type = 'provider-action' THEN       PERFORM public.steward_lock_tenant_deletion(NEW.tenant_id);     END IF;     RETURN NEW;   END IF;   IF OLD.intent_type <> 'provider-action' AND NEW.intent_type <> 'provider-action' THEN     RETURN NEW;   END IF;   -- Cross-tenant updates fence both lifetimes in a stable order.   IF OLD.tenant_id <= NEW.tenant_id THEN     PERFORM public.steward_lock_tenant_deletion(OLD.tenant_id);     IF OLD.tenant_id <> NEW.tenant_id THEN       PERFORM public.steward_lock_tenant_deletion(NEW.tenant_id);     END IF;   ELSE     PERFORM public.steward_lock_tenant_deletion(NEW.tenant_id);     PERFORM public.steward_lock_tenant_deletion(OLD.tenant_id);   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_fence_upstream_lease_workspace()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, public|CREATE OR REPLACE FUNCTION public.steward_fence_upstream_lease_workspace()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'public' AS $function$ BEGIN   PERFORM public.steward_lock_tenant_deletion(NEW.tenant_id);   PERFORM 1   FROM public.workspaces   WHERE tenant_id = NEW.tenant_id AND id = NEW.workspace_id   FOR KEY SHARE;   IF NOT FOUND THEN     RAISE EXCEPTION 'upstream lease workspace does not exist'       USING ERRCODE = '23503';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_guard_agent_delete()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, public|CREATE OR REPLACE FUNCTION public.steward_guard_agent_delete()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'public' AS $function$ DECLARE   has_active_capability_grant boolean := false; BEGIN   IF EXISTS (     SELECT 1 FROM public.upstream_credential_leases     WHERE tenant_id = OLD.tenant_id AND agent_id = OLD.id       AND NOT (         status IN ('revoked', 'expired', 'failed')         AND token_hash IS NULL AND token_ciphertext IS NULL         AND token_iv IS NULL AND token_auth_tag IS NULL AND token_salt IS NULL       )   ) THEN     RAISE EXCEPTION 'agent has unresolved upstream credential leases'       USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM public.pending_proxy_requests     WHERE tenant_id = OLD.tenant_id AND agent_id = OLD.id AND status = 'executing'   ) THEN     RAISE EXCEPTION 'agent has executing proxy work' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM public.secret_routes     WHERE tenant_id = OLD.tenant_id AND agent_id = OLD.id AND enabled   ) THEN     RAISE EXCEPTION 'agent has enabled secret routes' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM public.transactions     WHERE agent_id = OLD.id       AND status IN ('signed', 'broadcast', 'outcome_unknown')   ) THEN     RAISE EXCEPTION 'agent has unresolved transaction execution' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM public.provider_action_bindings     WHERE tenant_id = OLD.tenant_id AND actor_agent_id = OLD.id       AND status IN ('allowed_stub', 'execution_ready', 'executing', 'outcome_unknown')   ) THEN     RAISE EXCEPTION 'agent has unresolved provider execution' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM public.intents AS intent     WHERE intent.tenant_id = OLD.tenant_id       AND intent.agent_id = OLD.id       AND intent.intent_type = 'provider-action'       AND intent.status IN ('pending', 'authorized', 'executing')       AND NOT EXISTS (         SELECT 1 FROM public.provider_action_bindings AS binding         WHERE binding.tenant_id = intent.tenant_id           AND binding.intent_id = intent.id       )   ) THEN     RAISE EXCEPTION 'agent has unresolved intent-only provider execution'       USING ERRCODE = '55000';   END IF;   IF to_regclass('public.capability_grants') IS NOT NULL THEN     EXECUTE       'SELECT EXISTS (          SELECT 1 FROM public.capability_grants          WHERE tenant_id = $1 AND agent_id = $2 AND status = ''active''        )'       INTO has_active_capability_grant       USING OLD.tenant_id, OLD.id;     IF has_active_capability_grant THEN       RAISE EXCEPTION 'agent has active capability grants' USING ERRCODE = '55000';     END IF;   END IF;   -- Detach all remaining provider intents before the agent cascade so both   -- binding-backed and legacy/recovery intent-only evidence remain durable.   -- Unresolved intent-only rows were rejected above.   UPDATE public.intents AS intent   SET agent_id = NULL   WHERE intent.tenant_id = OLD.tenant_id     AND intent.agent_id = OLD.id     AND intent.intent_type = 'provider-action';   RETURN OLD; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_guard_audit_archive_immutability()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_guard_audit_archive_immutability()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.source IS DISTINCT FROM NEW.source THEN     RAISE EXCEPTION 'audit archive source is immutable';   END IF;   IF (OLD.status = 'building' AND NEW.status NOT IN ('building', 'sealed')) OR      (OLD.status = 'sealed' AND NEW.status NOT IN ('sealed', 'pruned')) OR      (OLD.status = 'pruned' AND NEW.status <> 'pruned') THEN     RAISE EXCEPTION 'audit archive status transition is invalid';   END IF;   IF OLD.pruned_at IS NOT NULL AND OLD.pruned_at IS DISTINCT FROM NEW.pruned_at THEN     RAISE EXCEPTION 'audit archive prune evidence is immutable';   END IF;   IF OLD.status IN ('sealed', 'pruned') AND (     OLD.id IS DISTINCT FROM NEW.id OR     OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR     OLD.from_seq IS DISTINCT FROM NEW.from_seq OR     OLD.to_seq IS DISTINCT FROM NEW.to_seq OR     OLD.event_count IS DISTINCT FROM NEW.event_count OR     OLD.retention_policy_revision IS DISTINCT FROM NEW.retention_policy_revision OR     OLD.manifest IS DISTINCT FROM NEW.manifest OR     OLD.manifest_sha256 IS DISTINCT FROM NEW.manifest_sha256 OR     OLD.signature IS DISTINCT FROM NEW.signature OR     OLD.signing_key_id IS DISTINCT FROM NEW.signing_key_id OR     OLD.public_key IS DISTINCT FROM NEW.public_key OR     OLD.sealed_at IS DISTINCT FROM NEW.sealed_at   ) THEN     RAISE EXCEPTION 'sealed audit archive authority is immutable';   END IF;   IF OLD.durability_ack IS NOT NULL AND (     OLD.durability_ack IS DISTINCT FROM NEW.durability_ack OR     OLD.durability_ack_key_id IS DISTINCT FROM NEW.durability_ack_key_id OR     OLD.durability_ack_signature IS DISTINCT FROM NEW.durability_ack_signature OR     OLD.durability_ack_sha256 IS DISTINCT FROM NEW.durability_ack_sha256 OR     OLD.durability_ack_at IS DISTINCT FROM NEW.durability_ack_at   ) THEN     RAISE EXCEPTION 'audit archive durability acknowledgement is immutable';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_guard_audit_checkpoint_immutability()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_guard_audit_checkpoint_immutability()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   RAISE EXCEPTION 'audit checkpoints are append-only evidence'; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_guard_workspace_delete()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, public|CREATE OR REPLACE FUNCTION public.steward_guard_workspace_delete()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'public' AS $function$ BEGIN   IF EXISTS (     SELECT 1 FROM public.upstream_credential_leases     WHERE tenant_id = OLD.tenant_id AND workspace_id = OLD.id       AND NOT (         status IN ('revoked', 'expired', 'failed')         AND token_hash IS NULL AND token_ciphertext IS NULL         AND token_iv IS NULL AND token_auth_tag IS NULL AND token_salt IS NULL       )   ) THEN     RAISE EXCEPTION 'workspace has unresolved upstream credential leases'       USING ERRCODE = '55000';   END IF;   RETURN OLD; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_provider_action_binding_guard()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_provider_action_binding_guard()  RETURNS trigger  LANGUAGE plpgsql AS $function$ DECLARE   frozen_old jsonb;   frozen_new jsonb;   mutable text[] := ARRAY[     'status','binding_revision','approval_actor_user_id','approval_queue_id',     'approval_commitment_hash','approved_at','denied_at','expired_at','stale_at',     'stale_reason_code','resume_actor','resume_attempt_id','resume_validated_at','updated_at',     'execution_policy_decision_id','execution_policy_revision_hash','execution_policy_decision',     'execution_policy_decision_hash','execution_policy_evaluated_at'   ];   col text;   execution_policy_changed boolean;   approval_evidence_changed boolean; BEGIN   frozen_old := to_jsonb(OLD);   frozen_new := to_jsonb(NEW);   FOREACH col IN ARRAY mutable LOOP     frozen_old := frozen_old - col;     frozen_new := frozen_new - col;   END LOOP;   IF frozen_old IS DISTINCT FROM frozen_new THEN     RAISE EXCEPTION 'provider_action_bindings frozen column mutated' USING ERRCODE = '23514';   END IF;   execution_policy_changed :=     OLD.execution_policy_decision_id IS DISTINCT FROM NEW.execution_policy_decision_id OR     OLD.execution_policy_revision_hash IS DISTINCT FROM NEW.execution_policy_revision_hash OR     OLD.execution_policy_decision IS DISTINCT FROM NEW.execution_policy_decision OR     OLD.execution_policy_decision_hash IS DISTINCT FROM NEW.execution_policy_decision_hash OR     OLD.execution_policy_evaluated_at IS DISTINCT FROM NEW.execution_policy_evaluated_at;   IF execution_policy_changed AND NOT (     OLD.status = 'approved' AND NEW.status = 'execution_ready' AND     OLD.execution_policy_decision_id IS NULL AND     NEW.execution_policy_decision_id IS NOT NULL AND     NEW.execution_policy_revision_hash IS NOT NULL AND     NEW.execution_policy_decision IS NOT NULL AND     NEW.execution_policy_decision_hash IS NOT NULL AND     NEW.execution_policy_evaluated_at IS NOT NULL   ) THEN     RAISE EXCEPTION 'illegal provider execution policy mutation' USING ERRCODE = '23514';   END IF;   -- Approval evidence is write-once: each changed column may only transition   -- NULL -> value, and only during the pending_approval decision transitions   -- (approved records actor + approved_at; approval_denied records the actor).   -- Same-status or post-decision rewrites of who/what was approved are rejected.   approval_evidence_changed :=     OLD.approval_actor_user_id IS DISTINCT FROM NEW.approval_actor_user_id OR     OLD.approval_queue_id IS DISTINCT FROM NEW.approval_queue_id OR     OLD.approval_commitment_hash IS DISTINCT FROM NEW.approval_commitment_hash OR     OLD.approved_at IS DISTINCT FROM NEW.approved_at;   IF approval_evidence_changed AND NOT (     OLD.status = 'pending_approval' AND NEW.status IN ('approved','approval_denied') AND     (OLD.approval_actor_user_id IS NOT DISTINCT FROM NEW.approval_actor_user_id OR       (OLD.approval_actor_user_id IS NULL AND NEW.approval_actor_user_id IS NOT NULL)) AND     (OLD.approval_queue_id IS NOT DISTINCT FROM NEW.approval_queue_id OR       (OLD.approval_queue_id IS NULL AND NEW.approval_queue_id IS NOT NULL)) AND     (OLD.approval_commitment_hash IS NOT DISTINCT FROM NEW.approval_commitment_hash OR       (OLD.approval_commitment_hash IS NULL AND NEW.approval_commitment_hash IS NOT NULL)) AND     (OLD.approved_at IS NOT DISTINCT FROM NEW.approved_at OR       (OLD.approved_at IS NULL AND NEW.approved_at IS NOT NULL))   ) THEN     RAISE EXCEPTION 'illegal provider approval evidence mutation' USING ERRCODE = '23514';   END IF;   IF OLD.status IS DISTINCT FROM NEW.status THEN     IF OLD.status = 'allowed_stub' AND NEW.status IN ('stub_succeeded','stub_failed') THEN       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN         RAISE EXCEPTION 'provider_action_bindings stub transition must not change binding_revision'           USING ERRCODE = '23514';       END IF;     ELSIF (       (OLD.status = 'pending_approval' AND NEW.status IN ('approved','approval_denied','approval_expired','approval_stale')) OR       (OLD.status = 'approved' AND NEW.status IN ('execution_ready','approval_expired','approval_stale')) OR       (OLD.status = 'execution_ready' AND NEW.status IN ('executing','failed')) OR       (OLD.status = 'executing' AND NEW.status IN ('succeeded','failed','outcome_unknown')) OR       (OLD.status = 'outcome_unknown' AND NEW.status IN ('succeeded','failed'))     ) THEN       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision + 1 THEN         RAISE EXCEPTION 'provider_action_bindings binding_revision must increment by exactly one on transition'           USING ERRCODE = '23514';       END IF;     ELSE       RAISE EXCEPTION 'illegal provider_action_bindings status transition' USING ERRCODE = '23514';     END IF;   ELSIF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN     RAISE EXCEPTION 'provider_action_bindings binding_revision changed without a status transition'       USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_provider_reservation_generation_guard()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_provider_reservation_generation_guard()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.intent_id IS DISTINCT FROM NEW.intent_id OR OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR      OLD.generation IS DISTINCT FROM NEW.generation OR OLD.phase IS DISTINCT FROM NEW.phase OR      OLD.handles IS DISTINCT FROM NEW.handles OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN     RAISE EXCEPTION 'provider reservation generation identity mutated' USING ERRCODE='23514';   END IF;   IF OLD.state IN ('settled','released') THEN     RAISE EXCEPTION 'terminal provider reservation generation mutated' USING ERRCODE='23514';   END IF;   IF NEW.attempts < OLD.attempts OR NEW.attempts > OLD.attempts + 1 THEN     RAISE EXCEPTION 'illegal provider reservation attempt transition' USING ERRCODE='23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_reject_provider_scope_move()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_reject_provider_scope_move()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id THEN     RAISE EXCEPTION 'provider authority tenant ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'workspace_id') IS DISTINCT FROM (to_jsonb(NEW)->>'workspace_id') THEN     RAISE EXCEPTION 'provider authority workspace ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'provider_account_id') IS DISTINCT FROM (to_jsonb(NEW)->>'provider_account_id') THEN     RAISE EXCEPTION 'provider account ownership is immutable' USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "public.steward_reject_upstream_lease_evidence_mutation()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION public.steward_reject_upstream_lease_evidence_mutation()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   RAISE EXCEPTION 'upstream credential lease evidence is append-only'; END; $function$ "
+            }
+          ],
+          "hash": "959a6d3f7a2e6a0884ce4366013a6e3f1e241fb2e1b5a522e759765474e853c8"
+        }
+      }
+    },
+    "steward": {
+      "serverVersionNum": "180006",
+      "existing0083": {
+        "keyCount": 47,
+        "keys": [
+          {
+            "kind": "column",
+            "objectName": "approval_queue.quorum_approvals_count"
+          },
+          {
+            "kind": "column",
+            "objectName": "approval_queue.quorum_eligible_user_ids"
+          },
+          {
+            "kind": "column",
+            "objectName": "approval_queue.quorum_threshold"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.action_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.approval_commitment_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.approval_queue_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.approver_user_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.binding_revision_at_decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.decision_idempotency_key_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.decision_request_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.intent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.mfa_age_ms_at_decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.mfa_verified_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.reason"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.reason_code"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.request_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_approvals.workspace_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "approval_queue.approval_queue_quorum_approvals_count_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "approval_queue.approval_queue_quorum_eligible_user_ids_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "approval_queue.approval_queue_quorum_shape_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_action_dige"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_approval_co"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_approval_qu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_approver_us"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_binding_rev"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_created_at_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_ch"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_decision_re"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_intent_id_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_queue_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_request_has"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_tenant_id_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_approvals.provider_action_approvals_workspace_i"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_approver_un"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_idem_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_intent_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_approvals.provider_action_approvals_queue_idx"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_action_approvals"
+          }
+        ],
+        "beforeHash": "89f3d3d0c64fb982ad4e798468afdfd4f484fa232fd919b12e078456e837e995",
+        "afterHash": "2d92900d1f8a0064f5497367b01f8b2e35c642e8f1b9d5d683dc92ca239843fd",
+        "deltaHash": "295f7f5f23f6425df141b2f74cc3b91a5cf8096eb0b3a868ce75bf82272e6433"
+      },
+      "changes0082": {
+        "keyCount": 47,
+        "beforeHash": "5e15e9f28bbf255a3d838b79c8ff88c0beb3ee3ecc1789145fff5ce76f9fc01e",
+        "afterHash": "e65ed41b74b3d307125edb7e7068d77a874f1856ff77f445c1540b064108141b",
+        "deltaHash": "95465fbe9330d04c531783a5f1de4b0845d405a11ad7a42488d056841d9fcb77"
+      },
+      "changes0084To0110": {
+        "keyCount": 348,
+        "beforeHash": "121a43c6e387994773ba86207b253498b6d3892ee33130133ecce9f51243d86d",
+        "afterHash": "cd296c7243707ddb04227147ab8df36ea35399b8adc651709b90f3ce22276c06",
+        "deltaHash": "5f80ea880f05b764030409503a50a1486f3420407761d6a5919d95553560ba44",
+        "semanticFinalCounts": {
+          "column": 152,
+          "constraint": 70,
+          "enum": 1,
+          "function": 14,
+          "index": 39,
+          "relation": 12,
+          "trigger": 14
+        }
+      },
+      "changes": {
+        "keyCount": 392,
+        "keys": [
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.archive_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.byte_length"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.chunk_index"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.event_count"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.from_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.jsonl"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.sha256"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archive_chunks.to_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_key_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_sha256"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.durability_ack_signature"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.event_count"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.from_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.manifest"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.manifest_sha256"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.pruned_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.public_key"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.retention_policy_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.sealed_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.signature"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.signing_key_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.source"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.status"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.to_seq"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_archives.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_checkpoints.anchor_proof"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_checkpoints.anchor_verified_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.archive_chunk_size"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.enabled"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.retention_days"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "audit_retention_policies.updated_by"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_inflight.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.chain_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.claimed_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonce_owners.wallet_address"
+          },
+          {
+            "kind": "column",
+            "objectName": "evm_wallet_nonces.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.action_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.backend_identity_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.commitment_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.dispatch_state"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.dispatched_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.execution_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.grant_dependency_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.intent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.key_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.operation_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.operation_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.outcome_recorded_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.provider_account_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.provider_idempotency_key"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.request_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.route_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.route_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.secret_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.secret_version"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.version"
+          },
+          {
+            "kind": "column",
+            "objectName": "execution_authorization_nonces.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.agent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.amount_base_units"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.destination"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.finalized_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.idempotency_key"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.rail"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.status"
+          },
+          {
+            "kind": "column",
+            "objectName": "operator_transfer_reservations.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_decision_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_decision_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_evaluated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_bindings.execution_policy_revision_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.attempts"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.claimed_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.claimed_by"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.generation"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.handles"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.intent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.last_error"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.next_retry_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.phase"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.reconciled_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.state"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_action_reservation_generations.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.agent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.auto_freeze"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.currency"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.dimension"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.enabled"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.max"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.window_seconds"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_agent_budgets.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.attempts"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.credential_secret_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.expected_account_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.kind"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.last_error_code"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.provider_account_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.state"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_google_credential_lifecycles.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.attempts"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.credential_secret_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.disabled_routes"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.expected_account_revision"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.kind"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.last_error_code"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.next_retry_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.provider_account_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.state"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "provider_x_credential_lifecycles.workspace_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.authority_mode"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.injection_config"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.injection_strategy"
+          },
+          {
+            "kind": "column",
+            "objectName": "secret_routes.provider_operation_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "transactions.execution_backend"
+          },
+          {
+            "kind": "column",
+            "objectName": "transactions.execution_backend_identity_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "transactions.receipt_polled_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.action"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.decision"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.lease_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.metadata"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_lease_events.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.agent_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.authority_checked_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.authority_digest"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.capability_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.created_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.delivered_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.expires_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.grant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.idempotency_key_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.issuer"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.last_error"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.resource"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.resource_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.revoked_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.status"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.tenant_id"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_auth_tag"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_ciphertext"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_hash"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_iv"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.token_salt"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.updated_at"
+          },
+          {
+            "kind": "column",
+            "objectName": "upstream_credential_leases.workspace_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_archive_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_archive_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_byte_length_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_bytes_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_chunk_index_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_count_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_created_at_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_event_count_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_from_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_jsonl_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_pk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_range_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_sha256_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_to_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_count_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_created_at_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_durability_ack_complete"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_event_count_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_from_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_manifest_transport_bound"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_policy_revision_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_range_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_sealed_fields_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_source_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_source_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_status_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_status_valid"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_tenant_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_tenant_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_to_seq_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_archives.audit_archives_updated_at_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_checkpoints.audit_checkpoints_anchor_complete"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_chunk_bounds"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_days_bounds"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_archive_chunk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_created_at_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_enabled_not_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_retention_day"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_revision_not_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_tenant_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_tenant_id_not"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_policies_updated_at_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "audit_retention_policies.audit_retention_revision_positive"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_owner_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_tenant_id_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_address_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_chain_id_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_claimed_at_not_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_tenant_id_fkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_tenant_id_not_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_wallet_address_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonces.evm_wallet_nonces_owner_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "evm_wallet_nonces.evm_wallet_nonces_tenant_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_dispatch_shape_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_dispatch_state_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_intent_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_operation_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_route_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_secret_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_v2_arm_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_version_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.execution_auth_external_identity"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.execution_authorization_nonces_d"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "execution_authorization_nonces.execution_authorization_nonces_v"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_am"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_ra"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_st"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_a"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_c"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_d"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_i"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_p"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_r"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_s"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_t"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_actor_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_approval_shap"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_execution_pol"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_profile_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_state_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_bindings.provider_action_bindings_status_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_action_reservation_generations.provider_action_reserva"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_agent_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_agent_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_auto_freeze_not_n"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_created_at_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_dimension_not_nul"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_enabled_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_id_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_max_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_revision_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_shape_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_tenant_id_not_nul"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_updated_at_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_window_seconds_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_workspace_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_google_credential_lifecycles.provider_google_credentia"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_google_credential_lifecycles.provider_google_lifecycle"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_credential_lifecycl"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_account_f"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_disabled_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_kind_chec"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_refresh_b"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_retry_che"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_revision_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_secret_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_secret_st"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_state_che"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_workspace"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_authority_mode_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_governed_operation_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_config_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_config_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_strategy_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_injection_strategy_not_null"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "secret_routes.secret_routes_provider_operation_fk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "transactions.transactions_external_identity_chk"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_lease_events.upstream_credential_lease_even"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_agent_id_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_authority"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_capabilit"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_created_a"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_grant_id_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_id_not_nu"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_idempoten"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_issuer_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_pkey"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_resource_"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_ch"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_no"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_tenant_id"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_updated_a"
+          },
+          {
+            "kind": "constraint",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_workspace"
+          },
+          {
+            "kind": "enum",
+            "objectName": "secret_route_authority_mode.governed_v2"
+          },
+          {
+            "kind": "enum",
+            "objectName": "secret_route_authority_mode.legacy"
+          },
+          {
+            "kind": "enum",
+            "objectName": "transaction_status.outcome_unknown"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_bump_provider_agent_budget_revision()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_bump_secret_route_authority_revision()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_agent_authority_creation()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_provider_action_agent()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_provider_action_intent_tenant()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_fence_upstream_lease_workspace()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_agent_delete()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_audit_archive_immutability()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_audit_checkpoint_immutability()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_guard_workspace_delete()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_lock_tenant_deletion(target_tenant text)"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_provider_action_binding_guard()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_provider_reservation_generation_guard()"
+          },
+          {
+            "kind": "function",
+            "objectName": "steward_reject_upstream_lease_evidence_mutation()"
+          },
+          {
+            "kind": "index",
+            "objectName": "approval_queue.approval_queue_agent_status_requested_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archive_chunks.audit_archive_chunks_pk"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_native_authority_unique"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_resumable_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_archives.audit_archives_tenant_created_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "audit_retention_policies.audit_retention_policies_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_key_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_inflight.evm_wallet_nonce_inflight_reclaim_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonce_owners.evm_wallet_nonce_owners_tenant_key_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "evm_wallet_nonces.evm_wallet_nonces_wallet_chain_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_execution_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_intent_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "execution_authorization_nonces.exec_auth_nonces_provider_idem_u"
+          },
+          {
+            "kind": "index",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_ag"
+          },
+          {
+            "kind": "index",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservation_re"
+          },
+          {
+            "kind": "index",
+            "objectName": "operator_transfer_reservations.operator_transfer_reservations_p"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_action_reservation_generations.provider_action_reserva"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_identity_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_lookup_idx"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_google_credential_lifecycles.provider_google_credentia"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_google_credential_lifecycles.provider_google_lifecycle"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_operations.provider_operations_tenant_id_id_uniq"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_credential_lifecycl"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_account_s"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_active_re"
+          },
+          {
+            "kind": "index",
+            "objectName": "provider_x_credential_lifecycles.provider_x_lifecycle_recovery_"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_lease_events.upstream_credential_lease_even"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_binding_i"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_pkey"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_replay_un"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_au"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_ex"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_status_up"
+          },
+          {
+            "kind": "index",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_tenant_id"
+          },
+          {
+            "kind": "relation",
+            "objectName": "audit_archive_chunks"
+          },
+          {
+            "kind": "relation",
+            "objectName": "audit_archives"
+          },
+          {
+            "kind": "relation",
+            "objectName": "audit_retention_policies"
+          },
+          {
+            "kind": "relation",
+            "objectName": "evm_wallet_nonce_inflight"
+          },
+          {
+            "kind": "relation",
+            "objectName": "evm_wallet_nonce_owners"
+          },
+          {
+            "kind": "relation",
+            "objectName": "operator_transfer_reservations"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_action_reservation_generations"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_agent_budgets"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_google_credential_lifecycles"
+          },
+          {
+            "kind": "relation",
+            "objectName": "provider_x_credential_lifecycles"
+          },
+          {
+            "kind": "relation",
+            "objectName": "upstream_credential_lease_events"
+          },
+          {
+            "kind": "relation",
+            "objectName": "upstream_credential_leases"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "agents.agents_delete_authority_guard"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "audit_archives.audit_archives_immutability_guard"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "audit_checkpoints.audit_checkpoints_immutability_guard"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "intents.provider_action_intents_tenant_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "pending_proxy_requests.pending_proxy_requests_agent_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "provider_action_bindings.provider_action_bindings_agent_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "provider_action_reservation_generations.provider_action_reserva"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "provider_agent_budgets.provider_agent_budgets_bump_revision"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "secret_routes.secret_routes_agent_fence"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_lease_events.upstream_credential_lease_even"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_agent_fen"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_no_delete"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "upstream_credential_leases.upstream_credential_leases_workspace"
+          },
+          {
+            "kind": "trigger",
+            "objectName": "workspaces.workspaces_delete_authority_guard"
+          }
+        ],
+        "beforeHash": "46afafd48fd26868569204da7950e5071782abb281b9ed91fee24bd3fffb639b",
+        "afterHash": "fe617c107d0cd92ed63a173f34705fb90c417684cb740baf8183b4d7c757915c",
+        "deltaHash": "51c507548bb76f6f51b08aed825f35edb6380a501ba9d8fbfb661b85162acb98"
+      },
+      "nonInternalTriggers": {
+        "before": {
+          "recordCount": 7,
+          "records": [
+            {
+              "kind": "trigger",
+              "objectName": "provider_accounts.provider_accounts_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_accounts_immutable_owner BEFORE UPDATE ON provider_accounts FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_bindings.provider_action_bindings_immutable",
+              "definition": "O|CREATE TRIGGER provider_action_bindings_immutable BEFORE UPDATE ON provider_action_bindings FOR EACH ROW EXECUTE FUNCTION steward_provider_action_binding_guard()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_grants.provider_grants_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_grants_immutable_owner BEFORE UPDATE ON provider_grants FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_operations.provider_operations_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_operations_immutable_owner BEFORE UPDATE ON provider_operations FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_role_bindings.provider_role_bindings_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_role_bindings_immutable_owner BEFORE UPDATE ON provider_role_bindings FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "secret_routes.secret_routes_bump_authority_revision",
+              "definition": "O|CREATE TRIGGER secret_routes_bump_authority_revision BEFORE UPDATE ON secret_routes FOR EACH ROW EXECUTE FUNCTION steward_bump_secret_route_authority_revision()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "workspaces.workspaces_immutable_owner",
+              "definition": "O|CREATE TRIGGER workspaces_immutable_owner BEFORE UPDATE ON workspaces FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            }
+          ],
+          "hash": "e8c3c8a5721ada6a16f062de631eca655ce597fefe4fcf51edc2bc25e04e6bc8"
+        },
+        "after": {
+          "recordCount": 21,
+          "records": [
+            {
+              "kind": "trigger",
+              "objectName": "agents.agents_delete_authority_guard",
+              "definition": "O|CREATE TRIGGER agents_delete_authority_guard BEFORE DELETE ON agents FOR EACH ROW EXECUTE FUNCTION steward_guard_agent_delete()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "audit_archives.audit_archives_immutability_guard",
+              "definition": "O|CREATE TRIGGER audit_archives_immutability_guard BEFORE UPDATE ON audit_archives FOR EACH ROW EXECUTE FUNCTION steward_guard_audit_archive_immutability()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "audit_checkpoints.audit_checkpoints_immutability_guard",
+              "definition": "O|CREATE TRIGGER audit_checkpoints_immutability_guard BEFORE DELETE OR UPDATE ON audit_checkpoints FOR EACH ROW EXECUTE FUNCTION steward_guard_audit_checkpoint_immutability()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "intents.provider_action_intents_tenant_fence",
+              "definition": "O|CREATE TRIGGER provider_action_intents_tenant_fence BEFORE INSERT OR UPDATE OF tenant_id, intent_type ON intents FOR EACH ROW EXECUTE FUNCTION steward_fence_provider_action_intent_tenant()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "pending_proxy_requests.pending_proxy_requests_agent_fence",
+              "definition": "O|CREATE TRIGGER pending_proxy_requests_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, agent_id, status ON pending_proxy_requests FOR EACH ROW EXECUTE FUNCTION steward_fence_agent_authority_creation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_accounts.provider_accounts_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_accounts_immutable_owner BEFORE UPDATE ON provider_accounts FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_bindings.provider_action_bindings_agent_fence",
+              "definition": "O|CREATE TRIGGER provider_action_bindings_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, actor_agent_id, status ON provider_action_bindings FOR EACH ROW EXECUTE FUNCTION steward_fence_provider_action_agent()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_bindings.provider_action_bindings_immutable",
+              "definition": "O|CREATE TRIGGER provider_action_bindings_immutable BEFORE UPDATE ON provider_action_bindings FOR EACH ROW EXECUTE FUNCTION steward_provider_action_binding_guard()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_action_reservation_generations.provider_action_reserva",
+              "definition": "O|CREATE TRIGGER provider_action_reservation_generation_guard BEFORE UPDATE ON provider_action_reservation_generations FOR EACH ROW EXECUTE FUNCTION steward_provider_reservation_generation_guard()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_agent_budgets.provider_agent_budgets_bump_revision",
+              "definition": "O|CREATE TRIGGER provider_agent_budgets_bump_revision BEFORE UPDATE ON provider_agent_budgets FOR EACH ROW EXECUTE FUNCTION steward_bump_provider_agent_budget_revision()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_grants.provider_grants_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_grants_immutable_owner BEFORE UPDATE ON provider_grants FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_operations.provider_operations_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_operations_immutable_owner BEFORE UPDATE ON provider_operations FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "provider_role_bindings.provider_role_bindings_immutable_owner",
+              "definition": "O|CREATE TRIGGER provider_role_bindings_immutable_owner BEFORE UPDATE ON provider_role_bindings FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "secret_routes.secret_routes_agent_fence",
+              "definition": "O|CREATE TRIGGER secret_routes_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, agent_id, enabled ON secret_routes FOR EACH ROW WHEN (new.agent_id IS NOT NULL AND new.enabled) EXECUTE FUNCTION steward_fence_agent_authority_creation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "secret_routes.secret_routes_bump_authority_revision",
+              "definition": "O|CREATE TRIGGER secret_routes_bump_authority_revision BEFORE UPDATE ON secret_routes FOR EACH ROW EXECUTE FUNCTION steward_bump_secret_route_authority_revision()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_lease_events.upstream_credential_lease_even",
+              "definition": "O|CREATE TRIGGER upstream_credential_lease_events_immutable BEFORE DELETE OR UPDATE ON upstream_credential_lease_events FOR EACH ROW EXECUTE FUNCTION steward_reject_upstream_lease_evidence_mutation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_leases.upstream_credential_leases_agent_fen",
+              "definition": "O|CREATE TRIGGER upstream_credential_leases_agent_fence BEFORE INSERT OR UPDATE OF tenant_id, agent_id, status, token_hash, token_ciphertext, token_iv, token_auth_tag, token_salt ON upstream_credential_leases FOR EACH ROW EXECUTE FUNCTION steward_fence_agent_authority_creation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_leases.upstream_credential_leases_no_delete",
+              "definition": "O|CREATE TRIGGER upstream_credential_leases_no_delete BEFORE DELETE ON upstream_credential_leases FOR EACH ROW EXECUTE FUNCTION steward_reject_upstream_lease_evidence_mutation()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "upstream_credential_leases.upstream_credential_leases_workspace",
+              "definition": "O|CREATE TRIGGER upstream_credential_leases_workspace_fence BEFORE INSERT OR UPDATE OF tenant_id, workspace_id, status ON upstream_credential_leases FOR EACH ROW EXECUTE FUNCTION steward_fence_upstream_lease_workspace()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "workspaces.workspaces_delete_authority_guard",
+              "definition": "O|CREATE TRIGGER workspaces_delete_authority_guard BEFORE DELETE ON workspaces FOR EACH ROW EXECUTE FUNCTION steward_guard_workspace_delete()"
+            },
+            {
+              "kind": "trigger",
+              "objectName": "workspaces.workspaces_immutable_owner",
+              "definition": "O|CREATE TRIGGER workspaces_immutable_owner BEFORE UPDATE ON workspaces FOR EACH ROW EXECUTE FUNCTION steward_reject_provider_scope_move()"
+            }
+          ],
+          "hash": "5ce8efa533dab0f4b087f5bdc53fd8296ee082720f62e2f713be8e71c8ebc654"
+        }
+      },
+      "nonInternalTriggerFunctions": {
+        "before": {
+          "recordCount": 3,
+          "records": [
+            {
+              "kind": "function",
+              "objectName": "steward.steward_bump_secret_route_authority_revision()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_bump_secret_route_authority_revision()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   -- Increment authority_revision by exactly 1 whenever any bound route field   -- changes. Mirror PR4 §1.2: host_pattern, path_pattern, method, inject_as,   -- inject_key, inject_format, secret_id, enabled changing all bump the   -- revision. (authority_mode / provider_operation_id land in PR4's 0082; when   -- that migration adds them it will extend this function's predicate.)   IF (     OLD.\"host_pattern\"  IS DISTINCT FROM NEW.\"host_pattern\"  OR     OLD.\"path_pattern\"  IS DISTINCT FROM NEW.\"path_pattern\"  OR     OLD.\"method\"        IS DISTINCT FROM NEW.\"method\"        OR     OLD.\"inject_as\"     IS DISTINCT FROM NEW.\"inject_as\"     OR     OLD.\"inject_key\"    IS DISTINCT FROM NEW.\"inject_key\"    OR     OLD.\"inject_format\" IS DISTINCT FROM NEW.\"inject_format\" OR     OLD.\"secret_id\"     IS DISTINCT FROM NEW.\"secret_id\"     OR     OLD.\"enabled\"       IS DISTINCT FROM NEW.\"enabled\"   ) THEN     NEW.\"authority_revision\" := OLD.\"authority_revision\" + 1;   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_provider_action_binding_guard()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_provider_action_binding_guard()  RETURNS trigger  LANGUAGE plpgsql AS $function$ DECLARE   frozen_old jsonb;   frozen_new jsonb;   mutable text[] := ARRAY[     'status','binding_revision','approval_actor_user_id','approval_queue_id',     'approval_commitment_hash','approved_at','denied_at','expired_at','stale_at',     'stale_reason_code','resume_actor','resume_attempt_id','resume_validated_at','updated_at'   ];   col text; BEGIN   -- Freeze every PR2 immutable column. Strip the mutable lifecycle columns from   -- both projections; any residual difference is a frozen-column mutation.   frozen_old := to_jsonb(OLD);   frozen_new := to_jsonb(NEW);   FOREACH col IN ARRAY mutable LOOP     frozen_old := frozen_old - col;     frozen_new := frozen_new - col;   END LOOP;   IF frozen_old IS DISTINCT FROM frozen_new THEN     RAISE EXCEPTION 'provider_action_bindings frozen column mutated' USING ERRCODE = '23514';   END IF;   -- Transition allowlist.   IF OLD.status IS DISTINCT FROM NEW.status THEN     IF (OLD.status = 'allowed_stub' AND NEW.status IN ('stub_succeeded','stub_failed')) THEN       -- PR2 stub lineage: does NOT participate in the binding_revision optimistic       -- lock (PR2 sets only status/updated_at). Leave binding_revision unchanged.       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN         RAISE EXCEPTION 'provider_action_bindings stub transition must not change binding_revision'           USING ERRCODE = '23514';       END IF;     ELSIF (       -- PR3 approval lifecycle.       (OLD.status = 'pending_approval' AND NEW.status IN ('approved','approval_denied','approval_expired','approval_stale')) OR       (OLD.status = 'approved'         AND NEW.status IN ('execution_ready','approval_expired','approval_stale'))     ) THEN       -- Every PR3 lifecycle transition increments binding_revision by exactly 1.       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision + 1 THEN         RAISE EXCEPTION 'provider_action_bindings binding_revision must increment by exactly one on transition'           USING ERRCODE = '23514';       END IF;     ELSE       RAISE EXCEPTION 'illegal provider_action_bindings status transition'         USING ERRCODE = '23514';     END IF;   ELSE     -- No status change: binding_revision must not move (the only writer of the     -- lifecycle is the transition path; a no-op update cannot bump it).     IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN       RAISE EXCEPTION 'provider_action_bindings binding_revision changed without a status transition'         USING ERRCODE = '23514';     END IF;   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_reject_provider_scope_move()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_reject_provider_scope_move()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id THEN     RAISE EXCEPTION 'provider authority tenant ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'workspace_id') IS DISTINCT FROM (to_jsonb(NEW)->>'workspace_id') THEN     RAISE EXCEPTION 'provider authority workspace ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'provider_account_id') IS DISTINCT FROM (to_jsonb(NEW)->>'provider_account_id') THEN     RAISE EXCEPTION 'provider account ownership is immutable' USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            }
+          ],
+          "hash": "0190d2602f324f54b91435cc7210c37893db03cd152b6d130f05896a2e9e98e1"
+        },
+        "after": {
+          "recordCount": 14,
+          "records": [
+            {
+              "kind": "function",
+              "objectName": "steward.steward_bump_provider_agent_budget_revision()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_bump_provider_agent_budget_revision()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR      OLD.workspace_id IS DISTINCT FROM NEW.workspace_id OR      OLD.agent_id IS DISTINCT FROM NEW.agent_id OR      OLD.dimension IS DISTINCT FROM NEW.dimension OR      OLD.window_seconds IS DISTINCT FROM NEW.window_seconds OR      OLD.max IS DISTINCT FROM NEW.max OR      OLD.currency IS DISTINCT FROM NEW.currency OR      OLD.auto_freeze IS DISTINCT FROM NEW.auto_freeze OR      OLD.enabled IS DISTINCT FROM NEW.enabled THEN     NEW.revision := OLD.revision + 1;     NEW.updated_at := now();   ELSIF NEW.revision IS DISTINCT FROM OLD.revision THEN     RAISE EXCEPTION 'provider budget revision changed without configuration mutation'       USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_bump_secret_route_authority_revision()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_bump_secret_route_authority_revision()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF (     OLD.\"host_pattern\"          IS DISTINCT FROM NEW.\"host_pattern\"          OR     OLD.\"path_pattern\"          IS DISTINCT FROM NEW.\"path_pattern\"          OR     OLD.\"method\"                IS DISTINCT FROM NEW.\"method\"                OR     OLD.\"inject_as\"             IS DISTINCT FROM NEW.\"inject_as\"             OR     OLD.\"inject_key\"            IS DISTINCT FROM NEW.\"inject_key\"            OR     OLD.\"inject_format\"         IS DISTINCT FROM NEW.\"inject_format\"         OR     OLD.\"injection_strategy\"    IS DISTINCT FROM NEW.\"injection_strategy\"    OR     OLD.\"injection_config\"      IS DISTINCT FROM NEW.\"injection_config\"      OR     OLD.\"secret_id\"             IS DISTINCT FROM NEW.\"secret_id\"             OR     OLD.\"enabled\"               IS DISTINCT FROM NEW.\"enabled\"               OR     OLD.\"authority_mode\"        IS DISTINCT FROM NEW.\"authority_mode\"        OR     OLD.\"provider_operation_id\" IS DISTINCT FROM NEW.\"provider_operation_id\"   ) THEN     NEW.\"authority_revision\" := OLD.\"authority_revision\" + 1;   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_fence_agent_authority_creation()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, steward|CREATE OR REPLACE FUNCTION steward.steward_fence_agent_authority_creation()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'steward' AS $function$ BEGIN   PERFORM \"steward\".steward_lock_tenant_deletion(NEW.tenant_id);   PERFORM 1   FROM \"steward\".agents   WHERE tenant_id = NEW.tenant_id AND id = NEW.agent_id   FOR KEY SHARE;   IF NOT FOUND THEN     RAISE EXCEPTION 'agent authority parent does not exist'       USING ERRCODE = '23503';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_fence_provider_action_agent()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, steward|CREATE OR REPLACE FUNCTION steward.steward_fence_provider_action_agent()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'steward' AS $function$ BEGIN   PERFORM \"steward\".steward_lock_tenant_deletion(NEW.tenant_id);   IF TG_OP = 'UPDATE' AND NEW.status NOT IN (     'pending_approval', 'approved', 'allowed_stub',     'execution_ready', 'executing', 'outcome_unknown'   ) THEN     RETURN NEW;   END IF;   PERFORM 1   FROM \"steward\".agents   WHERE tenant_id = NEW.tenant_id AND id = NEW.actor_agent_id   FOR KEY SHARE;   IF NOT FOUND THEN     RAISE EXCEPTION 'provider action agent does not exist'       USING ERRCODE = '23503';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_fence_provider_action_intent_tenant()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, steward|CREATE OR REPLACE FUNCTION steward.steward_fence_provider_action_intent_tenant()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'steward' AS $function$ BEGIN   IF TG_OP = 'INSERT' THEN     IF NEW.intent_type = 'provider-action' THEN       PERFORM \"steward\".steward_lock_tenant_deletion(NEW.tenant_id);     END IF;     RETURN NEW;   END IF;   IF OLD.intent_type <> 'provider-action' AND NEW.intent_type <> 'provider-action' THEN     RETURN NEW;   END IF;   -- Cross-tenant updates fence both lifetimes in a stable order.   IF OLD.tenant_id <= NEW.tenant_id THEN     PERFORM \"steward\".steward_lock_tenant_deletion(OLD.tenant_id);     IF OLD.tenant_id <> NEW.tenant_id THEN       PERFORM \"steward\".steward_lock_tenant_deletion(NEW.tenant_id);     END IF;   ELSE     PERFORM \"steward\".steward_lock_tenant_deletion(NEW.tenant_id);     PERFORM \"steward\".steward_lock_tenant_deletion(OLD.tenant_id);   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_fence_upstream_lease_workspace()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, steward|CREATE OR REPLACE FUNCTION steward.steward_fence_upstream_lease_workspace()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'steward' AS $function$ BEGIN   PERFORM \"steward\".steward_lock_tenant_deletion(NEW.tenant_id);   PERFORM 1   FROM \"steward\".workspaces   WHERE tenant_id = NEW.tenant_id AND id = NEW.workspace_id   FOR KEY SHARE;   IF NOT FOUND THEN     RAISE EXCEPTION 'upstream lease workspace does not exist'       USING ERRCODE = '23503';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_guard_agent_delete()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, steward|CREATE OR REPLACE FUNCTION steward.steward_guard_agent_delete()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'steward' AS $function$ DECLARE   has_active_capability_grant boolean := false; BEGIN   IF EXISTS (     SELECT 1 FROM \"steward\".upstream_credential_leases     WHERE tenant_id = OLD.tenant_id AND agent_id = OLD.id       AND NOT (         status IN ('revoked', 'expired', 'failed')         AND token_hash IS NULL AND token_ciphertext IS NULL         AND token_iv IS NULL AND token_auth_tag IS NULL AND token_salt IS NULL       )   ) THEN     RAISE EXCEPTION 'agent has unresolved upstream credential leases'       USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM \"steward\".pending_proxy_requests     WHERE tenant_id = OLD.tenant_id AND agent_id = OLD.id AND status = 'executing'   ) THEN     RAISE EXCEPTION 'agent has executing proxy work' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM \"steward\".secret_routes     WHERE tenant_id = OLD.tenant_id AND agent_id = OLD.id AND enabled   ) THEN     RAISE EXCEPTION 'agent has enabled secret routes' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM \"steward\".transactions     WHERE agent_id = OLD.id       AND status IN ('signed', 'broadcast', 'outcome_unknown')   ) THEN     RAISE EXCEPTION 'agent has unresolved transaction execution' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM \"steward\".provider_action_bindings     WHERE tenant_id = OLD.tenant_id AND actor_agent_id = OLD.id       AND status IN ('allowed_stub', 'execution_ready', 'executing', 'outcome_unknown')   ) THEN     RAISE EXCEPTION 'agent has unresolved provider execution' USING ERRCODE = '55000';   END IF;   IF EXISTS (     SELECT 1 FROM \"steward\".intents AS intent     WHERE intent.tenant_id = OLD.tenant_id       AND intent.agent_id = OLD.id       AND intent.intent_type = 'provider-action'       AND intent.status IN ('pending', 'authorized', 'executing')       AND NOT EXISTS (         SELECT 1 FROM \"steward\".provider_action_bindings AS binding         WHERE binding.tenant_id = intent.tenant_id           AND binding.intent_id = intent.id       )   ) THEN     RAISE EXCEPTION 'agent has unresolved intent-only provider execution'       USING ERRCODE = '55000';   END IF;   IF to_regclass('\"steward\".capability_grants') IS NOT NULL THEN     EXECUTE       'SELECT EXISTS (          SELECT 1 FROM \"steward\".capability_grants          WHERE tenant_id = $1 AND agent_id = $2 AND status = ''active''        )'       INTO has_active_capability_grant       USING OLD.tenant_id, OLD.id;     IF has_active_capability_grant THEN       RAISE EXCEPTION 'agent has active capability grants' USING ERRCODE = '55000';     END IF;   END IF;   -- Detach all remaining provider intents before the agent cascade so both   -- binding-backed and legacy/recovery intent-only evidence remain durable.   -- Unresolved intent-only rows were rejected above.   UPDATE \"steward\".intents AS intent   SET agent_id = NULL   WHERE intent.tenant_id = OLD.tenant_id     AND intent.agent_id = OLD.id     AND intent.intent_type = 'provider-action';   RETURN OLD; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_guard_audit_archive_immutability()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_guard_audit_archive_immutability()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.source IS DISTINCT FROM NEW.source THEN     RAISE EXCEPTION 'audit archive source is immutable';   END IF;   IF (OLD.status = 'building' AND NEW.status NOT IN ('building', 'sealed')) OR      (OLD.status = 'sealed' AND NEW.status NOT IN ('sealed', 'pruned')) OR      (OLD.status = 'pruned' AND NEW.status <> 'pruned') THEN     RAISE EXCEPTION 'audit archive status transition is invalid';   END IF;   IF OLD.pruned_at IS NOT NULL AND OLD.pruned_at IS DISTINCT FROM NEW.pruned_at THEN     RAISE EXCEPTION 'audit archive prune evidence is immutable';   END IF;   IF OLD.status IN ('sealed', 'pruned') AND (     OLD.id IS DISTINCT FROM NEW.id OR     OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR     OLD.from_seq IS DISTINCT FROM NEW.from_seq OR     OLD.to_seq IS DISTINCT FROM NEW.to_seq OR     OLD.event_count IS DISTINCT FROM NEW.event_count OR     OLD.retention_policy_revision IS DISTINCT FROM NEW.retention_policy_revision OR     OLD.manifest IS DISTINCT FROM NEW.manifest OR     OLD.manifest_sha256 IS DISTINCT FROM NEW.manifest_sha256 OR     OLD.signature IS DISTINCT FROM NEW.signature OR     OLD.signing_key_id IS DISTINCT FROM NEW.signing_key_id OR     OLD.public_key IS DISTINCT FROM NEW.public_key OR     OLD.sealed_at IS DISTINCT FROM NEW.sealed_at   ) THEN     RAISE EXCEPTION 'sealed audit archive authority is immutable';   END IF;   IF OLD.durability_ack IS NOT NULL AND (     OLD.durability_ack IS DISTINCT FROM NEW.durability_ack OR     OLD.durability_ack_key_id IS DISTINCT FROM NEW.durability_ack_key_id OR     OLD.durability_ack_signature IS DISTINCT FROM NEW.durability_ack_signature OR     OLD.durability_ack_sha256 IS DISTINCT FROM NEW.durability_ack_sha256 OR     OLD.durability_ack_at IS DISTINCT FROM NEW.durability_ack_at   ) THEN     RAISE EXCEPTION 'audit archive durability acknowledgement is immutable';   END IF;   RETURN NEW; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_guard_audit_checkpoint_immutability()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_guard_audit_checkpoint_immutability()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   RAISE EXCEPTION 'audit checkpoints are append-only evidence'; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_guard_workspace_delete()",
+              "definition": "f|trigger|plpgsql|v|false|u|search_path=pg_catalog, steward|CREATE OR REPLACE FUNCTION steward.steward_guard_workspace_delete()  RETURNS trigger  LANGUAGE plpgsql  SET search_path TO 'pg_catalog', 'steward' AS $function$ BEGIN   IF EXISTS (     SELECT 1 FROM \"steward\".upstream_credential_leases     WHERE tenant_id = OLD.tenant_id AND workspace_id = OLD.id       AND NOT (         status IN ('revoked', 'expired', 'failed')         AND token_hash IS NULL AND token_ciphertext IS NULL         AND token_iv IS NULL AND token_auth_tag IS NULL AND token_salt IS NULL       )   ) THEN     RAISE EXCEPTION 'workspace has unresolved upstream credential leases'       USING ERRCODE = '55000';   END IF;   RETURN OLD; END; $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_provider_action_binding_guard()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_provider_action_binding_guard()  RETURNS trigger  LANGUAGE plpgsql AS $function$ DECLARE   frozen_old jsonb;   frozen_new jsonb;   mutable text[] := ARRAY[     'status','binding_revision','approval_actor_user_id','approval_queue_id',     'approval_commitment_hash','approved_at','denied_at','expired_at','stale_at',     'stale_reason_code','resume_actor','resume_attempt_id','resume_validated_at','updated_at',     'execution_policy_decision_id','execution_policy_revision_hash','execution_policy_decision',     'execution_policy_decision_hash','execution_policy_evaluated_at'   ];   col text;   execution_policy_changed boolean;   approval_evidence_changed boolean; BEGIN   frozen_old := to_jsonb(OLD);   frozen_new := to_jsonb(NEW);   FOREACH col IN ARRAY mutable LOOP     frozen_old := frozen_old - col;     frozen_new := frozen_new - col;   END LOOP;   IF frozen_old IS DISTINCT FROM frozen_new THEN     RAISE EXCEPTION 'provider_action_bindings frozen column mutated' USING ERRCODE = '23514';   END IF;   execution_policy_changed :=     OLD.execution_policy_decision_id IS DISTINCT FROM NEW.execution_policy_decision_id OR     OLD.execution_policy_revision_hash IS DISTINCT FROM NEW.execution_policy_revision_hash OR     OLD.execution_policy_decision IS DISTINCT FROM NEW.execution_policy_decision OR     OLD.execution_policy_decision_hash IS DISTINCT FROM NEW.execution_policy_decision_hash OR     OLD.execution_policy_evaluated_at IS DISTINCT FROM NEW.execution_policy_evaluated_at;   IF execution_policy_changed AND NOT (     OLD.status = 'approved' AND NEW.status = 'execution_ready' AND     OLD.execution_policy_decision_id IS NULL AND     NEW.execution_policy_decision_id IS NOT NULL AND     NEW.execution_policy_revision_hash IS NOT NULL AND     NEW.execution_policy_decision IS NOT NULL AND     NEW.execution_policy_decision_hash IS NOT NULL AND     NEW.execution_policy_evaluated_at IS NOT NULL   ) THEN     RAISE EXCEPTION 'illegal provider execution policy mutation' USING ERRCODE = '23514';   END IF;   -- Approval evidence is write-once: each changed column may only transition   -- NULL -> value, and only during the pending_approval decision transitions   -- (approved records actor + approved_at; approval_denied records the actor).   -- Same-status or post-decision rewrites of who/what was approved are rejected.   approval_evidence_changed :=     OLD.approval_actor_user_id IS DISTINCT FROM NEW.approval_actor_user_id OR     OLD.approval_queue_id IS DISTINCT FROM NEW.approval_queue_id OR     OLD.approval_commitment_hash IS DISTINCT FROM NEW.approval_commitment_hash OR     OLD.approved_at IS DISTINCT FROM NEW.approved_at;   IF approval_evidence_changed AND NOT (     OLD.status = 'pending_approval' AND NEW.status IN ('approved','approval_denied') AND     (OLD.approval_actor_user_id IS NOT DISTINCT FROM NEW.approval_actor_user_id OR       (OLD.approval_actor_user_id IS NULL AND NEW.approval_actor_user_id IS NOT NULL)) AND     (OLD.approval_queue_id IS NOT DISTINCT FROM NEW.approval_queue_id OR       (OLD.approval_queue_id IS NULL AND NEW.approval_queue_id IS NOT NULL)) AND     (OLD.approval_commitment_hash IS NOT DISTINCT FROM NEW.approval_commitment_hash OR       (OLD.approval_commitment_hash IS NULL AND NEW.approval_commitment_hash IS NOT NULL)) AND     (OLD.approved_at IS NOT DISTINCT FROM NEW.approved_at OR       (OLD.approved_at IS NULL AND NEW.approved_at IS NOT NULL))   ) THEN     RAISE EXCEPTION 'illegal provider approval evidence mutation' USING ERRCODE = '23514';   END IF;   IF OLD.status IS DISTINCT FROM NEW.status THEN     IF OLD.status = 'allowed_stub' AND NEW.status IN ('stub_succeeded','stub_failed') THEN       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN         RAISE EXCEPTION 'provider_action_bindings stub transition must not change binding_revision'           USING ERRCODE = '23514';       END IF;     ELSIF (       (OLD.status = 'pending_approval' AND NEW.status IN ('approved','approval_denied','approval_expired','approval_stale')) OR       (OLD.status = 'approved' AND NEW.status IN ('execution_ready','approval_expired','approval_stale')) OR       (OLD.status = 'execution_ready' AND NEW.status IN ('executing','failed')) OR       (OLD.status = 'executing' AND NEW.status IN ('succeeded','failed','outcome_unknown')) OR       (OLD.status = 'outcome_unknown' AND NEW.status IN ('succeeded','failed'))     ) THEN       IF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision + 1 THEN         RAISE EXCEPTION 'provider_action_bindings binding_revision must increment by exactly one on transition'           USING ERRCODE = '23514';       END IF;     ELSE       RAISE EXCEPTION 'illegal provider_action_bindings status transition' USING ERRCODE = '23514';     END IF;   ELSIF NEW.binding_revision IS DISTINCT FROM OLD.binding_revision THEN     RAISE EXCEPTION 'provider_action_bindings binding_revision changed without a status transition'       USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_provider_reservation_generation_guard()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_provider_reservation_generation_guard()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.intent_id IS DISTINCT FROM NEW.intent_id OR OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR      OLD.generation IS DISTINCT FROM NEW.generation OR OLD.phase IS DISTINCT FROM NEW.phase OR      OLD.handles IS DISTINCT FROM NEW.handles OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN     RAISE EXCEPTION 'provider reservation generation identity mutated' USING ERRCODE='23514';   END IF;   IF OLD.state IN ('settled','released') THEN     RAISE EXCEPTION 'terminal provider reservation generation mutated' USING ERRCODE='23514';   END IF;   IF NEW.attempts < OLD.attempts OR NEW.attempts > OLD.attempts + 1 THEN     RAISE EXCEPTION 'illegal provider reservation attempt transition' USING ERRCODE='23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_reject_provider_scope_move()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_reject_provider_scope_move()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id THEN     RAISE EXCEPTION 'provider authority tenant ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'workspace_id') IS DISTINCT FROM (to_jsonb(NEW)->>'workspace_id') THEN     RAISE EXCEPTION 'provider authority workspace ownership is immutable' USING ERRCODE = '23514';   END IF;   IF (to_jsonb(OLD)->>'provider_account_id') IS DISTINCT FROM (to_jsonb(NEW)->>'provider_account_id') THEN     RAISE EXCEPTION 'provider account ownership is immutable' USING ERRCODE = '23514';   END IF;   RETURN NEW; END $function$ "
+            },
+            {
+              "kind": "function",
+              "objectName": "steward.steward_reject_upstream_lease_evidence_mutation()",
+              "definition": "f|trigger|plpgsql|v|false|u||CREATE OR REPLACE FUNCTION steward.steward_reject_upstream_lease_evidence_mutation()  RETURNS trigger  LANGUAGE plpgsql AS $function$ BEGIN   RAISE EXCEPTION 'upstream credential lease evidence is append-only'; END; $function$ "
+            }
+          ],
+          "hash": "6f93076ae53e681eb6b586d7dd749a7e6fd027b8899d31dbf167cc9c3b3b16e1"
+        }
+      }
+    }
+  }
+}

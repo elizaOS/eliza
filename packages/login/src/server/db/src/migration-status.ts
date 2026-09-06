@@ -1,3 +1,4 @@
+/** Validates the immutable migration ledger before serving identity requests. */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
