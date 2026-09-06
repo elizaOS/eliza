@@ -7,11 +7,9 @@
 
 import { scryptSync } from "node:crypto";
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
-import { generateMasterKey, KEY_BYTES } from "./crypto.js";
-
-const require = createRequire(import.meta.url);
+import { KEY_BYTES } from "./crypto.js";
+import { readKeychainKeySync } from "./keychain-process.js";
 
 /**
  * Where the encryption master key lives.
@@ -407,28 +405,7 @@ export function loadDefaultMasterKeySync(opts: OsKeychainOptions = {}): Buffer {
   }
 
   try {
-    const { Entry } =
-      require("@napi-rs/keyring") as typeof import("@napi-rs/keyring");
-    const entry = new Entry(service, account);
-    const existing = entry.getPassword();
-    if (existing) {
-      const key = Buffer.from(existing, "base64");
-      if (key.length !== KEY_BYTES) {
-        throw new MasterKeyUnavailableError(
-          `OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
-        );
-      }
-      return key;
-    }
-    const created = generateMasterKey();
-    const encoded = created.toString("base64");
-    entry.setPassword(encoded);
-    if (entry.getPassword() !== encoded) {
-      throw new MasterKeyUnavailableError(
-        `OS keychain write could not be verified (${service}/${account})`,
-      );
-    }
-    return created;
+    return readKeychainKeySync(service, account);
   } catch (keychainError) {
     if (passphrase) {
       return Buffer.from(
@@ -465,71 +442,16 @@ export function osKeychainMasterKey(
           keychainUnsafeMessage(`OS keychain (${service}/${account}): `),
         );
       }
-      let Entry: typeof import("@napi-rs/keyring").Entry;
       try {
-        ({ Entry } = await import("@napi-rs/keyring"));
-      } catch (err) {
-        // error-policy:J2 context-adding rethrow — no native keyring binding = no
-        // key; rethrow with remediation, never proceed keyless.
+        // Keep synchronous resolver calls serialized within this process, while
+        // the child deadline bounds native operations that may block on the OS.
+        return readKeychainKeySync(service, account);
+      } catch (error) {
+        // error-policy:J2 Preserve the public typed unavailable state without child output.
         throw new MasterKeyUnavailableError(
-          `OS keychain binding unavailable (${service}/${account}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          error instanceof Error ? error.message : "OS Keychain unavailable",
         );
       }
-
-      let entry: InstanceType<typeof Entry>;
-      try {
-        entry = new Entry(service, account);
-      } catch (err) {
-        // error-policy:J2 context-adding rethrow — cannot open the keychain entry
-        // = no key; rethrow, never proceed keyless.
-        throw new MasterKeyUnavailableError(
-          `OS keychain entry construction failed (${service}/${account}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-      let existing: string | null = null;
-      try {
-        existing = entry.getPassword();
-      } catch (err) {
-        // error-policy:J2 context-adding rethrow — a keychain read failure is
-        // surfaced (not treated as "no key yet", which would silently mint a
-        // NEW key and orphan every existing ciphertext).
-        throw new MasterKeyUnavailableError(
-          `OS keychain read failed (${service}/${account}): ${
-            err instanceof Error ? err.message : String(err)
-          }. On Linux, ensure libsecret + a Secret Service agent (gnome-keyring / kwallet) is running, or pass an inMemoryMasterKey.`,
-        );
-      }
-      if (existing && existing.length > 0) {
-        const buf = Buffer.from(existing, "base64");
-        if (buf.length !== KEY_BYTES) {
-          throw new MasterKeyUnavailableError(
-            `OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
-          );
-        }
-        return buf;
-      }
-      const created = generateMasterKey();
-      const encoded = created.toString("base64");
-      try {
-        entry.setPassword(encoded);
-        if (entry.getPassword() !== encoded) {
-          throw new Error("exact read-back mismatch");
-        }
-      } catch (err) {
-        // error-policy:J2 context-adding rethrow — a freshly-generated key that
-        // cannot be persisted and read back exactly must fail loudly; returning
-        // it un-stored would mint a new key on every boot and orphan ciphertext.
-        throw new MasterKeyUnavailableError(
-          `OS keychain write failed (${service}/${account}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-      return created;
     },
     describe() {
       return `keychain://${service}/${account}`;
