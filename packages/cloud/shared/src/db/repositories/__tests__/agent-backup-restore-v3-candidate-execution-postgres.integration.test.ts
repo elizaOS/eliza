@@ -2,8 +2,14 @@
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS } from "@elizaos/shared";
 import { Client } from "pg";
+import { openAgentBackupRestoreV3CandidateFs } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-fs";
+import { createAgentBackupRestoreV3CandidateMaterializer } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-materializer";
+import { readAgentBackupRestoreV3CandidateRecord } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-records";
 import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
@@ -15,7 +21,9 @@ import {
   type CandidateFixture,
   createCandidatePrerequisiteSchema,
   fixtureSha256,
+  seedAdditionalCandidateAttempt,
   seedCandidateAuthority,
+  withAdditionalAttempt,
 } from "./agent-backup-restore-v3-candidate-test-fixture";
 
 const dbHelpersActual = await import("../../helpers");
@@ -872,6 +880,234 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         },
         cleanupReceiptSha256: fixtureSha256("reassigned-survivor-receipt"),
       });
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "holds source and candidate locks through real Agent effects and reconciles lost commit acknowledgements",
+    async () => {
+      if (!control || !executionRepository) throw new Error("PostgreSQL harness unavailable");
+      const database = control;
+      const ids = {
+        restoreAttemptId: randomUUID(),
+        restoreOperationId: randomUUID(),
+        leaseId: randomUUID(),
+        leaseGeneration: randomUUID(),
+      };
+      await seedAdditionalCandidateAttempt(
+        { query: (text, values) => database.query(text, values ? [...values] : undefined) },
+        fixture,
+        ids,
+      );
+      const attempt = withAdditionalAttempt(fixture, ids);
+      const operationControl = {
+        signal: new AbortController().signal,
+        deadlineEpochMs: Date.now() + 60_000,
+      };
+      const root = await fs.mkdtemp(
+        path.join(await fs.realpath(os.tmpdir()), "restore-v3-pg-agent-"),
+      );
+      await fs.chmod(root, 0o700);
+      const attemptRoot = path.join(root, "attempt");
+      await fs.mkdir(attemptRoot, { mode: 0o700 });
+      const candidateFs = await openAgentBackupRestoreV3CandidateFs({
+        trustedRoot: root,
+        attemptRoot,
+        control: operationControl,
+        ...(process.platform === "linux" ? {} : { testOnlyAllowNonLinuxFdEmulation: true }),
+      });
+      const acknowledged = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const agent = createAgentBackupRestoreV3CandidateMaterializer(candidateFs);
+      let recordCalls = 0;
+      let finishCalls = 0;
+      let cancelNextRecord: AbortController | undefined;
+      const execution =
+        executionRepository.createAgentBackupRestoreV3MaterializingCandidateExecution(
+          attempt.sourceAuthority,
+          {
+            async stageRecord(session, record, effectControl) {
+              recordCalls++;
+              expect(effectControl.deadlineEpochMs).toBeLessThanOrEqual(
+                attempt.leaseExpiresAt.getTime(),
+              );
+              const receipt = await agent.stageRecord(session, record, effectControl);
+              cancelNextRecord?.abort();
+              cancelNextRecord = undefined;
+              acknowledged.resolve();
+              await release.promise;
+              return receipt;
+            },
+            async finishComponent(session, receipt, effectControl) {
+              finishCalls++;
+              return agent.finishComponent(session, receipt, effectControl);
+            },
+          },
+        );
+      try {
+        const session = await execution.begin(
+          { authority: attempt.authority, manifest: attempt.manifest },
+          operationControl,
+        );
+        const text = '{"name":"PostgreSQL restore QA","bio":["durable private fact"],"plugins":[]}';
+        const payload = new TextEncoder().encode(text);
+        const record = {
+          componentIndex: 0,
+          componentName: "character" as const,
+          dataIndex: 0,
+          offsetBytes: 0,
+          entry: null,
+          payload,
+        };
+        const running = Promise.resolve(execution.stageRecord(session, record, operationControl));
+        try {
+          await Promise.race([
+            acknowledged.promise,
+            running.then(() => {
+              throw new Error("Stage settled before test released the Agent acknowledgement");
+            }),
+          ]);
+          const beforeCommit = await database.query<{ count: number }>(
+            "SELECT count(*)::integer AS count FROM agent_backup_restore_v3_candidate_stage_ledger WHERE candidate_id = $1",
+            [session.stagingHandle],
+          );
+          expect(beforeCommit.rows).toEqual([{ count: 0 }]);
+          const staged = await readAgentBackupRestoreV3CandidateRecord({
+            candidateFs,
+            session,
+            componentIndex: 0,
+            dataIndex: 0,
+            control: operationControl,
+          });
+          expect(staged.payload).toEqual(payload);
+          staged.payload.fill(0);
+
+          // Independent transactions must not acquire any destructive authority
+          // while the Agent effect is durable but its acknowledgement is pending.
+          const lockedRows = [
+            [
+              "SELECT id FROM agent_sandbox_backups WHERE id = $1 FOR UPDATE NOWAIT",
+              attempt.authority.backupId,
+            ],
+            [
+              "SELECT id FROM agent_backup_restore_operations WHERE id = $1 FOR UPDATE NOWAIT",
+              ids.restoreOperationId,
+            ],
+            [
+              "SELECT id FROM agent_backup_restore_leases WHERE id = $1 FOR UPDATE NOWAIT",
+              ids.leaseId,
+            ],
+            [
+              "SELECT agent_id FROM agent_backup_catalog_authorities WHERE agent_id = $1 FOR UPDATE NOWAIT",
+              attempt.authority.agentId,
+            ],
+            [
+              "SELECT id FROM agent_backup_objects WHERE backup_id = $1 FOR UPDATE NOWAIT",
+              attempt.authority.backupId,
+            ],
+            [
+              "SELECT id FROM agent_backup_restore_v3_candidates WHERE id = $1 FOR UPDATE NOWAIT",
+              session.stagingHandle,
+            ],
+          ] as const;
+          for (const [query, id] of lockedRows) {
+            await database.query("BEGIN");
+            try {
+              await expect(database.query(query, [id])).rejects.toMatchObject({ code: "55P03" });
+            } finally {
+              await database.query("ROLLBACK");
+            }
+          }
+        } finally {
+          release.resolve();
+          await running;
+        }
+        const accepted = await running;
+        expect(accepted.payloadSha256).toBe(fixtureSha256(payload));
+        expect(recordCalls).toBe(1);
+        expect(await execution.stageRecord(session, record, operationControl)).toEqual(accepted);
+        expect(recordCalls).toBe(1);
+
+        const component = {
+          componentIndex: 0,
+          componentName: "character" as const,
+          descriptor: AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS[0]!,
+          dataFrameCount: 1,
+          payloadBytes: payload.length,
+          payloadSha256: fixtureSha256(payload),
+          recordStreamContentHmacSha256: "b".repeat(64),
+        };
+        const finished = await withLostNextCommitAcknowledgment({
+          sqlState: "08006",
+          run: async () => execution.finishComponent(session, component, operationControl),
+        });
+        expect(finished).toEqual(component);
+        expect(finishCalls).toBe(1);
+        expect(
+          await fs.readFile(path.join(attemptRoot, "components/character/character.json"), "utf8"),
+        ).toBe(text);
+        const afterCommit = await database.query<{ command_kind: string; count: number }>(
+          "SELECT command_kind, count(*)::integer AS count FROM agent_backup_restore_v3_candidate_stage_ledger WHERE candidate_id = $1 GROUP BY command_kind ORDER BY command_kind",
+          [session.stagingHandle],
+        );
+        expect(afterCommit.rows).toEqual([
+          { command_kind: "finish", count: 1 },
+          { command_kind: "record", count: 1 },
+        ]);
+        const databaseRecord = {
+          ...record,
+          componentIndex: 1,
+          componentName: "database" as const,
+        };
+        const cancelled = new AbortController();
+        cancelNextRecord = cancelled;
+        await expect(
+          execution.stageRecord(session, databaseRecord, {
+            ...operationControl,
+            signal: cancelled.signal,
+          }),
+        ).rejects.toMatchObject({ name: "AbortError" });
+        const afterCancellation = await database.query<{ count: number }>(
+          "SELECT count(*)::integer AS count FROM agent_backup_restore_v3_candidate_stage_ledger WHERE candidate_id = $1 AND component_index = 1",
+          [session.stagingHandle],
+        );
+        expect(afterCancellation.rows).toEqual([{ count: 0 }]);
+        const partial = await readAgentBackupRestoreV3CandidateRecord({
+          candidateFs,
+          session,
+          componentIndex: 1,
+          dataIndex: 0,
+          control: operationControl,
+        });
+        expect(partial.payload).toEqual(payload);
+        partial.payload.fill(0);
+        expect(await execution.stageRecord(session, databaseRecord, operationControl)).toEqual(
+          partial.receipt.record,
+        );
+        expect(recordCalls).toBe(3);
+        await database.query(
+          "UPDATE agent_backup_restore_leases SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1",
+          [ids.leaseId],
+        );
+        await expect(
+          execution.stageRecord(
+            session,
+            {
+              ...databaseRecord,
+              dataIndex: 1,
+              offsetBytes: payload.length,
+            },
+            operationControl,
+          ),
+        ).rejects.toThrow();
+        expect(recordCalls).toBe(3);
+        expect(await execution.abort(session, "staging-failed", operationControl)).toBe(true);
+      } finally {
+        release.resolve();
+        await candidateFs.close();
+        await fs.rm(root, { recursive: true, force: true });
+      }
     },
     TEST_TIMEOUT,
   );
