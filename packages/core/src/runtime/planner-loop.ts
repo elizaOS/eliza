@@ -6706,7 +6706,7 @@ function userSafeFailureReport(
 	// final-answer-only extensions ("Okay", "got it") open legitimate failure
 	// diagnoses, and rejecting those would regress #17948's
 	// model-diagnosis-over-generic-fallback contract.
-	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+	if (hasInFlightActionClaim(candidate)) {
 		return undefined;
 	}
 	if (PROGRESS_ONLY_OPENER_RE.test(candidate)) return undefined;
@@ -6851,12 +6851,35 @@ const REFUSAL_MARKERS = [
 // work happens, so any "I'm doing X now" is a false promise.
 const IN_FLIGHT_ACTION_CLAIM = [
 	/\blet me\b/i,
-	/\bI(?:'ll| will| am going to|'m going to|'m gonna| am gonna)\b/i,
 	/\bI'?m\s+(?:checking|fetching|searching|looking|pulling|reviewing|gathering|working|getting|grabbing|loading|digging|querying)\b/i,
 	/\b(?:one|just a)\s+(?:sec|second|moment|min|minute)\b/i,
 	/\bplease (?:hold|wait)\b/i,
 	/\b(?:be right back|brb|hang on)\b/i,
 ];
+
+/** Reject imminent work while allowing offers contingent on a new user input. */
+function hasInFlightActionClaim(candidate: string): boolean {
+	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate)))
+		return true;
+	const future =
+		/^(.*?)\bI(?:['’]ll| will| am going to|['’]m going to|['’]m gonna| am gonna)\b(.*)$/i;
+	// Classify each clause independently: a conditional offer cannot excuse an
+	// unconditional promise elsewhere. This projection never changes delivered text.
+	return (candidate.match(/[^.!?;\n]+/g) ?? []).some((clause) => {
+		const promise = future.exec(clause);
+		if (!promise) return false;
+		const userInput =
+			/\b(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i;
+		const conditional = /\b(?:if|when|once|after)\s+you\b/i;
+		const precedingRequest =
+			conditional.test(promise[1]) && userInput.test(promise[1]);
+		const followingRequest =
+			/\b(?:if|when|once|after)\s+you\s+(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+				promise[2],
+			);
+		return !precedingRequest && !followingRequest;
+	});
+}
 
 // Gate for surfacing native planner free-text as a forced-tool-exhaustion
 // refusal (#9874 item 3). Returns the sanitized message ONLY when it POSITIVELY
@@ -6877,7 +6900,7 @@ function userSafeRefusalCandidate(
 	}
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (looksLikePreToolThought(candidate)) return undefined;
-	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+	if (hasInFlightActionClaim(candidate)) {
 		return undefined;
 	}
 	return candidate;
@@ -6934,7 +6957,7 @@ function userSafeCapturedAnswerCandidate(
 	if (!candidate) return undefined;
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (looksLikePreToolThought(candidate)) return undefined;
-	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+	if (hasInFlightActionClaim(candidate)) {
 		return undefined;
 	}
 	if (PROGRESS_ONLY_ANSWER_REJECT.test(candidate)) return undefined;
