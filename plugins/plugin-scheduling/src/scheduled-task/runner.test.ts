@@ -40,6 +40,7 @@ import {
   registerBuiltInGates,
 } from "./gate-registry.js";
 import {
+  ChannelKeyError,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
@@ -67,6 +68,7 @@ import { ScheduledTaskValidationError } from "./validation.js";
 interface Harness {
   runner: ScheduledTaskRunnerHandle;
   logStore: ScheduledTaskLogStore;
+  nextFireAtFor(taskId: string): string | null | undefined;
   setNow(iso: string): void;
   setOwnerFacts(facts: OwnerFactsView): void;
   setPause(view: { active: boolean; reason?: string }): void;
@@ -74,7 +76,10 @@ interface Harness {
   setSubjectStore(store: SubjectStoreView): void;
 }
 
-function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
+function makeHarness(
+  initialIso = "2026-05-09T12:00:00.000Z",
+  channelKeys?: () => ReadonlySet<string>,
+): Harness {
   let nowIso = initialIso;
   let ownerFacts: OwnerFactsView = {
     timezone: "UTC",
@@ -100,6 +105,12 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
   const anchors = createAnchorRegistry();
   const consolidation = createConsolidationRegistry();
   const store = createInMemoryScheduledTaskStore();
+  const nextFireAtByTaskId = new Map<string, string | null>();
+  const upsert = store.upsert.bind(store);
+  store.upsert = async (task, options) => {
+    nextFireAtByTaskId.set(task.taskId, options?.nextFireAtIso ?? null);
+    await upsert(task, options);
+  };
   const logStore = createInMemoryScheduledTaskLogStore();
 
   let counter = 0;
@@ -119,6 +130,7 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
       wasUpdatedSince: (...a) => subjectStore.wasUpdatedSince(...a),
     },
     dispatcher: TestNoopScheduledTaskDispatcher,
+    channelKeys,
     newTaskId: () => {
       counter += 1;
       return `task_${counter}`;
@@ -129,6 +141,7 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
   return {
     runner,
     logStore,
+    nextFireAtFor: (taskId) => nextFireAtByTaskId.get(taskId),
     setNow: (iso) => {
       nowIso = iso;
     },
@@ -733,6 +746,80 @@ describe("ScheduledTaskRunner — every verb", () => {
         state: { status: "completed", followupCount: 0 },
       } as unknown as Parameters<ScheduledTaskRunnerHandle["apply"]>[2]),
     ).rejects.toThrow(/read-only/);
+  });
+
+  it.each([
+    ["interval trigger", { trigger: { kind: "interval", everyMinutes: -5 } }],
+    ["once trigger", { trigger: { kind: "once", atIso: "not-an-iso" } }],
+    ["kind enum", { kind: "not-a-kind" }],
+    ["priority enum", { priority: "urgent-ish" }],
+    ["source enum", { source: "somewhere" }],
+  ])(
+    "edit rejects an invalid %s and leaves the stored row unchanged",
+    async (_, patch) => {
+      const h = makeHarness();
+      const task = await h.runner.schedule(
+        baseInput({ trigger: { kind: "interval", everyMinutes: 60 } }),
+      );
+      await expect(
+        h.runner.apply(
+          task.taskId,
+          "edit",
+          patch as Parameters<ScheduledTaskRunnerHandle["apply"]>[2],
+        ),
+      ).rejects.toBeInstanceOf(ScheduledTaskValidationError);
+      expect(
+        (await h.runner.list()).find((row) => row.taskId === task.taskId),
+      ).toEqual(task);
+    },
+  );
+
+  it("edit enforces registered escalation channel keys", async () => {
+    const h = makeHarness(
+      "2026-05-09T12:00:00.000Z",
+      () => new Set(["in_app"]),
+    );
+    const task = await h.runner.schedule(baseInput());
+    await expect(
+      h.runner.apply(task.taskId, "edit", {
+        escalation: {
+          steps: [{ channelKey: "definitely-not-registered", delayMinutes: 5 }],
+        },
+      }),
+    ).rejects.toBeInstanceOf(ChannelKeyError);
+    expect(
+      (await h.runner.list()).find((row) => row.taskId === task.taskId)
+        ?.escalation,
+    ).toBeUndefined();
+
+    const edited = await h.runner.apply(task.taskId, "edit", {
+      escalation: {
+        steps: [{ channelKey: "in_app", delayMinutes: 5 }],
+      },
+    });
+    expect(edited.escalation?.steps?.[0]?.channelKey).toBe("in_app");
+  });
+
+  it("valid edit persists fields and recomputes next_fire_at", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    expect(h.nextFireAtFor(task.taskId)).toBeNull();
+
+    const edited = await h.runner.apply(task.taskId, "edit", {
+      promptInstructions: "updated text",
+      trigger: {
+        kind: "interval",
+        everyMinutes: 90,
+        from: "2026-05-09T13:30:00.000Z",
+      },
+    });
+    expect(edited.promptInstructions).toBe("updated text");
+    expect(edited.trigger).toEqual({
+      kind: "interval",
+      everyMinutes: 90,
+      from: "2026-05-09T13:30:00.000Z",
+    });
+    expect(h.nextFireAtFor(task.taskId)).toBe("2026-05-09T13:30:00.000Z");
   });
 
   it("edit refuses an own __proto__ key instead of re-parenting the task", async () => {
