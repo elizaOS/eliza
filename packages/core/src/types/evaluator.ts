@@ -5,7 +5,7 @@
  */
 import type { ActionResult, HandlerCallback } from "./components";
 import type { Memory } from "./memory";
-import type { JSONSchema, ModelTypeName } from "./model";
+import type { JSONSchema, ModelTypeName, PromptSegment } from "./model";
 import type { JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
@@ -71,6 +71,13 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	shouldRun(context: EvaluatorRunContext): Promise<boolean>;
 	prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>;
 	prompt(context: EvaluatorPromptContext<TPrepared>): string;
+	/** Optional lossless annotation of prompt(); concatenation must equal its full text.
+	 * Only state-independent instructions may be stable, as a contiguous prefix
+	 * before dynamic data. The service relocates that whole instruction prefix
+	 * before shared turn context, retaining dynamic content in evaluator order.
+	 * Boundaries must not split a Unicode code point.
+	 */
+	promptSegments?(context: EvaluatorPromptContext<TPrepared>): PromptSegment[];
 	parse?(output: unknown): TOutput | null;
 	processors?: Array<EvaluatorProcessor<TOutput, TPrepared>>;
 }
