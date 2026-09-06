@@ -687,6 +687,8 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 // Bob in this thread") passes through; chat-recall stays owned by the
 // visible-context-recall exception.
 const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
+	// Possessive collection assertions need proof even without a date qualifier.
+	/\byou\s+(?:(?:currently|presently)\s+)?(?:have\s+(?:no|zero)|(?:do\s+not|don['’]t)\s+have\s+(?:any|a|an))\s+(?:(?:new|saved|tracked|recorded)\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b/gi,
 	// "your task list is empty", "the todo list looks clear"
 	/\b(?:task|todo|to[- ]do|reminder|goal|habit)s?\s+list\s+(?:is|looks|seems|appears)\s+(?:empty|clear|blank)\b/gi,
 	// "no notes, tasks, or messages from earlier today", "no tasks logged"
@@ -706,6 +708,18 @@ const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
 const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
 	/\b(?:if|unless|when|whenever|once|whether|in\s+case)\b[^.!?\n]*$/i;
 
+// Quoted examples report wording, not the user's tracked state. Apostrophes
+// inside words are contractions and cannot open a quoted span.
+function emptyClaimIsQuoted(text: string, index: number): boolean {
+	for (const quote of text.matchAll(
+		/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|`[^`\n]*`|(?<![\p{L}\p{N}])'[^'\n]*'(?![\p{L}\p{N}])/gu,
+	)) {
+		if (index >= quote.index && index < quote.index + quote[0].length)
+			return true;
+	}
+	return false;
+}
+
 /**
  * True when a reply ASSERTS that the user's tracked work (tasks, todos,
  * reminders, habits, goals, notes, day log) is empty or unavailable. On a path
@@ -723,6 +737,7 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 		for (const match of text.matchAll(pattern)) {
 			const prefix = text.slice(0, match.index);
 			if (CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
+			if (emptyClaimIsQuoted(text, match.index)) continue;
 			if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
 			return true;
 		}
