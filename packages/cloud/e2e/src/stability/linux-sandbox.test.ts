@@ -480,8 +480,8 @@ console.log(JSON.stringify({
         `user:${String(result.hostUid)}:`,
       );
 
-      // Feed the actual launcher through stdin: AppArmor drops root's DAC
-      // bypass, so the masked-tool fixture cannot traverse runner-owned homes.
+      // Use a readable launcher copy because AppArmor removes root DAC bypass
+      // and the masked namespace must not depend on inherited stdin pipes.
       const setupSource = await readFile(
         path.join(
           repoRoot,
@@ -489,6 +489,8 @@ console.log(JSON.stringify({
         ),
         "utf8",
       );
+      const setupPath = path.join(hostTmpDirectory, "launcher.sh");
+      await writeFile(setupPath, setupSource, { mode: 0o644 });
       const missingBwrap = spawnSync(
         "sudo",
         [
@@ -505,10 +507,10 @@ console.log(JSON.stringify({
           "/dev/null",
           "/usr/bin/bwrap",
           "/bin/bash",
-          "/dev/stdin",
+          setupPath,
           "setup",
         ],
-        { encoding: "utf8", input: setupSource },
+        { encoding: "utf8" },
       );
       expect(missingBwrap.status).not.toBe(0);
       expect(missingBwrap.stderr).toContain("missing required command: bwrap");
@@ -528,10 +530,10 @@ console.log(JSON.stringify({
           "/dev/null",
           "/usr/sbin/iptables",
           "/bin/bash",
-          "/dev/stdin",
+          setupPath,
           "setup",
         ],
-        { encoding: "utf8", input: setupSource },
+        { encoding: "utf8" },
       );
       expect(missingIptables.status).not.toBe(0);
       expect(missingIptables.stderr).toContain(
