@@ -1554,6 +1554,131 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toContain("favorite-color");
 	});
 
+	it("a delete that missed its target by description and then succeeded by id is one operation: the evaluator's message ships", async () => {
+		// Live 2026-09-06 03:21 (tj-bc44686b79099c): MEMORY_DELETE by query
+		// missed, a search found the record, MEMORY_DELETE by memoryId succeeded,
+		// the evaluator finished honestly — and the stale miss forced a
+		// synthesis that replaced the evaluator's sentence.
+		const h = harness({
+			userMessage: "forget that I like my coffee with oat milk",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY_DELETE", "final"),
+							id: "del-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								query: "prefer oat milk in coffee",
+								confirm: true,
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY_DELETE", "final"),
+							id: "del-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								memoryId: "d940f8b3-ceb9-466d-8245-a156909d7d62",
+								confirm: true,
+							},
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork("Not found by wording; delete the record by id."),
+				finish("Got it, forgot about the oat milk."),
+			],
+			results: [
+				{
+					success: false,
+					text: 'No stored memory matches "prefer oat milk in coffee". Scanned all 20 stored row(s).',
+					data: { error: "MEMORY_NOT_FOUND", actionName: "MEMORY_DELETE" },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					text: "Forgot memory d940f8b3-ceb9-466d-8245-a156909d7d62: User prefers oat milk in their coffee.",
+					data: { actionName: "MEMORY_DELETE", op: "delete" },
+				},
+			],
+			intents: ["forget coffee preference"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["MEMORY_DELETE", "MEMORY_DELETE"]);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(result.finalMessage).toBe("Got it, forgot about the oat milk.");
+	});
+
+	it("a target miss is not resolved by a later delete whose result names a different record", async () => {
+		const h = harness({
+			userMessage: "forget that I like my coffee with oat milk",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY_DELETE", "final"),
+							id: "del-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								query: "prefer oat milk in coffee",
+								confirm: true,
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("MEMORY_DELETE", "final"),
+							id: "del-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete",
+								memoryId: "0b1c2d3e-4f50-4617-8899-aabbccddeeff",
+								confirm: true,
+							},
+						},
+					],
+				},
+				"I removed a memory about tea, but I couldn't find the oat milk one.",
+			],
+			evaluations: [
+				continueWork("Try the id."),
+				finish("Got it, forgot about the oat milk."),
+				"I removed a memory about tea, but I couldn't find the oat milk one.",
+			],
+			results: [
+				{
+					success: false,
+					text: 'No stored memory matches "prefer oat milk in coffee".',
+					data: { error: "MEMORY_NOT_FOUND", actionName: "MEMORY_DELETE" },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					text: "Forgot memory 0b1c2d3e-4f50-4617-8899-aabbccddeeff: User takes their tea with honey.",
+					data: { actionName: "MEMORY_DELETE", op: "delete" },
+				},
+			],
+			intents: ["forget coffee preference"],
+		});
+		const result = await h.run();
+		expect(result.finalMessage).not.toBe("Got it, forgot about the oat milk.");
+		expect(result.finalMessage).toContain("couldn't find the oat milk");
+	});
+
 	it("malformed-call supersession keeps every supplied target of the failed call", () => {
 		const failedUpdateA = {
 			name: "VIEWS",
