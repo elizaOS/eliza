@@ -20,6 +20,9 @@ function barrier() {
 }
 async function waitForOrganizationLock(): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt++) {
+    // The deleting writer also observes inside BEGIN; refresh its activity
+    // snapshot so an early non-waiting observation cannot hide a later lock.
+    await writer.query("SELECT pg_stat_clear_snapshot()");
     const result = await writer.query<{ waiting: boolean }>(
       "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock' AND query LIKE '%organizations%') waiting",
       [applicationName],
