@@ -27,7 +27,8 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { getPgliteClientForTests } from "../../../db/client";
 import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
@@ -96,7 +97,7 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
-    await installOrganizationPolicyTestSchema((query) => dbWrite.execute(sql.raw(query)));
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch (error) {
     pgliteReady = false;
     console.error(

@@ -39,7 +39,7 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../../client";
 import { buildMobileAppAuthCredentialProvenance } from "../../mobile-app-auth-credential-policy";
 import { type ApiKey, apiKeys, type NewApiKey } from "../../schemas/api-keys";
 import { appConfig } from "../../schemas/app-config";
@@ -151,13 +151,13 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
-    await installOrganizationPolicyTestSchema((query) => dbWrite.execute(query));
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     const appBillingMigration = readFileSync(
       new URL("../../migrations/0381_app_billing_registration.sql", import.meta.url),
       "utf8",
     );
     for (const statement of appBillingMigration.split("--> statement-breakpoint")) {
-      if (statement.trim()) await dbWrite.execute(statement);
+      if (statement.trim()) await getPgliteClientForTests().exec(statement);
     }
 
     // pushSchema only derives DDL from the Drizzle schema objects above — it

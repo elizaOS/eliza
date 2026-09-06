@@ -9,7 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
@@ -22,7 +22,11 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
+import {
+  closeDatabaseConnectionsForTests,
+  dbWrite,
+  getPgliteClientForTests,
+} from "../../../db/client";
 import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appConfig } from "../../../db/schemas/app-config";
@@ -75,7 +79,7 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
-    await installOrganizationPolicyTestSchema((query) => dbWrite.execute(sql.raw(query)));
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch (error) {
     pgliteReady = false;
     console.error("[app-backup.test] PGlite/pushSchema unavailable — skipping.", error);

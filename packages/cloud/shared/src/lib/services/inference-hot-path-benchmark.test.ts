@@ -20,6 +20,9 @@ process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import type { OrganizationPolicyStamp, OrganizationQuotaPolicy } from "./organization-quota-policy";
+import * as quotaActual from "./organization-quota-policy";
+
+const quotaSnapshot = { ...quotaActual };
 
 let authChainCalls = 0;
 let moderationCalls = 0;
@@ -80,6 +83,7 @@ const POLICY: OrganizationQuotaPolicy = {
 // Cache behavior is real; primary policy reads and admission transactions are
 // controlled boundaries. Migrated lifecycle tests own locking and publication.
 mock.module("./organization-quota-policy", () => ({
+  ...quotaSnapshot,
   readOrganizationQuotaPolicy: async () => {
     primaryPolicyReads++;
     return POLICY;
@@ -210,6 +214,7 @@ afterEach(() => {
 // Cloud-shared test files can share one bun process; leaving the staged flag
 // enabled would silently flip later files onto the cache-on path.
 afterAll(() => {
+  mock.module("./organization-quota-policy", () => quotaSnapshot);
   if (originalAuthCacheFlag === undefined) {
     delete process.env.INFERENCE_AUTH_CACHE_ENABLED;
   } else {

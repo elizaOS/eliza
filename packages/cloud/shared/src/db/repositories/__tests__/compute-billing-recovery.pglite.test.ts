@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { getPgliteClientForTests } from "../../client";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -75,7 +76,7 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
-    await installOrganizationPolicyTestSchema((query) => dbWrite.execute(sql.raw(query)));
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     await dbWrite.execute(
       sql.raw(`CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
