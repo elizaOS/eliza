@@ -137,6 +137,7 @@ describe.skipIf(!postgresUrl)("deletion refund recovery with PostgreSQL and Stri
       "0445_app_billing_refund_observations",
       "0446_app_billing_refund_recovery_authority",
       "0447_app_billing_refund_observation_guards",
+      "0449_app_billing_refund_actor_recovery",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -182,295 +183,357 @@ describe.skipIf(!postgresUrl)("deletion refund recovery with PostgreSQL and Stri
     }
   });
 
-  test("deletion reconciles refund receipts without issuing another refund", async () => {
-    const { identity, planId, scopeId } = await buyer();
-    const trial = await runtime.prepare(identity, {
-      idempotencyKey: randomUUID(),
-      expectedSubscriptionRevision: null,
-      payload: {
-        version: 1,
-        domain: "buyer",
-        action: "trial",
-        planRevisionId: planId,
-        quantity: 1,
-      },
-    });
-    expect(trial.status).toBe("succeeded");
-    const active = await queries.snapshot(identity);
-    if (active.kind !== "subscription") throw new Error("Expected original trial subscription");
-    const canceled = await runtime.prepare(identity, {
-      idempotencyKey: randomUUID(),
-      expectedSubscriptionRevision: active.subscription.lifecycle_revision,
-      payload: { version: 1, domain: "buyer", action: "cancel", timing: "immediate" },
-    });
-    expect(canceled.status).toBe("succeeded");
-    const inactive = await queries.snapshot(identity);
-    expect(inactive.mutationRevision).toBeNull();
-    const checkout = await runtime.checkout(identity, {
-      idempotencyKey: randomUUID(),
-      expectedSubscriptionRevision: null,
-      planRevisionId: planId,
-      quantity: 3,
-      billingConsent: "accepted",
-    });
-    expect(checkout.status).toBe("requires_action");
-    const command = await commands.read({
-      scopeId,
-      commandId: checkout.id,
-      actorUserId: identity.actorUserId,
-    });
-    const result = command.command.provider_result;
-    if (result?.kind !== "checkout") throw new Error("Expected scoped checkout result");
-    const providerId = fixture.completeCheckout(result.checkoutSessionId);
-    expect((await runtime.reconcileCommand({ scopeId, commandId: checkout.id })).status).toBe(
-      "succeeded",
-    );
-    const renewed = await queries.snapshot(identity);
-    if (renewed.kind !== "subscription") throw new Error("Expected paid subscription");
-    expect(renewed.subscription.stripe_subscription_id).toBe(providerId);
-    expect(renewed.subscription.stripe_customer_id).toBe(active.subscription.stripe_customer_id);
-    expect(renewed.subscription.status).toBe("active");
-    expect(renewed.trial?.id).toBe(active.trial?.id);
-    const paid = await db.query(
-      "SELECT granted_amount FROM subscription_allowance_periods WHERE subscription_id=$1 AND grant_source='paid_invoice'",
-      [renewed.subscription.id],
-    );
-    expect(paid.rows).toEqual([{ granted_amount: "25.000000" }]);
-    const administratorId = randomUUID();
-    const registrationId = randomUUID();
-    await db.query("INSERT INTO users(id,organization_id,role) VALUES($1,$2,'owner')", [
-      administratorId,
-      org,
-    ]);
-    await db.query(
-      "INSERT INTO app_client_registrations(id,app_id,owner_organization_id,billing_environment,secret_hashes,redirect_uris,allowed_scopes) VALUES($1,$2,$3,'test','[]','[]','[]')",
-      [registrationId, identity.appId, org],
-    );
-    const receipt = await db.query(
-      "SELECT id,stripe_invoice_id FROM app_subscription_paid_periods WHERE subscription_id=$1",
-      [renewed.subscription.id],
-    );
-    expect(receipt.rows).toHaveLength(1);
-    const { lockAppBillingRefundSource } = await import(
-      "../../db/repositories/app-billing-refund-source"
-    );
-    const { writeTransaction } = await import("../../db/helpers");
-    const owner = { appId: identity.appId, organizationId: org, userId: administratorId };
-    const selection = { clientRegistrationId: registrationId, paidPeriodId: receipt.rows[0].id };
-    const resolveRefund = () =>
-      writeTransaction((tx) => lockAppBillingRefundSource(tx, owner, selection));
-    const source = await resolveRefund();
-    const { GenericBillingAdminService } = await import("./generic-billing-admin");
-    const { appBillingAdminRepository } = await import("../../db/repositories/app-billing-admin");
-    const { recoverAppBillingRefundForDeletion: recover } = await import(
-      "./app-billing-deletion-refund"
-    );
-    const { appBillingDeletionRefundRepository: repository } = await import(
-      "../../db/repositories/app-billing-deletion-refund"
-    );
-    const { decideAppBillingDeletionScope } = await import(
-      "../../db/repositories/app-billing-deletion-dispositions"
-    );
-    const admin = new GenericBillingAdminService(async () => fixture.stripe);
-    const prepare = () =>
-      appBillingAdminRepository.prepare(owner, {
-        clientRegistrationId: registrationId,
+  test.each(["historical_actor", "retained_actor", "closed_scope"] as const)(
+    "%s reconciles refund receipts without issuing another refund",
+    async (recoveryPath) => {
+      const { identity, planId, scopeId } = await buyer();
+      const trial = await runtime.prepare(identity, {
         idempotencyKey: randomUUID(),
-        merchantId: merchant,
-        requestDigest: "d".repeat(64),
-        payload: () => ({
+        expectedSubscriptionRevision: null,
+        payload: {
           version: 1,
-          domain: "admin",
-          action: "refund",
-          clientRegistrationId: registrationId,
-          source,
-          amountCents: 300,
-          accessPolicy: "preserve",
-        }),
+          domain: "buyer",
+          action: "trial",
+          planRevisionId: planId,
+          quantity: 1,
+        },
       });
-    const prepared = await prepare();
-    const absent = await prepare();
-    await appBillingAdminRepository.claim(owner, absent.id);
-    const refundKey = randomUUID();
-    fixture.loseRefundResponse();
-    await expect(
-      admin.refund(owner, {
-        ...selection,
-        idempotencyKey: refundKey,
-        amountCents: 500,
-        accessPolicy: "preserve",
-        confirmation: "refund_original_payment_preserve_access",
-      }),
-    ).rejects.toThrow("Refund response lost");
-    const original = (
-      await db.query("SELECT * FROM billing_subscription_commands WHERE idempotency_key=$1", [
-        refundKey,
-      ])
-    ).rows[0];
-    const requestId = randomUUID(),
-      phaseId = randomUUID();
-    await db.query(
-      "INSERT INTO account_deletion_requests(id,user_id,organization_id,request_digest,lifecycle_revision,irreversible_at,status) VALUES($1,$2,$3,$4,1,now(),'processing')",
-      [requestId, administratorId, org, "f".repeat(64)],
-    );
-    await db.query(
-      "INSERT INTO account_deletion_phase_receipts(id,request_id,phase,lease_generation,lease_expires_at,status) VALUES($1,$2,'stripe',1,(clock_timestamp() AT TIME ZONE 'UTC')+interval '1 hour','calling')",
-      [phaseId, requestId],
-    );
-    await db.query(
-      "UPDATE organizations SET account_lifecycle_state='deletion_irreversible',account_deletion_request_id=$1,account_lifecycle_revision=1,paid_work_fenced_at=now() WHERE id=$2",
-      [requestId, org],
-    );
-    await db.query(
-      "UPDATE users SET account_lifecycle_state='deletion_irreversible',account_deletion_request_id=$1,account_lifecycle_revision=1,auth_fenced_at=now() WHERE id=$2",
-      [requestId, administratorId],
-    );
-    const deletion = {
-      kind: "account_deletion" as const,
-      requestId,
-      requestDigest: "f".repeat(64),
-      lifecycleRevision: 1,
-      phaseReceiptId: phaseId,
-      phaseGeneration: 1,
-    };
-    const stripe = async () => fixture.stripe;
-    await expect(recover(original.id, deletion, stripe)).rejects.toMatchObject({
-      cause: { message: "Refund recovery requires the exact canonical closed payment scope" },
-    });
-    await decideAppBillingDeletionScope({ scopeId, authority: deletion });
-    await db.query("UPDATE app_client_registrations SET is_active=false WHERE id=$1", [
-      registrationId,
-    ]);
-    await expect(resolveRefund()).rejects.toThrow();
-    const boundary = fixture.requests.length;
-    expect(await recover(prepared.id, deletion, stripe)).toEqual({ status: "superseded" });
-    expect(await recover(original.id, deletion, stripe)).toMatchObject({
-      status: "unresolved",
-      reason: "execution_leased",
-    });
-    await db.query(
-      "UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=ANY($1::uuid[])",
-      [[original.id, absent.id]],
-    );
-    expect(await recover(absent.id, deletion, stripe)).toMatchObject({
-      status: "unresolved",
-      reason: "provider_absent",
-    });
-    expect(await recover(original.id, deletion, stripe)).toMatchObject({
-      status: "unresolved",
-      reason: "provider_pending",
-      providerStatus: "pending",
-    });
-    const recovered = (
-      await db.query("SELECT * FROM billing_subscription_commands WHERE id=$1", [original.id])
-    ).rows[0];
-    expect(recovered.status).toBe("SUCCEEDED");
-    expect(recovered.request_payload).toEqual(original.request_payload);
-    expect(recovered.requested_by_user_id).toBe(original.requested_by_user_id);
-    expect(recovered.provider_started_at).toEqual(original.provider_started_at);
-    const refundId = recovered.provider_result.refundId;
-    for (const status of ["succeeded", "failed", "canceled"] as const) {
-      fixture.setRefundStatus(refundId, status);
-      expect(await recover(original.id, deletion, stripe)).toMatchObject({
-        status: "terminal",
-        providerStatus: status,
+      expect(trial.status).toBe("succeeded");
+      const active = await queries.snapshot(identity);
+      if (active.kind !== "subscription") throw new Error("Expected original trial subscription");
+      const canceled = await runtime.prepare(identity, {
+        idempotencyKey: randomUUID(),
+        expectedSubscriptionRevision: active.subscription.lifecycle_revision,
+        payload: { version: 1, domain: "buyer", action: "cancel", timing: "immediate" },
       });
-    }
-    expect(
-      (
-        await db.query("SELECT provider_result FROM billing_subscription_commands WHERE id=$1", [
-          original.id,
-        ])
-      ).rows[0].provider_result,
-    ).toEqual(recovered.provider_result);
-    const observations = (
+      expect(canceled.status).toBe("succeeded");
+      const inactive = await queries.snapshot(identity);
+      expect(inactive.mutationRevision).toBeNull();
+      const checkout = await runtime.checkout(identity, {
+        idempotencyKey: randomUUID(),
+        expectedSubscriptionRevision: null,
+        planRevisionId: planId,
+        quantity: 3,
+        billingConsent: "accepted",
+      });
+      expect(checkout.status).toBe("requires_action");
+      const command = await commands.read({
+        scopeId,
+        commandId: checkout.id,
+        actorUserId: identity.actorUserId,
+      });
+      const result = command.command.provider_result;
+      if (result?.kind !== "checkout") throw new Error("Expected scoped checkout result");
+      const providerId = fixture.completeCheckout(result.checkoutSessionId);
+      expect((await runtime.reconcileCommand({ scopeId, commandId: checkout.id })).status).toBe(
+        "succeeded",
+      );
+      const renewed = await queries.snapshot(identity);
+      if (renewed.kind !== "subscription") throw new Error("Expected paid subscription");
+      expect(renewed.subscription.stripe_subscription_id).toBe(providerId);
+      expect(renewed.subscription.stripe_customer_id).toBe(active.subscription.stripe_customer_id);
+      expect(renewed.subscription.status).toBe("active");
+      expect(renewed.trial?.id).toBe(active.trial?.id);
+      const paid = await db.query(
+        "SELECT granted_amount FROM subscription_allowance_periods WHERE subscription_id=$1 AND grant_source='paid_invoice'",
+        [renewed.subscription.id],
+      );
+      expect(paid.rows).toEqual([{ granted_amount: "25.000000" }]);
+      const administratorId = randomUUID();
+      const registrationId = randomUUID();
+      await db.query("INSERT INTO users(id,organization_id,role) VALUES($1,$2,'owner')", [
+        administratorId,
+        org,
+      ]);
       await db.query(
-        "SELECT * FROM app_billing_refund_observations WHERE command_id=$1 ORDER BY observation_sequence",
-        [original.id],
-      )
-    ).rows;
-    expect(observations.map((r) => r.observation.value.status)).toEqual([
-      "pending",
-      "succeeded",
-      "failed",
-      "canceled",
-    ]);
-    await expect(
-      db.query("UPDATE app_billing_refund_observations SET observation='{}' WHERE id=$1", [
-        observations[0].id,
-      ]),
-    ).rejects.toThrow("immutable");
-    await expect(
-      db.query("DELETE FROM app_billing_refund_observations WHERE id=$1", [observations[0].id]),
-    ).rejects.toThrow("immutable");
-    const snapshot = await repository.inspect(original.id, deletion);
-    if (snapshot.kind !== "read") throw new Error("Expected refund read snapshot");
-    await expect(
-      repository.record(
-        snapshot,
-        deletion,
-        { ...observations.at(-1).observation, digest: "0".repeat(64) },
-        null,
-      ),
-    ).rejects.toMatchObject({
-      cause: {
-        message: "Refund observation does not match original command and provider evidence",
-      },
-    });
-    await expect(
-      repository.record(
-        snapshot,
-        deletion,
-        { ...observations.at(-1).observation, inputDigest: "0".repeat(64) },
-        null,
-      ),
-    ).rejects.toMatchObject({
-      cause: {
-        message: "Refund observation does not match original command and provider evidence",
-      },
-    });
-    const validObservation = observations.at(-1).observation;
-    for (const invalid of [
-      { ...validObservation, providerAccountId: "acct_foreign" },
-      { ...validObservation, livemode: true },
-      { ...validObservation, apiVersion: "2020-01-01" },
-      { ...validObservation, observedAt: "2099-01-01T00:00:00.000Z" },
-    ])
-      await expect(repository.record(snapshot, deletion, invalid, null)).rejects.toMatchObject({
+        "INSERT INTO app_client_registrations(id,app_id,owner_organization_id,billing_environment,secret_hashes,redirect_uris,allowed_scopes) VALUES($1,$2,$3,'test','[]','[]','[]')",
+        [registrationId, identity.appId, org],
+      );
+      const receipt = await db.query(
+        "SELECT id,stripe_invoice_id FROM app_subscription_paid_periods WHERE subscription_id=$1",
+        [renewed.subscription.id],
+      );
+      expect(receipt.rows).toHaveLength(1);
+      const { lockAppBillingRefundSource } = await import(
+        "../../db/repositories/app-billing-refund-source"
+      );
+      const { writeTransaction } = await import("../../db/helpers");
+      const owner = { appId: identity.appId, organizationId: org, userId: administratorId };
+      const selection = { clientRegistrationId: registrationId, paidPeriodId: receipt.rows[0].id };
+      const resolveRefund = () =>
+        writeTransaction((tx) => lockAppBillingRefundSource(tx, owner, selection));
+      const source = await resolveRefund();
+      const { GenericBillingAdminService } = await import("./generic-billing-admin");
+      const { appBillingAdminRepository } = await import("../../db/repositories/app-billing-admin");
+      const { recoverAppBillingRefundForDeletion: recover } = await import(
+        "./app-billing-deletion-refund"
+      );
+      const { appBillingDeletionRefundRepository: repository } = await import(
+        "../../db/repositories/app-billing-deletion-refund"
+      );
+      const { decideAppBillingDeletionScope } = await import(
+        "../../db/repositories/app-billing-deletion-dispositions"
+      );
+      const admin = new GenericBillingAdminService(async () => fixture.stripe);
+      const prepare = (actor = owner, refundSource = source) =>
+        appBillingAdminRepository.prepare(actor, {
+          clientRegistrationId: registrationId,
+          idempotencyKey: randomUUID(),
+          merchantId: merchant,
+          requestDigest: "d".repeat(64),
+          payload: () => ({
+            version: 1,
+            domain: "admin",
+            action: "refund",
+            clientRegistrationId: registrationId,
+            source: refundSource,
+            amountCents: 300,
+            accessPolicy: "preserve",
+          }),
+        });
+      const otherActor = randomUUID();
+      await db.query("INSERT INTO users(id,organization_id,role) VALUES($1,$2,'owner')", [
+        otherActor,
+        org,
+      ]);
+      const otherPrepared = await prepare({ ...owner, userId: otherActor });
+      const mismatched = await prepare(owner, {
+        ...source,
+        invoice: { ...source.invoice, customerId: "cus_foreign" },
+      });
+      const prepared = await prepare();
+      const absent = await prepare();
+      await appBillingAdminRepository.claim(owner, absent.id);
+      const refundKey = randomUUID();
+      fixture.loseRefundResponse();
+      await expect(
+        admin.refund(owner, {
+          ...selection,
+          idempotencyKey: refundKey,
+          amountCents: 500,
+          accessPolicy: "preserve",
+          confirmation: "refund_original_payment_preserve_access",
+        }),
+      ).rejects.toThrow("Refund response lost");
+      const original = (
+        await db.query("SELECT * FROM billing_subscription_commands WHERE idempotency_key=$1", [
+          refundKey,
+        ])
+      ).rows[0];
+      const requestId = randomUUID(),
+        phaseId = randomUUID();
+      const deletionOrganizationId = recoveryPath !== "closed_scope" ? randomUUID() : org;
+      if (recoveryPath !== "closed_scope")
+        await db.query("INSERT INTO organizations(id) VALUES($1)", [deletionOrganizationId]);
+      if (recoveryPath === "retained_actor")
+        await db.query(
+          "INSERT INTO app_billing_members(app_id,billing_account_id,user_id,role,livemode) VALUES($1,$2,$3,'administrator',false)",
+          [identity.appId, identity.billingAccountId, administratorId],
+        );
+      await db.query(
+        "INSERT INTO account_deletion_requests(id,user_id,organization_id,request_digest,lifecycle_revision,irreversible_at,status) VALUES($1,$2,$3,$4,1,now(),'processing')",
+        [requestId, administratorId, deletionOrganizationId, "f".repeat(64)],
+      );
+      await db.query(
+        "INSERT INTO account_deletion_phase_receipts(id,request_id,phase,lease_generation,lease_expires_at,status) VALUES($1,$2,'stripe',1,(clock_timestamp() AT TIME ZONE 'UTC')+interval '1 hour','calling')",
+        [phaseId, requestId],
+      );
+      await db.query(
+        "UPDATE organizations SET account_lifecycle_state='deletion_irreversible',account_deletion_request_id=$1,account_lifecycle_revision=1,paid_work_fenced_at=now() WHERE id=$2",
+        [requestId, deletionOrganizationId],
+      );
+      await db.query(
+        "UPDATE users SET account_lifecycle_state='deletion_irreversible',account_deletion_request_id=$1,account_lifecycle_revision=1,auth_fenced_at=now() WHERE id=$2",
+        [requestId, administratorId],
+      );
+      const deletion = {
+        kind: "account_deletion" as const,
+        requestId,
+        requestDigest: "f".repeat(64),
+        lifecycleRevision: 1,
+        phaseReceiptId: phaseId,
+        phaseGeneration: 1,
+      };
+      const stripe = async () => fixture.stripe;
+      if (recoveryPath === "closed_scope")
+        await decideAppBillingDeletionScope({ scopeId, authority: deletion });
+      else if (recoveryPath === "retained_actor")
+        expect(
+          (await decideAppBillingDeletionScope({ scopeId, authority: deletion })).disposition,
+        ).toBe("retain_shared");
+      else {
+        await expect(
+          decideAppBillingDeletionScope({ scopeId, authority: deletion }),
+        ).rejects.toThrow("no billing scope authority");
+        const before = await queries.snapshot(identity);
+        if (before.kind !== "subscription") throw new Error("Expected preserved paid access");
+        expect(before.projection).toEqual(renewed.projection);
+      }
+      await db.query("UPDATE app_client_registrations SET is_active=false WHERE id=$1", [
+        registrationId,
+      ]);
+      await expect(resolveRefund()).rejects.toThrow();
+      const boundary = fixture.requests.length;
+      await expect(recover(otherPrepared.id, deletion, stripe)).rejects.toThrow();
+      expect(
+        (
+          await db.query(
+            "SELECT status,execution_generation FROM billing_subscription_commands WHERE id=$1",
+            [otherPrepared.id],
+          )
+        ).rows[0],
+      ).toMatchObject({ status: "PREPARED", execution_generation: "0" });
+      await expect(recover(mismatched.id, deletion, stripe)).rejects.toMatchObject({
+        cause: { message: "Refund recovery original payment binding mismatch" },
+      });
+      expect(await recover(prepared.id, deletion, stripe)).toEqual({ status: "superseded" });
+      expect(await recover(original.id, deletion, stripe)).toMatchObject({
+        status: "unresolved",
+        reason: "execution_leased",
+      });
+      await db.query(
+        "UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=ANY($1::uuid[])",
+        [[original.id, absent.id]],
+      );
+      expect(await recover(absent.id, deletion, stripe)).toMatchObject({
+        status: "unresolved",
+        reason: "provider_absent",
+      });
+      expect(await recover(original.id, deletion, stripe)).toMatchObject({
+        status: "unresolved",
+        reason: "provider_pending",
+        providerStatus: "pending",
+      });
+      const recovered = (
+        await db.query("SELECT * FROM billing_subscription_commands WHERE id=$1", [original.id])
+      ).rows[0];
+      expect(recovered.status).toBe("SUCCEEDED");
+      expect(recovered.request_payload).toEqual(original.request_payload);
+      expect(recovered.requested_by_user_id).toBe(original.requested_by_user_id);
+      expect(recovered.provider_started_at).toEqual(original.provider_started_at);
+      const refundId = recovered.provider_result.refundId;
+      for (const status of ["succeeded", "failed", "canceled"] as const) {
+        fixture.setRefundStatus(refundId, status);
+        expect(await recover(original.id, deletion, stripe)).toMatchObject({
+          status: "terminal",
+          providerStatus: status,
+        });
+      }
+      expect(
+        (
+          await db.query("SELECT provider_result FROM billing_subscription_commands WHERE id=$1", [
+            original.id,
+          ])
+        ).rows[0].provider_result,
+      ).toEqual(recovered.provider_result);
+      const observations = (
+        await db.query(
+          "SELECT * FROM app_billing_refund_observations WHERE command_id=$1 ORDER BY observation_sequence",
+          [original.id],
+        )
+      ).rows;
+      expect(observations.map((r) => r.observation.value.status)).toEqual([
+        "pending",
+        "succeeded",
+        "failed",
+        "canceled",
+      ]);
+      await expect(
+        db.query("UPDATE app_billing_refund_observations SET observation='{}' WHERE id=$1", [
+          observations[0].id,
+        ]),
+      ).rejects.toThrow("immutable");
+      await expect(
+        db.query("DELETE FROM app_billing_refund_observations WHERE id=$1", [observations[0].id]),
+      ).rejects.toThrow("immutable");
+      const snapshot = await repository.inspect(original.id, deletion);
+      if (snapshot.kind !== "read") throw new Error("Expected refund read snapshot");
+      await expect(
+        repository.record(
+          snapshot,
+          deletion,
+          { ...observations.at(-1).observation, digest: "0".repeat(64) },
+          null,
+        ),
+      ).rejects.toMatchObject({
         cause: {
           message: "Refund observation does not match original command and provider evidence",
         },
       });
-    expect(
-      observations.every(
-        (row, index) =>
-          index === 0 ||
-          BigInt(row.observation_sequence) > BigInt(observations[index - 1].observation_sequence),
-      ),
-    ).toBe(true);
-    await expect(
-      recover(original.id, { ...deletion, phaseGeneration: 2 }, stripe),
-    ).rejects.toMatchObject({
-      cause: { message: "Refund recovery requires current canonical irreversible authority" },
-    });
-    await db.query(
-      "UPDATE account_deletion_phase_receipts SET lease_expires_at=(clock_timestamp() AT TIME ZONE 'UTC')-interval '1 second' WHERE id=$1",
-      [phaseId],
-    );
-    await expect(recover(original.id, deletion, stripe)).rejects.toMatchObject({
-      cause: { message: "Refund recovery requires current canonical irreversible authority" },
-    });
-    expect(fixture.requests.slice(boundary).filter((r) => r.method !== "GET")).toEqual([]);
-    expect(
-      (
-        await db.query("SELECT status FROM billing_subscriptions WHERE id=$1", [
-          renewed.subscription.id,
-        ])
-      ).rows[0].status,
-    ).toBe("active");
-    expect(
-      (await db.query("SELECT credit_balance FROM organizations WHERE id=$1", [org])).rows[0]
-        .credit_balance,
-    ).toBe("0");
-  });
+      await expect(
+        repository.record(
+          snapshot,
+          deletion,
+          { ...observations.at(-1).observation, inputDigest: "0".repeat(64) },
+          null,
+        ),
+      ).rejects.toMatchObject({
+        cause: {
+          message: "Refund observation does not match original command and provider evidence",
+        },
+      });
+      const validObservation = observations.at(-1).observation;
+      for (const invalid of [
+        { ...validObservation, providerAccountId: "acct_foreign" },
+        { ...validObservation, livemode: true },
+        { ...validObservation, apiVersion: "2020-01-01" },
+        { ...validObservation, observedAt: "2099-01-01T00:00:00.000Z" },
+      ])
+        await expect(repository.record(snapshot, deletion, invalid, null)).rejects.toMatchObject({
+          cause: {
+            message: "Refund observation does not match original command and provider evidence",
+          },
+        });
+      expect(
+        observations.every(
+          (row, index) =>
+            index === 0 ||
+            BigInt(row.observation_sequence) > BigInt(observations[index - 1].observation_sequence),
+        ),
+      ).toBe(true);
+      await expect(
+        recover(original.id, { ...deletion, phaseGeneration: 2 }, stripe),
+      ).rejects.toMatchObject({
+        cause: { message: "Refund recovery requires current canonical irreversible authority" },
+      });
+      if (recoveryPath !== "closed_scope") {
+        const preserved = await queries.snapshot(identity);
+        if (preserved.kind !== "subscription") throw new Error("Expected preserved paid access");
+        expect(preserved.subscription).toEqual(renewed.subscription);
+        expect(preserved.projection).toEqual(renewed.projection);
+        expect(preserved.allowances).toEqual(renewed.allowances);
+        expect(
+          (await db.query("SELECT fenced_at FROM app_billing_scopes WHERE id=$1", [scopeId]))
+            .rows[0].fenced_at,
+        ).toBeNull();
+        expect(
+          (
+            await db.query(
+              "SELECT disposition FROM app_billing_deletion_dispositions WHERE scope_id=$1",
+              [scopeId],
+            )
+          ).rows,
+        ).toEqual(recoveryPath === "retained_actor" ? [{ disposition: "retain_shared" }] : []);
+      }
+      await db.query(
+        "UPDATE account_deletion_phase_receipts SET lease_expires_at=(clock_timestamp() AT TIME ZONE 'UTC')-interval '1 second' WHERE id=$1",
+        [phaseId],
+      );
+      await expect(recover(original.id, deletion, stripe)).rejects.toMatchObject({
+        cause: { message: "Refund recovery requires current canonical irreversible authority" },
+      });
+      expect(fixture.requests.slice(boundary).filter((r) => r.method !== "GET")).toEqual([]);
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscriptions WHERE id=$1", [
+            renewed.subscription.id,
+          ])
+        ).rows[0].status,
+      ).toBe("active");
+      expect(
+        (await db.query("SELECT credit_balance FROM organizations WHERE id=$1", [org])).rows[0]
+          .credit_balance,
+      ).toBe("0");
+    },
+  );
 });
