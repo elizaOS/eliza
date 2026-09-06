@@ -45,6 +45,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -1190,14 +1191,94 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenize(JNIEnv* env, jclass,
     return out;
 }
 
+/** Formats structured chat across JNI as UTF-8 bytes, preserving non-BMP text. */
+JNIEXPORT jbyteArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeFormatChat(
+        JNIEnv* env, jclass, jlong ctxHandle, jbyteArray messages,
+        jboolean enableThinking) {
+    if (!messages) {
+        throw_runtime(env, "formatChat: missing messages", nullptr);
+        return nullptr;
+    }
+    const jsize size = env->GetArrayLength(messages);
+    std::vector<jbyte> input(static_cast<size_t>(size));
+    env->GetByteArrayRegion(messages, 0, size, input.data());
+    if (env->ExceptionCheck()) return nullptr;
+    char* output = nullptr;
+    char* error = nullptr;
+    const int rc = eliza_inference_format_chat(
+        reinterpret_cast<EliInferenceContext*>(ctxHandle),
+        reinterpret_cast<const char*>(input.data()), input.size(),
+        enableThinking ? 1 : 0, &output, &error);
+    std::unique_ptr<char, decltype(&eliza_inference_free_string)> owned(
+        output, eliza_inference_free_string);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "formatChat", error);
+        return nullptr;
+    }
+    if (!output || std::strlen(output) > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        throw_runtime(env, "formatChat: complete result exceeds JNI array capacity", nullptr);
+        return nullptr;
+    }
+    const jsize length = static_cast<jsize>(std::strlen(output));
+    jbyteArray result = env->NewByteArray(length);
+    if (result) env->SetByteArrayRegion(result, 0, length,
+        reinterpret_cast<const jbyte*>(output));
+    return result;
+}
+
+/** Tokenizes canonical UTF-8 without JNI modified-UTF-8 surrogate rewriting. */
+JNIEXPORT jintArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeUtf8(
+        JNIEnv* env, jclass, jlong ctxHandle, jbyteArray text,
+        jboolean addSpecial, jboolean parseSpecial) {
+    if (!text) {
+        throw_runtime(env, "tokenizeUtf8: missing text", nullptr);
+        return nullptr;
+    }
+    const jsize length = env->GetArrayLength(text);
+    std::vector<jbyte> input(static_cast<size_t>(length));
+    env->GetByteArrayRegion(text, 0, length, input.data());
+    if (env->ExceptionCheck()) return nullptr;
+    int* tokens = nullptr;
+    size_t count = 0;
+    char* error = nullptr;
+    const int rc = eliza_inference_tokenize(
+        reinterpret_cast<EliInferenceContext*>(ctxHandle),
+        reinterpret_cast<const char*>(input.data()), input.size(),
+        addSpecial ? 1 : 0, parseSpecial ? 1 : 0, &tokens, &count, &error);
+    std::unique_ptr<int, decltype(&eliza_inference_free_tokens)> owned(
+        tokens, eliza_inference_free_tokens);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "tokenizeUtf8", error);
+        return nullptr;
+    }
+    if (count > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        throw_runtime(env, "tokenizeUtf8: complete result exceeds JNI array capacity", nullptr);
+        return nullptr;
+    }
+    jintArray result = env->NewIntArray(static_cast<jsize>(count));
+    if (result && count) env->SetIntArrayRegion(result, 0,
+        static_cast<jsize>(count), reinterpret_cast<const jint*>(tokens));
+    return result;
+}
+
 // Pooled, L2-normalized sentence embedding (pooling: 1=MEAN default) ->
 // float[n_embd].
 JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbed(JNIEnv* env, jclass,
-                                                 jlong ctxHandle, jstring jText,
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedUtf8(JNIEnv* env, jclass,
+                                                 jlong ctxHandle, jbyteArray jText,
                                                  jint pooling) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
-    const std::string text = from_jstring(env, jText);
+    if (!jText) {
+        throw_runtime(env, "embed requires complete UTF-8 bytes", nullptr);
+        return nullptr;
+    }
+    const jsize length = env->GetArrayLength(jText);
+    std::string text(static_cast<size_t>(length), '\0');
+    if (length) env->GetByteArrayRegion(jText, 0, length,
+        reinterpret_cast<jbyte*>(text.data()));
+    if (env->ExceptionCheck()) return nullptr;
     std::vector<float> out(4096, 0.0f);
     int dim = 0;
     char* outError = nullptr;

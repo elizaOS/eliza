@@ -42,6 +42,7 @@ export class LocalInferenceLoaderRuntimeService
 		"Owns the selected local-inference loader for this agent runtime.";
 
 	readonly generate?: Generate;
+	readonly generateChat?: LocalInferenceLoader["generateChat"];
 	readonly embed?: Embed;
 	readonly getMemoryArbiter?: () => unknown;
 	readonly transcribe?: RuntimeLocalInferenceLoader["transcribe"];
@@ -54,6 +55,8 @@ export class LocalInferenceLoaderRuntimeService
 	) {
 		super(runtime);
 		if (loader.generate) this.generate = loader.generate.bind(loader);
+		if (loader.generateChat)
+			this.generateChat = loader.generateChat.bind(loader);
 		if (loader.embed) this.embed = loader.embed.bind(loader);
 		if (loader.getMemoryArbiter) {
 			this.getMemoryArbiter = loader.getMemoryArbiter.bind(loader);

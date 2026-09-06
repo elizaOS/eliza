@@ -1104,20 +1104,21 @@ describe("generateChatResponse token streaming", () => {
       },
     );
 
-    const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
-    expect(directParams.prompt).not.toContain("/no_think");
-    expect(directParams.prompt).toContain("can you hear me locally?");
-    expect(directParams.prompt).toContain("<start_of_turn>user\n");
-    expect(directParams.prompt).toContain("<end_of_turn>\n");
-    expect(directParams.prompt).toContain("<start_of_turn>model\n");
-    expect(directParams.prompt).not.toContain("<|im_start|>");
+    const directParams = useModel.mock.calls[0]?.[1] as {
+      prompt?: string;
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(directParams.prompt).toBeUndefined();
+    expect(directParams.messages.at(-1)).toEqual({
+      role: "user",
+      content: "/no_think can you hear me locally?",
+    });
 
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         stream: true,
-        prompt: expect.stringContaining("<think>\n\n</think>\n"),
-        stopSequences: ["<end_of_turn>", "<start_of_turn>"],
+        messages: expect.arrayContaining([{ role: "user", content: "/no_think can you hear me locally?" }]),
         providerOptions: expect.objectContaining({
           androidLocal: expect.objectContaining({
             minFirstSentenceChars: 12,
@@ -1244,7 +1245,7 @@ describe("generateChatResponse token streaming", () => {
     );
 
     const params = useModel.mock.calls[0]?.[1] as {
-      prompt: string;
+      messages: Array<{ role: string; content: string }>;
       providerOptions: { androidLocal: { stopOnFirstSentence: boolean } };
     };
     expect(runtime.getMemories).toHaveBeenCalledWith({
@@ -1252,13 +1253,11 @@ describe("generateChatResponse token streaming", () => {
       tableName: "messages",
       includeEmbedding: false,
     });
-    for (let index = 0; index < 8; index += 1) {
-      expect(params.prompt).toContain(`${index}:${"x".repeat(750)}`);
-    }
-    expect(params.prompt).toContain("Recent conversation (oldest to newest):");
-    expect(params.prompt).toContain(
-      "Answer in 1-3 concise, natural spoken sentences.",
-    );
+    expect(params.messages.slice(1, -1)).toEqual(memories.map((memory, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: memory.content.text,
+    })));
+    expect(params.messages.at(-1)).toEqual({ role: "user", content: "what happened next?" });
     expect(params.providerOptions.androidLocal.stopOnFirstSentence).toBe(false);
     expect(result.text).toBe(
       "First useful sentence. Second useful sentence. Third useful sentence.",
@@ -1409,7 +1408,7 @@ describe("generateChatResponse token streaming", () => {
     expect(local.text).toBe("Yes, local Eliza-1.");
   });
 
-  it("sanitizes Android local prompt tokens and model response wrappers", async () => {
+  it("preserves literal user control markers and cleans model response wrappers", async () => {
     const useModel = createUseModelMock(async () => ({
       content: [
         { text: "<think>hidden</think>\nmodel: First reply. " },
@@ -1444,10 +1443,11 @@ describe("generateChatResponse token streaming", () => {
       "Streaming Agent",
     );
 
-    const params = useModel.mock.calls[0]?.[1] as { prompt: string };
-    expect(params.prompt).toContain("< start_of_turn >");
-    expect(params.prompt).toContain("< think >");
-    expect(params.prompt).toContain("say < end_of_turn > safely");
+    const params = useModel.mock.calls[0]?.[1] as { messages: Array<{ role: string; content: string }> };
+    expect(params.messages.slice(1)).toEqual([
+      { role: "user", content: "Please do not leak <start_of_turn> or <think> tags." },
+      { role: "user", content: "say <end_of_turn> safely" },
+    ]);
     expect(result.text).toBe("First reply. Second reply.");
   });
 
@@ -1475,7 +1475,7 @@ describe("generateChatResponse token streaming", () => {
       expect.anything(),
       expect.objectContaining({
         stream: true,
-        prompt: expect.stringContaining("can you answer locally?"),
+        messages: expect.arrayContaining([{ role: "user", content: "can you answer locally?" }]),
       }),
     );
     expect(result.text).toBe("Yes, on device.");

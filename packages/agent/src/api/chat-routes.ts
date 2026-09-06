@@ -19,6 +19,7 @@ import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
+  type ChatMessage,
   type Content,
   createMessageMemory,
   drainRoomPostDeliveryTasks,
@@ -555,16 +556,6 @@ function shouldUseAndroidLocalDirectChat(
   return true;
 }
 
-function escapeAndroidLocalChatTemplateTokens(text: string): string {
-  return text
-    .replaceAll("<start_of_turn>", "< start_of_turn >")
-    .replaceAll("<end_of_turn>", "< end_of_turn >")
-    .replaceAll("<|im_start|>", "<| im_start |>")
-    .replaceAll("<|im_end|>", "<| im_end |>")
-    .replaceAll("<think>", "< think >")
-    .replaceAll("</think>", "</ think >");
-}
-
 function normalizeAndroidLocalDirectUserText(text: string): string {
   return text
     .replace(/(^|\s)\/(?:no_)?think\b/gi, " ")
@@ -590,12 +581,12 @@ export function compareCreatedAtAscending(
   return leftVal - rightVal || (left.id ?? "").localeCompare(right.id ?? "");
 }
 
-async function buildAndroidLocalDirectChatPrompt(args: {
+async function buildAndroidLocalDirectChatMessages(args: {
   runtime: AgentRuntime;
   message: ReturnType<typeof createMessageMemory>;
   userText: string;
-}): Promise<string | null> {
-  let history: string[] = [];
+}): Promise<Array<ChatMessage & { content: string }> | null> {
+  let history: Array<ChatMessage & { content: string }> = [];
   try {
     const recent = await args.runtime.getMemories({
       roomId: args.message.roomId,
@@ -606,11 +597,11 @@ async function buildAndroidLocalDirectChatPrompt(args: {
       .filter((memory) => memory.id !== args.message.id)
       .sort(compareCreatedAtAscending)
       .flatMap((memory) => {
-        const text = extractCompatTextContent(memory.content).trim();
+        const text = extractCompatTextContent(memory.content);
         if (!text) return [];
         const role =
-          memory.entityId === args.runtime.agentId ? "Assistant" : "User";
-        return [`${role}: ${escapeAndroidLocalChatTemplateTokens(text)}`];
+          memory.entityId === args.runtime.agentId ? "assistant" : "user";
+        return [{ role, content: text }];
       });
   } catch (err) {
     // error-policy:J7 diagnostics-must-not-kill-the-loop — the full message
@@ -634,24 +625,10 @@ async function buildAndroidLocalDirectChatPrompt(args: {
     "No markdown, labels, tools, logs, or hidden reasoning.",
   ].join("\n");
   return [
-    "<start_of_turn>user",
-    systemText,
-    ...(history.length > 0
-      ? ["", "Recent conversation (oldest to newest):", ...history]
-      : []),
-    "",
-    escapeAndroidLocalChatTemplateTokens(args.userText),
-    "<end_of_turn>",
-    "<start_of_turn>model",
-    // Match the Gemma thinking-disabled chat-template shape.
-    // The direct mobile path is for short voice/chat replies; pre-filling an
-    // empty think block prevents the model from spending its first tokens on
-    // hidden `<think>...</think>` scaffolding before any speakable text.
-    "<think>",
-    "",
-    "</think>",
-    "",
-  ].join("\n");
+    { role: "system", content: systemText },
+    ...history,
+    { role: "user", content: args.userText },
+  ];
 }
 
 function extractAndroidLocalModelText(raw: unknown): string {
@@ -784,21 +761,23 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   if (!shouldUseAndroidLocalDirectChat(args.runtime, args.message)) {
     return null;
   }
-  const userText = normalizeAndroidLocalDirectUserText(
-    extractCompatTextContent(args.message.content),
-  );
+  const userText = extractCompatTextContent(args.message.content);
   if (!userText) return null;
-  const prompt = await buildAndroidLocalDirectChatPrompt({
+  const messages = await buildAndroidLocalDirectChatMessages({
     runtime: args.runtime,
     message: args.message,
     userText,
   });
-  if (!prompt) return null;
+  if (!messages) return null;
+  const promptChars = messages.reduce(
+    (total, message) => total + message.content.length,
+    0,
+  );
   const startedAt = Date.now();
   args.runtime.logger.info(
     {
       src: "eliza-api",
-      promptChars: prompt.length,
+      promptChars,
       messageId: args.message.id,
     },
     "[eliza-api] Android local direct chat fast path start",
@@ -830,8 +809,7 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     lastStreamedSnapshot = snapshot;
   };
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt,
-    stopSequences: ["<end_of_turn>", "<start_of_turn>"],
+    messages,
     temperature: 0,
     providerOptions: {
       eliza: {
@@ -865,7 +843,7 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     provider: "mobile-local-direct-reply",
     mode: "api_fast_path",
     latencyMs,
-    promptChars: prompt.length,
+    promptChars,
     streamedChunks,
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {
@@ -889,9 +867,14 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     localInference,
     responseContent,
     usage: {
-      promptTokens: estimateTokenCount(prompt),
+      promptTokens: estimateTokenCount(
+        messages.map((message) => message.content).join("\n"),
+      ),
       completionTokens: estimateTokenCount(text),
-      totalTokens: estimateTokenCount(prompt) + estimateTokenCount(text),
+      totalTokens:
+        estimateTokenCount(
+          messages.map((message) => message.content).join("\n"),
+        ) + estimateTokenCount(text),
       model: detectRuntimeModel(args.runtime, undefined) ?? undefined,
       provider: "mobile-local-direct-reply",
       isEstimated: true,

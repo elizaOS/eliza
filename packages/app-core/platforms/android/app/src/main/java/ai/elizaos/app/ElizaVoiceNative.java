@@ -181,8 +181,14 @@ final class ElizaVoiceNative {
     /** Tokenize text → int[] token ids. */
     static native int[] nativeTokenize(long ctxHandle, String text, boolean addSpecial, boolean parseSpecial);
 
+    /** Formats complete text messages with the loaded model's declared template. */
+    static native byte[] nativeFormatChat(long ctxHandle, byte[] messagesJson, boolean enableThinking);
+
+    /** Tokenizes UTF-8 bytes without Java modified-UTF-8 conversion. */
+    static native int[] nativeTokenizeUtf8(long ctxHandle, byte[] text, boolean addSpecial, boolean parseSpecial);
+
     /** Pooled (MEAN) L2-normalized sentence embedding → float[n_embd]. */
-    static native float[] nativeEmbed(long ctxHandle, String text, int pooling);
+    static native float[] nativeEmbedUtf8(long ctxHandle, byte[] text, int pooling);
 
     /** End-of-turn score: next-token P(targetToken | tokens). */
     static native float nativeEotScore(long ctxHandle, int[] tokens, int targetToken);

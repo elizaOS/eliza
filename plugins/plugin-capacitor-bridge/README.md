@@ -87,6 +87,14 @@ Connection flow:
 
 Note: iOS connections are rejected with close code `4003`. iOS uses native IPC, not this WebSocket path.
 
+The Android bionic host accepts ordered text messages and uses the loaded GGUF's
+declared chat template through fused ABI v16. It rejects unsupported message
+fields, missing templates, and templates that modify or omit message content,
+including surrounding whitespace. Chat and embedding inputs cross JNI as UTF-8
+bytes; malformed Unicode is an explicit error. Native chat responses must carry
+complete text and a completion status, and a token or context boundary is reported
+as incomplete rather than accepted as a finished response.
+
 ## Recommended default models
 
 | Slot | Model ID | HuggingFace path |

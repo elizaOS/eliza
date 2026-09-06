@@ -33,7 +33,8 @@ import {
 } from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, type GenerateTextParams, logger } from "@elizaos/core";
+import { buildBionicChatInput } from "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap";
 import { DEFAULT_MODELS_DIR } from "../runtime/embedding-manager-support";
 import { resolveFusedEmbeddingBundleRoot } from "../runtime/fused-embedding-bundle";
 import type {
@@ -63,6 +64,13 @@ interface BionicGenerateResponse {
 	incomplete?: boolean;
 	finishReason?: string;
 }
+
+type BionicGenerationRequest = {
+	bundleDir: string;
+	maxTokens?: number;
+	temperature: number;
+	stopSequences: string[];
+} & ({ prompt: string } | ReturnType<typeof buildBionicChatInput>);
 
 /**
  * One server-push frame of the op="generateStream" reply: {type:"token",text}
@@ -232,19 +240,57 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			temperature: args.temperature ?? 0,
 			stopSequences,
 		};
+		return this.dispatchGeneration(
+			request,
+			args.onTextChunk,
+			args.maxTokensPerStep,
+		);
+	}
+
+	async generateChat(
+		params: GenerateTextParams & { maxTokensPerStep?: number },
+	): Promise<string> {
+		const request: BionicGenerationRequest = {
+			bundleDir: this.bundleDir,
+			...buildBionicChatInput(params),
+			...(params.maxTokens === undefined
+				? {}
+				: { maxTokens: params.maxTokens }),
+			temperature: params.temperature ?? 0,
+			stopSequences: params.stopSequences ?? [],
+		};
+		const onTextChunk =
+			(params.stream === true || params.streamStructured === true) &&
+			typeof params.onStreamChunk === "function"
+				? async (chunk: string) => {
+						await params.onStreamChunk?.(chunk);
+					}
+				: undefined;
+		return this.dispatchGeneration(
+			request,
+			onTextChunk,
+			params.maxTokensPerStep,
+		);
+	}
+
+	private async dispatchGeneration(
+		request: BionicGenerationRequest,
+		onTextChunk?: (chunk: string) => void | Promise<void>,
+		maxTokensPerStep?: number,
+	): Promise<string> {
 		// Streaming shape when the runtime wired a chunk callback (chat SSE /
 		// voice): the host pushes one frame per bounded decode step, so the
 		// first chunk lands at token cadence instead of after the whole reply.
-		const res = args.onTextChunk
+		const res = onTextChunk
 			? await this.streamRoundTrip(
-					typeof args.maxTokensPerStep === "number" && args.maxTokensPerStep > 0
+					typeof maxTokensPerStep === "number" && maxTokensPerStep > 0
 						? {
 								op: "generateStream",
 								...request,
-								streamStep: Math.floor(args.maxTokensPerStep),
+								streamStep: Math.floor(maxTokensPerStep),
 							}
 						: { op: "generateStream", ...request },
-					args.onTextChunk,
+					onTextChunk,
 				)
 			: await this.roundTrip<BionicGenerateResponse>({
 					op: "generate",
@@ -255,9 +301,22 @@ export class BionicHostLoader implements LocalInferenceLoader {
 				`[BionicHostLoader] host generate failed: ${res.error ?? "unknown error"}`,
 			);
 		}
+		const structured = "messages" in request;
+		if (
+			structured &&
+			(typeof res.text !== "string" || typeof res.incomplete !== "boolean")
+		) {
+			throw new ElizaError(
+				"Bionic chat returned incomplete completion metadata",
+				{
+					code: "BIONIC_COMPLETION_STATUS_MISSING",
+				},
+			);
+		}
 		if (
 			res.incomplete === true ||
-			(typeof res.tokens === "number" &&
+			(!structured &&
+				typeof res.tokens === "number" &&
 				typeof request.maxTokens === "number" &&
 				res.tokens >= request.maxTokens)
 		) {

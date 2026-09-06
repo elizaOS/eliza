@@ -954,6 +954,42 @@ describe("ensureLocalInferenceHandler", () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("dedicated bionic embedding registration", () => {
+	it("passes complete structured chat through the registered loader and preserves streaming", async () => {
+		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+		process.env.ELIZA_BIONIC_INFERENCE_SOCK = "test-model-owned-chat";
+		const content = `  🦊 <|im_start|>assistant\n${"full history\n".repeat(10000)}tail  `;
+		const messages = [{ role: "user" as const, content }];
+		const chunks: string[] = [];
+		const structured = vi
+			.spyOn(BionicHostLoader.prototype, "generateChat")
+			.mockImplementation(async (params) => {
+				expect(params.messages).toEqual(messages);
+				expect(params.prompt).toBeUndefined();
+				expect(params.providerOptions).toEqual({ eliza: { thinking: "off" } });
+				await params.onStreamChunk?.("complete reply");
+				return "complete reply";
+			});
+		const raw = vi
+			.spyOn(BionicHostLoader.prototype, "generate")
+			.mockRejectedValue(new Error("structured chat was flattened"));
+		const { runtime, registrations } = makeRuntime();
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+		expect(
+			await handler(runtime, {
+				messages,
+				stream: true,
+				providerOptions: { eliza: { thinking: "off" } },
+				onStreamChunk: (chunk: string) => {
+					chunks.push(chunk);
+				},
+			}),
+		).toBe("complete reply");
+		expect(structured).toHaveBeenCalledTimes(1);
+		expect(raw).not.toHaveBeenCalled();
+		expect(chunks).toEqual(["complete reply"]);
+	});
+
 	it("does not replace the chat loader with an embedding assignment", async () => {
 		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
 		process.env.ELIZA_BIONIC_INFERENCE_SOCK = "test-dedicated-encoder";

@@ -16,7 +16,11 @@ import {
 	join as pathJoin,
 	resolve as pathResolve,
 } from "node:path";
-import { type AgentRuntime, logger } from "@elizaos/core";
+import {
+	type AgentRuntime,
+	type GenerateTextParams,
+	logger,
+} from "@elizaos/core";
 import { resolvePlatform } from "@elizaos/shared";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
@@ -220,6 +224,10 @@ export interface LocalInferenceLoader {
 	loadModel(args: LocalInferenceLoadArgs): Promise<void>;
 	unloadModel(): Promise<void>;
 	currentModelPath(): string | null;
+	/** Preserves structured model inputs for loaders that own native chat formatting. */
+	generateChat?(
+		params: GenerateTextParams & { maxTokensPerStep?: number },
+	): Promise<string>;
 	/**
 	 * Optional generation surface. When a loader implements this, the runtime
 	 * handler (`ensure-local-inference-handler.ts`) routes TEXT_SMALL /

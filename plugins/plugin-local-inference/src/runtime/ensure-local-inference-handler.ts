@@ -487,8 +487,19 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 		// background jobs; background jobs wait a bounded time without changing
 		// the generation request. Desktop falls through to the standalone
 		// engine, which owns its own session pool and is NOT gated.
-		if (loader?.generate) {
-			const generate = loader.generate.bind(loader);
+		const generateChat = loader?.generateChat?.bind(loader);
+		const generate = loader?.generate?.bind(loader);
+		const dispatch = generateChat
+			? () =>
+					generateChat({
+						...params,
+						maxTokens: engineArgs.maxTokens,
+						maxTokensPerStep: engineArgs.maxTokensPerStep,
+					})
+			: generate
+				? () => generate(engineArgs)
+				: undefined;
+		if (dispatch) {
 			const priority = params.priority ?? "interactive";
 			let lockWaitMs: number | undefined;
 			if (priority === "background") {
@@ -510,7 +521,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 					...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
 					...(params.signal ? { signal: params.signal } : {}),
 				},
-				() => generate(engineArgs),
+				dispatch,
 			);
 		}
 		if (!(await localInferenceEngine.available())) {

@@ -443,14 +443,21 @@ final class ElizaBionicInferenceServer {
             if (!"0".equals(System.getenv("ELIZA_BIONIC_RESIDENT"))) {
                 try {
                     String r = generateResident(
-                        bundleDir, drafterPath, prompt, maxTokens, stopSequences);
+                        bundleDir, drafterPath, req, maxTokens, stopSequences);
                     Log.i(TAG, "GENERATE result (resident): "
                         + (r.length() > 200 ? r.substring(0, 200) + "…" : r));
                     return r;
                 } catch (Throwable t) {
+                    // error-policy:J2 Structured chat cannot be replayed as an unformatted prompt.
+                    if (req.has("messages")) {
+                        throw new IllegalStateException("Model-owned chat generation failed", t);
+                    }
                     Log.w(TAG, "resident generate failed; falling back to reload-per-call", t);
                     resetResident();
                 }
+            }
+            if (req.has("messages")) {
+                throw new IllegalStateException("Structured chat requires the resident native backend");
             }
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
             result = trimGenerateResponseAtStops(result, stopSequences);
@@ -474,12 +481,15 @@ final class ElizaBionicInferenceServer {
      * most 20 tokens of eval work (#11913 — previously one native call decoded
      * the full 256-token JNI buffer before the Java cap check ever ran).
      */
-    private String generateResident(String bundleDir, String drafterPath, String prompt,
+    private String generateResident(String bundleDir, String drafterPath, JSONObject request,
                                     int maxTokens, List<String> stopSequences) throws Exception {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
-            resetAndPrefillResident(prompt, drafterPath);
+            BionicChatPrompt.Prepared prepared = BionicChatPrompt.prepare(
+                request, stopSequences,
+                (messages, thinking) -> ElizaVoiceNative.nativeFormatChat(residentCtx, messages, thinking));
+            resetAndPrefillResident(prepared.text, drafterPath);
             // Buffered callers still need bounded native steps: stop markers
             // are visible only after nativeLlmStreamNext returns, so decoding
             // the whole turn in one call would trim the marker but still pay
@@ -487,7 +497,7 @@ final class ElizaBionicInferenceServer {
             // overshoot while keeping JNI round trips inexpensive.
             final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
                 this::residentStreamStep, maxTokens,
-                DEFAULT_STREAM_STEP_TOKENS, stopSequences, null);
+                DEFAULT_STREAM_STEP_TOKENS, prepared.stops, null);
             final long ms = android.os.SystemClock.elapsedRealtime() - t0;
             final double tokS = ms > 0 ? r.produced * 1000.0 / ms : 0.0;
             Log.i(TAG, "GENERATE (resident) eval count: " + r.produced
@@ -537,27 +547,27 @@ final class ElizaBionicInferenceServer {
             throws IOException {
         String bundleDir = defaultBundleDir;
         String drafterPath = "";
-        String prompt = "";
         int maxTokens = residentStreamGenerationBoundary();
         int streamStep = 0;
         List<String> stopSequences = Collections.emptyList();
+        JSONObject req;
         try {
-            JSONObject req = new JSONObject(requestJson);
+            req = new JSONObject(requestJson);
             bundleDir = req.optString("bundleDir", "");
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
             drafterPath = req.optString("drafterPath", "");
-            prompt = req.optString("prompt", "");
             maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             streamStep = req.optInt("streamStep", 0);
             stopSequences = readStopSequences(req);
-        } catch (org.json.JSONException e) {
+        } catch (org.json.JSONException | IllegalArgumentException e) {
+            // error-policy:J1 Return invalid transport inputs as an explicit error frame.
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
         generateStream(
-            bundleDir, drafterPath, prompt, maxTokens, streamStep, stopSequences, out);
+            bundleDir, drafterPath, req, maxTokens, streamStep, stopSequences, out);
     }
 
     /**
@@ -587,23 +597,9 @@ final class ElizaBionicInferenceServer {
         }
     }
 
-    /** Read bounded, non-empty stop strings from either supported wire key. */
-    static List<String> readStopSequences(JSONObject request) {
-        JSONArray values = request.optJSONArray("stopSequences");
-        if (values == null) values = request.optJSONArray("stop");
-        if (values == null || values.length() == 0) return Collections.emptyList();
-
-        final ArrayList<String> stops = new ArrayList<>();
-        final int count = Math.min(values.length(), 32);
-        for (int i = 0; i < count; i++) {
-            final Object value = values.opt(i);
-            if (!(value instanceof String)) continue;
-            final String stop = (String) value;
-            if (!stop.isEmpty() && stop.length() <= 1024 && !stops.contains(stop)) {
-                stops.add(stop);
-            }
-        }
-        return stops;
+    /** Validates complete stop sequences without dropping later or longer entries. */
+    static List<String> readStopSequences(JSONObject request) throws org.json.JSONException {
+        return BionicChatPrompt.readStops(request);
     }
 
     /** The reload-per-call fallback cannot stop eval early, but must not leak markers. */
@@ -645,12 +641,12 @@ final class ElizaBionicInferenceServer {
      * decoded inside ONE {@code nativeLlmStreamNext}, so the "stream" was a
      * single giant frame and TTFT equaled full-turn latency.
      */
-    private void generateStream(String bundleDir, String drafterPath, String prompt, int maxTokens,
+    private void generateStream(String bundleDir, String drafterPath, JSONObject request, int maxTokens,
                                 int requestedStreamStep, List<String> stopSequences,
                                 DataOutputStream out) throws IOException {
         final int streamStep = resolveStreamStepTokens(
             requestedStreamStep, System.getenv("ELIZA_BIONIC_STREAM_STEP"));
-        Log.i(TAG, "GENERATE_STREAM from agent: " + prompt.length() + " prompt chars,"
+        Log.i(TAG, "GENERATE_STREAM from agent: " + request.toString().length() + " request chars,"
             + " maxTokens=" + maxTokens + ", streamStep=" + streamStep
             + ", bundle=" + bundleDir
             + ", stops=" + stopSequences.size()
@@ -659,9 +655,12 @@ final class ElizaBionicInferenceServer {
             synchronized (residentLock) {
                 ensureResidentCtx(bundleDir);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
-                resetAndPrefillResident(prompt, drafterPath);
+                BionicChatPrompt.Prepared prepared = BionicChatPrompt.prepare(
+                    request, stopSequences,
+                    (messages, thinking) -> ElizaVoiceNative.nativeFormatChat(residentCtx, messages, thinking));
+                resetAndPrefillResident(prepared.text, drafterPath);
                 final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
-                    this::residentStreamStep, maxTokens, streamStep, stopSequences,
+                    this::residentStreamStep, maxTokens, streamStep, prepared.stops,
                     text -> {
                         writeFrame(out, new JSONObject()
                             .put("type", "token").put("text", text).toString());
@@ -751,7 +750,8 @@ final class ElizaBionicInferenceServer {
      * prefix or the stream can't be trimmed (e.g. an MTP stream). Caller holds
      * residentLock.
      */
-    private void resetAndPrefillResident(String prompt, String drafterPath) {
+    private void resetAndPrefillResident(String prompt, String drafterPath)
+            throws java.nio.charset.CharacterCodingException {
         final String effectiveDrafterPath = drafterPath == null ? "" : drafterPath;
         if (residentStream != 0L && !effectiveDrafterPath.equals(residentDrafterPath)) {
             ElizaVoiceNative.nativeLlmStreamClose(residentStream);
@@ -768,7 +768,8 @@ final class ElizaBionicInferenceServer {
             residentDrafterPath = effectiveDrafterPath;
             residentPrevTokens = null;
         }
-        final int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+        final int[] toks = ElizaVoiceNative.nativeTokenizeUtf8(
+            residentCtx, BionicChatPrompt.utf8(prompt), true, true);
         // Longest common token prefix with the previous turn, capped so at least
         // one new token is prefilled (the decode samples from the last prefilled
         // position's logits, so the suffix must be non-empty).
@@ -825,12 +826,14 @@ final class ElizaBionicInferenceServer {
     }
 
     /** Computes a complete GTE embedding without replacing resident chat state. */
-    private String embedDedicated(String bundleDir, String text) throws org.json.JSONException {
+    private String embedDedicated(String bundleDir, String text)
+            throws org.json.JSONException, java.nio.charset.CharacterCodingException {
         synchronized (residentLock) {
             final long context = ElizaVoiceNative.nativeContextCreate(bundleDir);
             if (context == 0L) throw new IllegalStateException("Dedicated embedding context could not load");
             try {
-                final int[] tokens = ElizaVoiceNative.nativeTokenize(context, text, true, false);
+                final byte[] utf8 = BionicChatPrompt.utf8(text);
+                final int[] tokens = ElizaVoiceNative.nativeTokenizeUtf8(context, utf8, true, false);
                 // Match the native context override as well as the packaged
                 // encoder boundary before calling the older clipping ABI.
                 final int contextLimit = dedicatedEmbeddingContextLimit(System.getenv("ELIZA_EMBED_N_CTX"));
@@ -840,7 +843,7 @@ final class ElizaBionicInferenceServer {
                     throw new IllegalArgumentException("EMBEDDING_INPUT_TOO_LARGE: input contains " + tokens.length
                         + " tokens; configured GTE context supports " + contextLimit
                         + ". Split the complete source into explicit chunks.");
-                final float[] embedding = ElizaVoiceNative.nativeEmbed(context, text, 1);
+                final float[] embedding = ElizaVoiceNative.nativeEmbedUtf8(context, utf8, 1);
                 if (embedding.length != 384)
                     throw new IllegalStateException("Dedicated GTE embedding has unexpected dimension " + embedding.length);
                 boolean nonzero = false;
@@ -868,12 +871,13 @@ final class ElizaBionicInferenceServer {
      * memory churn each), which starved the LLM context on 8 GB devices. Single
      * forward pass, no autoregressive decode. Returns {ok, embedding:[...], dim}.
      */
-    private String embed(String bundleDir, String text) throws org.json.JSONException {
+    private String embed(String bundleDir, String text)
+            throws org.json.JSONException, java.nio.charset.CharacterCodingException {
         final int POOLING_LAST = 3;
         synchronized (residentLock) {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
-                float[] emb = ElizaVoiceNative.nativeEmbed(ctx, text, POOLING_LAST);
+                float[] emb = ElizaVoiceNative.nativeEmbedUtf8(ctx, BionicChatPrompt.utf8(text), POOLING_LAST);
                 org.json.JSONArray arr = new org.json.JSONArray();
                 for (float v : emb) {
                     arr.put((double) v);

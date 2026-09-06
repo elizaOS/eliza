@@ -150,6 +150,45 @@ describe("deriveBundleDir", () => {
 });
 
 describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
+	it("sends complete structured messages to the native formatter without a raw prompt", async () => {
+		const messages = [
+			{
+				role: "user" as const,
+				content: ` 🦊\n${"context\n".repeat(10000)}tail `,
+			},
+		];
+		host = startHost(SOCK, (request) => {
+			expect(request.messages).toEqual(messages);
+			expect(request).not.toHaveProperty("prompt");
+			expect(request.enableThinking).toBe(false);
+			return JSON.stringify({
+				ok: true,
+				incomplete: false,
+				text: "complete reply",
+				tokens: 3,
+			});
+		});
+		const loader = new BionicHostLoader(SOCK);
+		expect(
+			await loader.generateChat({
+				messages,
+				maxTokens: 3,
+				providerOptions: { eliza: { thinking: "off" } },
+			}),
+		).toBe("complete reply");
+	});
+
+	it.each([
+		{ ok: true, text: "missing status" },
+		{ ok: true, incomplete: false },
+		{ ok: true, incomplete: true, text: "unfinished" },
+	])("rejects incomplete native chat responses %j", async (response) => {
+		host = startHost(SOCK, () => JSON.stringify(response));
+		await expect(
+			new BionicHostLoader(SOCK).generateChat({ prompt: "question" }),
+		).rejects.toThrow();
+	});
+
 	it("round-trips a buffered generate and returns the host completion", async () => {
 		let seen: Record<string, unknown> | null = null;
 		host = startHost(SOCK, (req) => {

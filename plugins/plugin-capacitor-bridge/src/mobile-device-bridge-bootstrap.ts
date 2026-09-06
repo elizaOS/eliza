@@ -43,6 +43,10 @@ import {
 	ServiceType,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
+import { buildBionicChatInput } from "./bionic-chat-messages";
+
+export { buildBionicChatInput } from "./bionic-chat-messages";
+
 import { imageUrlToBase64 } from "./image-url-to-base64.ts";
 import { downloadHttpModel } from "./shared/http-model-download.ts";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
@@ -1437,6 +1441,8 @@ const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 interface BionicGenerateResponse {
 	ok: boolean;
+	incomplete?: boolean;
+	finishReason?: string;
 	text?: string;
 	error?: string;
 	tokens?: number;
@@ -1806,17 +1812,18 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		const bionicSock = bionicSocketName();
 		if (bionicSock) {
 			const installed = resolveLocalLoadArgs(slot);
+			const chat = buildBionicChatInput(params);
 			const lane = resolveMobileLaneBudget(
 				priority,
-				buildGemmaBionicPrompt(params),
+				JSON.stringify(chat.messages),
 				params.maxTokens,
 			);
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				drafterPath: installed?.draftModelPath ?? "",
-				prompt: lane.prompt,
-				maxTokens: lane.maxTokens ?? 256,
-				stopSequences: resolveBionicStopSequences(params.stopSequences),
+				...chat,
+				...(lane.maxTokens === undefined ? {} : { maxTokens: lane.maxTokens }),
+				stopSequences: params.stopSequences ?? [],
 			};
 			const res = await getInferencePriorityGate().runExclusive(
 				{
@@ -1854,14 +1861,22 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				},
 			);
 			if (!res.ok) {
-				throw new Error(
-					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
+				throw new ElizaError(
+					`Bionic host generation failed: ${res.error ?? "missing native error detail"}`,
+					{ code: "BIONIC_GENERATION_FAILED" },
 				);
 			}
-			if (
-				typeof res.tokens === "number" &&
-				res.tokens >= baseRequest.maxTokens
-			) {
+			if (typeof res.text !== "string") {
+				throw new ElizaError("Bionic chat returned no complete text", {
+					code: "BIONIC_COMPLETION_TEXT_MISSING",
+				});
+			}
+			if (typeof res.incomplete !== "boolean") {
+				throw new ElizaError("Bionic chat returned no completion status", {
+					code: "BIONIC_COMPLETION_STATUS_MISSING",
+				});
+			}
+			if (res.incomplete) {
 				throw new ElizaError(
 					"Bionic local model output reached the decode boundary before a stop condition",
 					{
@@ -1878,7 +1893,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 					`[mobile-device-bridge] bionic GPU generate: ${res.tokens ?? "?"} tok @ ${res.tokS.toFixed(1)} tok/s`,
 				);
 			}
-			return res.text ?? "";
+			return res.text;
 		}
 
 		// Device-bridge (renderer WebSocket) path: needs a real on-device model

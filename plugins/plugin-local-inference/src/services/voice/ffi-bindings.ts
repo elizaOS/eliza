@@ -127,8 +127,11 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     binding is unchanged. Until the JS Kokoro path adopts the allocation
  *     entries it intentionally keeps using the v14 caller-buffer functions;
  *     v14 libraries therefore remain valid at that degraded capability.
+ *
+ * v16 adds model-owned chat formatting for native mobile callers. The existing
+ *     voice and embedding functions are unchanged; v15 remains compatible.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 15 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 16 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -2037,6 +2040,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		// ABI v16 adds model-owned chat formatting without changing this binding's
+		// voice, embedding, or generation calls. Existing v15 libraries remain valid.
+		reported === "15" ||
 		// ABI v15 only adds optional exact-size Kokoro PCM allocation symbols.
 		// The binding still uses the unchanged v14 caller-owned-buffer surface,
 		// so a v14 library is explicitly compatible at degraded capability.

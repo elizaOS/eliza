@@ -29,6 +29,10 @@ process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS = String(
 	CONFIGURED_GENERATE_TIMEOUT_MS,
 );
 
+// Resolve the environment-dependent module before timing the live RPC contract.
+// Cold source transformation must not consume the transport test's deadline.
+const bridge = await import("./mobile-device-bridge-bootstrap");
+
 afterAll(() => {
 	for (const [key, value] of Object.entries(savedEnv)) {
 		if (value === undefined) delete process.env[key];
@@ -65,7 +69,6 @@ async function waitFor(
 
 describe("mobile device bridge activation-time timeout wiring", () => {
 	it("uses the exact configured ELIZA_DEVICE_GENERATE_TIMEOUT_MS for a live generate() call", async () => {
-		const bridge = await import("./mobile-device-bridge-bootstrap");
 		const server = http.createServer((_req, res) => res.end("ok"));
 		let socket: WebSocket | null = null;
 		let pendingGenerate: Promise<string> | null = null;
