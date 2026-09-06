@@ -1,13 +1,12 @@
-// Fixture for the home-screen e2e: mounts the REAL HomeScreen — including the
-// REAL unified home-slot WidgetHost (#9143), its per-plugin widget components,
-// and the pinned dashboard notification center (NotificationsHomeCenter) — over
-// the real ShaderBackground (flat orange + edge pulse). The widgets are fed by
-// injected DATA only: the app-store plugins snapshot + notification store are
-// seeded, and `window.fetch` is mocked, all BEFORE first render so the widgets
-// resolve and populate on mount. Paired with run-home-screen-e2e.mjs.
+/**
+ * Mounts the real HomeScreen, notification center, and plugin widgets for
+ * browser interaction tests. Deterministic API data and hydrated stores model
+ * both quiet and attention states before the first render.
+ */
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
+import { __setHydratedForTests } from "../../../state/notifications/notification-store";
 
 import {
   installHomeWidgetFetchMock,
@@ -25,6 +24,7 @@ import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
 seedHomeWidgetAppStore();
 seedHomeWidgetNotifications();
 installHomeWidgetFetchMock();
+__setHydratedForTests(true);
 
 const params =
   typeof location !== "undefined"
