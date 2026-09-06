@@ -3263,6 +3263,13 @@ export class ElizaSandboxService {
         .update(agentSandboxes)
         .set({
           status: "deletion_pending",
+          // Consume queued cancellation authority before any provider effect.
+          // A failed job can be requeued after teardown; its old bridge URL
+          // must not make that generation reversible again.
+          deletion_previous_status: null,
+          deletion_previous_billing_status: null,
+          deletion_previous_shutdown_warning_sent_at: null,
+          deletion_previous_scheduled_shutdown_at: null,
           deletion_attempt_id: deletionAttemptId,
           ...(rec.deletion_started_at === null ? { deletion_started_at: deletionStartedAt } : {}),
           ...(isDeletionContinuation(rec)
@@ -3621,9 +3628,9 @@ export class ElizaSandboxService {
         error: "Agent deletion does not have a reversible running-state receipt",
       };
     }
-    // A running receipt plus a live bridge proves the workload still matches
-    // the state being restored. Legacy deletion rows have no receipt and are
-    // refused above; a missing bridge means teardown may already have begun.
+    // Only unconsumed queued cancellation authority permits restoration.
+    // The stored bridge is a locator, not proof of liveness; teardown admission
+    // consumes the receipt even when its job later fails or is requeued.
     if (!rec.bridge_url) {
       return {
         success: false,
