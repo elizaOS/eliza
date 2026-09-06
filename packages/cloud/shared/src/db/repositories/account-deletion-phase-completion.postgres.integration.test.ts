@@ -24,7 +24,7 @@ async function fixture(expires: string | null) {
   ]);
   await database.query(
     `INSERT INTO account_deletion_phase_receipts(id,request_id,phase,status,lease_generation,lease_expires_at,lease_owner_digest)
-    VALUES($1,$2,'stripe','calling',3,$3,'worker')`,
+    VALUES($1,$2,'compute_containers','calling',3,$3,'worker')`,
     [phaseReceiptId, requestId, expires],
   );
   return {

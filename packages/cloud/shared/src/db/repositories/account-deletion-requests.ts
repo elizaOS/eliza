@@ -964,10 +964,30 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
+      const [observedPhase] = await tx
+        .select({ phase: accountDeletionPhaseReceipts.phase })
+        .from(accountDeletionPhaseReceipts)
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+          ),
+        );
+      if (!observedPhase) return false;
+      if (observedPhase.phase === "stripe") {
+        const [authority] = await tx
+          .select({
+            valid: sql<boolean>`lock_app_billing_deletion_completion(${input.requestId}::uuid,${input.phaseReceiptId}::uuid,${input.generation})`,
+          })
+          .from(accountDeletionRequests)
+          .where(eq(accountDeletionRequests.id, input.requestId));
+        if (!authority || !authority.valid) return false;
+      }
       const request = await lockAccountDeletionRequest(tx, input.requestId);
       if (!request || request.status !== "processing") return false;
       const [phase] = await tx
         .select({
+          name: accountDeletionPhaseReceipts.phase,
           status: accountDeletionPhaseReceipts.status,
           generation: accountDeletionPhaseReceipts.lease_generation,
           expiresAt: accountDeletionPhaseReceipts.lease_expires_at,
@@ -983,6 +1003,7 @@ export class AccountDeletionRequestsRepository {
       const databaseNow = await readPostLockDatabaseNow(tx);
       if (
         !phase ||
+        phase.name !== observedPhase.phase ||
         phase.generation !== input.generation ||
         !["leased", "calling", "reconciling"].includes(phase.status) ||
         phase.expiresAt === null ||

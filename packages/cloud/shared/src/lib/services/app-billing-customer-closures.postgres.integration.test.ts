@@ -81,7 +81,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
     CREATE TABLE organizations(id uuid PRIMARY KEY,account_deletion_request_id uuid,account_lifecycle_revision bigint NOT NULL DEFAULT 0,is_active boolean NOT NULL DEFAULT true,account_lifecycle_state text NOT NULL DEFAULT 'active',paid_work_fenced_at timestamptz,stripe_customer_id text,credit_balance numeric NOT NULL DEFAULT 0);
       CREATE TABLE users(id uuid PRIMARY KEY,account_deletion_request_id uuid,account_lifecycle_revision bigint NOT NULL DEFAULT 0,is_active boolean NOT NULL DEFAULT true,deleted_at timestamptz,email_verified boolean NOT NULL DEFAULT true,is_anonymous boolean NOT NULL DEFAULT false,organization_id uuid,role text NOT NULL DEFAULT 'member',expires_at timestamptz,account_lifecycle_state text NOT NULL DEFAULT 'active',auth_fenced_at timestamptz);
       CREATE TABLE account_deletion_requests(id uuid PRIMARY KEY,user_id uuid,organization_id uuid,request_digest text,lifecycle_revision bigint,irreversible_at timestamp,status text);
-      CREATE TABLE account_deletion_phase_receipts(id uuid PRIMARY KEY,request_id uuid REFERENCES account_deletion_requests(id),phase text,lease_generation bigint,lease_expires_at timestamp,status text);
+      CREATE TABLE account_deletion_phase_receipts(id uuid PRIMARY KEY,request_id uuid REFERENCES account_deletion_requests(id),phase text,lease_generation bigint,lease_expires_at timestamp,status text,lease_owner_digest text,provider_receipt_digest text,provider_acknowledged_at timestamp,reconciled_at timestamp,completed_at timestamp,retry_class text,next_attempt_at timestamp,last_error_code text,updated_at timestamp);
       CREATE TABLE apps(id uuid PRIMARY KEY,name text NOT NULL DEFAULT 'Independent app',app_url text NOT NULL DEFAULT 'https://app.example',allowed_origins jsonb NOT NULL DEFAULT '["https://app.example"]',organization_id uuid NOT NULL REFERENCES organizations(id),is_active boolean NOT NULL DEFAULT true,is_approved boolean NOT NULL DEFAULT true,review_status text NOT NULL DEFAULT 'approved');
       CREATE TABLE credit_transactions(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),CONSTRAINT credit_transactions_id_org_idx UNIQUE(id,organization_id));
     `);
@@ -130,8 +130,14 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0442_app_billing_customer_execution_lease",
       "0443_app_billing_customer_completion_guard",
       "0444_app_billing_customer_command_guard",
+      "0445_app_billing_refund_observations",
+      "0446_app_billing_refund_recovery_authority",
+      "0447_app_billing_refund_observation_guards",
       "0448_app_billing_customer_retention",
+      "0449_app_billing_refund_actor_recovery",
       "0450_app_billing_observed_customer_retention",
+      "0451_app_billing_refund_phase_obligations",
+      "0452_app_billing_completion_owner_locks",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -972,5 +978,113 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
         )
       ).rows[0].count,
     ).toBe(2);
+  });
+  test("Stripe completion waits for the app owner before taking the phase lock", async () => {
+    const source = await buyer();
+    const auth = await deletion(source.identity.actorUserId);
+    const { accountDeletionRequestsRepository } = await import(
+      "../../db/repositories/account-deletion-requests"
+    );
+    const holder = new Client({ connectionString: postgresUrl });
+    await holder.connect();
+    await holder.query(`SET search_path TO ${schema},public`);
+    await holder.query("BEGIN");
+    let holding = true;
+    try {
+      await holder.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [org]);
+      const pid = (await holder.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      let settled = false;
+      // error-policy:J1 Observe repository failure while the competing transaction must release its owner lock.
+      const completion = accountDeletionRequestsRepository
+        .completeProviderPhase({
+          requestId: auth.requestId,
+          phaseReceiptId: auth.phaseReceiptId,
+          generation: auth.phaseGeneration,
+          providerReceiptDigest: "b".repeat(64),
+          now: new Date("2000-01-01T00:00:00Z"),
+        })
+        .then(
+          (value) => {
+            settled = true;
+            return { value };
+          },
+          (error) => {
+            settled = true;
+            return { error };
+          },
+        );
+      let blocked = false;
+      try {
+        const deadline = Date.now() + 60000;
+        while (!settled && Date.now() < deadline) {
+          if (
+            (
+              await db.query(
+                "SELECT pid FROM pg_stat_activity WHERE $1::int=ANY(pg_blocking_pids(pid))",
+                [pid],
+              )
+            ).rowCount
+          ) {
+            blocked = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        if (blocked)
+          await holder.query(
+            "UPDATE account_deletion_phase_receipts SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+            [auth.phaseReceiptId],
+          );
+      } finally {
+        await holder.query("COMMIT");
+        holding = false;
+      }
+      const result = await completion;
+      if ("error" in result) throw result.error;
+      expect(blocked).toBe(true);
+      expect(result.value).toBe(false);
+      expect(
+        (
+          await db.query(
+            "SELECT status,provider_receipt_digest FROM account_deletion_phase_receipts WHERE id=$1",
+            [auth.phaseReceiptId],
+          )
+        ).rows[0],
+      ).toEqual({ status: "calling", provider_receipt_digest: null });
+    } finally {
+      if (holding) await holder.query("ROLLBACK");
+      await holder.end();
+    }
+  });
+  test("Stripe completion with no app obligations preserves current phase authority", async () => {
+    const userId = randomUUID();
+    await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
+    const auth = await deletion(userId);
+    const { accountDeletionRequestsRepository } = await import(
+      "../../db/repositories/account-deletion-requests"
+    );
+    const input = {
+      requestId: auth.requestId,
+      phaseReceiptId: auth.phaseReceiptId,
+      generation: auth.phaseGeneration,
+      providerReceiptDigest: "c".repeat(64),
+      now: new Date("2000-01-01T00:00:00Z"),
+    };
+    expect(
+      await accountDeletionRequestsRepository.completeProviderPhase({
+        ...input,
+        generation: auth.phaseGeneration + 1,
+      }),
+    ).toBe(false);
+    expect(await accountDeletionRequestsRepository.completeProviderPhase(input)).toBe(true);
+    expect(await accountDeletionRequestsRepository.completeProviderPhase(input)).toBe(false);
+    expect(
+      (
+        await db.query(
+          "SELECT status,provider_receipt_digest FROM account_deletion_phase_receipts WHERE id=$1",
+          [auth.phaseReceiptId],
+        )
+      ).rows[0],
+    ).toEqual({ status: "completed", provider_receipt_digest: input.providerReceiptDigest });
   });
 });
