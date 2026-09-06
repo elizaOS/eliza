@@ -316,6 +316,8 @@ export interface SandboxProvider {
    * lifecycle authority before dispatch; a receipt does not authorize cleanup.
    */
   captureRetainedContainer?(locator: SandboxRetainedCaptureLocator): Promise<string>;
+  /** Requires health from the captured physical container, independently of ingress readiness. */
+  checkRetainedContainerHealth?(locator: SandboxRetainedStopLocator): Promise<boolean>;
   resumeRetainedContainer?(
     locator: SandboxRetainedStopLocator,
   ): Promise<SandboxRetainedResumeReceipt>;
