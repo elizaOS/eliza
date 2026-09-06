@@ -1,3 +1,5 @@
+# Legacy shared-state location, retained for migration readback only.
+# The current module uses backend-<environment>.hcl for new isolated resources.
 # Cloudflare R2 backend (S3-compatible) for terraform state — apps-shared.
 # Single shared backend file: this module is NOT per-env (one private network +
 # one tenant Postgres node are shared across staging + production app nodes).

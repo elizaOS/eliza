@@ -1,32 +1,13 @@
-###############################################################################
-# Eliza Cloud Apps (Product 2) — SHARED data-plane resources (Hetzner)
-#
-# This module owns the resources that are shared across staging + production
-# app nodes:
-#   - the PRIVATE network + subnet (10.30.0.0/16 — no overlap with agents);
-#   - the TENANT POSTGRES node (thousands of DATABASE+ROLE, REVOKE CONNECT per
-#     tenant) reachable ONLY on the private net — never public;
-#   - admin DSN for the tenant DB.
-#
-# Per-env app worker nodes (and their wildcard DNS record) live in the
-# apps-data-plane module, which reads this module's outputs via a
-# `terraform_remote_state` data source.
-#
-# Why split? The tenant DB + private net are physically a single shared piece
-# of infra in the apps Hetzner project — one network, one Postgres node holds
-# both staging and production tenant DBs (alpha scale). Keeping them in their
-# own state file means:
-#   - staging vs prod apply rounds can't accidentally rebuild the tenant DB;
-#   - app-node-only changes don't touch the shared backend.
-#
-# The Hetzner server name is intentionally "eliza-app-tenant" (no env suffix)
-# because the resource is shared — there is one tenant DB, not two.
-###############################################################################
+# Owns the network, persistent database volume and PostgreSQL host for one
+# environment. App workers consume its environment-attested state separately.
+# Existing shared databases require data migration before routing cutover;
+# applying this root to a new backend does not copy their data.
 
 locals {
   common_labels = {
-    "managed-by" = "eliza-cloud"
-    "tier"       = "apps-shared"
+    "managed-by"  = "eliza-cloud"
+    "tier"        = "apps-shared"
+    "environment" = var.environment
   }
 
   # Off-host backup pipeline (#21729): armed only when the full credential set
@@ -59,15 +40,10 @@ resource "random_password" "pgbouncer_auth" {
   special = false
 }
 
-# Operator/daemon SSH access is provisioned by cloud-init: each node's `deploy`
-# user gets `var.ssh_public_keys` in its authorized_keys (see cloud-init/*.tftpl).
-# We do NOT register an `hcloud_ssh_key` here: the apps Hetzner project is
-# shared, and registering the key out-of-band via Hetzner Console keeps both
-# this module + apps-data-plane from racing on the same `eliza-op-*` key.
-
-# ── Private network: apps + tenant DB only; isolated from the agent plane ─────
+# Cloud-init installs the supplied operator keys for the deploy account.
+# The private network belongs to this environment's apps project.
 resource "hcloud_network" "apps" {
-  name              = "eliza-apps"
+  name              = "eliza-apps-${var.environment}"
   ip_range          = var.network_cidr
   labels            = local.common_labels
   delete_protection = true
@@ -90,7 +66,7 @@ resource "hcloud_network_subnet" "apps" {
 
 # ── Block storage for all tenant databases (PGDATA) ───────────────────────────
 resource "hcloud_volume" "tenant_db_data" {
-  name              = "eliza-app-tenant-data"
+  name              = "eliza-app-tenant-${var.environment}-data"
   size              = var.tenant_db_volume_size_gb
   location          = var.hcloud_location
   format            = "ext4"
@@ -113,7 +89,7 @@ resource "hcloud_volume" "tenant_db_data" {
 # Tenant DB node: NO public Postgres. SSH from operators only; Postgres (5432)
 # is reachable solely on the private network (no firewall rule opens it publicly).
 resource "hcloud_firewall" "tenant_db" {
-  name   = "eliza-app-tenant"
+  name   = "eliza-app-tenant-${var.environment}"
   labels = local.common_labels
 
   rule {
@@ -131,14 +107,8 @@ resource "hcloud_firewall" "tenant_db" {
   }
 }
 
-# ── Tenant Postgres node ──────────────────────────────────────────────────────
-# Name is intentionally bare `eliza-app-tenant` — no env suffix — because this
-# server is shared across staging + production. lifecycle.ignore_changes
-# includes `name` so Hetzner-side renames (e.g. legacy `eliza-apps-tenantdb-
-# staging` left over from the pre-shared layout) don't cause drift; operators
-# can rename via the Hetzner Console at their discretion (cosmetic only).
 resource "hcloud_server" "tenant_db" {
-  name               = "eliza-app-tenant"
+  name               = "eliza-app-tenant-${var.environment}"
   location           = var.hcloud_location
   server_type        = var.tenant_db_server_type
   image              = var.hcloud_image
@@ -149,7 +119,8 @@ resource "hcloud_server" "tenant_db" {
   labels             = merge(local.common_labels, { "role" = "tenant-db" })
 
   user_data = templatefile("${path.module}/cloud-init/tenant-db.yaml.tftpl", {
-    hostname                = "eliza-app-tenant"
+    hostname                = "eliza-app-tenant-${var.environment}"
+    tenant_db_volume_device = "/dev/disk/by-id/scsi-0HC_Volume_${hcloud_volume.tenant_db_data.id}"
     admin_password          = random_password.tenant_db_admin.result
     pgbouncer_auth_password = random_password.pgbouncer_auth.result
     operator_ssh_keys       = var.ssh_public_keys
