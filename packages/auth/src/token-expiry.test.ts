@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { classifyAuthFailureReason, isTokenExpiryText } from "./token-expiry";
+import {
+  classifyAuthFailureReason,
+  isRateLimitText,
+  isTokenExpiryText,
+} from "./token-expiry";
 
 describe("access-token expiry classification", () => {
   it.each([
@@ -31,6 +35,21 @@ describe("access-token expiry classification", () => {
   ])("recognizes explicit expiry text: %s", (text) => {
     expect(isTokenExpiryText(text)).toBe(true);
     expect(classifyAuthFailureReason(text)).toBe("token_expired");
+  });
+
+  it.each([
+    "429 Too Many Requests",
+    "rate limit exceeded",
+    "rate_limit_exceeded",
+    "RATE_LIMITED",
+    "too many requests",
+    "quota exceeded",
+    "resource exhausted",
+    "usage limit reached",
+    "credit limit exceeded",
+  ])("recognizes explicit rate-limiting text: %s", (text) => {
+    expect(isRateLimitText(text)).toBe(true);
+    expect(classifyAuthFailureReason(text)).toBe("rate_limited");
   });
 
   it.each([
