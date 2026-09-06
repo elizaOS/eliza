@@ -812,7 +812,6 @@ export async function buildNode(
 		buildOptions: {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
@@ -832,6 +831,22 @@ export async function buildNode(
 	});
 
 	await runNode();
+	// This leaf is shared with browser SDKs; a Node-target build injects a
+	// createRequire shim even though the error contract needs no Node APIs.
+	await runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/errors.ts`],
+			outdir: "dist/node",
+			target: "browser",
+			format: "esm",
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			selfPackageName: "@elizaos/core",
+		},
+	})();
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Node.js build complete in ${duration}s`);
@@ -1640,6 +1655,34 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			"dist/security/kms.js",
 			"dist/security/mcp-server-config.js",
 		];
+		const errorConsumer = join(contractRoot, "browser-errors-entry.js");
+		await fs.writeFile(
+			errorConsumer,
+			[
+				'import { ElizaError, isElizaError, toElizaError } from "@elizaos/core/errors";',
+				'const cause = new Error("request failed");',
+				'const failure = new ElizaError("login unavailable", { code: "LOGIN_UNAVAILABLE", cause, context: { operation: "refresh" } });',
+				'if (!isElizaError(failure) || failure.code !== "LOGIN_UNAVAILABLE" || failure.cause !== cause || failure.context.operation !== "refresh") throw new Error("browser error lost diagnostic context");',
+				'if (toElizaError(failure) !== failure || toElizaError(cause, "LOGIN_FAILED").cause !== cause) throw new Error("browser error normalization lost identity or cause");',
+			].join("\n"),
+		);
+		const browserErrors = await Bun.build({
+			entrypoints: [errorConsumer],
+			target: "browser",
+			format: "iife",
+			write: false,
+		});
+		if (!browserErrors.success) {
+			throw new AggregateError(
+				browserErrors.logs,
+				"Packed browser error contract failed to bundle",
+			);
+		}
+		const { runInNewContext } = await import("node:vm");
+		runInNewContext(await browserErrors.outputs[0].text(), Object.create(null));
+		console.log(
+			"✅ Packed error contract executes without Node globals or shims",
+		);
 		for (const flatFile of expectedFlatFiles) {
 			if (!(await isFile(join(packageRoot, flatFile)))) {
 				throw new Error(`packed @elizaos/core is missing ${flatFile}`);
