@@ -294,6 +294,32 @@ export function formatPhoneNumber(phone: string): string {
 }
 
 /**
+ * Canonical outbound-target spelling shared by the connector send path and
+ * the membership send gate: strips scheme prefixes, canonicalizes chat-id
+ * grammars, lowercases emails, and E.164-formats phone numbers so the same
+ * counterparty resolves to one gate key regardless of how the caller
+ * spelled it. Returns "" when the input trims to nothing.
+ */
+export function normalizeIMessageConnectorHandle(
+  value: string,
+  normalizeContact: (raw: string) => string
+): string {
+  const stripped = value
+    .trim()
+    .replace(/^(?:messages?|sms|text):/i, "")
+    .trim();
+  const normalizedTarget = normalizeIMessageTarget(stripped) ?? stripped;
+  if (!normalizedTarget) return "";
+  if (normalizedTarget.startsWith("chat_id:")) return normalizedTarget;
+  if (/^(?:imessage|sms|rcs);/i.test(normalizedTarget)) {
+    return `chat_id:${normalizedTarget}`;
+  }
+  if (isEmail(normalizedTarget)) return normalizedTarget.toLowerCase();
+  if (isPhoneNumber(normalizedTarget)) return formatPhoneNumber(normalizedTarget);
+  return normalizeContact(normalizedTarget) || normalizedTarget;
+}
+
+/**
  * Split text for iMessage
  */
 // truncateWellFormed(text, 1) returns "" when text opens with a surrogate

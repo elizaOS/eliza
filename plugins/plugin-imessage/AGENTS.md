@@ -4,7 +4,7 @@ iMessage connector for Eliza agents using native macOS Messages or a channel-iso
 
 ## Purpose / role
 
-Adds iMessage send/receive capability through either local macOS Messages or Blooio. `IMessageService` polls `~/Library/Messages/chat.db` and uses `osascript` in native mode; in Blooio mode it verifies signed webhook deliveries, requires an exact configured channel id, and sends through the v4 message API. It registers the same `MessageConnector` in both modes.
+Adds iMessage send/receive capability to an Eliza agent running on macOS without an external bridge, third-party daemon, network service, or auxiliary CLI. The plugin registers `IMessageService`, which polls `~/Library/Messages/chat.db` for inbound messages and delivers outbound messages through the built-in `osascript` interface to Messages.app. It also registers the service as a `MessageConnector` so the standard `MESSAGE` operation routes through it. Auto-enabled when `config.connectors.imessage` is present and not explicitly disabled; opt-in otherwise.
 
 ## Plugin surface
 
