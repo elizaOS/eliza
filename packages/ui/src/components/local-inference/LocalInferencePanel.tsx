@@ -2,7 +2,7 @@
  * Top-level local-inference settings surface: the model hub (curated catalog +
  * download queue), active-model bar, hardware badge, connected device bridges,
  * and the voice sub-model updater. Streams live download/active deltas over SSE
- * and drives the hub through the local-inference API client.
+ * and falls back to authenticated API snapshots when streaming is unavailable.
  */
 
 import type { VoiceModelId } from "@elizaos/shared";
@@ -56,15 +56,20 @@ export function LocalInferencePanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<HubTab>("curated");
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const [pollSnapshots, setPollSnapshots] = useState(true);
+  const refreshGeneration = useRef(0);
   const deviceBridgeStatus = useDeviceBridgeStatus();
 
   const refresh = useCallback(async () => {
+    const generation = refreshGeneration.current;
     try {
       const snapshot = await client.getLocalInferenceHub();
+      if (generation !== refreshGeneration.current) return;
       setHub(snapshot);
       setError(null);
     } catch (err) {
+      // error-policy:J4 Snapshot failure remains visible until a successful refresh.
+      if (generation !== refreshGeneration.current) return;
       setError(
         err instanceof Error
           ? err.message
@@ -77,7 +82,25 @@ export function LocalInferencePanel() {
 
   useEffect(() => {
     void refresh();
+    return () => {
+      refreshGeneration.current += 1;
+    };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!pollSnapshots) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await refresh();
+      if (!stopped) timer = setTimeout(poll, 2000);
+    };
+    timer = setTimeout(poll, 2000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [pollSnapshots, refresh]);
 
   useEffect(() => {
     // Subscribe to server-side progress updates. EventSource doesn't allow
@@ -85,11 +108,16 @@ export function LocalInferencePanel() {
     // route's `isStreamAuthorized` accepts either source.
     const url = resolveApiUrl("/api/local-inference/downloads/stream");
     const withToken = appendTokenParam(url);
-    // On-device runtimes are reached over the native IPC base, which
-    // EventSource cannot open; skip live updates there rather than throwing.
+    // Native IPC and header-only authentication cannot use EventSource.
+    // Keep fetching through the authenticated client until the stream opens.
     const es = openEventSource(withToken, { withCredentials: false });
-    eventSourceRef.current = es;
+    setPollSnapshots(true);
     if (!es) return;
+
+    es.onopen = () => {
+      setPollSnapshots(false);
+      void refresh();
+    };
 
     es.onmessage = (event) => {
       try {
@@ -137,28 +165,26 @@ export function LocalInferencePanel() {
             void refresh();
           }
         }
-      } catch {
-        // Ignore malformed events rather than blow away the panel.
+      } catch (error) {
+        // error-policy:J3 Reject malformed stream data and recover from an API snapshot.
+        reportRendererDiagnostic({ scope: "local-inference.stream", error });
+        setPollSnapshots(true);
       }
     };
 
     es.onerror = () => {
-      // EventSource auto-reconnects; we only surface the error if it
-      // outright closes.
-      if (es.readyState === EventSource.CLOSED) {
-        setError(
-          t("localinference.liveDisconnected", {
-            defaultValue: "Live updates disconnected",
-          }),
-        );
-      }
+      // A reconnecting stream may be unauthorized indefinitely. API snapshots
+      // preserve progress without exposing native credentials to EventSource.
+      setPollSnapshots(true);
     };
 
     return () => {
+      es.onopen = null;
+      es.onmessage = null;
+      es.onerror = null;
       es.close();
-      eventSourceRef.current = null;
     };
-  }, [refresh, t]);
+  }, [refresh]);
 
   const withBusy = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
@@ -180,6 +206,7 @@ export function LocalInferencePanel() {
     (modelId: string) => {
       void withBusy(async () => {
         await client.startLocalInferenceDownload(modelId);
+        await refresh();
         setActionNotice(
           t("localinference.downloadStarted", {
             defaultValue: "Download started",
@@ -189,16 +216,17 @@ export function LocalInferencePanel() {
         );
       });
     },
-    [setActionNotice, withBusy, t],
+    [refresh, setActionNotice, withBusy, t],
   );
 
   const handleCancel = useCallback(
     (modelId: string) => {
       void withBusy(async () => {
         await client.cancelLocalInferenceDownload(modelId);
+        await refresh();
       });
     },
-    [withBusy],
+    [refresh, withBusy],
   );
 
   const handleActivate = useCallback(
