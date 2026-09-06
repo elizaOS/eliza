@@ -8,28 +8,38 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Inspect sparse video pixels with runner FFmpeg
+      - name: Compare sparse fixture encodings
         shell: python
         run: |
-          import subprocess, json, pathlib, shutil, urllib.request, gzip, os
+          import subprocess, pathlib, shutil, urllib.request, gzip, os, json
           p=pathlib.Path('/tmp/keyframe-diagnostic'); p.mkdir()
-          def run(args):
-           return subprocess.run(args,check=True,capture_output=True).stdout
           if not shutil.which('ffmpeg'):
-              binary=p/'ffmpeg'
-              binary.write_bytes(gzip.decompress(urllib.request.urlopen('https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz').read()))
-              binary.chmod(0o755)
-              os.environ['PATH']=str(p)+os.pathsep+os.environ['PATH']
-          print(run(['ffmpeg','-version']).decode().splitlines()[0])
-          video=str(p/'sparse.mp4')
-          run(['ffmpeg','-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=red:s=64x64:r=10:d=0.1','-f','lavfi','-i','color=c=lime:s=64x64:r=10:d=0.1','-filter_complex','[0:v][1:v]concat=n=2:v=1,setpts=N*5/TB[v]','-map','[v]','-fps_mode','vfr','-pix_fmt','yuv420p','-r','10','-enc_time_base','1:10',video])
-          info=subprocess.run(['ffmpeg','-hide_banner','-i',video,'-vf','showinfo','-f','null','-'],capture_output=True,text=True,check=True)
-          print(info.stderr)
+           binary=p/'ffmpeg'; binary.write_bytes(gzip.decompress(urllib.request.urlopen('https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz').read())); binary.chmod(0o755); os.environ['PATH']=str(p)+os.pathsep+os.environ['PATH']
+          def run(args):
+           result=subprocess.run(['ffmpeg','-hide_banner','-loglevel','error',*args],capture_output=True)
+           if result.returncode: raise RuntimeError(result.stderr.decode())
+           return result.stdout
+          print(subprocess.check_output(['ffmpeg','-version'],text=True).splitlines()[0])
           def pixels(args):
-           raw=run(['ffmpeg','-hide_banner','-loglevel','error',*args,'-fps_mode','passthrough','-f','rawvideo','-pix_fmt','rgb24','pipe:1'])
+           raw=run([*args,'-fps_mode','passthrough','-f','rawvideo','-pix_fmt','rgb24','pipe:1'])
            return [list(raw[i:i+3]) for i in range(0,len(raw),64*64*3)]
-          print('source_pixels',pixels(['-i',video]))
-          for seek in [True,False]:
-           target=str(p/('seek.png' if seek else 'full.png'))
-           run(['ffmpeg','-hide_banner','-loglevel','error',*(['-sseof','-1'] if seek else []),'-i',video,'-fps_mode','passthrough','-update','1',target])
-           print('seek' if seek else 'full',pixels(['-i',target]) if pathlib.Path(target).exists() else 'missing')
+          for name,rate,duration,filter_tail,options in [
+           ('original','10','0.1',',setpts=N*5/TB',['-fps_mode','vfr']),
+           ('passthrough','10','0.1',',setpts=N*5/TB',['-fps_mode','passthrough']),
+           ('output-rate','10','0.1',',setpts=N*5/TB',['-fps_mode','vfr','-r','10']),
+           ('four-frame','10','0.2',',setpts=N*5/TB',['-fps_mode','vfr']),
+           ('explicit-filter-timebase','10','0.1',',settb=1/10,setpts=N*50',['-fps_mode','vfr','-enc_time_base','1:10']),
+           ('sparse-input','1/5','5','',['-fps_mode','vfr']),
+          ]:
+           try:
+            video=str(p/(name+'.mp4'))
+            inputs=[]
+            for color in ['red','lime']: inputs+=['-f','lavfi','-i',f'color=c={color}:s=64x64:r={rate}:d={duration}']
+            run([*inputs,'-filter_complex','[0:v][1:v]concat=n=2:v=1'+filter_tail+'[v]','-map','[v]',*options,'-pix_fmt','yuv420p',video])
+            result={'name':name,'source_pixels':pixels(['-i',video])}
+            for seek in [True,False]:
+             target=str(p/(name+('-seek.png' if seek else '-full.png')))
+             run([*(['-sseof','-1'] if seek else []),'-i',video,'-fps_mode','passthrough','-update','1',target])
+             result['seek' if seek else 'full']=pixels(['-i',target]) if pathlib.Path(target).exists() else None
+            print(json.dumps(result))
+           except Exception as e: print(json.dumps({'name':name,'error':str(e)}))
