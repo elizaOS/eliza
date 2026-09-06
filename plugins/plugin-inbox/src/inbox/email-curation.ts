@@ -1382,7 +1382,9 @@ export function calibrateEmailCurationConfidence(
   }
   for (const effect of input.policyEffects) {
     if (effect.kind === "lower_confidence") {
-      confidence -= effect.amount ?? 0.1;
+      const requestedAmount = effect.amount ?? 0.1;
+      const amount = Number.isFinite(requestedAmount) ? requestedAmount : 0.1;
+      confidence -= amount;
     }
   }
   if (hasUncitedStrongSemanticEvidence(input.evidence)) {
