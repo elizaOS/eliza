@@ -21,7 +21,10 @@ import {
   carryConfirmedStopReceiptAcrossClaimInTransaction,
   releaseAgentLifecycleBindingInTransaction,
 } from "./agent-compute-stop-intents";
-import { admitLocalRetentionInTransaction } from "./agent-local-state-retention";
+import {
+  admitLocalRetentionInTransaction,
+  assertRetainedNodePublicationAuthorityInTransaction,
+} from "./agent-local-state-retention";
 
 beforeAll(async () => {
   for (const statement of PROVISIONING_JOB_TEST_TABLES) await dbWrite.execute(sql.raw(statement));
@@ -988,3 +991,36 @@ test("successful ingress cannot publish an unhealthy retained container", async 
   expect(agent.bridge_url).toBeNull();
   expect(agent.local_state_retention?.containerId).toBe(captured.containerId);
 });
+
+test.each(["current", "replacement-node", "changed-ssh"] as const)(
+  "retained publication commits only against captured physical host authority (%s)",
+  async (scenario) => {
+    const { authority, captured } = await seed();
+    if (scenario === "replacement-node") {
+      await dbWrite.execute(
+        sql`UPDATE docker_nodes SET id = ${crypto.randomUUID()} WHERE node_id = ${captured.nodeId}`,
+      );
+    } else if (scenario === "changed-ssh") {
+      await dbWrite.execute(
+        sql`UPDATE docker_nodes SET host_key_fingerprint = 'SHA256:replacement' WHERE id = ${captured.nodeRecordId}`,
+      );
+    }
+    const publication = dbWrite.transaction(async (tx) => {
+      await tx
+        .update(agentSandboxes)
+        .set({ status: "stopped" })
+        .where(eq(agentSandboxes.id, authority.agentId));
+      await assertRetainedNodePublicationAuthorityInTransaction(tx, captured);
+    });
+    if (scenario === "current") await publication;
+    else
+      await expect(publication).rejects.toThrow(
+        "Retained node authority changed before publication",
+      );
+    const [observed] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, authority.agentId));
+    expect(observed.status).toBe(scenario === "current" ? "stopped" : "running");
+  },
+);
