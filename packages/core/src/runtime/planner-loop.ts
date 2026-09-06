@@ -7878,6 +7878,35 @@ const PLANNER_PROTOCOL_JSON_KEYS = new Set([
 	"effectReceiptIds",
 ]);
 
+const FAILURE_ENVELOPE_COMPANION_KEYS = new Set([
+	"code",
+	"message",
+	"status",
+	"statusCode",
+	"details",
+	"type",
+	"reason",
+	"errors",
+]);
+
+/**
+ * `{"error": "…"}` shaped like a provider or tool failure: `error` is a
+ * non-empty string or an object, and every other key is failure metadata.
+ * Data that merely has an `error` field ({"estimate":42,"error":0.2},
+ * {"error":null,"value":42} — review 2026-09-06) is not an envelope.
+ */
+function isFailureEnvelope(value: Record<string, unknown>): boolean {
+	if (!Object.hasOwn(value, "error")) return false;
+	const error = value.error;
+	const errorIsFailure =
+		(typeof error === "string" && error.trim().length > 0) ||
+		(error !== null && typeof error === "object");
+	if (!errorIsFailure) return false;
+	return Object.keys(value).every(
+		(key) => key === "error" || FAILURE_ENVELOPE_COMPANION_KEYS.has(key),
+	);
+}
+
 /**
  * Bare JSON that is the loop's own protocol rather than an answer: markers,
  * tool invocations (`name` + arguments, `action` + params), verdict and
@@ -7898,7 +7927,7 @@ function isPlannerProtocolJson(value: unknown): boolean {
 	// say) is a failure record, never a reply (live 2026-09-06 06:39: a
 	// synthesis pass returned {"error":"API key not found. Please set the
 	// QURATOR_API_KEY environment variable."} and it was delivered verbatim).
-	if (has("error") && keys.length <= 3) return true;
+	if (isFailureEnvelope(value as Record<string, unknown>)) return true;
 	// A chat transcript envelope ({"messages":[{"role","content"}]} or a bare
 	// {"role","content"} turn) is the wire format, not a reply (live 2026-09-06
 	// 03:03: a forced synthesis returned one and it was delivered verbatim).

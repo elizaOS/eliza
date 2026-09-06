@@ -1941,6 +1941,13 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		).toBe(true);
 		expect(
 			isUnsafeUserVisibleText(
+				'{"error":{"message":"rate limited","code":429}}',
+			),
+		).toBe(true);
+		expect(isUnsafeUserVisibleText('{"estimate":42,"error":0.2}')).toBe(false);
+		expect(isUnsafeUserVisibleText('{"error":null,"value":42}')).toBe(false);
+		expect(
+			isUnsafeUserVisibleText(
 				'{"messages":[{"role":"assistant","content":"Got it, forgotten."}]}',
 			),
 		).toBe(true);
