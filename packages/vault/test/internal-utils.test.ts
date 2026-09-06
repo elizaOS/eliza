@@ -9,6 +9,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "../src/internal-utils.js";
+import { normalizeRoutingRule } from "../src/profiles.js";
 
 describe("assertKey", () => {
   it("accepts valid keys up to 256 characters", () => {
@@ -101,5 +102,82 @@ describe("truncateWellFormed", () => {
 
     // Truncating at index 5 includes both surrogates ("abc\uD83D\uDE00")
     expect(truncateWellFormed(text, 5)).toBe("abc\uD83D\uDE00");
+  });
+});
+
+describe("normalizeRoutingRule", () => {
+  it("trims identifiers and normalizes valid routing rules", () => {
+    expect(
+      normalizeRoutingRule({
+        keyPattern: "  OPENROUTER_API_KEY  ",
+        scope: { kind: "agent", agentId: "  agent-1  " },
+        profileId: "  work  ",
+      }),
+    ).toEqual({
+      keyPattern: "OPENROUTER_API_KEY",
+      scope: { kind: "agent", agentId: "agent-1" },
+      profileId: "work",
+    });
+
+    expect(
+      normalizeRoutingRule({
+        keyPattern: "OPENROUTER_API_KEY",
+        scope: { kind: "app", appName: "  my-app  " },
+        profileId: "work",
+      }),
+    ).toEqual({
+      keyPattern: "OPENROUTER_API_KEY",
+      scope: { kind: "app", appName: "my-app" },
+      profileId: "work",
+    });
+
+    expect(
+      normalizeRoutingRule({
+        keyPattern: "OPENROUTER_API_KEY",
+        scope: { kind: "skill", skillId: "  skill-1  " },
+        profileId: "work",
+      }),
+    ).toEqual({
+      keyPattern: "OPENROUTER_API_KEY",
+      scope: { kind: "skill", skillId: "skill-1" },
+      profileId: "work",
+    });
+  });
+
+  it("rejects empty, internal, or whitespace-only rule entries", () => {
+    expect(
+      normalizeRoutingRule({
+        keyPattern: "   ",
+        scope: { kind: "agent", agentId: "agent-1" },
+        profileId: "work",
+      }),
+    ).toBeNull();
+
+    expect(
+      normalizeRoutingRule({
+        keyPattern: "_meta.OPENROUTER_API_KEY",
+        scope: { kind: "agent", agentId: "agent-1" },
+        profileId: "work",
+      }),
+    ).toBeNull();
+
+    expect(
+      normalizeRoutingRule({
+        keyPattern: "OPENROUTER_API_KEY",
+        scope: { kind: "agent", agentId: "   " },
+        profileId: "work",
+      }),
+    ).toBeNull();
+
+    expect(
+      normalizeRoutingRule({
+        keyPattern: "OPENROUTER_API_KEY",
+        scope: { kind: "agent", agentId: "agent-1" },
+        profileId: "   ",
+      }),
+    ).toBeNull();
+
+    expect(normalizeRoutingRule(null)).toBeNull();
+    expect(normalizeRoutingRule({})).toBeNull();
   });
 });
