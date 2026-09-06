@@ -1630,6 +1630,14 @@ describe("canonical evaluation of grounded internal receipts", () => {
 			),
 		).toBe(true);
 		expect(isUnsafeUserVisibleText('{"type":"object"}')).toBe(true);
+		expect(
+			isUnsafeUserVisibleText(
+				'{"messages":[{"role":"assistant","content":"Got it, forgotten."}]}',
+			),
+		).toBe(true);
+		expect(
+			isUnsafeUserVisibleText('{"role":"assistant","content":"Got it."}'),
+		).toBe(true);
 		expect(isUnsafeUserVisibleText("{}")).toBe(true);
 		expect(isUnsafeUserVisibleText('[{"a":1}]')).toBe(false);
 		expect(isUnsafeUserVisibleText('{"temperature":21,"unit":"C"}')).toBe(

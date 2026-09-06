@@ -7869,6 +7869,26 @@ function isPlannerProtocolJson(value: unknown): boolean {
 	const has = (key: string) => Object.hasOwn(value, key);
 	if (keys.some((key) => PLANNER_PROTOCOL_JSON_KEYS.has(key))) return true;
 	if (has("decision") && has("success")) return true;
+	// A chat transcript envelope ({"messages":[{"role","content"}]} or a bare
+	// {"role","content"} turn) is the wire format, not a reply (live 2026-09-06
+	// 03:03: a forced synthesis returned one and it was delivered verbatim).
+	if (has("role") && has("content")) return true;
+	if (has("messages")) {
+		const messages = (value as { messages: unknown }).messages;
+		if (
+			Array.isArray(messages) &&
+			messages.length > 0 &&
+			messages.every(
+				(entry) =>
+					entry &&
+					typeof entry === "object" &&
+					Object.hasOwn(entry, "content") &&
+					(Object.hasOwn(entry, "role") || Object.hasOwn(entry, "type")),
+			)
+		) {
+			return true;
+		}
+	}
 	if (has("complete") && has("message") && keys.length <= 3) return true;
 	if (
 		has("name") &&
