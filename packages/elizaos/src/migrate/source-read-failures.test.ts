@@ -103,3 +103,41 @@ it("still builds a partial home when optional files are absent", () => {
     readOcAgentHome(path.join(root, "absent"), "demo").soul,
   ).toBeUndefined();
 });
+
+it.skipIf(process.platform === "win32")(
+  "rejects a FIFO persona without blocking or writing migration artifacts",
+  () => {
+    const root = home();
+    const soul = path.join(root, "SOUL.md");
+    const fifo = spawnSync("mkfifo", [soul], { encoding: "utf8" });
+    expect(fifo.error).toBeUndefined();
+    expect(fifo.status).toBe(0);
+    const character = path.join(root, "character.json");
+    const archive = path.join(root, "export.eliza-agent");
+    const result = spawnSync(
+      "bun",
+      [
+        fileURLToPath(new URL("../cli.ts", import.meta.url)),
+        "migrate-agent",
+        "--from",
+        root,
+        "--agent-id",
+        "demo",
+        "--emit-character",
+        character,
+        "--out",
+        archive,
+        "--password",
+        "synthetic-test-password",
+      ],
+      { encoding: "utf8", timeout: 5000 },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("MIGRATION_SOURCE_READ_FAILED");
+    expect(result.stderr).toContain(soul);
+    expect(fs.existsSync(character)).toBe(false);
+    expect(fs.existsSync(archive)).toBe(false);
+  },
+  10000,
+);
