@@ -3503,12 +3503,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     let stewardRegistrationCreated = false;
 
     try {
-      // Ensure volume directory exists
-      await ssh.exec(
-        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`,
-        DOCKER_CMD_TIMEOUT_MS,
-      );
-
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -3780,12 +3774,19 @@ export class DockerSandboxProvider implements SandboxProvider {
             // No plaintext temporary file is written until the durable intent
             // callback above has committed. Exact mode coordinates both vault
             // and Docker env producers with the remote attempt tombstone.
+            const prepareVolumeCommand = `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`;
+            // A delayed producer must observe cancellation before recreating
+            // directories that cleanup has already removed.
+            if (!remoteCompletionTracker) {
+              await ssh.exec(prepareVolumeCommand, DOCKER_CMD_TIMEOUT_MS);
+            }
             await ensureVolumeVaultPassphrase(
               (cmd, input, timeoutMs) => ssh.execStdin(cmd, input, timeoutMs),
               volumePath,
               DOCKER_CMD_TIMEOUT_MS,
               environmentVars.ELIZA_VAULT_PASSPHRASE,
               remoteCompletionTracker ? replacementAttemptId : undefined,
+              remoteCompletionTracker ? [prepareVolumeCommand] : [],
             );
             return ssh.execStdin(
               dockerCreateWithSecretEnvCmd,
