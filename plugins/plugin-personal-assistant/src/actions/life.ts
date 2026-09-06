@@ -218,6 +218,13 @@ const SUBACTIONS = {
     required: ["target"],
     optional: ["details"],
   },
+  reopen: {
+    description:
+      "Reopen a completed undated owner todo by its definition ID or unambiguous title.",
+    descriptionCompressed:
+      "reopen completed undated owner todo by definition ID/title",
+    required: ["target"],
+  },
   skip: {
     description: "Skip an occurrence.",
     descriptionCompressed: "skip occurrence",
@@ -269,6 +276,7 @@ type InternalLifeOp =
   | "delete_definition"
   | "delete_goal"
   | "complete_occurrence"
+  | "reopen_definition"
   | "skip_occurrence"
   | "snooze_occurrence"
   | "review_goal"
@@ -289,6 +297,8 @@ function toInternalLifeOp(
       return kind === "goal" ? "delete_goal" : "delete_definition";
     case "complete":
       return "complete_occurrence";
+    case "reopen":
+      return "reopen_definition";
     case "skip":
       return "skip_occurrence";
     case "snooze":
@@ -1479,7 +1489,11 @@ async function resolveOccurrenceWithIntentFallback(args: {
     args.target,
     args.domain,
   );
-  if (direct.match || direct.ambiguousCandidates.length > 0) {
+  if (
+    direct.match ||
+    direct.ambiguousCandidates.length > 0 ||
+    validateUuid(args.target)
+  ) {
     return direct;
   }
 
@@ -3809,6 +3823,55 @@ async function lifeEffectReceiptForResult(args: {
     lifeEffectRecord(lifeEffectRecord(data?.updated)?.definition);
   const definitionId = lifeEffectString(definition, "id");
   const definitionUpdatedAt = lifeEffectString(definition, "updatedAt");
+  const todoTransition = lifeEffectString(data, "todoTransition");
+  if (
+    definitionId &&
+    definitionUpdatedAt &&
+    (todoTransition === "complete" || todoTransition === "reopen")
+  ) {
+    const base = {
+      receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
+      operation: `lifeops.definition.${todoTransition}`,
+      resource: {
+        kind: "lifeops.definition",
+        id: definitionId,
+        version: definitionUpdatedAt,
+      },
+      artifacts: [],
+      idempotency: {
+        key: `${definitionId}:${definitionUpdatedAt}:${todoTransition}`,
+        replayed: data?.replayed === true,
+      },
+      observedAt: definitionUpdatedAt,
+    };
+    if (data?.replayed === true)
+      return lifeOpsNoopEffect({
+        ...base,
+        reason: "The todo already has the requested completion state.",
+      });
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "definition",
+      ownerId: definitionId,
+      eventTypes: [
+        todoTransition === "complete"
+          ? "definition_completed"
+          : "definition_reopened",
+      ],
+    });
+    if (
+      audit.id !== lifeEffectString(data, "auditId") ||
+      audit.createdAt !== definitionUpdatedAt
+    )
+      throw new ElizaError(
+        "The todo transition receipt could not be matched to its committed audit.",
+        { code: "LIFEOPS_TODO_RECEIPT_MISMATCH", context: { definitionId } },
+      );
+    return lifeOpsAppliedEffect({
+      ...base,
+      commit: { kind: "durable", id: audit.id, committedAt: audit.createdAt },
+    });
+  }
   const definitionIdempotency = lifeEffectRecord(data?.idempotency);
   const definitionOperationKey = lifeEffectString(definitionIdempotency, "key");
   if (
@@ -6043,6 +6106,53 @@ async function runLifeOperationHandlerInner(
           },
         },
       };
+    }
+
+    if (
+      internalOp === "reopen_definition" ||
+      (internalOp === "complete_occurrence" &&
+        ownerSurfaceActionName === "OWNER_TODOS" &&
+        !detailString(details, "occurrenceId"))
+    ) {
+      if (ownerSurfaceActionName !== "OWNER_TODOS")
+        return {
+          success: false,
+          text: "Only undated owner todos support reopening.",
+        };
+      const { match: target, ambiguousCandidates } =
+        await resolveDefinitionForMutation(
+          service,
+          targetName,
+          messageText(message) || intent,
+          domain,
+        );
+      if (ambiguousCandidates.length > 0)
+        return {
+          success: false,
+          text: `Multiple items match — which one?\n${ambiguousCandidates.join("\n")}`,
+        };
+      if (target?.definition.cadence.kind === "unscheduled") {
+        const transition =
+          internalOp === "reopen_definition"
+            ? await service.reopenTodo(target.definition.id)
+            : await service.completeTodo(target.definition.id);
+        const completed = transition.definition.status === "completed";
+        return {
+          success: true,
+          text: transition.replayed
+            ? `"${transition.definition.title}" was already ${completed ? "done" : "open"} — nothing changed.`
+            : `${completed ? "Marked" : "Reopened"} "${transition.definition.title}"${completed ? " done" : ""}.`,
+          data: toActionData({
+            ...transition,
+            todoTransition: completed ? "complete" : "reopen",
+          }),
+        };
+      }
+      if (internalOp === "reopen_definition")
+        return {
+          success: false,
+          text: "I could not find that completed undated todo to reopen.",
+        };
     }
 
     if (internalOp === "complete_occurrence") {

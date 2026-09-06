@@ -11,12 +11,14 @@ import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
+  LifeOpsDefinitionTransitionResult,
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
   LifeOpsOwnership,
   LifeOpsReminderPlan,
   LifeOpsReminderStep,
   LifeOpsTaskDefinition,
+  LifeOpsTodoView,
   RecordLifeOpsProgressRequest,
   RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
@@ -167,6 +169,68 @@ export class DefinitionsDomain {
 
   async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
     return this.deps.getDefinitionRecord(definitionId);
+  }
+
+  async getTodos(
+    occurrences: LifeOpsOccurrenceView[],
+  ): Promise<LifeOpsTodoView[]> {
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+      { activeOnly: false },
+    );
+    const unscheduled: LifeOpsTodoView[] = definitions
+      .filter(
+        (definition) =>
+          definition.subjectType === "owner" &&
+          definition.kind === "task" &&
+          definition.cadence.kind === "unscheduled" &&
+          ["active", "completed"].includes(definition.status),
+      )
+      .map((definition) => ({
+        id: definition.id,
+        targetKind: "definition",
+        title: definition.title,
+        status: definition.status === "completed" ? "completed" : "pending",
+        dueDate: null,
+        progress: null,
+      }));
+    return [
+      ...occurrences.map(
+        (occurrence): LifeOpsTodoView => ({
+          id: occurrence.id,
+          targetKind: "occurrence",
+          title: occurrence.title,
+          status:
+            occurrence.state === "completed"
+              ? "completed"
+              : occurrence.state === "snoozed"
+                ? "in_progress"
+                : "pending",
+          dueDate: occurrence.dueAt,
+          progress: occurrence.progress,
+        }),
+      ),
+      ...unscheduled,
+    ];
+  }
+
+  async transitionTodo(
+    definitionId: string,
+    status: "active" | "completed",
+  ): Promise<LifeOpsDefinitionTransitionResult> {
+    const { definition } = await this.deps.getDefinitionRecord(definitionId);
+    if (
+      definition.domain !== "user_lifeops" ||
+      definition.subjectType !== "owner" ||
+      definition.subjectId !== this.ctx.ownerEntityId()
+    )
+      fail(404, "owner todo not found");
+    return this.ctx.repository.transitionUnscheduledTodo(
+      definition,
+      status,
+      nextMutationRevision(definition.updatedAt),
+    );
   }
 
   async createDefinition(
@@ -412,6 +476,22 @@ export class DefinitionsDomain {
             "status",
             LIFEOPS_DEFINITION_STATUSES,
           );
+    if (
+      nextStatus === "completed" &&
+      (nextCadence.kind !== "unscheduled" || current.definition.kind !== "task")
+    ) {
+      fail(400, "completed definition status is only valid for undated todos");
+    }
+    if (
+      request.status !== undefined &&
+      nextStatus !== current.definition.status &&
+      (nextStatus === "completed" || current.definition.status === "completed")
+    ) {
+      fail(
+        400,
+        "use the todo complete or reopen operation to change completion state",
+      );
+    }
     let nextDefinition: LifeOpsTaskDefinition = {
       ...current.definition,
       ...ownership,

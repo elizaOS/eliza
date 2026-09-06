@@ -35,6 +35,7 @@ export const LIFEOPS_DEFINITION_STATUSES = [
   "active",
   "paused",
   "archived",
+  "completed",
 ] as const;
 export type LifeOpsDefinitionStatus =
   (typeof LIFEOPS_DEFINITION_STATUSES)[number];
@@ -2051,6 +2052,22 @@ export interface LifeOpsCapabilitiesStatus {
   relativeTime: LifeOpsRelativeTime | null;
   capabilities: LifeOpsCapabilityStatus[];
   summary: LifeOpsCapabilitiesSummary;
+}
+
+/** A Todo target is a stored unscheduled definition or an existing scheduled occurrence. */
+export interface LifeOpsTodoView {
+  id: string;
+  targetKind: "definition" | "occurrence";
+  title: string;
+  status: "pending" | "in_progress" | "completed";
+  dueDate: string | null;
+  progress: LifeOpsOccurrenceView["progress"];
+}
+
+export interface LifeOpsDefinitionTransitionResult {
+  definition: LifeOpsTaskDefinition;
+  replayed: boolean;
+  auditId: string | null;
 }
 
 export interface LifeOpsOverviewSection {

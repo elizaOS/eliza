@@ -132,6 +132,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
+  LifeOpsDefinitionTransitionResult,
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
@@ -158,6 +159,7 @@ import type {
   LifeOpsOccurrenceExplanation,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
+  LifeOpsTodoView,
   LifeOpsWeeklyGoalReview,
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
@@ -1701,6 +1703,21 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
     return this.definitionsDomain.getDefinition(definitionId);
+  }
+
+  async getTodos(): Promise<LifeOpsTodoView[]> {
+    const overview = await this.getOverview();
+    return this.definitionsDomain.getTodos(overview.owner.occurrences);
+  }
+
+  completeTodo(
+    definitionId: string,
+  ): Promise<LifeOpsDefinitionTransitionResult> {
+    return this.definitionsDomain.transitionTodo(definitionId, "completed");
+  }
+
+  reopenTodo(definitionId: string): Promise<LifeOpsDefinitionTransitionResult> {
+    return this.definitionsDomain.transitionTodo(definitionId, "active");
   }
 
   createDefinition(

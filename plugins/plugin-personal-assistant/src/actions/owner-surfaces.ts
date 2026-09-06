@@ -54,7 +54,7 @@ const OWNER_LIFE_ACTIONS = [
   "review",
 ] as const;
 
-type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number];
+type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number] | "reopen";
 const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
 const OWNER_FINANCE_ACTIONS = [
   "dashboard",
@@ -440,17 +440,18 @@ export const ownerTodosAction: Action = {
     name: "OWNER_TODOS",
     similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
     description:
-      "Owner todos: create/update/delete/complete/skip/snooze/review personal.",
+      "Owner todos: create/update/delete/complete/reopen/skip/snooze/review personal.",
     descriptionCompressed:
-      "owner todos: action=create|update|delete|complete|skip|snooze|review",
+      "owner todos: action=create|update|delete|complete|reopen|skip|snooze|review",
     defaultKind: "definition",
+    actions: [...OWNER_LIFE_ACTIONS, "reopen"],
   }),
   name: "OWNER_TODOS",
   similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
   description:
-    "Owner todos: create/update/delete/complete/skip/snooze/review personal.",
+    "Owner todos: create/update/delete/complete/reopen/skip/snooze/review personal.",
   descriptionCompressed:
-    "owner todos: action=create|update|delete|complete|skip|snooze|review",
+    "owner todos: action=create|update|delete|complete|reopen|skip|snooze|review",
 };
 
 const OWNER_ROUTINE_ACTIONS = [

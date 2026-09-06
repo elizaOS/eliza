@@ -38,6 +38,23 @@ isolated port (41873 by default):
 bun run --cwd plugins/plugin-personal-assistant test:connections:e2e
 ```
 
+## Undated todo lifecycle
+
+Undated owner todos remain task definitions with `cadence.kind = "unscheduled"`.
+They never acquire a synthetic occurrence, due date, or reminder. The Todo read
+service combines these definitions with the existing scheduled occurrences;
+`GET /api/lifeops/todos` identifies each target with `targetKind: "definition" |
+"occurrence"`, its stored ID, and a nullable due date.
+
+`OWNER_TODOS` supports `complete` and `reopen` for undated definitions. HTTP
+clients use `POST /api/lifeops/definitions/:id/complete` and `/reopen` under the
+existing owner authorization boundary. Completion changes `active` to
+`completed`; reopening restores `active`. The scoped definition update and its
+audit commit atomically. Repeating the desired state preserves the record
+revision and returns a no-op without another audit. Paused, archived, scheduled,
+and non-task definitions cannot use this transition; scheduled tasks retain
+occurrence completion. Completed undated todos stay visible in the read DTO.
+
 ## Definition creation retries
 
 Owner definition creation accepts an optional `idempotencyKey` (1–256 non-NUL

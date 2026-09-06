@@ -4075,6 +4075,86 @@ export class LifeOpsRepository {
       );
   }
 
+  /** Atomically transition an owner-scoped undated todo and its audit, preserving no-op revisions. */
+  async transitionUnscheduledTodo(
+    expected: LifeOpsTaskDefinition,
+    status: "active" | "completed",
+    updatedAt: string,
+  ): Promise<{
+    definition: LifeOpsTaskDefinition;
+    replayed: boolean;
+    auditId: string | null;
+  }> {
+    try {
+      return await withTransaction(this.runtime, async (tx) => {
+        const rows = await executeRawSqlTx(
+          tx,
+          `SELECT * FROM app_lifeops.life_task_definitions
+        WHERE agent_id = ${sqlQuote(expected.agentId)} AND id = ${sqlQuote(expected.id)}
+        ${definitionScopePredicate(expected)} FOR UPDATE`,
+        );
+        if (rows.length !== 1)
+          throw new ElizaError(
+            "The todo is no longer available in this owner scope.",
+            {
+              code: "LIFEOPS_DEFINITION_CONFLICT",
+              context: { definitionId: expected.id },
+            },
+          );
+        const current = parseTaskDefinition(rows[0]);
+        if (
+          current.kind !== "task" ||
+          current.cadence.kind !== "unscheduled" ||
+          !["active", "completed"].includes(current.status)
+        ) {
+          throw new ElizaError(
+            "Only active or completed undated todos support this transition; scheduled items use their occurrence.",
+            {
+              code: "LIFEOPS_TODO_TRANSITION_INVALID",
+              context: { definitionId: current.id },
+            },
+          );
+        }
+        if (current.status === status)
+          return { definition: current, replayed: true, auditId: null };
+        if (current.updatedAt !== expected.updatedAt)
+          throw new ElizaError(
+            "The todo changed before this transition; read its current state before retrying.",
+            {
+              code: "LIFEOPS_DEFINITION_CONFLICT",
+              context: { definitionId: current.id },
+            },
+          );
+        const next = { ...current, status, updatedAt };
+        const auditId = crypto.randomUUID();
+        await executeRawSqlTx(
+          tx,
+          `UPDATE app_lifeops.life_task_definitions SET status = ${sqlQuote(status)}, updated_at = ${sqlQuote(updatedAt)}
+        WHERE agent_id = ${sqlQuote(current.agentId)} AND id = ${sqlQuote(current.id)} ${definitionScopePredicate(current)}`,
+        );
+        await executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_audit_events
+        (id, agent_id, event_type, owner_type, owner_id, reason, inputs_json, decision_json, actor, created_at)
+        VALUES (${sqlQuote(auditId)}, ${sqlQuote(current.agentId)}, ${sqlQuote(status === "completed" ? "definition_completed" : "definition_reopened")}, 'definition', ${sqlQuote(current.id)},
+        'owner todo state transition', ${sqlJson({ previousStatus: current.status, previousRevision: current.updatedAt })}, ${sqlJson({ status, version: updatedAt })}, 'agent', ${sqlQuote(updatedAt)})`,
+        );
+        return { definition: next, replayed: false, auditId };
+      });
+    } catch (error) {
+      // error-policy:J2 Preserve typed transition conflicts and attach context to database failures.
+      if (error instanceof ElizaError) throw error;
+      throw new ElizaError(
+        "The todo state change could not be committed; inspect the current todo before retrying.",
+        {
+          code: "LIFEOPS_TODO_TRANSITION_FAILED",
+          cause: error,
+          context: { definitionId: expected.id },
+        },
+      );
+    }
+  }
+
   /**
    * Persist a definition mutation. The predicate binds the row to the supplied
    * expected scope, or to the definition's target scope when no move is being
