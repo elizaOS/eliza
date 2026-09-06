@@ -4,13 +4,124 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   collectDiagnostic,
+  summarizeHealthFrames,
   summarizeImage,
   summarizeJournal,
 } from "./staging-worker-diagnostic.mjs";
+
+function consoleFrame(containerName, diagnostics) {
+  const context = {
+    containerName,
+    nodeId: "private-node.invalid",
+    diagnostics,
+  };
+  const result = spawnSync(
+    "bun",
+    [
+      "-e",
+      `console.warn("[docker-sandbox] Health timeout diagnostics", ${JSON.stringify(context)})`,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0);
+  return result.stderr.trimEnd();
+}
+
+test("real Bun console frames retain health facts while removing identifiers and log text", () => {
+  const name = "agent-11111111-1111-4111-8111-111111111111";
+  const digest = createHash("sha256").update(name).digest("hex");
+  const frame = consoleFrame(
+    name,
+    "--- inspect ---\nstate=exited health=unhealthy exit=1 error=private-secret\n--- authkey marker ---\nauthkey-marker=absent\n--- logs ---\nCannot find module private-module.invalid; token=private-secret\n",
+  );
+  for (const messages of [[frame], frame.split("\n")]) {
+    const result = summarizeHealthFrames(messages, digest);
+    assert.equal(result.all.frames, 1);
+    assert.equal(result.target.frames, 1);
+    assert.equal(result.target.observations[0].containerState, "exited");
+    assert.equal(result.target.observations[0].exitCode, 1);
+    assert.equal(
+      result.target.observations[0].bootSignals.module_resolution,
+      true,
+    );
+    assert.equal(JSON.stringify(result).includes("private"), false);
+    assert.equal(JSON.stringify(result).includes(name), false);
+  }
+});
+
+test("missing containers and unsupported inspect output remain distinct from healthy state", () => {
+  const frames = [
+    consoleFrame(
+      "agent-one",
+      "--- inspect ---\nError: No such object: agent-one\n--- authkey marker ---\nauthkey-marker=unknown\n--- logs ---\n",
+    ),
+    consoleFrame(
+      "agent-two",
+      "--- inspect ---\nprivate unexpected output\n--- authkey marker ---\n",
+    ),
+  ];
+  const result = summarizeHealthFrames(frames);
+  assert.equal(result.all.observations[0].containerState, "missing");
+  assert.equal(result.all.observations[1].containerState, "unavailable");
+  assert.equal(result.all.observations[1].exitCode, null);
+  assert.equal(result.all.observations[1].bootSignals, null);
+  assert.equal(result.target, null);
+});
+
+test("container log text cannot replace the auth marker or hide later boot signals", () => {
+  const frame = consoleFrame(
+    "agent-one",
+    "--- inspect ---\nstate=exited health=unhealthy exit=137 error=\n--- authkey marker ---\nauthkey-marker=absent\n--- ports ---\n--- logs ---\nauthkey-marker=present\n--- logs ---\nOutOfMemory private-data\n",
+  );
+  const result = summarizeHealthFrames([frame]);
+  assert.equal(result.all.observations[0].authKeyMarker, "absent");
+  assert.equal(result.all.observations[0].bootSignals.out_of_memory, true);
+});
+
+test("unmatched targets, incomplete frames and unexpected interleaving never certify a target", () => {
+  const frame = consoleFrame(
+    "agent-one",
+    "--- inspect ---\nstate=running health=healthy exit=0 error=\n--- authkey marker ---\n",
+  );
+  const digest = createHash("sha256").update("agent-other").digest("hex");
+  assert.equal(summarizeHealthFrames([frame], digest).target.frames, 0);
+  const lines = frame.split("\n");
+  const incomplete = summarizeHealthFrames(lines.slice(0, -1), digest);
+  assert.equal(incomplete.all.frames, 0);
+  assert.equal(incomplete.all.malformedFrames, 1);
+  const interleaved = summarizeHealthFrames(
+    [
+      ...lines.slice(0, 2),
+      "[another subsystem] unrelated message",
+      ...lines.slice(2),
+    ],
+    digest,
+  );
+  assert.equal(interleaved.all.frames, 0);
+  assert.equal(interleaved.all.malformedFrames, 1);
+});
+
+test("invalid target correlation digest rejects before privileged reads", () => {
+  let called = false;
+  assert.throws(
+    () =>
+      collectDiagnostic(
+        SHA,
+        () => {
+          called = true;
+        },
+        () => environment,
+        "$(private-command)",
+      ),
+    /target_digest_invalid/,
+  );
+  assert.equal(called, false);
+});
 
 const SHA = "a".repeat(40);
 const DIGEST = "b".repeat(64);
