@@ -250,6 +250,14 @@ describe('Smithers worker lifecycle', () => {
     }
   });
 
+  test('rejects an oversized inherited stdout line after the worker exits', async () => {
+    await expect(
+      run('exit-with-inherited-oversized-line', {
+        input: { outputBytes: 1_048_577 },
+      })
+    ).rejects.toMatchObject({ code: 'SMTHRS_PROTOCOL_OVERFLOW' });
+  });
+
   test('terminates a worker whose stdout line exceeds the protocol budget', async () => {
     await expect(
       run('oversized-stdout-line', {
