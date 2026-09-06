@@ -415,6 +415,12 @@
   color: var(--stwd-error, #ef4444);
 }
 
+.stwd-user-button__error {
+  margin: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 /* ─── Callback Pages ─── */
 .stwd-callback {
   display: flex;

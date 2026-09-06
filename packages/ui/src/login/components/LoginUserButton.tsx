@@ -206,7 +206,11 @@ export function LoginUserButton({
           >
             {signingOut ? "Signing out…" : "Sign Out"}
           </Button>
-          {signOutError && <p role="alert">{signOutError}</p>}
+          {signOutError && (
+            <p className="stwd-user-button__error" role="alert">
+              {signOutError}
+            </p>
+          )}
         </div>
       )}
     </div>

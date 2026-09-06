@@ -3,7 +3,7 @@
  *
  * Applies HSTS, a deny-by-default CSP, MIME-sniff lock, framing denial,
  * referrer policy, and a restrictive Permissions-Policy. HSTS is skipped for localhost/127.0.0.1
- * hosts and can be disabled globally via STEWARD_HSTS_DISABLED=true for
+ * and IPv6 loopback hosts and can be disabled globally via STEWARD_HSTS_DISABLED=true for
  * private dev deploys without HTTPS.
  */
 
@@ -30,8 +30,7 @@ export function isHstsEnabled(): boolean {
 }
 
 function hostFromRequest(req: Request): string {
-  const host = req.headers.get("host") || "";
-  return host.split(":")[0]?.toLowerCase() || "";
+  return new URL(req.url).hostname.toLowerCase();
 }
 
 export const securityHeaders: MiddlewareHandler = async (c, next) => {
@@ -40,6 +39,6 @@ export const securityHeaders: MiddlewareHandler = async (c, next) => {
 
   if (!isHstsEnabled()) return;
   const host = hostFromRequest(c.req.raw);
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return;
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") return;
   c.header("Strict-Transport-Security", HSTS_VALUE);
 };

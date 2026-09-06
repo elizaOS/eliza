@@ -1,13 +1,6 @@
 /**
- * Request correlation ID middleware.
- *
- * Generates a unique UUID for each request and:
- * - Sets it on the request context for downstream use
- * - Returns it in the X-Request-Id response header
- *
- * Usage in route handlers:
- *   const requestId = c.get("requestId");
- *   console.log(`[${requestId}] Processing request...`);
+ * Validates or generates a request correlation ID and exposes it to downstream
+ * handlers and the response so structured logs can identify the same request.
  */
 
 import { createMiddleware } from "hono/factory";
