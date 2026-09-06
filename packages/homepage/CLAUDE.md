@@ -41,16 +41,12 @@ packages/homepage/
       connected.tsx             "/connected" — post-auth dashboard (linked platforms, sign-out)
     components/
       authed-shell.tsx          Layout wrapper for auth-gated routes (QueryProvider + AuthProvider)
-      BlobButton.tsx            Animated blob CTA button
       brand/eliza-logo.tsx      Eliza SVG logo component (ElizaLogo)
       ShaderBackground/         react-three/fiber WebGL gradient wave (gradientWaveMaterial + ShaderBackground, lazy-loaded)
-      ChatUI/renderChatToCanvas.ts  Canvas-rendered chat bubble surface for the onboarding demo
       login/phone-number-input.tsx  E.164 phone input with country picker
       login/country-flag.tsx    Country flag glyph for the phone picker
       providers/query-provider.tsx  TanStack Query client wrapper
       DocumentMetaManager.tsx   <title> / <meta> manager
-      QRCode.tsx                QR code renderer (inline SVG)
-      VideoCall.tsx             Video call UI component (lazy-loaded)
     lib/
       api/client.ts             Base fetch helpers (elizacloudFetch, elizacloudAuthFetch, getAuthToken, getElizacloudUrl)
       api/siws.ts               Sign-In-With-Solana (SIWS) — signInWithSolana, nonce/verify against Cloud API
@@ -58,7 +54,6 @@ packages/homepage/
       hooks/use-eliza-app-provisioning-chat.ts  Provisioning-chat hook for onboarding
       contact.ts                SMS / WhatsApp number constants and href builders
       query-client.ts           Shared TanStack Query client instance
-      spring-types.ts           react-spring type helper
       utils.ts                  clsx / tailwind-merge utility (cn)
     providers/
       I18nProvider.tsx          i18n context + useT() / useI18n() hooks
