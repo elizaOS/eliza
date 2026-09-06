@@ -107,13 +107,26 @@ receipt digest counts as success. Root device/inode authorities are supplied by
 the trusted coordinator and checked by the Agent, not discovered or provisioned
 by this service.
 
-This receipt is not a candidate-ledger commit. The service owns a PRIMARY
-transaction and must not be called from a candidate-materialization callback
-already holding those locks. The durable stream/ledger integration still needs
-one shared transaction boundary and crash-recoverable session/root authority.
-PGlite covers the real service with SSH stubbed; the native Docker command test
-materializes/replays a real character and rejects a substituted root inode. It
-does not establish remote SSH or a booted restored Agent.
+The standalone receipt is not a candidate-ledger commit. Journaled callers use
+`createAgentBackupRestoreQuarantineCandidateExecution`: it lends the quarantine
+transaction to candidate begin, record, component-finish and terminal-seal
+writes, retaining that transaction through the private Agent acknowledgement.
+The journal's existing attempt/GC advisory fence is acquired before tenant and
+source row locks. An effect failure rolls back the journal; exact private files
+remain replayable. Already committed receipts can be reconciled read-only after
+authority loss, without contacting the target again.
+
+PGlite integration exercises the real target guard, candidate migrations and
+five-component Agent filesystem materializer, with only SSH replaced at the
+boundary. Lost record, finish and assembly replies roll back the corresponding
+ledger/terminal writes; exact retry seals the candidate. A disposable copy of
+the restored database retains the source SQL fact. This is not authenticated
+object-stream, multi-connection PostgreSQL, remote SSH, boot or staging proof.
+The native Docker command test separately materializes/replays a real character
+and rejects a substituted root inode. The factory still retains a process-held
+execution bearer and requires existing trusted root identities; crash-recoverable
+session/root authority and the production catalogue/dispatcher hookup remain
+required before this can be an operational restore.
 
 `streamAgentBackupRestoreV3FromCatalogue` loads the selected manifest-v3 copy
 and its private object locators from PRIMARY, then invokes the existing exact

@@ -52,6 +52,7 @@ import {
 import {
   type AgentBackupRestoreV3CandidateAssembler,
   assembleAndSealAgentBackupRestoreV3Candidate,
+  assembleAndSealAgentBackupRestoreV3CandidateWithTransaction,
 } from "./agent-backup-restore-v3-candidate-seal-authority";
 
 type CandidateBeginRequest = Parameters<AgentBackupRestoreV3IsolatedCandidateStaging["begin"]>[0];
@@ -77,6 +78,18 @@ export type AgentBackupRestoreV3CandidateMaterializer = Pick<
   AgentBackupRestoreV3IsolatedCandidateStaging,
   "stageRecord" | "finishComponent"
 > & { readonly assembleCandidate: AgentBackupRestoreV3CandidateAssembler };
+
+/** Acquires exact target authority before candidate locks and lends one transaction. */
+export interface AgentBackupRestoreV3CandidateMaterializationTransaction {
+  run<T>(
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    use: (
+      transaction: DbTransaction,
+      materializer: AgentBackupRestoreV3CandidateMaterializer,
+      boundedControl: Readonly<AgentBackupRestoreV3OperationControl>,
+    ) => Promise<T>,
+  ): Promise<T>;
+}
 
 function materializationError(message: string): never {
   throw new ElizaError(message, {
@@ -283,13 +296,29 @@ function exactFinishMatches(
 class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecution {
   readonly #bound: BoundCandidateExecution;
   readonly #materializer: AgentBackupRestoreV3CandidateMaterializer | undefined;
+  readonly #transaction: AgentBackupRestoreV3CandidateMaterializationTransaction | undefined;
 
   constructor(
     bound: BoundCandidateExecution,
     materializer?: AgentBackupRestoreV3CandidateMaterializer,
+    transaction?: AgentBackupRestoreV3CandidateMaterializationTransaction,
   ) {
     this.#bound = bound;
     this.#materializer = materializer;
+    this.#transaction = transaction;
+  }
+
+  #transact<T>(
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    use: (
+      tx: DbTransaction,
+      materializer: AgentBackupRestoreV3CandidateMaterializer | undefined,
+      boundedControl: Readonly<AgentBackupRestoreV3OperationControl>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.#transaction
+      ? this.#transaction.run(control, use)
+      : dbWrite.transaction((tx) => use(tx, this.#materializer, control));
   }
 
   async #materializationControl(
@@ -372,14 +401,14 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     const keyBundleGenerationId = manifest.encryption.operationKeyBundle.generationId;
     let restoreOperationId: string | undefined;
     try {
-      const created = await dbWrite.transaction(async (tx) => {
+      const created = await this.#transact(control, async (tx, _materializer, control) => {
         await applyAgentBackupRestoreV3TransactionDeadline(
           tx,
           control,
           "Restore-v3 candidate begin",
         );
-        // This is deliberately the first durable write. No repository lock is
-        // taken: the candidate INSERT trigger alone owns authority lock order.
+        // The candidate trigger owns source/candidate locks. A remote target
+        // guard, when supplied, has acquired its outer authority in canonical order.
         await tx.insert(agentBackupRestoreV3CandidateCleanupOutbox).values({
           id: this.#bound.cleanupOutboxId,
           organization_id: authority.organizationId,
@@ -612,9 +641,9 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     const receiptSha256 = sha256Utf8(canonicalAgentBackupRestoreV3StageRecordReceipt(receipt));
     const commandSha256 = computeAgentBackupRestoreV3RecordCommandSha256(this.#bound, receipt);
     try {
-      await dbWrite.transaction(async (tx) => {
+      await this.#transact(control, async (tx, materializer, control) => {
         await applyAgentBackupRestoreV3TransactionDeadline(tx, control, "Restore-v3 record stage");
-        const effectControl = this.#materializer
+        const effectControl = materializer
           ? await this.#materializationControl(tx, control)
           : undefined;
         await tx.insert(agentBackupRestoreV3CandidateStageLedger).values({
@@ -641,10 +670,10 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
           command_sha256: commandSha256,
           receipt_sha256: receiptSha256,
         });
-        if (this.#materializer && effectControl) {
+        if (materializer && effectControl) {
           const acknowledged = freezeRecordReceipt(
             AgentBackupRestoreV3StageRecordReceiptSchema.parse(
-              await this.#materializer.stageRecord(session, record, effectControl),
+              await materializer.stageRecord(session, record, effectControl),
             ),
           );
           if (
@@ -773,13 +802,13 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     const receiptSha256 = sha256Utf8(canonicalAgentBackupRestoreV3ComponentReceipt(receipt));
     const commandSha256 = computeAgentBackupRestoreV3FinishCommandSha256(this.#bound, receipt);
     try {
-      await dbWrite.transaction(async (tx) => {
+      await this.#transact(control, async (tx, materializer, control) => {
         await applyAgentBackupRestoreV3TransactionDeadline(
           tx,
           control,
           "Restore-v3 component finish",
         );
-        const effectControl = this.#materializer
+        const effectControl = materializer
           ? await this.#materializationControl(tx, control)
           : undefined;
         await tx.insert(agentBackupRestoreV3CandidateStageLedger).values({
@@ -805,10 +834,10 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
           command_sha256: commandSha256,
           receipt_sha256: receiptSha256,
         });
-        if (this.#materializer && effectControl) {
+        if (materializer && effectControl) {
           const acknowledged = freezeComponentReceipt(
             AgentBackupRestoreV3ComponentReceiptSchema.parse(
-              await this.#materializer.finishComponent(session, receipt, effectControl),
+              await materializer.finishComponent(session, receipt, effectControl),
             ),
           );
           if (
@@ -1051,9 +1080,37 @@ export function createAgentBackupRestoreV3MaterializingCandidateExecution(
   return Object.freeze(staging);
 }
 
+/** The target guard and candidate journal share one transaction for every effect. */
+export function createAgentBackupRestoreV3GuardedMaterializingCandidateExecution(
+  sourceAuthority: Readonly<AgentBackupRestoreV3SourceAuthority>,
+  transactionInput: AgentBackupRestoreV3CandidateMaterializationTransaction,
+): AgentBackupRestoreV3IsolatedCandidateStaging {
+  if (!transactionInput || typeof transactionInput.run !== "function")
+    materializationError("Restore candidate requires an explicit target transaction");
+  const transaction = Object.freeze({ run: transactionInput.run.bind(transactionInput) });
+  const staging: AgentBackupRestoreV3IsolatedCandidateStaging = {
+    ...createCandidateExecution(sourceAuthority, undefined, transaction),
+    seal: (session, receipt, authorization, control) =>
+      assembleAndSealAgentBackupRestoreV3CandidateWithTransaction(
+        session,
+        receipt,
+        authorization,
+        control,
+        {
+          run: (bounded, use) =>
+            transaction.run(bounded, (tx, materializer, effectControl) =>
+              use(tx, materializer.assembleCandidate, effectControl),
+            ),
+        },
+      ),
+  };
+  return Object.freeze(staging);
+}
+
 function createCandidateExecution(
   sourceAuthorityInput: Readonly<AgentBackupRestoreV3SourceAuthority>,
   materializer?: AgentBackupRestoreV3CandidateMaterializer,
+  transaction?: AgentBackupRestoreV3CandidateMaterializationTransaction,
 ): AgentBackupRestoreV3CandidateExecution {
   const sourceAuthority = parseAgentBackupRestoreV3SourceAuthority(sourceAuthorityInput);
   const sourceAuthorityCanonical = canonicalizeAgentBackupRestoreV3SourceAuthority(sourceAuthority);
@@ -1083,6 +1140,7 @@ function createCandidateExecution(
         new CandidateExecutionRepository(
           Object.freeze({ ...bound, restoreAttemptId: authority.restoreAttemptId }),
           materializer,
+          transaction,
         );
       return Promise.resolve(selected.begin(request, control)).then((session) => {
         // Bind only after a successful durable begin/replay. Malformed first

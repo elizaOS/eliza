@@ -18,6 +18,10 @@ import {
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { PGlite } from "@electric-sql/pglite";
 import {
   AGENT_BACKUP_MANIFEST_FORMAT,
   AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
@@ -25,13 +29,17 @@ import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   type AgentBackupManifestV3Draft,
+  type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3MaterializerRequest,
   AgentBackupRestoreV3MaterializerRequestSchema,
   canonicalizeAgentBackupManifestV3,
   canonicalizeAgentBackupRestoreV3MaterializerReceipt,
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
+import { openAgentBackupRestoreV3CandidateFs } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-fs";
+import { createAgentBackupRestoreV3CandidateMaterializer } from "../../../../../../agent/src/services/agent-backup-restore-v3-candidate-materializer";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -40,15 +48,19 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
-import { executeAgentBackupRestoreQuarantineMaterializer } from "../../../lib/services/agent-backup-restore-quarantine-materializer";
+import {
+  createAgentBackupRestoreQuarantineCandidateExecution,
+  executeAgentBackupRestoreQuarantineMaterializer,
+} from "../../../lib/services/agent-backup-restore-quarantine-materializer";
 import { prepareAgentBackupRestoreQuarantine } from "../../../lib/services/agent-backup-restore-quarantine-preparation";
 import { startAgentBackupRestoreQuarantine } from "../../../lib/services/agent-backup-restore-quarantine-start";
 import { buildAgentBackupRestoreExactProviderReceiptDigestV1 } from "../../../lib/services/agent-backup-restore-quarantined-create-runtime";
 import { DockerSSHClient } from "../../../lib/services/docker-ssh";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../../client";
 import {
   agentBackupCatalogAuthorities,
+  agentBackupObjects,
   agentBackupRestoreLeases,
   agentBackupRestoreOperations,
 } from "../../schemas/agent-backup-catalog";
@@ -83,7 +95,16 @@ import {
   openAgentBackupRestoreQuarantine,
   recordAgentBackupRestoreQuarantinedContainer,
 } from "../agent-backup-restore-quarantine";
+import { createAgentBackupRestoreV3CandidateSealAuthority } from "../agent-backup-restore-v3-candidate-seal-authority";
 import { verifyAgentSandboxExactRestoreReplacementIntent } from "../agent-sandbox-replacement-attempts";
+import {
+  applyCandidateMigrations,
+  buildCandidateFixture,
+  buildCandidateSealAuthorizationRequest,
+  buildCandidateSealReceipt,
+  type CandidateFixture,
+  fixtureSha256,
+} from "./agent-backup-restore-v3-candidate-test-fixture";
 
 const TIMEOUT = 60_000;
 const ORG_ID = "00000000-0000-4000-8000-00000000e101";
@@ -719,6 +740,7 @@ beforeAll(async () => {
         agentSandboxes,
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
+        agentBackupObjects,
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
         agentSandboxReplacementAttempts,
@@ -761,6 +783,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentSandboxReplacementAttempts);
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
+  await dbWrite.delete(agentBackupObjects);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(dockerNodes);
@@ -2455,3 +2478,341 @@ describe("restore activation quarantine", () => {
     TIMEOUT,
   );
 });
+test(
+  "journals five real Agent components under the quarantine guard and reconciles lost effects without publishing",
+  async () => {
+    const input = await settledQuarantineStartFixture();
+    const database = getPgliteClientForTests();
+    const template = await buildCandidateFixture();
+    const { operation } = await readRows();
+    const [lease] = await dbWrite
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+    if (!lease) throw new Error("Missing journal lease");
+    const fixture: CandidateFixture = {
+      manifest: await createAgentBackupManifestV3(JSON.parse(manifestFixture.canonicalDraft)),
+      leaseExpiresAt: lease.expires_at,
+      authority: {
+        ...template.authority,
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        backupId: BACKUP_ID,
+        operationId: BACKUP_OPERATION_ID,
+        sourceActivationGeneration: SOURCE_ACTIVATION_GENERATION,
+        sourceLifecycleRevision: "4",
+        expectedManifestSha256: manifestFixture.digest,
+        restoreAttemptId: RESTORE_ATTEMPT_ID,
+        leaseId: LEASE_ID,
+        ownerId: lease.owner_id,
+        fencingToken: lease.generation,
+        catalogEpoch: "3",
+        leaseExpiresAtEpochMs: lease.expires_at.getTime(),
+      },
+      sourceAuthority: {
+        ...template.sourceAuthority,
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        backupId: BACKUP_ID,
+        operationId: BACKUP_OPERATION_ID,
+        sourceActivationGeneration: SOURCE_ACTIVATION_GENERATION,
+        sourceLifecycleRevision: "4",
+        expectedManifestSha256: manifestFixture.digest,
+        catalogEpoch: "3",
+      },
+    };
+    for (const [index, object] of fixture.sourceAuthority.objects.entries()) {
+      await dbWrite.insert(agentBackupObjects).values({
+        id: object.objectId,
+        organization_id: ORG_ID,
+        backup_id: BACKUP_ID,
+        copy_role: "primary",
+        component: object.componentName,
+        chunk_index: 0,
+        state: "verified",
+        provider_write_started: true,
+        verified_at: new Date(),
+        content_hmac_sha256: object.contentHmacSha256,
+        transport: "worker-r2",
+        provider: "cloudflare-r2",
+        endpoint_identity_fingerprint: object.catalog.endpointIdentityFingerprint,
+        endpoint_alias: `endpoint-alias-${index}`,
+        bucket: `bucket-${index}`,
+        region: `region-${index}`,
+        object_key: `key-${index}`,
+        key_fingerprint: fixtureSha256(`key-${index}`),
+        provider_version_id: object.catalog.providerVersionId,
+        upload_receipt_digest: object.catalog.uploadReceiptDigest,
+        ciphertext_sha256: object.catalog.ciphertextSha256,
+        size_bytes: object.catalog.sizeBytes,
+      });
+    }
+    await applyCandidateMigrations(database);
+    const root = await fs.mkdtemp(
+      path.join(await fs.realpath(os.tmpdir()), "restore-quarantine-journal-"),
+    );
+    await fs.chmod(root, 0o700);
+    const attemptRoot = path.join(root, "attempt");
+    await fs.mkdir(attemptRoot, { mode: 0o700 });
+    const candidateFs = await openAgentBackupRestoreV3CandidateFs({
+      trustedRoot: root,
+      attemptRoot,
+      control: input.control,
+      ...(process.platform === "linux" ? {} : { testOnlyAllowNonLinuxFdEmulation: true }),
+    });
+    let archive: Uint8Array | undefined;
+    try {
+      const source = new PGlite(path.join(root, "source"));
+      try {
+        await source.exec("CREATE TABLE restored_fact (fact text NOT NULL)");
+        await source.query("INSERT INTO restored_fact VALUES ($1)", ["amber lighthouse 20732"]);
+        archive = new Uint8Array(await (await source.dumpDataDir("gzip")).arrayBuffer());
+      } finally {
+        await source.close();
+      }
+      const agent = createAgentBackupRestoreV3CandidateMaterializer(candidateFs);
+      const frames: Buffer[] = [];
+      const calls: string[] = [];
+      let lose: "stageRecord" | "finishComponent" | "assembleCandidate" | null = "stageRecord";
+      spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+        () =>
+          ({
+            async execStdinAbortable(
+              command: string,
+              frame: Buffer,
+              signal: AbortSignal,
+              _timeout: number,
+              digest: string,
+            ) {
+              frames.push(frame);
+              const length = frame.readUInt32BE();
+              const request = AgentBackupRestoreV3MaterializerRequestSchema.parse(
+                JSON.parse(frame.subarray(4, 4 + length).toString()),
+              );
+              calls.push(request.method);
+              expect(command).not.toContain(request.session.executionToken);
+              expect(request.session.restoreAttemptId).toBe(operation.restore_attempt_id);
+              const effectControl = { signal, deadlineEpochMs: request.deadlineEpochMs };
+              if (request.method === "stageRecord") {
+                const { componentIndex, componentName, dataIndex, offsetBytes, entry } =
+                  request.receipt;
+                const payload = Uint8Array.from(frame.subarray(4 + length));
+                try {
+                  await agent.stageRecord(
+                    request.session,
+                    { componentIndex, componentName, dataIndex, offsetBytes, entry, payload },
+                    effectControl,
+                  );
+                } finally {
+                  payload.fill(0);
+                }
+              } else if (request.method === "finishComponent") {
+                await agent.finishComponent(request.session, request.receipt, effectControl);
+              } else {
+                await agent.assembleCandidate(request.session, request.receipt, effectControl);
+              }
+              expect(digest).toBe(
+                fixtureSha256(canonicalizeAgentBackupRestoreV3MaterializerReceipt(request)),
+              );
+              if (lose === request.method) {
+                lose = null;
+                throw new Error("lost real Agent receipt");
+              }
+            },
+            async disconnect() {},
+          }) as unknown as DockerSSHClient,
+      );
+      const factoryInput = {
+        enabled: true,
+        sourceAuthority: fixture.sourceAuthority,
+        authority: input.authority,
+        roots: {
+          trustedRoot: root,
+          attemptRoot,
+          trustedRootIdentity: candidateFs.trustedRootIdentity,
+          attemptRootIdentity: candidateFs.attemptRootIdentity,
+        },
+      };
+      const stale = createAgentBackupRestoreQuarantineCandidateExecution({
+        ...factoryInput,
+        authority: { ...input.authority, claimGeneration: crypto.randomUUID() },
+      });
+      if (stale.status !== "enabled") throw new Error("Missing stale-claim test execution");
+      await expect(
+        stale.staging.begin(
+          { authority: fixture.authority, manifest: fixture.manifest },
+          input.control,
+        ),
+      ).rejects.toThrow();
+      expect(calls).toEqual([]);
+      expect(
+        (await database.query("SELECT * FROM agent_backup_restore_v3_candidates")).rows,
+      ).toEqual([]);
+      expect(
+        (await database.query("SELECT * FROM agent_backup_restore_v3_candidate_cleanup_outbox"))
+          .rows,
+      ).toEqual([]);
+      expect(
+        createAgentBackupRestoreQuarantineCandidateExecution({ ...factoryInput, enabled: false }),
+      ).toEqual({ status: "disabled" });
+      const bound = createAgentBackupRestoreQuarantineCandidateExecution(factoryInput);
+      if (bound.status !== "enabled") throw new Error("Missing enabled journal");
+      const execution = bound.staging;
+      const session = await execution.begin(
+        { authority: fixture.authority, manifest: fixture.manifest },
+        input.control,
+      );
+      const contents = [
+        Buffer.from('{"name":"Journal QA","bio":["amber lighthouse"],"plugins":[]}'),
+        archive,
+        Buffer.from("private media"),
+        Buffer.from('{"tide":"high"}'),
+        Buffer.from("opaque vault ciphertext"),
+      ];
+      const paths = [null, null, "photo.bin", "plugin/state.json", "vault.json"];
+      const components: AgentBackupRestoreV3ComponentReceipt[] = [];
+      for (const [
+        componentIndex,
+        descriptor,
+      ] of AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS.entries()) {
+        const bytes = contents[componentIndex];
+        if (!bytes) throw new Error("Missing component payload");
+        let dataFrameCount = 0;
+        for (let offsetBytes = 0; offsetBytes < bytes.length; offsetBytes += 256 * 1024) {
+          const payload = Uint8Array.from(bytes.subarray(offsetBytes, offsetBytes + 256 * 1024));
+          const filePath = paths[componentIndex];
+          const record = {
+            componentIndex,
+            componentName: descriptor.name,
+            dataIndex: dataFrameCount++,
+            offsetBytes,
+            payload,
+            entry: filePath
+              ? {
+                  path: filePath,
+                  fileOffsetBytes: offsetBytes,
+                  fileSizeBytes: bytes.length,
+                  mode: componentIndex === 4 ? 0o400 : 0o600,
+                  mtimeMs: 0,
+                }
+              : null,
+          };
+          try {
+            if (componentIndex === 0) {
+              await expect(execution.stageRecord(session, record, input.control)).rejects.toThrow(
+                "lost real Agent receipt",
+              );
+              expect(
+                (
+                  await database.query(
+                    "SELECT * FROM agent_backup_restore_v3_candidate_stage_ledger",
+                  )
+                ).rows,
+              ).toEqual([]);
+            }
+            await execution.stageRecord(session, record, input.control);
+            const count = calls.length;
+            await execution.stageRecord(session, record, input.control);
+            expect(calls.length).toBe(count);
+          } finally {
+            payload.fill(0);
+          }
+        }
+        const component = {
+          componentIndex,
+          componentName: descriptor.name,
+          descriptor,
+          dataFrameCount,
+          payloadBytes: bytes.length,
+          payloadSha256: fixtureSha256(bytes),
+          recordStreamContentHmacSha256: HASH,
+        };
+        if (componentIndex === 0) {
+          lose = "finishComponent";
+          await expect(
+            execution.finishComponent(session, component, input.control),
+          ).rejects.toThrow("lost real Agent receipt");
+          expect(
+            (
+              await database.query(
+                "SELECT * FROM agent_backup_restore_v3_candidate_stage_ledger WHERE command_kind = 'finish'",
+              )
+            ).rows,
+          ).toEqual([]);
+          expect(
+            await fs.readFile(path.join(attemptRoot, "components/character/character.json")),
+          ).toEqual(Buffer.from(bytes));
+        }
+        components.push(await execution.finishComponent(session, component, input.control));
+      }
+      const receipt = buildCandidateSealReceipt(fixture, components);
+      const authorization = await createAgentBackupRestoreV3CandidateSealAuthority().authorize(
+        buildCandidateSealAuthorizationRequest(fixture, session, receipt),
+        input.control,
+      );
+      lose = "assembleCandidate";
+      await expect(execution.seal(session, receipt, authorization, input.control)).rejects.toThrow(
+        "lost real Agent receipt",
+      );
+      expect(
+        (await database.query("SELECT state FROM agent_backup_restore_v3_candidates")).rows,
+      ).toEqual([{ state: "active" }]);
+      expect(
+        (
+          await database.query(
+            "SELECT state FROM agent_backup_restore_v3_candidate_seal_authorizations",
+          )
+        ).rows,
+      ).toEqual([{ state: "active" }]);
+      expect(
+        (await database.query("SELECT * FROM agent_backup_restore_v3_candidate_terminal_commands"))
+          .rows,
+      ).toEqual([]);
+      expect(await execution.seal(session, receipt, authorization, input.control)).toEqual(receipt);
+      expect(
+        (await database.query("SELECT state FROM agent_backup_restore_v3_candidates")).rows,
+      ).toEqual([{ state: "sealed" }]);
+      const count = calls.length;
+      await dbWrite
+        .update(agentBackupRestoreLeases)
+        .set({ expires_at: new Date(Date.now() - 1000) })
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+      expect(await execution.seal(session, receipt, authorization, input.control)).toEqual(receipt);
+      expect(calls.length).toBe(count);
+      expect(frames.every((frame) => frame.every((byte) => byte === 0))).toBe(true);
+      const rows = await readRows();
+      expect(rows.operation.phase).toBe("container_created");
+      expect(rows.sandbox.activation_phase).toBe("restore_pending");
+      expect(rows.node.allocated_count).toBe(1);
+      expect(await fs.readFile(path.join(attemptRoot, "components/media/photo.bin"), "utf8")).toBe(
+        "private media",
+      );
+      // Open a disposable copy so observing restored SQL cannot mutate the
+      // sealed generation or invalidate its inode/tree authority.
+      const restoredPath = path.join(root, "restored-proof");
+      await fs.cp(path.join(attemptRoot, "components/database"), restoredPath, { recursive: true });
+      const restored = new PGlite(restoredPath);
+      try {
+        expect((await restored.query("SELECT fact FROM restored_fact")).rows).toEqual([
+          { fact: "amber lighthouse 20732" },
+        ]);
+      } finally {
+        await restored.close();
+      }
+    } finally {
+      archive?.fill(0);
+      await candidateFs.close();
+      await fs.rm(root, { recursive: true, force: true });
+      // Only test-owned candidate tables in this in-memory database; restore the
+      // shared fixture so test ordering cannot affect unrelated quarantine cases.
+      await database.exec(`DROP TABLE
+      agent_backup_restore_v3_candidate_gc_tombstones,
+      agent_backup_restore_v3_candidate_terminal_commands,
+      agent_backup_restore_v3_candidate_seal_authorizations,
+      agent_backup_restore_v3_candidate_stage_ledger,
+      agent_backup_restore_v3_candidates,
+      agent_backup_restore_v3_candidate_cleanup_outbox CASCADE`);
+    }
+  },
+  TIMEOUT,
+);

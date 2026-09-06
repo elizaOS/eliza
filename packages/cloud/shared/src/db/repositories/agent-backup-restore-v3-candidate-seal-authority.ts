@@ -17,6 +17,7 @@ import {
 } from "@elizaos/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
+import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
   type AgentBackupRestoreV3Candidate,
@@ -55,6 +56,18 @@ export type AgentBackupRestoreV3CandidateAssembler = (
   receipt: Readonly<AgentBackupRestoreV3CandidateReceipt>,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
 ) => AgentBackupRestoreV3CandidateReceipt | Promise<AgentBackupRestoreV3CandidateReceipt>;
+
+/** A target guard owns the transaction and lends its assembler only inside it. */
+export interface AgentBackupRestoreV3CandidateAssemblyTransaction {
+  run<T>(
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    use: (
+      transaction: DbTransaction,
+      assembler: AgentBackupRestoreV3CandidateAssembler,
+      boundedControl: Readonly<AgentBackupRestoreV3OperationControl>,
+    ) => Promise<T>,
+  ): Promise<T>;
+}
 
 export class AgentBackupRestoreV3CandidateSealConflictError extends Error {
   readonly code = "AGENT_BACKUP_RESTORE_V3_CANDIDATE_SEAL_CONFLICT";
@@ -904,12 +917,25 @@ export function assembleAndSealAgentBackupRestoreV3Candidate(
   return sealCandidate(sessionInput, receiptInput, authorizationInput, control, assembler);
 }
 
+export function assembleAndSealAgentBackupRestoreV3CandidateWithTransaction(
+  session: Readonly<AgentBackupRestoreV3StagingSession>,
+  receipt: Readonly<AgentBackupRestoreV3CandidateReceipt>,
+  authorization: Readonly<AgentBackupRestoreV3CandidateSealAuthorization>,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  transaction: AgentBackupRestoreV3CandidateAssemblyTransaction,
+): Promise<AgentBackupRestoreV3CandidateReceipt> {
+  if (!transaction || typeof transaction.run !== "function")
+    throw conflict("Candidate seal requires an explicit guarded transaction");
+  return sealCandidate(session, receipt, authorization, control, undefined, transaction);
+}
+
 function sealCandidate(
   sessionInput: Readonly<AgentBackupRestoreV3StagingSession>,
   receiptInput: Readonly<AgentBackupRestoreV3CandidateReceipt>,
   authorizationInput: Readonly<AgentBackupRestoreV3CandidateSealAuthorization>,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
   assembler?: AgentBackupRestoreV3CandidateAssembler,
+  transaction?: AgentBackupRestoreV3CandidateAssemblyTransaction,
 ): Promise<AgentBackupRestoreV3CandidateReceipt> {
   const operationControl = snapshotAgentBackupRestoreV3OperationControl(control);
   const session = parseAgentBackupRestoreV3StagingSession(sessionInput);
@@ -923,25 +949,34 @@ function sealCandidate(
     return replayExactSealedReceiptOrThrow(prepared, operationControl, cause);
   }
   return sealPreparedCandidate(
+    session,
     prepared,
     operationControl,
     assembler ? (receipt, effectControl) => assembler(session, receipt, effectControl) : undefined,
+    transaction,
   );
 }
 
 async function sealPreparedCandidate(
+  session: Readonly<AgentBackupRestoreV3StagingSession>,
   prepared: PreparedSeal,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
   assemble?: (
     receipt: AgentBackupRestoreV3CandidateReceipt,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ) => AgentBackupRestoreV3CandidateReceipt | Promise<AgentBackupRestoreV3CandidateReceipt>,
+  transaction?: AgentBackupRestoreV3CandidateAssemblyTransaction,
 ): Promise<AgentBackupRestoreV3CandidateReceipt> {
   try {
-    await dbWrite.transaction(async (tx) => {
+    const execute = async (
+      tx: DbTransaction,
+      control: Readonly<AgentBackupRestoreV3OperationControl>,
+      assembleEffect = assemble,
+    ) => {
       await applyAgentBackupRestoreV3TransactionDeadline(tx, control, "Restore-v3 candidate seal");
-      // These reads do not lock. The terminal INSERT trigger alone owns every
-      // mutable authority lock and atomically consumes the proof plus candidate.
+      // The target guard, when supplied, already holds quarantine authority.
+      // These reads do not lock; the terminal INSERT trigger acquires source
+      // and candidate locks and atomically consumes the proof plus candidate.
       const [candidate] = await tx
         .select()
         .from(agentBackupRestoreV3Candidates)
@@ -1000,7 +1035,7 @@ async function sealPreparedCandidate(
         sealed_receipt_sha256: prepared.receiptSha256,
         command_sha256: prepared.terminalCommandSha256,
       });
-      if (assemble) {
+      if (assembleEffect) {
         // The trigger has validated/locked all external authorities and consumed
         // the one-shot proof inside this still-uncommitted transaction. Failure
         // below rolls it back; a partial private assembly remains retryable.
@@ -1016,7 +1051,7 @@ async function sealPreparedCandidate(
           effectControl,
           "Restore-v3 Agent assembly",
         );
-        const acknowledgement = await assemble(prepared.receipt, effectControl);
+        const acknowledgement = await assembleEffect(prepared.receipt, effectControl);
         if (
           canonicalizeAgentBackupRestoreV3CandidateReceipt(acknowledgement) !==
           prepared.receiptCanonical
@@ -1037,7 +1072,16 @@ async function sealPreparedCandidate(
         );
       }
       await applyAgentBackupRestoreV3TransactionDeadline(tx, control, "Restore-v3 candidate seal");
-    });
+    };
+    if (transaction) {
+      await transaction.run(control, (tx, assembler, boundedControl) =>
+        execute(tx, boundedControl, (receipt, effectControl) =>
+          assembler(session, receipt, effectControl),
+        ),
+      );
+    } else {
+      await dbWrite.transaction((tx) => execute(tx, control));
+    }
     return prepared.receipt;
   } catch (cause) {
     // error-policy:J1 Reconcile only an exact committed seal; otherwise preserve failure.

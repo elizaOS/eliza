@@ -15,6 +15,7 @@ import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
 import { and, eq, gt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
+import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
   type AgentBackupRestoreOperation,
@@ -1161,6 +1162,8 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
  * container_created authority is admissible. The effect must honor the bounded
  * control and join remote settlement before returning, including on failure.
  * No phase, runtime-boot or route-publication authority is granted here.
+ * Candidate journal writes must use the supplied transaction, not another one.
+ * Set candidateJournal to acquire the journal's attempt/GC fence before row locks.
  */
 export async function withAgentBackupRestoreQuarantineAuthority<T>(
   input: ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput,
@@ -1168,7 +1171,9 @@ export async function withAgentBackupRestoreQuarantineAuthority<T>(
   effect: (
     authority: ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult,
     control: Readonly<AgentBackupRestoreV3OperationControl>,
+    transaction: DbTransaction,
   ) => Promise<T>,
+  options?: Readonly<{ candidateJournal: true }>,
 ): Promise<T> {
   const control = snapshotAgentBackupRestoreV3OperationControl(controlInput);
   assertAgentBackupRestoreV3OperationControl(control, "Restore quarantine effect");
@@ -1178,8 +1183,9 @@ export async function withAgentBackupRestoreQuarantineAuthority<T>(
   let completed: { value: T } | undefined;
   await loadOrReserveExactRestoreAuthority(input, {
     control,
-    async run(authority, boundedControl) {
-      completed = { value: await effect(authority, boundedControl) };
+    candidateJournal: options?.candidateJournal === true,
+    async run(authority, boundedControl, transaction) {
+      completed = { value: await effect(authority, boundedControl, transaction) };
     },
   });
   if (!completed) {
@@ -1192,9 +1198,11 @@ async function loadOrReserveExactRestoreAuthority(
   input: ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput,
   effect?: Readonly<{
     control: Readonly<AgentBackupRestoreV3OperationControl>;
+    candidateJournal: boolean;
     run: (
       authority: ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult,
       control: Readonly<AgentBackupRestoreV3OperationControl>,
+      transaction: DbTransaction,
     ) => Promise<void>;
   }>,
 ): Promise<ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult> {
@@ -1231,6 +1239,14 @@ async function loadOrReserveExactRestoreAuthority(
         effect.control,
         "Restore quarantine effect",
       );
+      if (effect.candidateJournal) {
+        // Candidate begin and GC take this advisory fence before any source or
+        // tenant row. Preserve that order when joining the target transaction.
+        await tx.execute(sql`SELECT lock_agent_backup_restore_v3_attempt(
+          ${operationAuthority.organization_id}::uuid,
+          ${operationAuthority.restore_attempt_id}::uuid
+        )`);
+      }
     }
     // Global multi-authority order: organization -> backup -> operation ->
     // lease -> sandbox -> mutable node -> immutable occurrence -> catalogue.
@@ -1815,7 +1831,7 @@ async function loadOrReserveExactRestoreAuthority(
           "Restore quarantine authority expired before effect",
         );
       }
-      await effect.run(authority, boundedControl);
+      await effect.run(authority, boundedControl, tx);
       const afterEffect = await readPostLockDatabaseNow(tx);
       assertAgentBackupRestoreV3OperationControl(boundedControl, "Restore quarantine effect");
       if (afterEffect.getTime() >= boundedControl.deadlineEpochMs) {
