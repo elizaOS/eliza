@@ -19,15 +19,24 @@ afterEach(() => {
 });
 
 it.each([
-  { finishReason: "stop", malformed: false, succeeds: true },
+  { finishReason: "stop", malformed: false, succeeds: true, nativeSchema: false },
+  { finishReason: "stop", malformed: false, succeeds: true, nativeSchema: true },
+  {
+    finishReason: "stop",
+    malformed: false,
+    succeeds: true,
+    nativeSchema: true,
+    rejectSchema: true,
+  },
   { finishReason: "length", malformed: false, succeeds: false },
   { finishReason: "content_filter", malformed: false, succeeds: false },
   { finishReason: "stop", malformed: true, succeeds: false },
 ])(
   "processes only complete SDK evaluator output ($finishReason, malformed=$malformed)",
-  async ({ finishReason, malformed, succeeds }) => {
+  async ({ finishReason, malformed, succeeds, nativeSchema, rejectSchema }) => {
     const bodies: Array<{
       model: string;
+      response_format?: { type: string; json_schema?: { schema: unknown } };
       messages: Array<{ role: string; content: string }>;
       prompt_cache_key?: string;
       prompt_cache_retention?: string;
@@ -38,6 +47,19 @@ it.each([
       request.on("end", () => {
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as (typeof bodies)[number];
         bodies.push(body);
+        if (rejectSchema && body.response_format?.type === "json_schema") {
+          response.writeHead(400, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              error: {
+                message: "response schema json_schema unsupported",
+                type: "invalid_request_error",
+                code: "unsupported_response_format",
+              },
+            })
+          );
+          return;
+        }
         const user = body.messages.find((message) => message.role === "user")?.content;
         const match = user && /Latest message:\n([\s\S]*?)\n\nAgent response messages:/.exec(user);
         if (!match) {
@@ -92,7 +114,13 @@ it.each([
       vi.stubEnv("CEREBRAS_SMALL_MODEL", "qwen-3.8-27b");
       vi.stubEnv("OPENAI_API_KEY", undefined);
       vi.stubEnv("OPENAI_BASE_URL", undefined);
-      vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+      vi.stubEnv("ELIZA_PROVIDER", nativeSchema ? "openai" : "cerebras");
+      if (nativeSchema) {
+        vi.stubEnv("CEREBRAS_API_KEY", undefined);
+        vi.stubEnv("OPENAI_API_KEY", "loopback-test-key");
+        vi.stubEnv("OPENAI_BASE_URL", `http://127.0.0.1:${address.port}/v1`);
+        vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-4o-mini");
+      }
       const runtime = new AgentRuntime({
         character: { name: "EvaluatorWire", bio: "test", settings: {} },
         adapter: new InMemoryDatabaseAdapter(),
@@ -110,13 +138,14 @@ it.each([
         { content: stable, stable: true },
         { content: text, stable: false },
       ];
+      const schemaDescription = `${"Schema Unicode 🧭 漢字 ".repeat(10000)}FINAL-CONTRACT-TAIL`;
       const saved: string[] = [];
       const evaluator: Evaluator<{ text: string }> = {
         name: "store",
         description: "Persist the extracted message",
         schema: {
           type: "object",
-          properties: { text: { type: "string" } },
+          properties: { text: { type: "string", description: schemaDescription } },
           required: ["text"],
           additionalProperties: false,
         },
@@ -171,11 +200,33 @@ it.each([
         const wire = bodies.at(-1);
         const user = wire?.messages.find((item) => item.role === "user")?.content;
         expect(user).toContain(text);
+        const schemaMatch =
+          user && /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(user);
+        expect(schemaMatch).toBeTruthy();
+        const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
+        expect(visibleSchema).toEqual({
+          type: "object",
+          properties: { store: evaluator.schema },
+          required: ["store"],
+          additionalProperties: false,
+        });
+        expect(visibleSchema.properties.store.properties.text.description).toBe(schemaDescription);
+        expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
+          user?.indexOf("Latest message:") ?? -1
+        );
+        expect(wire?.response_format?.type).toBe(
+          nativeSchema && !rejectSchema ? "json_schema" : "json_object"
+        );
         expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
         expect(wire?.prompt_cache_key).toBeUndefined();
         expect(wire?.prompt_cache_retention).toBeUndefined();
       }
-      expect(bodies).toHaveLength(2);
+      expect(bodies).toHaveLength(rejectSchema ? 3 : 2);
+      if (rejectSchema) {
+        expect(bodies[0]?.response_format?.type).toBe("json_schema");
+        expect(bodies[1]?.response_format?.type).toBe("json_object");
+        expect(bodies[1]?.messages).toEqual(bodies[0]?.messages);
+      }
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>

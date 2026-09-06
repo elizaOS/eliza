@@ -280,6 +280,12 @@ function buildPrompt(params: {
 			stable: false,
 		});
 	}
+	// JSON-object and plain-output providers do not carry an enforceable schema
+	// on the wire. Keep the complete contract visible to every model path.
+	stable.push({
+		content: `## Output JSON Schema\n${stringifyForModel(params.schema)}\n\n`,
+		stable: true,
+	});
 	const sharedContext = renderSharedContext({
 		runtime,
 		message,

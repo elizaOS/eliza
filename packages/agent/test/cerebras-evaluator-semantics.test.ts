@@ -41,6 +41,37 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
         response.end("Fixture context missing");
         return;
       }
+      const requestBody = JSON.parse(body) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const prompt = requestBody.messages.find(
+        (message) => message.role === "user",
+      )?.content;
+      const schemaMatch =
+        prompt &&
+        /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(
+          prompt,
+        );
+      if (!schemaMatch?.[1]) {
+        response.writeHead(400);
+        response.end("Complete output contract missing");
+        return;
+      }
+      const contract = JSON.parse(schemaMatch[1]);
+      const handleField =
+        contract.properties.identities.properties.identities.items.required.find(
+          (field: string) => field === "handle",
+        );
+      if (
+        !handleField ||
+        !["factMemory", "relationships", "identities", "success"].every(
+          (name) => contract.required.includes(name),
+        )
+      ) {
+        response.writeHead(400);
+        response.end("Builtin output contract incomplete");
+        return;
+      }
       const payload = {
         factMemory: {
           ops: [
@@ -72,7 +103,7 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
             {
               entityId: fixture.entityId,
               platform: "github",
-              handle: fixture.handle,
+              [handleField]: fixture.handle,
               confidence: 0.99,
             },
           ],
