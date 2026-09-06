@@ -1179,7 +1179,7 @@ export function CalendarSection({
   return (
     <>
       <section
-        className="flex h-full min-h-0 flex-col gap-4"
+        className="flex min-h-full flex-col gap-4"
         data-testid="lifeops-calendar-section"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
