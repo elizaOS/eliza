@@ -99,4 +99,28 @@ describe("plugin-inmemorydb component natural-key round-trip", () => {
     // Dedup keeps the original id even though the second upsert supplied a new one.
     expect(byKey[0]?.id).toBe("40000000-0000-0000-0000-000000000001");
   });
+
+  it("dedupes across mixed null/undefined worldId/sourceEntityId written on separate upserts", async () => {
+    // The first write stores explicit null; the second omits both (undefined). An
+    // unnormalized dedup probe (null === undefined → false) would treat these as two
+    // distinct natural keys and silently keep both rows where the schema intends one.
+    await adapter.upsertComponents([
+      makeComponent({
+        worldId: null as unknown as UUID,
+        sourceEntityId: null as unknown as UUID,
+        data: { rev: 1 },
+      }),
+    ]);
+    await adapter.upsertComponents([
+      makeComponent({ id: "40000000-0000-0000-0000-0000000000ff" as UUID, data: { rev: 2 } }),
+    ]);
+
+    const forEntity = await adapter.getComponentsForEntities([entityId]);
+    expect(forEntity).toHaveLength(1);
+    expect(forEntity[0]?.data).toEqual({ rev: 2 });
+
+    const byKey = await adapter.getComponentsByNaturalKeys([{ entityId, type: "profile" }]);
+    expect(byKey[0]).not.toBeNull();
+    expect(byKey[0]?.data).toEqual({ rev: 2 });
+  });
 });
