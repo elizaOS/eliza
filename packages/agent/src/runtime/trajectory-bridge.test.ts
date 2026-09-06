@@ -149,7 +149,19 @@ function makeRuntime(options: { statefulEnablement?: boolean } = {}) {
       const insertedId = sql.match(
         /INSERT INTO trajectories\s*\([\s\S]*?VALUES\s*\(\s*'([^']+)'/i,
       )?.[1];
+      const alreadyInserted =
+        insertedId !== undefined && persistedTrajectoryIds.has(insertedId);
       if (insertedId) persistedTrajectoryIds.add(insertedId);
+      // Insert-only starts return their new row ID; a competing creator gets
+      // no row. The real PGlite suite covers transaction rollback and races.
+      if (
+        Array.isArray(result) &&
+        result.length === 0 &&
+        insertedId &&
+        /ON CONFLICT \(id\) DO NOTHING RETURNING id/i.test(sql)
+      ) {
+        return alreadyInserted ? [] : [{ id: insertedId }];
+      }
       // Conditional parent writes use RETURNING as their CAS result. This
       // recorder otherwise represents every successful mutation as [].
       const updatedId = sql.match(
@@ -185,6 +197,7 @@ function makeRuntime(options: { statefulEnablement?: boolean } = {}) {
   const reportError = vi.fn();
   const runtime = {
     agentId: "agent-bridge-test",
+    runtimeInstanceId: crypto.randomUUID(),
     adapter: { db },
     getService: (t: string) => (t === "trajectories" ? logger : null),
     getServicesByType: (t: string) => (t === "trajectories" ? [logger] : []),
@@ -1231,7 +1244,8 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
   });
 
   it("preserves supplied lifecycle correlation, rewards, and final metrics", async () => {
-    const { runtime, logger, execute } = makeRuntime();
+    const { runtime, logger, execute, setPersistedTrajectory } = makeRuntime();
+    setPersistedTrajectory("compat-parent", true);
     const persistedAt = Date.now();
     execute.mockImplementation(async (query: unknown) => {
       const sql = sqlText(query);
@@ -1308,7 +1322,7 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
           query.includes("'trace-1'") &&
           query.includes("'episode-1'") &&
           query.includes("'batch-1'") &&
-          query.includes("\n      7,") &&
+          query.includes("group_index = 7") &&
           query.includes('"traceId":"trace-1"'),
       ),
     ).toBe(true);

@@ -931,6 +931,76 @@ describe("useChatSend stop handling", () => {
     expect(assistantMessages[0].id).toBe("server-asst-1");
   });
 
+  it.each([
+    { text: "", failure: false },
+    { text: "  Here is the unfinished **", failure: false },
+    { text: "", failure: true },
+  ])(
+    "renders a durable interrupted terminal immediately (%j)",
+    async ({ text, failure }) => {
+      const terminalFailure = {
+        kind: "provider_issue",
+        message: "Generation interrupted during shutdown.",
+        transient: true,
+        code: "TURN_ABORTED",
+      };
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        async (
+          _id: string,
+          _text: string,
+          onToken: (token: string, accumulatedText?: string) => void,
+        ) => {
+          if (text) onToken(text, text);
+          return {
+            text,
+            completed: true,
+            interrupted: true,
+            messageId: "durable-interrupted-assistant",
+            userMessageId: "durable-interrupted-user",
+            ...(failure
+              ? { failureKind: terminalFailure.kind, terminalFailure }
+              : {}),
+          };
+        },
+      );
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      const { result } = renderHook(() => useChatSend(deps));
+
+      await act(async () => {
+        await result.current.sendChatText("hello", {
+          conversationId: "conv-1",
+        });
+      });
+
+      expect(deps.conversationMessagesRef.current).toEqual([
+        expect.objectContaining({
+          id: "durable-interrupted-user",
+          role: "user",
+          text: "hello",
+        }),
+        expect.objectContaining({
+          id: "durable-interrupted-assistant",
+          role: "assistant",
+          text,
+          interrupted: true,
+          ...(failure
+            ? { failureKind: terminalFailure.kind, terminalFailure }
+            : {}),
+        }),
+      ]);
+      expect(deps.loadConversationMessages).not.toHaveBeenCalled();
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
+      expect(mocks.client.renameConversation).not.toHaveBeenCalled();
+      expect(deps.setActionNotice).not.toHaveBeenCalled();
+    },
+  );
+
   it("shows durable server history without a stale fallback after an empty interrupted stream", async () => {
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: "",

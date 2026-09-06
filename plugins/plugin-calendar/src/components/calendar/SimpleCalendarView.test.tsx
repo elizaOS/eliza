@@ -111,17 +111,19 @@ afterEach(() => {
 });
 
 describe("SimpleCalendarView", () => {
-  it("can render the shared route header when used standalone", () => {
+  it("keeps standalone calendar content free of redundant route chrome", () => {
     fixtures.calendar.mockReturnValue(calendarState());
     render(<SimpleCalendarView standalone />);
 
-    const headings = screen.getAllByRole("heading", {
-      level: 1,
-      name: "Calendar",
-    });
-    expect(headings).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
-    expect(window.location.pathname).toBe("/views");
+    expect(
+      screen.getByRole("main", { name: "Calendar. 0 events" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("view-actions")).toBeNull();
+    expect(window.location.pathname).toBe("/calendar");
   });
 
   it("defaults to shell-owned route chrome", () => {

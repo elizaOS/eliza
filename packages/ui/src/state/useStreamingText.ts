@@ -72,6 +72,8 @@ export type StreamingTextModification =
       mode: "complete";
       /** Final reconciled assistant text from the server. */
       fullText: string;
+      /** The transport settled, but generation ended before a complete reply. */
+      interrupted?: boolean;
       /** Optional server-flagged failure class to stamp alongside the text. */
       failureKind?: ChatFailureKind;
       /** Authoritative terminal failure details from the runtime. */
@@ -172,6 +174,8 @@ function computeNextMessage(
     }
     case "complete": {
       const sameText = message.text === mod.fullText;
+      const sameInterruption =
+        (message.interrupted === true) === (mod.interrupted === true);
       const sameFailure = message.failureKind === mod.failureKind;
       const sameTerminalFailure =
         message.terminalFailure === mod.terminalFailure;
@@ -187,6 +191,7 @@ function computeNextMessage(
         message.id === mod.persistedMessageId;
       if (
         sameText &&
+        sameInterruption &&
         sameFailure &&
         sameTerminalFailure &&
         sameAccountConnect &&
@@ -204,10 +209,15 @@ function computeNextMessage(
           ...(mod.persistedMessageId ? { id: mod.persistedMessageId } : {}),
           text: mod.fullText,
         },
-        // Terminal reconciliation: the text is now the turn's final message —
-        // never provisional, so voice output may speak it.
+        // Terminal text is no longer provisional; interruption remains a
+        // separate status that prevents treating a partial as a complete reply.
         false,
       );
+      if (mod.interrupted) {
+        next.interrupted = true;
+      } else if (message.interrupted !== undefined) {
+        delete next.interrupted;
+      }
       if (mod.failureKind) {
         next.failureKind = mod.failureKind;
       } else if (message.failureKind !== undefined) {

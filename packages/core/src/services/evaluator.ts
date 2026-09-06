@@ -596,6 +596,9 @@ export class EvaluatorService extends BaseService {
 			);
 			this.runtime.reportError("EvaluatorService.evaluate", error, {
 				evaluatorId,
+				// Optional reflection failure is recorded above; it must not create
+				// owner recovery work after the chat/action already completed.
+				diagnosticOnly: true,
 			});
 			return { output: null, error: messageText };
 		}

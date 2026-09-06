@@ -16,15 +16,21 @@ function findLatestAssistantText(messages: readonly ConversationMessage[]): {
   text: string;
   source?: string;
   provisional?: boolean;
+  interrupted?: boolean;
 } | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message && message.role === "assistant" && message.text.trim()) {
+    if (
+      message &&
+      message.role === "assistant" &&
+      (message.interrupted || message.text.trim())
+    ) {
       return {
         id: message.id,
         text: message.text,
         source: message.source,
         provisional: message.provisional,
+        interrupted: message.interrupted,
       };
     }
   }
@@ -153,6 +159,19 @@ export function useShellVoiceOutput(
     if (voiceBootstrapTick === 0) return; // voice config not loaded yet
     const latest = findLatestAssistantText(conversationMessages);
     if (!latest) return;
+    // Empty interrupted outcomes still terminate selection: never replay an
+    // older answer or synthesize failure text as an assistant utterance.
+    if (latest.interrupted) {
+      const queued = spokenRef.current;
+      if (
+        queued &&
+        (queued.id === latest.id ||
+          !conversationMessages.some((message) => message.id === queued.id))
+      ) {
+        stopSpeaking();
+      }
+      return;
+    }
 
     // Proactive interaction comments (#8792) are text-only by default: they must
     // never be read aloud unless the user is actively hands-free (the latest turn
@@ -214,6 +233,7 @@ export function useShellVoiceOutput(
     conversationMessages,
     chatSending,
     queueAssistantSpeech,
+    stopSpeaking,
   ]);
 
   // Barge-in: the instant the mic opens, stop talking so the user is heard.

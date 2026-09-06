@@ -1474,6 +1474,29 @@ function normalizeCalendarDetails(
   return normalized;
 }
 
+/** Blank model placeholders are omissions; clearing is a distinct operation. */
+function calendarUpdateTextField(
+  details: Record<string, unknown> | undefined,
+  extracted: Record<string, unknown>,
+  field: "description" | "location",
+): string | undefined {
+  for (const source of [details, extracted]) {
+    const value = detailString(source, field);
+    const clear =
+      Array.isArray(source?.clearFields) && source.clearFields.includes(field);
+    if (clear && value !== undefined) {
+      throw new CalendarServiceError(
+        400,
+        `An event update cannot both replace and clear ${field}.`,
+        "CALENDAR_UPDATE_FIELD_CONFLICT",
+      );
+    }
+    if (clear) return "";
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
 function parseStateLine(line: string): { role: string; text: string } {
   const trimmed = line.trim();
   const timestampedMatch = trimmed.match(
@@ -3471,18 +3494,20 @@ async function inferUpdateEventDetails(
     "The user may speak in any language.",
     "Use the full recent conversation below, not just the latest message.",
     "The current event below is the source of truth for unchanged fields.",
-    "Only return fields the user is actually changing. Leave fields empty when unchanged or unknown.",
+    "Only return fields the user is actually changing. Omit unchanged or unknown fields entirely; do not fill them with empty strings or null.",
+    "To remove an existing description or location, include its field name in clearFields only when the user explicitly requests that removal. Never use clearFields for unchanged, unknown, or omitted fields. Do not also return a replacement value for a field being cleared.",
     "If the user asks to move or reschedule the event, compute absolute ISO datetimes for the updated startAt and endAt using the current event as context.",
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
-    "If the user only renames the event, leave startAt, endAt, location, description, and timeZone empty.",
-    "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and leave it empty when the user does not say.",
+    "If the user only renames the event, omit startAt, endAt, location, description, and timeZone.",
+    "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and omit it when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
     "Return JSON only as a single object. No prose.",
     "",
     "title: new event title if changed",
     "description: updated description if changed",
     "location: updated location if changed",
+    'clearFields: optional array containing "description" and/or "location" only for fields the user explicitly wants removed',
     "startAt: updated ISO datetime if changed",
     "endAt: updated ISO datetime if changed",
     "timeZone: IANA timezone if changed or needed to interpret the update",
@@ -5103,26 +5128,12 @@ const calendarAction: CalendarHandlerAction = {
               targetEvent.timezone ?? planningTimeZone,
             )
           : ({} as Record<string, unknown>);
-        const extractedStartAt =
-          typeof extractedForUpdate.startAt === "string"
-            ? extractedForUpdate.startAt.trim()
-            : undefined;
-        const extractedEndAt =
-          typeof extractedForUpdate.endAt === "string"
-            ? extractedForUpdate.endAt.trim()
-            : undefined;
-        const extractedLocation =
-          typeof extractedForUpdate.location === "string"
-            ? extractedForUpdate.location.trim()
-            : undefined;
-        const extractedDescription =
-          typeof extractedForUpdate.description === "string"
-            ? extractedForUpdate.description.trim()
-            : undefined;
-        const extractedTimeZoneForUpdate =
-          typeof extractedForUpdate.timeZone === "string"
-            ? extractedForUpdate.timeZone.trim()
-            : undefined;
+        const extractedStartAt = detailString(extractedForUpdate, "startAt");
+        const extractedEndAt = detailString(extractedForUpdate, "endAt");
+        const extractedTimeZoneForUpdate = detailString(
+          extractedForUpdate,
+          "timeZone",
+        );
         const recurrenceUpdate =
           detailRecurrenceLines(details) ??
           detailRecurrenceLines(extractedForUpdate);
@@ -5194,9 +5205,16 @@ const calendarAction: CalendarHandlerAction = {
           calendarId: targetEvent.calendarId,
           eventId: targetEvent.externalId,
           title: newTitle,
-          description:
-            detailString(details, "description") ?? extractedDescription,
-          location: detailString(details, "location") ?? extractedLocation,
+          description: calendarUpdateTextField(
+            details,
+            extractedForUpdate,
+            "description",
+          ),
+          location: calendarUpdateTextField(
+            details,
+            extractedForUpdate,
+            "location",
+          ),
           startAt: explicitStartAtForUpdate ?? extractedStartAt,
           endAt: explicitEndAtForUpdate ?? extractedEndAt,
           timeZone:

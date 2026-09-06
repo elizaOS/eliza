@@ -59,7 +59,7 @@ interface ProviderSwitcherProps {
     pluginId: string,
     values: Record<string, unknown>,
   ) => void | Promise<void>;
-  /** Test override; production derives this from the explicit realtime build flag. */
+  /** Test override for build capability only; this does not verify a voice connection. */
   realtimeVoiceConfigured?: boolean;
 }
 
@@ -98,7 +98,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
   const setActionNotice = app.setActionNotice;
   const handleInteractiveCloudLogin = app.handleInteractiveCloudLogin;
-  const realtimeVoiceConfigured =
+  const realtimeVoiceEnabled =
     props.realtimeVoiceConfigured ??
     (isRealtimeVoiceForceEnabled() || isRealtimeVoiceSelfHostedEnabled());
 
@@ -397,9 +397,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </SettingsGroup>
       ) : null}
 
-      {/* Voice folds into this section for MVP. Keep the read-only row aligned
-          with the explicit realtime build path; normal builds retain the
-          bundled Kokoro serving truth. */}
+      {/* Build flags only enable the realtime path. This read-only row does
+          not probe its connection and must not imply that Cartesia is ready. */}
       {settingsContentReady ? (
         <SettingsGroup
           title={t("providerswitcher.voiceGroupTitle", {
@@ -415,7 +414,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   ? t("providerswitcher.cloudVoiceRowLabel", {
                       defaultValue: "Eliza Cloud voice",
                     })
-                  : realtimeVoiceConfigured
+                  : realtimeVoiceEnabled
                     ? t("providerswitcher.realtimeVoiceRowLabel", {
                         defaultValue: "Cartesia (realtime)",
                       })
@@ -430,15 +429,15 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                     defaultValue:
                       "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
                   })
-                : realtimeVoiceConfigured
+                : realtimeVoiceEnabled
                   ? servingAxes.runtime === "remote"
                     ? t("providerswitcher.remoteRealtimeVoiceRowDescription", {
                         defaultValue:
-                          "Talk uses Cartesia for speech recognition and playback when the voice gateway is available. Your agent stays on the remote host.",
+                          "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on the remote host.",
                       })
                     : t("providerswitcher.realtimeVoiceRowDescription", {
                         defaultValue:
-                          "Talk uses Cartesia for speech recognition and playback when the configured voice gateway is available. The agent model stays on this device.",
+                          "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on this device.",
                       })
                   : servingAxes.runtime === "remote"
                     ? t("providerswitcher.remoteVoiceRowDescription", {
@@ -451,10 +450,16 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                       })
             }
             control={
-              <span className="text-xs text-accent">
-                {realtimeVoiceConfigured && !selection.cloudRuntimeLocked
-                  ? t("providerswitcher.configuredProvider", {
-                      defaultValue: "Configured",
+              <span
+                className={
+                  realtimeVoiceEnabled && !selection.cloudRuntimeLocked
+                    ? "text-xs text-muted"
+                    : "text-xs text-accent"
+                }
+              >
+                {realtimeVoiceEnabled && !selection.cloudRuntimeLocked
+                  ? t("providerswitcher.enabledProvider", {
+                      defaultValue: "Enabled",
                     })
                   : t("providerswitcher.activeProvider", {
                       defaultValue: "Active",

@@ -52,6 +52,15 @@ Startup checks optional camera tools without installing them. To install those
 tools intentionally, run `node packages/app-core/scripts/ensure-vision-deps.mjs --install` from the repository root. Ollama is a separately managed, optional
 provider; Eliza does not need its daemon for in-process local inference.
 
+The web development supervisor also hands diagnostic ownership to
+its replacement API process after observing an exact child exit. New tracked
+turns are enrolled before the runtime is published; a replacement settles only
+matching active trajectories in the same persistent PGlite directory. It never
+replays chat or actions. Startup records written before enrollment, historical
+unowned records, supervisor/laptop failure, Bun watch mode and native hosts are outside
+this recovery scope. Postgres and in-memory databases retain their normal
+behavior.
+
 ## Native inference setup
 
 A normal root `bun install` initializes the pinned fused inference submodule,
