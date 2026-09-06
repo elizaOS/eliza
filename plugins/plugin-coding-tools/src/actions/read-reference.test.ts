@@ -78,6 +78,7 @@ it("rechecks sandbox rules after restart and does not expose the unseen range", 
   const result = await child({ ...entry, blockedPath: env.tmpDir });
   expect(result.success).toBe(false);
   expect(result.text).not.toContain("unseen second");
+  expect(JSON.stringify(result)).not.toContain(entry.file);
 }, 150_000);
 
 it("rejects another conversation and a changed file after restart", async () => {
@@ -155,3 +156,12 @@ it("fails publication without returning source content when locator storage is i
   expect(result.success).toBe(false);
   expect(JSON.stringify(result)).not.toContain("unseen source");
 });
+
+it("does not disclose the native path when the file disappears before restart", async () => {
+  const entry = await seed();
+  await fs.unlink(entry.file);
+  const result = await child(entry);
+  expect(result.success).toBe(false);
+  expect(JSON.stringify(result)).not.toContain(entry.file);
+  expect(JSON.stringify(result)).not.toContain("unseen second");
+}, 150_000);

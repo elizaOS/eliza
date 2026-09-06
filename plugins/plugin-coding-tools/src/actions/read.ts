@@ -311,7 +311,9 @@ export async function readFileHandler(
   if (!checked.ok)
     return failureToActionResult({
       reason: checked.reason === "blocked" ? "path_blocked" : "invalid_param",
-      message: checked.message,
+      message: reference
+        ? "File reference is not permitted by the current sandbox policy"
+        : checked.message,
     });
   const rawUnit = readStringParam(options, "unit") ?? "line";
   if (rawUnit !== "line" && rawUnit !== "byte")
@@ -495,7 +497,9 @@ export async function readFileHandler(
     // error-policy:J1 action boundary; read failures become explicit failure results.
     return failureToActionResult({
       reason: "io_error",
-      message: `read failed: ${error instanceof Error ? error.message : String(error)}`,
+      message: reference
+        ? "File reference could not be read; the source may be unavailable"
+        : `read failed: ${error instanceof Error ? error.message : String(error)}`,
     });
   } finally {
     await handle?.close().catch(() => {

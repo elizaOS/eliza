@@ -264,11 +264,11 @@ export async function createProgressiveFileTargetFactory(input: {
             undefined,
             {
               parameters: {
-                file_path: targetPath,
+                reference: initialView.reference.ref,
                 unit: "byte",
                 offset: readOffset,
                 limit,
-                ...(expectedRevision ? { expectedRevision } : {}),
+                expectedRevision: expectedRevision ?? nativeRevision,
               },
             },
           );
