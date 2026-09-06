@@ -1908,6 +1908,23 @@ describe("AutoTopUpService settings compatibility", () => {
   beforeEach(() => {
     findOrganizationById.mockResolvedValue(makeOrganization());
   });
+  test("missing organization rejects settings updates as unavailable", async () => {
+    findOrganizationById.mockResolvedValueOnce(undefined);
+    await expect(
+      new AutoTopUpService().updateSettings("org-1", { enabled: false }, async () => undefined),
+    ).rejects.toMatchObject({ code: "BILLING_SETTINGS_UNAVAILABLE" });
+    expect(updateOrganization).not.toHaveBeenCalled();
+    expect(invalidateOrganizationCache).not.toHaveBeenCalled();
+    expect(onOrganizationUpdated).not.toHaveBeenCalled();
+  });
+
+  test("empty settings preserve storage and cache state", async () => {
+    await new AutoTopUpService().updateSettings("org-1", {}, async () => undefined);
+    expect(updateOrganization).not.toHaveBeenCalled();
+    expect(invalidateOrganizationCache).not.toHaveBeenCalled();
+    expect(onOrganizationUpdated).not.toHaveBeenCalled();
+  });
+
   test("reads the existing billing settings without unsealing charging", async () => {
     const result = await new AutoTopUpService().getSettings("org-1");
 

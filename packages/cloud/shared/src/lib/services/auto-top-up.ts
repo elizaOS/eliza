@@ -1595,7 +1595,15 @@ export class AutoTopUpService {
   ): Promise<void> {
     const organization = await organizationsRepository.findById(organizationId);
     if (!organization) {
-      throw new Error("Organization not found");
+      throw new AutoTopUpSettingsUnavailableError(organizationId);
+    }
+    if (
+      settings.enabled === undefined &&
+      settings.amount === undefined &&
+      settings.threshold === undefined &&
+      settings.payAsYouGoFromEarnings === undefined
+    ) {
+      return;
     }
 
     if (settings.enabled === true && !organization.stripe_default_payment_method) {

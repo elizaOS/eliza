@@ -1,5 +1,5 @@
 /** Exercises unavailable billing settings through the real service and HTTP route with deterministic storage. */
-import { expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, test } from "bun:test";
 import type { Organization } from "@/db/repositories";
 
 const NOW = new Date("2026-08-17T00:00:00.000Z");
@@ -14,7 +14,18 @@ interface BillingAttributionFixture {
 }
 
 const findOrganizationById = mock(
-  async (): Promise<Organization | undefined> => undefined,
+  async (): Promise<
+    | Pick<
+        Organization,
+        | "id"
+        | "auto_top_up_enabled"
+        | "auto_top_up_amount"
+        | "auto_top_up_threshold"
+        | "stripe_default_payment_method"
+        | "pay_as_you_go_from_earnings"
+      >
+    | undefined
+  > => undefined,
 );
 const updateOrganization = mock(
   async (): Promise<Organization | undefined> => undefined,
@@ -124,3 +135,62 @@ test("real getSettings missing organization uses advertised unavailable response
   expect(updateOrganization).not.toHaveBeenCalled();
   expect(response.status).toBe(503);
 });
+
+beforeEach(() => {
+  findOrganizationById.mockResolvedValue(undefined);
+  updateOrganization.mockClear();
+  invalidateOrganizationCache.mockClear();
+  onOrganizationUpdated.mockClear();
+});
+
+test("real updateSettings missing organization returns PUT unavailable without mutations", async () => {
+  const response = await route.request("http://internal/", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ autoTopUp: { enabled: false } }),
+  });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    success: false,
+    code: "service_unavailable",
+    error: "Billing settings are unavailable",
+  });
+  expect(updateOrganization).not.toHaveBeenCalled();
+  expect(invalidateOrganizationCache).not.toHaveBeenCalled();
+  expect(onOrganizationUpdated).not.toHaveBeenCalled();
+});
+
+test.each([{}, { autoTopUp: {} }, { ignored: true }])(
+  "PUT with no recognized changes preserves storage and caches: %p",
+  async (body) => {
+    findOrganizationById.mockResolvedValue({
+      id: "org-1",
+      auto_top_up_enabled: false,
+      auto_top_up_amount: "10.00",
+      auto_top_up_threshold: "5.00",
+      stripe_default_payment_method: null,
+      pay_as_you_go_from_earnings: false,
+    });
+    const response = await route.request("http://internal/", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      settings: {
+        autoTopUp: {
+          enabled: false,
+          amount: 10,
+          threshold: 5,
+          hasPaymentMethod: false,
+        },
+        payAsYouGoFromEarnings: false,
+      },
+    });
+    expect(updateOrganization).not.toHaveBeenCalled();
+    expect(invalidateOrganizationCache).not.toHaveBeenCalled();
+    expect(onOrganizationUpdated).not.toHaveBeenCalled();
+  },
+);
