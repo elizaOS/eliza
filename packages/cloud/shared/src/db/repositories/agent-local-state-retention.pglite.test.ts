@@ -26,6 +26,8 @@ import {
   assertRetainedNodePublicationAuthorityInTransaction,
 } from "./agent-local-state-retention";
 
+import { agentSandboxesRepository } from "./agent-sandboxes";
+
 beforeAll(async () => {
   for (const statement of PROVISIONING_JOB_TEST_TABLES) await dbWrite.execute(sql.raw(statement));
   await dbWrite.execute(
@@ -1022,5 +1024,53 @@ test.each(["current", "replacement-node", "changed-ssh"] as const)(
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, authority.agentId));
     expect(observed.status).toBe(scenario === "current" ? "stopped" : "running");
+  },
+);
+
+test.each(["captured", "recreated", "retargeted"] as const)(
+  "retained allocation release never decrements a different physical node (%s)",
+  async (scenario) => {
+    const { authority, captured } = await seed();
+    const deletionAttemptId = crypto.randomUUID();
+    const [deleting] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "deletion_pending",
+        deletion_attempt_id: deletionAttemptId,
+        deletion_started_at: new Date(),
+        deletion_allocation_counted: true,
+        local_state_retention: { ...captured, state: "stopped" },
+      })
+      .where(eq(agentSandboxes.id, authority.agentId))
+      .returning();
+    await dbWrite.execute(sql`UPDATE docker_nodes SET allocated_count = 3`);
+    if (scenario === "recreated")
+      await dbWrite.execute(
+        sql`UPDATE docker_nodes SET id = ${crypto.randomUUID()} WHERE node_id = ${captured.nodeId}`,
+      );
+    if (scenario === "retargeted")
+      await dbWrite.execute(
+        sql`UPDATE docker_nodes SET hostname = '192.0.2.99', host_key_fingerprint = 'SHA256:other' WHERE node_id = ${captured.nodeId}`,
+      );
+    const result = await agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
+      authority.agentId,
+      authority.organizationId,
+      deletionAttemptId,
+      captured.nodeId,
+      deleting.lifecycle_revision,
+    );
+    expect(result.outcome).toBe(scenario === "captured" ? "released" : "counter-unchanged");
+    const count = await dbWrite.execute<{ allocated_count: number }>(
+      sql`SELECT allocated_count FROM docker_nodes WHERE node_id = ${captured.nodeId}`,
+    );
+    expect(count.rows[0].allocated_count).toBe(scenario === "captured" ? 2 : 3);
+    const replay = await agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
+      authority.agentId,
+      authority.organizationId,
+      deletionAttemptId,
+      captured.nodeId,
+      result.lifecycleRevision!,
+    );
+    expect(replay.outcome).toBe("not-owned");
   },
 );

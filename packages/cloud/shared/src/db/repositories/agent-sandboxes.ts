@@ -3038,9 +3038,9 @@ export class AgentSandboxesRepository {
    *
    * @returns the release outcome and, when ownership was consumed, the
    * post-trigger lifecycle revision. `counter-unchanged` also warns: ownership
-   * was ours to spend, but the node counter did not move — either it was
-   * already 0 or the `docker_nodes` row is gone, and in both cases there is no
-   * slot left to give back, so committing the flip is correct.
+   * was ours to spend, but the captured node counter did not move: it is zero,
+   * missing, or its retained host identity changed. Compute absence still
+   * consumes this agent's ownership, without decrementing a replacement host.
    */
   private async spendDeletionAllocation(
     nodeId: string,
@@ -3060,6 +3060,7 @@ export class AgentSandboxesRepository {
         .returning({
           id: agentSandboxes.id,
           lifecycleRevision: agentSandboxes.lifecycle_revision,
+          retention: agentSandboxes.local_state_retention,
         });
       if (!claimed) return { outcome: "not-owned", lifecycleRevision: null };
 
@@ -3069,17 +3070,34 @@ export class AgentSandboxesRepository {
           allocated_count: sql`${dockerNodes.allocated_count} - 1`,
           updated_at: new Date(),
         })
-        .where(and(eq(dockerNodes.node_id, nodeId), gt(dockerNodes.allocated_count, 0)))
+        .where(
+          and(
+            eq(dockerNodes.node_id, nodeId),
+            gt(dockerNodes.allocated_count, 0),
+            // The logical node ID can be reused between deletion admission
+            // and provider completion. Spend only the captured host's counter.
+            claimed.retention
+              ? and(
+                  eq(dockerNodes.id, claimed.retention.nodeRecordId),
+                  eq(dockerNodes.node_id, claimed.retention.nodeId),
+                  eq(dockerNodes.hostname, claimed.retention.hostname),
+                  eq(dockerNodes.ssh_port, claimed.retention.sshPort),
+                  eq(dockerNodes.ssh_user, claimed.retention.sshUser),
+                  eq(dockerNodes.host_key_fingerprint, claimed.retention.hostKeyFingerprint),
+                )
+              : undefined,
+          ),
+        )
         .returning({ nodeId: dockerNodes.node_id });
       if (decremented.length === 0) {
         // Committing the flip is still correct. Either the counter was already
-        // 0, or the `docker_nodes` row is gone — and when the row goes its
-        // `allocated_count` goes with it, so there is no counter left to leak
-        // into. A transiently-absent node self-heals anyway: `syncAllocatedCounts`
-        // recomputes from surviving rows, and the error direction only ever
+        // 0, the node row is gone, or its retained physical identity changed.
+        // The latter must never spend a replacement host's counter. An
+        // unchanged counter can be reconciled by `syncAllocatedCounts`, which
+        // recomputes from surviving rows; the error direction only ever
         // under-packs a node, never over-packs one.
         logger.warn(
-          `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
+          `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0, node row missing, or retained host authority changed`,
         );
         return {
           outcome: "counter-unchanged",
