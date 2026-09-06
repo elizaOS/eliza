@@ -1024,7 +1024,7 @@ export function useFirstRunConductor(): void {
       const waitingTurn = makeTurn(
         "first-run:cloud-login-waiting",
         [
-          "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          "Preparing Cloud sign-in… Complete sign-in in your browser when it opens. You can retry here if it does not open.",
           "",
           `[CHOICE:first-run id=cloud-login-retry-${attempt}]`,
           `${FIRST_RUN_ACTION_PREFIX}cloud-login:retry=Open sign-in again`,
