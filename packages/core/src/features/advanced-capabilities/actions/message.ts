@@ -3353,11 +3353,13 @@ function memoryReadFailure(
 }
 
 function safeMemoryReadInteger(
-	value: number | undefined,
+	raw: unknown,
 	label: "offset" | "limit",
 	fallback: number,
 ): number | undefined {
-	if (value === undefined) return fallback;
+	if (raw === undefined) return fallback;
+	const value = numberParam(raw);
+	if (value === undefined) return undefined;
 	if (!Number.isSafeInteger(value) || value < 0) return undefined;
 	if (label === "limit" && (value < 1 || value > MEMORY_READ_MAX_BYTES)) {
 		return undefined;
@@ -3441,9 +3443,9 @@ async function readAdapterlessStoredMemory(
 			"The stored message is not readable from this room.",
 		);
 	}
-	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
+	const offset = safeMemoryReadInteger(params.offset, "offset", 0);
 	const limit = safeMemoryReadInteger(
-		numberParam(params.limit),
+		params.limit,
 		"limit",
 		Number.MAX_SAFE_INTEGER - (offset ?? 0),
 	);
@@ -3558,9 +3560,9 @@ async function handleReadStoredMemory(
 			"The message store cannot perform a bounded authorized read.",
 		);
 	}
-	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
+	const offset = safeMemoryReadInteger(params.offset, "offset", 0);
 	const limit = safeMemoryReadInteger(
-		numberParam(params.limit),
+		params.limit,
 		"limit",
 		Number.MAX_SAFE_INTEGER - (offset ?? 0),
 	);
