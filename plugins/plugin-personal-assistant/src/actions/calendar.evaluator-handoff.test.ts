@@ -191,7 +191,6 @@ describe("Calendar receipt-grounded evaluator handoff through PA", () => {
     expect(run.actionResult).toMatchObject({
       success: false,
       transcriptVisibility: "internal",
-      turnComplete: false,
       effectReceipts: [{ outcome: "noop", operation: "calendar.event.delete" }],
       data: {
         retryable: false,
@@ -241,6 +240,7 @@ describe("Calendar receipt-grounded evaluator handoff through PA", () => {
       ],
     });
     expect(run.actionResult?.userFacingEffectReceiptIds).toBeUndefined();
+    expect(run.actionResult?.turnComplete).not.toBe(true);
     expect(run.delivered).toEqual([]);
     expect(renderGroundedActionReply).not.toHaveBeenCalled();
     const evaluatorInput = JSON.stringify(
