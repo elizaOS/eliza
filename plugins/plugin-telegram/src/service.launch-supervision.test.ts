@@ -95,10 +95,16 @@ describe("TelegramService.launchPollerSupervised", () => {
     // The poll loop is still running (launch promise stays pending); the caller
     // must proceed off the connect callback, not off loop completion.
     expect(bot.launch).toHaveBeenCalledTimes(1);
-    expect(calls[0].config).toEqual({
-      dropPendingUpdates: false,
-      allowedUpdates: ["message", "message_reaction", "callback_query"],
-    });
+    // my_chat_member MUST be in allowedUpdates: it is Telegram's only update
+    // for the bot's own membership status, and the tombstone/clear paths in
+    // the membership authority depend on its delivery. This pins the
+    // membership-relevant entry rather than the full list shape (lockstep
+    // copies would stay green if a removal broke the delivery contract).
+    expect(calls[0].config.allowedUpdates).toContain("my_chat_member");
+    expect(calls[0].config.allowedUpdates).toContain("message");
+    expect(calls[0].config.allowedUpdates).toContain("message_reaction");
+    expect(calls[0].config.allowedUpdates).toContain("callback_query");
+    expect(calls[0].config.dropPendingUpdates).toBe(false);
 
     calls[0].onLaunch();
     await exposeStoppablePoller(bot);

@@ -207,7 +207,7 @@ describe("standalone Telegram DM policy gate", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps group chats open when nothing is configured", async () => {
+  it("keeps group chats open when nothing is configured and no admission gate is supplied (legacy direct calls)", async () => {
     const { runtime, handleMessage } = makeRuntime({
       settings: { TELEGRAM_DM_POLICY: undefined },
     });
@@ -220,6 +220,131 @@ describe("standalone Telegram DM policy gate", () => {
 
     await handleTelegramStandaloneMessage(runtime, update as never);
 
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("admits an active member and denies a revoked member through the membership authority gate", async () => {
+    // The standalone service passes its authority-backed admission gate for
+    // group chats; this replaces the old lockstep assertion that an
+    // unconfigured group is admitted unconditionally.
+    const { TelegramMembershipMessageGate } = await import(
+      "../membership-gate"
+    );
+    const authorize = vi.fn(async () => ({ decision: "allowed" as const }));
+    const markScopeUnavailable = vi.fn(async () => undefined);
+    const gate = new TelegramMembershipMessageGate({
+      runtime: {
+        agentId: "agent-1",
+        reportError: vi.fn(),
+      } as never,
+      authority: {
+        authorize,
+        markScopeUnavailable,
+      } as never,
+      botTelegramUserId: "900001",
+    });
+
+    // Positive control: an active member is admitted.
+    const allowed = context(111) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    allowed.chat.type = "supergroup";
+    allowed.message.chat.type = "supergroup";
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    await handleTelegramStandaloneMessage(runtime, allowed as never, {
+      admissionGate: gate,
+    });
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(authorize).toHaveBeenCalledTimes(1);
+
+    // Negative control: a revoked member is denied before any
+    // ensureConnection / handleMessage work.
+    authorize.mockResolvedValue({
+      decision: "denied",
+      reason: "membership_revoked",
+    } as never);
+    const denied = context(112) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    denied.chat.type = "supergroup";
+    denied.message.chat.type = "supergroup";
+    await handleTelegramStandaloneMessage(runtime, denied as never, {
+      admissionGate: gate,
+    });
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles an evidence-missing active member through the live getChatMember provider", async () => {
+    // RP R1 finding: without a live provider, an ordinary active member with
+    // missing/expired scope evidence could never be admitted in standalone
+    // mode (the fallback throws and reconcile stays denied) — only
+    // principals with already-current durable evidence could pass. The
+    // service now passes ctx.telegram.getChatMember; this pins the
+    // reconcile path being REACHABLE and successful through the provider.
+    const { TelegramMembershipMessageGate } = await import(
+      "../membership-gate"
+    );
+    const authorize = vi.fn(async () => ({
+      decision: "denied" as const,
+      reason: "no_scope_evidence",
+    }));
+    const reconcile = vi.fn(
+      async (input: { getChatMember: () => Promise<unknown> }) => {
+        // Invoke the provider the handler passed (proving the LIVE provider —
+        // not the throwing fallback — reached the reconcile input).
+        await input.getChatMember();
+        return { state: "active" as const };
+      },
+    );
+    // After a successful reconcile the gate RE-AUTHORIZES; the recheck must
+    // now allow (the reconcile recorded fresh evidence).
+    authorize.mockResolvedValueOnce({
+      decision: "denied" as const,
+      reason: "no_scope_evidence",
+    });
+    authorize.mockResolvedValue({
+      decision: "allowed" as const,
+    } as never);
+    const gate = new TelegramMembershipMessageGate({
+      runtime: {
+        agentId: "agent-1",
+        reportError: vi.fn(),
+      } as never,
+      authority: {
+        authorize,
+        reconcile,
+      } as never,
+      botTelegramUserId: "900001",
+    });
+
+    const getChatMember = vi.fn(async () => ({
+      status: "member",
+      user: { id: 42 },
+    }));
+    const ctx = context(111, 21) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    ctx.chat.type = "supergroup";
+    ctx.message.chat.type = "supergroup";
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    await handleTelegramStandaloneMessage(runtime, ctx as never, {
+      admissionGate: gate,
+      getChatMember,
+    });
+
+    expect(authorize).toHaveBeenCalledTimes(2);
+    // Reconcile ran with the LIVE provider (not the throwing fallback).
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(getChatMember).toHaveBeenCalledTimes(1);
+    // Reconciled-active admission reaches the message service.
     expect(handleMessage).toHaveBeenCalledTimes(1);
   });
 

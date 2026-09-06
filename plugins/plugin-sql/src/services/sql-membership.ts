@@ -49,7 +49,10 @@ const MAX_SNAPSHOT_MEMBERS = 100_000;
 const MAX_VALIDITY_MS = 24 * 60 * 60 * 1_000;
 const MAX_FUTURE_OBSERVATION_MS = 5 * 60 * 1_000;
 const ACTIVE_REASONS = new Set(["joined", "reconciled_present", "permission_restored"]);
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Canonical UUID shape (matches core's validateUuid): elizaOS derives many
+// runtime ids via stringToUuid, whose custom format zeroes the version nibble,
+// so restricting the nibble to [1-8] would reject the platform's own ids.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEGRADE_REASON = {
   stale: "authority_stale",
   unavailable: "authority_unavailable",

@@ -99,6 +99,15 @@ export * from "./accounts";
 export * from "./connector-account-provider";
 export * from "./identity";
 export * from "./local-client";
+export {
+  TELEGRAM_MEMBERSHIP_TTL_MS,
+  TelegramMembershipAuthority,
+  type TelegramMembershipReason,
+  telegramMemberRoles,
+  telegramMembershipScope,
+  telegramObservedAt,
+  telegramStatusToMembership,
+} from "./membership";
 export * from "./poller-lock";
 export type { TelegramStandaloneContext } from "./standalone/handler";
 export { handleTelegramStandaloneMessage } from "./standalone/handler";
