@@ -759,6 +759,54 @@ describe("MEMORY op:delete by query scope", () => {
 });
 
 describe("MEMORY op:update", () => {
+  it("does not mistake this turn's extracted update request for an older saved fact", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    seedFact(rows, {
+      text: "Indigo Finch review starts at 6 a.m.",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "Indigo Finch review time changes from 6 a.m. to 7 a.m.",
+      entityId: USER_ID,
+    });
+    rows[1].memory.metadata = {
+      type: "custom",
+      source: "facts_and_relationships_stage",
+      messageId: message.id,
+    };
+    const before = structuredClone(rows);
+    const result = await runAction(runtime, message, {
+      action: "update",
+      type: "facts",
+      query: "Indigo Finch review time",
+      text: "Indigo Finch review starts at 7 a.m.",
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_NOT_FOUND" });
+    expect(rows).toEqual(before);
+  });
+
+  it("updates saved knowledge by default without rewriting a matching chat message", async () => {
+    const { runtime, rows } = makeRuntime();
+    const text = "Indigo Finch review starts at 6 a.m.";
+    seedFact(rows, { text, entityId: USER_ID });
+    rows.push({
+      tableName: "messages",
+      memory: { ...makeMessage(), content: { text } },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      query: text,
+      text: "Indigo Finch review starts at 7 a.m.",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.content.text).toContain("7 a.m.");
+    expect(rows[1].memory.content.text).toBe(text);
+  });
+
   it("updates a text-only memory without requiring an embedding provider", async () => {
     const { runtime, rows } = makeRuntime();
     const memoryId = seedFact(rows, {

@@ -2797,7 +2797,26 @@ export async function handleLifeOpsRoutes(
         dueDate: occurrence.dueAt,
         progress: occurrence.progress,
       }));
-      json(res, { todos });
+      // Undated tasks deliberately have no scheduled occurrence. Include their
+      // caller-scoped definitions so they remain visible in the Someday lane.
+      const definitions = await service.listDefinitions();
+      const unscheduled = definitions
+        .map((record) => record.definition)
+        .filter(
+          (definition) =>
+            definition.subjectType === "owner" &&
+            definition.kind === "task" &&
+            definition.status === "active" &&
+            definition.cadence.kind === "unscheduled",
+        )
+        .map((definition) => ({
+          id: definition.id,
+          title: definition.title,
+          status: "pending" as const,
+          dueDate: null,
+          progress: null,
+        }));
+      json(res, { todos: [...todos, ...unscheduled] });
     });
   }
 

@@ -1077,22 +1077,33 @@ async function doUpdate(
     }
     existingMemories = [existing];
   } else {
+    const type =
+      params.type && MEMORY_TYPES.includes(params.type)
+        ? params.type
+        : undefined;
     const scan = await collectCandidates(runtime, {
-      type:
-        params.type && MEMORY_TYPES.includes(params.type)
-          ? params.type
-          : undefined,
+      type,
+      tables: type ? [type] : FORGET_BY_QUERY_TABLES,
       entityId: message.entityId,
       query,
     });
     const matched = scan.matches.filter((candidate) => {
+      // Stage 1 may already have stored the requested change as an observation.
+      // Updating that observation cannot fulfill a request to correct prior facts.
+      if (
+        message.id &&
+        candidate.memory.metadata?.source === "facts_and_relationships_stage" &&
+        "messageId" in candidate.memory.metadata &&
+        candidate.memory.metadata.messageId === message.id
+      )
+        return false;
       const candidateText =
         (candidate.memory.content as { text?: string } | undefined)?.text ?? "";
       return scoreText(candidateText, query ?? "") >= 1;
     });
     if (matched.length === 0) {
       return fail(
-        `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
+        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target.`,
         "MEMORY_NOT_FOUND",
       );
     }
@@ -1114,7 +1125,7 @@ async function doUpdate(
       return {
         success: false,
         text: [
-          `Query "${query}" matches ${distinctTexts.size} distinct memories. Update by memoryId instead:`,
+          `Query "${query}" matches ${distinctTexts.size} distinct memories. Review all candidates and update each record affected by the user's correction by memoryId, preserving unrelated facts in each replacement:`,
           ...lines,
         ].join("\n"),
         data: { error: "MEMORY_AMBIGUOUS_QUERY" },
@@ -1482,7 +1493,7 @@ export const memoryAction: Action = {
     {
       name: "text",
       description:
-        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: replacement text body for the memory.",
+        "create: REQUIRED — the content to remember, as a complete sentence (never leave it empty and never put it in query). update: complete replacement text for the existing record; preserve every unrelated fact. When correcting saved knowledge, search the subject and reconcile all affected records before reporting completion.",
       required: false,
       requiredForSubactions: ["create", "update"],
       schema: { type: "string" as const },
