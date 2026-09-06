@@ -1,8 +1,12 @@
 /** Resolves original-purchaser Checkout cleanup through the existing command journal. Scope/owner locks serialize dispatch intent and terminal evidence; current canonical phase authority is required even when replaying a retained cleanup command. */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DeletionCheckoutCommandPayload } from "../../lib/services/generic-billing-command-types";
-import type { BillingProviderObservation } from "../../lib/services/generic-billing-provider-types";
+import type {
+  BillingProviderCheckout,
+  BillingProviderObservation,
+  BillingProviderPaymentMethodCheckout,
+} from "../../lib/services/generic-billing-provider-types";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
@@ -307,6 +311,11 @@ export const appBillingDeletionCheckoutRepository = {
           source.error_code !== "APP_BILLING_CHECKOUT_EXPIRED"
         )
           appBillingConflict("Cleanup completion lost original expiration evidence");
+        const proof = await tx.execute<{ valid: boolean }>(
+          sql`SELECT app_billing_checkout_cleanup_receipt_valid(c) AS valid FROM billing_subscription_commands c WHERE c.id=${command.id}::uuid`,
+        );
+        if (!proof.rows[0]?.valid)
+          appBillingConflict("Checkout cleanup has no verifiable retained provider observation");
         return { kind: "complete" };
       }
       if (!["PREPARED", "OUTCOME_UNKNOWN"].includes(command.status))
@@ -351,11 +360,9 @@ export const appBillingDeletionCheckoutRepository = {
   },
   async complete(
     claim: DeletionCheckoutClaim,
-    observation: BillingProviderObservation<{
-      sessionId: string;
-      customerId: string;
-      status: string;
-    }>,
+    observation: BillingProviderObservation<
+      BillingProviderCheckout | BillingProviderPaymentMethodCheckout
+    >,
   ) {
     await writeTransaction(async (tx) => {
       const { source, scope, command, now } = await lockedClaim(tx, claim);
@@ -365,6 +372,7 @@ export const appBillingDeletionCheckoutRepository = {
         .where(eq(billingMerchants.id, scope.merchantId));
       if (
         observation.value.status !== "expired" ||
+        observation.value.mode !== claim.payload.mode ||
         observation.value.sessionId !== claim.payload.checkoutSessionId ||
         observation.value.customerId !== claim.payload.customerId ||
         observation.merchantId !== scope.merchantId ||
@@ -397,6 +405,16 @@ export const appBillingDeletionCheckoutRepository = {
           status: "SUCCEEDED",
           provider_result: {
             kind: "expired_checkout",
+            checkoutEvidence: {
+              commandId: command.id,
+              commandRevision: command.state_revision,
+              executionGeneration: command.execution_generation,
+              leaseToken: claim.lease.token,
+              phaseGeneration: claim.authority.phaseGeneration,
+              sourceCommandId: source.id,
+              sourceRevision: source.state_revision + (source.status === "FAILED" ? 0 : 1),
+              observation,
+            },
             checkoutSessionId: claim.payload.checkoutSessionId,
           },
           provider_response_digest: observation.digest,
@@ -412,13 +430,9 @@ export const appBillingDeletionCheckoutRepository = {
   },
   async completeApplied(
     claim: DeletionCheckoutClaim,
-    observation: BillingProviderObservation<{
-      sessionId: string;
-      customerId: string;
-      subscriptionId: string | null;
-      status: string;
-      mode: "setup" | "subscription";
-    }>,
+    observation: BillingProviderObservation<
+      BillingProviderCheckout | BillingProviderPaymentMethodCheckout
+    >,
   ) {
     await writeTransaction(async (tx) => {
       const { source, scope, command, now, principals, members } = await lockedClaim(tx, claim);
@@ -527,6 +541,16 @@ export const appBillingDeletionCheckoutRepository = {
           status: "SUCCEEDED",
           provider_result: {
             kind: "completed_checkout",
+            checkoutEvidence: {
+              commandId: command.id,
+              commandRevision: command.state_revision,
+              executionGeneration: command.execution_generation,
+              leaseToken: claim.lease.token,
+              phaseGeneration: claim.authority.phaseGeneration,
+              sourceCommandId: source.id,
+              sourceRevision: source.state_revision,
+              observation,
+            },
             checkoutSessionId: claim.payload.checkoutSessionId,
             subscriptionId: source.result_subscription_id,
             subscriptionRevision: revision.revision,

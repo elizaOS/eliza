@@ -22,6 +22,11 @@ export async function expirePurchaserCheckoutForDeletion(
   try {
     const scope = await appBillingDeletionCheckoutRepository.validateDispatch(claim);
     const provider = await resolveProvider(scope.merchantId, scope.livemode);
+    const providerScope = {
+      scopeId: scope.scopeId,
+      appId: scope.appId,
+      billingAccountId: scope.billingAccountId,
+    };
     const payload = claim.payload;
     const base = { sessionId: payload.checkoutSessionId, customerId: payload.customerId };
     let input: Parameters<typeof provider.expireCheckout>[1];
@@ -41,8 +46,8 @@ export async function expirePurchaserCheckoutForDeletion(
     } else input = { ...base, mode: "subscription" };
     const observed =
       input.mode === "setup"
-        ? await provider.readPaymentMethodCheckout(scope, input)
-        : await provider.readCheckout(scope, input);
+        ? await provider.readPaymentMethodCheckout(providerScope, input)
+        : await provider.readCheckout(providerScope, input);
     if (observed.value.status === "complete") {
       await appBillingDeletionCheckoutRepository.completeApplied(claim, observed);
       return "complete";
@@ -52,7 +57,7 @@ export async function expirePurchaserCheckoutForDeletion(
     const expired =
       observed.value.status === "expired"
         ? observed
-        : await provider.expireCheckout(scope, input, {
+        : await provider.expireCheckout(providerScope, input, {
             commandId: claim.lease.commandId,
             idempotencyKey: `app-deletion-expire:${sourceCommandId}:expire`,
             requestDigest: settlementDigest(payload),

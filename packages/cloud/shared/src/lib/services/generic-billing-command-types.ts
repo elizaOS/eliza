@@ -7,7 +7,9 @@
 import type { CreateAppBillingPlanRequest } from "@elizaos/cloud-sdk/app-billing-admin";
 
 import type {
+  BillingProviderCheckout,
   BillingProviderObservation,
+  BillingProviderPaymentMethodCheckout,
   BillingProviderSubscription,
 } from "./generic-billing-provider-types";
 
@@ -19,6 +21,20 @@ export interface DeletionCancellationEvidence {
   leaseToken: string;
   phaseGeneration: number;
   observation: BillingProviderObservation<BillingProviderSubscription>;
+}
+
+/** Retains a full Checkout read and the original cleanup execution that accepted it. */
+export interface DeletionCheckoutEvidence {
+  commandId: string;
+  commandRevision: number;
+  executionGeneration: number;
+  leaseToken: string;
+  phaseGeneration: number;
+  sourceCommandId: string;
+  sourceRevision: number;
+  observation: BillingProviderObservation<
+    BillingProviderCheckout | BillingProviderPaymentMethodCheckout
+  >;
 }
 
 interface BuyerIntent {
@@ -86,9 +102,14 @@ export type BuyerBillingCommandResult =
       subscriptionRevision: number | null;
       cancellationEvidence?: DeletionCancellationEvidence;
     }
-  | { kind: "expired_checkout"; checkoutSessionId: string }
+  | {
+      kind: "expired_checkout";
+      checkoutSessionId: string;
+      checkoutEvidence?: DeletionCheckoutEvidence;
+    }
   | {
       kind: "completed_checkout";
+      checkoutEvidence?: DeletionCheckoutEvidence;
       checkoutSessionId: string;
       subscriptionId: string;
       subscriptionRevision: number;

@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
+import { settlementDigest } from "./settlement-digest";
 
 const postgresUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
 const schema = `app_delete_checkout_${randomUUID().replaceAll("-", "_")}`;
@@ -127,6 +128,9 @@ describe.skipIf(!postgresUrl)("departing purchaser Checkout cleanup", () => {
       "0427_app_billing_paid_resume_progress",
       "0428_app_billing_deletion_checkout",
       "0430_app_billing_completed_checkout",
+      "0445_app_billing_refund_observations",
+      "0462_app_billing_checkout_cleanup_receipts",
+      "0463_app_billing_checkout_cleanup_evidence",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -365,7 +369,7 @@ describe.skipIf(!postgresUrl)("departing purchaser Checkout cleanup", () => {
         "UPDATE billing_subscription_commands SET request_payload=jsonb_set(request_payload,'{customerId}','\"cus_wrong\"') WHERE request_payload->>'sourceCommandId'=$1",
         [state.source.id],
       ),
-    ).rejects.toThrow("intent is immutable");
+    ).rejects.toThrow("immutable");
   });
   test("deletion recovery drives expiry and retains completed Checkout as unresolved", async () => {
     const recovery = (await import("./app-billing-deletion-recovery"))
@@ -594,10 +598,15 @@ describe.skipIf(!postgresUrl)("departing purchaser Checkout cleanup", () => {
     if (claimed.kind !== "claimed") throw new Error("Expected cleanup claim");
     const scope = await repository.validateDispatch(claimed.claim);
     const provider = await resolveProvider(scope.merchantId, scope.livemode);
-    const observed = await provider.readCheckout(scope, {
+    const readInput = {
       sessionId: claimed.claim.payload.checkoutSessionId,
       customerId: claimed.claim.payload.customerId,
-    });
+      mode: "subscription" as const,
+    };
+    const observed = await provider.readCheckout(
+      { scopeId: scope.scopeId, appId: scope.appId, billingAccountId: scope.billingAccountId },
+      readInput,
+    );
     await db.query("BEGIN");
     await db.query("UPDATE users SET auth_fenced_at=now() WHERE id=$1", [state.survivor]);
     const pending = repository.completeApplied(claimed.claim, observed);
@@ -612,6 +621,132 @@ describe.skipIf(!postgresUrl)("departing purchaser Checkout cleanup", () => {
       "OUTCOME_UNKNOWN",
     );
   });
+  test("retains exact subscription and setup Checkout observations with their cleanup execution", async () => {
+    for (const setup of [false, true]) {
+      const state = await start(setup);
+      const repository = (await import("../../db/repositories/app-billing-deletion-checkout"))
+        .appBillingDeletionCheckoutRepository;
+      let selected = await repository.claim(state.source.id, state.auth);
+      if (selected.kind !== "claimed") throw new Error("Missing cleanup claim");
+      const scope = await repository.validateDispatch(selected.claim);
+      const provider = await resolveProvider(scope.merchantId, scope.livemode);
+      const providerScope = {
+        scopeId: scope.scopeId,
+        appId: scope.appId,
+        billingAccountId: scope.billingAccountId,
+      };
+      const plan = await authority.getHistoricalPlan({
+        appId: scope.appId,
+        planRevisionId: state.planId,
+      });
+      const { appBillingProviderPlan } = await import("./generic-billing-provider-runtime");
+      const base = {
+        sessionId: selected.claim.payload.checkoutSessionId,
+        customerId: selected.claim.payload.customerId,
+      };
+      const input = setup
+        ? {
+            ...base,
+            mode: "setup" as const,
+            subscriptionId: selected.claim.payload.subscriptionId!,
+            plan: appBillingProviderPlan(plan),
+          }
+        : { ...base, mode: "subscription" as const };
+      const observed = await provider.expireCheckout(providerScope, input, {
+        commandId: selected.claim.lease.commandId,
+        idempotencyKey: randomUUID(),
+        requestDigest: settlementDigest(selected.claim.payload),
+      });
+      for (const invalid of [
+        { ...observed, digest: "0".repeat(64) },
+        { ...observed, inputDigest: "0".repeat(64) },
+        { ...observed, value: { ...observed.value, sessionId: "cs_foreign" } },
+        { ...observed, value: { ...observed.value, status: "open" as const } },
+      ])
+        await expect(repository.complete(selected.claim, invalid)).rejects.toThrow();
+      const firstClaim = selected.claim;
+      await db.query(
+        "UPDATE billing_subscription_commands SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
+        [firstClaim.lease.commandId],
+      );
+      selected = await repository.claim(state.source.id, state.auth);
+      if (selected.kind !== "claimed") throw new Error("Missing takeover claim");
+      expect(selected.claim.lease.commandId).toBe(firstClaim.lease.commandId);
+      expect(selected.claim.lease.executionGeneration).toBe(
+        firstClaim.lease.executionGeneration + 1,
+      );
+      const beforeRecovery = fixture.requests.length;
+      await expect(repository.complete(firstClaim, observed)).rejects.toThrow("execution lease");
+      await repository.complete(selected.claim, observed);
+      expect(fixture.requests.length).toBe(beforeRecovery);
+      const records = await rows(state.source.id);
+      const cleanup = records.find((row) => row.id !== state.source.id);
+      expect(cleanup.provider_result.checkoutEvidence).toEqual({
+        commandId: selected.claim.lease.commandId,
+        commandRevision: selected.claim.lease.stateRevision,
+        executionGeneration: selected.claim.lease.executionGeneration,
+        leaseToken: selected.claim.lease.token,
+        phaseGeneration: state.auth.phaseGeneration,
+        sourceCommandId: state.source.id,
+        sourceRevision: Number(records.find((row) => row.id === state.source.id).state_revision),
+        observation: observed,
+      });
+      const beforeReplay = fixture.requests.length;
+      expect(await expire(state)).toBe("complete");
+      expect(fixture.requests.length).toBe(beforeReplay);
+      await expect(
+        db.query(
+          "UPDATE billing_subscription_commands SET provider_result=jsonb_set(provider_result,'{checkoutEvidence,observation,digest}',to_jsonb(repeat('0',64))) WHERE id=$1",
+          [cleanup.id],
+        ),
+      ).rejects.toThrow();
+    }
+  });
+  test("completed Checkout retains the actual read and rejects a substituted source in SQL", async () => {
+    const state = await appliedWithDecision();
+    const repository = (await import("../../db/repositories/app-billing-deletion-checkout"))
+      .appBillingDeletionCheckoutRepository;
+    const selected = await repository.claim(state.source.id, state.auth);
+    if (selected.kind !== "claimed") throw new Error("Missing cleanup claim");
+    const scope = await repository.validateDispatch(selected.claim);
+    const provider = await resolveProvider(scope.merchantId, scope.livemode);
+    const readInput = {
+      sessionId: selected.claim.payload.checkoutSessionId,
+      customerId: selected.claim.payload.customerId,
+      mode: "subscription" as const,
+    };
+    const observed = await provider.readCheckout(
+      { scopeId: scope.scopeId, appId: scope.appId, billingAccountId: scope.billingAccountId },
+      readInput,
+    );
+    await db.query(`CREATE FUNCTION substitute_checkout_source() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.request_payload->>'domain'='account_deletion' AND NEW.status='SUCCEEDED' THEN NEW.provider_result=jsonb_set(NEW.provider_result,'{checkoutEvidence,sourceCommandId}',to_jsonb('00000000-0000-0000-0000-000000000000'::text)); END IF; RETURN NEW; END $$;
+      CREATE TRIGGER aaa_substitute_checkout_source BEFORE UPDATE ON billing_subscription_commands FOR EACH ROW EXECUTE FUNCTION substitute_checkout_source();`);
+    try {
+      await expect(repository.completeApplied(selected.claim, observed)).rejects.toMatchObject({
+        cause: {
+          message:
+            "Checkout cleanup requires retained observation and current source execution authority",
+        },
+      });
+    } finally {
+      await db.query(
+        "DROP TRIGGER aaa_substitute_checkout_source ON billing_subscription_commands; DROP FUNCTION substitute_checkout_source()",
+      );
+    }
+    expect((await rows(state.source.id)).find((row) => row.id !== state.source.id).status).toBe(
+      "OUTCOME_UNKNOWN",
+    );
+    await repository.completeApplied(selected.claim, observed);
+    const result = (await rows(state.source.id)).find(
+      (row) => row.id !== state.source.id,
+    ).provider_result;
+    expect(result.checkoutEvidence.observation).toEqual(observed);
+    expect(result.checkoutEvidence.sourceCommandId).toBe(state.source.id);
+    const beforeReplay = fixture.requests.length;
+    expect(await expire(state)).toBe("complete");
+    expect(fixture.requests.length).toBe(beforeReplay);
+  });
   test("completed cleanup rejects a provider subscription outside its applied revision", async () => {
     const state = await appliedWithDecision();
     const repository = (await import("../../db/repositories/app-billing-deletion-checkout"))
@@ -620,10 +755,15 @@ describe.skipIf(!postgresUrl)("departing purchaser Checkout cleanup", () => {
     if (claimed.kind !== "claimed") throw new Error("Expected cleanup claim");
     const scope = await repository.validateDispatch(claimed.claim);
     const provider = await resolveProvider(scope.merchantId, scope.livemode);
-    const observed = await provider.readCheckout(scope, {
+    const readInput = {
       sessionId: claimed.claim.payload.checkoutSessionId,
       customerId: claimed.claim.payload.customerId,
-    });
+      mode: "subscription" as const,
+    };
+    const observed = await provider.readCheckout(
+      { scopeId: scope.scopeId, appId: scope.appId, billingAccountId: scope.billingAccountId },
+      readInput,
+    );
     await expect(
       repository.completeApplied(claimed.claim, {
         ...observed,
