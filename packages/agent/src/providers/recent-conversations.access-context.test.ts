@@ -113,7 +113,7 @@ async function ownerTurn(
     entityId: OWNER,
     roomId: CURRENT_ROOM,
     content: {
-      text: "What did I say elsewhere earlier?",
+      text: "What did I say elsewhere?",
       source: "discord",
       channelType: ChannelType.DM,
     },
