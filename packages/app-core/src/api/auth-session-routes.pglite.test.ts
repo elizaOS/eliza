@@ -1,9 +1,7 @@
 /**
- * Real-pglite integration test for the P1 session routes.
- *
- * Drives the route handler directly with synthetic req/res objects so the
- * full route logic — JSON body parsing, cookie minting, audit emission —
- * runs end-to-end without needing a live HTTP server.
+ * Exercises session routes against migrated PGlite storage, including cookie and
+ * ownership contracts. Synthetic HTTP objects keep the harness local; database
+ * failures are produced by SQL rather than replacing the store or route.
  */
 
 import fs from "node:fs";
@@ -11,6 +9,7 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { type SQL, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import { _resetSensitiveLimiters } from "./auth/sensitive-rate-limit";
@@ -44,7 +43,7 @@ interface SqlPluginModule {
 }
 
 interface Harness {
-  db: DrizzleDatabase;
+  db: DrizzleDatabase & { execute(query: SQL): Promise<unknown> };
   store: AuthStore;
   state: CompatRuntimeState;
   cleanup: () => Promise<void>;
@@ -64,7 +63,7 @@ async function open(): Promise<Harness> {
   if (typeof adapter.initialize === "function") await adapter.initialize();
   else if (typeof adapter.init === "function") await adapter.init();
   if (!adapter.db) throw new Error("test harness: adapter has no .db");
-  const db = adapter.db as DrizzleDatabase;
+  const db = adapter.db as Harness["db"];
   const migrations = new DatabaseMigrationService();
   await migrations.initializeWithDatabase(db);
   migrations.discoverAndRegisterPluginSchemas([sqlPlugin]);
@@ -185,7 +184,7 @@ function extractSessionCookieValue(cookies: string[]): string | null {
   return null;
 }
 
-describe("P1 session routes (real pglite)", () => {
+describe("session routes (real PGlite)", () => {
   const HARNESS_HOOK_TIMEOUT_MS = 120_000;
   let harness: Harness;
 
@@ -278,6 +277,116 @@ describe("P1 session routes (real pglite)", () => {
     expect(
       (meAfterRes.body() as { access: { role: string } }).access.role,
     ).toBe("GUEST");
+  });
+
+  it("logout surfaces a session-store failure without clearing the credential", async () => {
+    await harness.db.execute(
+      sql`ALTER TABLE auth_sessions RENAME TO unavailable_sessions`,
+    );
+    const res = fakeRes();
+    await expect(
+      handleAuthSessionRoutes(
+        fakeReq({
+          method: "POST",
+          pathname: "/api/auth/logout",
+          cookie: `${SESSION_COOKIE_NAME}=persisted-session`,
+        }),
+        res.res,
+        harness.state,
+      ),
+    ).rejects.toThrow();
+    expect(res.cookies()).toEqual([]);
+    expect(res.body()).toBeNull();
+  });
+
+  it("logout remains idempotent for missing and expired sessions", async () => {
+    const identity = await harness.store.createIdentity({
+      id: "logout-owner",
+      kind: "owner",
+      displayName: "logout-owner",
+      createdAt: Date.now(),
+      passwordHash: null,
+    });
+    const { session } = await createMachineSession(harness.store, {
+      identityId: identity.id,
+      scopes: ["api"],
+      now: 0,
+    });
+    for (const cookie of [
+      undefined,
+      `${SESSION_COOKIE_NAME}=missing`,
+      `${SESSION_COOKIE_NAME}=${session.id}`,
+    ]) {
+      const res = fakeRes();
+      await handleAuthSessionRoutes(
+        fakeReq({ method: "POST", pathname: "/api/auth/logout", cookie }),
+        res.res,
+        harness.state,
+      );
+      expect(res.status()).toBe(200);
+      expect(res.body()).toEqual({ ok: true });
+      expect(res.cookies()).toHaveLength(2);
+    }
+  });
+
+  it("revoke distinguishes an unreadable target from an absent or other-owner session", async () => {
+    const owner = await harness.store.createIdentity({
+      id: "revoke-owner",
+      kind: "owner",
+      displayName: "revoke-owner",
+      createdAt: Date.now(),
+      passwordHash: null,
+    });
+    const other = await harness.store.createIdentity({
+      id: "other-owner",
+      kind: "owner",
+      displayName: "other-owner",
+      createdAt: Date.now(),
+      passwordHash: null,
+    });
+    const { session } = await createMachineSession(harness.store, {
+      identityId: owner.id,
+      scopes: ["api"],
+    });
+    const { session: otherSession } = await createMachineSession(
+      harness.store,
+      { identityId: other.id, scopes: ["api"] },
+    );
+    const invoke = (target: string, res: FakeRes) =>
+      handleAuthSessionRoutes(
+        fakeReq({
+          method: "POST",
+          pathname: `/api/auth/sessions/${target}/revoke`,
+          bearer: session.id,
+          ip: "10.0.0.8",
+        }),
+        res.res,
+        harness.state,
+      );
+    for (const target of ["missing", otherSession.id]) {
+      const res = fakeRes();
+      await invoke(target, res);
+      expect(res.status()).toBe(404);
+      expect(await harness.store.findSession(otherSession.id)).not.toBeNull();
+    }
+    await harness.store.createSession({ ...session, id: "unreadable-session" });
+    // A real SQL read fault is isolated to the target; caller authentication still uses the migrated store.
+    await harness.db.execute(
+      sql`ALTER TABLE auth_sessions RENAME TO stored_sessions`,
+    );
+    await harness.db.execute(sql`CREATE FUNCTION readable_session(session_id text) RETURNS boolean AS $$
+      BEGIN
+        IF session_id = 'unreadable-session' THEN RAISE EXCEPTION 'session read unavailable'; END IF;
+        RETURN true;
+      END;
+    $$ LANGUAGE plpgsql`);
+    await harness.db.execute(
+      sql`CREATE VIEW auth_sessions AS SELECT * FROM stored_sessions WHERE readable_session(id)`,
+    );
+    const failed = fakeRes();
+    await expect(invoke("unreadable-session", failed)).rejects.toThrow();
+    expect(failed.body()).toBeNull();
+    expect(failed.cookies()).toEqual([]);
   });
 
   it("local /api/auth/me succeeds without a password session", async () => {
