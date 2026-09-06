@@ -1,17 +1,26 @@
 // @vitest-environment jsdom
 
 /**
- * Regression coverage for LocalInferencePanel's SSE state reconciliation.
- * The deterministic jsdom harness mocks the local-inference API, child views,
- * and EventSource so downloads-only snapshots cannot erase active model state.
+ * Exercises local model management and SSE state reconciliation in jsdom.
+ * The model list, first-run recommendation and publication policy are real;
+ * API transport, device services and EventSource are deterministic fixtures.
  */
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelHubSnapshot } from "../../api/client-local-inference";
+import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 
 const clientMock = vi.hoisted(() => ({
   getLocalInferenceHub: vi.fn(),
+  uninstallLocalInferenceModel: vi.fn().mockResolvedValue(undefined),
   getVoiceModelPreferences: vi.fn(),
   listVoiceModels: vi.fn(),
 }));
@@ -35,8 +44,8 @@ vi.mock("../../hooks/useRenderGuard", () => ({ useRenderGuard: vi.fn() }));
 vi.mock("../../hooks/useRole", () => ({
   useRole: () => ({ isOwner: true }),
 }));
-vi.mock("../../services/local-inference/catalog-policy", () => ({
-  filterSettingsDefaultLocalModels: (models: unknown[]) => models,
+vi.mock("../../state/TranslationContext.hooks", () => ({
+  useTranslation: () => ({ t: appStateMock.t }),
 }));
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (state: unknown) => unknown) =>
@@ -68,9 +77,7 @@ vi.mock("./DeviceBridgeStatus", () => ({
 }));
 vi.mock("./DevicesPanel", () => ({ DevicesPanel: () => null }));
 vi.mock("./DownloadQueue", () => ({ DownloadQueue: () => null }));
-vi.mock("./FirstRunOffer", () => ({ FirstRunOffer: () => null }));
 vi.mock("./HardwareBadge", () => ({ HardwareBadge: () => null }));
-vi.mock("./ModelHubView", () => ({ ModelHubView: () => null }));
 vi.mock("./ModelUpdatesPanel", () => ({ ModelUpdatesPanel: () => null }));
 vi.mock("../settings/settings-control-primitives", () => ({
   AdvancedSettingsDisclosure: ({ children }: { children: React.ReactNode }) =>
@@ -212,4 +219,43 @@ describe("LocalInferencePanel stream snapshots", () => {
     });
     expect(screen.getByTestId("active-model").textContent).toBe("none");
   });
+});
+
+it("keeps an installed unpublished model removable without offering it as a fresh download", async () => {
+  const baseModel = MODEL_CATALOG[0];
+  if (!baseModel) throw new Error("Local catalog fixture unavailable");
+  const model = { ...baseModel, publishStatus: "pending" as const };
+  const installedHub: ModelHubSnapshot = {
+    ...initialHub,
+    active: { modelId: null, loadedAt: null, status: "idle" },
+    catalog: [model],
+    installed: [
+      {
+        id: model.id,
+        displayName: model.id,
+        path: `/models/${model.ggufFile}`,
+        sizeBytes: 1000,
+        installedAt: "2026-08-28T00:00:00.000Z",
+        lastUsedAt: null,
+        source: "eliza-download",
+      },
+    ],
+  };
+  clientMock.getLocalInferenceHub
+    .mockResolvedValueOnce(installedHub)
+    .mockResolvedValue({ ...installedHub, installed: [] });
+  render(<LocalInferencePanel />);
+  fireEvent.click(await screen.findByRole("button", { name: "Uninstall" }));
+  await waitFor(() =>
+    expect(clientMock.uninstallLocalInferenceModel).toHaveBeenCalledWith(
+      model.id,
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Uninstall" })).toBeNull(),
+  );
+  expect(
+    screen.queryByRole("button", { name: "Download default model" }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
 });
