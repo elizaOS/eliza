@@ -5,6 +5,10 @@ on:
     branches: [fix/android-chat-uds-proof-30785]
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 
@@ -51,6 +55,8 @@ jobs:
             > evidence/30785/source-files.sha256
       - name: Install JavaScript contract dependencies
         run: bun install --frozen-lockfile --ignore-scripts 2>&1 | tee evidence/30785/install.log
+      - name: Generate required localization sources
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs 2>&1 | tee evidence/30785/generated-sources.log
       - name: Validate combined source inventory exclusions
         run: node --test packages/ui/scripts/find-duplicate-components.test.mjs 2>&1 | tee evidence/30785/source-inventory-tests.log
       - name: Exercise registered loader and real Linux abstract sockets
