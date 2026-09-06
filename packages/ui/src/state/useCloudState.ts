@@ -1206,7 +1206,21 @@ export function useCloudState({
       // cannot shadow the device-code credentials in subsequent authed calls
       // (this mirrors what launchStewardLogin would have done before throwing).
       if (readStoredStewardToken()?.trim()) {
-        await clearStoredStewardToken();
+        try {
+          await clearStoredStewardToken();
+        } catch (error) {
+          // error-policy:J4 failed expired-token removal must settle the shared attempt before retry.
+          closePrePoppedWindow();
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          setElizaCloudLoginError(
+            error instanceof Error
+              ? error.message
+              : "Could not clear the previous Cloud session. Try signing in again.",
+          );
+          completeLogin();
+          throw error;
+        }
       }
 
       // Legacy device-code fallback (retired for Cloud; preserved for the
