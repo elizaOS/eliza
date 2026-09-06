@@ -64,6 +64,7 @@ function isTrustedElizaCloudHttpsUrl(url: string): boolean {
 
 const desktopHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
+    init.signal?.throwIfAborted();
     const rpc = getElectrobunRendererRpc();
     const request = rpc?.request?.desktopHttpRequest;
     if (!request || !rpc?.request) {
@@ -80,13 +81,46 @@ const desktopHttpTransport: AgentRequestTransport = {
       return fetchAgentTransport.request(url, init, context);
     }
 
-    const result = (await request.call(rpc.request, {
-      url,
-      method,
-      headers: headersToRecord(init.headers),
-      body: methodAllowsBody(method) ? (body ?? null) : null,
-      timeoutMs: context?.timeoutMs,
-    })) as DesktopHttpRequestResult;
+    const signal = init.signal;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let abortListener: (() => void) | undefined;
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      if (signal) {
+        abortListener = () => reject(signal.reason);
+        signal.addEventListener("abort", abortListener, { once: true });
+      }
+      if (context?.timeoutMs !== undefined) {
+        timeoutId = setTimeout(
+          () =>
+            reject(
+              new DOMException(
+                "The desktop HTTP request timed out",
+                "TimeoutError",
+              ),
+            ),
+          context.timeoutMs,
+        );
+      }
+    });
+    let result: DesktopHttpRequestResult;
+    try {
+      // The renderer deadline also covers a lost RPC response. Native fetch
+      // receives the same budget; cancellation never replays a pending POST.
+      result = (await Promise.race([
+        request.call(rpc.request, {
+          url,
+          method,
+          headers: headersToRecord(init.headers),
+          body: methodAllowsBody(method) ? (body ?? null) : null,
+          timeoutMs: context?.timeoutMs,
+        }),
+        interrupted,
+      ])) as DesktopHttpRequestResult;
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      if (signal && abortListener)
+        signal.removeEventListener("abort", abortListener);
+    }
 
     // Binary responses (audio, image, etc.) arrive as base64 to avoid UTF-8
     // corruption through the Electrobun RPC string bridge.
