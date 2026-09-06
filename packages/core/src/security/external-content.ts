@@ -392,6 +392,60 @@ export function containsExternalEnvelopeMaterial(text: string): boolean {
 }
 
 /**
+ * Prompt rendering of a STORED message text that carries one or more
+ * verbatim envelopes from {@link wrapExternalContent}: every byte is kept —
+ * prefix, each envelope's complete metadata lines (Source, From, Subject, any
+ * others) folded into a single bracketed header, the complete payload, and
+ * any suffix — except the exact eight-line EXTERNAL_CONTENT_WARNING block,
+ * which the prompt renders once for the message being acted on and must not
+ * be replayed per stored row (live 2026-09-06: 403 replayed copies made a
+ * 137K-token evaluator prompt that the provider rejected, so memory
+ * extraction failed on every Discord turn). Text without the exact markers is
+ * returned unchanged.
+ */
+export function renderStoredEnvelopesForPrompt(text: string): string {
+	if (!text.includes(EXTERNAL_CONTENT_START)) return text;
+	const withoutWarning = text.split(`${EXTERNAL_CONTENT_WARNING}\n\n`).join("");
+	let out = "";
+	let cursor = 0;
+	while (true) {
+		const start = withoutWarning.indexOf(EXTERNAL_CONTENT_START, cursor);
+		if (start < 0) break;
+		const payloadStart = start + EXTERNAL_CONTENT_START.length;
+		const end = withoutWarning.indexOf(EXTERNAL_CONTENT_END, payloadStart);
+		if (end < 0) break;
+		const inner = withoutWarning.slice(payloadStart, end);
+		const separator = "\n---\n";
+		const separatorIndex = inner.indexOf(separator);
+		const metadata =
+			separatorIndex >= 0 ? inner.slice(0, separatorIndex).trim() : "";
+		const joinedPayload =
+			separatorIndex >= 0
+				? inner.slice(separatorIndex + separator.length)
+				: inner;
+		// wrapExternalContent joins its parts with "\n": exactly one newline sits
+		// before the start marker and one after the payload. Consuming those two
+		// separator bytes restores the author's own prefix and payload exactly.
+		const payload = joinedPayload.endsWith("\n")
+			? joinedPayload.slice(0, -1)
+			: joinedPayload;
+		const prefixEnd =
+			start > cursor && withoutWarning[start - 1] === "\n" ? start - 1 : start;
+		const header = metadata
+			? `[external: ${metadata
+					.split("\n")
+					.map((line) => line.trim())
+					.filter(Boolean)
+					.join("; ")}]`
+			: "[external]";
+		out += `${withoutWarning.slice(cursor, prefixEnd)}${header} ${payload}`;
+		cursor = end + EXTERNAL_CONTENT_END.length;
+	}
+	out += withoutWarning.slice(cursor);
+	return out.trim();
+}
+
+/**
  * Returns the original payload from a string produced by
  * {@link wrapExternalContent}, or null when the text is not wrapped.
  */

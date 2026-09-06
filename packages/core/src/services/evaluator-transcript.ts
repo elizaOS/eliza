@@ -7,10 +7,12 @@
  * is complete and uncapped; synthetic conversation artifacts (system-authored
  * summaries, relays) are not conversation turns and are excluded everywhere.
  */
+
 import {
 	dedupeHygienicDialogueMessages,
 	isHygienicDialogueMessage,
 } from "../features/basic-capabilities/providers/recentMessages.ts";
+import { renderStoredEnvelopesForPrompt } from "../security/external-content";
 import type { IAgentRuntime, Memory } from "../types";
 import { isSyntheticConversationArtifactMemory } from "../utils/synthetic-conversation-artifact.ts";
 
@@ -75,8 +77,9 @@ export function formatRecentMessages(memories: Memory[]): string {
 	const lines: string[] = [];
 	for (const memory of memories) {
 		if (isSyntheticConversationArtifactMemory(memory)) continue;
-		const text = memory.content.text;
-		if (typeof text !== "string" || !text.trim()) continue;
+		const rawText = memory.content.text;
+		if (typeof rawText !== "string" || !rawText.trim()) continue;
+		const text = renderStoredEnvelopesForPrompt(rawText);
 		const senderName =
 			(typeof memory.content.senderName === "string" &&
 				memory.content.senderName) ||

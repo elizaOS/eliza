@@ -33,6 +33,7 @@ export {
 	type ExternalContentSource,
 	getHookType,
 	isExternalHookSession,
+	renderStoredEnvelopesForPrompt,
 	type WrapExternalContentOptions,
 	wrapExternalContent,
 	wrapWebContent,

@@ -4,7 +4,9 @@
  * summaries are deliberately absent: retained dialogue stays canonical instead
  * of being replaced by a lossy rolling projection.
  */
+
 import { logger } from "../../../logger.ts";
+import { renderStoredEnvelopesForPrompt } from "../../../security/external-content";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
@@ -93,7 +95,11 @@ function formatMessages(runtime: IAgentRuntime, msgs: Memory[]): string {
 				msg.entityId === runtime.agentId
 					? (runtime.character.name ?? "Agent")
 					: msg.content.senderName || msg.entityId || "User";
-			return `${sender}: ${msg.content.text || "[non-text message]"}`;
+			return `${sender}: ${
+				msg.content.text
+					? renderStoredEnvelopesForPrompt(msg.content.text)
+					: "[non-text message]"
+			}`;
 		})
 		.join("\n");
 }

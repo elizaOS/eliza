@@ -5,6 +5,7 @@
  * transcript. Pure formatter test — no runtime or model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { wrapExternalContent } from "../security/external-content.ts";
 import type { Entity, Media, Memory, UUID } from "../types/index.ts";
 import { formatMessages, formatPosts } from "../utils.ts";
 
@@ -252,5 +253,33 @@ describe("transcript timestamp tense", () => {
 		});
 
 		expect(rendered).toContain("Date: 5 minutes ago");
+	});
+});
+
+describe("formatMessages: stored external envelopes", () => {
+	it("renders the envelope header and complete payload without replaying the warning", () => {
+		const payload = "Deploy finished.\nAll checks passed.";
+		const rendered = formatMessages({
+			messages: [
+				{
+					id: "00000000-0000-0000-0000-000000000031" as UUID,
+					entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+					roomId,
+					createdAt: 1765381653000,
+					content: {
+						text: wrapExternalContent(payload, {
+							source: "webhook",
+							sender: "GitHub",
+						}),
+					},
+				} as Memory,
+			],
+			entities: [],
+		});
+		expect(rendered).toContain(
+			`[external: Source: Webhook; From: GitHub] ${payload}`,
+		);
+		expect(rendered).not.toContain("SECURITY NOTICE");
+		expect(rendered).not.toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
 	});
 });
