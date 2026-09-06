@@ -1,7 +1,8 @@
 /**
- * Tests for the ambiguity-safe app resolver (matchAppByReference / findAppByReference / resolveApp): id then exact name/slug then whole-word then fragment; ties are ambiguous. Pure, no SDK — plus the security-envelope adversarial suite proving the resolver can never see warning text.
+ * Tests for the ambiguity-safe app resolver (matchAppByReference / findAppByReference / resolveApp): id then exact name/slug then whole-word then fragment; ties are ambiguous. The pure matchers use no SDK; the resolveApp suite drives a hand-built fake `ElizaCloudClient` (getApp/listApps) so the stale/foreign-UUID fall-through is exercised for real — plus the security-envelope adversarial suite proving the resolver can never see warning text.
  */
 import { describe, expect, it } from "bun:test";
+import type { AppDto, ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { Memory } from "@elizaos/core";
 import { hardenIncomingUserMessage, wrapExternalContent } from "@elizaos/core";
 import {
@@ -10,6 +11,7 @@ import {
   extractAppReference,
   findAppByReference,
   matchAppByReference,
+  resolveApp,
 } from "../src/client.ts";
 import { makeApp, makeMessage } from "./helpers";
 
@@ -77,6 +79,144 @@ describe("matchAppByReference / findAppByReference — ambiguity-safe resolution
 
   it("returns null for an empty reference", () => {
     expect(findAppByReference([app("Acme")], "   ")).toBeNull();
+  });
+});
+
+describe("resolveApp — id-path fall-through on a stale/foreign UUID (#29907)", () => {
+  const STALE_UUID = "99999999-9999-4999-8999-999999999999";
+  const OWNED_UUID = "11111111-1111-4111-8111-111111111111";
+
+  /** Duck-typed `CloudApiError` shape (statusCode + errorBody) the SDK throws. */
+  function cloudApiError(statusCode: number): Error {
+    return Object.assign(new Error(`HTTP ${statusCode}`), {
+      name: "CloudApiError",
+      statusCode,
+      errorBody: { success: false, error: `HTTP ${statusCode}` },
+    });
+  }
+
+  /**
+   * Minimal fake `ElizaCloudClient` exposing only the two methods resolveApp
+   * calls. `getApp` runs the injected behavior (throwing for a stale id);
+   * `listApps` returns the org's current apps. Any other method is a hard fail
+   * so an unexpected SDK call surfaces instead of being silently swallowed.
+   */
+  function makeClient(opts: {
+    getApp: (id: string) => Promise<{ success: true; app?: AppDto }>;
+    apps: AppDto[];
+  }): ElizaCloudClient {
+    let listCalls = 0;
+    return new Proxy(
+      {
+        getApp: (id: string) => opts.getApp(id),
+        listApps: () => {
+          listCalls++;
+          return Promise.resolve({ success: true as const, apps: opts.apps });
+        },
+        get __listCalls() {
+          return listCalls;
+        },
+      },
+      {
+        get(target, prop, receiver) {
+          if (prop in target)
+            return Reflect.get(target, prop, receiver) as unknown;
+          throw new Error(`unexpected SDK call: ${String(prop)}`);
+        },
+      },
+    ) as unknown as ElizaCloudClient;
+  }
+
+  it("REGRESSION: getApp throws 404 for a stale UUID → falls through to listApps, app:null + available (no throw)", async () => {
+    const client = makeClient({
+      getApp: () => Promise.reject(cloudApiError(404)),
+      apps: [app("Acme Bot")],
+    });
+    const result = await resolveApp(client, STALE_UUID);
+    expect(result.app).toBeNull();
+    expect(result.available).toEqual(["Acme Bot"]);
+    expect(result.ambiguous).toBeUndefined();
+  });
+
+  it("REGRESSION: a foreign UUID that 403s also falls through instead of aborting", async () => {
+    const client = makeClient({
+      getApp: () => Promise.reject(cloudApiError(403)),
+      apps: [app("Acme Bot"), app("Zenith")],
+    });
+    const result = await resolveApp(client, STALE_UUID);
+    expect(result.app).toBeNull();
+    expect(result.available.sort()).toEqual(["Acme Bot", "Zenith"]);
+  });
+
+  it("fall-through still name-resolves: a stale id whose typed name matches an owned app returns that app", async () => {
+    // The reference is UUID-shaped so it takes the id path first; when getApp
+    // 404s, list-based resolution runs against the SAME reference.
+    // matchAppByReference matches on slug as well as name, so an owned app whose
+    // slug IS that stale UUID is recovered by the fall-through. This proves the
+    // fall-through actually reaches matchAppByReference and can RETURN a match —
+    // not merely that it avoids throwing and lands on app:null. A resolver that
+    // listed but never matched (returning app:null here) would fail this.
+    const owned = makeApp({
+      id: "id-acme",
+      name: "Acme Bot",
+      slug: STALE_UUID,
+    });
+    const client = makeClient({
+      getApp: () => Promise.reject(cloudApiError(404)),
+      apps: [owned, app("Zenith")],
+    });
+    const result = await resolveApp(client, STALE_UUID);
+    expect(result.app?.name).toBe("Acme Bot");
+    expect(result.available.sort()).toEqual(["Acme Bot", "Zenith"]);
+  });
+
+  it("REGRESSION: a transient getApp 500 on an OWNED id still resolves via the id-matched list fall-through", async () => {
+    // The unconditional catch (mirroring resolveDomainTargetApp) is deliberate:
+    // a non-404/403 getApp failure on a still-owned id must NOT abort the
+    // action when listApps can still find it. matchAppByReference matches on
+    // id, so the fall-through recovers the app and the caller succeeds
+    // normally. Narrowing the catch to only 404/403 would re-raise this 500
+    // and regress that recovery — a case no 404/403 fall-through test catches.
+    const owned = makeApp({
+      id: OWNED_UUID,
+      name: "Acme Bot",
+      slug: "acme-bot",
+    });
+    const client = makeClient({
+      getApp: () => Promise.reject(cloudApiError(500)),
+      apps: [owned, app("Zenith")],
+    });
+    const result = await resolveApp(client, OWNED_UUID);
+    expect(result.app?.name).toBe("Acme Bot");
+    expect(result.available.sort()).toEqual(["Acme Bot", "Zenith"]);
+  });
+
+  it("unchanged: getApp succeeds → direct id path returns the app without listing", async () => {
+    const owned = app("Prod API", OWNED_UUID);
+    let getAppId: string | null = null;
+    const client = makeClient({
+      getApp: (id) => {
+        getAppId = id;
+        return Promise.resolve({ success: true as const, app: owned });
+      },
+      apps: [owned, app("Other")],
+    });
+    const result = await resolveApp(client, OWNED_UUID);
+    expect(getAppId).toBe(OWNED_UUID);
+    expect(result.app?.name).toBe("Prod API");
+    expect(result.available).toEqual(["Prod API"]);
+    // Direct hit never lists — the fast path is preserved.
+    expect((client as unknown as { __listCalls: number }).__listCalls).toBe(0);
+  });
+
+  it("non-UUID reference never touches getApp; resolves by name via listApps", async () => {
+    const client = makeClient({
+      getApp: () =>
+        Promise.reject(new Error("getApp must not be called for a name")),
+      apps: [app("Acme Bot"), app("Zenith")],
+    });
+    const result = await resolveApp(client, "acme");
+    expect(result.app?.name).toBe("Acme Bot");
   });
 });
 

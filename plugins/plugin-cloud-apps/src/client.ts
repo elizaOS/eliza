@@ -465,14 +465,34 @@ export interface ResolvedApp {
  * {@link matchAppByReference}. Read-only — used by the mutating actions to locate
  * the target before they mutate it. When the reference is ambiguous, `app` is
  * null and `ambiguous` holds the tied candidate names.
+ *
+ * A stale or foreign UUID (one the org no longer owns) makes `getApp` throw a
+ * `CloudApiError` (404/403); that throw must NOT propagate out of this
+ * resolver. Its contract is resolve-to-app-or-null (listing the org's apps on
+ * no match), so a bad id falls through to `listApps()` name resolution — never
+ * aborting the caller with an uncaught error. Mirrors
+ * {@link resolveDomainTargetApp}.
  */
 export async function resolveApp(
   client: ElizaCloudClient,
   reference: string,
 ): Promise<ResolvedApp> {
   if (looksLikeAppId(reference)) {
-    const { app } = await client.getApp(reference);
-    if (app) return { app, available: [app.name] };
+    // A stale/foreign UUID must fall through to name resolution (and its
+    // helpful which-app reply), not abort the whole action on the 404. Mirrors
+    // resolveDomainTargetApp so every mutating caller degrades identically.
+    try {
+      // error-policy:J4 a stale/foreign UUID makes getApp throw (typically a
+      // 404/403); degrade to the list-based not-found/which-app reply instead
+      // of aborting the action. The catch is intentionally unconditional to
+      // mirror resolveDomainTargetApp's bare catch; a getApp failure that is
+      // not a benign 404/403 is normally re-raised by the listApps() call on
+      // the next line, so the action still fails loudly in that case.
+      const { app } = await client.getApp(reference);
+      if (app) return { app, available: [app.name] };
+    } catch {
+      // fall through to list-based resolution
+    }
   }
   const { apps } = await client.listApps();
   const list = apps ?? [];
