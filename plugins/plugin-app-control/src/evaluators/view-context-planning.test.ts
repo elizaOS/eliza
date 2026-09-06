@@ -101,6 +101,47 @@ async function run(ctx: ResponseHandlerEvaluatorContext) {
 }
 
 describe("same-turn contextual navigation", () => {
+	it("parses a fenced JSON decision instead of failing the evaluator", async () => {
+		// Live 2026-09-06: gemma wrapped the object in ```json; every turn logged
+		// VIEW_INTENT_INVALID and the navigation constraint stayed at deny.
+		const ctx = context("open my calendar", {
+			disposition: "none",
+			reason: "x",
+		});
+		(ctx.runtime as unknown as { useModel: unknown }).useModel = async (
+			_type: string,
+			request: { prompt: string },
+		) => {
+			prompts.push(request.prompt);
+			return '```json\n{"disposition":"none","reason":"just a question"}\n```';
+		};
+		const result = await run(ctx);
+		expect(prompts).toHaveLength(1);
+		expect(result.errors).toEqual([]);
+		expect(result.appliedPatches).toEqual([
+			expect.objectContaining({
+				evaluatorName: "app-control.view-context-planning",
+				changed: ["contextSlices:add"],
+			}),
+		]);
+	});
+
+	it("does not spend a model call on a turn that surfaces to a viewless connector", async () => {
+		const ctx = context("open my calendar", {
+			disposition: "requested",
+			viewId: "calendar",
+			reason: "explicit",
+		});
+		(ctx.message as { content: Record<string, unknown> }).content = {
+			text: "open my calendar",
+			source: "discord",
+		};
+		const result = await run(ctx);
+		expect(prompts).toHaveLength(0);
+		expect(result.errors).toEqual([]);
+		expect(result.appliedPatches).toEqual([]);
+	});
+
 	it("adds a dynamically registered destination without erasing domain work or executing navigation", async () => {
 		const ctx = context(
 			"Find a free half-hour, draft an observation, and show the observatory",

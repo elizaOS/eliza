@@ -13,6 +13,7 @@ import {
 } from "@elizaos/core";
 import { setNavigationConstraint } from "../actions/navigation-execution.js";
 import { VIEW_CATALOG_SCOPE_CONTEXT } from "../actions/view-catalog-scope.js";
+import { messageHasNoViewSurface } from "../actions/views.js";
 import { createViewsClient } from "../actions/views-client.js";
 import { userRequestMessageText } from "../params.js";
 
@@ -21,18 +22,42 @@ export type ContextualNavigationIntent =
 	| { disposition: "forbidden"; reason: string }
 	| { disposition: "requested" | "optional"; viewId: string; reason: string };
 
+const WHOLE_CODE_FENCE = /^```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+
+/**
+ * Returns the JSON object text inside raw model output: a whole ```json fence
+ * is unwrapped, and prose around a single top-level `{...}` is dropped. Text
+ * that is already bare JSON, or that contains no object, is returned as is so
+ * `JSON.parse` reports the real failure.
+ */
+function unwrapJsonObjectText(raw: string): string {
+	const trimmed = raw.trim();
+	const fenced = trimmed.match(WHOLE_CODE_FENCE);
+	const candidate = (fenced?.[1] ?? trimmed).trim();
+	if (candidate.startsWith("{")) return candidate;
+	const start = candidate.indexOf("{");
+	const end = candidate.lastIndexOf("}");
+	return start >= 0 && end > start
+		? candidate.slice(start, end + 1)
+		: candidate;
+}
+
 /** Reject malformed decisions; unknown IDs are rejected against the live catalog. */
 export function parseContextualNavigationIntent(
 	text: string,
 ): ContextualNavigationIntent {
 	// error-policy:J3 invalid model output remains an explicit parse failure.
+	// Small models routinely wrap the object in a ```json fence or a sentence;
+	// the object itself is still the complete decision, so unwrap before
+	// judging (live 2026-09-06: every Discord turn logged VIEW_INTENT_INVALID).
 	let value: unknown;
 	try {
-		value = JSON.parse(text);
+		value = JSON.parse(unwrapJsonObjectText(text));
 	} catch (cause) {
 		throw new ElizaError("Contextual navigation decision is not JSON", {
 			code: "VIEW_INTENT_INVALID",
 			cause,
+			context: { outputPreview: text.trim().slice(0, 200) },
 		});
 	}
 	if (
@@ -69,9 +94,12 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 	description:
 		"Adds authorized visual continuation to the existing domain plan before its final reply.",
 	shouldRun({ runtime, messageHandler, message }) {
+		// A turn that surfaces to a viewless text connector (Discord, Telegram,
+		// …) can never navigate, so it must not spend a model call deciding to.
 		return (
 			messageHandler.processMessage === "RESPOND" &&
 			!messageHandler.plan.deterministicToolCall &&
+			!messageHasNoViewSurface(message) &&
 			runtime.actions.some((action) => action.name === "VIEWS") &&
 			userRequestMessageText(message).trim().length > 0
 		);
