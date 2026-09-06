@@ -1,48 +1,9 @@
 #cloud-config
-# Tenant Postgres node for Eliza Cloud Apps (Product 2).
-#
-# Stands up ONE self-managed Postgres that holds thousands of per-tenant
-# DATABASE+ROLE (each app gets its own DB + LOGIN role with REVOKE CONNECT FROM
-# PUBLIC — the hard isolation boundary). The per-tenant DDL is run at deploy time
-# by the node daemon (DirectPgExecutor over the admin DSN); this only stands up
-# the cluster + the admin superuser + locks the network surface.
-#
-# Reachable ONLY on the private apps network (the firewall opens no public 5432).
-#
-# The cluster setup is wrapped in a systemd oneshot service (tenant-db-init)
-# rather than cloud-init runcmd, because runcmd is per-instance: it only fires
-# on first boot. After a Hetzner rescale (server_type change), the cloud
-# refreshes user_data + reboots but cloud-init treats it as the same instance,
-# so runcmd never runs again — and we end up with an empty volume and dead
-# Postgres. The systemd unit runs on every boot, every step is grep-/path-
-# guarded, so it's a no-op after first successful run.
-#
-# Connection scaling (#8321 P0 #2): the default Postgres ceiling is 100
-# connections, which the apps data plane exhausts at ~5 apps under load. This
-# node now (a) raises max_connections + sizes shared_buffers to the box, and
-# (b) runs pgbouncer in SESSION pool_mode on :6432 so app sessions are
-# multiplexed onto a bounded set of server backends. SESSION mode (not
-# transaction) is required because plugin-sql's migrator takes SESSION-scoped
-# advisory locks (pg_advisory_lock, not the _xact_ variants) across independent
-# pool checkouts — transaction pooling would orphan those locks and wedge
-# migrations. The pooler is INERT until an operator points the cluster's
-# app-facing host at :6432 (see README + tenant_db_pooler_endpoint output);
-# admin/DDL keeps using :5432 directly.
-#
-# Off-host recovery (#21729): a nightly systemd timer (tenant-db-backup) takes
-# an application-consistent logical backup (pg_dumpall globals + per-database
-# pg_dump -Fc), encrypts the archive locally with AES-256 before it leaves the
-# node, ships it to an S3-compatible bucket outside the Hetzner failure domain
-# via rclone, and prunes sets older than the retention window. The pipeline is
-# INERT until terraform renders /etc/eliza/tenant-db-backup.env (all backup_*
-# variables set). Job logs carry counts/bytes/durations only — never DSNs,
-# credentials, or tenant database names (names live inside the encrypted
-# archive's dbmap). Restore drills run through
-# packages/cloud/scripts/admin/apps-tenant-db-recovery.ts.
-#
-# STAN: generate a server TLS cert for hostssl (until then the pg_hba lines
-# below stay 'host' and the admin DSN uses sslmode=disable); tighten pgbouncer
-# listen_addr to the private IP.
+# Converges one environment's PostgreSQL host on its assigned persistent volume.
+# Bootstrap never formats disks or initializes a populated/unknown cluster.
+# A new empty cluster requires a short-lived root-issued authorization; normal
+# recovery starts only matching existing data. Logical dumps and continuous WAL
+# backups require their respective complete repository credential bundles.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -65,11 +26,14 @@ users:
 package_update: true
 package_upgrade: false
 packages:
-  - postgresql
+  - postgresql-16
   - postgresql-contrib
   - pgbouncer
   - jq
   - rclone
+%{ if pitr_enabled ~}
+  - pgbackrest
+%{ endif ~}
 
 bootcmd:
   # Disable unattended-upgrades BEFORE cloud-init's package_update_upgrade_install
@@ -120,47 +84,109 @@ write_files:
       set -euo pipefail
       log() { echo "[tenant-db-init] $*"; }
 
-      # 1. Locate the Hetzner data volume by stable scsi id.
-      VOL="$(ls /dev/disk/by-id/scsi-0HC_Volume_* 2>/dev/null | head -1 || true)"
-      if [ -z "$VOL" ]; then
-        log "no Hetzner data volume attached yet; deferring (next boot will retry)."
-        exit 0
+      # Bind initialization to the volume recorded by Terraform. The provider
+      # formats newly created volumes; bootstrap must never format or choose a
+      # different attached disk when this volume is unavailable.
+      VOL="${tenant_db_volume_device}"
+      if ! test -b "$VOL"; then
+        log "the assigned data volume is unavailable; initialization must retry."
+        exit 75
       fi
-      log "data volume = $VOL"
-
-      # 2. Format only if no filesystem detected. blkid is the gate — never -F.
-      if ! blkid "$VOL" >/dev/null 2>&1; then
-        log "no fs on $VOL — formatting ext4."
-        mkfs.ext4 "$VOL"
+      fs_type="$(blkid -p -s TYPE -o value "$VOL")" || {
+        log "unable to verify the assigned data volume filesystem."
+        exit 1
+      }
+      if [ "$fs_type" != "ext4" ]; then
+        log "the assigned data volume must contain the expected ext4 filesystem."
+        exit 1
+      fi
+      expected_device="$(lsblk --raw --nodeps --noheadings --output MAJ:MIN "$VOL")"
+      if [[ ! "$expected_device" =~ ^[0-9]+:[0-9]+$ ]]; then
+        log "unable to identify the assigned data volume block device."
+        exit 1
       fi
 
-      # 3. fstab + mount, grep-guarded so we don't accumulate duplicate lines.
+      # This service mounts its exact volume on every boot. Avoid mount -a and
+      # fstab edits, which could operate on unrelated or stale volume entries.
       mkdir -p /mnt/tenant-pgdata
-      if ! grep -qE "^[^#]*[[:space:]]/mnt/tenant-pgdata[[:space:]]" /etc/fstab; then
-        echo "$VOL /mnt/tenant-pgdata ext4 defaults,nofail 0 2" >> /etc/fstab
+      if ! mountpoint -q /mnt/tenant-pgdata; then
+        mount --source "$VOL" --target /mnt/tenant-pgdata
       fi
-      mountpoint -q /mnt/tenant-pgdata || mount -a
+      observed_device="$(findmnt --raw --noheadings --output MAJ:MIN --mountpoint /mnt/tenant-pgdata)"
+      if [ "$observed_device" != "$expected_device" ]; then
+        log "the database mount is backed by a different block device; refusing initialization."
+        exit 1
+      fi
 
-      # 4. Postgres version detection. The package may not be installed on the
-      # very first boot if cloud-init hasn't reached the package stage yet —
-      # defer cleanly; the next boot will pick it up.
-      PGVER="$(ls /etc/postgresql 2>/dev/null | head -1 || true)"
-      if [ -z "$PGVER" ]; then
-        log "postgresql package not installed yet; deferring."
-        exit 0
+      # 4. Postgres version detection. Pin the supported Ubuntu 24.04 major
+      # instead of selecting whichever configuration directory sorts first.
+      PGVER=16
+      if ! test -x "/usr/lib/postgresql/$PGVER/bin/postgres" || ! test -f "/etc/postgresql/$PGVER/main/postgresql.conf"; then
+        log "the supported PostgreSQL package is not ready; initialization must retry."
+        exit 75
       fi
       PGDATA="/mnt/tenant-pgdata/$PGVER/main"
       CONF="/etc/postgresql/$PGVER/main/postgresql.conf"
       HBA="/etc/postgresql/$PGVER/main/pg_hba.conf"
       log "PGVER=$PGVER PGDATA=$PGDATA"
 
-      # 5. initdb if PGDATA doesn't exist or isn't an initialised cluster.
-      if [ ! -f "$PGDATA/PG_VERSION" ]; then
-        log "no cluster at $PGDATA — initdb."
-        systemctl stop "postgresql@$PGVER-main" 2>/dev/null || true
+      # Existing clusters must match the installed PostgreSQL major. A missing
+      # marker is not evidence of a new database: refuse populated volumes and
+      # require a fresh, root-issued one-use authorization for empty volumes.
+      if test -L "/mnt/tenant-pgdata/$PGVER" || test -L "$PGDATA"; then
+        log "the database directory must not redirect outside its assigned volume."
+        exit 1
+      fi
+      if [ -f "$PGDATA/PG_VERSION" ]; then
+        if [ "$(cat "$PGDATA/PG_VERSION")" != "$PGVER" ]; then
+          log "the database major does not match the installed PostgreSQL version."
+          exit 1
+        fi
+      else
+        existing_entry="$(find /mnt/tenant-pgdata -mindepth 1 -maxdepth 1 ! -name lost+found -print -quit)"
+        if [ -n "$existing_entry" ]; then
+          log "the volume contains data without the expected cluster; restore or migration is required."
+          exit 1
+        fi
+        if test -e /mnt/tenant-pgdata/lost+found; then
+          if ! test -d /mnt/tenant-pgdata/lost+found || test -L /mnt/tenant-pgdata/lost+found || [ -n "$(find /mnt/tenant-pgdata/lost+found -mindepth 1 -print -quit)" ]; then
+            log "filesystem recovery entries require inspection before initialization."
+            exit 1
+          fi
+        fi
+        authorization=/run/eliza-tenant-db-init/authorization
+        if test -L /run/eliza-tenant-db-init || [ "$(stat -c '%u:%a' /run/eliza-tenant-db-init)" != "0:700" ]; then
+          log "the initialization authorization directory must be root-owned and private."
+          exit 1
+        fi
+        if ! test -f "$authorization" || test -L "$authorization"; then
+          log "an empty volume requires a one-use initialization authorization."
+          exit 1
+        fi
+        if [ "$(stat -c '%u:%a' "$authorization")" != "0:600" ] || [ "$(cat "$authorization")" != "$VOL" ]; then
+          log "the initialization authorization does not belong to this volume and root operator."
+          exit 1
+        fi
+        issued_at="$(stat -c '%Y' "$authorization")"
+        now="$(date +%s)"
+        if [[ ! "$issued_at" =~ ^[0-9]+$ ]] || (( issued_at > now || now - issued_at > 300 )); then
+          log "the initialization authorization is expired or has an invalid timestamp."
+          exit 1
+        fi
+        # Atomic hard-link creation excludes a competing initializer; the
+        # consumed receipt remains in /run for this boot, including on failure.
+        ln "$authorization" "$authorization.consumed"
+        rm "$authorization"
+        systemctl stop "postgresql@$PGVER-main"
         mkdir -p "$PGDATA"
         chown -R postgres:postgres /mnt/tenant-pgdata
         runuser -u postgres -- "/usr/lib/postgresql/$PGVER/bin/initdb" -D "$PGDATA" --auth-host=scram-sha-256
+      fi
+
+      data_device="$(findmnt --raw --noheadings --output MAJ:MIN --target "$PGDATA")"
+      if [ "$data_device" != "$expected_device" ]; then
+        log "the database directory is on a different block device; refusing startup."
+        exit 1
       fi
 
       # 6. postgresql.conf — sed pattern matches both commented and uncommented
@@ -410,7 +436,20 @@ write_files:
       export RCLONE_S3_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY"
       DEST=":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX/$STAMP"
       rclone copyto backup.tar.gz.enc "$DEST/backup.tar.gz.enc"
+      # Stream the stored ciphertext back before publishing the set or pruning
+      # older recovery points. A successful upload alone is not readback proof.
+      REMOTE_SHA=$(rclone cat "$DEST/backup.tar.gz.enc" | sha256sum | awk '{print $1}')
+      if [ "$REMOTE_SHA" != "$ENC_SHA" ]; then
+        log "encrypted archive readback mismatch; refusing publication and retention cleanup."
+        exit 1
+      fi
       rclone copyto backup.json "$DEST/backup.json"
+      SIDECAR_SHA=$(sha256sum backup.json | awk '{print $1}')
+      REMOTE_SIDECAR_SHA=$(rclone cat "$DEST/backup.json" | sha256sum | awk '{print $1}')
+      if [ "$REMOTE_SIDECAR_SHA" != "$SIDECAR_SHA" ]; then
+        log "backup metadata readback mismatch; refusing retention cleanup."
+        exit 1
+      fi
 
       # Retention: dated set dirs sort lexicographically; purge anything older
       # than the cutoff stamp. Never touches other prefixes in the bucket.
@@ -467,6 +506,7 @@ write_files:
       [Install]
       WantedBy=timers.target
 
+${pitr_files}
   - path: /etc/systemd/system/tenant-db-init.service
     owner: root:root
     permissions: '0644'
@@ -478,17 +518,19 @@ write_files:
       # restart us "to break ordering cycle"). network-online is enough.
       After=network-online.target
       Wants=network-online.target
-      # Run BEFORE postgresql so the script's restart isn't fighting the
-      # default unit. The script itself enables + starts postgresql once
-      # data_directory is wired.
-      Before=postgresql.service
+      # The script restarts PostgreSQL after verifying its volume. Ordering
+      # this oneshot before PostgreSQL would make that restart wait on itself.
+      After=postgresql.service
+      StartLimitIntervalSec=0
 
       [Service]
       Type=oneshot
       RemainAfterExit=yes
       ExecStart=/usr/local/bin/tenant-db-init.sh
-      # Keep the unit's own state simple: success = postgres up; failure leaves
-      # it for the operator to inspect via `journalctl -u tenant-db-init`.
+      # Volume attachment can complete after cloud-init. Failed initialization
+      # remains visible and retries without requiring another host reboot.
+      Restart=on-failure
+      RestartSec=15s
       StandardOutput=journal
       StandardError=journal
 
@@ -500,7 +542,15 @@ runcmd:
   # picks it up automatically (WantedBy=multi-user.target) — runcmd is per-
   # instance and never runs again, but the unit does.
   - systemctl daemon-reload
+%{ if pitr_enabled ~}
+  - install -d -o root -g root -m 0755 /etc/pgbackrest/eliza-empty.d
+  - install -d -o postgres -g postgres -m 0700 /var/lib/pgbackrest/lock
+%{ endif ~}
   - systemctl enable --now tenant-db-init.service
   # The backup timer is always enabled; the script itself no-ops until the
   # backup env file exists, so unarmed nodes stay quiet.
   - systemctl enable --now tenant-db-backup.timer
+%{ if pitr_enabled ~}
+  - systemctl enable --now tenant-db-pitr-init.service
+  - systemctl enable --now tenant-db-pitr-full.timer tenant-db-pitr-diff.timer tenant-db-pitr-check.timer
+%{ endif ~}

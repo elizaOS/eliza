@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Cloud infrastructure: local-dev values files, Kubernetes manifests, and Terraform for the elizaOS cloud stack.",
   "scripts": {
-    "test": "bun test tests"
+    "test": "bun test tests",
+    "test:pitr": "node scripts/tenant-db-pitr-drill.mjs",
+    "test:pitr:s3": "node scripts/tenant-db-pitr-drill.mjs --s3"
   },
   "devDependencies": {
     "yaml": "^2.9.0"
