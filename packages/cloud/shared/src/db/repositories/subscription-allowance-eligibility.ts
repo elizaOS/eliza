@@ -18,7 +18,7 @@ async function findCurrentAllowance(
   organizationId: string,
   now: Date,
   lock: boolean,
-) {
+): Promise<typeof subscriptionAllowancePeriods.$inferSelect | undefined> {
   const query = tx
     .select()
     .from(subscriptionAllowancePeriods)
