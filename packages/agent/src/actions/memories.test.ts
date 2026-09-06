@@ -520,6 +520,54 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("matches a verb's -ing form against the stored base form", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User usually wakes up at 6am.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "waking up at 6am",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
+  it("does not let a short term match an unrelated stored word", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User takes the bus to work.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "takes the bu to work",
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(1);
+  });
+
+  it("matches the user's phrasing against a stored sentence across inflection and pronouns", async () => {
+    // Live 2026-09-06 01:20: "forget that I like my coffee with oat milk" found
+    // nothing although "User likes their coffee with oat milk." was stored.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "User likes their coffee with oat milk.",
+      entityId: USER_ID,
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "like my coffee with oat milk",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 1 });
+    expect(rows.filter((row) => row.tableName === "facts")).toHaveLength(0);
+  });
+
   it("forgets stored facts but never the chat transcript when no type is given", async () => {
     const { runtime, rows } = makeRuntime();
     const factId = seedFact(rows, {
