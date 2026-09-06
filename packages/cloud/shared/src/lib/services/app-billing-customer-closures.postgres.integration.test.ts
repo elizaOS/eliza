@@ -120,6 +120,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0422_app_billing_deletion_disposition_guards",
       "0424_app_billing_customer_closures",
       "0425_app_billing_customer_closure_guards",
+      "0438_app_billing_customer_terminal_obligations",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -240,6 +241,45 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       await import("../../db/repositories/app-billing-customer-closures")
     ).closeAppBillingCustomer({ customerBindingId, authority });
   }
+  test("closure intent cannot authorize customer deletion while a trial still runs", async () => {
+    const source = await fixtureCustomer();
+    const auth = await deletion(source.identity.actorUserId);
+    await decide(source.scopeId, auth);
+    await decide(source.siblingId, auth);
+    await freeze(source.binding.id, auth);
+    const before = (
+      await db.query("SELECT * FROM billing_subscriptions WHERE billing_scope_id=$1", [
+        source.scopeId,
+      ])
+    ).rows;
+    await expect(
+      db.query("SELECT require_app_billing_customer_terminal_obligations($1,$2,$3,$4,$5,$6)", [
+        source.binding.id,
+        auth.requestId,
+        auth.requestDigest,
+        auth.lifecycleRevision,
+        auth.phaseReceiptId,
+        auth.phaseGeneration,
+      ]),
+    ).rejects.toThrow("unresolved subscription obligations");
+    expect(
+      (
+        await db.query("SELECT * FROM billing_subscriptions WHERE billing_scope_id=$1", [
+          source.scopeId,
+        ])
+      ).rows,
+    ).toEqual(before);
+    await expect(
+      db.query("SELECT require_app_billing_customer_terminal_obligations($1,$2,$3,$4,$5,$6)", [
+        source.binding.id,
+        auth.requestId,
+        auth.requestDigest,
+        auth.lifecycleRevision,
+        auth.phaseReceiptId,
+        auth.phaseGeneration + 1,
+      ]),
+    ).rejects.toThrow("current canonical deletion phase");
+  });
   test("a retained sibling blocks customer closure until it receives a canonical close decision", async () => {
     const source = await fixtureCustomer();
     const survivor = await administrator(source.identity.appId, source.identity.billingAccountId);
