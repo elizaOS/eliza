@@ -129,8 +129,8 @@ describe("App config backup/restore", () => {
         announceIntervalMax: 120,
       },
       twitter_automation: {
-        enabled: false,
-        autoPost: false,
+        enabled: true,
+        autoPost: true,
         autoReply: false,
         autoEngage: false,
         discovery: false,
@@ -186,21 +186,32 @@ describe("App config backup/restore", () => {
     expect(restored.name).toContain("My Monetized App");
 
     const restoredFresh = await appsService.getById(restored.id);
+    const { telegramAppAutomationService } = await import("../telegram-automation/app-automation");
+    const activeTelegramApps =
+      await telegramAppAutomationService.getAppsWithActiveAutomation(orgId);
+    expect(activeTelegramApps.some((app) => app.id === source.id)).toBe(true);
+    expect(activeTelegramApps.some((app) => app.id === restored.id)).toBe(false);
     // Review-gate (#11834): even though the backup says enabled=true, the
     // restored app is a fresh draft — monetization must be FORCED OFF and the
     // caller warned. Pricing is persisted so re-enabling after review is easy.
     expect(restoredFresh?.monetization_enabled).toBe(false);
     expect(restoredFresh?.review_status).toBe("draft");
-    expect(warnings).toEqual([expect.stringContaining("Monetization was disabled on restore")]);
+    expect(warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Monetization was disabled on restore"),
+        expect.stringContaining("Outbound automation was disabled on restore"),
+      ]),
+    );
     expect(Number(restoredFresh?.inference_markup_percentage)).toBe(25);
     expect(Number(restoredFresh?.purchase_share_percentage)).toBe(40);
     expect(restoredFresh?.allowed_origins).toEqual(["https://myapp.example.com"]);
     expect(restoredFresh?.linked_character_ids).toEqual(["11111111-1111-4111-8111-111111111111"]);
     expect(restoredFresh?.discord_automation).toMatchObject({
+      enabled: false,
       guildId: "guild-1",
       channelId: "channel-1",
     });
-    expect(restoredFresh?.telegram_automation).toMatchObject({ groupId: "chat-1" });
+    expect(restoredFresh?.telegram_automation).toMatchObject({ enabled: false, groupId: "chat-1" });
     expect(restoredFresh?.twitter_automation).toMatchObject({ enabled: false });
     expect(restoredFresh?.promotional_assets).toEqual([
       {
