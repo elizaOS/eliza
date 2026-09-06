@@ -498,6 +498,10 @@ async function gotoSettings(page: Page): Promise<void> {
 }
 
 test.describe("settings shares the unified app background (#9143)", () => {
+  test.beforeAll(async () => {
+    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
+  });
+
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -746,7 +750,6 @@ test.describe("settings shares the unified app background (#9143)", () => {
     page,
   }) => {
     test.setTimeout(180_000);
-    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
 
     const wallpaper = await busyWallpaperDataUrl();
 
