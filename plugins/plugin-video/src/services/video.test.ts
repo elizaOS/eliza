@@ -325,4 +325,90 @@ describe("VideoService deterministic behavior", () => {
       embedSubs: true,
     });
   });
+
+  it("degrades gracefully when subtitles/captions array is empty (#29562)", async () => {
+    const runtime = createRuntime();
+    const { service } = createServiceWithYtDlp([
+      {
+        title: "Music Video",
+        description: "Test",
+        categories: ["Music"],
+        subtitles: { en: [] },
+        automatic_captions: { en: [] },
+      },
+    ]);
+
+    const result = await service.processVideo(
+      "https://youtu.be/empty-subtitles-test",
+      runtime,
+    );
+
+    expect(result.text).toBe("No lyrics available.");
+  });
+
+  it("falls through from empty manual subtitles to automatic captions", async () => {
+    const runtime = createRuntime();
+    const { service } = createServiceWithYtDlp([
+      {
+        title: "Captioned Video",
+        description: "Test",
+        subtitles: { en: [] },
+        automatic_captions: {
+          en: [{ url: "https://captions.example.test/track.json" }],
+        },
+      },
+    ]);
+    const downloadCaption = vi
+      .spyOn(
+        service as unknown as {
+          downloadCaption(url: string): Promise<string>;
+        },
+        "downloadCaption",
+      )
+      .mockResolvedValue(
+        JSON.stringify({ events: [{ segs: [{ utf8: "Automatic caption" }] }] }),
+      );
+
+    const result = await service.processVideo(
+      "https://youtu.be/automatic-caption-test",
+      runtime,
+    );
+
+    expect(downloadCaption).toHaveBeenCalledWith(
+      "https://captions.example.test/track.json",
+    );
+    expect(result.text).toBe("Automatic caption ");
+  });
+
+  it("falls through empty subtitle arrays to audio transcription", async () => {
+    const runtime = createRuntime();
+    const { service } = createServiceWithYtDlp([
+      {
+        title: "Spoken Video",
+        description: "Test",
+        categories: ["Education"],
+        subtitles: { en: [] },
+        automatic_captions: { en: [] },
+      },
+    ]);
+    const transcribeAudio = vi
+      .spyOn(
+        service as unknown as {
+          transcribeAudio(url: string, runtime: IAgentRuntime): Promise<string>;
+        },
+        "transcribeAudio",
+      )
+      .mockResolvedValue("Audio transcript");
+
+    const result = await service.processVideo(
+      "https://youtu.be/audio-transcription-test",
+      runtime,
+    );
+
+    expect(transcribeAudio).toHaveBeenCalledWith(
+      "https://youtu.be/audio-transcription-test",
+      runtime,
+    );
+    expect(result.text).toBe("Audio transcript");
+  });
 });
