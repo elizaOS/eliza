@@ -2976,6 +2976,13 @@
       "when": 1796083200068,
       "tag": "0452_app_billing_completion_owner_locks",
       "breakpoints": true
+    },
+    {
+      "idx": 425,
+      "version": "7",
+      "when": 1796083200069,
+      "tag": "0453_app_billing_completion_scope_decisions",
+      "breakpoints": true
     }
   ]
 }

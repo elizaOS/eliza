@@ -79,7 +79,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
     await db.query(`
       CREATE TABLE IF NOT EXISTS webhook_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),event_id text NOT NULL UNIQUE,provider text NOT NULL,event_type text,payload_hash text NOT NULL,source_ip text,processed_at timestamp NOT NULL DEFAULT now(),event_timestamp timestamp);
     CREATE TABLE organizations(id uuid PRIMARY KEY,account_deletion_request_id uuid,account_lifecycle_revision bigint NOT NULL DEFAULT 0,is_active boolean NOT NULL DEFAULT true,account_lifecycle_state text NOT NULL DEFAULT 'active',paid_work_fenced_at timestamptz,stripe_customer_id text,credit_balance numeric NOT NULL DEFAULT 0);
-      CREATE TABLE users(id uuid PRIMARY KEY,account_deletion_request_id uuid,account_lifecycle_revision bigint NOT NULL DEFAULT 0,is_active boolean NOT NULL DEFAULT true,deleted_at timestamptz,email_verified boolean NOT NULL DEFAULT true,is_anonymous boolean NOT NULL DEFAULT false,organization_id uuid,role text NOT NULL DEFAULT 'member',expires_at timestamptz,account_lifecycle_state text NOT NULL DEFAULT 'active',auth_fenced_at timestamptz);
+      CREATE TABLE users(id uuid PRIMARY KEY,account_deletion_request_id uuid,account_lifecycle_revision bigint NOT NULL DEFAULT 0,is_active boolean NOT NULL DEFAULT true,deleted_at timestamptz,email_verified boolean NOT NULL DEFAULT true,is_anonymous boolean NOT NULL DEFAULT false,organization_id uuid,role text NOT NULL DEFAULT 'member',expires_at timestamp,account_lifecycle_state text NOT NULL DEFAULT 'active',auth_fenced_at timestamptz);
       CREATE TABLE account_deletion_requests(id uuid PRIMARY KEY,user_id uuid,organization_id uuid,request_digest text,lifecycle_revision bigint,irreversible_at timestamp,status text);
       CREATE TABLE account_deletion_phase_receipts(id uuid PRIMARY KEY,request_id uuid REFERENCES account_deletion_requests(id),phase text,lease_generation bigint,lease_expires_at timestamp,status text,lease_owner_digest text,provider_receipt_digest text,provider_acknowledged_at timestamp,reconciled_at timestamp,completed_at timestamp,retry_class text,next_attempt_at timestamp,last_error_code text,updated_at timestamp);
       CREATE TABLE apps(id uuid PRIMARY KEY,name text NOT NULL DEFAULT 'Independent app',app_url text NOT NULL DEFAULT 'https://app.example',allowed_origins jsonb NOT NULL DEFAULT '["https://app.example"]',organization_id uuid NOT NULL REFERENCES organizations(id),is_active boolean NOT NULL DEFAULT true,is_approved boolean NOT NULL DEFAULT true,review_status text NOT NULL DEFAULT 'approved');
@@ -138,6 +138,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0450_app_billing_observed_customer_retention",
       "0451_app_billing_refund_phase_obligations",
       "0452_app_billing_completion_owner_locks",
+      "0453_app_billing_completion_scope_decisions",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -1032,7 +1033,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
         }
         if (blocked)
           await holder.query(
-            "UPDATE account_deletion_phase_receipts SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+            "UPDATE account_deletion_phase_receipts SET lease_expires_at=(clock_timestamp() AT TIME ZONE 'UTC')-interval '1 second' WHERE id=$1",
             [auth.phaseReceiptId],
           );
       } finally {
@@ -1086,5 +1087,63 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
         )
       ).rows[0],
     ).toEqual({ status: "completed", provider_receipt_digest: input.providerReceiptDigest });
+  });
+  test("Stripe completion rejects omitted decisions and an expired retained administrator", async () => {
+    const source = await buyer();
+    const survivor = await administrator(source.identity.appId, source.identity.billingAccountId);
+    const auth = await deletion(source.identity.actorUserId);
+    const complete = () =>
+      db.query("UPDATE account_deletion_phase_receipts SET status='completed' WHERE id=$1", [
+        auth.phaseReceiptId,
+      ]);
+    await expect(complete()).rejects.toThrow("canonical scope decision");
+    expect((await decide(source.scopeId, auth)).disposition).toBe("retain_shared");
+    await db.query(
+      "UPDATE users SET expires_at=(clock_timestamp() AT TIME ZONE 'UTC')-interval '1 second' WHERE id=$1",
+      [survivor],
+    );
+    await expect(complete()).rejects.toThrow("eligible surviving administrator");
+    expect(
+      (
+        await db.query("SELECT status FROM account_deletion_phase_receipts WHERE id=$1", [
+          auth.phaseReceiptId,
+        ])
+      ).rows[0].status,
+    ).toBe("calling");
+    await db.query("UPDATE users SET expires_at=NULL WHERE id=$1", [survivor]);
+    await complete();
+    expect(
+      (
+        await db.query("SELECT status FROM account_deletion_phase_receipts WHERE id=$1", [
+          auth.phaseReceiptId,
+        ])
+      ).rows[0].status,
+    ).toBe("completed");
+  });
+  test("ordinary member departure does not acquire scope decision authority", async () => {
+    const source = await buyer();
+    await administrator(source.identity.appId, source.identity.billingAccountId);
+    await db.query(
+      "UPDATE app_billing_members SET role='member' WHERE user_id=$1 AND billing_account_id=$2",
+      [source.identity.actorUserId, source.identity.billingAccountId],
+    );
+    const auth = await deletion(source.identity.actorUserId);
+    await expect(decide(source.scopeId, auth)).rejects.toThrow("no billing scope authority");
+    const { accountDeletionRequestsRepository } = await import(
+      "../../db/repositories/account-deletion-requests"
+    );
+    expect(
+      await accountDeletionRequestsRepository.completeProviderPhase({
+        requestId: auth.requestId,
+        phaseReceiptId: auth.phaseReceiptId,
+        generation: auth.phaseGeneration,
+        providerReceiptDigest: "d".repeat(64),
+        now: new Date(),
+      }),
+    ).toBe(true);
+    expect(
+      (await db.query("SELECT fenced_at FROM app_billing_scopes WHERE id=$1", [source.scopeId]))
+        .rows[0].fenced_at,
+    ).toBeNull();
   });
 });
