@@ -6,6 +6,21 @@
 
 import type { CreateAppBillingPlanRequest } from "@elizaos/cloud-sdk/app-billing-admin";
 
+import type {
+  BillingProviderObservation,
+  BillingProviderSubscription,
+} from "./generic-billing-provider-types";
+
+/** Binds retained cancellation evidence to the existing execution and canonical deletion phase. */
+export interface DeletionCancellationEvidence {
+  commandId: string;
+  commandRevision: number;
+  executionGeneration: number;
+  leaseToken: string;
+  phaseGeneration: number;
+  observation: BillingProviderObservation<BillingProviderSubscription>;
+}
+
 interface BuyerIntent {
   version: 1;
   domain: "buyer";
@@ -65,7 +80,12 @@ export type BuyerBillingCommandResult =
     }
   | { kind: "portal"; url: string; expiresAt: string | null }
   | BuyerBillingPaymentAction
-  | { kind: "completed"; subscriptionId: string | null; subscriptionRevision: number | null }
+  | {
+      kind: "completed";
+      subscriptionId: string | null;
+      subscriptionRevision: number | null;
+      cancellationEvidence?: DeletionCancellationEvidence;
+    }
   | { kind: "expired_checkout"; checkoutSessionId: string }
   | {
       kind: "completed_checkout";

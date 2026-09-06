@@ -388,7 +388,14 @@ export const appBillingDeletionCancellationRepository = {
       const locked = await lockedClaim(tx, claim);
       if (
         observation.value.status !== "canceled" ||
-        observation.value.pendingUpdate ||
+        observation.value.pendingUpdate !== false ||
+        observation.inputDigest !== locked.command.request_digest ||
+        observation.digest !== settlementDigest(observation.value) ||
+        observation.apiVersion !== "2024-11-20.acacia" ||
+        !Number.isFinite(Date.parse(observation.observedAt)) ||
+        !locked.command.provider_started_at ||
+        Date.parse(observation.observedAt) < locked.command.provider_started_at.getTime() ||
+        Date.parse(observation.observedAt) > locked.now.getTime() ||
         observation.value.subscriptionId !== claim.payload.subscriptionId ||
         observation.value.customerId !== claim.payload.customerId ||
         observation.providerAccountId !== claim.payload.providerAccountId ||
@@ -421,6 +428,14 @@ export const appBillingDeletionCancellationRepository = {
             kind: "completed",
             subscriptionId: applied.subscription.id,
             subscriptionRevision: applied.subscription.lifecycle_revision,
+            cancellationEvidence: {
+              commandId: locked.command.id,
+              commandRevision: locked.command.state_revision,
+              executionGeneration: locked.command.execution_generation,
+              leaseToken: claim.lease.token,
+              phaseGeneration: claim.authority.phaseGeneration,
+              observation,
+            },
           },
           provider_response_digest: observation.digest,
           result_subscription_id: applied.subscription.id,

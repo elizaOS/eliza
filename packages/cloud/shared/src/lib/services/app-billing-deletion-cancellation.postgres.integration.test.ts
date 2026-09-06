@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
+import { settlementDigest } from "./settlement-digest";
 
 const postgresUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
 const schema = `app_delete_cancel_${randomUUID().replaceAll("-", "_")}`;
@@ -128,6 +129,8 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
       "0429_app_billing_applied_revision",
       "0430_app_billing_completed_checkout",
       "0431_app_billing_deletion_cancellation",
+      "0445_app_billing_refund_observations",
+      "0461_app_billing_cancellation_evidence",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -270,6 +273,96 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
     expect(await cancel(state)).toBe("complete");
     expect(fixture.requests.length).toBe(after);
   });
+  test("retains the exact SDK observation and rejects changed provenance or pending updates", async () => {
+    const state = await start(),
+      repo = await repository();
+    const selected = await repo.claim(state.scopeId, state.auth);
+    if (selected.kind !== "claimed") throw new Error("missing cancellation claim");
+    const scope = await repo.validateDispatch(selected.claim);
+    const provider = await resolveProvider(merchant, false);
+    const { appBillingProviderPlan } = await import("./generic-billing-provider-runtime");
+    const plan = await authority.getHistoricalPlan({
+      appId: scope.appId,
+      planRevisionId: state.planId,
+    });
+    const observed = await provider.cancelSubscription(
+      scope,
+      {
+        subscriptionId: selected.claim.payload.subscriptionId,
+        customerId: selected.claim.payload.customerId,
+        plan: appBillingProviderPlan(plan),
+        atPeriodEnd: false,
+      },
+      {
+        commandId: selected.claim.lease.commandId,
+        idempotencyKey: randomUUID(),
+        requestDigest: settlementDigest(selected.claim.payload),
+      },
+    );
+    const pending = { ...observed.value, pendingUpdate: true };
+    for (const invalid of [
+      { ...observed, value: pending, digest: settlementDigest(pending) },
+      { ...observed, digest: "0".repeat(64) },
+      { ...observed, inputDigest: "0".repeat(64) },
+      { ...observed, providerAccountId: "acct_other" },
+      { ...observed, observedAt: "2999-01-01T00:00:00.000Z" },
+    ])
+      await expect(repo.complete(selected.claim, invalid)).rejects.toThrow();
+    await repo.complete(selected.claim, observed);
+    const {
+      rows: [retained],
+    } = await db.query(
+      "SELECT provider_result,provider_response_digest,result_subscription_id,result_subscription_revision,request_payload FROM billing_subscription_commands WHERE id=$1",
+      [selected.claim.lease.commandId],
+    );
+    expect(retained.provider_result.cancellationEvidence).toEqual({
+      commandId: selected.claim.lease.commandId,
+      commandRevision: selected.claim.lease.stateRevision,
+      executionGeneration: selected.claim.lease.executionGeneration,
+      leaseToken: selected.claim.lease.token,
+      phaseGeneration: state.auth.phaseGeneration,
+      observation: observed,
+    });
+    expect(retained.provider_result.subscriptionId).toBe(retained.result_subscription_id);
+    expect(retained.provider_result.subscriptionRevision).toBe(
+      Number(retained.result_subscription_revision),
+    );
+    expect(retained.provider_response_digest).toBe(observed.digest);
+    expect(retained.request_payload).toEqual(selected.claim.payload);
+    await expect(
+      db.query(
+        "UPDATE billing_subscription_commands SET provider_result=jsonb_set(provider_result,'{cancellationEvidence,observation,value,pendingUpdate}','true') WHERE id=$1",
+        [selected.claim.lease.commandId],
+      ),
+    ).rejects.toThrow();
+  });
+  test("database rejects substituted cancellation execution evidence and rolls back projection", async () => {
+    const state = await start();
+    // A database-side adversarial writer changes a validated application's write before the real guard sees it.
+    await db.query(`CREATE FUNCTION substitute_cancellation_evidence() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.status='APPLIED' AND NEW.request_payload->>'domain'='account_deletion' THEN
+        NEW.provider_result=jsonb_set(NEW.provider_result,'{cancellationEvidence,commandId}',to_jsonb('00000000-0000-0000-0000-000000000000'::text));
+      END IF; RETURN NEW; END $$;
+      CREATE TRIGGER aaa_substitute_cancellation_evidence BEFORE UPDATE ON billing_subscription_commands FOR EACH ROW EXECUTE FUNCTION substitute_cancellation_evidence();`);
+    try {
+      expect(await cancel(state)).toBe("pending");
+      const {
+        rows: [row],
+      } = await db.query(
+        "SELECT c.status,c.provider_result,s.status AS subscription_status FROM billing_subscription_commands c JOIN billing_subscriptions s ON s.id=c.subscription_id WHERE c.billing_scope_id=$1 AND c.request_payload->>'domain'='account_deletion'",
+        [state.scopeId],
+      );
+      expect(row.status).toBe("OUTCOME_UNKNOWN");
+      expect(row.provider_result).toBeNull();
+      expect(row.subscription_status).toBe("trialing");
+    } finally {
+      await db.query(
+        "DROP TRIGGER aaa_substitute_cancellation_evidence ON billing_subscription_commands; DROP FUNCTION substitute_cancellation_evidence()",
+      );
+    }
+    expect(await cancel(state)).toBe("pending");
+    expect(await cancel(state)).toBe("complete");
+  });
   test("a completed billing portal does not prevent subscription cancellation", async () => {
     const state = await start(false, true);
     const at = fixture.requests.length;
@@ -365,7 +458,7 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
       {
         commandId: claimed.claim.lease.commandId,
         idempotencyKey: randomUUID(),
-        requestDigest: "b".repeat(64),
+        requestDigest: settlementDigest(claimed.claim.payload),
       },
     );
     await expect(repo.complete(claimed.claim, observed)).rejects.toThrow();
@@ -462,7 +555,7 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
       {
         commandId: first.claim.lease.commandId,
         idempotencyKey: randomUUID(),
-        requestDigest: "b".repeat(64),
+        requestDigest: settlementDigest(first.claim.payload),
       },
     );
     await db.query(
