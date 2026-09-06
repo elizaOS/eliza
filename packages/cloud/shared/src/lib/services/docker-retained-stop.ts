@@ -156,3 +156,48 @@ export async function resumeDockerRetainedContainer(
   }
   return { containerId, state: "running", restartPolicy: "no" };
 }
+
+/** Reads health only from the captured physical container; host-port success is not proof. */
+export async function checkDockerRetainedContainerHealth(
+  execute: Execute,
+  containerId: string,
+  agentId: string,
+): Promise<boolean> {
+  if (
+    !/^[a-f0-9]{64}$/.test(containerId) ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(agentId)
+  ) {
+    throw new ElizaError("Retained health requires immutable agent/container identity", {
+      code: "SANDBOX_RETAINED_HEALTH_IDENTITY_INVALID",
+    });
+  }
+  const observed = await execute(
+    `docker container inspect --format '{{.Id}}|{{index .Config.Labels "ai.elizaos.agent-id"}}|{{.State.Status}}|{{.State.Running}}|{{.State.Restarting}}|{{.State.Paused}}|{{.State.Dead}}|{{.HostConfig.RestartPolicy.Name}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' ${shellQuote(containerId)}`,
+    15_000,
+  );
+  const fields = observed.trim().split("|");
+  if (
+    fields.length !== 9 ||
+    fields[0] !== containerId ||
+    fields[1] !== agentId ||
+    !["created", "running", "paused", "restarting", "removing", "exited", "dead"].includes(
+      fields[2],
+    ) ||
+    fields.slice(3, 7).some((value) => value !== "true" && value !== "false") ||
+    !["healthy", "starting", "unhealthy", "none"].includes(fields[8])
+  ) {
+    throw new ElizaError("Retained health readback does not match captured authority", {
+      code: "SANDBOX_RETAINED_HEALTH_PROOF_INVALID",
+      context: { containerId, agentId },
+    });
+  }
+  return (
+    fields[2] === "running" &&
+    fields[3] === "true" &&
+    fields[4] === "false" &&
+    fields[5] === "false" &&
+    fields[6] === "false" &&
+    fields[7] === "no" &&
+    fields[8] === "healthy"
+  );
+}

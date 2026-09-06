@@ -9862,6 +9862,7 @@ export class ElizaSandboxService {
       if (retention) {
         if (
           !provider.resumeRetainedContainer ||
+          !provider.checkRetainedContainerHealth ||
           !retention.bridgeUrl ||
           !retention.healthUrl ||
           !rec.sandbox_id
@@ -9895,7 +9896,7 @@ export class ElizaSandboxService {
           ...(started.rec.headscale_ip ? { headscaleIp: started.rec.headscale_ip } : {}),
         },
       });
-      if (!healthy)
+      if (!healthy || !(await provider.checkRetainedContainerHealth!(started.retention)))
         throw new ElizaError("Pending retained recovery is not ready", {
           code: "AGENT_LOCAL_RETENTION_REFILL_NOT_READY",
         });
@@ -10554,7 +10555,11 @@ export class ElizaSandboxService {
         ? lockPaymentResumeProviderAuthorityInTransaction(tx, authority, purpose)
         : lockManualRetainedResumeInTransaction(tx, authority, purpose);
     const provider = await this.getProvider();
-    if (!provider.resumeRetainedContainer || !provider.stopRetainingState)
+    if (
+      !provider.resumeRetainedContainer ||
+      !provider.stopRetainingState ||
+      !provider.checkRetainedContainerHealth
+    )
       throw new ElizaError("Provider cannot resume retained state", {
         code: "AGENT_LOCAL_RETENTION_RESUME_UNSUPPORTED",
       });
@@ -10598,7 +10603,7 @@ export class ElizaSandboxService {
           ...(admitted.rec.headscale_ip ? { headscaleIp: admitted.rec.headscale_ip } : {}),
         },
       });
-      if (!healthy)
+      if (!healthy || !(await provider.checkRetainedContainerHealth(admitted.retention)))
         throw new ElizaError("Retained container has not passed runtime readiness", {
           code: "AGENT_LOCAL_RETENTION_RESUME_NOT_READY",
         });
