@@ -2542,6 +2542,41 @@
       "when": 1796083200006,
       "tag": "0379_subscription_account_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1796083200007,
+      "tag": "0362_agent_compute_stop_confirmed_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 364,
+      "version": "7",
+      "when": 1796083200008,
+      "tag": "0363_agent_local_state_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 365,
+      "version": "7",
+      "when": 1796083200009,
+      "tag": "0364_agent_serving_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 366,
+      "version": "7",
+      "when": 1796083200010,
+      "tag": "0365_apps_telegram_automation_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 367,
+      "version": "7",
+      "when": 1796083200011,
+      "tag": "0366_agent_identities",
+      "breakpoints": true
     }
   ]
 }

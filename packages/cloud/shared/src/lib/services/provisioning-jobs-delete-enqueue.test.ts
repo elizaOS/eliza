@@ -10,6 +10,8 @@
  *
  * `dbWrite` is a Proxy that spyOn can't intercept, so this file mock.modules the
  * helpers module with chainable query builders that capture the generated SQL.
+ * The deletion scan executes that SQL against isolated PGlite rows to verify
+ * cooldown, tenant-scoped active-job exclusion, ordering and batch admission.
  */
 
 // These suites mock `db/helpers` with a partial `dbWrite` (no `execute`), so the
@@ -19,7 +21,8 @@ const PRIOR_SKIP_ENSURE = process.env.SKIP_AGENT_SANDBOX_ENSURE;
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import type { SQL } from "drizzle-orm";
+import { PGlite } from "@electric-sql/pglite";
+import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as realDbHelpers from "../../db/helpers";
 import * as realJobsRepository from "../../db/repositories/jobs";
@@ -40,14 +43,22 @@ const realOutboundUrlExports = { ...realOutboundUrl };
 
 // ---- captured query state ----
 let capturedSelectWhere: SQL | undefined;
+let capturedOrderBy: SQL[] = [];
+let capturedLimit = 0;
 let capturedCancellationWhere: SQL | undefined;
 let selectRows: unknown[] = [];
 let cancelledReturning: Array<{ id: string }> = [];
 
 // The select double supports both ordered stale-row scans and directly awaited
 // fleet-report queries. Tests retain the first WHERE clause for shape checks.
-const selectLimit = mock(() => selectRows);
-const selectOrderBy = mock(() => ({ limit: selectLimit }));
+const selectLimit = mock((limit: number) => {
+  capturedLimit = limit;
+  return selectRows;
+});
+const selectOrderBy = mock((...order: SQL[]) => {
+  capturedOrderBy = order;
+  return { limit: selectLimit };
+});
 const selectWhere = mock((clause: SQL) => {
   capturedSelectWhere ??= clause;
   return {
@@ -118,7 +129,17 @@ const transaction = mock(async (fn: (t: typeof tx) => Promise<unknown>) => {
   return fn(tx);
 });
 
-const dbWriteMock = { select, transaction };
+let admissionUpdateExecutor: (statement: SQL) => Promise<void> = async () => {};
+const admissionUpdate = mock(() => ({
+  set: (values: { updated_at: Date }) => ({
+    where: (predicate: SQL) =>
+      admissionUpdateExecutor(sql`
+      UPDATE agent_sandboxes SET updated_at = ${values.updated_at.toISOString()}
+      WHERE ${predicate}
+    `),
+  }),
+}));
+const dbWriteMock = { select, transaction, update: admissionUpdate };
 
 // Provide the FULL helpers surface so transitive importers (repositories) keep
 // working; only dbWrite is swapped for our capturing mock.
@@ -157,7 +178,10 @@ mock.module("../../db/repositories/jobs", () => ({
 }));
 
 afterEach(() => {
+  admissionUpdateExecutor = async () => {};
   capturedSelectWhere = undefined;
+  capturedOrderBy = [];
+  capturedLimit = 0;
   capturedCancellationWhere = undefined;
   selectRows = [];
   cancelledReturning = [];
@@ -314,6 +338,117 @@ describe("enqueueScheduledBackups — only reachable agents", () => {
 });
 
 describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () => {
+  test("due selection skips cooling and active rows before the batch limit", async () => {
+    const { provisioningJobService } = await import("./provisioning-jobs");
+    await provisioningJobService.reEnqueueFailedDeletions({ maxAgents: 1 });
+    if (!capturedSelectWhere) throw new Error("Deletion scan did not execute");
+    const query = new PgDialect().sqlToQuery(sql`
+      SELECT id FROM agent_sandboxes WHERE ${capturedSelectWhere}
+      ORDER BY ${sql.join(capturedOrderBy, sql`, `)} LIMIT ${capturedLimit}
+    `);
+    const database = new PGlite();
+    try {
+      await database.exec(`
+        CREATE TABLE agent_sandboxes (
+          id text PRIMARY KEY, organization_id text, status text,
+          updated_at timestamptz, error_count integer NOT NULL
+        );
+        CREATE TABLE jobs (
+          agent_id text, organization_id text, type text, status text
+        );
+        INSERT INTO agent_sandboxes VALUES
+          ('cooling', 'org', 'deletion_failed', now() - interval '1 hour', 5),
+          ('active', 'org', 'deletion_pending', now() - interval '2 days', 9),
+          ('due-exhausted', 'org', 'deletion_failed', now() - interval '1 day', 10000),
+          ('due-fast', 'org', 'deletion_failed', now() - interval '2 hours', 1),
+          ('new', 'org', 'deletion_failed', now() - interval '1 minute', 0),
+          ('running', 'org', 'running', now() - interval '3 days', 0);
+        INSERT INTO jobs VALUES
+          ('active', 'org', 'agent_delete', 'in_progress'),
+          ('due-exhausted', 'other-org', 'agent_delete', 'pending');
+      `);
+      expect((await database.query(query.sql, query.params)).rows).toEqual([
+        { id: "due-exhausted" },
+      ]);
+      await database.exec(`
+        UPDATE agent_sandboxes SET updated_at = now() WHERE id = 'due-exhausted';
+      `);
+      expect((await database.query(query.sql, query.params)).rows).toEqual([{ id: "due-fast" }]);
+      await database.exec(`
+        UPDATE agent_sandboxes SET updated_at = now() WHERE id = 'due-fast';
+      `);
+      expect((await database.query(query.sql, query.params)).rows).toEqual([]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  test("failed admission cools its row without touching a cancelled or replaced generation", async () => {
+    const database = new PGlite();
+    const originalTime = new Date("2020-01-01T00:00:00Z");
+    const { provisioningJobService } = await import("./provisioning-jobs");
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockImplementation(
+      async ({ agentId }) => {
+        if (agentId === "cancelled") {
+          await database.exec(
+            "UPDATE agent_sandboxes SET status = 'running', lifecycle_revision = 8 WHERE id = 'cancelled'",
+          );
+        }
+        if (agentId === "replaced") {
+          await database.exec(
+            "UPDATE agent_sandboxes SET deletion_attempt_id = 'new-attempt' WHERE id = 'replaced'",
+          );
+        }
+        throw new Error("Delete admission failed");
+      },
+    );
+    try {
+      await database.exec(`
+        CREATE TABLE agent_sandboxes (
+          id text PRIMARY KEY, organization_id text, status text,
+          updated_at timestamptz, lifecycle_revision integer,
+          deletion_attempt_id text
+        );
+      `);
+      selectRows = ["stable", "cancelled", "replaced"].map((id) => ({
+        id,
+        organizationId: "org",
+        userId: "owner",
+        errorCount: 1,
+        lifecycleRevision: 7,
+        deletionAttemptId: "old-attempt",
+        updatedAt: originalTime,
+      }));
+      for (const id of ["stable", "cancelled", "replaced"]) {
+        await database.query(
+          "INSERT INTO agent_sandboxes VALUES ($1, 'org', 'deletion_failed', $2, 7, 'old-attempt')",
+          [id, originalTime.toISOString()],
+        );
+      }
+      admissionUpdateExecutor = async (statement) => {
+        const query = new PgDialect().sqlToQuery(statement);
+        await database.query(query.sql, query.params);
+      };
+      expect(await provisioningJobService.reEnqueueFailedDeletions()).toEqual({
+        scanned: 3,
+        reEnqueued: 0,
+        failed: 3,
+        abandoned: 0,
+      });
+      const { rows } = await database.query<{ id: string; updated_at: Date }>(
+        "SELECT id, updated_at FROM agent_sandboxes ORDER BY id",
+      );
+      expect(rows.find((row) => row.id === "stable")!.updated_at.getTime()).toBeGreaterThan(
+        originalTime.getTime(),
+      );
+      expect(rows.find((row) => row.id === "cancelled")!.updated_at).toEqual(originalTime);
+      expect(rows.find((row) => row.id === "replaced")!.updated_at).toEqual(originalTime);
+    } finally {
+      enqueueSpy.mockRestore();
+      await database.close();
+    }
+  });
+
   test("re-enqueues agent_delete for each old deletion_failed row", async () => {
     selectRows = [
       { id: "a1", organizationId: "o1", userId: "u1", errorCount: 1 },
@@ -361,9 +496,8 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
     }
   });
 
-  test("circuit-breaker: a row past the re-enqueue budget is abandoned, not re-armed", async () => {
-    // a1 is under the default budget (5) and gets re-enqueued; a2 is at/over the
-    // budget and must be skipped + surfaced for ops instead of looping forever.
+  test("an eligible exhausted deletion is re-armed after its slow retry delay", async () => {
+    // SQL selects due rows; a due exhausted deletion must still run.
     selectRows = [
       { id: "a1", organizationId: "o1", userId: "u1", errorCount: 4 },
       { id: "a2", organizationId: "o2", userId: "u2", errorCount: 5 },
@@ -375,16 +509,15 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
     } as never);
     try {
       const res = await provisioningJobService.reEnqueueFailedDeletions();
-      expect(res).toEqual({ scanned: 2, reEnqueued: 1, failed: 0, abandoned: 1 });
-      // Only the under-budget row was re-enqueued; the dead one was not.
-      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      expect(res).toEqual({ scanned: 2, reEnqueued: 2, failed: 0, abandoned: 0 });
+      expect(enqueueSpy).toHaveBeenCalledTimes(2);
       expect(enqueueSpy.mock.calls[0]?.[0].agentId).toBe("a1");
     } finally {
       enqueueSpy.mockRestore();
     }
   });
 
-  test("circuit-breaker threshold is configurable via maxReEnqueues", async () => {
+  test("a configured slow-retry threshold does not abandon an eligible deletion", async () => {
     selectRows = [{ id: "a1", organizationId: "o1", userId: "u1", errorCount: 2 }];
     const { provisioningJobService } = await import("./provisioning-jobs");
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockResolvedValue({
@@ -392,10 +525,10 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       job: { id: "del-1" },
     } as never);
     try {
-      // With a budget of 2, an errorCount of 2 is already abandoned.
+      // The threshold changes cadence, never authorizes abandonment.
       const res = await provisioningJobService.reEnqueueFailedDeletions({ maxReEnqueues: 2 });
-      expect(res).toEqual({ scanned: 1, reEnqueued: 0, failed: 0, abandoned: 1 });
-      expect(enqueueSpy).not.toHaveBeenCalled();
+      expect(res).toEqual({ scanned: 1, reEnqueued: 1, failed: 0, abandoned: 0 });
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
     } finally {
       enqueueSpy.mockRestore();
     }

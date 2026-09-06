@@ -18,6 +18,18 @@ import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
+  type AgentPaymentResumeExecutionAuthority,
+  confirmAgentComputeStopInTransaction,
+  lockPaymentResumeProviderAuthorityInTransaction,
+} from "../../db/repositories/agent-compute-stop-intents";
+import {
+  admitLocalRetentionInTransaction,
+  assertRetainedNodePublicationAuthorityInTransaction,
+  type LocalRetentionStopAuthority,
+  lockManualRetainedResumeInTransaction,
+  type ManualLocalResumeAuthority,
+} from "../../db/repositories/agent-local-state-retention";
+import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
   type AgentSandboxBackup,
@@ -30,6 +42,7 @@ import {
   prepareAgentBackupInsertData,
   reconstructStoredAgentSandboxBackupChain,
 } from "../../db/repositories/agent-sandboxes";
+import { servingDeletionAuthority } from "../../db/repositories/agent-serving-placement";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
@@ -37,6 +50,7 @@ import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-int
 import {
   type AgentBackupStateData,
   type AgentExecutionTier,
+  type AgentLocalStateRetention,
   agentSandboxBackups,
   agentSandboxes,
   CONTAINER_BACKED_EXECUTION_TIERS,
@@ -429,6 +443,8 @@ export type ProvisionResult =
       sandboxRecord: AgentSandbox;
       bridgeUrl: string;
       healthUrl: string;
+      /** Present when automatic recovery reuses an already-published generation. */
+      reusedExisting?: true;
     }
   | {
       success: false;
@@ -487,11 +503,9 @@ function containerBackedServiceRejection(
 }
 
 /**
- * Restore-source override for `provision()`. `from-backup` restores a specific
- * backup instead of the latest and disables unrecoverable-snapshot degradation;
- * manual restore additionally sets `requireRestoreEndpoint` so the custom-image
- * 404 compatibility skip cannot fabricate success. `fresh-boot` skips restore
- * entirely. Callers that omit an override keep latest-backup auto-restore.
+ * Selects the retained backup for provisioning, or records explicit consent
+ * to skip restoration. Every selected backup requires a working restore
+ * endpoint. Omitted overrides restore the latest backup when one exists.
  */
 export type ProvisionRestoreOverride =
   | {
@@ -1667,101 +1681,6 @@ export function computeManagedAgentDbEnv(
   return callerSuppliedDatabaseUrl || wantsLocalState
     ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
     : { DATABASE_URL: dbUri };
-}
-
-// HTTP statuses that make a snapshot fetch/restore fail for THIS snapshot in a
-// way the current provision cannot retry away, so it must degrade to a fresh
-// boot instead of bricking the agent (#15210): 401/403 (auth — a dead/rotated
-// container or an unauthenticated/rotating token rejects every retry
-// identically), 404 (endpoint or snapshot gone), 410 (gone). Everything else —
-// 5xx, 408/429, network/timeout — can heal on a retry and must NOT appear here.
-const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
-// The subset that is also PERMANENTLY LOST — the snapshot itself is gone and no
-// later resume can restore it, so the dead backup chain should be pruned: 404
-// (endpoint or snapshot gone) and 410 (gone). 401/403 are auth failures, which
-// are RECOVERABLE (missing/rotating token — see #15263, where the incident 401
-// was a healthy container whose restore push simply omitted the agent token),
-// so they must degrade-but-PRESERVE the chain: never prune a snapshot a
-// token-corrected resume could still restore (#15274).
-const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
-
-// Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
-// this file's snapshot HTTP throw sites classify — an unrelated error that
-// merely embeds one of these strings does not.
-const SNAPSHOT_HTTP_ERROR_SHAPE =
-  /^(?:Snapshot fetch failed|State restore failed): HTTP (\d{3})(?:\s|$)/;
-
-/**
- * True only when a stored backup snapshot can never be applied, no matter how
- * many times the provision retries. An agent's identity, config, and durable
- * data live in the DB record; a snapshot holds only volatile in-memory session
- * state — so the designed degrade for an unrecoverable snapshot (#15210) is
- * "boot fresh, lose only the volatile session", never "brick the whole agent".
- * Two shapes qualify:
- *
- * - UNDECRYPTABLE: the AEAD auth tag fails to verify (corruption / wrong key /
- *   wrong AAD, surfaced by the core KMS as `AeadError`) or the KMS key
- *   version that encrypted it no longer exists (`KeyNotFoundError` — thrown
- *   only by the ephemeral `memory` KMS backend, which derives a fresh
- *   per-process key on every restart and thus orphans everything it previously
- *   encrypted). Matched by error class NAME rather than `instanceof` because
- *   `AeadError` is internal to the core KMS submodule (not exported) and this code
- *   runs bundled, where a cross-realm `instanceof` on a dependency's error
- *   class is unreliable.
- * - UNRETRIEVABLE / UNRESTORABLE: the snapshot fetch or restore push was
- *   rejected with an unrecoverable-for-this-provision HTTP status (see
- *   `UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES`). The incident shape (HQ 14308, agent
- *   23766030): `State restore failed: HTTP 401 {"error":"Unauthorized"}` from a
- *   bridge URL — deterministic on every attempt of THIS provision, so retrying
- *   only re-failed it into status=error.
- *
- * Deliberately NARROW so it never swallows a recoverable failure: HTTP 5xx /
- * 408 / 429, network/timeout errors, a transient KMS error (the Steward
- * backend surfaces HTTP 5xx as a base `KmsError`, not `KeyNotFoundError`), and
- * DB/IO errors are NOT matched and still propagate — degrading on one of those
- * would silently discard state that a retry would have restored.
- *
- * NOTE: "unrecoverable for this provision" (boot fresh) is a strictly WIDER
- * classification than "permanently lost" (also prune the chain). A 401/403 is
- * unrecoverable here but the snapshot is NOT permanently lost — an auth failure
- * heals once the token is attached/rotated correctly (#15263), so
- * `isPermanentlyLostSnapshot` must gate any pruning, never this predicate.
- */
-export function isUnrecoverableSnapshotError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
-  // A size refusal is deliberately NOT unrecoverable-for-this-provision. It is
-  // deterministic, so retrying is pointless — but the chain is intact and
-  // restorable in principle, and the only reason it cannot be applied is a
-  // limit WE chose. Degrading it to a fresh boot would discard recoverable
-  // state; it gets its own terminal branch at each restore site instead, and
-  // the one way past it is wake's explicit `forceFreshBoot` consent.
-  const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
-  return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
-}
-
-/**
- * True only when the snapshot is PERMANENTLY LOST — no later resume, on any
- * container with any token, can ever restore it — so the dead backup chain is
- * safe to prune. A strict SUBSET of `isUnrecoverableSnapshotError`:
- *
- * - The crypto shapes (`AeadError` / `KeyNotFoundError`): the bytes can never
- *   be decrypted again (corruption, or the ephemeral `memory` KMS key that
- *   encrypted them is gone), so the chain is genuinely dead.
- * - HTTP 404 (endpoint or snapshot gone) / 410 (gone): the snapshot resource
- *   itself no longer exists to fetch.
- *
- * Excludes 401/403: those are AUTH failures (missing/rotating token), which are
- * RECOVERABLE — pruning on one would silently, permanently discard a snapshot a
- * token-corrected resume could still restore (#15274 regression class). On an
- * auth failure we still degrade to a fresh boot (never brick), but we PRESERVE
- * the chain and let the next authenticated resume restore it.
- */
-export function isPermanentlyLostSnapshot(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
-  const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
-  return match !== null && PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
 
 /**
@@ -2965,7 +2884,12 @@ export class ElizaSandboxService {
       } else if (stop.kind === "stop-failed") {
         const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
         const stopFailureKind = classifySandboxDeleteStopFailure(stop.error);
-        if (this.isIgnorableSandboxStopError(stop.error)) {
+        // Retained deletion has exact-ID readback; transport error prose must
+        // never replace that proof or discard its durable cleanup authority.
+        if (
+          !precheck.deletionLocator?.containerId &&
+          this.isIgnorableSandboxStopError(stop.error)
+        ) {
           logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
             sandboxId,
             status: precheck.status,
@@ -3144,6 +3068,10 @@ export class ElizaSandboxService {
    * live container while still failing closed on ambiguous legacy intents.
    */
   private requiresPreDeleteCapture(rec: AgentSandbox | null | undefined): rec is AgentSandbox {
+    // A retained stop deliberately keeps the only recoverable local copy when
+    // capture failed. Neither a stopped status nor released compute billing
+    // proves that deleting those bytes is safe.
+    if (rec?.local_state_retention) return true;
     if (
       !rec ||
       rec.execution_tier === "shared" ||
@@ -3335,6 +3263,13 @@ export class ElizaSandboxService {
         .update(agentSandboxes)
         .set({
           status: "deletion_pending",
+          // Consume queued cancellation authority before any provider effect.
+          // A failed job can be requeued after teardown; its old bridge URL
+          // must not make that generation reversible again.
+          deletion_previous_status: null,
+          deletion_previous_billing_status: null,
+          deletion_previous_shutdown_warning_sent_at: null,
+          deletion_previous_scheduled_shutdown_at: null,
           deletion_attempt_id: deletionAttemptId,
           ...(rec.deletion_started_at === null ? { deletion_started_at: deletionStartedAt } : {}),
           ...(isDeletionContinuation(rec)
@@ -3392,7 +3327,41 @@ export class ElizaSandboxService {
       }
 
       let deletionLocator: SandboxDeletionLocator | null = null;
-      if (rec.sandbox_id && rec.node_id && rec.container_name) {
+      if (rec.local_state_retention) {
+        const retained = rec.local_state_retention;
+        if (
+          retained.agentId !== rec.id ||
+          rec.sandbox_id !== retained.containerName ||
+          rec.container_name !== retained.containerName ||
+          rec.node_id !== retained.nodeId
+        ) {
+          throw new ElizaError("Retained deletion placement differs from its captured authority", {
+            code: "AGENT_LOCAL_RETENTION_DELETE_AUTHORITY_MISMATCH",
+            context: { agentId: rec.id },
+          });
+        }
+        await assertRetainedNodePublicationAuthorityInTransaction(tx, retained);
+        deletionLocator = {
+          sandboxId: retained.containerName,
+          containerName: retained.containerName,
+          containerId: retained.containerId,
+          agentId: retained.agentId,
+          nodeId: retained.nodeId,
+          hostname: retained.hostname,
+          sshPort: retained.sshPort,
+          sshUser: retained.sshUser,
+          hostKeyFingerprint: retained.hostKeyFingerprint,
+        };
+      } else if (rec.serving_placement) {
+        const authority = servingDeletionAuthority(rec.serving_placement, {
+          agentId: rec.id,
+          nodeId: rec.node_id,
+          sandboxId: rec.sandbox_id,
+          containerName: rec.container_name,
+        });
+        await assertRetainedNodePublicationAuthorityInTransaction(tx, authority);
+        deletionLocator = authority;
+      } else if (rec.sandbox_id && rec.node_id && rec.container_name) {
         const nodeAuthority = await tx.execute<{
           hostname: string;
           ssh_port: number;
@@ -3659,9 +3628,9 @@ export class ElizaSandboxService {
         error: "Agent deletion does not have a reversible running-state receipt",
       };
     }
-    // A running receipt plus a live bridge proves the workload still matches
-    // the state being restored. Legacy deletion rows have no receipt and are
-    // refused above; a missing bridge means teardown may already have begun.
+    // Only unconsumed queued cancellation authority permits restoration.
+    // The stored bridge is a locator, not proof of liveness; teardown admission
+    // consumes the receipt even when its job later fails or is requeued.
     if (!rec.bridge_url) {
       return {
         success: false,
@@ -3903,19 +3872,27 @@ export class ElizaSandboxService {
   // Provision
 
   /**
-   * `restoreOverride` narrows step 5's backup restore for callers that have
-   * already decided the restore source: `executeWake` (#15603 B6) and manual
-   * `restore()`. `from-backup` restores a specific validated backup and NEVER
-   * degrades an unrecoverable restore error to a fresh boot; manual restore also
-   * requires the endpoint, while wake retains its custom-image 404 compatibility
-   * skip. `fresh-boot` skips restore after explicit data-loss consent. Omitted:
-   * latest-backup auto-restore with the designed unrecoverable-snapshot degrade.
+   * Provisions a runtime and restores the selected or latest retained backup.
+   * Restoration failure preserves the chain and fails the operation. Only an
+   * explicit fresh-boot override permits skipping retained state.
    */
   async provision(
     agentId: string,
     orgId: string,
     restoreOverride?: ProvisionRestoreOverride,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ): Promise<ProvisionResult> {
+    if (
+      paymentResume &&
+      (restoreOverride ||
+        paymentResume.agentId !== agentId ||
+        paymentResume.organizationId !== orgId)
+    ) {
+      throw new ElizaError("Automatic payment resume cannot change restore or tenant authority", {
+        code: "PAYMENT_RESUME_ADMISSION_CHANGED",
+        context: { agentId, organizationId: orgId },
+      });
+    }
     let reviewedRestore: PreparedReviewedProvisionRestore | undefined;
     if (restoreOverride?.kind === "from-reviewed-backup") {
       try {
@@ -3953,7 +3930,34 @@ export class ElizaSandboxService {
     let rec: AgentSandbox;
     let previousStatus: AgentSandboxStatus;
 
-    if (expectedAdmission) {
+    if (paymentResume) {
+      const prior = await dbWrite.transaction((tx) =>
+        lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "cleanup"),
+      );
+      if (this.getReplacementCleanupLocator(prior)) {
+        await this.retirePersistedReplacementCleanup(
+          agentId,
+          orgId,
+          undefined,
+          undefined,
+          "lifecycle",
+          { authority: paymentResume },
+        );
+      }
+      const admission =
+        await agentSandboxesRepository.admitPaymentResumeProvisioning(paymentResume);
+      rec = admission.sandbox;
+      previousStatus = admission.previousStatus;
+      if (previousStatus === "running" && rec.bridge_url && rec.health_url) {
+        return {
+          success: true,
+          sandboxRecord: rec,
+          bridgeUrl: rec.bridge_url,
+          healthUrl: rec.health_url,
+          reusedExisting: true,
+        };
+      }
+    } else if (expectedAdmission) {
       if (expectedAdmission.id !== agentId || expectedAdmission.organization_id !== orgId) {
         return { success: false, error: RESTORE_AUTHORITY_CHANGED };
       }
@@ -4061,7 +4065,7 @@ export class ElizaSandboxService {
           await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
           reviewedAdmissionFence = undefined;
         }
-        await this.markError(rec, message);
+        await this.markError(rec, message, paymentResume);
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -4078,7 +4082,7 @@ export class ElizaSandboxService {
     if (rec.database_status !== "ready" || !dbUri) {
       const db = await this.provisionAgentDatabase(rec);
       if (!db.success) {
-        await this.markError(rec, `Database provisioning failed: ${db.error}`);
+        await this.markError(rec, `Database provisioning failed: ${db.error}`, paymentResume);
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -4166,7 +4170,7 @@ export class ElizaSandboxService {
     } catch (envError) {
       // error-policy:J1 return a failed provision without losing its decryption cause.
       const message = envError instanceof Error ? envError.message : String(envError);
-      await this.markError(rec, `Environment decryption failed: ${message}`);
+      await this.markError(rec, `Environment decryption failed: ${message}`, paymentResume);
       return {
         success: false,
         sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -4205,7 +4209,10 @@ export class ElizaSandboxService {
           // the caller did NOT supply one do we inject the managed URL as
           // DATABASE_URL — the normal managed-agent path, byte-identical to before.
           const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
-          handle = await (await this.getProvider()).create({
+          const provider = await this.getProvider();
+          if (paymentResume) await dbWrite.transaction((tx) =>
+            lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "provider"));
+          handle = await provider.create({
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
@@ -4231,11 +4238,16 @@ export class ElizaSandboxService {
               sandboxId: rec.sandbox_id,
               nodeId: rec.node_id,
               containerName: rec.container_name,
-            }),
+            }, paymentResume),
           });
         }
       } catch (err) {
         // error-policy:J1 retain provider failure for the queue and cleanup boundaries.
+        if (paymentResume && err instanceof ElizaError && (
+          err.code === "PAYMENT_RESUME_PROVIDER_LEASE_LOST" ||
+          err.code === "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED" ||
+          err.code === "PAYMENT_RESUME_EXECUTION_NOT_FUNDED"
+        )) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         if (err instanceof SandboxReplacementCleanupUnresolvedError) {
           await this.persistUnresolvedReplacementCleanupFence(rec.id, rec.organization_id, err);
@@ -4247,7 +4259,7 @@ export class ElizaSandboxService {
             failureCause: err,
           };
         }
-        await this.markError(rec, `Sandbox creation failed: ${msg}`);
+        await this.markError(rec, `Sandbox creation failed: ${msg}`, paymentResume);
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -4292,7 +4304,9 @@ export class ElizaSandboxService {
             //       collision, and tearing down the very container we preserved.
             // Without this write the leave-and-reconcile path is defeated for
             // exactly the SSH-transport-blip case it exists for.
-            await this.persistContainerHandleForRetry(
+            // Automatic recovery retains its cleanup receipt until state restore
+            // and the final funded publication transaction both succeed.
+            if (!paymentResume) await this.persistContainerHandleForRetry(
               rec.id,
               rec.organization_id,
               rec.environment_revision,
@@ -4359,18 +4373,10 @@ export class ElizaSandboxService {
 
         await this.ensureRuntimeAgentStarted(runtimeRec);
 
-        // 4. Persist the reachable container and provider-specific metadata.
-        //
-        // User rows flip to `running` before restore because that status is the
-        // proxy reachability gate; delaying it made a responsive agent render
-        // as "waking" throughout restore (#14038). Unclaimed pool rows are the
-        // exception: exposing them as claimable before the restore tail
-        // succeeds recreates the readiness crash window, so they stay
-        // `provisioning` until the final status+stamp CAS below.
+        // Prepare the final publication while the replacement ledger retains
+        // ownership. Restoration must succeed before routing can use this row.
         const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
-          // Pool rows stay non-claimable until the entire provision tail
-          // succeeds. Their final status+readiness stamp is one repository CAS
-          // below; user rows retain the early reachability flip.
+          // Pool entries require their separate readiness-stamp CAS below.
           status: recoveringPendingWarmClaim || isWarmPoolProvision ? "provisioning" : "running",
           sandbox_id: handle.sandboxId,
           bridge_url: handle.bridgeUrl,
@@ -4410,41 +4416,9 @@ export class ElizaSandboxService {
           updateData.image_digest = dockerMeta.imageDigest;
         }
 
-        const updated = await this.transferReplacementToPrimary(
-          rec.id,
-          rec.organization_id,
-          handle,
-          rec.environment_revision,
-          updateData,
-        );
-
-        // Re-enter the billable set on every successful provision. A
-        // credit-suspended agent (billing_status='suspended') that a user tops
-        // up and resumes/wakes via the user-facing routes would otherwise run
-        // (status='running') permanently EXCLUDED from listBillableSandboxes =
-        // free dedicated compute forever. The service-key resume/restart routes
-        // already reactivate; do it here so ALL provision paths re-enter billing.
-        // Idempotent + exempt-guarded (ne billing_status 'exempt').
-        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
-
-        // 5. Restore from backup (reconstructs incrementals back to a full).
-        //
-        // The snapshot holds only volatile in-memory session state — the agent's
-        // identity, config, and durable data live in the DB record — so an
-        // UNRECOVERABLE snapshot degrades to a FRESH boot instead of failing the
-        // whole provision closed (error-policy:J4 designed degrade — the state is
-        // unrestorable regardless of retries, so booting without prior in-memory
-        // state is correct, not a fabricated success). Two unrecoverable shapes,
-        // classified by `isUnrecoverableSnapshotError`: UNDECRYPTABLE (the org
-        // DEK that encrypted it is gone — the ephemeral `memory` KMS backend
-        // rotates its key on every restart — or the bytes are corrupt) and
-        // UNRESTORABLE (the restore push is rejected with a permanent HTTP
-        // status; HQ 14308 bricked an agent on a deterministic 401). Degrading on
-        // FIRST detection matters: these failures re-fail identically on every
-        // attempt, so retrying only burns the provision attempts and lands in
-        // markError. A transient DB/IO/network/5xx error is rethrown so the
-        // provision fails and the resume job retries rather than silently
-        // discarding recoverable state.
+        // Restore the complete retained state before reporting success. Missing
+        // keys, inaccessible objects and unsupported endpoints do not authorize
+        // an empty boot or deletion of the backup chain.
         let backup: Awaited<ReturnType<typeof agentSandboxesRepository.getLatestBackup>>;
         let restoreState: Awaited<
           ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
@@ -4477,28 +4451,35 @@ export class ElizaSandboxService {
                 );
               }
             }
+            if (
+              !backup &&
+              (["running", "stopped", "sleeping", "disconnected"].includes(previousStatus) ||
+                rec.last_backup_at !== null || rec.last_heartbeat_at !== null)
+            ) {
+              throw new ElizaError(
+                "Recovery requires retained state, but no backup is available. Restore the missing backup or explicitly authorize a fresh boot.",
+                {
+                  code: "SNAPSHOT_RECOVERY_BACKUP_MISSING",
+                  context: { agentId: rec.id, previousStatus },
+                },
+              );
+            }
             restoreState = reviewedRestore
               ? reviewedRestore.state
               : backup
                 ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
                 : undefined;
-            if (isExplicitBackupRestore(restoreOverride) && !restoreState) {
+            if (backup && !restoreState) {
               // The exact row can disappear or leave the legacy-visible lane
-              // between lookup and chain reconstruction. An explicit restore
-              // must fail closed instead of booting a reachable empty runtime.
-              throw new Error(
-                `Restore backup ${restoreOverride.backupId} could not be reconstructed`,
-              );
+              // between lookup and reconstruction. A known backup requires
+              // complete state even when no explicit restore point was chosen.
+              throw new ElizaError(`Restore backup ${backup.id} could not be reconstructed`, {
+                code: "SNAPSHOT_RESTORE_STATE_UNAVAILABLE",
+                context: { agentId: rec.id, backupId: backup.id },
+              });
             }
           } catch (error) {
-            // An explicitly-requested backup must NEVER silently degrade to a
-            // fresh boot — the caller opted into THAT restore point, so a
-            // failure here fails the provision (retryable by the wake job)
-            // instead of booting empty (#15603 B6).
-            // Ordered before the from-backup rethrow: the gated wake ALWAYS
-            // passes `from-backup`, so checking that first would swallow the
-            // consent sentence on the one path where the consent mechanism
-            // exists.
+            // Size refusal retains the existing explicit-consent response.
             if (error instanceof SnapshotPayloadTooLargeError) {
               // Size refusal fails CLOSED even on an ordinary provision: the
               // chain is intact, only too large — booting empty would silently
@@ -4518,11 +4499,12 @@ export class ElizaSandboxService {
                 },
               );
             }
-            if (isExplicitBackupRestore(restoreOverride)) throw error;
-            if (!isUnrecoverableSnapshotError(error)) throw error;
-            await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
-            backup = undefined;
-            restoreState = undefined;
+            // error-policy:J2 preserve the restore failure and retained state.
+            throw new ElizaError(error instanceof Error ? error.message : "Backup recovery failed; retained state was not discarded", {
+              code: "SNAPSHOT_RESTORE_FAILED",
+              cause: error,
+              context: { agentId: rec.id },
+            });
           }
         }
         if (restoreState) {
@@ -4569,14 +4551,8 @@ export class ElizaSandboxService {
               });
             }
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            const missingCustomRestoreEndpoint =
-              rec.execution_tier === "custom" &&
-              message.startsWith("State restore failed: HTTP 404");
             if (error instanceof SnapshotPayloadTooLargeError) {
-              // Ordered before the from-backup rethrow for the same reason as
-              // the fetch branch: a gated wake would otherwise never see the
-              // consent sentence.
+              // Preserve the explicit-consent response for a size refusal.
               throw new ElizaError(
                 `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
                 {
@@ -4590,40 +4566,34 @@ export class ElizaSandboxService {
                   severity: "fatal",
                 },
               );
-            } else if (
-              isExplicitBackupRestore(restoreOverride) &&
-              (restoreOverride.kind === "from-reviewed-backup" ||
-                restoreOverride.requireRestoreEndpoint ||
-                !missingCustomRestoreEndpoint)
-            ) {
-              // Same no-silent-fresh-boot rule as the fetch above: an explicit
-              // restore point that cannot be pushed fails the provision. A
-              // manual restore requires the endpoint because restore() reports
-              // that exact point as applied; the historical wake lane alone
-              // keeps its custom-image 404 compatibility skip (#15603 B6).
-              throw error;
-            } else if (missingCustomRestoreEndpoint) {
-              // Ordinary custom-image provisions may legitimately lack the
-              // restore endpoint. Keep the snapshot intact for a future image;
-              // manual restores opt into strict endpoint enforcement above.
-              logger.info(
-                "[agent-sandbox] Backup restore skipped: custom image has no restore endpoint",
-                {
-                  agentId: rec.id,
-                  backupId: backup?.id,
-                },
-              );
-            } else if (isUnrecoverableSnapshotError(error)) {
-              await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
-            } else {
-              throw error;
             }
+            // error-policy:J2 a reachable runtime is not proof of restored state.
+            throw new ElizaError(error instanceof Error ? error.message : "Backup recovery failed; retained state was not discarded", {
+              code: "SNAPSHOT_RESTORE_FAILED",
+              cause: error,
+              context: { agentId: rec.id, backupId: backup?.id },
+            });
           }
-        } else if (backup) {
-          logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
-            agentId: rec.id,
-            backupId: backup.id,
-          });
+        }
+
+        const updated = await this.transferReplacementToPrimary(
+          rec.id,
+          rec.organization_id,
+          handle,
+          rec.environment_revision,
+          updateData,
+          paymentResume,
+        );
+
+        // Re-enter the billable set on every successful provision. A
+        // credit-suspended agent (billing_status='suspended') that a user tops
+        // up and resumes/wakes via the user-facing routes would otherwise run
+        // (status='running') permanently EXCLUDED from listBillableSandboxes =
+        // free dedicated compute forever. The service-key resume/restart routes
+        // already reactivate; do it here so ALL provision paths re-enter billing.
+        // Idempotent + exempt-guarded (ne billing_status 'exempt').
+        if (!paymentResume) {
+          await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
         }
 
         let completed = updated;
@@ -4693,6 +4663,12 @@ export class ElizaSandboxService {
         });
 
         try {
+          if (paymentResume) {
+            await this.retirePersistedReplacementCleanup(
+              rec.id, rec.organization_id, undefined, undefined, "lifecycle",
+              { authority: paymentResume, expectedHandle: handle },
+            );
+          } else {
           const current = await agentSandboxesRepository.findByIdAndOrg(
             rec.id,
             rec.organization_id,
@@ -4705,6 +4681,7 @@ export class ElizaSandboxService {
               throw new Error("Sandbox provider cannot prove failed provision absent");
             }
             await provider.stopForReplacement(handle.sandboxId);
+          }
           }
         } catch (stopErr) {
           // error-policy:J1 provisioning boundary translation — failed ghost
@@ -4751,6 +4728,7 @@ export class ElizaSandboxService {
     await this.markError(
       rec,
       `Provisioning failed after ${attemptsLabel}${giveUpReason}: ${lastError}`,
+      paymentResume,
     );
     return {
       success: false,
@@ -6009,10 +5987,14 @@ export class ElizaSandboxService {
           };
         }
       }
+      // A failed credential handoff never activated this user agent. Reset
+      // initial provisioning and discard only the pool heartbeat, preserving
+      // any backup history that still requires restoration.
       const reset = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET
-          status = 'stopped',
+          status = 'pending',
+          last_heartbeat_at = NULL,
           claimed_at = NULL,
           warm_claim_credential_state = NULL,
           warm_claim_source_pool_id = NULL,
@@ -9907,12 +9889,259 @@ export class ElizaSandboxService {
    * subsequent `agent_resume` re-provisions against the retained state.
    * Replaces the Worker-callable `shutdown()` path which cannot reach SSH.
    */
+  private async reconcileFundedRetainedStop(
+    authority: LocalRetentionStopAuthority,
+    captured: AgentLocalStateRetention,
+  ): Promise<AgentSuspendExecutionResult> {
+    const provider = await this.getProvider();
+    const started = await dbWrite.transaction(async (tx) => {
+      const funding = await admitLocalRetentionInTransaction(tx, authority, captured);
+      if (funding.kind !== "funded")
+        throw new ElizaError("Payment changed while retained recovery was admitted", {
+          code: "AGENT_LOCAL_RETENTION_REFILL_CHANGED",
+        });
+      const rec = await this.getAgentForLifecycleMutation(
+        tx,
+        authority.agentId,
+        authority.organizationId,
+      );
+      if (!rec)
+        throw new ElizaError("Retained stop lost its agent", {
+          code: "AGENT_LOCAL_RETENTION_AGENT_MISSING",
+        });
+      const retention = rec.local_state_retention;
+      if (retention) {
+        if (
+          !provider.resumeRetainedContainer ||
+          !provider.checkRetainedContainerHealth ||
+          !retention.bridgeUrl ||
+          !retention.healthUrl ||
+          !rec.sandbox_id
+        )
+          throw new ElizaError("Pending retained recovery lacks provider or endpoint authority", {
+            code: "AGENT_LOCAL_RETENTION_REFILL_UNAVAILABLE",
+          });
+        const receipt = await provider.resumeRetainedContainer(retention);
+        if (
+          receipt.containerId !== retention.containerId ||
+          receipt.state !== "running" ||
+          receipt.restartPolicy !== "no"
+        )
+          throw new ElizaError("Pending retained recovery returned mismatched proof", {
+            code: "AGENT_LOCAL_RETENTION_REFILL_PROOF_INVALID",
+          });
+      }
+      return { rec, retention };
+    });
+    if (started.retention) {
+      const healthy = await provider.checkHealth({
+        sandboxId: started.rec.sandbox_id!,
+        bridgeUrl: started.retention.bridgeUrl!,
+        healthUrl: started.retention.healthUrl!,
+        metadata: {
+          provider: "docker",
+          nodeId: started.retention.nodeId,
+          containerId: started.retention.containerId,
+          hostname: started.retention.hostname,
+          containerName: started.retention.containerName,
+          ...(started.rec.headscale_ip ? { headscaleIp: started.rec.headscale_ip } : {}),
+        },
+      });
+      if (!healthy || !(await provider.checkRetainedContainerHealth!(started.retention)))
+        throw new ElizaError("Pending retained recovery is not ready", {
+          code: "AGENT_LOCAL_RETENTION_REFILL_NOT_READY",
+        });
+    }
+    return dbWrite.transaction(async (tx) => {
+      const funding = await admitLocalRetentionInTransaction(tx, authority, captured);
+      if (funding.kind !== "funded") {
+        // Stop under the same still-live authority; preserve the original
+        // pending record so another attempt can reconcile uncertain outcomes.
+        if (started.retention && provider.stopRetainingState)
+          await provider.stopRetainingState(started.retention);
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Funding changed before retained recovery publication",
+        };
+      }
+      if (started.retention)
+        await assertRetainedNodePublicationAuthorityInTransaction(tx, started.retention);
+      if (started.retention)
+        await tx
+          .update(agentSandboxes)
+          .set({
+            status: "running",
+            bridge_url: started.retention.bridgeUrl,
+            health_url: started.retention.healthUrl,
+            local_state_retention: { ...started.retention, state: "resumed" },
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, authority.agentId),
+              eq(agentSandboxes.organization_id, authority.organizationId),
+            ),
+          );
+      await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+        authority.agentId,
+        new Date(),
+        authority.organizationId,
+        tx,
+      );
+      await tx
+        .update(agentComputeStopIntents)
+        .set({
+          status: "superseded",
+          last_error: "billing_recovered",
+          superseded_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentComputeStopIntents.id, captured.stopIntentId),
+            eq(agentComputeStopIntents.job_id, authority.jobId),
+          ),
+        );
+      return { success: true, containerStopped: false, skipped: true, reason: "billing_recovered" };
+    });
+  }
+
+  private async executeRetainedSuspend(
+    authority: LocalRetentionStopAuthority,
+    authorization: "billing_request" | "user_request" = "billing_request",
+  ): Promise<AgentSuspendExecutionResult> {
+    const rec = await this.getAgentForWrite(authority.agentId, authority.organizationId);
+    if (!rec) return { success: false, containerStopped: false, error: "Agent not found" };
+    const provider = await this.getProvider();
+    if (!provider.captureRetainedContainer || !provider.stopRetainingState) {
+      throw new ElizaError("Provider cannot retain local state during payment suspension", {
+        code: "AGENT_LOCAL_RETENTION_UNSUPPORTED",
+      });
+    }
+    let captured = rec.local_state_retention;
+    if (captured && (captured.state === "resumed" || authorization === "user_request")) {
+      const [intent] = await dbWrite
+        .select({ id: agentComputeStopIntents.id })
+        .from(agentComputeStopIntents)
+        .where(
+          and(
+            eq(agentComputeStopIntents.agent_id, authority.agentId),
+            eq(agentComputeStopIntents.organization_id, authority.organizationId),
+            eq(agentComputeStopIntents.job_id, authority.jobId),
+          ),
+        )
+        .limit(1);
+      if (!intent || (await provider.captureRetainedContainer(captured)) !== captured.containerId)
+        throw new ElizaError("Resumed retention no longer matches current stop authority", {
+          code: "AGENT_LOCAL_RETENTION_TRANSFER_CHANGED",
+        });
+      captured = { ...captured, stopIntentId: intent.id, state: "stop_pending" };
+    }
+    if (!captured) {
+      if (!rec.node_id || !rec.container_name)
+        throw new ElizaError("Local retention requires persisted placement", {
+          code: "AGENT_LOCAL_RETENTION_PLACEMENT_MISSING",
+        });
+      const node = await dockerNodesRepository.findByNodeIdOnPrimary(rec.node_id);
+      const [intent] = await dbWrite
+        .select()
+        .from(agentComputeStopIntents)
+        .where(
+          and(
+            eq(agentComputeStopIntents.agent_id, authority.agentId),
+            eq(agentComputeStopIntents.organization_id, authority.organizationId),
+            eq(agentComputeStopIntents.job_id, authority.jobId),
+          ),
+        )
+        .limit(1);
+      if (!node || !node.host_key_fingerprint || !intent)
+        throw new ElizaError("Local retention requires captured node and stop authority", {
+          code: "AGENT_LOCAL_RETENTION_AUTHORITY_MISSING",
+        });
+      const locator = {
+        agentId: authority.agentId,
+        containerName: rec.container_name,
+        hostname: node.hostname,
+        sshPort: node.ssh_port,
+        sshUser: node.ssh_user,
+        hostKeyFingerprint: node.host_key_fingerprint,
+      };
+      captured = {
+        ...locator,
+        version: 1,
+        stopIntentId: intent.id,
+        nodeId: node.node_id,
+        nodeRecordId: node.id,
+        containerId: await provider.captureRetainedContainer(locator),
+        capturedAt: new Date().toISOString(),
+        bridgeUrl: rec.bridge_url,
+        healthUrl: rec.health_url,
+        state: "stop_pending",
+      };
+    }
+    const retained = await dbWrite.transaction((tx) =>
+      admitLocalRetentionInTransaction(tx, authority, captured, authorization),
+    );
+    if (retained.kind === "funded") return this.reconcileFundedRetainedStop(authority, captured);
+    // Retention is committed before effects. If this transaction aborts after
+    // stop, the pending exact locator still protects the container and host.
+    const result = await dbWrite.transaction(async (tx) => {
+      const dispatch = await admitLocalRetentionInTransaction(
+        tx,
+        authority,
+        retained.retention,
+        authorization,
+      );
+      if (dispatch.kind === "funded") return { refill: true } as const;
+      const receipt = await provider.stopRetainingState!(dispatch.retention);
+      if (
+        receipt.containerId !== dispatch.retention.containerId ||
+        receipt.restartPolicy !== "no" ||
+        (receipt.state !== "exited" && receipt.state !== "created")
+      ) {
+        throw new ElizaError("Retained stop receipt does not match admitted container", {
+          code: "AGENT_LOCAL_RETENTION_RECEIPT_INVALID",
+        });
+      }
+      // Recheck the renewable execution lease after the external operation.
+      await admitLocalRetentionInTransaction(tx, authority, retained.retention, authorization);
+      await tx
+        .update(agentSandboxes)
+        .set({
+          status: "stopped",
+          billing_status: "suspended",
+          bridge_url: null,
+          health_url: null,
+          scheduled_shutdown_at: null,
+          shutdown_warning_sent_at: null,
+          local_state_retention: { ...dispatch.retention, state: "stopped" },
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, authority.agentId),
+            eq(agentSandboxes.organization_id, authority.organizationId),
+          ),
+        );
+      await confirmAgentComputeStopInTransaction(tx, {
+        intentId: dispatch.retention.stopIntentId,
+        agentId: authority.agentId,
+        organizationId: authority.organizationId,
+        confirmedAt: new Date(),
+        retainedBackupRatePerHour: null,
+      });
+      return { success: true, containerStopped: true };
+    });
+    if ("refill" in result) return this.reconcileFundedRetainedStop(authority, captured);
+    return result;
+  }
+
   async executeSuspend(
     agentId: string,
     orgId: string,
     jobId: string,
     authorization: "user_request" | "billing_request" = "user_request",
     expectedLifecycleRevision?: number,
+    execution?: { executionGeneration: string; executionOwnerId: string },
   ): Promise<AgentSuspendExecutionResult> {
     // Modern jobs carry their exact intent generation. Check it before the
     // backup gate so a lifecycle-stale queued request is a terminal no-op and
@@ -10005,6 +10234,24 @@ export class ElizaSandboxService {
     if (snapshotSource.deletion_attempt_id || this.isAwaitingDeletion(snapshotSource.status)) {
       return { success: false, containerStopped: false, error: "Agent not found" };
     }
+    if (snapshotSource.local_state_retention && execution) {
+      return this.executeRetainedSuspend(
+        {
+          agentId,
+          organizationId: orgId,
+          jobId,
+          ...execution,
+        },
+        authorization,
+      );
+    }
+    if (snapshotSource.local_state_retention) {
+      return {
+        success: false,
+        containerStopped: false,
+        error: "Retained local state requires its owning suspension or recovery operation",
+      };
+    }
     let suspendBackupId: string | undefined;
     let backupCapturedFresh = false;
     let pendingSuspendSnapshot: { stateData: AgentBackupStateData; sizeBytes: number } | undefined;
@@ -10023,6 +10270,14 @@ export class ElizaSandboxService {
       snapshotSource = revalidated;
       const gateResult = await this.prepareSuspendBackupGate(snapshotSource);
       if (gateResult.outcome === "refuse") {
+        if (authorization === "billing_request" && execution) {
+          return this.executeRetainedSuspend({
+            agentId,
+            organizationId: orgId,
+            jobId,
+            ...execution,
+          });
+        }
         return { success: false, containerStopped: false, error: gateResult.error };
       }
       if (gateResult.outcome === "proceed") {
@@ -10205,18 +10460,15 @@ export class ElizaSandboxService {
           })
           .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
         if (stopIntent) {
-          await tx
-            .update(agentComputeStopIntents)
-            .set({
-              status: "provider_confirmed",
-              provider_confirmed_at: confirmedAt,
-              retained_backup_billing: retainedBackupBilling,
-              retained_backup_rate_per_hour: retainedBackupBilling
-                ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
-                : null,
-              updated_at: confirmedAt,
-            })
-            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+          await confirmAgentComputeStopInTransaction(tx, {
+            intentId: stopIntent.id,
+            agentId,
+            organizationId: orgId,
+            confirmedAt,
+            retainedBackupRatePerHour: retainedBackupBilling
+              ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+              : null,
+          });
         }
         return { success: true, containerStopped: true } as const;
       }
@@ -10309,18 +10561,15 @@ export class ElizaSandboxService {
           AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
       `);
       if (stopIntent) {
-        await tx
-          .update(agentComputeStopIntents)
-          .set({
-            status: "provider_confirmed",
-            provider_confirmed_at: confirmedAt,
-            retained_backup_billing: retainedBackupBilling,
-            retained_backup_rate_per_hour: retainedBackupBilling
-              ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
-              : null,
-            updated_at: confirmedAt,
-          })
-          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        await confirmAgentComputeStopInTransaction(tx, {
+          intentId: stopIntent.id,
+          agentId,
+          organizationId: orgId,
+          confirmedAt,
+          retainedBackupRatePerHour: retainedBackupBilling
+            ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+            : null,
+        });
       }
       return { success: true, containerStopped, backupId: suspendBackupId } as const;
     });
@@ -10348,28 +10597,156 @@ export class ElizaSandboxService {
     return status === "deletion_pending" || status === "deletion_failed";
   }
 
-  /**
-   * Daemon-side handler for the `agent_resume` job. Delegates to
-   * `provision()` which restores `bridge_url` / `health_url` from the
-   * provider's sandbox handle and reuses the existing shared DB
-   * (`sandbox_id` is retained across suspend). `provision()` acquires
-   * its own advisory lock, so two concurrent resume jobs serialize.
-   *
-   * A future fast path will `docker start` the existing container (~5s)
-   * when the provider exposes a standalone `start()` method that
-   * returns a fresh handle — today the only way to get `bridgeUrl` /
-   * `healthUrl` back is via the create-or-restart flow inside
-   * `provision()`, so we always pay that path.
-   */
+  /** Restarts the retained physical container and publishes it only under current execution authority. */
+  private async resumeRetainedContainer(
+    authority: AgentPaymentResumeExecutionAuthority | ManualLocalResumeAuthority,
+  ) {
+    const lockAuthority = (tx: DbTransaction, purpose: "provider" | "cleanup") =>
+      "intentId" in authority
+        ? lockPaymentResumeProviderAuthorityInTransaction(tx, authority, purpose)
+        : lockManualRetainedResumeInTransaction(tx, authority, purpose);
+    const provider = await this.getProvider();
+    if (
+      !provider.resumeRetainedContainer ||
+      !provider.stopRetainingState ||
+      !provider.checkRetainedContainerHealth
+    )
+      throw new ElizaError("Provider cannot resume retained state", {
+        code: "AGENT_LOCAL_RETENTION_RESUME_UNSUPPORTED",
+      });
+    const admitted = await dbWrite.transaction(async (tx) => {
+      const rec = await lockAuthority(tx, "provider");
+      const retention = rec.local_state_retention;
+      if (
+        !retention ||
+        ("intentId" in authority && retention.stopIntentId !== authority.intentId) ||
+        !retention.bridgeUrl ||
+        !retention.healthUrl ||
+        !rec.sandbox_id
+      ) {
+        throw new ElizaError(
+          "Retained recovery requires its original container and routing authority",
+          { code: "AGENT_LOCAL_RETENTION_RESUME_AUTHORITY_MISSING" },
+        );
+      }
+      const receipt = await provider.resumeRetainedContainer!(retention);
+      if (
+        receipt.containerId !== retention.containerId ||
+        receipt.state !== "running" ||
+        receipt.restartPolicy !== "no"
+      )
+        throw new ElizaError("Retained resume returned mismatched proof", {
+          code: "AGENT_LOCAL_RETENTION_RESUME_RECEIPT_INVALID",
+        });
+      return { rec, retention };
+    });
+    try {
+      const healthy = await provider.checkHealth({
+        sandboxId: admitted.rec.sandbox_id!,
+        bridgeUrl: admitted.retention.bridgeUrl!,
+        healthUrl: admitted.retention.healthUrl!,
+        metadata: {
+          provider: "docker",
+          nodeId: admitted.retention.nodeId,
+          containerId: admitted.retention.containerId,
+          hostname: admitted.retention.hostname,
+          containerName: admitted.retention.containerName,
+          ...(admitted.rec.headscale_ip ? { headscaleIp: admitted.rec.headscale_ip } : {}),
+        },
+      });
+      if (!healthy || !(await provider.checkRetainedContainerHealth(admitted.retention)))
+        throw new ElizaError("Retained container has not passed runtime readiness", {
+          code: "AGENT_LOCAL_RETENTION_RESUME_NOT_READY",
+        });
+      await dbWrite.transaction(async (tx) => {
+        const current = await lockAuthority(tx, "provider");
+        const retained = current.local_state_retention;
+        if (
+          !retained ||
+          retained.containerId !== admitted.retention.containerId ||
+          retained.nodeRecordId !== admitted.retention.nodeRecordId ||
+          retained.stopIntentId !== admitted.retention.stopIntentId
+        )
+          throw new ElizaError("Retained publication authority changed", {
+            code: "AGENT_LOCAL_RETENTION_PUBLICATION_CHANGED",
+          });
+        await assertRetainedNodePublicationAuthorityInTransaction(tx, retained);
+        await tx
+          .update(agentSandboxes)
+          .set({
+            status: "running",
+            bridge_url: admitted.retention.bridgeUrl,
+            health_url: admitted.retention.healthUrl,
+            local_state_retention: { ...retained, state: "resumed" },
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, authority.agentId),
+              eq(agentSandboxes.organization_id, authority.organizationId),
+            ),
+          );
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+          authority.agentId,
+          new Date(),
+          authority.organizationId,
+          tx,
+        );
+      });
+    } catch (error) {
+      // error-policy:J2 preserve failed readiness/publication; exact teardown below
+      // is permitted only while this worker still owns the same retained stop.
+      if (admitted.rec.status !== "running") {
+        try {
+          await dbWrite.transaction(async (tx) => {
+            const current = await lockAuthority(tx, "cleanup");
+            if (current.local_state_retention?.containerId !== admitted.retention.containerId)
+              throw new ElizaError("Retained cleanup identity changed", {
+                code: "AGENT_LOCAL_RETENTION_CLEANUP_CHANGED",
+              });
+            await provider.stopRetainingState!(admitted.retention);
+          });
+        } catch (cleanupError) {
+          // error-policy:J6 failed recovery teardown retains its durable locator for reconciliation.
+          logger.warn("[agent-sandbox] Retained recovery stop remains unresolved", {
+            agentId: authority.agentId,
+            error: cleanupError,
+          });
+        }
+      }
+      throw new ElizaError("Retained container recovery failed", {
+        code: "AGENT_LOCAL_RETENTION_RESUME_FAILED",
+        cause: error,
+      });
+    }
+    return { success: true, containerStarted: true, reprovisioned: false };
+  }
+
   async executeResume(
     agentId: string,
     orgId: string,
+    resumeAuthority?: AgentPaymentResumeExecutionAuthority | ManualLocalResumeAuthority,
   ): Promise<{
     success: boolean;
     containerStarted: boolean;
     reprovisioned: boolean;
     error?: string;
   }> {
+    const paymentResume =
+      resumeAuthority && "intentId" in resumeAuthority ? resumeAuthority : undefined;
+    if (paymentResume) {
+      if (paymentResume.agentId !== agentId || paymentResume.organizationId !== orgId) {
+        throw new ElizaError("Payment resume tenant authority does not match its request", {
+          code: "PAYMENT_RESUME_ADMISSION_CHANGED",
+          context: { agentId, organizationId: orgId },
+        });
+      }
+      const retained = await this.getAgentForWrite(agentId, orgId);
+      if (retained?.local_state_retention) return this.resumeRetainedContainer(paymentResume);
+      const result = await this.provision(agentId, orgId, undefined, paymentResume);
+      return result.success
+        ? { success: true, containerStarted: true, reprovisioned: result.reusedExisting !== true }
+        : { success: false, containerStarted: false, reprovisioned: true, error: result.error };
+    }
     // Read from the PRIMARY: a replica-lagged "Agent not found" / stale status
     // here would turn a legitimate resume into a terminal no-op (the daemon
     // maps "Agent not found" to completed), silently dropping the request. The
@@ -10390,6 +10767,19 @@ export class ElizaSandboxService {
         reprovisioned: false,
         error: tierRejection.error,
       };
+    }
+
+    if (rec.local_state_retention) {
+      if (
+        !resumeAuthority ||
+        resumeAuthority.agentId !== agentId ||
+        resumeAuthority.organizationId !== orgId
+      ) {
+        throw new ElizaError("Manual retained resume requires its live job authority", {
+          code: "AGENT_LOCAL_RETENTION_MANUAL_AUTHORITY_REQUIRED",
+        });
+      }
+      return this.resumeRetainedContainer(resumeAuthority);
     }
 
     if (rec.status === "running")
@@ -12145,16 +12535,38 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     expected: ReplacementCleanupExpectation,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ) {
     return {
       onReplacementCreateIntent: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "intent");
+        await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          "intent",
+          paymentResume,
+        );
       },
       onReplacementCreated: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "created");
+        await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          "created",
+          paymentResume,
+        );
       },
       onReplacementVpnRegistered: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "vpn");
+        await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          "vpn",
+          paymentResume,
+        );
       },
     };
   }
@@ -12396,6 +12808,7 @@ export class ElizaSandboxService {
     handle: SandboxHandle,
     expected: ReplacementCleanupExpectation,
     stage: "intent" | "created" | "vpn",
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ): Promise<void> {
     const incoming = this.replacementLocatorFromHandle(handle);
     if (stage === "intent" && (incoming.containerId !== null || incoming.vpnNodeId !== null)) {
@@ -12412,6 +12825,9 @@ export class ElizaSandboxService {
     }
     await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume && stage === "intent") {
+        await lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "provider");
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement ownership");
       const tierRejection = containerBackedServiceRejection(current, "replacement");
@@ -12424,6 +12840,8 @@ export class ElizaSandboxService {
         throw new Error("Agent deletion owns the lifecycle before replacement ownership");
       }
       const existing = this.getReplacementCleanupLocator(current);
+      // Post-effect callbacks may preserve the exact existing receipt after
+      // lease loss, but cannot establish a new replacement without admission.
       if (existing) {
         this.assertSameReplacementIdentity(existing, incoming);
         const containerId = existing.containerId ?? incoming.containerId;
@@ -12577,9 +12995,21 @@ export class ElizaSandboxService {
     handle: SandboxHandle,
     expectedEnvironmentRevision: number,
     updateData: Partial<NewAgentSandbox>,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ): Promise<AgentSandbox> {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume) {
+        if (paymentResume.agentId !== agentId || paymentResume.organizationId !== orgId) {
+          throw new ElizaError("Payment resume identity changed before replacement adoption", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+        // Restoration can outlive funding or its worker lease. Publication and
+        // billing must share the final locked authority check.
+        await lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "provider");
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement adoption");
       const tierRejection = containerBackedServiceRejection(current, "replacement");
@@ -12592,6 +13022,7 @@ export class ElizaSandboxService {
       }
 
       const locator = this.getReplacementCleanupLocator(current);
+      let servingPlacement = current.serving_placement;
       if (locator) {
         // A preserved retry handle has no replacement metadata because its
         // identity already lives on the primary row. Construct the replacement
@@ -12604,6 +13035,24 @@ export class ElizaSandboxService {
         ) {
           throw new Error("Replacement cleanup ownership changed before adoption");
         }
+        const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : null;
+        servingPlacement = {
+          version: 1,
+          volumePath: metadata?.volumePath ?? null,
+          locator: {
+            ...incoming,
+            vpnRegistrationStartedAt: incoming.vpnRegistrationStartedAt?.toISOString() ?? null,
+            nodeRecordId: metadata?.nodeRecordId ?? null,
+            nodeIncarnation: metadata?.nodeIncarnation ?? null,
+            nodeHistoryId: metadata?.nodeHistoryId ?? null,
+            nodeHostname: metadata?.hostname ?? null,
+            nodeSshPort: metadata?.nodeSshPort ?? null,
+            nodeSshUser: metadata?.nodeSshUser ?? null,
+            nodeHostKeyFingerprint: metadata?.nodeHostKeyFingerprint ?? null,
+            replacementSecretCleanupVersion: metadata?.replacementSecretCleanupVersion ?? null,
+            restoreAttemptId: metadata?.restoreAttemptId ?? null,
+          },
+        };
       } else if (isDockerBackedMetadata(handle.metadata)) {
         const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
         if (
@@ -12615,12 +13064,27 @@ export class ElizaSandboxService {
         ) {
           throw new Error("Docker replacement has no durable cleanup ownership");
         }
+        const servingLocator = servingPlacement?.locator;
+        if (
+          servingLocator &&
+          (servingLocator.sandboxId !== handle.sandboxId ||
+            servingLocator.nodeId !== dockerMeta.nodeId ||
+            servingLocator.containerName !== dockerMeta.containerName ||
+            (dockerMeta.containerId !== undefined &&
+              servingLocator.containerId !== dockerMeta.containerId))
+        ) {
+          throw new ElizaError("Preserved handle conflicts with its serving placement receipt", {
+            code: "AGENT_SERVING_PLACEMENT_RETRY_MISMATCH",
+            context: { agentId, organizationId: orgId },
+          });
+        }
       }
 
       const [adopted] = await tx
         .update(agentSandboxes)
         .set({
           ...updateData,
+          serving_placement: servingPlacement,
           replacement_cleanup_sandbox_id: null,
           replacement_cleanup_node_id: null,
           replacement_cleanup_container_name: null,
@@ -12647,6 +13111,17 @@ export class ElizaSandboxService {
         )
         .returning();
       if (!adopted) throw new Error("Replacement adoption CAS failed");
+      if (paymentResume) {
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+          agentId,
+          new Date(),
+          orgId,
+          tx,
+        );
+        const completed = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+        if (!completed) throw new Error("Agent disappeared during replacement billing activation");
+        return completed;
+      }
       return adopted;
     });
   }
@@ -12692,6 +13167,10 @@ export class ElizaSandboxService {
     expectation?: AdminCanaryCleanupExpectation,
     onConvergedInTx?: (tx: DbTransaction) => Promise<void>,
     source: "lifecycle" | "background-reconcile" | "admin-converge" = "lifecycle",
+    paymentResume?: {
+      authority: AgentPaymentResumeExecutionAuthority;
+      expectedHandle?: SandboxHandle;
+    },
   ): Promise<"missing" | "clean" | "deferred" | "retired"> {
     const startedAt = Date.now();
     logger.info("[agent-sandbox] Replacement cleanup started", {
@@ -12701,11 +13180,49 @@ export class ElizaSandboxService {
     });
     const snapshot = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume) {
+        if (
+          paymentResume.authority.agentId !== agentId ||
+          paymentResume.authority.organizationId !== orgId
+        ) {
+          throw new ElizaError("Payment resume cleanup identity changed", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+        await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume.authority,
+          "cleanup",
+        );
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) return { state: "missing" as const };
       const tierRejection = containerBackedServiceRejection(current, "replacement");
       if (tierRejection) throw new Error(tierRejection);
       const locator = this.getReplacementCleanupLocator(current);
+      if (paymentResume?.expectedHandle) {
+        if (!locator) {
+          throw new ElizaError(
+            "Failed payment resume has no retained replacement cleanup identity",
+            {
+              code: "PAYMENT_RESUME_CLEANUP_REQUIRED",
+              context: { agentId },
+            },
+          );
+        }
+        const expected = this.replacementLocatorFromHandle(paymentResume.expectedHandle);
+        this.assertSameReplacementIdentity(locator, expected);
+        if (
+          locator.containerId !== expected.containerId ||
+          locator.vpnNodeId !== expected.vpnNodeId
+        ) {
+          throw new ElizaError("Failed payment resume replacement identity changed", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+      }
       if (expectation) {
         this.assertAdminCanaryCleanupExpectation(current, locator, expectation);
       }
@@ -12745,6 +13262,22 @@ export class ElizaSandboxService {
       elapsedMs: Date.now() - startedAt,
     });
 
+    if (paymentResume) {
+      await dbWrite.transaction(async (tx) => {
+        const current = await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume.authority,
+          "cleanup",
+        );
+        const currentLocator = this.getReplacementCleanupLocator(current);
+        if (!currentLocator || !this.replacementCleanupLocatorsEqual(currentLocator, locator)) {
+          throw new ElizaError("Payment resume cleanup identity changed before provider dispatch", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+      });
+    }
     await stopOnSpecificNodeForReplacement(
       locator.nodeId,
       locator.containerName,
@@ -12767,6 +13300,13 @@ export class ElizaSandboxService {
 
     const outcome = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume) {
+        await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume.authority,
+          "cleanup",
+        );
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) {
         throw expectation
@@ -13264,51 +13804,35 @@ export class ElizaSandboxService {
     return { backupId: backup.id, lifecycleRevision: sandbox.lifecycleRevision };
   }
 
-  /**
-   * The single degrade path for a snapshot `isUnrecoverableSnapshotError`
-   * cannot restore on THIS provision (#15210): log it loudly, then boot fresh
-   * instead of bricking the agent. Never throws — the caller continues to a
-   * fresh boot, which must not be derailed by cleanup.
-   *
-   * Pruning the backup chain is gated on `isPermanentlyLostSnapshot` (#15274):
-   * only drop it when the snapshot can NEVER be restored (crypto corruption /
-   * gone-key, or HTTP 404/410). For a RECOVERABLE auth failure (401/403) we
-   * still boot fresh but PRESERVE the chain, so a later token-corrected resume
-   * (#15263) can restore it — pruning a recoverable snapshot on a transient 401
-   * is silent, permanent data loss (`pruneBackups(agentId, 0)` deletes the
-   * whole chain and there is no undo).
-   */
-  private async degradeUnrecoverableSnapshot(
-    agentId: string,
-    backupId: string | undefined,
-    error: unknown,
-  ): Promise<void> {
-    const permanentlyLost = isPermanentlyLostSnapshot(error);
-    logger.error("[agent-sandbox] Unrecoverable snapshot, booting fresh", {
-      agentId,
-      backupId,
-      permanentlyLost,
-      // A recoverable auth failure keeps the chain for the next authenticated
-      // resume; a permanent loss drops it so the next resume boots clean.
-      backupChain: permanentlyLost ? "pruned" : "preserved",
-      error: error instanceof Error ? error.message : String(error),
-    });
-    // Preserve the chain on a recoverable failure (auth 401/403): a
-    // token-corrected resume can still restore it, so pruning here would be
-    // silent, permanent data loss (#15274).
-    if (!permanentlyLost) return;
-    // error-policy:J6 best-effort — a failed prune only means we warn + degrade
-    // again next boot, never that we fail to boot fresh, so it must not throw
-    // out of the provision.
-    await agentSandboxesRepository.pruneBackups(agentId, 0).catch((pruneErr) => {
-      logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
-        agentId,
-        error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
+  private async markError(
+    rec: AgentSandbox,
+    msg: string,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
+  ) {
+    if (paymentResume) {
+      await dbWrite.transaction(async (tx) => {
+        const current = await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume,
+          "cleanup",
+        );
+        await tx
+          .update(agentSandboxes)
+          .set({
+            status: "error",
+            error_message: msg,
+            error_count: current.error_count + 1,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, current.id),
+              eq(agentSandboxes.organization_id, current.organization_id),
+            ),
+          );
       });
-    });
-  }
-
-  private async markError(rec: AgentSandbox, msg: string) {
+      return;
+    }
     await agentSandboxesRepository.update(rec.id, {
       status: "error",
       error_message: msg,

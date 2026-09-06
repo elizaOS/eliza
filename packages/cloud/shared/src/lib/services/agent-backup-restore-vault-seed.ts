@@ -9,8 +9,8 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { isValidUUID } from "../utils/validation";
 import {
+  buildProtectedHostDirectoryCommands,
   buildVolumeVaultPassphraseCommand,
-  shellQuote,
   VOLUME_VAULT_STDIN_FRAME_END,
   VOLUME_VAULT_STDIN_FRAME_VERSION,
   validateVolumePath,
@@ -123,23 +123,6 @@ function buildVaultStdinFrame(passphrase: Uint8Array): Buffer {
   return frame;
 }
 
-function safeRestoreDirectoryProof(path: string): string[] {
-  const quoted = shellQuote(path);
-  return [
-    `test -d ${quoted} && test ! -L ${quoted} || exit 45`,
-    `test "$(stat -c '%u' -- ${quoted})" = 0 || exit 45`,
-    `directory_mode=$(stat -c '%a' -- ${quoted}); case "$directory_mode" in *[2367][0-7]|*[0-7][2367]) exit 45 ;; esac`,
-  ];
-}
-
-function prepareRestoreDirectoryCommands(path: string): string[] {
-  const quoted = shellQuote(path);
-  return [
-    `if test -e ${quoted} || test -L ${quoted}; then ${safeRestoreDirectoryProof(path).join("; ")}; else install -d -m 700 ${quoted}; fi`,
-    ...safeRestoreDirectoryProof(path),
-  ];
-}
-
 function buildPrecreatedVolumeVaultSeedCommand(input: {
   agentId: string;
   volumePath: string;
@@ -153,12 +136,12 @@ function buildPrecreatedVolumeVaultSeedCommand(input: {
     input.passphraseByteLength,
     input.replacementAttemptId,
     [
-      ...safeRestoreDirectoryProof("/data"),
-      ...safeRestoreDirectoryProof("/data/agents"),
-      ...prepareRestoreDirectoryCommands(RESTORE_STAGING_VOLUME_ROOT),
-      ...prepareRestoreDirectoryCommands(agentRoot),
-      ...prepareRestoreDirectoryCommands(input.volumePath),
-      ...prepareRestoreDirectoryCommands(elizaPath),
+      ...buildProtectedHostDirectoryCommands("/data"),
+      ...buildProtectedHostDirectoryCommands("/data/agents"),
+      ...buildProtectedHostDirectoryCommands(RESTORE_STAGING_VOLUME_ROOT, true),
+      ...buildProtectedHostDirectoryCommands(agentRoot, true),
+      ...buildProtectedHostDirectoryCommands(input.volumePath, true),
+      ...buildProtectedHostDirectoryCommands(elizaPath, true),
     ],
   );
 }

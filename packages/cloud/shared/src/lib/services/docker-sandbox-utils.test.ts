@@ -427,7 +427,15 @@ describe("secret container environment transport (#22060)", () => {
     ).toThrow("differs from its container identity");
   });
 
-  test("refuses descendant Docker binds and nested host mounts before staging deletion", async () => {
+  test.each([
+    "descendant-bind",
+    "ancestor-bind",
+    "nested-host-mount",
+    "host-mount-source",
+    "mount-inventory-failure",
+    "unresolved-foreign-create",
+    "unmounted",
+  ] as const)("staging directory cleanup respects mounted ownership (%s)", async (scenario) => {
     const { spawn } = await import("node:child_process");
     const fs = await import("node:fs");
     const os = await import("node:os");
@@ -450,6 +458,11 @@ describe("secret container environment transport (#22060)", () => {
     fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(attemptDirectory, "cancelled"), "cancelled\n", { mode: 0o600 });
     fs.writeFileSync(sentinel, "durable-data", { mode: 0o600 });
+    if (scenario === "unresolved-foreign-create") {
+      const otherAttempt = path.join(attempts, "44444444-4444-4444-8444-444444444444");
+      fs.mkdirSync(otherAttempt, { mode: 0o700 });
+      fs.writeFileSync(path.join(otherAttempt, "active"), "", { mode: 0o600 });
+    }
     fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
     fs.writeFileSync(
       path.join(bin, "stat"),
@@ -495,34 +508,48 @@ describe("secret container environment transport (#22060)", () => {
       });
 
     try {
-      expect(await run({ ELIZA_TEST_DOCKER_MOUNT_SOURCE: `${volume}/eliza` })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_DOCKER_MOUNT_SOURCE: path.dirname(volume) })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_HOST_MOUNT_TARGET: `${volume}/nested-bind` })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_HOST_MOUNT_SOURCE: `${volume}/eliza` })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(await run({ ELIZA_TEST_FINDMNT_FAILURE: "1" })).toBe(76);
-      expect(fs.existsSync(rmMarker)).toBe(false);
-      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
-
-      expect(
-        await run({
-          ELIZA_TEST_DOCKER_CONTAINER_PRESENT: "1",
-          ELIZA_TEST_RM_DELETE_VOLUME: volume,
-        }),
-      ).toBe(0);
-      expect(fs.existsSync(rmMarker)).toBe(true);
-      expect(fs.existsSync(volume)).toBe(false);
+      const environment: NodeJS.ProcessEnv =
+        scenario === "descendant-bind"
+          ? { ELIZA_TEST_DOCKER_MOUNT_SOURCE: `${volume}/eliza` }
+          : scenario === "ancestor-bind"
+            ? { ELIZA_TEST_DOCKER_MOUNT_SOURCE: path.dirname(volume) }
+            : scenario === "nested-host-mount"
+              ? { ELIZA_TEST_HOST_MOUNT_TARGET: `${volume}/nested-bind` }
+              : scenario === "host-mount-source"
+                ? { ELIZA_TEST_HOST_MOUNT_SOURCE: `${volume}/eliza` }
+                : scenario === "mount-inventory-failure"
+                  ? { ELIZA_TEST_FINDMNT_FAILURE: "1" }
+                  : {
+                      ELIZA_TEST_DOCKER_CONTAINER_PRESENT: "1",
+                      ELIZA_TEST_RM_DELETE_VOLUME: volume,
+                    };
+      const removable = scenario === "unmounted";
+      expect(await run(environment)).toBe(removable ? 0 : 76);
+      expect(fs.existsSync(rmMarker)).toBe(removable);
+      if (removable) {
+        expect(fs.existsSync(volume)).toBe(false);
+        const otherAttemptId = "55555555-5555-4555-8555-555555555555";
+        const latePreparation = buildVolumeVaultPassphraseCommand(
+          productionVolume,
+          0,
+          otherAttemptId,
+          [`mkdir -p '${productionVolume}'`],
+        )
+          .replaceAll("/var/lib/eliza/replacement-attempts", attempts)
+          .replaceAll("/data", relocatedData)
+          .replaceAll("chmod 700 --", "chmod 700")
+          .replaceAll("chmod 600 --", "chmod 600");
+        const lateStatus = await new Promise<number | null>((resolve) => {
+          const child = spawn("/bin/sh", ["-c", latePreparation], {
+            env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+            stdio: ["ignore", "ignore", "ignore"],
+          });
+          child.on("close", resolve);
+        });
+        expect(lateStatus).toBe(75);
+        expect(fs.existsSync(volume)).toBe(false);
+        expect(await run(environment)).toBe(0);
+      } else expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -813,7 +840,9 @@ describe("secret container environment transport (#22060)", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
-  }, 10_000);
+    // This fixture starts many real shells; process startup on shared hosts is
+    // not the Docker timeout contract exercised by its assertions.
+  }, 60_000);
 
   test("derives exact cleanup paths from the canonical container name only", () => {
     const attemptId = "33333333-3333-4333-8333-333333333333";
@@ -1557,18 +1586,17 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
-  test("rejects raw control bytes before remote mutation and permits later recovery", async () => {
-    const fs = await import("node:fs");
-    const invalidOverrides = [
-      "operator-key\0suffix",
-      "operator-key\x7fsuffix",
-      "operator-key\nsuffix",
-      "operator-key\rsuffix",
-      "operator-key\tsuffix",
-      "operator-key\x01suffix",
-    ];
-
-    for (const invalidOverride of invalidOverrides) {
+  test.each([
+    "operator-key\0suffix",
+    "operator-key\x7fsuffix",
+    "operator-key\nsuffix",
+    "operator-key\rsuffix",
+    "operator-key\tsuffix",
+    "operator-key\x01suffix",
+  ])(
+    "rejects control bytes in %j before remote mutation and permits recovery",
+    async (invalidOverride) => {
+      const fs = await import("node:fs");
       const volume = await makeVolume();
       let remoteCalls = 0;
       const trackedExec: typeof shExecStdin = async (...args) => {
@@ -1589,8 +1617,8 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
         "valid-operator-key",
       );
       fs.rmSync(volume, { recursive: true, force: true });
-    }
-  });
+    },
+  );
 
   test("an empty or whitespace-only override falls through to the volume lifecycle", async () => {
     const fs = await import("node:fs");

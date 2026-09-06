@@ -3,6 +3,7 @@
  * shared database boundary. Warm-pool capacity and claim operations share one
  * eligibility predicate so scheduling never counts a row it cannot transfer.
  */
+
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
@@ -86,6 +87,11 @@ import {
   isDigestPinnedImageSql,
   pinnedImageDigestSql,
 } from "../utils/docker-image-ref";
+import {
+  type AgentPaymentResumeExecutionAuthority,
+  lockPaymentResumeProviderAuthorityInTransaction,
+} from "./agent-compute-stop-intents";
+import { servingDeletionAuthority } from "./agent-serving-placement";
 
 export type {
   AgentBackupSnapshotType,
@@ -1477,6 +1483,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.id, id),
+          isNull(agentSandboxes.local_state_retention),
           inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
           sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
           sql`(
@@ -1491,6 +1498,64 @@ export class AgentSandboxesRepository {
       )
       .returning();
     return r;
+  }
+
+  /** Admit automatic recovery only while its grant, funding, and execution lease are current. */
+  async admitPaymentResumeProvisioning(authority: AgentPaymentResumeExecutionAuthority): Promise<{
+    sandbox: AgentSandbox;
+    previousStatus: AgentSandboxStatus;
+  }> {
+    await ensureAgentSandboxSchema();
+    return dbWrite.transaction(async (tx) => {
+      const current = await lockPaymentResumeProviderAuthorityInTransaction(
+        tx,
+        authority,
+        "provider",
+      );
+      if (current.local_state_retention)
+        throw new ElizaError("Retained local state requires same-container recovery", {
+          code: "AGENT_LOCAL_RETENTION_RECOVERY_REQUIRED",
+        });
+      if (
+        current.replacement_cleanup_sandbox_id ||
+        current.replacement_cleanup_attempt_id ||
+        current.replacement_cleanup_container_id
+      ) {
+        throw new ElizaError(
+          "Payment resume must settle its previous replacement before provisioning",
+          {
+            code: "PAYMENT_RESUME_CLEANUP_REQUIRED",
+            context: { agentId: authority.agentId, jobId: authority.jobId },
+          },
+        );
+      }
+      if (current.status === "running") {
+        if (!current.bridge_url || !current.health_url)
+          throw new ElizaError("Running recovery has no published endpoint", {
+            code: "PAYMENT_RESUME_ENDPOINT_UNAVAILABLE",
+            context: { agentId: authority.agentId },
+          });
+        return { sandbox: current, previousStatus: current.status };
+      }
+      const [admitted] = await tx
+        .update(agentSandboxes)
+        .set(provisioningAdmissionUpdatePayload())
+        .where(
+          and(
+            eq(agentSandboxes.id, authority.agentId),
+            eq(agentSandboxes.organization_id, authority.organizationId),
+            eq(agentSandboxes.lifecycle_job_id, authority.jobId),
+            eq(agentSandboxes.lifecycle_execution_generation, authority.executionGeneration),
+          ),
+        )
+        .returning();
+      if (!admitted)
+        throw new ElizaError("Payment resume lost its provisioning admission", {
+          code: "PAYMENT_RESUME_ADMISSION_CHANGED",
+          context: { agentId: authority.agentId, jobId: authority.jobId },
+        });
+      return { sandbox: admitted, previousStatus: current.status };
+    });
   }
 
   /**
@@ -1540,6 +1605,7 @@ export class AgentSandboxesRepository {
         .where(
           and(
             eq(agentSandboxes.id, capture.id),
+            isNull(agentSandboxes.local_state_retention),
             eq(agentSandboxes.organization_id, capture.organization_id),
             eq(agentSandboxes.status, capture.status),
             inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
@@ -1737,6 +1803,20 @@ export class AgentSandboxesRepository {
             isNull(agentSandboxes.pool_status),
             isNull(agentSandboxes.deleted_at),
             isNull(agentSandboxes.deletion_attempt_id),
+            // A created replacement can be reachable before restoration. Its
+            // owner must publish it; a health probe cannot settle that work.
+            isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+            isNull(agentSandboxes.replacement_cleanup_attempt_id),
+            isNull(agentSandboxes.replacement_cleanup_container_id),
+            // Transport-unresolved retries may have moved their handle into
+            // the primary row before restore. Prior state still requires the
+            // provisioning path; a health probe cannot prove it was applied.
+            isNull(agentSandboxes.last_heartbeat_at),
+            isNull(agentSandboxes.last_backup_at),
+            sql`NOT EXISTS (
+              SELECT 1 FROM ${agentSandboxBackups}
+              WHERE ${agentSandboxBackups.sandbox_record_id} = ${agentSandboxes.id}
+            )`,
             hasNoProvisioningStatusOwnerJob(),
           ),
         )
@@ -2960,9 +3040,9 @@ export class AgentSandboxesRepository {
    *
    * @returns the release outcome and, when ownership was consumed, the
    * post-trigger lifecycle revision. `counter-unchanged` also warns: ownership
-   * was ours to spend, but the node counter did not move — either it was
-   * already 0 or the `docker_nodes` row is gone, and in both cases there is no
-   * slot left to give back, so committing the flip is correct.
+   * was ours to spend, but the captured node counter did not move: it is zero,
+   * missing, or its retained host identity changed. Compute absence still
+   * consumes this agent's ownership, without decrementing a replacement host.
    */
   private async spendDeletionAllocation(
     nodeId: string,
@@ -2982,8 +3062,23 @@ export class AgentSandboxesRepository {
         .returning({
           id: agentSandboxes.id,
           lifecycleRevision: agentSandboxes.lifecycle_revision,
+          retention: agentSandboxes.local_state_retention,
+          servingPlacement: agentSandboxes.serving_placement,
+          sandboxId: agentSandboxes.sandbox_id,
+          containerName: agentSandboxes.container_name,
+          nodeId: agentSandboxes.node_id,
         });
       if (!claimed) return { outcome: "not-owned", lifecycleRevision: null };
+      const captured =
+        claimed.retention ??
+        (claimed.servingPlacement
+          ? servingDeletionAuthority(claimed.servingPlacement, {
+              agentId: claimed.id,
+              nodeId: claimed.nodeId,
+              sandboxId: claimed.sandboxId,
+              containerName: claimed.containerName,
+            })
+          : null);
 
       const decremented = await tx
         .update(dockerNodes)
@@ -2991,17 +3086,34 @@ export class AgentSandboxesRepository {
           allocated_count: sql`${dockerNodes.allocated_count} - 1`,
           updated_at: new Date(),
         })
-        .where(and(eq(dockerNodes.node_id, nodeId), gt(dockerNodes.allocated_count, 0)))
+        .where(
+          and(
+            eq(dockerNodes.node_id, nodeId),
+            gt(dockerNodes.allocated_count, 0),
+            // The logical node ID can be reused between deletion admission
+            // and provider completion. Spend only the captured host's counter.
+            captured
+              ? and(
+                  eq(dockerNodes.id, captured.nodeRecordId),
+                  eq(dockerNodes.node_id, captured.nodeId),
+                  eq(dockerNodes.hostname, captured.hostname),
+                  eq(dockerNodes.ssh_port, captured.sshPort),
+                  eq(dockerNodes.ssh_user, captured.sshUser),
+                  eq(dockerNodes.host_key_fingerprint, captured.hostKeyFingerprint),
+                )
+              : undefined,
+          ),
+        )
         .returning({ nodeId: dockerNodes.node_id });
       if (decremented.length === 0) {
         // Committing the flip is still correct. Either the counter was already
-        // 0, or the `docker_nodes` row is gone — and when the row goes its
-        // `allocated_count` goes with it, so there is no counter left to leak
-        // into. A transiently-absent node self-heals anyway: `syncAllocatedCounts`
-        // recomputes from surviving rows, and the error direction only ever
+        // 0, the node row is gone, or its retained physical identity changed.
+        // The latter must never spend a replacement host's counter. An
+        // unchanged counter can be reconciled by `syncAllocatedCounts`, which
+        // recomputes from surviving rows; the error direction only ever
         // under-packs a node, never over-packs one.
         logger.warn(
-          `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
+          `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0, node row missing, or retained host authority changed`,
         );
         return {
           outcome: "counter-unchanged",

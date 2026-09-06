@@ -3,6 +3,7 @@
 import { ElizaError } from "@elizaos/core";
 import {
   type AgentExecutionTier,
+  type AgentSandboxPlacementLocator,
   CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../../db/schemas/agent-sandboxes";
 
@@ -76,6 +77,8 @@ export type SandboxDeletionStopOutcome =
  * may be carried by an exact caller or hydrated from the captured node ID.
  */
 export interface SandboxDeletionLocator {
+  /** Retained-state deletion must target this immutable ID, never the name. */
+  containerId?: string;
   sandboxId: string;
   agentId: string;
   nodeId: string;
@@ -86,33 +89,34 @@ export interface SandboxDeletionLocator {
   hostKeyFingerprint?: string;
 }
 
-export interface SandboxReplacementCleanupLocator {
-  sandboxId: string;
-  nodeId: string;
-  containerName: string;
-  /** Immutable docker_nodes primary key for exact-placement recovery. */
-  nodeRecordId?: string | null;
-  /** Immutable Linux-boot occurrence bound to the reserved restore target. */
-  nodeIncarnation?: string | null;
-  /** Trigger-owned history row for that exact node occurrence. */
-  nodeHistoryId?: string | null;
-  /** SSH authority frozen with nodeRecordId before candidate effects. */
-  nodeHostname?: string | null;
-  nodeSshPort?: number | null;
-  nodeSshUser?: string | null;
-  nodeHostKeyFingerprint?: string | null;
-  /** Attempt-scoped remote secret cleanup protocol understood by this locator. */
-  replacementSecretCleanupVersion?: 1 | null;
-  replacementAttemptId?: string | null;
-  /** Restore generation that derived an attempt-scoped quarantine container. */
-  restoreAttemptId?: string | null;
-  containerId?: string | null;
-  vpnNodeId?: string | null;
-  vpnNodeName?: string | null;
-  previousVpnNodeId?: string | null;
-  vpnRegistrationStartedAt?: string | null;
-  allocationCounted?: boolean | null;
+/** Captured host and immutable container authority for a non-destructive stop. */
+export interface SandboxRetainedStopLocator {
+  agentId: string;
+  containerId: string;
+  hostname: string;
+  sshPort: number;
+  sshUser: string;
+  hostKeyFingerprint: string;
 }
+
+/** Read-only capture target; immutable identity must be persisted before stop. */
+export type SandboxRetainedCaptureLocator = Omit<SandboxRetainedStopLocator, "containerId"> & {
+  containerName: string;
+};
+
+export interface SandboxRetainedResumeReceipt {
+  containerId: string;
+  state: "running";
+  restartPolicy: "no";
+}
+
+export interface SandboxRetainedStopReceipt {
+  containerId: string;
+  restartPolicy: "no";
+  state: "exited" | "created";
+}
+
+export type SandboxReplacementCleanupLocator = AgentSandboxPlacementLocator;
 
 /** Proven-success outcome of one exact-success replacement invocation. */
 export interface SandboxReplacementCreateSettlement {
@@ -283,6 +287,18 @@ export interface SandboxProvider {
    * unreachable container would create two live agents after the node returns.
    */
   stopForReplacement?(sandboxId: string): Promise<void>;
+  /**
+   * Stops an exact container without removal, capacity release or credential
+   * teardown. The caller must persist local-state retention and hold current
+   * lifecycle authority before dispatch; a receipt does not authorize cleanup.
+   */
+  captureRetainedContainer?(locator: SandboxRetainedCaptureLocator): Promise<string>;
+  /** Requires health from the captured physical container, independently of ingress readiness. */
+  checkRetainedContainerHealth?(locator: SandboxRetainedStopLocator): Promise<boolean>;
+  resumeRetainedContainer?(
+    locator: SandboxRetainedStopLocator,
+  ): Promise<SandboxRetainedResumeReceipt>;
+  stopRetainingState?(locator: SandboxRetainedStopLocator): Promise<SandboxRetainedStopReceipt>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This
    * bypasses sandbox-id lookup because the routed agent row may still point at

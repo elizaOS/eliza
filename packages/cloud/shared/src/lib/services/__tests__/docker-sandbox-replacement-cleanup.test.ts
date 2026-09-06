@@ -29,6 +29,8 @@ import {
 } from "../sandbox-provider-types";
 import * as stewardTenantConfig from "../steward-tenant-config";
 
+import { unwrapIsolatedDockerCommandForFixture } from "./docker-cli-transport-fixture";
+
 const NODE: DockerNode = {
   id: "11111111-1111-4111-8111-111111111111",
   node_id: "node-replacement-b",
@@ -98,6 +100,7 @@ function stubSsh(execute: (command: string) => Promise<string> = async () => "")
     expect(hostname).toBe(NODE.hostname);
     return {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           secretCleanupCommands.push(command);
           return `${getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID)}\n`;
@@ -1421,6 +1424,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const commands: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         commands.push(command);
         return "";
       }),
@@ -1551,6 +1555,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     });
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.startsWith("docker pull")) throw pullFailure;
         return "";
       }),
@@ -1637,6 +1642,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     });
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.startsWith("docker logout")) throw registryFailure;
         return "";
       }),
@@ -1740,6 +1746,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const ssh = {
       disconnect: mock(async () => {}),
       exec: mock(async (command: string, timeoutMs?: number) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (!command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) return "";
         if (slowTailnetQueries) {
           if (timeoutMs === undefined) throw new Error("Missing SSH command timeout");
@@ -1948,6 +1955,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const commands: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         commands.push(command);
         return "";
       }),
@@ -2167,6 +2175,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     );
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.includes("docker network inspect")) events.push("network-ready");
         if (command.startsWith("docker start")) events.push("docker-start");
         if (command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4")) {
@@ -2323,6 +2332,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const commands: string[] = [];
     spyOn(DockerSSHClient, "getClient").mockReturnValue({
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         commands.push(command);
         return "unexpected-output\n";
       }),
@@ -2346,6 +2356,42 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(commands[0]).not.toContain("docker inspect");
     expect(deleteVpn).not.toHaveBeenCalled();
   });
+
+  test.each(["absent", "surviving", "unavailable"] as const)(
+    "reconciles a lost exact Headscale delete response (%s)",
+    async (observation) => {
+      stubNodeLookup();
+      stubSsh(async () => {
+        throw new Error(`Error response from daemon: No such container: ${CONTAINER_NAME}`);
+      });
+      const deleteFailure = new Error("Headscale delete response was lost");
+      const deleteVpn = spyOn(headscaleClient, "deleteNode").mockRejectedValue(deleteFailure);
+      const readback = spyOn(headscaleClient, "listNodesStrict").mockImplementation(async () => {
+        if (observation === "unavailable") throw new Error("Headscale readback unavailable");
+        // A different immutable node with the same name must not be deleted.
+        const other = headscaleNode("1999", "agent-replacement", "2026-07-23T00:05:02.000Z");
+        return observation === "surviving"
+          ? [
+              other,
+              headscaleNode(EXACT_VPN_NODE_ID, "agent-replacement", "2026-07-23T00:05:02.000Z"),
+            ]
+          : [other];
+      });
+      const cleanup = replacementProvider().stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        EXACT_VPN_NODE_ID,
+        replacementIdentity(),
+      );
+      if (observation === "absent") {
+        await expect(cleanup).resolves.toBeUndefined();
+      } else {
+        await expect(cleanup).rejects.toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      }
+      expect(readback).toHaveBeenCalledTimes(1);
+      expect(deleteVpn.mock.calls).toEqual([[EXACT_VPN_NODE_ID]]);
+    },
+  );
 
   test("retains the fence when exact Headscale deletion does not make node 1404 absent", async () => {
     stubNodeLookup();
@@ -2637,6 +2683,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const commands: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return `${getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID)}\n${getReplacementDockerCreateQuiescentReceipt(ATTEMPT_ID)}\n`;
         }
@@ -2692,6 +2739,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const stopCommands: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return [
             getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),
@@ -2752,6 +2800,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const retirementEvents: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return [
             getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),
@@ -2820,6 +2869,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const inspectTargets: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        command = unwrapIsolatedDockerCommandForFixture(command);
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return [
             getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),

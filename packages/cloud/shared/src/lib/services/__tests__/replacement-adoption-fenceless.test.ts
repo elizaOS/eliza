@@ -94,6 +94,168 @@ afterAll(async () => {
 
 describe("fence-less replacement adoption (#17253 §4)", () => {
   test(
+    "publication retains provider identity while clearing its temporary fence",
+    async () => {
+      const { id, orgId } = await seedProvisioningAgent({
+        sandboxId: null,
+        nodeId: null,
+        containerName: null,
+      });
+      const containerName = `agent-${id}`;
+      const attemptId = crypto.randomUUID();
+      const nodeRecordId = crypto.randomUUID();
+      const registeredAt = "2026-09-06T00:00:00.000Z";
+      await dbWrite.execute(sql`UPDATE agent_sandboxes SET
+      replacement_cleanup_sandbox_id = ${containerName}, replacement_cleanup_node_id = 'node-1',
+      replacement_cleanup_container_name = ${containerName}, replacement_cleanup_attempt_id = ${attemptId},
+      replacement_cleanup_container_id = ${"a".repeat(64)}, replacement_cleanup_vpn_node_id = '42',
+      replacement_cleanup_vpn_node_name = ${containerName}, replacement_cleanup_vpn_registration_started_at = ${registeredAt},
+      replacement_cleanup_allocation_counted = true, replacement_cleanup_created_at = now()
+      WHERE id = ${id}`);
+      const svc = new ElizaSandboxService() as unknown as AdoptionInternals;
+      await svc.transferReplacementToPrimary(
+        id,
+        orgId,
+        {
+          sandboxId: containerName,
+          bridgeUrl: "https://runtime.example",
+          healthUrl: "https://runtime.example/health",
+          metadata: {
+            provider: "docker",
+            agentId: id,
+            nodeId: "node-1",
+            hostname: "captured.example",
+            containerName,
+            volumePath: `/data/agents/${id}`,
+            dockerImage: "fixture:latest",
+            imageDigest: null,
+            bridgePort: 19000,
+            webUiPort: 21000,
+            replacementAttemptId: attemptId,
+            containerId: "a".repeat(64),
+            vpnNodeId: "42",
+            vpnNodeName: containerName,
+            vpnRegistrationStartedAt: registeredAt,
+            allocationCounted: true,
+            nodeRecordId,
+            nodeSshPort: 2222,
+            nodeSshUser: "operator",
+            nodeHostKeyFingerprint: "SHA256:captured",
+            replacementSecretCleanupVersion: 1,
+          },
+        },
+        0,
+        {
+          status: "running",
+          sandbox_id: containerName,
+          node_id: "node-1",
+          container_name: containerName,
+        },
+      );
+      const row = await dbWrite.query.agentSandboxes.findFirst({
+        where: sql`${agentSandboxes.id} = ${id}`,
+      });
+      expect(row?.replacement_cleanup_sandbox_id).toBeNull();
+      expect(row?.replacement_cleanup_vpn_node_id).toBeNull();
+      expect(row?.serving_placement).toMatchObject({
+        version: 1,
+        volumePath: `/data/agents/${id}`,
+        locator: {
+          sandboxId: containerName,
+          containerId: "a".repeat(64),
+          replacementAttemptId: attemptId,
+          nodeRecordId,
+          nodeHostname: "captured.example",
+          nodeSshPort: 2222,
+          nodeSshUser: "operator",
+          nodeHostKeyFingerprint: "SHA256:captured",
+          vpnNodeId: "42",
+          vpnRegistrationStartedAt: registeredAt,
+          replacementSecretCleanupVersion: 1,
+        },
+      });
+      await dbWrite.execute(
+        sql`UPDATE agent_sandboxes SET status = 'provisioning' WHERE id = ${id}`,
+      );
+      await svc.transferReplacementToPrimary(
+        id,
+        orgId,
+        {
+          sandboxId: containerName,
+          bridgeUrl: "https://runtime.example",
+          healthUrl: "https://runtime.example/health",
+          metadata: {
+            provider: "docker",
+            nodeId: "node-1",
+            hostname: "captured.example",
+            containerName,
+          },
+        },
+        0,
+        { status: "running" },
+      );
+      const retried = await dbWrite.query.agentSandboxes.findFirst({
+        where: sql`${agentSandboxes.id} = ${id}`,
+      });
+      expect(retried?.serving_placement).toEqual(row?.serving_placement);
+      await dbWrite.execute(
+        sql`UPDATE agent_sandboxes SET status = 'provisioning', node_id = 'node-retargeted' WHERE id = ${id}`,
+      );
+      await expect(
+        svc.transferReplacementToPrimary(
+          id,
+          orgId,
+          {
+            sandboxId: containerName,
+            bridgeUrl: "https://runtime.example",
+            healthUrl: "https://runtime.example/health",
+            metadata: {
+              provider: "docker",
+              nodeId: "node-retargeted",
+              hostname: "replacement.example",
+              containerName,
+            },
+          },
+          0,
+          { status: "running" },
+        ),
+      ).rejects.toThrow("Preserved handle conflicts with its serving placement receipt");
+      const rejected = await dbWrite.query.agentSandboxes.findFirst({
+        where: sql`${agentSandboxes.id} = ${id}`,
+      });
+      expect(rejected?.status).toBe("provisioning");
+      expect(rejected?.serving_placement).toEqual(row?.serving_placement);
+      await dbWrite.execute(sql`UPDATE agent_sandboxes SET node_id = 'node-1' WHERE id = ${id}`);
+      await expect(
+        svc.transferReplacementToPrimary(
+          id,
+          orgId,
+          {
+            sandboxId: containerName,
+            bridgeUrl: "https://runtime.example",
+            healthUrl: "https://runtime.example/health",
+            metadata: {
+              provider: "docker",
+              nodeId: "node-1",
+              hostname: "captured.example",
+              containerName,
+              containerId: "b".repeat(64),
+            },
+          },
+          0,
+          { status: "running" },
+        ),
+      ).rejects.toThrow("Preserved handle conflicts with its serving placement receipt");
+      const wrongContainer = await dbWrite.query.agentSandboxes.findFirst({
+        where: sql`${agentSandboxes.id} = ${id}`,
+      });
+      expect(wrongContainer?.status).toBe("provisioning");
+      expect(wrongContainer?.serving_placement).toEqual(row?.serving_placement);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "an ADOPTED handle (no replacement metadata) completes the transfer",
     async () => {
       const { id, orgId } = await seedProvisioningAgent({

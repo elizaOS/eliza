@@ -8,6 +8,16 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import {
+  buildExactRestoreBootFencedCommand,
+  buildExactRestoreDockerBootFencedCommand,
+} from "./docker-sandbox-utils";
+
+export {
+  buildExactRestoreBootFencedCommand,
+  buildExactRestoreDockerBootFencedCommand,
+} from "./docker-sandbox-utils";
+
 import { ElizaError } from "@elizaos/core";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -49,6 +59,13 @@ import {
 } from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
+  captureDockerRetainedContainer,
+  checkDockerRetainedContainerHealth,
+  deleteDockerRetainedContainer,
+  resumeDockerRetainedContainer,
+  stopDockerRetainingState,
+} from "./docker-retained-stop";
+import {
   allocatePort,
   BRIDGE_PORT_MAX,
   BRIDGE_PORT_MIN,
@@ -57,6 +74,8 @@ import {
   buildDockerCreateWithSecretEnvCommand,
   buildEnsureNetworkCmd,
   buildExactRestoreStagingVolumeCleanupCommand,
+  buildLocalDockerDaemonCommand,
+  buildProtectedHostDirectoryCommands,
   buildReplacementCandidateObservedCommand,
   buildReplacementCreatedContainerIdProofCommand,
   buildReplacementSecretArtifactsCleanupCommand,
@@ -116,6 +135,10 @@ import type {
   SandboxHealthOutcome,
   SandboxProvider,
   SandboxReplacementCleanupLocator,
+  SandboxRetainedCaptureLocator,
+  SandboxRetainedResumeReceipt,
+  SandboxRetainedStopLocator,
+  SandboxRetainedStopReceipt,
 } from "./sandbox-provider-types";
 import {
   assertContainerBackedExecutionTier,
@@ -241,8 +264,6 @@ const EXACT_RESTORE_NODE_INCARNATION_LABEL = "ai.elizaos.restore-node-incarnatio
 const EXACT_RESTORE_NODE_HISTORY_LABEL = "ai.elizaos.restore-node-history-id";
 const EXACT_RESTORE_IMAGE_DIGEST_LABEL = "ai.elizaos.restore-image-digest";
 const EXACT_RESTORE_QUARANTINE_LABEL = "ai.elizaos.restore-quarantine";
-const REMOTE_NODE_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
-const EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE = 78;
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
 const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
@@ -410,50 +431,6 @@ function isExactRestoreContainerName(value: string): boolean {
     // error-policy:J3 canonical validation translates rejected input to false.
     return false;
   }
-}
-
-export function buildExactRestoreBootFencedCommand(
-  expectedNodeIncarnation: string,
-  exactCommand: string,
-): string {
-  return [
-    `observed_boot_id=$(cat ${shellQuote(REMOTE_NODE_BOOT_ID_PATH)} 2>/dev/null) || { printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_UNREADABLE' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; }`,
-    `if [ "$observed_boot_id" != ${shellQuote(expectedNodeIncarnation)} ]; then printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_MISMATCH' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; fi`,
-    exactCommand,
-  ].join("; ");
-}
-
-/** Boot-fence and isolate every exact Docker CLI call from ambient client state. */
-export function buildExactRestoreDockerBootFencedCommand(
-  expectedNodeIncarnation: string,
-  exactDockerCommand: string,
-): string {
-  const configTemplate = "/tmp/eliza-exact-docker.XXXXXXXXXX";
-  const cleanup =
-    "cleanup_exact_docker_config() { cleanup_status=$?; trap - EXIT; " +
-    'case "$exact_docker_config" in /tmp/eliza-exact-docker.?*) ' +
-    'rm -rf -- "$exact_docker_config" || cleanup_status=70 ;; *) cleanup_status=70 ;; esac; ' +
-    'exit "$cleanup_status"; }';
-  const isolatedCommand = [
-    "set -eu",
-    "umask 077",
-    `exact_docker_config=$(mktemp -d ${shellQuote(configTemplate)})`,
-    cleanup,
-    "trap cleanup_exact_docker_config EXIT",
-    "trap 'exit 129' HUP",
-    "trap 'exit 130' INT",
-    "trap 'exit 143' TERM",
-    'chmod 700 -- "$exact_docker_config"',
-    `printf '%s\\n' ${shellQuote('{"auths":{},"proxies":{}}')} > "$exact_docker_config/config.json"`,
-    'chmod 600 -- "$exact_docker_config/config.json"',
-    "unset DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_CONFIG DOCKER_DEFAULT_PLATFORM DOCKER_API_VERSION",
-    'DOCKER_HOST="unix:///var/run/docker.sock"',
-    'DOCKER_CONFIG="$exact_docker_config"',
-    "export DOCKER_HOST DOCKER_CONFIG",
-    'docker() { command docker --host unix:///var/run/docker.sock --config "$exact_docker_config" "$@"; }',
-    `(${exactDockerCommand})`,
-  ].join("; ");
-  return buildExactRestoreBootFencedCommand(expectedNodeIncarnation, isolatedCommand);
 }
 
 function buildExactRestoreAnonymousPullCommand(
@@ -3285,7 +3262,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // one service transaction. Ordinary creates retain provider-owned
       // accounting because they have no durable replacement fence.
       if (providerManagesCapacity) {
-        await dockerNodesRepository.incrementAllocated(nodeId);
+        await dockerNodesRepository.incrementAllocated(nodeId, dbNode.id);
       }
     } else {
       const registeredNodes = await dockerNodesRepository.findAll();
@@ -3528,12 +3505,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     let stewardRegistrationCreated = false;
 
     try {
-      // Ensure volume directory exists
-      await ssh.exec(
-        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`,
-        DOCKER_CMD_TIMEOUT_MS,
-      );
-
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -3805,12 +3776,27 @@ export class DockerSandboxProvider implements SandboxProvider {
             // No plaintext temporary file is written until the durable intent
             // callback above has committed. Exact mode coordinates both vault
             // and Docker env producers with the remote attempt tombstone.
+            const prepareVolumeCommands = [
+              "/data",
+              "/data/agents",
+              volumePath,
+              `${volumePath}/eliza`,
+            ].flatMap((path) => buildProtectedHostDirectoryCommands(path, true));
+            // A delayed producer must observe cancellation before recreating
+            // directories that cleanup has already removed.
+            if (!remoteCompletionTracker) {
+              await ssh.exec(
+                ["set -eu", ...prepareVolumeCommands].join("; "),
+                DOCKER_CMD_TIMEOUT_MS,
+              );
+            }
             await ensureVolumeVaultPassphrase(
               (cmd, input, timeoutMs) => ssh.execStdin(cmd, input, timeoutMs),
               volumePath,
               DOCKER_CMD_TIMEOUT_MS,
               environmentVars.ELIZA_VAULT_PASSPHRASE,
               remoteCompletionTracker ? replacementAttemptId : undefined,
+              remoteCompletionTracker ? prepareVolumeCommands : [],
             );
             return ssh.execStdin(
               dockerCreateWithSecretEnvCmd,
@@ -4626,7 +4612,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const remoteCommand = (command: string): string =>
       exactExecution?.expectedNodeIncarnation
         ? buildExactRestoreDockerBootFencedCommand(exactExecution.expectedNodeIncarnation, command)
-        : command;
+        : buildLocalDockerDaemonCommand(command);
     let stopErr: unknown;
     let rmErr: unknown;
     try {
@@ -4715,7 +4701,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     };
     const exactCleanupDockerCommand = (command: string): string => {
       if (locator.restoreAttemptId === undefined || locator.restoreAttemptId === null) {
-        return command;
+        return buildLocalDockerDaemonCommand(command);
       }
       if (!isCanonicalNodeAuthorityUuid(locator.nodeIncarnation)) {
         throw new ElizaError("Exact restore cleanup lacks a canonical node boot fence", {
@@ -4945,11 +4931,21 @@ export class DockerSandboxProvider implements SandboxProvider {
             },
           );
         }
-        await withTimeout(
-          headscaleClient.deleteNode(locator.vpnNodeId),
-          HEADSCALE_CLEANUP_TIMEOUT_MS,
-          "replacement headscale cleanup",
-        );
+        let deleteFailure: ElizaError | undefined;
+        try {
+          await withTimeout(
+            headscaleClient.deleteNode(locator.vpnNodeId),
+            HEADSCALE_CLEANUP_TIMEOUT_MS,
+            "replacement headscale cleanup",
+          );
+        } catch (error) {
+          // error-policy:J1 An uncertain delete is settled by strict exact-ID readback below.
+          deleteFailure = new ElizaError("Headscale delete acknowledgement is unresolved", {
+            code: "SANDBOX_REPLACEMENT_HEADSCALE_DELETE_UNRESOLVED",
+            cause: error,
+            context: { vpnNodeId: locator.vpnNodeId },
+          });
+        }
         const remainingNodes = await withTimeout(
           headscaleClient.listNodesStrict(),
           HEADSCALE_CLEANUP_TIMEOUT_MS,
@@ -4961,6 +4957,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             `[docker-sandbox] Cannot prove Headscale node ${locator.vpnNodeId} absent after cleanup`,
             {
               code: "SANDBOX_REPLACEMENT_HEADSCALE_RETIREMENT_UNPROVEN",
+              cause: deleteFailure,
               context: {
                 containerName: locator.containerName,
                 vpnNodeId: locator.vpnNodeId,
@@ -4968,6 +4965,12 @@ export class DockerSandboxProvider implements SandboxProvider {
               severity: "fatal",
             },
           );
+        }
+        if (deleteFailure) {
+          logger.info("[docker-sandbox] Exact Headscale absence settled an uncertain delete", {
+            vpnNodeId: locator.vpnNodeId,
+            replacementAttemptId: locator.replacementAttemptId,
+          });
         }
       } else if (locator.vpnNodeName) {
         if (locator.replacementSecretCleanupVersion === 1 && locator.containerId) {
@@ -5028,7 +5031,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const remoteCommand = (command: string): string =>
       locator.restoreAttemptId !== undefined && locator.restoreAttemptId !== null
         ? buildExactRestoreDockerBootFencedCommand(locator.nodeIncarnation!, command)
-        : command;
+        : buildLocalDockerDaemonCommand(command);
     const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.Name}}|{{.Created}}`;
     // When Docker returned the create id before a later phase failed, inspect
     // that immutable object directly. A same-name replacement can never make
@@ -5282,10 +5285,130 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
   }
 
+  async checkRetainedContainerHealth(locator: SandboxRetainedStopLocator): Promise<boolean> {
+    return this.withRetainedContainerConnection(locator, async (ssh) => {
+      const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        if (
+          await checkDockerRetainedContainerHealth(
+            (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
+            locator.containerId,
+            locator.agentId,
+          )
+        )
+          return true;
+        const remaining = deadline - Date.now();
+        if (remaining > 0)
+          await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, remaining)));
+      }
+      return false;
+    });
+  }
+
+  async resumeRetainedContainer(
+    locator: SandboxRetainedStopLocator,
+  ): Promise<SandboxRetainedResumeReceipt> {
+    return this.withRetainedContainerConnection(locator, (ssh) =>
+      resumeDockerRetainedContainer(
+        (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
+        locator.containerId,
+        locator.agentId,
+      ),
+    );
+  }
+
+  async captureRetainedContainer(locator: SandboxRetainedCaptureLocator): Promise<string> {
+    return this.withRetainedContainerConnection(locator, (ssh) =>
+      captureDockerRetainedContainer(
+        (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
+        locator.containerName,
+        locator.agentId,
+      ),
+    );
+  }
+
+  async stopRetainingState(
+    locator: SandboxRetainedStopLocator,
+  ): Promise<SandboxRetainedStopReceipt> {
+    return this.withRetainedContainerConnection(locator, (ssh) =>
+      stopDockerRetainingState(
+        (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
+        locator.containerId,
+        locator.agentId,
+      ),
+    );
+  }
+
+  private async withRetainedContainerConnection<T>(
+    locator: Omit<SandboxRetainedStopLocator, "containerId">,
+    operation: (ssh: DockerSSHClient) => Promise<T>,
+  ): Promise<T> {
+    if (
+      !locator.hostname.trim() ||
+      !locator.sshUser.trim() ||
+      !locator.hostKeyFingerprint.trim() ||
+      !Number.isSafeInteger(locator.sshPort) ||
+      locator.sshPort < 1 ||
+      locator.sshPort > 65_535
+    ) {
+      throw new ElizaError("Retained stop requires complete captured SSH authority", {
+        code: "SANDBOX_RETAINED_STOP_SSH_AUTHORITY_INVALID",
+      });
+    }
+    const ssh = DockerSSHClient.createDedicated(
+      locator.hostname,
+      locator.sshPort,
+      locator.hostKeyFingerprint,
+      locator.sshUser,
+    );
+    try {
+      return await operation(ssh);
+    } finally {
+      await ssh.disconnect().catch((error) => {
+        // error-policy:J6 connection teardown cannot invalidate a completed readback.
+        logger.warn("[docker-sandbox] Retained container connection teardown failed", {
+          agentId: locator.agentId,
+          error,
+        });
+      });
+    }
+  }
+
   async stopForDeletion(
     sandboxId: string,
     locator?: SandboxDeletionLocator,
   ): Promise<SandboxDeletionStopOutcome> {
+    if (locator?.containerId !== undefined) {
+      const containerId = locator.containerId;
+      if (
+        locator.sandboxId !== sandboxId ||
+        !locator.hostname ||
+        !locator.sshPort ||
+        !locator.sshUser ||
+        !locator.hostKeyFingerprint
+      ) {
+        throw new ElizaError("Exact retained deletion requires captured SSH authority", {
+          code: "SANDBOX_RETAINED_DELETE_LOCATOR_INVALID",
+        });
+      }
+      await this.withRetainedContainerConnection(
+        {
+          agentId: locator.agentId,
+          hostname: locator.hostname,
+          sshPort: locator.sshPort,
+          sshUser: locator.sshUser,
+          hostKeyFingerprint: locator.hostKeyFingerprint,
+        },
+        (ssh) =>
+          deleteDockerRetainedContainer(
+            (command, timeout) => ssh.exec(buildLocalDockerDaemonCommand(command), timeout),
+            containerId,
+            locator.agentId,
+          ),
+      );
+      this.containers.delete(sandboxId);
+      return { kind: "not-running-proven" };
+    }
     // Deletion is the one teardown whose capacity is owned elsewhere: the
     // caller's deletion generation releases the slot exactly once via
     // `tryReleaseDeletionAllocation`, because this path is retryable and

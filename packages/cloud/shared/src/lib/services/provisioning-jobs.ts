@@ -16,6 +16,7 @@
 import { ElizaError } from "@elizaos/core";
 import {
   and,
+  asc,
   desc,
   eq,
   getTableColumns,
@@ -32,6 +33,14 @@ import {
 import type { DbTransaction } from "../../db/client";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
+import {
+  type AgentPaymentResumeAuthority,
+  assertPaymentResumeExecutionAuthorityInTransaction,
+  carryConfirmedStopReceiptAcrossClaimInTransaction,
+  listAgentPaymentResumeCandidates,
+  lockAgentPaymentResumeAuthorityInTransaction,
+} from "../../db/repositories/agent-compute-stop-intents";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
   cutoverResumeWindowAllows,
@@ -46,6 +55,7 @@ import {
   type RecoveryFailureWritebackBuilder,
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
+import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
   type AgentBillingStatus,
@@ -272,6 +282,10 @@ export interface AgentResumeJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  paymentResume?: {
+    stopIntentId: string;
+    stoppedLifecycleRevision: string;
+  };
 }
 
 export interface AgentSleepJobData {
@@ -892,8 +906,26 @@ function isAgentResumeJobData(value: unknown): value is AgentResumeJobData {
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (!("paymentResume" in value) || isPaymentResumeJobAuthority(value.paymentResume))
   );
+}
+
+function isPaymentResumeJobAuthority(
+  value: unknown,
+): value is NonNullable<AgentResumeJobData["paymentResume"]> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("stopIntentId" in value) ||
+    typeof value.stopIntentId !== "string" ||
+    !isValidUUID(value.stopIntentId) ||
+    !("stoppedLifecycleRevision" in value) ||
+    typeof value.stoppedLifecycleRevision !== "string" ||
+    !/^(0|[1-9][0-9]*)$/.test(value.stoppedLifecycleRevision)
+  )
+    return false;
+  return BigInt(value.stoppedLifecycleRevision) <= 9223372036854775807n;
 }
 
 function readAgentResumeJobData(job: Job): AgentResumeJobData {
@@ -1191,6 +1223,8 @@ function snapshotAuthorityRejection(
 }
 
 interface LifecycleJobOptions<TData extends object> {
+  /** The automatic request being granted; other new lifecycle requests revoke prior grants. */
+  paymentResumeIntentId?: string;
   /** Wire value for `jobs.type` (one of JOB_TYPES.*). */
   jobType: ProvisioningJobType;
   /** Typed job data to persist into `jobs.data` JSONB. */
@@ -1983,6 +2017,27 @@ export class ProvisioningJobService {
 
     await opts.beforeInsert?.(tx, sandbox);
 
+    if (EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType)) {
+      await tx
+        .update(agentComputeStopIntents)
+        .set({
+          status: "superseded",
+          superseded_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentComputeStopIntents.organization_id, opts.organizationId),
+            eq(agentComputeStopIntents.agent_id, opts.agentId),
+            eq(agentComputeStopIntents.status, "provider_confirmed"),
+            isNotNull(agentComputeStopIntents.resume_job_id),
+            opts.paymentResumeIntentId
+              ? ne(agentComputeStopIntents.id, opts.paymentResumeIntentId)
+              : undefined,
+          ),
+        );
+    }
+
     const [job] = await tx
       .insert(jobs)
       .values(await prepareJobInsertData(newJob))
@@ -2308,9 +2363,9 @@ export class ProvisioningJobService {
         // A genuine user-initiated delete (the row is not already in a deletion
         // state) starts the deletion-failure counter fresh — error_count may
         // carry a stale provisioning-error value, and a new delete should get a
-        // full set of recovery sweeps before the circuit-breaker abandons it.
+        // full set of recovery sweeps before switching to the slower cadence.
         // A recovery re-enqueue (status is already deletion_pending/_failed)
-        // PRESERVES the count so reEnqueueFailedDeletions can stop the loop.
+        // preserves the count so reconciliation can apply the slower cadence.
         const isRecoveryReEnqueue =
           Boolean(sandbox.deletion_attempt_id) ||
           sandbox.status === "deletion_pending" ||
@@ -2695,16 +2750,139 @@ export class ProvisioningJobService {
     };
   }
 
-  /**
-   * Enqueue an Agent resume job.
-   *
-   * Daemon-side execution re-runs `provision()` against the existing
-   * sandbox row: this restores `bridge_url` / `health_url` from a fresh
-   * sandbox handle and reuses the existing Neon DB (the `sandbox_id` is
-   * retained across suspend). A faster `docker start` path will replace
-   * the re-provision once `DockerSandboxProvider` exposes a standalone
-   * `start()` that returns the handle.
-   */
+  /** Reconcile one explicit page; the daemon advances its cursor even past unfunded accounts. */
+  async reconcileFundedAgentResumes(input: { limit: number; afterIntentId?: string }) {
+    const candidates = await listAgentPaymentResumeCandidates(input);
+    const result = {
+      total: candidates.length,
+      queued: 0,
+      reused: 0,
+      unfunded: 0,
+      accountFenced: 0,
+      authorityChanged: 0,
+      failures: [] as Array<{ agentId: string; intentId: string; error: string }>,
+      nextCursor: candidates.length === input.limit ? candidates.at(-1)!.intentId : null,
+    };
+    for (const candidate of candidates) {
+      try {
+        const admission = await this.enqueueFundedAgentResumeOnce(candidate);
+        switch (admission.status) {
+          case "queued":
+            if (admission.created) result.queued += 1;
+            else result.reused += 1;
+            break;
+          case "unfunded":
+            result.unfunded += 1;
+            break;
+          case "account_fenced":
+            result.accountFenced += 1;
+            break;
+          case "authority_changed":
+            result.authorityChanged += 1;
+            break;
+        }
+      } catch (error) {
+        // error-policy:J1 The batch boundary reports each failed admission;
+        // its retained receipt remains discoverable on the next sweep.
+        const failure = {
+          agentId: candidate.agentId,
+          intentId: candidate.intentId,
+          error: jobErrorText(error),
+        };
+        result.failures.push(failure);
+        logger.error("[provisioning-jobs] Funded resume admission failed", failure);
+      }
+    }
+    return result;
+  }
+
+  /** Admit a payment recovery job atomically with receipt checks and accrued-debt settlement. */
+  async enqueueFundedAgentResumeOnce(
+    authority: AgentPaymentResumeAuthority,
+  ): Promise<
+    | { status: "queued"; job: Job; created: boolean }
+    | { status: "authority_changed" | "unfunded" | "account_fenced" }
+  > {
+    return dbWrite.transaction(async (tx) => {
+      const current = await lockAgentPaymentResumeAuthorityInTransaction(tx, authority);
+      if (!current) return { status: "authority_changed" };
+      const funding = await agentBillingRepository.settlePaymentResumeFundingInTransaction(
+        tx,
+        current.agentId,
+        current.organizationId,
+        await readPostLockDatabaseNow(tx),
+      );
+      if (funding !== "funded") return { status: funding };
+      const result = await this.enqueueLifecycleJobInTx<AgentResumeJobData>(tx, {
+        jobType: JOB_TYPES.AGENT_RESUME,
+        paymentResumeIntentId: current.intentId,
+        jobData: {
+          agentId: current.agentId,
+          organizationId: current.organizationId,
+          userId: current.userId,
+          paymentResume: {
+            stopIntentId: current.intentId,
+            stoppedLifecycleRevision: current.lifecycleRevision,
+          },
+        },
+        toRecord: agentResumeJobDataToRecord,
+        agentId: current.agentId,
+        organizationId: current.organizationId,
+        userId: current.userId,
+        maxAttempts: 3,
+        estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
+        logName: "funded_agent_resume",
+        validateReuse: (job) => {
+          const existing = readAgentResumeJobData(job);
+          if (
+            existing.paymentResume &&
+            (existing.paymentResume.stopIntentId !== current.intentId ||
+              existing.paymentResume.stoppedLifecycleRevision !== current.lifecycleRevision)
+          ) {
+            throw new ElizaError("A different payment resume already owns the agent", {
+              code: "PAYMENT_RESUME_JOB_CONFLICT",
+              context: { agentId: current.agentId, jobId: job.id },
+            });
+          }
+        },
+        afterInsert: async (tx, _sandbox, job) => {
+          const [bound] = await tx
+            .update(agentComputeStopIntents)
+            .set({
+              resume_job_id: job.id,
+              updated_at: await readPostLockDatabaseNow(tx),
+            })
+            .where(
+              and(
+                eq(agentComputeStopIntents.id, current.intentId),
+                eq(agentComputeStopIntents.status, "provider_confirmed"),
+                or(
+                  isNull(agentComputeStopIntents.resume_job_id),
+                  sql`EXISTS (
+              SELECT 1 FROM ${jobs} AS prior_resume
+              WHERE prior_resume.id = ${agentComputeStopIntents.resume_job_id}
+                AND prior_resume.status = 'failed' AND prior_resume.execution_quiesced_at IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM ${jobExecutionLeases} AS prior_lease
+                  WHERE prior_lease.job_id = prior_resume.id AND prior_lease.expires_at > NOW())
+            )`,
+                ),
+              ),
+            )
+            .returning({ id: agentComputeStopIntents.id });
+          if (!bound)
+            throw new ElizaError(
+              "Payment resume job could not acquire its durable stop authority",
+              {
+                code: "PAYMENT_RESUME_JOB_BINDING_CONFLICT",
+                context: { agentId: current.agentId, intentId: current.intentId, jobId: job.id },
+              },
+            );
+        },
+      });
+      return { status: "queued", ...result };
+    });
+  }
+
   async enqueueAgentResumeOnce(params: {
     agentId: string;
     organizationId: string;
@@ -4709,13 +4887,8 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_DELETE: {
         const { agentId } = readAgentDeleteJobData(job);
         return async (tx) => {
-          // Bump error_count so reEnqueueFailedDeletions can circuit-break a
-          // permanently-dead node: each exhausted agent_delete adds one, and
-          // once the count crosses the re-enqueue threshold the sweep stops
-          // re-arming the row and alerts ops instead of looping forever. Once a
-          // row reaches deletion_failed the only writer of error_count is this
-          // path (markError only touches `error` rows), so the count tracks
-          // failed delete sweeps. A fresh user-initiated delete resets it.
+          // Exhausted attempts advance the retry cadence without abandoning
+          // provider cleanup. A fresh user-initiated delete resets this count.
           await tx
             .update(agentSandboxes)
             .set({
@@ -4887,6 +5060,7 @@ export class ProvisioningJobService {
 
         const [sandboxAuthority] = await tx
           .select({
+            lifecycleRevision: sql<string>`${agentSandboxes.lifecycle_revision}::text`,
             executionTier: agentSandboxes.execution_tier,
             pool_status: agentSandboxes.pool_status,
             deleted_at: agentSandboxes.deleted_at,
@@ -4967,6 +5141,24 @@ export class ProvisioningJobService {
             },
           );
         }
+        const paymentResume =
+          job.type === JOB_TYPES.AGENT_RESUME
+            ? readAgentResumeJobData(job).paymentResume
+            : undefined;
+        if (paymentResume) {
+          await assertPaymentResumeExecutionAuthorityInTransaction(
+            tx,
+            {
+              intentId: paymentResume.stopIntentId,
+              lifecycleRevision: paymentResume.stoppedLifecycleRevision,
+              jobId: job.id,
+              agentId: identity.agentId,
+              organizationId: identity.organizationId,
+              userId: readAgentResumeJobData(job).userId,
+            },
+            "claim",
+          );
+        }
         const [claimedSandbox] = await tx
           .update(agentSandboxes)
           .set({
@@ -4986,7 +5178,19 @@ export class ProvisioningJobService {
               ),
             ),
           )
-          .returning({ id: agentSandboxes.id });
+          .returning({
+            id: agentSandboxes.id,
+            lifecycleRevision: sql<string>`${agentSandboxes.lifecycle_revision}::text`,
+          });
+        if (claimedSandbox && sandboxAuthority && job.type === JOB_TYPES.AGENT_SUSPEND) {
+          await carryConfirmedStopReceiptAcrossClaimInTransaction(tx, {
+            jobId: job.id,
+            agentId: identity.agentId,
+            organizationId: identity.organizationId,
+            previousRevision: sandboxAuthority.lifecycleRevision,
+            claimedRevision: claimedSandbox.lifecycleRevision,
+          });
+        }
         if (!claimedSandbox) {
           const [existingSandbox] = await tx
             .select({ id: agentSandboxes.id })
@@ -5271,6 +5475,9 @@ export class ProvisioningJobService {
       job.id,
       authority.authorization,
       authority.lifecycleRevision,
+      job.execution_generation
+        ? { executionGeneration: job.execution_generation, executionOwnerId: this.executionOwnerId }
+        : undefined,
     );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
@@ -5327,7 +5534,37 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const result = await elizaSandboxService.executeResume(data.agentId, data.organizationId);
+    if (data.paymentResume && !job.execution_generation) {
+      throw new ElizaError("Automatic resume has no execution generation", {
+        code: "PAYMENT_RESUME_PROVIDER_LEASE_LOST",
+        context: { jobId: job.id, agentId: data.agentId },
+      });
+    }
+    const result = await elizaSandboxService.executeResume(
+      data.agentId,
+      data.organizationId,
+      data.paymentResume && job.execution_generation
+        ? {
+            intentId: data.paymentResume.stopIntentId,
+            lifecycleRevision: data.paymentResume.stoppedLifecycleRevision,
+            agentId: data.agentId,
+            organizationId: data.organizationId,
+            userId: data.userId,
+            jobId: job.id,
+            executionGeneration: job.execution_generation,
+            executionOwnerId: this.executionOwnerId,
+          }
+        : job.execution_generation
+          ? {
+              agentId: data.agentId,
+              organizationId: data.organizationId,
+              userId: data.userId,
+              jobId: job.id,
+              executionGeneration: job.execution_generation,
+              executionOwnerId: this.executionOwnerId,
+            }
+          : undefined,
+    );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
@@ -6762,12 +6999,10 @@ export class ProvisioningJobService {
    * the container + row. `minAgeMs` keeps this from fighting the live retry
    * loop right after a failure.
    *
-   * Circuit-breaker: a permanently-dead node would otherwise be re-armed every
-   * sweep forever. Each exhausted agent_delete bumps the sandbox's `error_count`
-   * (see the AGENT_DELETE failure handler), so a row that has already been
-   * re-enqueued `maxReEnqueues` times is SKIPPED — logged once as
-   * `event: "deletion.abandoned_candidate"` for ops to investigate (the
-   * container likely needs a manual node-level teardown) rather than looping.
+   * Repeated failures switch to a six-hour cadence and remain enumerable.
+   * Error count is diagnostic history, never proof that resources are absent.
+   * Eligibility is filtered before the batch limit so cooling rows do not
+   * crowd out due work. Oldest eligible rows run first.
    *
    * Capacity: `deletion_failed`/`deletion_pending` rows do NOT count toward the
    * org's agent ceiling (`QUOTA_COUNTED_STATUSES` in eliza-sandbox.ts), so a
@@ -6780,6 +7015,7 @@ export class ProvisioningJobService {
   async reEnqueueFailedDeletions(params?: {
     minAgeMs?: number;
     maxAgents?: number;
+    /** Failure threshold for slow retries; retained option name for callers. */
     maxReEnqueues?: number;
   }): Promise<{
     scanned: number;
@@ -6790,7 +7026,9 @@ export class ProvisioningJobService {
     const minAgeMs = params?.minAgeMs ?? 30 * 60 * 1000; // 30m
     const maxAgents = params?.maxAgents ?? 50;
     const maxReEnqueues = params?.maxReEnqueues ?? 5;
-    const cutoff = new Date(Date.now() - minAgeMs);
+    const now = Date.now();
+    const cutoff = new Date(now - minAgeMs);
+    const slowCutoff = new Date(now - Math.max(minAgeMs, 6 * 60 * 60 * 1000));
 
     const stuck = await dbWrite
       .select({
@@ -6798,6 +7036,9 @@ export class ProvisioningJobService {
         organizationId: agentSandboxes.organization_id,
         userId: agentSandboxes.user_id,
         errorCount: agentSandboxes.error_count,
+        lifecycleRevision: agentSandboxes.lifecycle_revision,
+        deletionAttemptId: agentSandboxes.deletion_attempt_id,
+        updatedAt: agentSandboxes.updated_at,
       })
       .from(agentSandboxes)
       .where(
@@ -6811,6 +7052,10 @@ export class ProvisioningJobService {
           // idempotent and re-flips the row to deletion_pending.
           sql`${agentSandboxes.status} IN ('deletion_failed', 'deletion_pending')`,
           sql`${agentSandboxes.updated_at} < ${cutoff}`,
+          or(
+            sql`${agentSandboxes.error_count} < ${maxReEnqueues}`,
+            sql`${agentSandboxes.updated_at} < ${slowCutoff}`,
+          ),
           // REQUIRED now that deletion_pending is in scope: never re-arm a delete
           // that is legitimately in-flight. (deletion_failed rows never have an
           // active job, so this is a no-op for the original case.)
@@ -6823,24 +7068,22 @@ export class ProvisioningJobService {
           )`,
         ),
       )
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(maxAgents);
 
     let reEnqueued = 0;
     let failed = 0;
-    let abandoned = 0;
+    // Compatibility field: exhausted deletions remain retryable.
+    const abandoned = 0;
     for (const agent of stuck) {
-      // Circuit-breaker: a row that has burned through maxReEnqueues sweeps is a
-      // probably-dead node — stop re-arming it and surface it for ops once.
-      if ((agent.errorCount ?? 0) >= maxReEnqueues) {
-        abandoned += 1;
-        logger.warn("[provisioning-jobs] deletion abandoned — exceeded re-enqueue budget", {
-          event: "deletion.abandoned_candidate",
+      if (agent.errorCount >= maxReEnqueues) {
+        logger.warn("[provisioning-jobs] Retrying deletion after repeated failures", {
+          event: "deletion.slow_retry",
           agentId: agent.id,
           orgId: agent.organizationId,
           errorCount: agent.errorCount,
           maxReEnqueues,
         });
-        continue;
       }
       try {
         await this.enqueueAgentDeleteOnce({
@@ -6850,7 +7093,24 @@ export class ProvisioningJobService {
         });
         reEnqueued += 1;
       } catch (error) {
+        // error-policy:J1 The sweep reports failed admissions in its result.
         failed += 1;
+        // A failed admission must not monopolize the oldest batch indefinitely.
+        // Touch only the observed generation; a concurrent cancellation, job
+        // admission or replacement owns its newer timestamp and lifecycle.
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ updated_at: new Date() })
+          .where(
+            and(
+              eq(agentSandboxes.id, agent.id),
+              eq(agentSandboxes.organization_id, agent.organizationId),
+              eq(agentSandboxes.lifecycle_revision, agent.lifecycleRevision),
+              eq(agentSandboxes.updated_at, agent.updatedAt),
+              sql`${agentSandboxes.deletion_attempt_id} IS NOT DISTINCT FROM ${agent.deletionAttemptId}`,
+              inArray(agentSandboxes.status, ["deletion_failed", "deletion_pending"]),
+            ),
+          );
         logger.warn("[provisioning-jobs] re-enqueue of failed deletion failed", {
           agentId: agent.id,
           error: jobErrorText(error),

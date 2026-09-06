@@ -1719,6 +1719,56 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(deleteRows[0]?.status).toBe("pending");
   });
 
+  test.each([false, true])(
+    "deletion cancellation stays revoked after teardown admission and job retry (%s)",
+    async (admitted) => {
+      const { agentId, orgId, userId } = await seedAgent({ status: "running" });
+      const request = {
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "account_deletion" as const,
+      };
+      const queued = await provisioningJobService.enqueueAgentDeleteOnce(request);
+      if (admitted) {
+        const service = elizaSandboxService as unknown as {
+          prepareAgentDelete: (
+            id: string,
+            org: string,
+            authorization: "account_deletion",
+          ) => Promise<{ ok: boolean }>;
+        };
+        expect(await service.prepareAgentDelete(agentId, orgId, "account_deletion")).toMatchObject({
+          ok: true,
+        });
+        // The provider may already have removed compute when job completion fails.
+        // Keep the stale bridge locator to reproduce cancellation's old false proof.
+        await dbWrite
+          .update(jobs)
+          .set({ status: "failed", completed_at: new Date() })
+          .where(eq(jobs.id, queued.job.id));
+        const retry = await provisioningJobService.enqueueAgentDeleteOnce(request);
+        expect(retry.created).toBe(true);
+      }
+      const outcome = await elizaSandboxService.cancelAgentDeletion(agentId, orgId);
+      const [after] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, agentId));
+      expect(after.bridge_url).toBe(REACHABLE_BRIDGE);
+      expect(outcome.success).toBe(!admitted);
+      expect(after.status).toBe(admitted ? "deletion_pending" : "running");
+      const rows = await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE);
+      expect(rows.some((row) => row.status === "pending")).toBe(admitted);
+      if (admitted) {
+        expect(outcome.error).toContain("reversible running-state receipt");
+        expect(after.deletion_attempt_id).not.toBeNull();
+      } else {
+        expect(after.deletion_attempt_id).toBeNull();
+      }
+    },
+  );
+
   test("delete refuses a running sandbox before recording deletion intent", async () => {
     const { agentId, orgId, userId } = await seedAgent({
       status: "running",

@@ -16,6 +16,7 @@ import {
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
 import type { DbTransaction } from "../../client";
 import { agentBackupRestoreLeases } from "../../schemas/agent-backup-catalog";
+import { agentComputeStopIntents } from "../../schemas/agent-compute-stop-intents";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import {
@@ -573,6 +574,7 @@ realPostgres("cloud lifecycle lock proofs", () => {
       users,
       userCharacters,
       agentSandboxes,
+      agentComputeStopIntents,
       agentNodeIncarnationHistories,
       dockerNodes,
       agentSandboxBackups,

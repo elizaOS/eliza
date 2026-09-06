@@ -19,10 +19,15 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { containersEnv } from "../../lib/config/containers-env";
 import {
   type ContainerLimitResolution,
   resolveMaxContainersForOrg,
 } from "../../lib/constants/pricing";
+import {
+  type CreatePlacementHost,
+  claimAppContainerNodeSlot,
+} from "../../lib/services/app-container-store-queries";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { hydrateTextField, offloadTextField } from "../../lib/storage/object-store";
 import { type Database, dbRead, dbWrite } from "../helpers";
@@ -47,6 +52,7 @@ export type NewContainer = InferInsertModel<typeof containers>;
 export type ContainerStatus =
   | "pending"
   | "building"
+  | "cleanup_required"
   | "deploying"
   | "running"
   | "stopped"
@@ -196,6 +202,157 @@ export class DuplicateContainerNameError extends Error {
  * Write operations → dbWrite (primary)
  */
 export class ContainersRepository {
+  /** Read retryable failed-create ownership from the authoritative environment database. */
+  async findCreateCleanupCandidates(): Promise<Container[]> {
+    return dbWrite
+      .select()
+      .from(containers)
+      .where(
+        and(
+          eq(containers.status, "cleanup_required"),
+          sql`${containers.metadata}->>'provider' = 'hetzner-docker'`,
+          sql`${containers.metadata}->>'environment' = ${containersEnv.environment()}`,
+        ),
+      );
+  }
+
+  /** Persist node ownership before provider effects, serialized with node retirement. */
+  async reserveCreatePlacement(
+    id: string,
+    organizationId: string,
+    nodeId: string,
+    nodeRecordId: string,
+    expectedHost: CreatePlacementHost,
+  ): Promise<void> {
+    await claimAppContainerNodeSlot(
+      dbWrite,
+      id,
+      organizationId,
+      nodeId,
+      () =>
+        new ElizaError("Selected Docker node no longer admits container placement", {
+          code: "DOCKER_PLACEMENT_UNAVAILABLE",
+          context: { containerId: id, nodeId, nodeRecordId },
+          severity: "ephemeral",
+        }),
+      () =>
+        new ElizaError("Container create intent no longer admits placement", {
+          code: "CONTAINER_PLACEMENT_AUTHORITY_CHANGED",
+          context: { containerId: id, organizationId },
+        }),
+      { nodeRecordId, environment: containersEnv.environment(), expectedHost },
+    );
+  }
+
+  /** Commit observed create success only while the original placement still owns the row. */
+  async completeCreatePlacement(
+    id: string,
+    organizationId: string,
+    nodeRecordId: string,
+    data: Pick<
+      NewContainer,
+      | "metadata"
+      | "load_balancer_url"
+      | "public_hostname"
+      | "volume_path"
+      | "volume_size_gb"
+      | "hcloud_volume_id"
+      | "volume_location"
+    >,
+  ): Promise<Container> {
+    const [completed] = await dbWrite
+      .update(containers)
+      .set({
+        ...data,
+        status: "deploying",
+        metadata: sql`${containers.metadata} || ${JSON.stringify(data.metadata ?? {})}::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(containers.id, id),
+          eq(containers.organization_id, organizationId),
+          eq(containers.status, "building"),
+          sql`${containers.metadata}->>'nodeRecordId' = ${nodeRecordId}`,
+          sql`NOT jsonb_exists(${containers.metadata}, 'slotReleasedAt')`,
+        ),
+      )
+      .returning();
+    if (!completed)
+      throw new ElizaError("Container placement changed before create completion", {
+        code: "CONTAINER_PLACEMENT_AUTHORITY_CHANGED",
+        context: { containerId: id, organizationId, nodeRecordId },
+      });
+    return hydrateContainerDeploymentLog(completed);
+  }
+
+  /** Failed creates retain capacity until removal is proven; release and status commit together. */
+  async settleCreateFailure(
+    id: string,
+    organizationId: string,
+    nodeRecordId: string,
+    errorMessage: string,
+    removed: boolean,
+  ): Promise<void> {
+    await dbWrite.transaction(async (tx) => {
+      const [owner] = await tx
+        .select({
+          status: containers.status,
+          nodeId: containers.node_id,
+          metadata: containers.metadata,
+        })
+        .from(containers)
+        .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
+        .for("update");
+      if (
+        owner?.metadata.nodeRecordId === nodeRecordId &&
+        owner.status === "failed" &&
+        Object.hasOwn(owner.metadata, "slotReleasedAt")
+      )
+        return;
+      if (
+        !owner ||
+        !owner.nodeId ||
+        owner.metadata.nodeRecordId !== nodeRecordId ||
+        Object.hasOwn(owner.metadata, "slotReleasedAt") ||
+        !["building", "cleanup_required"].includes(owner.status)
+      ) {
+        throw new ElizaError("Container placement changed before failed-create settlement", {
+          code: "CONTAINER_PLACEMENT_AUTHORITY_CHANGED",
+          context: { containerId: id, organizationId, nodeRecordId },
+        });
+      }
+      if (removed) {
+        const [node] = await tx
+          .update(dockerNodes)
+          .set({
+            allocated_count: sql`GREATEST(${dockerNodes.allocated_count} - 1, 0)`,
+            updated_at: new Date(),
+          })
+          .where(and(eq(dockerNodes.id, nodeRecordId), eq(dockerNodes.node_id, owner.nodeId)))
+          .returning({ id: dockerNodes.id });
+        if (!node)
+          throw new ElizaError("Container cleanup lost its original node identity", {
+            code: "CONTAINER_PLACEMENT_AUTHORITY_CHANGED",
+            context: { containerId: id, nodeRecordId },
+          });
+      }
+      await tx
+        .update(containers)
+        .set({
+          status: removed ? "failed" : "cleanup_required",
+          error_message: errorMessage,
+          ...(removed
+            ? {
+                metadata: sql`jsonb_set(${containers.metadata}, '{slotReleasedAt}', to_jsonb(now()::text))`,
+              }
+            : {}),
+          updated_at: new Date(),
+        })
+        .where(eq(containers.id, id));
+    });
+  }
+
   // ============================================================================
   // READ OPERATIONS (use read-intent connection)
   // ============================================================================

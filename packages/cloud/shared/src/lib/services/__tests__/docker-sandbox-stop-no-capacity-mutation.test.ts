@@ -27,6 +27,8 @@ import { DockerSandboxProvider } from "../docker-sandbox-provider";
 import { DockerSSHClient } from "../docker-ssh";
 import { headscaleIntegration } from "../headscale-integration";
 
+import { unwrapIsolatedDockerCommandForFixture } from "./docker-cli-transport-fixture";
+
 const SANDBOX_ID = "agent-capacity-ownership-test";
 const NODE_ID = "node-1";
 
@@ -77,7 +79,9 @@ beforeEach(() => {
         username,
         privateKey: Buffer.from("test-only-ssh-key"),
       });
-      spyOn(client, "exec").mockImplementation((command) => execBehavior(command));
+      spyOn(client, "exec").mockImplementation((command) =>
+        execBehavior(unwrapIsolatedDockerCommandForFixture(command)),
+      );
       spyOn(client, "disconnect").mockResolvedValue(undefined);
       return client;
     },
@@ -91,6 +95,90 @@ afterEach(() => {
 });
 
 describe("provider stop never mutates node capacity", () => {
+  test("retained deletion uses captured SSH and immutable ID despite stale cached placement", async () => {
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+    const containerId = "a".repeat(64);
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    let running = true;
+    let removed = false;
+    let restart = "always";
+    const commands: string[] = [];
+    execBehavior = async (command) => {
+      commands.push(command);
+      if (command.startsWith("sh -c "))
+        return removed ? "absent" : `present|${containerId}|${agentId}`;
+      if (command.startsWith("docker container inspect")) {
+        return command.includes(".State.Status")
+          ? `${containerId}|${agentId}|${running ? "running" : "exited"}|${running}|false|false|false|${restart}`
+          : `${containerId}|${agentId}`;
+      }
+      if (!command.endsWith(`'${containerId}'`))
+        throw new Error("Mutation did not target the immutable ID");
+      if (command.startsWith("docker update")) restart = "no";
+      else if (command.startsWith("docker stop")) running = false;
+      else if (command.startsWith("docker rm")) removed = true;
+      else throw new Error("Unexpected mutation");
+      return containerId;
+    };
+    const nodeRead = spyOn(dockerNodesRepository, "findByNodeIdOnPrimary");
+    try {
+      const locator = {
+        sandboxId: SANDBOX_ID,
+        containerName: SANDBOX_ID,
+        containerId,
+        agentId,
+        nodeId: "retained-node",
+        hostname: "192.0.2.20",
+        sshPort: 2222,
+        sshUser: "retained-user",
+        hostKeyFingerprint: "SHA256:captured-fingerprint",
+      };
+      await expect(provider.stopForDeletion(SANDBOX_ID, locator)).resolves.toEqual({
+        kind: "not-running-proven",
+      });
+      expect(removed).toBe(true);
+      expect(sshFactorySpy).toHaveBeenCalledWith(
+        "192.0.2.20",
+        2222,
+        "SHA256:captured-fingerprint",
+        "retained-user",
+      );
+      expect(nodeRead).not.toHaveBeenCalled();
+      expect(decrementSpy).not.toHaveBeenCalled();
+      const before = commands.length;
+      await expect(provider.stopForDeletion(SANDBOX_ID, locator)).resolves.toEqual({
+        kind: "not-running-proven",
+      });
+      expect(commands.slice(before).every((command) => command.startsWith("sh -c "))).toBe(true);
+      expect(decrementSpy).not.toHaveBeenCalled();
+    } finally {
+      nodeRead.mockRestore();
+    }
+  });
+
+  test("retained deletion refuses incomplete captured SSH instead of hydrating a current host", async () => {
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+    const nodeRead = spyOn(dockerNodesRepository, "findByNodeIdOnPrimary");
+    try {
+      await expect(
+        provider.stopForDeletion(SANDBOX_ID, {
+          sandboxId: SANDBOX_ID,
+          containerName: SANDBOX_ID,
+          containerId: "a".repeat(64),
+          agentId: "11111111-1111-4111-8111-111111111111",
+          nodeId: NODE_ID,
+        }),
+      ).rejects.toThrow("requires captured SSH authority");
+      expect(sshFactorySpy).not.toHaveBeenCalled();
+      expect(nodeRead).not.toHaveBeenCalled();
+      expect(decrementSpy).not.toHaveBeenCalled();
+    } finally {
+      nodeRead.mockRestore();
+    }
+  });
+
   test.each(["current", "stale", "absent"])(
     "uses only observed VPN identity for lifecycle deletion (%s)",
     async (registration) => {

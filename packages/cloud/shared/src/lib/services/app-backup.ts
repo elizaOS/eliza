@@ -4,9 +4,12 @@
  * Exports a portable, secret-free snapshot of an app's configuration so a
  * user/agent can back it up and recreate the app later (the "backing up" part of
  * the app lifecycle). Restore creates a NEW app from the snapshot (new slug + new
- * API key) and reapplies config + monetization pricing — monetization itself is
+ * API key) and reapplies config + monetization pricing. Outbound automation stays
+ * disabled until the restored app is reviewed and explicitly enabled; monetization is
  * always restored DISABLED because the new app starts at review_status=draft and
- * must pass review before it can collect money. Frontend deployments are
+ * must pass review before it can collect money. Initial configuration and the
+ * API key commit together, so failed restoration does not publish a partial app.
+ * Frontend deployments are
  * immutable R2 artifacts referenced by content hash — the snapshot records the
  * active deployment's hash so the user can redeploy; the bytes are not embedded.
  */
@@ -14,7 +17,6 @@
 import type { App } from "../../db/repositories/apps";
 import { logger } from "../utils/logger";
 import { parseAppMonetizationNumber } from "./app-credit-math";
-import { appCreditsService } from "./app-credits";
 import { appsService } from "./apps";
 
 export const APP_BACKUP_VERSION = 1 as const;
@@ -109,51 +111,48 @@ export class AppBackupService {
       throw new Error(`Unsupported backup version: ${backup.version}`);
     }
     const warnings: string[] = [];
-    const created = await appsService.create({
-      name: overrideName?.trim() || `${backup.app.name} (restored)`,
-      description: backup.app.description ?? undefined,
-      organization_id: organizationId,
-      created_by_user_id: userId,
-      app_url: backup.app.app_url,
-      allowed_origins: backup.app.allowed_origins,
-      logo_url: backup.app.logo_url ?? undefined,
-      website_url: backup.app.website_url ?? undefined,
-      contact_email: backup.app.contact_email ?? undefined,
-    });
-
-    await appsService.update(created.app.id, {
-      linked_character_ids: backup.app.linked_character_ids ?? [],
-      discord_automation: backup.automation?.discord ?? null,
-      telegram_automation: backup.automation?.telegram ?? null,
-      twitter_automation: backup.automation?.twitter ?? null,
-      promotional_assets: backup.promotional_assets ?? null,
-    });
-
-    // Reapply monetization PRICING (create() does not carry it), but always
-    // force monetization OFF: the enabled flag must come from the review flow,
-    // never from a client-supplied backup blob (#11834).
+    const automation = backup.automation;
+    const restoredAutomation = {
+      discord: automation?.discord ? { ...automation.discord, enabled: false } : null,
+      telegram: automation?.telegram ? { ...automation.telegram, enabled: false } : null,
+      twitter: automation?.twitter ? { ...automation.twitter, enabled: false } : null,
+    };
     if (
-      backup.monetization.enabled ||
-      backup.monetization.inference_markup_percentage > 0 ||
-      backup.monetization.purchase_share_percentage > 0
+      [automation?.discord, automation?.telegram, automation?.twitter].some(
+        (config) => config?.enabled === true,
+      )
     ) {
-      try {
-        await appCreditsService.updateMonetizationSettings(created.app.id, {
-          monetizationEnabled: false,
-          inferenceMarkupPercentage: backup.monetization.inference_markup_percentage,
-          purchaseSharePercentage: backup.monetization.purchase_share_percentage,
-        });
-      } catch (error) {
-        logger.warn("[AppBackup] failed to reapply monetization on restore", {
-          appId: created.app.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      if (backup.monetization.enabled) {
-        warnings.push(
-          "Monetization was disabled on restore — submit the restored app for review to re-enable it.",
-        );
-      }
+      warnings.push(
+        "Outbound automation was disabled on restore. Review destinations and explicitly re-enable automation after validating the restored app.",
+      );
+    }
+    const created = await appsService.create(
+      {
+        name: overrideName?.trim() || `${backup.app.name} (restored)`,
+        description: backup.app.description ?? undefined,
+        organization_id: organizationId,
+        created_by_user_id: userId,
+        app_url: backup.app.app_url,
+        allowed_origins: backup.app.allowed_origins,
+        logo_url: backup.app.logo_url ?? undefined,
+        website_url: backup.app.website_url ?? undefined,
+        contact_email: backup.app.contact_email ?? undefined,
+      },
+      {
+        linked_character_ids: backup.app.linked_character_ids ?? [],
+        discord_automation: restoredAutomation.discord,
+        telegram_automation: restoredAutomation.telegram,
+        twitter_automation: restoredAutomation.twitter,
+        promotional_assets: backup.promotional_assets ?? null,
+        inference_markup_percentage: backup.monetization.inference_markup_percentage,
+        purchase_share_percentage: backup.monetization.purchase_share_percentage,
+      },
+    );
+
+    if (backup.monetization.enabled) {
+      warnings.push(
+        "Monetization was disabled on restore — submit the restored app for review to re-enable it.",
+      );
     }
 
     logger.info("[AppBackup] restored app from backup", {

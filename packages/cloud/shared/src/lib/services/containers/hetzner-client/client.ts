@@ -21,8 +21,11 @@ import { dockerNodeManager } from "../../docker-node-manager";
 import { getUsedDockerHostPorts } from "../../docker-port-allocation";
 import {
   allocatePort,
+  buildDockerCreateAttemptCleanupCommand,
   buildDockerEnvFileStdinTransport,
   buildEnsureNetworkCmd,
+  buildExactRestoreBootFencedCommand,
+  parseDockerCreateAttemptCleanupReceipt,
   shellQuote,
   validateDockerEnvFileStdinEnvironment,
   WEBUI_PORT_MAX,
@@ -91,6 +94,63 @@ function validateContainerEnvironment(environment: Readonly<Record<string, strin
 }
 
 export class HetznerContainersClient {
+  /** Retry durable failed creates only on the original pinned host and boot incarnation. */
+  async reconcileCreateCleanup(): Promise<{ checked: number; removed: number; pending: number }> {
+    const candidates = await containersRepository.findCreateCleanupCandidates();
+    const result = { checked: candidates.length, removed: 0, pending: 0 };
+    for (const row of candidates) {
+      try {
+        const recordId = row.metadata.nodeRecordId;
+        const node =
+          typeof recordId === "string"
+            ? await dockerNodesRepository.findByIdOnPrimary(recordId)
+            : null;
+        if (
+          !node ||
+          node.node_id !== row.node_id ||
+          !node.node_incarnation ||
+          node.node_incarnation !== row.metadata.createNodeIncarnation ||
+          !node.host_key_fingerprint ||
+          node.host_key_fingerprint !== row.metadata.createHostKeyFingerprint ||
+          node.hostname !== row.metadata.createHostname ||
+          node.ssh_port !== row.metadata.createSshPort ||
+          node.ssh_user !== row.metadata.createSshUser ||
+          node.metadata.environment !== containersEnv.environment() ||
+          row.metadata.environment !== containersEnv.environment()
+        ) {
+          throw new HetznerClientError(
+            "container_create_failed",
+            "Original create host authority is unavailable or changed",
+          );
+        }
+        const ssh = DockerSSHClient.getClient(
+          node.hostname,
+          node.ssh_port,
+          node.host_key_fingerprint,
+          node.ssh_user,
+        );
+        if (await this.cleanupCreateAttempt(ssh, row.id, node.node_incarnation)) {
+          await containersRepository.settleCreateFailure(
+            row.id,
+            row.organization_id,
+            node.id,
+            row.error_message ?? "Container creation failed; remote cleanup confirmed",
+            true,
+          );
+          result.removed += 1;
+        } else result.pending += 1;
+      } catch (error) {
+        // error-policy:J6 one unresolved teardown retains ownership without blocking other retries.
+        result.pending += 1;
+        logger.warn("[hetzner-client] Create cleanup retry remains pending", {
+          containerId: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return result;
+  }
+
   // ----------------------------------------------------------------------
   // CRUD
   // ----------------------------------------------------------------------
@@ -223,29 +283,48 @@ export class HetznerContainersClient {
       throw new HetznerClientError("no_capacity", "No Hetzner-Docker capacity available");
     }
 
-    // 4. SSH into the node, pull the image, create + start the container.
-    const ssh = DockerSSHClient.getClient(
-      node.hostname,
-      node.ssh_port ?? 22,
-      node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? "root",
-    );
-
     const containerName = deriveContainerName(row.id);
-    const usedPorts = await getUsedDockerHostPorts(node.node_id);
+    const nodeIncarnation = node.node_incarnation;
+    let ssh: DockerSSHClient;
+    let usedPorts: Set<number>;
+    let volumePath: string | undefined;
+    try {
+      if (!nodeIncarnation)
+        throw new HetznerClientError("container_create_failed", "Docker node has no boot identity");
+      ssh = DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? 22,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? "root",
+      );
+      usedPorts = await getUsedDockerHostPorts(node.node_id);
+      volumePath =
+        input.persistVolume && !wantHcloudVolume
+          ? deriveVolumePath(input.organizationId, input.projectName)
+          : undefined;
+      await containersRepository.reserveCreatePlacement(
+        row.id,
+        input.organizationId,
+        node.node_id,
+        node.id,
+        node,
+      );
+    } catch (error) {
+      // error-policy:J2 local preparation and admission fail before any Docker effects.
+      const message = error instanceof Error ? error.message : String(error);
+      await containersRepository.updateStatus(row.id, "failed", message);
+      throw new HetznerClientError("container_create_failed", message, error);
+    }
 
-    // Local volume path - used for non-hcloud persistent volumes. For hcloud
-    // volumes this is set after the attach step below.
-    let volumePath: string | undefined =
-      input.persistVolume && !wantHcloudVolume
-        ? deriveVolumePath(input.organizationId, input.projectName)
-        : undefined;
     let bootstrapStats: { fileCount: number; totalBytes: number } | null = null;
 
     try {
       await containersRepository.update(row.id, input.organizationId, {
         status: "building",
         deployment_log: `Pulling image ${input.image} on ${node.node_id}...`,
+        volume_path: volumePath ?? null,
+        hcloud_volume_id: hcloudVolumeId ?? null,
+        volume_location: hcloudVolumeLocation ?? null,
       });
       await ensureRegistryAccess(ssh, input.image);
       await ssh.exec(`docker pull ${shellQuote(input.image)}`, 5 * 60 * 1000);
@@ -262,6 +341,9 @@ export class HetznerContainersClient {
           projectName: input.projectName,
         });
         volumePath = attached.mountPath;
+        await containersRepository.update(row.id, input.organizationId, {
+          volume_path: volumePath,
+        });
         // Confirm location matches what we stored from the volume record.
         hcloudVolumeLocation = attached.location;
       } else if (volumePath) {
@@ -305,11 +387,16 @@ export class HetznerContainersClient {
             ]
               .filter((part) => part.length > 0)
               .join(" "),
+          { replacementAttemptId: row.id },
         );
 
         try {
           await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
-          await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
+          await ssh.execStdin(
+            buildExactRestoreBootFencedCommand(nodeIncarnation, createTransport.command),
+            createTransport.input,
+            60_000,
+          );
           break;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -332,8 +419,13 @@ export class HetznerContainersClient {
       if (hostPort === undefined) {
         throw new HetznerClientError("container_create_failed", "Failed to allocate host port");
       }
-      await ssh.exec(`docker start ${shellQuote(containerName)}`, 60_000);
-      await dockerNodesRepository.incrementAllocated(node.node_id);
+      await ssh.exec(
+        buildExactRestoreBootFencedCommand(
+          nodeIncarnation,
+          `docker start ${shellQuote(containerName)}`,
+        ),
+        60_000,
+      );
 
       const meta: HetznerContainerMetadata = {
         provider: "hetzner-docker",
@@ -359,20 +451,22 @@ export class HetznerContainersClient {
 
       const metadata: Record<string, unknown> = { ...meta };
       if (bootstrapStats) metadata.bootstrapSource = bootstrapStats;
-      const updated = await containersRepository.update(row.id, input.organizationId, {
-        status: "deploying",
-        deployment_log: `Container started on ${node.node_id}; waiting for health check...`,
-        load_balancer_url: publicUrl,
-        public_hostname: publicHostname,
-        node_id: node.node_id,
-        volume_path: volumePath ?? null,
-        volume_size_gb: input.volumeSizeGb ?? null,
-        hcloud_volume_id: hcloudVolumeId ?? null,
-        volume_location: hcloudVolumeLocation ?? null,
-        metadata,
-      });
+      const updated = await containersRepository.completeCreatePlacement(
+        row.id,
+        input.organizationId,
+        node.id,
+        {
+          load_balancer_url: publicUrl,
+          public_hostname: publicHostname,
+          volume_path: volumePath ?? null,
+          volume_size_gb: input.volumeSizeGb ?? null,
+          hcloud_volume_id: hcloudVolumeId ?? null,
+          volume_location: hcloudVolumeLocation ?? null,
+          metadata,
+        },
+      );
 
-      return rowToSummary(updated ?? { ...row, metadata });
+      return rowToSummary(updated);
     } catch (err) {
       // error-policy:J2 translate the create failure into a typed provisioning
       // error (with `err` as cause) after marking the row `failed`; the throw
@@ -383,18 +477,14 @@ export class HetznerContainersClient {
         nodeId: node.node_id,
         error: message,
       });
-      // Best-effort deletion of the half-created Docker container. Leave the
-      // Hetzner Cloud volume intact; it may contain data if this is a
-      // redeploy and the container start failed after attach. Operators can
-      // retry because the volume is found by label on the next attempt.
-      // error-policy:J6 teardown-only; a cleanup failure is logged, never masks
-      // the create error rethrown below.
-      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, 30_000).catch((rmErr) =>
-        logger.warn(`[hetzner-client] cleanup rm failed for ${containerName}`, {
-          error: rmErr instanceof Error ? rmErr.message : String(rmErr),
-        }),
+      const removed = await this.cleanupCreateAttempt(ssh, row.id, nodeIncarnation);
+      await containersRepository.settleCreateFailure(
+        row.id,
+        input.organizationId,
+        node.id,
+        message,
+        removed,
       );
-      await containersRepository.updateStatus(row.id, "failed", message);
       throw new HetznerClientError("container_create_failed", message, err);
     }
   }
@@ -941,7 +1031,13 @@ export class HetznerContainersClient {
    * (`building`, `deploying`) and flip `running` / `failed` accordingly.
    * Called from the deployment-monitor cron handler.
    */
-  async monitorInflight(): Promise<{ checked: number; running: number; failed: number }> {
+  async monitorInflight(): Promise<{
+    checked: number;
+    running: number;
+    failed: number;
+    cleanup: { checked: number; removed: number; pending: number };
+  }> {
+    const cleanup = await this.reconcileCreateCleanup();
     const inflight = await dbRead
       .select()
       .from(containersTable)
@@ -1004,12 +1100,68 @@ export class HetznerContainersClient {
       }
     }
 
-    return { checked: inflight.length, running, failed };
+    return { checked: inflight.length, running, failed, cleanup };
   }
 
   // ----------------------------------------------------------------------
   // Internal helpers
   // ----------------------------------------------------------------------
+
+  /** Cancel the producer before deleting only its recorded candidate. */
+  private async cleanupCreateAttempt(
+    ssh: DockerSSHClient,
+    attemptId: string,
+    nodeIncarnation: string,
+  ): Promise<boolean> {
+    try {
+      const output = await ssh.exec(
+        buildExactRestoreBootFencedCommand(
+          nodeIncarnation,
+          buildDockerCreateAttemptCleanupCommand(attemptId),
+        ),
+        30_000,
+      );
+      const receipt = parseDockerCreateAttemptCleanupReceipt(output, attemptId);
+      // Quiescence without a candidate proves this attempt has nothing to remove.
+      // A reusable name cannot authorize deleting a container created elsewhere.
+      if (receipt.containerId === null) return receipt.quiescent;
+      const target = receipt.containerId;
+      try {
+        await ssh.exec(
+          buildExactRestoreBootFencedCommand(nodeIncarnation, `docker rm -f ${shellQuote(target)}`),
+          30_000,
+        );
+        return true;
+      } catch (removeError) {
+        // error-policy:J6 settle uncertain deletion only through a fresh exact-target absence response.
+        try {
+          await ssh.exec(
+            buildExactRestoreBootFencedCommand(
+              nodeIncarnation,
+              `docker inspect --format '{{.Id}}' ${shellQuote(target)}`,
+            ),
+            15_000,
+          );
+        } catch (inspectError) {
+          // error-policy:J6 transport failure is never an absence receipt.
+          if (
+            isContainerAbsentMessage(
+              inspectError instanceof Error ? inspectError.message : String(inspectError),
+            )
+          )
+            return true;
+        }
+        throw removeError;
+      }
+    } catch (error) {
+      // error-policy:J6 failed cleanup preserves the durable reservation for reconciliation.
+      logger.warn("[hetzner-client] Create cleanup remains unresolved", {
+        attemptId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
 
   private async requireRowWithMeta(
     containerId: string,

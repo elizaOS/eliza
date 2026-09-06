@@ -25,7 +25,12 @@ import {
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
 } from "../../../lib/services/provisioning-job-types";
-import { agentSandboxes } from "../../schemas/agent-sandboxes";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
+import {
+  agentBackupCatalogAuthorities,
+  agentSandboxBackups,
+  agentSandboxes,
+} from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import { generations } from "../../schemas/generations";
 import { jobExecutionLeases } from "../../schemas/job-execution-leases";
@@ -193,6 +198,9 @@ beforeAll(async () => {
       users,
       userCharacters,
       agentSandboxes,
+      agentSandboxBackups,
+      agentBackupCatalogAuthorities,
+      agentNodeIncarnationHistories,
       apiKeys,
       usageRecords,
       generations,
@@ -447,6 +455,57 @@ describe("stuck-provisioning owner predicates", () => {
       agentId,
     );
     expect(await sandboxStatus(agentId)).toBe("running");
+  });
+
+  test.each(["heartbeat", "backup-stamp", "backup-row"] as const)(
+    "health recovery cannot bypass retained state identified by %s",
+    async (evidence) => {
+      const { organizationId, userId } = await seedOrgAndUser();
+      const agentId = await seedProvisioningAgent(organizationId, userId);
+      const probed = await sandboxCapture(agentId);
+      if (evidence === "backup-row") {
+        await dbWrite.insert(agentSandboxBackups).values({
+          sandbox_record_id: agentId,
+          snapshot_type: "pre-shutdown",
+          state_data: { memories: [], config: {}, workspaceFiles: {} },
+          size_bytes: 2,
+          backup_kind: "full",
+        });
+      } else {
+        await dbWrite
+          .update(agentSandboxes)
+          .set(
+            evidence === "heartbeat"
+              ? { last_heartbeat_at: new Date() }
+              : { last_backup_at: new Date() },
+          )
+          .where(eq(agentSandboxes.id, agentId));
+      }
+      expect(await repo.markRunningFromProvisioning(probed)).toBeUndefined();
+      expect(await sandboxStatus(agentId)).toBe("provisioning");
+    },
+  );
+
+  test("health recovery cannot publish while a replacement owns unfinished restoration", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const agentId = await seedProvisioningAgent(organizationId, userId);
+    const probed = await sandboxCapture(agentId);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        replacement_cleanup_sandbox_id: "candidate-sandbox",
+        replacement_cleanup_node_id: "candidate-node",
+        replacement_cleanup_container_name: "candidate-container",
+        replacement_cleanup_attempt_id: crypto.randomUUID(),
+        replacement_cleanup_container_id: "a".repeat(64),
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    expect(await repo.markRunningFromProvisioning(probed)).toBeUndefined();
+    expect(await repo.markRunningFromProvisioning(await sandboxCapture(agentId))).toBeUndefined();
+    expect(await sandboxStatus(agentId)).toBe("provisioning");
   });
 
   test("recovery CAS never promotes forged Shared or unknown rows with container locators", async () => {

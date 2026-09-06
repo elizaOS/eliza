@@ -9,7 +9,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
+import { eq, sql } from "drizzle-orm";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
@@ -128,8 +129,8 @@ describe("App config backup/restore", () => {
         announceIntervalMax: 120,
       },
       twitter_automation: {
-        enabled: false,
-        autoPost: false,
+        enabled: true,
+        autoPost: true,
         autoReply: false,
         autoEngage: false,
         discovery: false,
@@ -185,21 +186,37 @@ describe("App config backup/restore", () => {
     expect(restored.name).toContain("My Monetized App");
 
     const restoredFresh = await appsService.getById(restored.id);
+    const { telegramAppAutomationService } = await import("../telegram-automation/app-automation");
+    const activeTelegramApps =
+      await telegramAppAutomationService.getAppsWithActiveAutomation(orgId);
+    expect(activeTelegramApps.some((app) => app.id === source.id)).toBe(true);
+    expect(activeTelegramApps.some((app) => app.id === restored.id)).toBe(false);
     // Review-gate (#11834): even though the backup says enabled=true, the
     // restored app is a fresh draft — monetization must be FORCED OFF and the
     // caller warned. Pricing is persisted so re-enabling after review is easy.
+    expect(restored.discord_automation).toEqual(restoredFresh?.discord_automation);
+    expect(restored.telegram_automation).toEqual(restoredFresh?.telegram_automation);
+    expect(restored.inference_markup_percentage).toEqual(
+      restoredFresh?.inference_markup_percentage,
+    );
     expect(restoredFresh?.monetization_enabled).toBe(false);
     expect(restoredFresh?.review_status).toBe("draft");
-    expect(warnings).toEqual([expect.stringContaining("Monetization was disabled on restore")]);
+    expect(warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Monetization was disabled on restore"),
+        expect.stringContaining("Outbound automation was disabled on restore"),
+      ]),
+    );
     expect(Number(restoredFresh?.inference_markup_percentage)).toBe(25);
     expect(Number(restoredFresh?.purchase_share_percentage)).toBe(40);
     expect(restoredFresh?.allowed_origins).toEqual(["https://myapp.example.com"]);
     expect(restoredFresh?.linked_character_ids).toEqual(["11111111-1111-4111-8111-111111111111"]);
     expect(restoredFresh?.discord_automation).toMatchObject({
+      enabled: false,
       guildId: "guild-1",
       channelId: "channel-1",
     });
-    expect(restoredFresh?.telegram_automation).toMatchObject({ groupId: "chat-1" });
+    expect(restoredFresh?.telegram_automation).toMatchObject({ enabled: false, groupId: "chat-1" });
     expect(restoredFresh?.twitter_automation).toMatchObject({ enabled: false });
     expect(restoredFresh?.promotional_assets).toEqual([
       {
@@ -209,6 +226,47 @@ describe("App config backup/restore", () => {
         generatedAt: "2026-07-01T00:00:00.000Z",
       },
     ]);
+  });
+
+  test("invalid restore pricing creates neither an app nor an API key", async () => {
+    const { orgId, userId } = await seed();
+    const { app: source } = await appsService.create({
+      name: "Invalid restore pricing",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://example.invalid",
+    });
+    const backup = await appBackupService.exportApp(source);
+    const appsBefore = await dbWrite
+      .select({ id: apps.id })
+      .from(apps)
+      .where(eq(apps.organization_id, orgId));
+    const keysBefore = await dbWrite
+      .select({ id: apiKeys.id })
+      .from(apiKeys)
+      .where(eq(apiKeys.organization_id, orgId));
+    for (const [field, value] of [
+      ["inference_markup_percentage", Number.NaN],
+      ["inference_markup_percentage", 1001],
+      ["purchase_share_percentage", -1],
+      ["purchase_share_percentage", 101],
+    ] as const) {
+      await expect(
+        appBackupService.restoreApp(orgId, userId, {
+          ...backup,
+          monetization: { ...backup.monetization, [field]: value },
+        }),
+      ).rejects.toThrow(field);
+    }
+    expect(
+      await dbWrite.select({ id: apps.id }).from(apps).where(eq(apps.organization_id, orgId)),
+    ).toHaveLength(appsBefore.length);
+    expect(
+      await dbWrite
+        .select({ id: apiKeys.id })
+        .from(apiKeys)
+        .where(eq(apiKeys.organization_id, orgId)),
+    ).toHaveLength(keysBefore.length);
   });
 
   test("export rejects a non-finite value from either monetization field", async () => {
@@ -273,5 +331,53 @@ describe("App config backup/restore", () => {
     await expect(
       appBackupService.restoreApp(orgId, userId, { version: 999 } as never),
     ).rejects.toThrow(/version/i);
+  });
+  test("restore with absent Telegram configuration works after upgrading the historical constraint", async () => {
+    const { orgId, userId } = await seed();
+    const { app: source } = await appsService.create({
+      name: "Telegram-free backup",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://example.invalid",
+    });
+    const backup = await appBackupService.exportApp(source);
+    backup.automation.telegram = null;
+    await dbWrite.execute(sql`ALTER TABLE apps ALTER COLUMN telegram_automation SET NOT NULL`);
+    const appsBefore = await dbWrite
+      .select({ id: apps.id })
+      .from(apps)
+      .where(eq(apps.organization_id, orgId));
+    const keysBefore = await dbWrite
+      .select({ id: apiKeys.id })
+      .from(apiKeys)
+      .where(eq(apiKeys.organization_id, orgId));
+    try {
+      await expect(
+        appBackupService.restoreApp(orgId, userId, backup, "Before migration"),
+      ).rejects.toMatchObject({ cause: { code: "23502" } });
+      expect(
+        await dbWrite.select({ id: apps.id }).from(apps).where(eq(apps.organization_id, orgId)),
+      ).toHaveLength(appsBefore.length);
+      expect(
+        await dbWrite
+          .select({ id: apiKeys.id })
+          .from(apiKeys)
+          .where(eq(apiKeys.organization_id, orgId)),
+      ).toHaveLength(keysBefore.length);
+    } finally {
+      const migration = await readFile(
+        new URL(
+          "../../../db/migrations/0365_apps_telegram_automation_nullable.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      );
+      await dbWrite.execute(sql.raw(migration));
+    }
+    const restored = await appBackupService.restoreApp(orgId, userId, backup, "After migration");
+    const persisted = await appsService.getById(restored.app.id);
+    expect(persisted?.telegram_automation).toBeNull();
+    expect(persisted?.organization_id).toBe(orgId);
+    expect(persisted?.app_url).toBe(source.app_url);
   });
 });
