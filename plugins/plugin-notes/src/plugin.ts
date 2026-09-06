@@ -4,7 +4,11 @@
  * interaction transport to the shared VIEWS system.
  */
 
-import type { ContextDefinition, Plugin } from "@elizaos/core";
+import {
+  type ContextDefinition,
+  type Plugin,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
@@ -40,7 +44,7 @@ export const notesPlugin: Plugin = {
   async init(_config, runtime) {
     runtime.contexts.tryRegister(NOTES_CONTEXT);
   },
-  actions: [notesAction],
+  actions: [...promoteSubactionsToActions(notesAction)],
   providers: [notesProvider],
   services: [NotesService],
   routes: notesRoutes,
