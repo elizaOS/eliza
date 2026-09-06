@@ -1141,6 +1141,45 @@ describe("useFirstRunConductor", () => {
     },
   );
 
+  it.each(["error:retry", "runtime:cloud"])(
+    "resumes Cloud after leaving Settings without a configured local runtime (%s)",
+    async (action) => {
+      windowWithElectrobun.__electrobunWindowId = 1;
+      mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+        new Error("Cloud needs credits"),
+      );
+      seedAppStore();
+      const { transcript, turn, unmount } = renderConductor();
+      await waitForTurn(turn, "first-run:greeting");
+      tryHandleFirstRunAction("__first_run__:runtime:cloud");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+        ).toBe(true),
+      );
+      tryHandleFirstRunAction("__first_run__:error:settings");
+      await waitFor(() =>
+        expect(
+          transcript.current.some((m) =>
+            m.text.includes("Finish configuring your connection"),
+          ),
+        ).toBe(true),
+      );
+      localStorage.removeItem("steward_session_token");
+      mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+      seedAppStore({ elizaCloudConnected: false });
+      tryHandleFirstRunAction(`__first_run__:${action}`);
+      await waitForTurn(turn, "first-run:cloud-oauth");
+      localStorage.setItem("steward_session_token", "cloud-token");
+      mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+      seedAppStore({ elizaCloudConnected: true });
+      await waitForTurn(turn, "first-run:tutorial");
+      expect(mocks.client.startAgent).not.toHaveBeenCalled();
+      expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+      unmount();
+    },
+  );
+
   it("a persistent finish 404 does NOT re-loop the runtime question: the error turn stays distinct, offers retry, and 'Configure in Settings' escapes", async () => {
     // Simulate the reported bug: POST /api/first-run always 404s ("Not found").
     mocks.client.submitFirstRun.mockRejectedValue(new Error("Not found"));
