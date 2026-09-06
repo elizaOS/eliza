@@ -6,6 +6,9 @@
 // capability. The `client` WS transport is mocked; the surface + registry are real.
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-contacts/src/view-capabilities";
+import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-messages/src/view-capabilities";
+import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-phone/src/view-capabilities";
 
 const sendWsMessage = vi.fn();
 vi.mock("../../api", () => ({ client: { sendWsMessage } }));
@@ -13,7 +16,72 @@ vi.mock("../../api", () => ({ client: { sendWsMessage } }));
 afterEach(cleanup);
 beforeEach(() => sendWsMessage.mockClear());
 
+const { ShellViewAgentSurface } = await import("./ShellViewAgentSurface");
+const { AgentButton } = await import("../../agent-surface");
+const { dispatchViewInteract } = await import("./view-interact-registry");
+
 describe("ShellViewAgentSurface", () => {
+  it.each([
+    ["contacts", "list-contacts", CONTACTS_VIEW_CAPABILITIES],
+    ["messages", "list-threads", MESSAGES_VIEW_CAPABILITIES],
+    ["phone", "phone-state", PHONE_VIEW_CAPABILITIES],
+  ] as const)(
+    "routes the bundled %s read while rejecting its human-only and generic operations",
+    async (viewId, read, capabilities) => {
+      const records = [{ id: "last-record", text: "complete native result" }];
+      const interact = vi.fn(async () => records);
+      const onClick = vi.fn();
+      render(
+        <ShellViewAgentSurface
+          viewId={viewId}
+          capabilities={capabilities}
+          interact={interact}
+          surface={{ capabilities: [] }}
+        >
+          <AgentButton agentId="send" onClick={onClick}>
+            Send
+          </AgentButton>
+        </ShellViewAgentSurface>,
+      );
+      await dispatchViewInteract(
+        viewId,
+        "gui",
+        read,
+        undefined,
+        `${viewId}-native-read`,
+      );
+      expect(sendWsMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          requestId: `${viewId}-native-read`,
+          success: true,
+          result: records,
+        }),
+      );
+      for (const capability of [
+        ...capabilities
+          .filter((entry) => entry.authority === "human")
+          .map((entry) => entry.id),
+        "agent-click",
+        "click-element",
+      ]) {
+        await dispatchViewInteract(
+          viewId,
+          "gui",
+          capability,
+          { id: "send" },
+          `${viewId}-denied-${capability}`,
+        );
+        expect(sendWsMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            requestId: `${viewId}-denied-${capability}`,
+            success: false,
+          }),
+        );
+      }
+      expect(interact).toHaveBeenCalledOnce();
+      expect(onClick).not.toHaveBeenCalled();
+    },
+  );
   it("makes a wrapped shell page controllable via the interact dispatch", async () => {
     const { ShellViewAgentSurface } = await import("./ShellViewAgentSurface");
     const { AgentButton } = await import("../../agent-surface");

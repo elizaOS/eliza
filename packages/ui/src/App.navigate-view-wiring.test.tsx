@@ -24,7 +24,8 @@ import {
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentButton, getViewRegistry } from "./agent-surface";
-import { registerAppShellPage } from "./app-shell-registry";
+import { listAppShellPages, registerAppShellPage } from "./app-shell-registry";
+import { invokeViewInteract } from "./components/views/view-interact-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import { DEFAULT_BRANDING } from "./config/branding-base";
 import { BrandingContext } from "./config/branding-react.hooks";
@@ -32,6 +33,13 @@ import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { resetUiRegistryHostForTests } from "./registry-host";
 import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
 import { shellHistory } from "./surface-realm-channel";
+
+const nativeContacts = vi.hoisted(() => ({
+  listContacts: vi.fn(),
+  createContact: vi.fn(),
+  importVCard: vi.fn(),
+}));
+vi.mock("@elizaos/capacitor-contacts", () => ({ Contacts: nativeContacts }));
 
 const appState = vi.hoisted(() => ({
   backendConnectionState: "connected",
@@ -284,6 +292,7 @@ vi.mock("./bridge/electrobun-runtime", () => ({
 
 vi.mock("./platform/init", () => ({
   isDesktopPlatform: () => false,
+  isElizaOS: () => true,
   isIOS: false,
   isNative: false,
   isStandalonePwa: () => false,
@@ -1288,6 +1297,71 @@ describe("App navigate-view event wiring", () => {
       walletButton.closest<HTMLElement>("[data-app-shell-root]")?.style
         .paddingTop,
     ).toBe("0px");
+  });
+
+  it("routes the registered native Contacts read through App without granting native writes or DOM control", async () => {
+    electrobunRuntimeState.enabled = false;
+    const platform = vi
+      .spyOn(Capacitor, "getPlatform")
+      .mockReturnValue("android");
+    await import("../../../plugins/plugin-contacts/src/register");
+    const registration = listAppShellPages().find(
+      (entry) => entry.id === "contacts",
+    );
+    if (!registration) throw new Error("Native Contacts page did not register");
+    const onClick = vi.fn();
+    registerAppShellPage({
+      ...registration,
+      Component: () => (
+        <AgentButton agentId="create-contact" onClick={onClick}>
+          Create contact
+        </AgentButton>
+      ),
+    });
+    const contacts = Array.from({ length: 1001 }, (_, index) => ({
+      id: `contact-${index}`,
+      lookupKey: `lookup-${index}`,
+      displayName: `Person ${index}`,
+      phoneNumbers: [],
+      emailAddresses: [],
+      starred: false,
+    }));
+    nativeContacts.listContacts.mockResolvedValue({ contacts });
+    appState.tab = "contacts";
+    window.history.replaceState(null, "", "/contacts");
+    try {
+      render(<App />);
+      await screen.findByRole("button", { name: "Create contact" });
+      await expect(
+        invokeViewInteract("contacts", "gui", "list-contacts"),
+      ).resolves.toEqual({
+        query: "",
+        count: contacts.length,
+        contacts,
+      });
+      for (const operation of [
+        "create-contact",
+        "import-vcard",
+        "agent-click",
+        "get-text",
+      ]) {
+        await expect(
+          invokeViewInteract("contacts", "gui", operation, {
+            id: "create-contact",
+            displayName: "Unauthorized",
+            vcardText: "BEGIN:VCARD",
+          }),
+        ).rejects.toThrow(/not granted capability/);
+      }
+      expect(nativeContacts.createContact).not.toHaveBeenCalled();
+      expect(nativeContacts.importVCard).not.toHaveBeenCalled();
+      expect(onClick).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Create contact" }));
+      expect(onClick).toHaveBeenCalledOnce();
+    } finally {
+      // error-policy:J6 restore the platform fixture after the mounted boundary proof.
+      platform.mockRestore();
+    }
   });
 
   it("hands a cold wallet deep link to a deferred app-shell registration", async () => {

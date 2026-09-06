@@ -3,7 +3,6 @@
  * capabilities. Render coverage for the GUI surface lives in MessagesView.test.tsx.
  */
 
-import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const bridge = vi.hoisted(() => ({
@@ -151,31 +150,32 @@ describe("interact view capabilities", () => {
     expect(bridge.requestRole).toHaveBeenCalledWith({ role: "sms" });
   });
 
-  it("clamps hostile list-threads limits before hitting the native bridge", async () => {
+  it("requests the native maximum and rejects a potentially incomplete result", async () => {
     mockBridge();
+    await interact("list-threads", { limit: 1 });
+    expect(bridge.listMessages).toHaveBeenCalledWith({ limit: 500 });
 
-    await fc.assert(
-      fc.asyncProperty(
-        fc.oneof(
-          fc.double({ noNaN: true }),
-          fc.constant(Number.POSITIVE_INFINITY),
-          fc.constant(Number.NEGATIVE_INFINITY),
-          fc.constant(Number.NaN),
-        ),
-        async (limit) => {
-          bridge.listMessages.mockClear();
-          await interact("list-threads", { limit });
+    bridge.listMessages.mockResolvedValue({
+      messages: Array.from({ length: 500 }, (_, index) => ({
+        ...sampleMessages[0],
+        id: `message-${index}`,
+        threadId: `thread-${index}`,
+      })),
+    });
+    await expect(interact("list-threads")).rejects.toMatchObject({
+      code: "NATIVE_MESSAGES_READ_INCOMPLETE",
+      context: { limit: 500 },
+    });
+    expect(bridge.listMessages).toHaveBeenLastCalledWith({ limit: 500 });
+  });
 
-          const requested = bridge.listMessages.mock.calls[0]?.[0] as
-            | { limit?: number }
-            | undefined;
-          expect(Number.isInteger(requested?.limit)).toBe(true);
-          expect(requested?.limit).toBeGreaterThanOrEqual(1);
-          expect(requested?.limit).toBeLessThanOrEqual(500);
-        },
-      ),
-      { numRuns: 100 },
-    );
+  it("rejects with a typed error when SMS role status is unavailable", async () => {
+    mockBridge();
+    bridge.getStatus.mockRejectedValue(new Error("role service unavailable"));
+
+    await expect(interact("list-threads")).rejects.toMatchObject({
+      code: "NATIVE_MESSAGES_STATUS_UNAVAILABLE",
+    });
   });
 
   it("rejects malformed send-sms payloads without calling native send", async () => {

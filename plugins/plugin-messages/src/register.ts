@@ -2,6 +2,7 @@
 
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { isElizaOS } from "@elizaos/ui/platform/init";
+import { MESSAGES_VIEW_CAPABILITIES } from "./view-capabilities";
 
 if (isElizaOS()) {
   registerAppShellPage({
@@ -15,7 +16,12 @@ if (isElizaOS()) {
     viewKind: "release",
     surface: {
       header: "fullscreen",
-      capabilities: ["agent-surface"],
+      capabilities: [],
+    },
+    capabilities: MESSAGES_VIEW_CAPABILITIES,
+    interact: async (capability, params) => {
+      const { interact } = await import("./components/messages-interact");
+      return interact(capability, params);
     },
     loader: () =>
       import("./components/MessagesPage.tsx").then((module) => ({
