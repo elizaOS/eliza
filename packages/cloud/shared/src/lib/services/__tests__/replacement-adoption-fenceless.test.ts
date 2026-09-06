@@ -198,6 +198,59 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
         where: sql`${agentSandboxes.id} = ${id}`,
       });
       expect(retried?.serving_placement).toEqual(row?.serving_placement);
+      await dbWrite.execute(
+        sql`UPDATE agent_sandboxes SET status = 'provisioning', node_id = 'node-retargeted' WHERE id = ${id}`,
+      );
+      await expect(
+        svc.transferReplacementToPrimary(
+          id,
+          orgId,
+          {
+            sandboxId: containerName,
+            bridgeUrl: "https://runtime.example",
+            healthUrl: "https://runtime.example/health",
+            metadata: {
+              provider: "docker",
+              nodeId: "node-retargeted",
+              hostname: "replacement.example",
+              containerName,
+            },
+          },
+          0,
+          { status: "running" },
+        ),
+      ).rejects.toThrow("Preserved handle conflicts with its serving placement receipt");
+      const rejected = await dbWrite.query.agentSandboxes.findFirst({
+        where: sql`${agentSandboxes.id} = ${id}`,
+      });
+      expect(rejected?.status).toBe("provisioning");
+      expect(rejected?.serving_placement).toEqual(row?.serving_placement);
+      await dbWrite.execute(sql`UPDATE agent_sandboxes SET node_id = 'node-1' WHERE id = ${id}`);
+      await expect(
+        svc.transferReplacementToPrimary(
+          id,
+          orgId,
+          {
+            sandboxId: containerName,
+            bridgeUrl: "https://runtime.example",
+            healthUrl: "https://runtime.example/health",
+            metadata: {
+              provider: "docker",
+              nodeId: "node-1",
+              hostname: "captured.example",
+              containerName,
+              containerId: "b".repeat(64),
+            },
+          },
+          0,
+          { status: "running" },
+        ),
+      ).rejects.toThrow("Preserved handle conflicts with its serving placement receipt");
+      const wrongContainer = await dbWrite.query.agentSandboxes.findFirst({
+        where: sql`${agentSandboxes.id} = ${id}`,
+      });
+      expect(wrongContainer?.status).toBe("provisioning");
+      expect(wrongContainer?.serving_placement).toEqual(row?.serving_placement);
     },
     PGLITE_TIMEOUT,
   );
