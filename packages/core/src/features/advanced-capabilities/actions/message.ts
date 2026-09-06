@@ -78,6 +78,7 @@ import { createHash } from "../../../utils/crypto-compat.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
+import { readCompleteMessageContent } from "../../messaging/complete-content-read.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
 import { listInboxAction } from "../../messaging/triage/actions/listInbox.ts";
@@ -3329,7 +3330,6 @@ async function handleSend(
 
 const CHANNEL_READ_DEFAULT_LIMIT = 50;
 const CHANNEL_READ_MAX_LIMIT = 200;
-const MEMORY_READ_DEFAULT_BYTES = 4096;
 const MEMORY_READ_MAX_BYTES = 64 * 1024;
 
 function memoryReadFailure(
@@ -3445,7 +3445,7 @@ async function readAdapterlessStoredMemory(
 	const limit = safeMemoryReadInteger(
 		numberParam(params.limit),
 		"limit",
-		MEMORY_READ_DEFAULT_BYTES,
+		Number.MAX_SAFE_INTEGER - (offset ?? 0),
 	);
 	if (offset === undefined || limit === undefined) {
 		return memoryReadFailure(
@@ -3558,25 +3558,11 @@ async function handleReadStoredMemory(
 			"The message store cannot perform a bounded authorized read.",
 		);
 	}
-	let accessContext: AccessContext;
-	try {
-		accessContext = await buildAccessContext(runtime, message);
-	} catch (error) {
-		// error-policy:J1 The action boundary reports authorization lookup failure
-		// without disclosing whether the referenced memory exists in the room.
-		runtime.reportError("MESSAGE.readStoredMemory.authorization", error, {
-			roomId: message.roomId,
-		});
-		return memoryReadFailure(
-			"MESSAGE_MEMORY_AUTHORIZATION_UNAVAILABLE",
-			"Stored-message authorization is unavailable.",
-		);
-	}
 	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
 	const limit = safeMemoryReadInteger(
 		numberParam(params.limit),
 		"limit",
-		MEMORY_READ_DEFAULT_BYTES,
+		Number.MAX_SAFE_INTEGER - (offset ?? 0),
 	);
 	if (offset === undefined || limit === undefined) {
 		return memoryReadFailure(
@@ -3588,16 +3574,39 @@ async function handleReadStoredMemory(
 	const expectedRevision = textParam(params.expectedRevision);
 	let read: MessageContentRangeReadResult;
 	try {
-		read = await runtime.adapter.readMessageContentRange({
-			agentId: runtime.agentId,
-			messageId: memoryRef as UUID,
-			authorizedRoomId: message.roomId,
-			accessContext,
-			source: { kind: "message-text" },
-			offset,
-			limit,
-			...(expectedRevision ? { expectedRevision } : {}),
-		});
+		const readPage = runtime.adapter.readMessageContentRange.bind(
+			runtime.adapter,
+		);
+		read = await readCompleteMessageContent(
+			{
+				offset,
+				...(params.limit === undefined ? {} : { limit }),
+				...(expectedRevision ? { expectedRevision } : {}),
+			},
+			async (range) => {
+				let accessContext: AccessContext;
+				try {
+					accessContext = await buildAccessContext(runtime, message);
+				} catch (cause) {
+					// error-policy:J2 Reauthorize each page and preserve authorization failures.
+					runtime.reportError("MESSAGE.readStoredMemory.authorization", cause, {
+						roomId: message.roomId,
+					});
+					throw new ElizaError("Stored-message authorization is unavailable", {
+						code: "MESSAGE_MEMORY_AUTHORIZATION_UNAVAILABLE",
+						cause,
+					});
+				}
+				return readPage({
+					agentId: runtime.agentId,
+					messageId: memoryRef as UUID,
+					authorizedRoomId: message.roomId,
+					accessContext,
+					source: { kind: "message-text" },
+					...range,
+				});
+			},
+		);
 	} catch (error) {
 		const code =
 			error instanceof ElizaError ? error.code : "MESSAGE_MEMORY_READ_FAILED";

@@ -49,6 +49,7 @@ import {
 	deriveDocumentTitle,
 } from "../documents/naming.ts";
 import type { DocumentService } from "../documents/service.ts";
+import { readCompleteMessageContent } from "../messaging/complete-content-read.ts";
 import {
 	attachmentTextSourceDescriptor,
 	hashAttachmentIdForLocator,
@@ -95,7 +96,6 @@ export function completeAttachmentContent(content: string): string {
 	return content;
 }
 
-const ATTACHMENT_READ_TOTAL_PAGE_BYTES = 16 * 1024;
 const ATTACHMENT_READ_MAX_ITEM_BYTES = 64 * 1024;
 
 type PagedAttachmentRecord = AttachmentRecord & {
@@ -132,7 +132,7 @@ async function pageAttachmentRecord(params: {
 	message: Memory;
 	record: AttachmentRecord;
 	offset: number;
-	limit: number;
+	limit?: number;
 	expectedRevision?: string;
 }): Promise<PagedAttachmentRecord> {
 	const messageId = params.record.attachment._messageId;
@@ -150,22 +150,28 @@ async function pageAttachmentRecord(params: {
 		const attachmentIdHash = hashAttachmentIdForLocator(
 			params.record.attachment.id,
 		);
-		const accessContext = await buildAccessContext(
-			params.runtime,
-			params.message,
+		const readPage = adapter.readMessageContentRange.bind(adapter);
+		const read = await readCompleteMessageContent(
+			{
+				offset: params.offset,
+				...(params.limit === undefined ? {} : { limit: params.limit }),
+				...(params.expectedRevision
+					? { expectedRevision: params.expectedRevision }
+					: {}),
+			},
+			async (range) =>
+				readPage({
+					agentId: params.runtime.agentId,
+					messageId,
+					authorizedRoomId: params.message.roomId,
+					accessContext: await buildAccessContext(
+						params.runtime,
+						params.message,
+					),
+					source: { kind: "attachment-text", attachmentIdHash },
+					...range,
+				}),
 		);
-		const read = await adapter.readMessageContentRange({
-			agentId: params.runtime.agentId,
-			messageId,
-			authorizedRoomId: params.message.roomId,
-			accessContext,
-			source: { kind: "attachment-text", attachmentIdHash },
-			offset: params.offset,
-			limit: params.limit,
-			...(params.expectedRevision
-				? { expectedRevision: params.expectedRevision }
-				: {}),
-		});
 		if (read.status === "not_found" || read.status === "forbidden") {
 			throw new ElizaError(
 				"The attachment is unavailable or no longer authorized",
@@ -205,7 +211,12 @@ async function pageAttachmentRecord(params: {
 					{ code: "ATTACHMENT_READ_INVALID_OFFSET" },
 				);
 			}
-			let end = Math.min(params.offset + params.limit, source.length);
+			let end = Math.min(
+				params.limit === undefined
+					? source.length
+					: params.offset + params.limit,
+				source.length,
+			);
 			while (
 				end > params.offset &&
 				end < source.length &&
@@ -265,7 +276,10 @@ async function pageAttachmentRecord(params: {
 		};
 	}
 	const source = Buffer.from(params.record.content, "utf8");
-	if (source.length > ATTACHMENT_READ_MAX_ITEM_BYTES) {
+	if (
+		params.limit !== undefined &&
+		source.length > ATTACHMENT_READ_MAX_ITEM_BYTES
+	) {
 		throw new ElizaError(
 			"This legacy attachment must be reindexed before bounded reads",
 			{ code: "ATTACHMENT_REINDEX_REQUIRED" },
@@ -287,7 +301,10 @@ async function pageAttachmentRecord(params: {
 			context: { attachmentId: params.record.attachment.id, offset: start },
 		});
 	}
-	let end = Math.min(start + params.limit, source.length);
+	let end = Math.min(
+		params.limit === undefined ? source.length : start + params.limit,
+		source.length,
+	);
 	while (end > start && end < source.length && (source[end] & 0xc0) === 0x80) {
 		end -= 1;
 	}
@@ -332,14 +349,7 @@ async function pageAttachmentRecords(
 ): Promise<PagedAttachmentRecord[]> {
 	const offset = readNonnegativeInteger(params, "offset", 0);
 	const requestedLimit = readNonnegativeInteger(params, "limit", 0, 1);
-	const fairLimit = Math.max(
-		1,
-		Math.floor(ATTACHMENT_READ_TOTAL_PAGE_BYTES / Math.max(records.length, 1)),
-	);
-	const limit = Math.min(
-		requestedLimit > 0 ? requestedLimit : fairLimit,
-		ATTACHMENT_READ_MAX_ITEM_BYTES,
-	);
+	const limit = params.limit === undefined ? undefined : requestedLimit;
 	if (requestedLimit > ATTACHMENT_READ_MAX_ITEM_BYTES) {
 		throw new ElizaError(
 			"Attachment read limit exceeds the maximum page size",

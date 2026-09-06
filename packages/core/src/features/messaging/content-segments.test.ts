@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ContentType, type Media, type Memory, type UUID } from "../../types";
 import { createHash } from "../../utils/crypto-compat";
+import { readCompleteMessageContent } from "./complete-content-read";
 import {
 	attachmentTextSourceDescriptor,
 	authorizeMessageContentRead,
@@ -54,6 +55,58 @@ function rowsForRange(
 }
 
 describe("message content segments", () => {
+	it("assembles an omitted-limit read from real stored Unicode segments and rejects mid-read revocation", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
+		const text =
+			"complete 🙂עברית漢字e\u0301\n".repeat(20_000) + "FINAL EVIDENCE";
+		const original = memory(text);
+		original.metadata = { type: "message", scope: "room" };
+		const projection = buildMessageContentProjection(original);
+		await adapter.publishMessageContentSegments({
+			mode: "create",
+			parent: { ...original, content: projection.content },
+			segments: projection.segments,
+		});
+		const readPage = (range: {
+			offset: number;
+			limit: number;
+			expectedRevision?: string;
+		}) =>
+			adapter.readMessageContentRange({
+				agentId: AGENT_ID,
+				messageId: MESSAGE_ID,
+				authorizedRoomId: ROOM_ID,
+				accessContext: { requesterEntityId: ENTITY_ID, role: "USER" },
+				source: { kind: "message-text" },
+				...range,
+			});
+		const complete = await readCompleteMessageContent({ offset: 0 }, readPage);
+		expect(complete.status).toBe("ok");
+		if (complete.status !== "ok")
+			throw new Error("expected complete segmented read");
+		expect(complete.page.text).toBe(text);
+		expect(complete.page.end).toBe(new TextEncoder().encode(text).length);
+		const bounded = await readCompleteMessageContent(
+			{ offset: 0, limit: 8 },
+			readPage,
+		);
+		expect(bounded.status).toBe("ok");
+		if (bounded.status !== "ok") throw new Error("expected bounded read");
+		expect(bounded.page.text).toBe("complete");
+		let pages = 0;
+		await expect(
+			readCompleteMessageContent({ offset: 0 }, async (range) => {
+				if (++pages === 2)
+					await adapter.deleteParticipants([
+						{ entityId: ENTITY_ID, roomId: ROOM_ID },
+					]);
+				return readPage(range);
+			}),
+		).rejects.toMatchObject({ code: "MESSAGE_CONTENT_UNAVAILABLE" });
+		expect(pages).toBe(2);
+	});
+
 	it("publishes, replaces by CAS, and reauthorizes in memory", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
