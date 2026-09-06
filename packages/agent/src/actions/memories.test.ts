@@ -5,7 +5,11 @@
  * SQL) and the relationships service exposes identity-cluster membership.
  */
 import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { normalizeActionIdentifier } from "@elizaos/core";
+import {
+  normalizeActionIdentifier,
+  promoteSubactionsToActions,
+  validateToolArgs,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
@@ -2076,5 +2080,76 @@ describe("MEMORY op:search rendered text", () => {
       rendered: 1,
     });
     expect(result.promptData).not.toHaveProperty("memories");
+  });
+});
+
+describe("promoted MEMORY_UPDATE / MEMORY_DELETE reject target-less calls before dispatch", () => {
+  const children = promoteSubactionsToActions(memoryAction);
+  const child = (name: string) => {
+    const found = children.find((action) => action.name === name);
+    if (!found) throw new Error(`missing promoted child ${name}`);
+    return found;
+  };
+
+  it("rejects delete with confirm but no query, naming the missing argument", () => {
+    // Live 2026-09-06: the planner sent exactly this shape five times in one
+    // turn and only the handler noticed; the validator must catch it first.
+    const result = validateToolArgs(child("MEMORY_DELETE"), {
+      action: "delete",
+      confirm: true,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("'query'");
+  });
+
+  it("accepts delete by query, with or without a pinning memoryId", () => {
+    expect(
+      validateToolArgs(child("MEMORY_DELETE"), {
+        action: "delete",
+        query: "favorite tea",
+        confirm: true,
+      }).valid,
+    ).toBe(true);
+    expect(
+      validateToolArgs(child("MEMORY_DELETE"), {
+        action: "delete",
+        query: "favorite tea",
+        memoryId: "11111111-2222-4333-8444-555555555555",
+        confirm: true,
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("rejects update without a query the same way", () => {
+    const result = validateToolArgs(child("MEMORY_UPDATE"), {
+      action: "update",
+      text: "My favorite tea is oolong.",
+      confirm: true,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join("\n")).toContain("'query'");
+  });
+
+  it("tells the planner the exact shape when a target-less call still reaches the handler", async () => {
+    const runtime = {
+      agentId: AGENT_ID,
+      getMemories: async () => [],
+      searchMemories: async () => [],
+      getMemoryById: async () => null,
+      logger: { info() {}, warn() {}, error() {}, debug() {} },
+    } as unknown as IAgentRuntime;
+    const message = {
+      id: "00000000-0000-0000-0000-0000000000f1" as UUID,
+      entityId: USER_ID,
+      roomId: ROOM_ID,
+      agentId: AGENT_ID,
+      content: { text: "forget my favorite tea", source: "test" },
+    } as Memory;
+    const result = (await memoryAction.handler(runtime, message, undefined, {
+      parameters: { action: "delete", confirm: true },
+    } as never)) as ActionResult;
+    expect(result.success).toBe(false);
+    expect(result.text).toContain('"query"');
+    expect(result.text).toContain('"action":"delete"');
   });
 });
