@@ -17,6 +17,7 @@ import {
   organizationSubscriptionAuthorities,
 } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
+import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 export const SUBSCRIPTION_AUTHORITY_CONFLICT = "SUBSCRIPTION_AUTHORITY_CONFLICT";
@@ -63,6 +64,20 @@ export interface AdvanceSubscriptionInput {
   values: SubscriptionRevisionValues;
 }
 
+export interface AdvanceSubscriptionCommandInput {
+  organizationId: string;
+  subscriptionId: string;
+  expectedRevision: number;
+  commandId: string;
+  commandLeaseToken: string;
+  commandExecutionGeneration: number;
+  observation: "authoritative_provider_retrieval";
+  values: Omit<
+    SubscriptionRevisionValues,
+    "last_provider_event_id" | "last_provider_event_created_at"
+  >;
+}
+
 export interface SubscriptionMutationResult {
   subscription: BillingSubscription;
   revision: BillingSubscriptionRevision;
@@ -80,6 +95,7 @@ function conflict(message: string, context: Record<string, unknown>): never {
 function revisionInsert(
   subscription: BillingSubscription,
   source: BillingSubscriptionRevisionSource,
+  includeWebhookProvenance = true,
 ) {
   return {
     organization_id: subscription.organization_id,
@@ -102,8 +118,10 @@ function revisionInsert(
     dunning_started_at: subscription.dunning_started_at,
     grace_expires_at: subscription.grace_expires_at,
     pending_plan_key: subscription.pending_plan_key,
-    provider_event_id: subscription.last_provider_event_id,
-    provider_event_created_at: subscription.last_provider_event_created_at,
+    provider_event_id: includeWebhookProvenance ? subscription.last_provider_event_id : null,
+    provider_event_created_at: includeWebhookProvenance
+      ? subscription.last_provider_event_created_at
+      : null,
     provider_object_digest: subscription.provider_object_digest,
   } satisfies typeof billingSubscriptionRevisions.$inferInsert;
 }
@@ -449,6 +467,41 @@ export class SubscriptionAuthorityRepository {
     tx: DbTransaction,
     input: AdvanceSubscriptionInput,
   ): Promise<SubscriptionMutationResult> {
+    return this.advanceWithProvenance(tx, input, { kind: "provider_event" });
+  }
+
+  /** Command observations preserve the webhook watermark without claiming that event as their journal provenance. */
+  async advanceCommandInTransaction(
+    tx: DbTransaction,
+    input: AdvanceSubscriptionCommandInput,
+  ): Promise<SubscriptionMutationResult> {
+    return this.advanceWithProvenance(
+      tx,
+      {
+        ...input,
+        source: "reconciliation",
+        values: {
+          ...input.values,
+          last_provider_event_id: null,
+          last_provider_event_created_at: null,
+        },
+      },
+      {
+        kind: "command",
+        commandId: input.commandId,
+        leaseToken: input.commandLeaseToken,
+        executionGeneration: input.commandExecutionGeneration,
+      },
+    );
+  }
+
+  private async advanceWithProvenance(
+    tx: DbTransaction,
+    input: AdvanceSubscriptionInput,
+    provenance:
+      | { kind: "provider_event" }
+      | { kind: "command"; commandId: string; leaseToken: string; executionGeneration: number },
+  ): Promise<SubscriptionMutationResult> {
     const [organization] = await tx
       .select({
         id: organizations.id,
@@ -469,6 +522,34 @@ export class SubscriptionAuthorityRepository {
     const accountAuthority = await readAccountAuthority(tx, input.organizationId);
     requireCurrentAccountAuthority(accountAuthority, input.subscriptionId);
     requireActivationAllowed(organization, input.values);
+    if (provenance.kind === "command") {
+      const [command] = await tx
+        .select()
+        .from(billingSubscriptionCommands)
+        .where(
+          and(
+            eq(billingSubscriptionCommands.id, provenance.commandId),
+            eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          ),
+        )
+        .for("update");
+      const commandNow = await readPostLockDatabaseNow(tx);
+      if (
+        !command ||
+        command.kind !== "cancel" ||
+        command.status !== "OUTCOME_UNKNOWN" ||
+        command.subscription_id !== input.subscriptionId ||
+        command.expected_subscription_revision !== input.expectedRevision ||
+        command.lease_token !== provenance.leaseToken ||
+        command.execution_generation !== provenance.executionGeneration ||
+        !command.lease_expires_at ||
+        command.lease_expires_at <= commandNow
+      )
+        conflict("Subscription command does not own this source observation", {
+          commandId: provenance.commandId,
+          subscriptionId: input.subscriptionId,
+        });
+    }
     const [current] = await tx
       .select()
       .from(billingSubscriptions)
@@ -489,18 +570,35 @@ export class SubscriptionAuthorityRepository {
         },
       });
     }
-    if (input.values.last_provider_event_id !== null) {
+    const requestedValues =
+      provenance.kind === "command"
+        ? {
+            ...input.values,
+            last_provider_event_id: current.last_provider_event_id,
+            last_provider_event_created_at: current.last_provider_event_created_at,
+          }
+        : input.values;
+    if (provenance.kind === "command" && current.lifecycle_revision !== input.expectedRevision)
+      conflict("Subscription command source revision changed", {
+        commandId: provenance.commandId,
+        expectedRevision: input.expectedRevision,
+        actualRevision: current.lifecycle_revision,
+      });
+    if (provenance.kind === "provider_event" && requestedValues.last_provider_event_id !== null) {
       const [recordedEvent] = await tx
         .select()
         .from(billingSubscriptionRevisions)
         .where(
           and(
-            eq(billingSubscriptionRevisions.provider, input.values.provider),
+            eq(billingSubscriptionRevisions.provider, requestedValues.provider),
             eq(
               billingSubscriptionRevisions.provider_environment,
-              input.values.provider_environment,
+              requestedValues.provider_environment,
             ),
-            eq(billingSubscriptionRevisions.provider_event_id, input.values.last_provider_event_id),
+            eq(
+              billingSubscriptionRevisions.provider_event_id,
+              requestedValues.last_provider_event_id,
+            ),
           ),
         )
         .limit(1);
@@ -508,7 +606,7 @@ export class SubscriptionAuthorityRepository {
         if (recordedEvent.subscription_id !== current.id) {
           conflict("Subscription provider event replay has a different authority", {
             subscriptionId: current.id,
-            providerEventId: input.values.last_provider_event_id,
+            providerEventId: requestedValues.last_provider_event_id,
           });
         }
         return { subscription: current, revision: recordedEvent, replayed: true };
@@ -517,7 +615,7 @@ export class SubscriptionAuthorityRepository {
     // Provider event timestamps are deduplication metadata, not object versions. The
     // caller contract requires a fresh authoritative retrieval, so reordered events
     // converge on provider state without inventing a monotonic Stripe version.
-    if (isExactProviderReplay(current, input.values)) {
+    if (isExactProviderReplay(current, requestedValues)) {
       const [revision] = await tx
         .select()
         .from(billingSubscriptionRevisions)
@@ -544,10 +642,10 @@ export class SubscriptionAuthorityRepository {
       });
     }
     if (
-      current.provider !== input.values.provider ||
-      current.provider_environment !== input.values.provider_environment ||
-      current.stripe_customer_id !== input.values.stripe_customer_id ||
-      current.stripe_subscription_id !== input.values.stripe_subscription_id
+      current.provider !== requestedValues.provider ||
+      current.provider_environment !== requestedValues.provider_environment ||
+      current.stripe_customer_id !== requestedValues.stripe_customer_id ||
+      current.stripe_subscription_id !== requestedValues.stripe_subscription_id
     ) {
       conflict("Subscription provider identity is immutable", {
         subscriptionId: current.id,
@@ -557,7 +655,7 @@ export class SubscriptionAuthorityRepository {
     const now = await readPostLockDatabaseNow(tx);
     const [subscription] = await tx
       .update(billingSubscriptions)
-      .set({ ...input.values, lifecycle_revision: nextRevision, updated_at: now })
+      .set({ ...requestedValues, lifecycle_revision: nextRevision, updated_at: now })
       .where(
         and(
           eq(billingSubscriptions.id, current.id),
@@ -574,7 +672,7 @@ export class SubscriptionAuthorityRepository {
     }
     const [revision] = await tx
       .insert(billingSubscriptionRevisions)
-      .values(revisionInsert(subscription, input.source))
+      .values(revisionInsert(subscription, input.source, provenance.kind === "provider_event"))
       .returning();
     if (!revision) {
       conflict("Subscription revision insert returned no row", {

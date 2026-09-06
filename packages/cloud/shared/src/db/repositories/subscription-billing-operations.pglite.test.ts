@@ -128,6 +128,7 @@ beforeAll(async () => {
   await applyMigration("0373_subscription_authority.sql");
   await applyMigration("0379_subscription_account_authority.sql");
   await applyMigration("0380_organization_policy_authority.sql");
+  await applyMigration("0383_subscription_cancellation_result.sql");
 });
 
 beforeEach(async () => {

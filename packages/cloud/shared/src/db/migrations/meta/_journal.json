@@ -2563,6 +2563,13 @@
       "when": 1796083200009,
       "tag": "0382_subscription_notice_intents",
       "breakpoints": true
+    },
+    {
+      "idx": 366,
+      "version": "7",
+      "when": 1796083200010,
+      "tag": "0383_subscription_cancellation_result",
+      "breakpoints": true
     }
   ]
 }

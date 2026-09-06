@@ -246,18 +246,17 @@ export class SubscriptionBillingOperationsRepository {
   ): Promise<RepositoryMutation<BillingSubscriptionCommand>> {
     requireDate(input.now, "now");
     return writeTransaction(async (tx) => {
+      const organization = await this.lockLifecycleOrganization(tx, input.organizationId);
+      if (!organization)
+        return conflict("Subscription command organization does not exist", {
+          organizationId: input.organizationId,
+        });
+      await tx
+        .select()
+        .from(organizationSubscriptionAuthorities)
+        .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
+        .for("update");
       if (input.kind === "checkout") {
-        const [organization] = await tx
-          .select({ id: organizations.id })
-          .from(organizations)
-          .where(eq(organizations.id, input.organizationId))
-          .limit(1)
-          .for("update");
-        if (!organization) {
-          return conflict("Checkout organization does not exist", {
-            organizationId: input.organizationId,
-          });
-        }
         const [replay] = await tx
           .select()
           .from(billingSubscriptionCommands)
@@ -353,7 +352,7 @@ export class SubscriptionBillingOperationsRepository {
   }): Promise<BillingSubscriptionCommand | null> {
     return writeTransaction(async (tx) => {
       const existing = await this.lockCommand(tx, input.organizationId, input.commandId);
-      if (!existing) return null;
+      if (!existing || existing.kind === "cancel") return null;
       if (
         existing.status === "OUTCOME_UNKNOWN" &&
         existing.state_revision === input.expectedStateRevision + 1 &&
@@ -406,7 +405,7 @@ export class SubscriptionBillingOperationsRepository {
       invalid("Failed resolution requires an error code", "errorCode");
     return writeTransaction(async (tx) => {
       const existing = await this.lockCommand(tx, input.organizationId, input.commandId);
-      if (!existing) return null;
+      if (!existing || existing.kind === "cancel") return null;
       if (
         existing.status === input.outcome &&
         existing.state_revision === input.expectedStateRevision + 1 &&
@@ -462,7 +461,7 @@ export class SubscriptionBillingOperationsRepository {
         .for("update");
       if (!organization) return null;
       const existing = await this.lockCommand(tx, input.organizationId, input.commandId);
-      if (!existing) return null;
+      if (!existing || existing.kind !== "checkout") return null;
       if (
         existing.status === "APPLIED" &&
         existing.result_subscription_id === input.resultSubscriptionId &&
@@ -578,6 +577,12 @@ export class SubscriptionBillingOperationsRepository {
     organizationId: string,
     commandId: string,
   ): Promise<BillingSubscriptionCommand | undefined> {
+    if (!(await this.lockLifecycleOrganization(tx, organizationId))) return undefined;
+    await tx
+      .select()
+      .from(organizationSubscriptionAuthorities)
+      .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId))
+      .for("update");
     const [row] = await tx
       .select()
       .from(billingSubscriptionCommands)
