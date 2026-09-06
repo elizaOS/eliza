@@ -3,7 +3,7 @@
  * `{ message, mode }` shape the explorer components expect.
  */
 
-import { toast as sonnerToast } from "sonner";
+import { toast as sonnerToast } from "../../bridge/toast";
 
 export function toast(options: {
   message: string;

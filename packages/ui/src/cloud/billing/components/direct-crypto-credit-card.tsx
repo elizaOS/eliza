@@ -27,7 +27,6 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
 import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
 import {
@@ -36,6 +35,7 @@ import {
   waitForTransactionReceipt,
   writeContract,
 } from "wagmi/actions";
+import { toast } from "../../../bridge/toast";
 import { reportRendererDiagnostic } from "../../../utils/renderer-diagnostics";
 import { api, apiFetch } from "../../lib/api-client";
 import type { CryptoStatusResponse, CryptoStatusTokenOption } from "../types";

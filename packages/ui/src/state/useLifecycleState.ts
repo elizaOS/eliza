@@ -7,7 +7,12 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { AgentStatus } from "../api";
-import { type ActionTone, TOAST_TTL_MS } from "./action-notice";
+import { deliverSystemNotification } from "../bridge/notification-delivery";
+import {
+  type ActionNoticeFn,
+  type ActionTone,
+  TOAST_TTL_MS,
+} from "./action-notice";
 import {
   loadPersistedFirstRunComplete,
   savePersistedFirstRunComplete,
@@ -198,13 +203,7 @@ export interface LifecycleStateHook {
   setStartupError: (v: StartupErrorState | null) => void;
   retryStartup: () => void;
   setAuthRequired: (v: boolean) => void;
-  setActionNotice: (
-    text: string,
-    tone?: "info" | "success" | "error",
-    ttlMs?: number,
-    once?: boolean,
-    busy?: boolean,
-  ) => void;
+  setActionNotice: ActionNoticeFn;
   beginLifecycleAction: (action: LifecycleAction) => boolean;
   finishLifecycleAction: () => void;
   setPendingRestart: (pending: boolean, reasons?: string[]) => void;
@@ -234,11 +233,13 @@ export function useLifecycleState(cloudOnly?: boolean): LifecycleStateHook {
   const lifecycleActionRef = useRef<LifecycleAction | null>(null);
   const agentStatusRef = useRef<AgentStatus | null>(null);
   const actionNoticeTimer = useRef<number | null>(null);
+  const actionNoticeGeneration = useRef(0);
   const shownOnceNotices = useRef<Set<string>>(new Set());
 
   // Clear any pending action-notice timer when the hook unmounts.
   useEffect(() => {
     return () => {
+      actionNoticeGeneration.current += 1;
       if (actionNoticeTimer.current != null) {
         window.clearTimeout(actionNoticeTimer.current);
       }
@@ -314,17 +315,47 @@ export function useLifecycleState(cloudOnly?: boolean): LifecycleStateHook {
     ) => {
       if (once && shownOnceNotices.current.has(text)) return;
       if (once) shownOnceNotices.current.add(text);
-      dispatch({
-        type: "SET_ACTION_NOTICE",
-        value: { tone, text, ...(busy ? { busy: true } : {}) },
-      });
+      const generation = ++actionNoticeGeneration.current;
       if (actionNoticeTimer.current != null) {
         window.clearTimeout(actionNoticeTimer.current);
-      }
-      actionNoticeTimer.current = window.setTimeout(() => {
-        dispatch({ type: "SET_ACTION_NOTICE", value: null });
         actionNoticeTimer.current = null;
-      }, ttlMs);
+      }
+      dispatch({ type: "SET_ACTION_NOTICE", value: null });
+      const showFallback = () => {
+        if (generation !== actionNoticeGeneration.current) return;
+        dispatch({
+          type: "SET_ACTION_NOTICE",
+          value: { tone, text, ...(busy ? { busy: true } : {}) },
+        });
+        actionNoticeTimer.current = window.setTimeout(() => {
+          dispatch({ type: "SET_ACTION_NOTICE", value: null });
+          actionNoticeTimer.current = null;
+        }, ttlMs);
+      };
+      const cancel = () => {
+        if (generation !== actionNoticeGeneration.current) return;
+        actionNoticeGeneration.current += 1;
+        if (actionNoticeTimer.current != null) {
+          window.clearTimeout(actionNoticeTimer.current);
+          actionNoticeTimer.current = null;
+        }
+        dispatch({ type: "SET_ACTION_NOTICE", value: null });
+      };
+      // Live progress belongs beside the active app; completed feedback uses the OS.
+      if (busy) {
+        showFallback();
+        return cancel;
+      }
+      void deliverSystemNotification({
+        id: `action-${crypto.randomUUID()}`,
+        requestPermission: false,
+        title: "Eliza",
+        body: text,
+        priority: tone === "error" ? "high" : "normal",
+      }).then((channel) => {
+        if (channel === "none") showFallback();
+      });
+      return cancel;
     },
     [],
   );

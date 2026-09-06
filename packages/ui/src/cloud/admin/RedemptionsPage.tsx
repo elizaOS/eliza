@@ -53,7 +53,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import { CopyButton } from "../../components/ui/copy-button";
 import { ApiError, api } from "../lib/api-client";
 import { formatUsd as formatCurrency } from "../lib/format-usd";

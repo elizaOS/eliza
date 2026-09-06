@@ -38,7 +38,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import {
   Badge,
   Button,

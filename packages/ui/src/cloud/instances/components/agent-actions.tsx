@@ -52,8 +52,8 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import { client, ElizaClient } from "../../../api";
+import { toast } from "../../../bridge/toast";
 import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";

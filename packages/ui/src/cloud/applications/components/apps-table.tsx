@@ -13,7 +13,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import {
   BulkDeleteDialog,
   BulkSelectionBar,

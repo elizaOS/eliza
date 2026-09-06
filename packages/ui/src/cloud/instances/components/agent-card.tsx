@@ -41,7 +41,7 @@ import {
 import type * as React from "react";
 import { memo, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 

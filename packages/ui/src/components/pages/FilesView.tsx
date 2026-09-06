@@ -43,6 +43,7 @@ import {
   formatRelativeTime,
   resolveAppAssetUrl,
 } from "../../utils";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
   canShareFiles,
   downloadAttachment,
@@ -431,18 +432,15 @@ function FilesViewBody() {
 
   const handleDelete = useCallback(
     async (file: StoredFile) => {
-      if (
-        typeof window !== "undefined" &&
-        typeof window.confirm === "function"
-      ) {
-        const confirmed = window.confirm(
-          t("filesview.deleteConfirm", {
-            name: file.fileName,
-            defaultValue: 'Delete "{{name}}"? This cannot be undone.',
-          }),
-        );
-        if (!confirmed) return;
-      }
+      const confirmed = await confirmDesktopAction({
+        title: t("common.delete"),
+        type: "warning",
+        message: t("filesview.deleteConfirm", {
+          name: file.fileName,
+          defaultValue: 'Delete "{{name}}"? This cannot be undone.',
+        }),
+      });
+      if (!confirmed) return;
       setDeletingName(file.fileName);
       // Optimistic removal — snapshot so we can restore on failure.
       const snapshot = files;

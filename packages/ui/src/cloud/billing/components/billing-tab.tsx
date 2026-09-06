@@ -29,7 +29,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { ApiError, api } from "../../lib/api-client";
 import { isSafeNavigationUrl } from "../../lib/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";

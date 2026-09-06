@@ -21,6 +21,7 @@ import { useAgentElement } from "../../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { confirmDesktopAction } from "../../../utils/desktop-dialogs";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
@@ -292,12 +293,14 @@ export function RoutingTab(props: RoutingTabProps) {
 
   const onDeleteRule = useCallback(
     async (rule: RoutingRule) => {
-      const confirmed = window.confirm(
-        t("routing.confirmDelete", {
+      const confirmed = await confirmDesktopAction({
+        title: t("common.delete"),
+        type: "warning",
+        message: t("routing.confirmDelete", {
           keyPattern: rule.keyPattern,
           defaultValue: "Delete routing rule for {{keyPattern}}?",
         }),
-      );
+      });
       if (!confirmed) return;
       const newRules = config.rules.filter((r) => r !== rule);
       await saveConfig({ ...config, rules: newRules });

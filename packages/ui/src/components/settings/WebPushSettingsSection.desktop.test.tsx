@@ -15,10 +15,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebPushSettingsSection } from "./WebPushSettingsSection";
 
 const bridge = vi.hoisted(() => ({ request: vi.fn() }));
-const platform = vi.hoisted(() => ({ desktop: true }));
+const platform = vi.hoisted(() => ({ desktop: true, mobile: false }));
 
-vi.mock("../../bridge", () => ({
-  invokeDesktopBridgeRequest: bridge.request,
+vi.mock("../../bridge/notification-delivery", () => ({
+  deliverSystemNotification: bridge.request,
+}));
+
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: () => platform.mobile },
 }));
 
 vi.mock("../../platform", () => ({
@@ -47,25 +51,38 @@ afterEach(() => {
   cleanup();
   bridge.request.mockReset();
   platform.desktop = true;
+  platform.mobile = false;
 });
 
 describe("WebPushSettingsSection desktop notification parity", () => {
-  it("sends a real system notification through the desktop bridge", async () => {
-    bridge.request.mockResolvedValueOnce({ id: "notification-1" });
+  it("uses native delivery on mobile without offering web push", async () => {
+    platform.desktop = false;
+    platform.mobile = true;
+    bridge.request.mockResolvedValueOnce("local");
+    render(<WebPushSettingsSection />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Send test notification" }),
+    );
+    await waitFor(() => expect(bridge.request).toHaveBeenCalledOnce());
+    expect(screen.queryByText("Push notifications")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("dispatches a native test without requesting permission or showing browser push", async () => {
+    bridge.request.mockResolvedValueOnce("desktop");
     render(<WebPushSettingsSection />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Send test notification" }),
     );
 
-    expect(bridge.request).toHaveBeenCalledWith({
-      rpcMethod: "desktopShowNotification",
-      ipcChannel: "desktop:showNotification",
-      params: {
-        title: "Eliza Test Notification",
-        body: "Notifications from the Eliza desktop app are working.",
-      },
-    });
+    expect(bridge.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: "Notifications from Eliza are working.",
+        requestPermission: false,
+        priority: "normal",
+      }),
+    );
+    expect(screen.queryByText("Push notifications")).toBeNull();
     await waitFor(() => {
       expect(
         screen.getByRole<HTMLButtonElement>("button", {
@@ -85,7 +102,7 @@ describe("WebPushSettingsSection desktop notification parity", () => {
   });
 
   it("shows an error when the desktop notification method is unavailable", async () => {
-    bridge.request.mockResolvedValueOnce(null);
+    bridge.request.mockResolvedValueOnce("none");
     render(<WebPushSettingsSection />);
 
     fireEvent.click(
@@ -94,13 +111,15 @@ describe("WebPushSettingsSection desktop notification parity", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toBe(
-        "The desktop app cannot send a test notification.",
+        "Cannot send a system notification. Check notification access above and in your device settings.",
       );
     });
   });
 
-  it("shows an error when the desktop notification acknowledgement is malformed", async () => {
-    bridge.request.mockResolvedValueOnce(undefined);
+  it("shows unexpected native failures at the settings boundary", async () => {
+    bridge.request.mockRejectedValueOnce(
+      new Error("Native transport disconnected"),
+    );
     render(<WebPushSettingsSection />);
 
     fireEvent.click(
@@ -109,7 +128,7 @@ describe("WebPushSettingsSection desktop notification parity", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toBe(
-        "The desktop app cannot send a test notification.",
+        "Native transport disconnected",
       );
     });
   });
