@@ -1,3 +1,5 @@
+import type { InferenceTimingDevPayload } from "@elizaos/core";
+
 /**
  * Wire types and fetch wrappers for trajectory logger routes.
  * The core trajectory API may return larger payloads, but this client types only
@@ -211,6 +213,29 @@ export async function fetchTrajectoryDetail(
     ),
   });
   return readJson<TrajectoryDetail>(res);
+}
+
+/** Optional local diagnostics. Join by recorded identity, never timestamp proximity. */
+export async function fetchTrajectoryTiming(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<Pick<InferenceTimingDevPayload, "turns" | "flows">> {
+  const res = await fetch("/api/dev/inference-timing?limit=200", {
+    headers: { Accept: "application/json" },
+    signal: composeTrajectoryFetchSignal(
+      options.signal,
+      TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS,
+    ),
+  });
+  const payload = await readJson<InferenceTimingDevPayload>(res);
+  const turns = payload.turns.filter((turn) =>
+    turn.spans.some((span) => span.meta?.trajectoryId === id),
+  );
+  const turnIds = new Set(turns.map((turn) => turn.turnId));
+  return {
+    turns,
+    flows: payload.flows.filter((flow) => turnIds.has(flow.turnId)),
+  };
 }
 
 /**

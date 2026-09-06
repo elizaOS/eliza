@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { TrajectoryDetail } from "../api-client";
 import { TrajectoryRecord } from "./TrajectoryRecord";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const detail: TrajectoryDetail = {
   trajectory: {
@@ -71,4 +74,60 @@ it("distinguishes missing timing from zero", () => {
   );
   expect(screen.getByText(/Unknown ms total/)).toBeTruthy();
   expect(screen.getByText(/No semantic stage timings/)).toBeTruthy();
+});
+
+it("loads optional timings only on request and keeps the trajectory on failure", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(new Response("loopback only", { status: 403 }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<TrajectoryRecord detail={detail} />);
+  expect(fetchMock).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Load server timings" }));
+  expect(
+    await screen.findByText(/Server timings could not be loaded/),
+  ).toBeTruthy();
+  expect(screen.getByText("record-1")).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Reload server timings" }),
+  ).toBeTruthy();
+});
+
+it("distinguishes host delivery, internal tokens, missing marks and unattributed time", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          turns: [
+            {
+              turnId: "inference-1",
+              timeToFirstVisibleMs: 3664,
+              timeToReplyMs: 3665,
+              timeToResponseFinalizedMs: null,
+              totalMs: 3673,
+              timeToFirstTokenMs: 1261,
+              spans: [{ meta: { trajectoryId: "record-1" } }],
+              anomalies: ["duplicate-first-token"],
+            },
+          ],
+          flows: [
+            {
+              turnId: "inference-1",
+              stages: [
+                { stage: "unattributed", totalMs: 88, toFirstVisibleMs: 85 },
+              ],
+            },
+          ],
+        }),
+      ),
+    ),
+  );
+  render(<TrajectoryRecord detail={detail} />);
+  fireEvent.click(screen.getByRole("button", { name: "Load server timings" }));
+  expect(await screen.findByText("3664 ms")).toBeTruthy();
+  expect(screen.getByText("Not recorded")).toBeTruthy();
+  expect(screen.getByText(/Host delivery is not browser paint/)).toBeTruthy();
+  expect(screen.getByText("unattributed")).toBeTruthy();
+  expect(screen.getByText(/duplicate-first-token/)).toBeTruthy();
 });
