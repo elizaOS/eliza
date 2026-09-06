@@ -327,6 +327,8 @@ function ApiKeysCard(props: {
 // ---------------------------------------------------------------------------
 
 export interface CloudViewProps {
+  /** Standalone views own a title; a containing CloudPage supplies its own. */
+  showTitle?: boolean;
   /** Test/host injection seam. Defaults to the host `client` cloud wrappers. */
   fetchers?: CloudViewFetchers;
   /** Test seam for the host-brokered internal and external navigation paths. */
@@ -421,7 +423,9 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
         className="flex h-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center"
         data-testid="cloud-signed-out"
       >
-        <h1 className="text-lg font-semibold text-txt">Eliza Cloud</h1>
+        {props.showTitle !== false ? (
+          <h1 className="text-lg font-semibold text-txt">Eliza Cloud</h1>
+        ) : null}
         <p className="max-w-sm text-sm text-muted">
           Connect to view credits, agents, API keys, and billing.
         </p>
@@ -456,7 +460,9 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
     <div className="h-full overflow-y-auto bg-bg" data-testid="cloud-ready">
       <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold text-txt">Eliza Cloud</h1>
+          {props.showTitle !== false ? (
+            <h1 className="text-lg font-semibold text-txt">Eliza Cloud</h1>
+          ) : null}
           <Badge variant="outline" size="micro" tone="success">
             Connected
           </Badge>

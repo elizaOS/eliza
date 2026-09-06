@@ -683,7 +683,7 @@ function TimeGrid({
         >
           <div
             aria-hidden
-            className="flex items-center justify-end px-2 text-[10px] font-medium text-muted/70"
+            className="flex items-center justify-end px-2 text-[10px] font-medium text-muted"
           >
             all-day
           </div>
@@ -708,7 +708,7 @@ function TimeGrid({
           {hours.map(({ hour, label }) => (
             <div
               key={hour}
-              className="absolute right-2 text-[10px] font-medium text-muted/70"
+              className="absolute right-2 text-[10px] font-medium text-muted"
               style={{
                 top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX - 6}px`,
               }}
@@ -1258,7 +1258,7 @@ export function CalendarSection({
 
         {proactiveLine ? (
           <p
-            className="-mt-1 text-[13px] text-muted/70"
+            className="-mt-1 text-[13px] text-muted"
             data-testid="lifeops-calendar-proactive"
           >
             {proactiveLine}
