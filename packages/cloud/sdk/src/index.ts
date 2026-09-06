@@ -5,6 +5,11 @@ export {
   type BuildAppAuthorizeUrlOptions,
   buildAppAuthorizeUrl,
 } from "./app-auth.js";
+export * from "./app-billing.js";
+export * from "./app-billing-membership.js";
+export * from "./app-delegation.js";
+export * from "./app-inference.js";
+export * from "./app-notifications.js";
 export { isCliLoginSessionId } from "./cli-login.js";
 export { createElizaCloudClient, ElizaCloudClient } from "./client.js";
 export {
@@ -13,6 +18,10 @@ export {
   ElizaCloudHttpClient,
   InsufficientCreditsError,
 } from "./http.js";
+export {
+  applyNativeApplicationInferenceHeaders,
+  NativeApplicationInferenceError,
+} from "./native-application-inference.js";
 export type {
   PublicRouteBaseCallOptions,
   PublicRouteCallOptions,

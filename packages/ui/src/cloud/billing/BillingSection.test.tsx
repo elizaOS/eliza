@@ -52,6 +52,10 @@ vi.mock("./wallet/ConditionalWalletProviders", () => ({
   ),
 }));
 
+vi.mock("./apps/NativeProductBillingEntry", () => ({
+  NativeProductBillingEntry: () => null,
+}));
+
 import { BillingSectionBody } from "./BillingSection";
 
 function setBillingState(

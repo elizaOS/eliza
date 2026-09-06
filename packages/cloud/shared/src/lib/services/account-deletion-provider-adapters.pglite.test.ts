@@ -3,10 +3,9 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
-setDefaultTimeout(120_000);
-
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
+setDefaultTimeout(120_000);
 
 import { sql } from "drizzle-orm";
 import {
@@ -31,6 +30,8 @@ const context = {
   organizationId: ORGANIZATION_ID,
   stewardUserId: "steward-personal",
   lifecycleRevision: 2,
+  phaseReceiptId: "60000000-0000-4000-8000-000000000001",
+  phaseGeneration: 1,
   blob: {},
 } as AccountDeletionProviderContext;
 
@@ -126,5 +127,63 @@ describe("account deletion restrictive-grant terminal absence", () => {
       sql`SELECT organization_id FROM organization_subscription_authorities WHERE organization_id=${ORGANIZATION_ID}`,
     );
     expect(remaining.rows).toEqual([]);
+  });
+  test("a departing actor cannot erase a different account's billing commands", async () => {
+    const commandId = crypto.randomUUID();
+    const sharedOrganizationId = crypto.randomUUID();
+    const sharedSubscriptionId = crypto.randomUUID();
+    await dbWrite.execute(sql`INSERT INTO users(id) VALUES (${USER_ID})`);
+    await dbWrite.execute(sql`INSERT INTO organizations(id, account_lifecycle_state)
+      VALUES (${ORGANIZATION_ID}, 'deletion_irreversible'), (${sharedOrganizationId}, 'active')`);
+    await dbWrite.execute(sql`INSERT INTO billing_subscriptions (
+      id, organization_id, provider_environment, stripe_customer_id, stripe_subscription_id,
+      stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start,
+      current_period_end, lifecycle_revision, provider_object_digest)
+      VALUES (${sharedSubscriptionId}, ${sharedOrganizationId}, 'test', 'cus_shared', 'sub_shared',
+        'si_shared', 'plus_monthly', 'v1', 'active', '2026-08-01Z', '2026-09-01Z', 1, ${"a".repeat(64)})`);
+    await dbWrite.execute(sql`
+      INSERT INTO billing_subscription_commands(id, organization_id, requested_by_user_id,
+        kind, target_plan_key, idempotency_key, provider_idempotency_key, request_digest)
+      VALUES (${commandId}, ${sharedOrganizationId}, ${USER_ID}, 'checkout', 'plus_monthly',
+        'shared-checkout-command', 'shared-provider-command', ${"b".repeat(64)})
+    `);
+    const incidentId = crypto.randomUUID();
+    await dbWrite.execute(sql`INSERT INTO billing_subscription_incidents(
+      id, organization_id, subscription_id, command_id, kind, severity, fingerprint,
+      context, status, resolved_by_user_id, resolution, resolved_at)
+      VALUES (${incidentId}, ${sharedOrganizationId}, ${sharedSubscriptionId}, ${commandId},
+        'reconciliation', 'warning', ${"c".repeat(64)}, '{}', 'resolved', ${USER_ID},
+        'Provider replay inspected and resolved', now())`);
+    const adapter = createAccountDeletionProviderAdapters().other_grants;
+    const membershipId = crypto.randomUUID();
+    await dbWrite.execute(
+      sql`INSERT INTO app_billing_members(id,user_id) VALUES(${membershipId},${USER_ID})`,
+    );
+    await expect(adapter.inspect(context)).resolves.toEqual({ state: "needs_execution" });
+    await adapter.execute(context, "delete-personal-grants");
+    const preserved = await dbWrite.execute(sql`
+      SELECT organization_id,requested_by_user_id FROM billing_subscription_commands WHERE id=${commandId}
+    `);
+    expect(preserved.rows).toEqual([
+      { organization_id: sharedOrganizationId, requested_by_user_id: USER_ID },
+    ]);
+    await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });
+    expect(
+      (await dbWrite.execute(sql`SELECT id FROM app_billing_members WHERE id=${membershipId}`))
+        .rows,
+    ).toEqual([]);
+    expect(
+      (
+        await dbWrite.execute(
+          sql`SELECT organization_id,resolved_by_user_id,resolution FROM billing_subscription_incidents WHERE id=${incidentId}`,
+        )
+      ).rows,
+    ).toEqual([
+      {
+        organization_id: sharedOrganizationId,
+        resolved_by_user_id: null,
+        resolution: "Provider replay inspected and resolved",
+      },
+    ]);
   });
 });

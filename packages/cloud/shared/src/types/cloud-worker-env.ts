@@ -23,13 +23,8 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
-  /** Registered Outreachr app, narrow BFF client secret digest, and exact hosted origin. */
-  OUTREACHR_APP_ID?: string;
-  OUTREACHR_CLIENT_SECRET_SHA256?: string;
-  OUTREACHR_ORIGIN?: string;
-  OUTREACHR_STRIPE_SOL_PRICE?: string;
-  OUTREACHR_STRIPE_ASTRA_PRICE?: string;
-  OUTREACHR_STRIPE_WEBHOOK_SECRET?: string;
+  /** Trusted execution environment for app inference; must match the registered app client mode. */
+  APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
@@ -427,7 +422,17 @@ export interface Bindings {
 
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
+  /** Explicit default app billing mode; live is accepted only in production. */
+  APP_BILLING_ENVIRONMENT?: "test" | "live";
+  /** Trusted hosted UI origin used for server-built billing and onboarding returns. */
+  APP_BILLING_UI_ORIGIN?: string;
+  /** Optional separate test key for sandbox app registrations in production. */
+  STRIPE_TEST_SECRET_KEY?: string;
+  /** Server-owned organization allowed to register the first-party platform merchant. */
+  STRIPE_PLATFORM_BILLING_ORGANIZATION_ID?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /** Signing secret for app billing test-mode events when production also serves test registrations. */
+  STRIPE_TEST_WEBHOOK_SECRET?: string;
   /**
    * Test-only Stripe-compatible loopback origin. The Stripe client accepts it
    * only under the explicit CLOUD_E2E + NODE_ENV=test gates and never in prod.

@@ -206,6 +206,23 @@ This keeps `eliza.app` visually continuous while its marketing renderer loads
 without changing desktop, mobile, or `cloud.eliza.app` app chrome. The brand
 accent remains `#FF5800`.
 
+## Product subscription selection
+
+For web-only billing settings, set `VITE_ELIZA_APPLICATION_SLOT` to the reviewed
+application slot installed in the target Cloud environment. Both public and
+full app entries pass it through boot configuration. The slot selects a
+registered product; it contains no merchant credentials, price, or entitlement.
+Cloud resolves the current registration before showing its billing panel.
+An omitted slot shows an unconfigured state, and an invalid slot shows an
+unavailable state. The settings entry is available before sign-in and without
+a developer credit balance; the product billing page requires a free identity.
+
+Agent-backed settings read `ELIZAOS_CLOUD_APPLICATION_SLOT` from their runtime,
+the same selection used by native inference. The web boot field does not
+override a runtime's funding selection. Configure each deployed host and its
+runtime deliberately; neither subscription settings nor a browser return
+grants paid access or changes infrastructure billing.
+
 ## License
 
 MIT

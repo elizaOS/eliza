@@ -79,10 +79,15 @@ export const ATOMS = {
     rawHosts: [],
   },
   scrollArea: { names: ["ScrollArea"], hosts: ["div"], rawHosts: [] },
+  "native-select": {
+    names: ["NativeSelect"],
+    hosts: ["select"],
+    rawHosts: ["select"],
+  },
   select: {
     names: ["Select"],
-    hosts: ["select", "button"],
-    rawHosts: ["select"],
+    hosts: ["button"],
+    rawHosts: [],
   },
   separator: { names: ["Separator"], hosts: ["div", "hr"], rawHosts: ["hr"] },
   skeleton: { names: ["Skeleton"], hosts: ["div"], rawHosts: [] },

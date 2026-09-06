@@ -61,6 +61,8 @@ beforeAll(async () => {
   for (const statement of identityMigration.split("--> statement-breakpoint")) {
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
   }
+  const { applyAppBillingTestMigrations } = await import("./app-billing-test-migrations");
+  await applyAppBillingTestMigrations((statement) => getPgliteClientForTests().exec(statement));
 });
 beforeEach(async () => {
   await getPgliteClientForTests().exec(`

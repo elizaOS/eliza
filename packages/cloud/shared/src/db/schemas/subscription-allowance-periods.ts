@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { appBillingScopes } from "./app-billing";
 import { billingSubscriptionRevisions, billingSubscriptions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
 
@@ -28,6 +29,8 @@ export const subscriptionAllowancePeriods = pgTable(
   "subscription_allowance_periods",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
@@ -35,8 +38,13 @@ export const subscriptionAllowancePeriods = pgTable(
     subscription_revision: bigint("subscription_revision", { mode: "number" }).notNull(),
     provider: text("provider").notNull().default("stripe"),
     provider_environment: text("provider_environment").notNull(),
-    stripe_invoice_id: text("stripe_invoice_id").notNull(),
-    plan_key: text("plan_key").$type<"plus_monthly" | "pro_monthly">().notNull(),
+    stripe_invoice_id: text("stripe_invoice_id"),
+    grant_source: text("grant_source")
+      .$type<"paid_invoice" | "trial_claim">()
+      .notNull()
+      .default("paid_invoice"),
+    trial_claim_id: uuid("trial_claim_id"),
+    plan_key: text("plan_key").notNull(),
     catalog_version: text("catalog_version").notNull(),
     period_start: timestamp("period_start", { withTimezone: true }).notNull(),
     period_end: timestamp("period_end", { withTimezone: true }).notNull(),
@@ -63,6 +71,10 @@ export const subscriptionAllowancePeriods = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     subscription_tenant_fk: foreignKey({
       columns: [table.subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
@@ -82,6 +94,7 @@ export const subscriptionAllowancePeriods = pgTable(
       table.organization_id,
     ),
     invoice_unique: uniqueIndex("subscription_allowance_periods_invoice_idx").on(
+      table.merchant_key,
       table.provider,
       table.provider_environment,
       table.stripe_invoice_id,
@@ -97,7 +110,7 @@ export const subscriptionAllowancePeriods = pgTable(
     ),
     invoice_id_check: check(
       "subscription_allowance_periods_invoice_id_check",
-      sql`${table.provider} = 'stripe' AND ${table.provider_environment} IN ('test','live') AND ${table.stripe_invoice_id} ~ '^in_[A-Za-z0-9]+$'`,
+      sql`${table.provider} = 'stripe' AND ${table.provider_environment} IN ('test','live') AND ((${table.grant_source} = 'paid_invoice' AND ${table.stripe_invoice_id} ~ '^in_[A-Za-z0-9]+$' AND ${table.trial_claim_id} IS NULL) OR (${table.grant_source} = 'trial_claim' AND ${table.billing_scope_id} IS NOT NULL AND ${table.stripe_invoice_id} IS NULL AND ${table.trial_claim_id} IS NOT NULL))`,
     ),
     period_check: check(
       "subscription_allowance_periods_period_check",
@@ -105,7 +118,7 @@ export const subscriptionAllowancePeriods = pgTable(
     ),
     plan_catalog_check: check(
       "subscription_allowance_periods_plan_catalog_check",
-      sql`${table.plan_key} IN ('plus_monthly','pro_monthly') AND length(btrim(${table.catalog_version})) > 0`,
+      sql`(${table.billing_scope_id} IS NOT NULL OR ${table.plan_key} IN ('plus_monthly','pro_monthly')) AND length(btrim(${table.catalog_version})) > 0`,
     ),
     state_check: check(
       "subscription_allowance_periods_state_check",

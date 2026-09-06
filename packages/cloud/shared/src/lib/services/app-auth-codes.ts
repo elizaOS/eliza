@@ -1,4 +1,5 @@
-// Coordinates cloud service app auth codes behavior behind route handlers.
+/** Issues the canonical one-time app consent codes, including optional narrow delegation bindings. */
+import type { AppDelegationBinding } from "@elizaos/cloud-sdk/app-delegation";
 import { cache } from "../cache/client";
 import { CacheKeys } from "../cache/keys";
 
@@ -10,6 +11,7 @@ export interface AppAuthCodeRecord {
   userId: string;
   issuedAt: number;
   expiresAt: number;
+  delegation?: AppDelegationBinding & { registrationRevision: number; consentId: string };
 }
 
 function createOpaqueCode(): string {
@@ -36,6 +38,7 @@ export function looksLikeAppAuthCode(value: string | null | undefined): value is
 export async function issueAppAuthCode(input: {
   appId: string;
   userId: string;
+  delegation?: AppAuthCodeRecord["delegation"];
 }): Promise<{ code: string; expiresAt: string; expiresIn: number }> {
   if (!cache.isAvailable()) {
     throw new Error("App auth code store is unavailable");
@@ -48,6 +51,7 @@ export async function issueAppAuthCode(input: {
     userId: input.userId,
     issuedAt: now,
     expiresAt: now + APP_AUTH_CODE_TTL_SECONDS * 1000,
+    ...(input.delegation ? { delegation: input.delegation } : {}),
   };
 
   const stored = await cache.setIfNotExists(

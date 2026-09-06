@@ -1,6 +1,6 @@
 # Atomic component duplicate inventory
 
-Scanned 898 maintained React source files across packages and plugins.
+Scanned 894 maintained React source files across packages and plugins.
 
 This is a candidate inventory, not an instruction to merge every entry. Canonical wrappers, renderer adapters, and test doubles remain separate because they often have legitimate ownership.
 
@@ -10,8 +10,8 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | alertDialog | 1 | 0 | 0 | 0 | 0 |
 | attachment | 5 | 0 | 1 | 5 | 0 |
 | avatar | 2 | 0 | 0 | 0 | 0 |
-| badge | 3 | 0 | 12 | 2 | 0 |
-| button | 8 | 0 | 15 | 0 | 6 |
+| badge | 3 | 0 | 11 | 2 | 0 |
+| button | 8 | 0 | 13 | 0 | 6 |
 | banner | 1 | 0 | 3 | 1 | 0 |
 | card | 7 | 0 | 29 | 2 | 0 |
 | checkbox | 1 | 0 | 0 | 0 | 0 |
@@ -19,7 +19,7 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | cornerBrackets | 1 | 0 | 0 | 0 | 0 |
 | statusDot | 1 | 0 | 0 | 0 | 0 |
 | statusPulseDot | 1 | 0 | 0 | 0 | 0 |
-| dialog | 11 | 0 | 10 | 2 | 1 |
+| dialog | 11 | 0 | 9 | 2 | 1 |
 | dropdownMenu | 1 | 0 | 0 | 0 | 0 |
 | input | 4 | 0 | 3 | 0 | 2 |
 | marker | 3 | 0 | 0 | 0 | 0 |
@@ -27,10 +27,11 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | progress | 1 | 0 | 2 | 1 | 0 |
 | radioGroup | 2 | 0 | 0 | 0 | 0 |
 | scrollArea | 1 | 0 | 0 | 0 | 0 |
-| select | 3 | 0 | 2 | 0 | 1 |
+| native-select | 1 | 0 | 0 | 0 | 1 |
+| select | 3 | 0 | 2 | 0 | 0 |
 | separator | 3 | 0 | 0 | 0 | 2 |
 | skeleton | 5 | 0 | 3 | 5 | 0 |
-| slider | 1 | 0 | 1 | 0 | 0 |
+| slider | 1 | 0 | 0 | 0 | 0 |
 | spinner | 1 | 0 | 0 | 0 | 0 |
 | switch | 2 | 0 | 1 | 0 | 0 |
 | table | 1 | 0 | 3 | 1 | 1 |
@@ -66,7 +67,7 @@ Raw host elements are reported only where HTML provides a meaningful atomic sign
 | canonical-implementation | `packages/ui/src/components/ui/input-group.tsx` | 101 |
 | canonical-implementation | `packages/ui/src/components/ui/input.tsx` | 122 |
 
-### Raw select hosts
+### Raw native-select hosts
 
 | Classification | File | Lines |
 | --- | --- | --- |
@@ -142,7 +143,6 @@ No named candidates.
 |  |  | Placement-aware owner marker is shared domain UI rather than a second general badge. |  |  |
 | canonical-wrapper | intentional-specialization | `RedactedBadge` in `packages/ui/src/components/RedactedBadge.tsx:14` | `packages/ui/src/components/ui/badge.tsx` | `Badge`, `EyeOff` |
 |  |  | Redaction semantics stay local while presentation composes the canonical Badge. |  |  |
-| canonical-wrapper | not-reviewed | `PermissionStatusBadge` in `packages/ui/src/components/settings/cloud-panel/sections/permission-status-badge.tsx:10` | - | `StatusBadge` |
 | canonical-wrapper | molecular | `BuildBadge` in `packages/ui/src/components/shell/BuildBadge.tsx:299` | - | `Button`, `X`, `dd`, `div`, `dl`, `dt`, `span` |
 |  |  | Interactive build-details control and popover, not an atomic badge. |  |  |
 | canonical-wrapper | intentional-specialization | `SpeakerNameAttributionBadge` in `packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:40` | `packages/ui/src/components/ui/status-badge.tsx` | `StatusBadge`, `span` |
@@ -162,14 +162,12 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `PstnCallButton` in `packages/ui/src/components/composites/chat/pstn-call-button.tsx:77` | - | `Button`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `Input`, `Label`, `Loader2`, `PhoneCall`, `div`, `p` |
 | canonical-wrapper | not-reviewed | `SidebarCollapsedActionButton` in `packages/ui/src/components/composites/sidebar/sidebar-collapsed-rail.tsx:75` | - | `Button` |
 | canonical-wrapper | not-reviewed | `SidebarItemButton` in `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:276` | - | `Button`, `Card` |
-| canonical-wrapper | not-reviewed | `DestructiveSecondaryButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:82` | - | `Button` |
-| canonical-wrapper | not-reviewed | `CloudActionButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:465` | - | `Button`, `SettingsRow` |
 | canonical-wrapper | not-reviewed | `SettingsActionButton` in `packages/ui/src/components/settings/settings-agent-rows.tsx:569` | - | `Button` |
 | canonical-wrapper | intentional-specialization | `ViewBackButton` in `packages/ui/src/components/shared/ViewHeader.tsx:45` | `packages/ui/src/components/ui/button.tsx` | `ArrowLeft`, `Button` |
 |  |  | Agent instrumentation stays local while the control composes the canonical Button. |  |  |
-| canonical-wrapper | not-reviewed | `SoftButton` in `packages/ui/src/components/shell/ChatOverlay.tsx:507` | - | `Button`, `Glyph`, `Icon` |
+| canonical-wrapper | not-reviewed | `SoftButton` in `packages/ui/src/components/shell/ChatOverlay.tsx:514` | - | `Button`, `Glyph`, `Icon` |
 | canonical-wrapper | not-reviewed | `GlassIconButton` in `packages/ui/src/components/shell/glass-composer.tsx:23` | - | `Button`, `Icon` |
-| canonical-wrapper | not-reviewed | `NotificationStackClearButton` in `packages/ui/src/components/shell/NotificationsHomeCenter.tsx:664` | - | `Button`, `ClearConfirmationContent` |
+| canonical-wrapper | not-reviewed | `NotificationStackClearButton` in `packages/ui/src/components/shell/NotificationsHomeCenter.tsx:676` | - | `Button`, `ClearConfirmationContent` |
 | canonical-wrapper | lab-only | `ActionButton` in `packages/ui/stories/src/lab/lab-ui.tsx:70` | `packages/ui/src/components/ui/button.tsx` | `Button` |
 |  |  | Design-lab fixture is not shipped product UI. |  |  |
 | canonical-wrapper | not-reviewed | `RecoveryActionButton` in `plugins/plugin-task-coordinator/src/orchestrator-task-inspector.tsx:1102` | - | `Button` |
@@ -205,9 +203,9 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `AccountCard` in `packages/ui/src/components/accounts/AccountCard.tsx:174` | - | `Badge`, `Button`, `Card`, `Checkbox`, `ChevronDown`, `ChevronUp`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `EditableAccountLabel`, `KeyRound`, `Spinner`, `StatusBadge`, `Trash2`, `UsageBar`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `AccountRequiredCard` in `packages/ui/src/components/chat/AccountRequiredCard.tsx:133` | - | `Button`, `ReconnectProgressLine`, `RefreshCw`, `ShieldAlert`, `Spinner`, `StatusBadge`, `UserRound`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `ConnectorCardWidget` in `packages/ui/src/components/chat/widgets/connector-card.tsx:83` | - | `Button`, `ConnectorBrandIcon`, `Input`, `ShieldCheck`, `div`, `form`, `label`, `span` |
-| canonical-wrapper | not-reviewed | `HomeWidgetCard` in `packages/ui/src/components/chat/widgets/home-widget-card.tsx:81` | - | `Badge`, `Button`, `StatusDot`, `span` |
+| canonical-wrapper | not-reviewed | `HomeWidgetCard` in `packages/ui/src/components/chat/widgets/home-widget-card.tsx:78` | - | `Badge`, `Button`, `StatusDot`, `span` |
 | canonical-wrapper | not-reviewed | `PermissionCard` in `packages/ui/src/components/composites/chat/permission-card.tsx:59` | - | `Badge`, `Button`, `Card`, `div`, `h3`, `header`, `p` |
-| canonical-wrapper | not-reviewed | `TrajectoryLlmCallCard` in `packages/ui/src/components/composites/trajectories/trajectory-llm-call-card.tsx:67` | - | `Badge`, `Button`, `CallMetric`, `ChevronDown`, `ChevronRight`, `PagePanel`, `TrajectoryCodeBlock`, `div` |
+| canonical-wrapper | not-reviewed | `TrajectoryLlmCallCard` in `packages/ui/src/components/composites/trajectories/trajectory-llm-call-card.tsx:68` | - | `Badge`, `Button`, `CallMetric`, `ChevronDown`, `ChevronRight`, `Separator`, `TrajectoryCodeBlock`, `div`, `section` |
 | canonical-wrapper | not-reviewed | `ConnectorAccountCard` in `packages/ui/src/components/connectors/ConnectorAccountCard.tsx:163` | - | `Badge`, `Button`, `Card`, `Checkbox`, `ConnectedCapabilityChips`, `ConnectorAccountPrivacySelector`, `ConnectorAccountPurposeSelector`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `EditableAccountLabel`, `KeyRound`, `RefreshCw`, `Spinner`, `Star`, `StatusBadge`, `Trash2`, `div`, `img`, `span` |
 | canonical-wrapper | not-reviewed | `ModelCard` in `packages/ui/src/components/local-inference/ModelCard.tsx:56` | - | `Button`, `Card`, `DownloadProgress`, `div`, `p`, `span` |
 | canonical-wrapper | not-reviewed | `PluginCard` in `packages/ui/src/components/pages/PluginCard.tsx:48` | - | `Badge`, `Button`, `PluginVisual`, `Switch`, `div`, `li`, `p`, `span` |
@@ -217,7 +215,7 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `AppBlockerSettingsCard` in `plugins/plugin-personal-assistant/src/components/AppBlockerSettingsCard.tsx:110` | - | `AppBlockerStatusIcon`, `Button`, `CheckCircle2`, `Checkbox`, `Clock3`, `Input`, `ListChecks`, `Loader2`, `RefreshCw`, `Search`, `ShieldBan`, `Smartphone`, `Square`, `Timer`, `div`, `label`, `span` |
 | canonical-wrapper | not-reviewed | `WebsiteBlockerSettingsCard` in `plugins/plugin-personal-assistant/src/components/WebsiteBlockerSettingsCard.tsx:80` | - | `Button`, `CheckCircle2`, `Monitor`, `Settings`, `ShieldBan`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `GitHubConnectionCard` in `plugins/plugin-task-coordinator/src/GitHubConnectionCard.tsx:80` | - | `Button`, `CheckCircle2`, `ExternalLink`, `GitPullRequest`, `LogIn`, `SettingsControls.Input`, `Unplug`, `div`, `p`, `span` |
-| canonical-wrapper | not-reviewed | `TaskCard` in `plugins/plugin-task-coordinator/src/TaskCardList.tsx:239` | - | `Button`, `GitBranch`, `TaskStatusChip`, `TaskStatusMedallion`, `span` |
+| canonical-wrapper | not-reviewed | `TaskCard` in `plugins/plugin-task-coordinator/src/TaskCardList.tsx:239` | - | `Button`, `GitBranch`, `Separator`, `TaskStatusChip`, `span` |
 | molecular-candidate | not-reviewed | `PromptCardGrid` in `packages/ui/src/cloud-ui/components/brand/prompt-card.tsx:39` | - | `PromptCard`, `div` |
 | molecular-candidate | not-reviewed | `DashboardActionCards` in `packages/ui/src/cloud-ui/components/dashboard/cloud-dashboard-components.tsx:72` | - | `ArrowRight`, `BookOpen`, `Bot`, `Code`, `CreditCard`, `KeyRound`, `Link`, `Rocket`, `Server`, `Store`, `Wallet`, `div`, `h3`, `span` |
 | molecular-candidate | not-reviewed | `DashboardDataListCard` in `packages/ui/src/cloud-ui/components/data-list/dashboard-data-list.tsx:84` | - | `div` |
@@ -271,7 +269,6 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `AddAccountDialog` in `packages/ui/src/components/accounts/AddAccountDialog.tsx:183` | - | `Alert`, `AlertDescription`, `Button`, `Card`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `Input`, `Label`, `ProviderPicker`, `SemanticForm`, `Spinner`, `TextLink`, `code`, `div`, `p`, `span` |
 | canonical-wrapper | not-reviewed | `ChatConversationRenameDialog` in `packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx:41` | - | `Button`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `Input`, `Label`, `Sparkles`, `div` |
 | canonical-wrapper | not-reviewed | `PluginSettingsDialog` in `packages/ui/src/components/pages/plugin-view-dialogs.tsx:72` | - | `AdminDialog.BodyScroll`, `AdminDialog.Content`, `AdminDialog.Footer`, `AdminDialog.Header`, `AdminDialog.MetaBadge`, `AdminDialog.MonoMeta`, `Badge`, `Button`, `CheckCircle2`, `ConnectorSetupPanel`, `Dialog`, `DialogDescription`, `DialogTitle`, `PluginConfigForm`, `SettingsDialogIcon`, `div`, `span` |
-| canonical-wrapper | not-reviewed | `CloudConfirmDialog` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:659` | - | `Button`, `CloudModal`, `div`, `p` |
 | parallel-primitive | molecular | `PromoteAppDialog` in `packages/ui/src/cloud-ui/components/promotion/promote-app-dialog.tsx:152` | `packages/ui/src/components/ui/dialog.tsx` | `AlertCircle`, `ArrowLeft`, `ArrowRight`, `Braces`, `Button`, `Check`, `CheckCircle`, `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `FileText`, `Input`, `Label`, `Loader2`, `Megaphone`, `Search`, `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue`, `Send`, `Share2`, `Textarea`, `div`, `h3`, `p`, `platform.Icon`, `span` |
 |  |  | Multi-step workflow already composes the canonical Dialog family. |  |  |
 | parallel-primitive | intentional-specialization | `ConversationRenameDialog` in `packages/ui/src/components/conversations/ConversationRenameDialog.tsx:21` | `packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx` | `ChatConversationRenameDialog` |
@@ -318,6 +315,10 @@ No named candidates.
 
 No named candidates.
 
+### native-select
+
+No named candidates.
+
 ### select
 
 | Classification | Decision | Definition | Canonical owner | Rendered tags |
@@ -349,9 +350,7 @@ No named candidates.
 
 ### slider
 
-| Classification | Decision | Definition | Canonical owner | Rendered tags |
-| --- | --- | --- | --- | --- |
-| canonical-wrapper | not-reviewed | `CloudSliderRow` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:309` | - | `SettingsRow`, `Slider`, `div`, `span` |
+No named candidates.
 
 ### spinner
 
@@ -380,7 +379,7 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `BrandTabsResponsive` in `packages/ui/src/cloud-ui/components/brand/brand-tabs-responsive.tsx:53` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue`, `Tabs`, `TabsList`, `TabsTrigger`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `SimpleBrandTabs` in `packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:51` | - | `Button`, `div` |
 | canonical-wrapper | not-reviewed | `Tabs` in `packages/ui/src/cloud-ui/components/docs/mdx-components.tsx:70` | - | `TabsContent`, `TabsList`, `TabsTrigger`, `UiTabs`, `div` |
-| canonical-wrapper | not-reviewed | `AppDetailsTabs` in `packages/ui/src/cloud/applications/components/app-details-tabs.tsx:48` | - | `AppAnalytics`, `AppDomains`, `AppEarningsDashboard`, `AppFrontendHosting`, `AppMonetizationSettings`, `AppOverview`, `AppPromote`, `AppSettings`, `AppUsers`, `Button`, `Icon`, `div`, `span` |
+| canonical-wrapper | not-reviewed | `AppDetailsTabs` in `packages/ui/src/cloud/applications/components/app-details-tabs.tsx:49` | - | `AppAnalytics`, `AppConnectionsSettings`, `AppDomains`, `AppEarningsDashboard`, `AppFrontendHosting`, `AppMonetizationSettings`, `AppOverview`, `AppPromote`, `AppSettings`, `AppUsers`, `Button`, `Icon`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `BrowserTabSwitcher` in `packages/ui/src/components/pages/BrowserTabSwitcher.tsx:292` | - | `BrowserTabCard`, `Button`, `Dialog`, `DialogClose`, `DialogContent`, `DialogHeader`, `DialogTitle`, `Plus`, `X`, `div`, `h3`, `p`, `section`, `span` |
 | canonical-wrapper | not-reviewed | `AgentTabsSection` in `plugins/plugin-task-coordinator/src/AgentTabsSection.tsx:38` | - | `Button`, `ExternalLink`, `InstallStateIcon`, `KeyRound`, `Loader2`, `RotateCw`, `SettingsControls.MutedText`, `SettingsControls.SegmentedGroup`, `a`, `div`, `span` |
 | parallel-primitive | compatibility-adapter | `BrandTabs` in `packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:18` | `packages/ui/src/components/ui/tabs.tsx` |  |

@@ -193,6 +193,16 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
   return resolveCloudSdkAuthorityTuple(runtime).apiKey;
 }
 
+/** Explicit configured native product; the server resolves all tenant and funding authority. */
+export function getNativeApplicationSlot(runtime: IAgentRuntime): string | undefined {
+  return getSetting(runtime, "ELIZAOS_CLOUD_APPLICATION_SLOT");
+}
+
+/** One key per logical model call, retained by the caller across warming or transport retries. */
+export function nativeApplicationOperationHeaders(runtime: IAgentRuntime): Record<string,string> {
+  return getNativeApplicationSlot(runtime) ? {"Idempotency-Key":`native:${crypto.randomUUID()}`} : {};
+}
+
 /**
  * The Eliza Cloud app this agent's inference should be attributed to (#10423).
  *

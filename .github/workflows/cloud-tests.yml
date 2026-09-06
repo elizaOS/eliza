@@ -124,6 +124,26 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts
+      - name: Run generic app subscription PostgreSQL contracts
+        env:
+          APP_BILLING_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          APP_FUNDING_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          APP_DELIVERY_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/app-subscription-authority.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/app-billing-command.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-runtime.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-membership.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-application-slot.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/native-application-inference.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/generic-billing-import.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/app-billing-delivery.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/app-inference-funding.postgres.integration.test.ts
+          'packages/cloud/api/v1/apps/[id]/billing/admin/route.postgres.integration.test.ts'
+          'packages/cloud/api/v1/apps/[id]/billing/records.postgres.integration.test.ts'
+          'packages/cloud/api/v1/apps/[id]/billing/administrators.postgres.integration.test.ts'
+          'packages/cloud/api/v1/billing/application-slots/[slotKey]/route.postgres.integration.test.ts'
       - name: Run PostgreSQL lifecycle barrier tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres

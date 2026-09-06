@@ -199,6 +199,26 @@ async function hasLinkedInvoice(object: object): Promise<boolean> {
 export async function processStripeEvent(
   delivery: StripeEventDelivery,
 ): Promise<DrainResult> {
+  if (delivery.body.appBilling) {
+    try {
+      const { appBillingReconciliation } = await import(
+        "@/lib/services/app-billing-reconciliation"
+      );
+      await appBillingReconciliation.processPersisted(
+        delivery.body.appBilling.receiptKey,
+        delivery.body.appBilling.trigger,
+      );
+      return "ack";
+    } catch (error) {
+      // error-policy:J4 Generic billing retains the intake and receipt for retry; legacy message-text heuristics cannot acknowledge it.
+      logger.error("[Stripe Queue] App subscription reconciliation failed", {
+        eventId: delivery.body.eventId,
+        errorType: error instanceof Error ? error.name : "unknown",
+        attempts: delivery.attempts,
+      });
+      return "retry";
+    }
+  }
   const { event } = delivery.body;
   logger.info(
     `[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`,
@@ -296,7 +316,7 @@ async function handleCheckoutSessionCompleted(
   event: Stripe.Event,
 ): Promise<void> {
   const session = event.data.object as Stripe.Checkout.Session;
-  if (session.payment_status !== "paid") return;
+  if (session.mode !== "payment" || session.payment_status !== "paid") return;
 
   let organizationId = session.metadata?.organization_id;
   let userId = session.metadata?.user_id;

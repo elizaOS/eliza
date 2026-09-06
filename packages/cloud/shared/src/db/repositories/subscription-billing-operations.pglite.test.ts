@@ -125,6 +125,8 @@ beforeAll(async () => {
   `);
   await applyMigration("0373_subscription_authority.sql");
   await applyMigration("0379_subscription_account_authority.sql");
+  const { applyAppBillingTestMigrations } = await import("./app-billing-test-migrations");
+  await applyAppBillingTestMigrations((statement) => getPgliteClientForTests().exec(statement));
 });
 
 beforeEach(async () => {

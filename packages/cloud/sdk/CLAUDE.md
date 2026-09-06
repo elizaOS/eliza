@@ -102,6 +102,14 @@ Other browser-safe sub-exports are `@elizaos/cloud-sdk/api-explorer`,
 `@elizaos/cloud-sdk/account-billing-snapshot`. Keep server-only persistence,
 authorization, and service code in the private `@elizaos/cloud-shared` package.
 
+`@elizaos/cloud-sdk/app-billing` exposes app-scoped purchaser contracts and the
+client returned by `cloud.appBilling(appId)`. Revisions and allowance USD values
+are decimal strings. Preserve durable idempotency keys across retries, require
+reviewed quotes for paid updates, and represent unresolved operations explicitly.
+`@elizaos/cloud-sdk/app-notifications` owns the shared timestamped HMAC callback
+wire format and billing envelope verifier. Verification authenticates a delivery;
+the receiver still deduplicates its ID and reads current entitlement authority.
+
 ## Commands
 
 ```bash

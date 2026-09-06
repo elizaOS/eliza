@@ -21,6 +21,7 @@ import {
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
 import {
+  calculateCost,
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
@@ -33,15 +34,27 @@ import {
   resolvePassthroughEmbeddingsUpstream,
 } from "@/lib/providers/language-model";
 import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
+import {
+  admitAppSubscriptionInference,
+  appInferenceDeveloperScope,
+} from "@/lib/services/app-subscription-inference-admission";
 import type { CreditReservation } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
+import { requireInferenceApiKeyWithOrg } from "@/lib/services/inference-api-key-auth";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
+import {
+  assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
+} from "@/lib/services/inference-credential-revocation";
 import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
+import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@/lib/services/native-application-inference";
 import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
@@ -49,6 +62,7 @@ import {
   InferencePricingCacheUnavailableError,
   type OrganizationInferenceAdmission,
 } from "@/lib/services/organization-inference-admission";
+import { settlementDigest } from "@/lib/services/settlement-digest";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -106,12 +120,14 @@ app.post("/", async (c) => {
   let billed = false;
   let providerDispatched = false;
   try {
+    const native = await prepareNativeApplicationInference(c);
+    const inferenceRequest = native.request;
     let guardOrganizationId: string | undefined;
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => guardOrganizationId,
       credential: () => admissionCredential,
     });
-    const request = (await c.req
+    const request = (await inferenceRequest
       .json()
       .catch(() => null)) as EmbeddingsRequest | null;
     const requestIsValid = Boolean(request?.model && request.input);
@@ -139,7 +155,7 @@ app.post("/", async (c) => {
     // authoritative compatibility path is available only outside Workers.
     let user: { id: string; organization_id: string };
     let apiKeyId: string | null;
-    const resolution = await resolveInferenceAuthContext(c.req.raw, {
+    const resolution = await resolveInferenceAuthContext(inferenceRequest, {
       executionCtx,
       cacheOnly: Boolean(executionCtx),
       deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
@@ -215,11 +231,28 @@ app.post("/", async (c) => {
           401,
         );
       }
-      user = await requireUserOrApiKeyWithOrg(c);
-      // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
-      // and exposed its id on the request context — reuse it instead of doing a
-      // second DB lookup per request.
-      apiKeyId = c.get("apiKeyId") ?? null;
+      if (native.actor) {
+        const authorization = inferenceRequest.headers.get("Authorization");
+        if (!authorization?.startsWith("Bearer "))
+          throw new Error("Native infrastructure credential is unavailable");
+        const resolved = await requireInferenceApiKeyWithOrg(
+          authorization.substring(7),
+        );
+        user = resolved.user;
+        apiKeyId = resolved.apiKey.id;
+        admissionCredential = {
+          kind: "api_key",
+          credentialId: apiKeyId,
+          userId: user.id,
+        };
+        guardOrganizationId = user.organization_id;
+      } else {
+        user = await requireUserOrApiKeyWithOrg(c);
+        // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
+        // and exposed its id on the request context — reuse it instead of doing a
+        // second DB lookup per request.
+        apiKeyId = c.get("apiKeyId") ?? null;
+      }
     }
 
     const orgRateLimitPromise = user.organization_id
@@ -320,31 +353,74 @@ app.post("/", async (c) => {
 
     const requestId = crypto.randomUUID();
     providerRequestId = requestId;
-    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
+    const affiliateCode = native.actor
+      ? null
+      : (c.req.header("X-Affiliate-Code") ?? null);
     try {
-      const admission = await admitOrganizationInference({
-        context: {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId,
-          model,
+      if (native.actor) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
           provider,
+          estimatedInputTokens,
+          0,
           billingSource,
-          requestId,
-        },
-        apiKeyId,
-        estimatedInputTokens,
-        estimatedOutputTokens: 0,
-        affiliateCode,
-        executionCtx,
-        admissionSnapshot,
-        credential: credentialGuard.credentialForAdmission(),
-        atomicProviderBoundary: Boolean(executionCtx),
-      });
-      settleReservation = admission.settle;
-      settleUnknown = admission.settleUnknown;
-      markProviderDispatched = admission.markProviderDispatched;
-      billingReservation = admission.reservation;
+        );
+        const admission = await admitAppSubscriptionInference({
+          actor: native.actor,
+          developerOrganizationId: user.organization_id,
+          developerAppScopeId: await appInferenceDeveloperScope(apiKeyId),
+          logicalOperationId:
+            inferenceRequest.headers.get("Idempotency-Key") ?? "",
+          requestDigest: settlementDigest({
+            request,
+            model: normalizedModel,
+            provider,
+            billingSource,
+          }),
+          estimatedCostUsd: totalCost,
+          revalidateDeveloperCredential: async () => {
+            if (!apiKeyId)
+              throw new Error(
+                "Native infrastructure credential is unavailable",
+              );
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              admissionCredential ?? {
+                kind: "api_key",
+                credentialId: apiKeyId,
+                userId: user.id,
+              },
+            );
+          },
+        });
+        settleReservation = admission.settle;
+        settleUnknown = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+      } else {
+        const admission = await admitOrganizationInference({
+          context: {
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId,
+            model,
+            provider,
+            billingSource,
+            requestId,
+          },
+          apiKeyId,
+          estimatedInputTokens,
+          estimatedOutputTokens: 0,
+          affiliateCode,
+          executionCtx,
+          admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: Boolean(executionCtx),
+        });
+        settleReservation = admission.settle;
+        settleUnknown = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+        billingReservation = admission.reservation;
+      }
     } catch (error) {
       // error-policy:J1 the route boundary exposes cached credit decisions and
       // cache readiness without falling through to authoritative storage.
@@ -743,6 +819,8 @@ app.post("/", async (c) => {
       );
     }
 
+    const nativeError = nativeApplicationInferenceErrorResponse(error);
+    if (nativeError) return nativeError;
     return failureResponse(c, error);
   }
 });

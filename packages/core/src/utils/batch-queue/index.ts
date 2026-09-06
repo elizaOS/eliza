@@ -158,7 +158,33 @@ export class BatchQueue<T> {
 						queue: this.options.name,
 						batchSize: batch.length,
 					});
-					outcomes = await this.batchProcessor.processBatch(batch);
+					const failure =
+						error instanceof Error ? error : new Error(String(error));
+					const retryable: T[] = [];
+					outcomes = [];
+					for (const item of batch) {
+						if (this.options.shouldRetry?.(item, failure, 1) !== false)
+							retryable.push(item);
+						else {
+							outcomes.push({
+								item,
+								success: false,
+								error: failure,
+								retryCount: 0,
+							});
+							try {
+								await this.options.onExhausted?.(item, failure);
+							} catch (callbackError) {
+								// error-policy:J7 The original failed outcome remains visible when its reporting callback fails.
+								this.runtime?.reportError(
+									"BatchQueue.onExhausted",
+									callbackError,
+									{ queue: this.options.name },
+								);
+							}
+						}
+					}
+					outcomes.push(...(await this.batchProcessor.processBatch(retryable)));
 				}
 			} else {
 				outcomes = await this.batchProcessor.processBatch(batch);

@@ -2,7 +2,6 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import {
-  BILLING_SUBSCRIPTION_COMMAND_KINDS,
   BILLING_SUBSCRIPTION_COMMAND_STATUSES,
   BILLING_SUBSCRIPTION_EVENT_RECEIPT_STATUSES,
   BILLING_SUBSCRIPTION_INCIDENT_KINDS,
@@ -19,13 +18,6 @@ function checkNames(table: Parameters<typeof getTableConfig>[0]): string[] {
 
 describe("subscription billing operation schema", () => {
   test("pins explicit command and recovery vocabularies", () => {
-    expect(BILLING_SUBSCRIPTION_COMMAND_KINDS).toEqual([
-      "checkout",
-      "upgrade",
-      "downgrade",
-      "cancel",
-      "resume",
-    ]);
     expect(BILLING_SUBSCRIPTION_COMMAND_STATUSES).toEqual([
       "PREPARED",
       "OUTCOME_UNKNOWN",

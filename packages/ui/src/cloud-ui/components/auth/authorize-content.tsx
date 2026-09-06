@@ -4,6 +4,11 @@
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */
 import {
+  APP_DELEGATION_SCOPE_LABELS,
+  APP_DELEGATION_SCOPES,
+  type AppDelegationScope,
+} from "@elizaos/cloud-sdk/app-delegation";
+import {
   clearStoredStewardToken,
   readStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
@@ -127,10 +132,31 @@ export function AuthorizeContent() {
     [serializedSearchParams],
   );
 
+  if (
+    searchParams.has("flow") &&
+    !["mobile_pkce", "app_delegation"].includes(searchParams.get("flow") ?? "")
+  ) {
+    return (
+      <AuthorizationErrorFrame
+        error="Unsupported application authorization flow."
+        onHome={() => router.push("/")}
+      />
+    );
+  }
+
   if (searchParams.get("flow") === "mobile_pkce" && !mobileRequest) {
     return (
       <AuthorizationErrorFrame
         error="The mobile sign-in request is incomplete. Return to Eliza and try again."
+        onHome={() => router.push("/")}
+      />
+    );
+  }
+
+  if (searchParams.get("flow") === "app_delegation" && !state?.trim()) {
+    return (
+      <AuthorizationErrorFrame
+        error="The application authorization request is missing state. Return to the app and try again."
         onHome={() => router.push("/")}
       />
     );
@@ -320,6 +346,20 @@ function AuthorizeFlow({
   const providersReady = providers !== null || !isProvidersLoading;
   const router = useRouter();
 
+  const delegationParams = useSearchParams().toString();
+  const delegationRequest = useMemo(() => {
+    const params = new URLSearchParams(delegationParams);
+    if (params.get("flow") !== "app_delegation") return null;
+    const scopes = (params.get("scopes") ?? "").split(" ");
+    return {
+      flow: "app_delegation" as const,
+      clientId: params.get("client_id") ?? "",
+      scopes,
+    };
+  }, [delegationParams]);
+  const [delegationScopes, setDelegationScopes] = useState<
+    AppDelegationScope[]
+  >([]);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [status, setStatus] = useState<AuthorizeStatus>("validating");
   const [error, setError] = useState<string | null>(null);
@@ -339,18 +379,36 @@ function AuthorizeFlow({
       }
 
       try {
-        const validationUrl = mobileRequest
-          ? (() => {
-              const url = new URL(
-                "/api/v1/app-auth/mobile/config",
-                window.location.origin,
-              );
-              url.searchParams.set("clientId", mobileRequest.clientId);
-              url.searchParams.set("environment", mobileRequest.environment);
-              url.searchParams.set("redirectUri", redirectUri);
-              return `${url.pathname}${url.search}`;
-            })()
-          : `/api/v1/apps/${appId}/public?redirect_uri=${encodeURIComponent(redirectUri)}`;
+        const delegationUrl = new URL(
+          "/api/v1/app-auth/delegations/registration",
+          window.location.origin,
+        );
+        if (delegationRequest) {
+          delegationUrl.searchParams.set("appId", appId);
+          delegationUrl.searchParams.set(
+            "clientId",
+            delegationRequest.clientId,
+          );
+          delegationUrl.searchParams.set("redirectUri", redirectUri);
+          delegationUrl.searchParams.set(
+            "scopes",
+            delegationRequest.scopes.join(" "),
+          );
+        }
+        const validationUrl = delegationRequest
+          ? `${delegationUrl.pathname}${delegationUrl.search}`
+          : mobileRequest
+            ? (() => {
+                const url = new URL(
+                  "/api/v1/app-auth/mobile/config",
+                  window.location.origin,
+                );
+                url.searchParams.set("clientId", mobileRequest.clientId);
+                url.searchParams.set("environment", mobileRequest.environment);
+                url.searchParams.set("redirectUri", redirectUri);
+                return `${url.pathname}${url.search}`;
+              })()
+            : `/api/v1/apps/${appId}/public?redirect_uri=${encodeURIComponent(redirectUri)}`;
         const res = await fetch(validationUrl);
         if (cancelled) return;
 
@@ -371,6 +429,7 @@ function AuthorizeFlow({
         }
 
         const data = (await res.json()) as {
+          scopes?: unknown;
           app?: {
             description?: string;
             id?: string;
@@ -385,6 +444,18 @@ function AuthorizeFlow({
           setError("Eliza Cloud returned invalid application metadata.");
           setStatus("error");
           return;
+        }
+        if (delegationRequest) {
+          if (
+            !Array.isArray(data.scopes) ||
+            !data.scopes.every((scope): scope is AppDelegationScope =>
+              APP_DELEGATION_SCOPES.some((allowed) => allowed === scope),
+            ) ||
+            data.scopes.length === 0
+          ) {
+            throw new Error("Invalid application consent capabilities");
+          }
+          setDelegationScopes(data.scopes);
         }
         setAppInfo({
           id: data.app.id ?? (mobileRequest ? mobileRequest.clientId : appId),
@@ -405,7 +476,7 @@ function AuthorizeFlow({
     return () => {
       cancelled = true;
     };
-  }, [appId, mobileRequest, redirectUri]);
+  }, [appId, delegationRequest, mobileRequest, redirectUri]);
 
   const handleAuthorize = useCallback(async () => {
     if ((!appId && !mobileRequest) || !redirectUri) return;
@@ -445,7 +516,13 @@ function AuthorizeFlow({
                 redirectUri,
                 state,
               }
-            : { appId, redirectUri },
+            : {
+                appId,
+                redirectUri,
+                ...(delegationRequest
+                  ? { ...delegationRequest, scopes: delegationScopes }
+                  : {}),
+              },
         ),
       });
 
@@ -504,6 +581,8 @@ function AuthorizeFlow({
     redirectUri,
     state,
     appInfo?.name,
+    delegationRequest,
+    delegationScopes,
     getToken,
     mobileRequest,
     signOut,
@@ -596,10 +675,25 @@ function AuthorizeFlow({
   return (
     <Frame>
       <AppHeader appInfo={appInfo} />
-      <p className="max-w-sm text-center text-sm text-white/60">
-        Connect {appInfo.name} to your Eliza Cloud account. AI features may use
-        your cloud credit balance.
-      </p>
+      {delegationRequest ? (
+        <div className="max-w-sm text-sm text-white/60">
+          <p>Authorize {appInfo.name} to use these account capabilities:</p>
+          <ul className="mt-3 list-disc space-y-2 pl-5">
+            {delegationScopes.map((scope) => (
+              <li key={scope}>{APP_DELEGATION_SCOPE_LABELS[scope]}</li>
+            ))}
+          </ul>
+          <p className="mt-3">
+            This app manages its own subscription. Your Eliza Cloud account can
+            stay free.
+          </p>
+        </div>
+      ) : (
+        <p className="max-w-sm text-center text-sm text-white/60">
+          Connect {appInfo.name} to your Eliza Cloud account. AI features may
+          use your cloud credit balance.
+        </p>
+      )}
 
       {error && <Alert variant="dashboardError">{error}</Alert>}
 

@@ -13,6 +13,7 @@ const nativeSelectVariants = cva(
     variants: {
       presentation: {
         default: "w-full rounded-sm",
+        compact: "w-full rounded-md bg-background px-2 text-base sm:text-xs",
         overlay:
           "absolute inset-0 size-full cursor-pointer appearance-none border-0 bg-transparent opacity-0",
       },

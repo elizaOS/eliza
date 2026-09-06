@@ -19,6 +19,10 @@
 import { lazy } from "react";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 
+const NativeProductBillingPage = lazy(
+  () => import("./apps/NativeProductBillingPage"),
+);
+const AppBillingPage = lazy(() => import("./apps/AppBillingPage"));
 const BillingPage = lazy(() => import("./BillingPage"));
 const BillingSuccessPage = lazy(() => import("./BillingSuccessPage"));
 const InvoiceDetailPage = lazy(() => import("./InvoiceDetailPage"));
@@ -38,5 +42,17 @@ registerCloudRoute({
 registerCloudRoute({
   path: "cloud/invoices/:id",
   element: InvoiceDetailPage,
+  group: "cloud",
+});
+
+registerCloudRoute({
+  path: "cloud/billing/apps/:appId/:productFamilyKey",
+  element: AppBillingPage,
+  group: "cloud",
+});
+
+registerCloudRoute({
+  path: "cloud/billing/products/:slotKey",
+  element: NativeProductBillingPage,
   group: "cloud",
 });

@@ -267,6 +267,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_unpaid",
+          mode: "payment",
           payment_status: "unpaid",
           payment_intent: "pi_unpaid",
           metadata: { organization_id: "org-1", credits: "10.00" },
@@ -282,6 +283,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_no_pi",
+          mode: "payment",
           payment_status: "paid",
           payment_intent: null,
           metadata: { organization_id: "org-1", credits: "10.00" },
@@ -296,6 +298,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_expanded",
+          mode: "payment",
           payment_status: "paid",
           payment_intent: { id: "pi_expanded" },
           metadata: { credits: "0" },

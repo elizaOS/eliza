@@ -1,6 +1,8 @@
 /**
  * Registers Cloud embedding handlers and validates dimension configuration before dispatch.
  */
+import { nativeApplicationOperationHeaders, getNativeApplicationSlot } from "../utils/config";
+import { nativeFundingFailure } from "../utils/native-funding";
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
   ElizaError,
@@ -211,6 +213,8 @@ export async function handleBatchTextEmbedding(
     const batchEnd = Math.min(batchStart + MAX_BATCH_SIZE, validTexts.length);
     const batch = validTexts.slice(batchStart, batchEnd);
     const batchTexts = batch.map((b) => b.text);
+    const selectedFundingSlot = getNativeApplicationSlot(runtime);
+    const operationHeaders = nativeApplicationOperationHeaders(runtime);
 
     logger.info(
       `[BatchEmbeddings] Processing batch ${Math.floor(batchStart / MAX_BATCH_SIZE) + 1}/${Math.ceil(validTexts.length / MAX_BATCH_SIZE)}: ${batch.length} texts`
@@ -241,6 +245,7 @@ export async function handleBatchTextEmbedding(
           "cloud.embedding",
           () =>
             client.requestRaw("POST", "/embeddings", {
+              headers: operationHeaders,
               json: {
                 model: embeddingModelName,
                 input: batchTexts,
@@ -408,7 +413,8 @@ export async function handleBatchTextEmbedding(
       // vectors that would corrupt the embedding store (Commandment 8).
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`[BatchEmbeddings] Batch failed: ${message}`);
-      throw error instanceof Error ? error : new Error(message);
+      // error-policy:J2 Preserve selected funding instead of authorizing another provider or queue purchase.
+      throw nativeFundingFailure(selectedFundingSlot, error instanceof Error ? error : new Error(message));
     }
   }
 

@@ -136,6 +136,42 @@ describe("hosted public renderer entry policy", () => {
     expect(isHostedPublicPath(pathname)).toBe(false);
   });
 
+  it("boots hosted account management without the agent renderer while preserving host exclusions", () => {
+    const common = {
+      hostname: "cloud.eliza.app",
+      webShellEnabled: true,
+      chatHarnessEnabled: false,
+      desktopShell: false,
+      forceApexConsole: false,
+      forceMarketingHome: false,
+    };
+    for (const pathname of [
+      "/cloud",
+      "/cloud/apps",
+      "/cloud/apps/app-id",
+      "/cloud/billing/apps/app-id/main",
+      "/dashboard/billing",
+    ]) {
+      expect(shouldUsePublicWebEntry({ ...common, pathname })).toBe(true);
+      expect(
+        shouldUsePublicWebEntry({ ...common, pathname, desktopShell: true }),
+      ).toBe(false);
+      expect(
+        shouldUsePublicWebEntry({
+          ...common,
+          pathname,
+          chatHarnessEnabled: true,
+        }),
+      ).toBe(false);
+    }
+    expect(shouldUsePublicWebEntry({ ...common, pathname: "/cloudish" })).toBe(
+      false,
+    );
+    expect(
+      shouldUsePublicWebEntry({ ...common, pathname: "/dashboardish" }),
+    ).toBe(false);
+  });
+
   it("uses the public entry for marketing home but not app-host home", () => {
     const common = {
       pathname: "/",

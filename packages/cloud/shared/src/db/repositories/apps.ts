@@ -435,6 +435,24 @@ export class AppsRepository {
     return "created";
   }
 
+  /** Removes the canonical user consent; grants bound to its row ID cannot survive reconnection. */
+  async disconnectUser(appId: string, userId: string): Promise<void> {
+    /* global-scope: app counter changes only after deleting the authenticated user's exact (app_id, user_id) consent row in this transaction. */
+    await dbWrite.transaction(async (tx) => {
+      const removed = await tx
+        .delete(appUsers)
+        .where(and(eq(appUsers.app_id, appId), eq(appUsers.user_id, userId)))
+        .returning({ id: appUsers.id });
+      if (removed.length > 0)
+        await tx
+          .update(apps)
+          .set({
+            total_users: sql`GREATEST(0, COALESCE(${apps.total_users}, 0) - ${removed.length})`,
+          })
+          .where(eq(apps.id, appId));
+    });
+  }
+
   /**
    * Lists app users for an app, ordered by first seen date.
    */

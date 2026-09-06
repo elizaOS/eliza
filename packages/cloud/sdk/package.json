@@ -2,13 +2,23 @@
   "name": "@elizaos/cloud-sdk",
   "version": "2.0.3-beta.7",
   "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/cloud/sdk"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "LICENSE",
+    "README.md",
+    "app-delegation.md",
+    "app-inference.md",
+    "app-notifications.md"
   ],
   "sideEffects": false,
   "scripts": {
@@ -76,6 +86,26 @@
       "import": "./dist/browser-contracts/index.js",
       "default": "./dist/browser-contracts/index.js"
     },
+    "./app-notifications": {
+      "types": "./dist/app-notifications.d.ts",
+      "eliza-source": {
+        "types": "./src/app-notifications.ts",
+        "import": "./src/app-notifications.ts",
+        "default": "./src/app-notifications.ts"
+      },
+      "import": "./dist/app-notifications.js",
+      "default": "./dist/app-notifications.js"
+    },
+    "./app-billing": {
+      "types": "./dist/app-billing.d.ts",
+      "eliza-source": {
+        "types": "./src/app-billing.ts",
+        "import": "./src/app-billing.ts",
+        "default": "./src/app-billing.ts"
+      },
+      "import": "./dist/app-billing.js",
+      "default": "./dist/app-billing.js"
+    },
     "./account-billing-snapshot": {
       "types": "./dist/account-billing-snapshot.d.ts",
       "eliza-source": {
@@ -96,7 +126,37 @@
       "import": "./dist/cloud-setup-session/*.js",
       "default": "./dist/cloud-setup-session/*.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./app-delegation": {
+      "types": "./dist/app-delegation.d.ts",
+      "eliza-source": {
+        "types": "./src/app-delegation.ts",
+        "import": "./src/app-delegation.ts",
+        "default": "./src/app-delegation.ts"
+      },
+      "import": "./dist/app-delegation.js",
+      "default": "./dist/app-delegation.js"
+    },
+    "./app-billing-admin": {
+      "types": "./dist/app-billing-admin.d.ts",
+      "eliza-source": {
+        "types": "./src/app-billing-admin.ts",
+        "import": "./src/app-billing-admin.ts",
+        "default": "./src/app-billing-admin.ts"
+      },
+      "import": "./dist/app-billing-admin.js",
+      "default": "./dist/app-billing-admin.js"
+    },
+    "./app-billing-membership": {
+      "types": "./dist/app-billing-membership.d.ts",
+      "import": "./dist/app-billing-membership.js",
+      "default": "./dist/app-billing-membership.js",
+      "eliza-source": {
+        "types": "./src/app-billing-membership.ts",
+        "import": "./src/app-billing-membership.ts",
+        "default": "./src/app-billing-membership.ts"
+      }
+    }
   },
   "elizaos": {
     "managedIntegration": {

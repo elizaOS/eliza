@@ -42,6 +42,8 @@
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
+      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],

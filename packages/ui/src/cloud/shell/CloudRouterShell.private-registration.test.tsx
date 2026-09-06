@@ -13,6 +13,7 @@ import {
 } from "../private-cloud-registration";
 import { registerPublicCloudSurfaces } from "../register-public";
 import { CloudRouterShell } from "./CloudRouterShell";
+import { registerCloudRoute } from "./cloud-route-registry";
 
 vi.mock("./StewardProvider", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./StewardProvider")>();
@@ -68,6 +69,7 @@ describe("CloudRouterShell private Cloud registration UI", () => {
     render(
       <CloudRouterShell
         appElement={<div data-testid="self-hosted-login-view" />}
+        cloudManagementElement={<div data-testid="private-management" />}
       />,
     );
 
@@ -77,6 +79,44 @@ describe("CloudRouterShell private Cloud registration UI", () => {
       );
     });
     expect(screen.queryByTestId("self-hosted-login-view")).toBeNull();
+    expect(screen.queryByTestId("private-management")).toBeNull();
+  });
+
+  it("mounts hosted account management without starting the agent app after registration", async () => {
+    setPrivateCloudLoadForTests(async () => undefined);
+    render(
+      <CloudRouterShell
+        appElement={<div data-testid="agent-runtime" />}
+        cloudManagementElement={<div>Independent app administration</div>}
+      />,
+    );
+    await screen.findByText("Independent app administration");
+    expect(screen.queryByTestId("agent-runtime")).toBeNull();
+    expect(window.location.pathname).toBe("/cloud/unknown-surface");
+  });
+
+  it("keeps registered Cloud routes on the hosted management renderer", async () => {
+    registerCloudRoute({
+      path: "cloud/billing/hosted-test",
+      group: "cloud",
+      element: () => <div>Route body</div>,
+    });
+    window.history.replaceState(
+      {},
+      "",
+      "/cloud/billing/hosted-test?accountId=workspace#invoice",
+    );
+    render(
+      <CloudRouterShell
+        appElement={<div data-testid="agent-runtime" />}
+        cloudManagementElement={<div>Hosted account management</div>}
+      />,
+    );
+    await screen.findByText("Hosted account management");
+    expect(screen.queryByTestId("agent-runtime")).toBeNull();
+    expect(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    ).toBe("/cloud/billing/hosted-test?accountId=workspace#invoice");
   });
 
   it("shows pending then mounts the app after ready (idle → pending → ready)", async () => {

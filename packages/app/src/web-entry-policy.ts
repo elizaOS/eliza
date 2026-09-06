@@ -1,10 +1,10 @@
 /**
- * Selects the lightweight hosted-public renderer entry without changing the
+ * Selects the lightweight hosted public and account-management renderer without changing the
  * native, desktop, chat-harness, or agent-application boot paths.
  *
  * Keep these exact pathname patterns aligned with the routes registered by
  * `@elizaos/ui/cloud/register-public`. Near misses deliberately fall through
- * to the full application so an unknown URL cannot reload-loop at the public
+ * to the full application outside the managed Cloud namespace so an unknown URL cannot reload-loop at the public
  * shell catch-all.
  */
 
@@ -98,6 +98,14 @@ export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
     return false;
   }
   if (isHostedPublicPath(input.pathname)) return true;
+  const pathname = normalizePathname(input.pathname);
+  if (
+    pathname === "/cloud" ||
+    pathname.startsWith("/cloud/") ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/")
+  )
+    return true;
   if (normalizePathname(input.pathname) !== "/") return false;
   if (input.forceApexConsole) return true;
   return shouldUseMarketingHomeEntry(input);

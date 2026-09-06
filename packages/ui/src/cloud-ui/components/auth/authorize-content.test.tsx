@@ -481,4 +481,65 @@ describe("AuthorizeContent", () => {
       "elizaos://auth/callback?error=access_denied&error_description=User+denied+authorization&state=mobile-state-1",
     );
   });
+  it("requires explicit app consent and sends only displayed scopes while the account stays free", async () => {
+    searchParamsRef.current = new URLSearchParams(
+      "flow=app_delegation&app_id=app-1&client_id=client-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback&scopes=identity%20billing%3Aread&state=state-1",
+    );
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return {
+          ok: true,
+          json: async () =>
+            init?.method === "POST"
+              ? { code: "eac_delegated-consent" }
+              : {
+                  app: { id: "app-1", name: "Demo App" },
+                  scopes: ["identity", "billing:read"],
+                },
+        };
+      }),
+    );
+    render(<AuthorizeContent />);
+    await screen.findByRole("button", { name: "Authorize Demo App" });
+    expect(
+      screen.getByText(/Your Eliza Cloud account can stay free/),
+    ).toBeTruthy();
+    expect(requests.some((request) => request.init?.method === "POST")).toBe(
+      false,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Authorize Demo App" }),
+    );
+    await waitFor(() => expect(locationAssignMock).toHaveBeenCalled());
+    const approval = requests.find(
+      (request) => request.init?.method === "POST",
+    );
+    expect(JSON.parse(String(approval?.init?.body))).toMatchObject({
+      flow: "app_delegation",
+      scopes: ["identity", "billing:read"],
+      clientId: "client-1",
+    });
+    expect(locationAssignMock.mock.calls[0]?.[0]).toContain(
+      "code=eac_delegated-consent",
+    );
+  });
+
+  it("does not offer consent when registration validation denies the requested capabilities", async () => {
+    searchParamsRef.current = new URLSearchParams(
+      "flow=app_delegation&app_id=app-1&client_id=client-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback&scopes=identity%20google.gmail.send&state=state-1",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 403 })),
+    );
+    render(<AuthorizeContent />);
+    await screen.findByText("Failed to verify app.");
+    expect(
+      screen.queryByRole("button", { name: "Authorize Demo App" }),
+    ).toBeNull();
+    expect(locationAssignMock).not.toHaveBeenCalled();
+  });
 });

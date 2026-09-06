@@ -162,6 +162,7 @@ function agentTopUpDelivery(eventId: string, attempts = 1) {
         data: {
           object: {
             id: `cs_${eventId}`,
+            mode: "payment",
             payment_status: "paid",
             amount_total: 500,
             currency: "usd",
@@ -211,6 +212,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
           data: {
             object: {
               id: "cs_agent_paid",
+              mode: "payment",
               payment_status: "paid",
               amount_total: 500,
               currency: "usd",
@@ -292,6 +294,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
           data: {
             object: {
               id: "cs_org_paid",
+              mode: "payment",
               payment_status: "paid",
               amount_total: 500,
               currency: "usd",
@@ -348,6 +351,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
           data: {
             object: {
               id: "cs_agent_paid",
+              mode: "payment",
               payment_status: "paid",
               amount_total: 500,
               currency: "usd",

@@ -25,6 +25,8 @@ const context: AccountDeletionProviderContext = {
   organizationId: ORGANIZATION_ID,
   stewardUserId: "steward-personal",
   lifecycleRevision: 2,
+  phaseReceiptId: "60000000-0000-4000-8000-000000000001",
+  phaseGeneration: 1,
   blob: {} as RuntimeR2Bucket,
 };
 

@@ -2212,8 +2212,19 @@ declare module "./client-base" {
 ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
   const directBase = resolveDirectCloudClientApiBase(this);
   if (directBase) {
+    const slotKey = getBootConfig().applicationBillingSlot?.trim();
+    const applicationBilling: import("@elizaos/cloud-sdk/app-billing").NativeApplicationBillingSelection =
+      !slotKey
+        ? { kind: "unconfigured" }
+        : /^[a-z][a-z0-9_-]{0,99}$/.test(slotKey)
+          ? { kind: "configured", slotKey }
+          : {
+              kind: "unavailable",
+              reason: "The host's application billing product is invalid.",
+            };
     if (!readDirectCloudToken(this)) {
       return {
+        applicationBilling,
         connected: false,
         enabled: true,
         hasApiKey: false,
@@ -2231,6 +2242,7 @@ ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
           ? (user.data as Record<string, unknown>)
           : user;
       return {
+        applicationBilling,
         connected: true,
         enabled: true,
         hasApiKey: true,
@@ -2245,6 +2257,7 @@ ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
     } catch (err) {
       if (isDirectCloudAuthError(err)) {
         return {
+          applicationBilling,
           connected: false,
           enabled: true,
           hasApiKey: true,

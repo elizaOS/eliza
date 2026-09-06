@@ -1,3 +1,5 @@
+/** Reports current Cloud connection and the runtime-owned application billing selection. */
+import { nativeBillingSelection } from "./native-billing-selection";
 import type {
   CloudConfigLike,
   CloudStatusRouteContext,
@@ -20,6 +22,7 @@ export async function handleCloudStatusRoutes(
   const topUpUrl = resolveCloudBillingUrl(typedConfig.cloud?.baseUrl);
 
   if (method === "GET" && pathname === "/api/cloud/status") {
+    const applicationBilling = nativeBillingSelection(runtime);
     const snapshot = resolveCloudConnectionSnapshot(typedConfig, runtime);
     const cloudVoiceProxyAvailable = isElizaCloudServiceSelectedInConfig(
       typedConfig as Record<string, unknown>,
@@ -28,6 +31,7 @@ export async function handleCloudStatusRoutes(
 
     if (snapshot.connected) {
       json(res, {
+        applicationBilling,
         connected: true,
         enabled: snapshot.enabled,
         cloudVoiceProxyAvailable,
@@ -46,6 +50,7 @@ export async function handleCloudStatusRoutes(
 
     if (!runtime) {
       json(res, {
+        applicationBilling,
         connected: false,
         enabled: snapshot.enabled,
         cloudVoiceProxyAvailable,
@@ -56,6 +61,7 @@ export async function handleCloudStatusRoutes(
     }
 
     json(res, {
+      applicationBilling,
       connected: false,
       enabled: snapshot.enabled,
       cloudVoiceProxyAvailable,

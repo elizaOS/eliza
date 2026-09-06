@@ -4,7 +4,7 @@
  * exact source that funded the reservation.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, gt, lte } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
@@ -154,6 +154,7 @@ async function findCurrentAllowance(tx: DbTransaction, organizationId: string, n
     .where(
       and(
         eq(subscriptionAllowancePeriods.organization_id, organizationId),
+        isNull(subscriptionAllowancePeriods.billing_scope_id),
         eq(subscriptionAllowancePeriods.state, "open"),
         lte(subscriptionAllowancePeriods.period_start, now),
         gt(subscriptionAllowancePeriods.expires_at, now),

@@ -1,5 +1,5 @@
-// Persists webhook events records for cloud services through the shared DB boundary.
-import { and, eq, lt } from "drizzle-orm";
+/** Persists deduplication receipts and retains incomplete app billing triggers for durable recovery. */
+import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type NewWebhookEvent, type WebhookEvent, webhookEvents } from "../schemas/webhook-events";
 
@@ -17,6 +17,14 @@ export class WebhookEventsRepository {
     return await dbRead.query.webhookEvents.findFirst({
       where: eq(webhookEvents.event_id, eventId),
     });
+  }
+
+  async findByEventIdPrimary(eventId: string): Promise<WebhookEvent | undefined> {
+    const [event] = await dbWrite
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.event_id, eventId));
+    return event;
   }
 
   /**
@@ -97,7 +105,15 @@ export class WebhookEventsRepository {
 
     const result = await dbWrite
       .delete(webhookEvents)
-      .where(lt(webhookEvents.processed_at, cutoffDate))
+      .where(
+        and(
+          lt(webhookEvents.processed_at, cutoffDate),
+          or(
+            isNull(webhookEvents.app_billing_trigger),
+            isNotNull(webhookEvents.app_billing_completed_at),
+          ),
+        ),
+      )
       .returning();
 
     return result.length;
@@ -112,7 +128,16 @@ export class WebhookEventsRepository {
 
     const result = await dbWrite
       .delete(webhookEvents)
-      .where(and(eq(webhookEvents.provider, provider), lt(webhookEvents.processed_at, cutoffDate)))
+      .where(
+        and(
+          eq(webhookEvents.provider, provider),
+          lt(webhookEvents.processed_at, cutoffDate),
+          or(
+            isNull(webhookEvents.app_billing_trigger),
+            isNotNull(webhookEvents.app_billing_completed_at),
+          ),
+        ),
+      )
       .returning();
 
     return result.length;

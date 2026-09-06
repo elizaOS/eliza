@@ -8,18 +8,22 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { appBillingPlanRevisions, appBillingScopes } from "./app-billing";
 import { organizations } from "./organizations";
 
 export const SUBSCRIPTION_PLAN_KEYS = ["plus_monthly", "pro_monthly"] as const;
 export type SubscriptionPlanKey = (typeof SUBSCRIPTION_PLAN_KEYS)[number];
 
 export const BILLING_SUBSCRIPTION_STATUSES = [
+  "trialing",
+  "paused",
   "pending",
   "incomplete",
   "active",
@@ -48,12 +52,20 @@ export const billingSubscriptions = pgTable(
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
+    plan_revision_id: uuid("plan_revision_id").references(() => appBillingPlanRevisions.id, {
+      onDelete: "restrict",
+    }),
+    trial_start: timestamp("trial_start", { withTimezone: true }),
+    trial_end: timestamp("trial_end", { withTimezone: true }),
+    quantity: integer("quantity").notNull().default(1),
     provider: text("provider").notNull().default("stripe"),
     provider_environment: text("provider_environment").notNull(),
     stripe_customer_id: text("stripe_customer_id").notNull(),
     stripe_subscription_id: text("stripe_subscription_id").notNull(),
     stripe_subscription_item_id: text("stripe_subscription_item_id").notNull(),
-    plan_key: text("plan_key").$type<SubscriptionPlanKey>().notNull(),
+    plan_key: text("plan_key").notNull(),
     catalog_version: text("catalog_version").notNull(),
     status: text("status").$type<BillingSubscriptionStatus>().notNull(),
     current_period_start: timestamp("current_period_start", { withTimezone: true }).notNull(),
@@ -63,7 +75,7 @@ export const billingSubscriptions = pgTable(
     ended_at: timestamp("ended_at", { withTimezone: true }),
     dunning_started_at: timestamp("dunning_started_at", { withTimezone: true }),
     grace_expires_at: timestamp("grace_expires_at", { withTimezone: true }),
-    pending_plan_key: text("pending_plan_key").$type<SubscriptionPlanKey>(),
+    pending_plan_key: text("pending_plan_key"),
     lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull(),
     last_provider_event_id: text("last_provider_event_id"),
     last_provider_event_created_at: timestamp("last_provider_event_created_at", {
@@ -74,34 +86,51 @@ export const billingSubscriptions = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
+    app_shape: check(
+      "billing_subscriptions_app_shape",
+      sql`(${table.billing_scope_id} IS NULL AND ${table.plan_revision_id} IS NULL AND ${table.merchant_key} = 'platform' AND ${table.trial_start} IS NULL AND ${table.trial_end} IS NULL AND ${table.status} NOT IN ('trialing','paused')) OR (${table.billing_scope_id} IS NOT NULL AND ${table.plan_revision_id} IS NOT NULL AND ${table.quantity} > 0 AND ((${table.trial_start} IS NULL AND ${table.trial_end} IS NULL AND ${table.status} <> 'trialing') OR (${table.trial_start} IS NOT NULL AND ${table.trial_end} IS NOT NULL AND extract(epoch FROM ${table.trial_end} - ${table.trial_start}) BETWEEN 1 AND 604800)))`,
+    ),
     id_organization_unique: uniqueIndex("billing_subscriptions_id_org_idx").on(
       table.id,
       table.organization_id,
     ),
     stripe_subscription_unique: uniqueIndex("billing_subscriptions_stripe_subscription_idx").on(
+      table.merchant_key,
       table.provider,
       table.provider_environment,
       table.stripe_subscription_id,
     ),
     stripe_item_unique: uniqueIndex("billing_subscriptions_stripe_item_idx").on(
+      table.merchant_key,
       table.provider,
       table.provider_environment,
       table.stripe_subscription_item_id,
     ),
     one_live_subscription_per_org: uniqueIndex("billing_subscriptions_live_org_idx")
       .on(table.organization_id)
-      .where(sql`${table.status} IN ('pending','incomplete','active','grace','past_due','unpaid')`),
+      .where(
+        sql`${table.billing_scope_id} IS NULL AND ${table.status} IN ('pending','incomplete','active','grace','past_due','unpaid')`,
+      ),
+    one_live_subscription_per_scope: uniqueIndex("billing_subscriptions_live_scope_idx")
+      .on(table.billing_scope_id)
+      .where(
+        sql`${table.billing_scope_id} IS NOT NULL AND ${table.status} IN ('pending','incomplete','trialing','active','grace','past_due','unpaid','paused')`,
+      ),
     organization_updated_idx: index("billing_subscriptions_org_updated_idx").on(
       table.organization_id,
       table.updated_at,
     ),
     status_check: check(
       "billing_subscriptions_status_check",
-      sql`${table.status} IN ('pending','incomplete','active','grace','past_due','unpaid','canceled','incomplete_expired')`,
+      sql`${table.status} IN ('pending','incomplete','trialing','paused','active','grace','past_due','unpaid','canceled','incomplete_expired')`,
     ),
     plan_check: check(
       "billing_subscriptions_plan_check",
-      sql`${table.plan_key} IN ('plus_monthly','pro_monthly') AND (${table.pending_plan_key} IS NULL OR ${table.pending_plan_key} IN ('plus_monthly','pro_monthly')) AND length(btrim(${table.catalog_version})) > 0`,
+      sql`(${table.billing_scope_id} IS NOT NULL OR ${table.plan_key} IN ('plus_monthly','pro_monthly')) AND (${table.pending_plan_key} IS NULL OR ${table.billing_scope_id} IS NOT NULL OR ${table.pending_plan_key} IN ('plus_monthly','pro_monthly')) AND length(btrim(${table.catalog_version})) > 0`,
     ),
     provider_id_check: check(
       "billing_subscriptions_provider_id_check",
@@ -143,12 +172,20 @@ export const billingSubscriptionRevisions = pgTable(
     subscription_id: uuid("subscription_id").notNull(),
     revision: bigint("revision", { mode: "number" }).notNull(),
     source: text("source").$type<BillingSubscriptionRevisionSource>().notNull(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
+    plan_revision_id: uuid("plan_revision_id").references(() => appBillingPlanRevisions.id, {
+      onDelete: "restrict",
+    }),
+    trial_start: timestamp("trial_start", { withTimezone: true }),
+    trial_end: timestamp("trial_end", { withTimezone: true }),
+    quantity: integer("quantity").notNull().default(1),
     provider: text("provider").notNull().default("stripe"),
     provider_environment: text("provider_environment").notNull(),
     stripe_customer_id: text("stripe_customer_id").notNull(),
     stripe_subscription_id: text("stripe_subscription_id").notNull(),
     stripe_subscription_item_id: text("stripe_subscription_item_id").notNull(),
-    plan_key: text("plan_key").$type<SubscriptionPlanKey>().notNull(),
+    plan_key: text("plan_key").notNull(),
     catalog_version: text("catalog_version").notNull(),
     status: text("status").$type<BillingSubscriptionStatus>().notNull(),
     current_period_start: timestamp("current_period_start", { withTimezone: true }).notNull(),
@@ -158,13 +195,21 @@ export const billingSubscriptionRevisions = pgTable(
     ended_at: timestamp("ended_at", { withTimezone: true }),
     dunning_started_at: timestamp("dunning_started_at", { withTimezone: true }),
     grace_expires_at: timestamp("grace_expires_at", { withTimezone: true }),
-    pending_plan_key: text("pending_plan_key").$type<SubscriptionPlanKey>(),
+    pending_plan_key: text("pending_plan_key"),
     provider_event_id: text("provider_event_id"),
     provider_event_created_at: timestamp("provider_event_created_at", { withTimezone: true }),
     provider_object_digest: text("provider_object_digest").notNull(),
     recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
+    app_shape: check(
+      "billing_subscription_revisions_app_shape",
+      sql`(${table.billing_scope_id} IS NULL AND ${table.plan_revision_id} IS NULL AND ${table.merchant_key} = 'platform' AND ${table.trial_start} IS NULL AND ${table.trial_end} IS NULL AND ${table.status} NOT IN ('trialing','paused')) OR (${table.billing_scope_id} IS NOT NULL AND ${table.plan_revision_id} IS NOT NULL AND ${table.quantity} > 0 AND ((${table.trial_start} IS NULL AND ${table.trial_end} IS NULL AND ${table.status} <> 'trialing') OR (${table.trial_start} IS NOT NULL AND ${table.trial_end} IS NOT NULL AND extract(epoch FROM ${table.trial_end} - ${table.trial_start}) BETWEEN 1 AND 604800)))`,
+    ),
     subscription_tenant_fk: foreignKey({
       columns: [table.subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
@@ -182,7 +227,7 @@ export const billingSubscriptionRevisions = pgTable(
       "billing_subscription_revisions_subscription_org_revision_idx",
     ).on(table.subscription_id, table.organization_id, table.revision),
     provider_event_unique: uniqueIndex("billing_subscription_revisions_provider_event_idx")
-      .on(table.provider, table.provider_environment, table.provider_event_id)
+      .on(table.merchant_key, table.provider, table.provider_environment, table.provider_event_id)
       .where(sql`${table.provider_event_id} IS NOT NULL`),
     organization_recorded_idx: index("billing_subscription_revisions_org_recorded_idx").on(
       table.organization_id,
@@ -194,11 +239,11 @@ export const billingSubscriptionRevisions = pgTable(
     ),
     status_check: check(
       "billing_subscription_revisions_status_check",
-      sql`${table.status} IN ('pending','incomplete','active','grace','past_due','unpaid','canceled','incomplete_expired')`,
+      sql`${table.status} IN ('pending','incomplete','trialing','paused','active','grace','past_due','unpaid','canceled','incomplete_expired')`,
     ),
     plan_check: check(
       "billing_subscription_revisions_plan_check",
-      sql`${table.plan_key} IN ('plus_monthly','pro_monthly') AND (${table.pending_plan_key} IS NULL OR ${table.pending_plan_key} IN ('plus_monthly','pro_monthly')) AND (${table.pending_plan_key} IS NULL OR ${table.pending_plan_key} <> ${table.plan_key}) AND length(btrim(${table.catalog_version})) > 0`,
+      sql`(${table.billing_scope_id} IS NOT NULL OR ${table.plan_key} IN ('plus_monthly','pro_monthly')) AND (${table.pending_plan_key} IS NULL OR ${table.billing_scope_id} IS NOT NULL OR ${table.pending_plan_key} IN ('plus_monthly','pro_monthly')) AND (${table.pending_plan_key} IS NULL OR ${table.pending_plan_key} <> ${table.plan_key}) AND length(btrim(${table.catalog_version})) > 0`,
     ),
     provider_id_check: check(
       "billing_subscription_revisions_provider_id_check",

@@ -94,6 +94,12 @@ import {
   assertInferenceAppAffiliateSupported,
   InferenceAppAffiliateUnsupportedError,
 } from "@/lib/services/app-inference-admission";
+import {
+  type AppInferenceDelegatedActor,
+  admitAppSubscriptionInference,
+  appInferenceDeveloperScope,
+  appInferenceErrorResponse,
+} from "@/lib/services/app-subscription-inference-admission";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
 import type {
@@ -128,6 +134,10 @@ import {
   getGatewayModelByIdCacheOnly,
 } from "@/lib/services/model-catalog";
 import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@/lib/services/native-application-inference";
+import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
   InferenceAffiliateCacheUnavailableError,
@@ -135,6 +145,7 @@ import {
   InferencePricingCacheUnavailableError,
   InferencePricingCacheWarmingError,
 } from "@/lib/services/organization-inference-admission";
+import { settlementDigest } from "@/lib/services/settlement-digest";
 import {
   getTeamPoolRegistry,
   type SelectedPooledCredential,
@@ -1165,6 +1176,8 @@ function shouldUsePooledNoopReservation(params: {
 // ============================================================================
 
 interface ChatCompletionsHandlerOptions {
+  /** Registered delegated app customer; this path uses paired funding and no legacy app-credit markup. */
+  appFundingActor?: AppInferenceDelegatedActor;
   skipOrgRateLimit?: boolean;
   /** Require this app scope and bill through its app accounting policy. */
   requiredAppId?: string;
@@ -1209,6 +1222,17 @@ export async function handleChatCompletionsPOST(
   req: Request,
   options: ChatCompletionsHandlerOptions = {},
 ) {
+  if (req.headers.has("X-Eliza-Application-Slot"))
+    return Response.json(
+      {
+        error: {
+          code: "APP_INFERENCE_NATIVE_AUTH_REQUIRED",
+          message:
+            "Native product selection requires the authenticated application route",
+        },
+      },
+      { status: 403 },
+    );
   const startTime = Date.now();
   const telemetryStartedAt = performance.now();
   const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
@@ -1465,7 +1489,9 @@ export async function handleChatCompletionsPOST(
     }
 
     // 2. Prepare app monetization lookup
-    const requestedAppId = options.requiredAppId ?? req.headers.get("X-App-Id");
+    const requestedAppId = options.appFundingActor
+      ? null
+      : (options.requiredAppId ?? req.headers.get("X-App-Id"));
     if (requestedAppId && appScopeId && appScopeId !== requestedAppId) {
       return addCorsHeaders(
         Response.json(
@@ -1788,14 +1814,56 @@ export async function handleChatCompletionsPOST(
       ) + (webSearchActive ? ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER : 0);
     const estimatedOutputTokens =
       effectiveMaxTokens ?? request.max_tokens ?? 500;
-    const affiliateCode = req.headers.get("X-Affiliate-Code");
+    const affiliateCode = options.appFundingActor
+      ? null
+      : req.headers.get("X-Affiliate-Code");
 
     const tBeforeReserve = performance.now();
     const useMonetizedAppBilling = Boolean(
       useAppCredits && appId && monetizedApp,
     );
     try {
-      if (
+      if (options.appFundingActor) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          billingSource,
+        );
+        const admission = await admitAppSubscriptionInference({
+          actor: options.appFundingActor,
+          developerOrganizationId: user.organization_id,
+          developerAppScopeId: await appInferenceDeveloperScope(
+            apiKey?.id ?? null,
+          ),
+          logicalOperationId: req.headers.get("idempotency-key") ?? "",
+          requestDigest: settlementDigest({
+            request,
+            model: normalizedModel,
+            provider,
+            billingSource,
+            estimatedOutputTokens,
+          }),
+          estimatedCostUsd: totalCost,
+          revalidateDeveloperCredential: async () => {
+            if (!apiKey)
+              throw new Error("App infrastructure credential is unavailable");
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              admissionCredential ?? {
+                kind: "api_key",
+                credentialId: apiKey.id,
+                userId: user.id,
+              },
+            );
+          },
+        });
+        appId = options.appFundingActor.appId;
+        settleReservation = admission.settle;
+        settleUnknown = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+      } else if (
         shouldUsePooledNoopReservation({
           pooledCredential,
           useMonetizedAppBilling,
@@ -1895,6 +1963,9 @@ export async function handleChatCompletionsPOST(
         billingReservation = admission.reservation;
       }
     } catch (error) {
+      // error-policy:J1 Typed app funding failures stay explicit at the inference HTTP boundary.
+      const appFundingFailure = appInferenceErrorResponse(error);
+      if (appFundingFailure) return addCorsHeaders(appFundingFailure);
       const failedAt = performance.now();
       preforwardTiming ??= snapshotGatewayPreforwardTiming({
         authMs: tAuth - telemetryStartedAt,
@@ -2180,6 +2251,8 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    const appFundingFailure = appInferenceErrorResponse(error);
+    if (appFundingFailure) return addCorsHeaders(appFundingFailure);
     const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
       route: "chat_completions",
       traceId,
@@ -4013,12 +4086,16 @@ honoRouter.options("/", async (c) => {
 });
 honoRouter.post("/", async (c) => {
   try {
-    return await handleChatCompletionsPOST(c.req.raw, {
+    const native = await prepareNativeApplicationInference(c);
+    return await handleChatCompletionsPOST(native.request, {
+      appFundingActor: native.actor,
       executionCtx: c.executionCtx,
       traceId: c.get("traceId"),
     });
   } catch (error) {
     // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.
+    const nativeError = nativeApplicationInferenceErrorResponse(error);
+    if (nativeError) return nativeError;
     return failureResponse(c, error);
   }
 });

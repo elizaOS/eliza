@@ -16,7 +16,9 @@ import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-
 import { subscriptionAllowanceTransactions } from "../schemas/subscription-allowance-transactions";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import {
+  type BillingFundingScope,
   type CanonicalMoney,
+  fundingScopePredicate,
   microsToMoney,
   moneyToMicros,
   subscriptionFundingReservationsRepository,
@@ -59,13 +61,19 @@ async function lockOrganization(tx: DbTransaction, organizationId: string): Prom
   return readPostLockDatabaseNow(tx);
 }
 
-async function lockPeriod(tx: DbTransaction, organizationId: string, periodId: string) {
+async function lockPeriod(
+  tx: DbTransaction,
+  organizationId: string,
+  periodId: string,
+  billingScope?: BillingFundingScope,
+) {
   const [hint] = await tx
     .select({ subscriptionId: subscriptionAllowancePeriods.subscription_id })
     .from(subscriptionAllowancePeriods)
     .where(
       and(
         eq(subscriptionAllowancePeriods.organization_id, organizationId),
+        fundingScopePredicate(subscriptionAllowancePeriods, billingScope),
         eq(subscriptionAllowancePeriods.id, periodId),
       ),
     )
@@ -82,6 +90,7 @@ async function lockPeriod(tx: DbTransaction, organizationId: string, periodId: s
     .where(
       and(
         eq(billingSubscriptions.organization_id, organizationId),
+        fundingScopePredicate(billingSubscriptions, billingScope),
         eq(billingSubscriptions.id, hint.subscriptionId),
       ),
     )
@@ -93,6 +102,7 @@ async function lockPeriod(tx: DbTransaction, organizationId: string, periodId: s
     .where(
       and(
         eq(subscriptionAllowancePeriods.organization_id, organizationId),
+        fundingScopePredicate(subscriptionAllowancePeriods, billingScope),
         eq(subscriptionAllowancePeriods.id, periodId),
       ),
     )
@@ -113,6 +123,7 @@ async function nextSequence(tx: DbTransaction, periodId: string): Promise<number
 }
 
 export interface ReserveAllowanceInput {
+  billingScope?: BillingFundingScope;
   organizationId: string;
   periodId: string;
   logicalOperationId: string;
@@ -124,6 +135,7 @@ export interface ReserveAllowanceInput {
 }
 
 export interface FinalizeAllowanceInput {
+  billingScope?: BillingFundingScope;
   organizationId: string;
   reservationId: string;
   idempotencyKey: string;
@@ -147,6 +159,7 @@ async function findAllowancePeriodId(
   tx: DbTransaction,
   organizationId: string,
   reservationId: string,
+  billingScope?: BillingFundingScope,
 ): Promise<string> {
   const [allocation] = await tx
     .select({ periodId: billingFundingAllocations.allowance_period_id })
@@ -154,6 +167,7 @@ async function findAllowancePeriodId(
     .where(
       and(
         eq(billingFundingAllocations.organization_id, organizationId),
+        fundingScopePredicate(billingFundingAllocations, billingScope),
         eq(billingFundingAllocations.reservation_id, reservationId),
         eq(billingFundingAllocations.source, "allowance"),
       ),
@@ -173,15 +187,22 @@ export class SubscriptionAllowanceRepository {
       .where(
         and(
           eq(billingFundingReservations.organization_id, input.organizationId),
+          fundingScopePredicate(billingFundingReservations, input.billingScope),
           eq(billingFundingReservations.logical_operation_id, input.logicalOperationId),
         ),
       )
       .limit(1);
     if (existing) {
-      const periodId = await findAllowancePeriodId(tx, input.organizationId, existing.id);
-      const period = await lockPeriod(tx, input.organizationId, periodId);
+      const periodId = await findAllowancePeriodId(
+        tx,
+        input.organizationId,
+        existing.id,
+        input.billingScope,
+      );
+      const period = await lockPeriod(tx, input.organizationId, periodId, input.billingScope);
       const replay = await subscriptionFundingReservationsRepository.createPrerequisite(tx, {
         organizationId: input.organizationId,
+        billingScope: input.billingScope,
         logicalOperationId: input.logicalOperationId,
         requestDigest: input.requestDigest,
         fundingClass: "allowance_eligible",
@@ -194,7 +215,7 @@ export class SubscriptionAllowanceRepository {
       });
       return { ...replay, period, replayed: true, databaseNow };
     }
-    const period = await lockPeriod(tx, input.organizationId, input.periodId);
+    const period = await lockPeriod(tx, input.organizationId, input.periodId, input.billingScope);
     if (period.state !== "open" || isAllowanceExpired(databaseNow, period.expires_at)) {
       conflict("Allowance is expired at post-lock database time", { periodId: period.id });
     }
@@ -206,6 +227,7 @@ export class SubscriptionAllowanceRepository {
     }
     const funding = await subscriptionFundingReservationsRepository.createPrerequisite(tx, {
       organizationId: input.organizationId,
+      billingScope: input.billingScope,
       logicalOperationId: input.logicalOperationId,
       requestDigest: input.requestDigest,
       fundingClass: "allowance_eligible",
@@ -239,6 +261,8 @@ export class SubscriptionAllowanceRepository {
       conflict("Allowance reserve compare-and-swap lost", { periodId: period.id });
     await tx.insert(subscriptionAllowanceTransactions).values({
       organization_id: input.organizationId,
+      billing_scope_id: input.billingScope?.scopeId ?? null,
+      merchant_key: input.billingScope?.merchantKey ?? "platform",
       allowance_period_id: period.id,
       funding_allocation_id: allowanceAllocation.id,
       sequence: await nextSequence(tx, period.id),
@@ -291,12 +315,18 @@ export class SubscriptionAllowanceRepository {
   ): Promise<AuthorityResult> {
     requireDigest(input.requestDigest);
     const databaseNow = await lockOrganization(tx, input.organizationId);
-    const periodId = await findAllowancePeriodId(tx, input.organizationId, input.reservationId);
-    const period = await lockPeriod(tx, input.organizationId, periodId);
+    const periodId = await findAllowancePeriodId(
+      tx,
+      input.organizationId,
+      input.reservationId,
+      input.billingScope,
+    );
+    const period = await lockPeriod(tx, input.organizationId, periodId, input.billingScope);
     const locked = await subscriptionFundingReservationsRepository.lockById(
       tx,
       input.organizationId,
       input.reservationId,
+      input.billingScope,
     );
     const allowanceAllocation = locked.allocations.find((row) => row.source === "allowance");
     if (!allowanceAllocation) throw new Error("Allowance allocation disappeared");
@@ -337,6 +367,8 @@ export class SubscriptionAllowanceRepository {
     if (actual > 0n) {
       await tx.insert(subscriptionAllowanceTransactions).values({
         organization_id: input.organizationId,
+        billing_scope_id: input.billingScope?.scopeId ?? null,
+        merchant_key: input.billingScope?.merchantKey ?? "platform",
         allowance_period_id: period.id,
         funding_allocation_id: allowanceAllocation.id,
         sequence,
@@ -362,6 +394,8 @@ export class SubscriptionAllowanceRepository {
       const isBaseKey = actual === 0n;
       await tx.insert(subscriptionAllowanceTransactions).values({
         organization_id: input.organizationId,
+        billing_scope_id: input.billingScope?.scopeId ?? null,
+        merchant_key: input.billingScope?.merchantKey ?? "platform",
         allowance_period_id: period.id,
         funding_allocation_id: allowanceAllocation.id,
         sequence,

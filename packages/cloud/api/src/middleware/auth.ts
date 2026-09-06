@@ -28,8 +28,6 @@ import { parseRemoteHostCredential } from "../../v1/remote/host-auth";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
-  // This product boundary validates its registered BFF secret plus one-time code or revocable grant.
-  "/api/v1/outreachr",
   "/api/health",
   "/api/i18n/locale",
   "/api/og",
@@ -243,6 +241,13 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
+  // Generic billing leaf handlers authenticate free sessions or registered app delegation.
+  if (
+    /^\/api\/v1\/apps\/[^/]+\/billing\/(?:catalog|accounts)(?:\/|$)/.test(
+      pathname,
+    )
+  )
+    return true;
   if (/^\/api\/v1\/apps\/[^/]+\/charges\/[^/]+\/?$/.test(pathname)) return true;
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (isPublicOutOfBandTokenPath(pathname, method)) return true;
@@ -263,6 +268,9 @@ export function isRouteAuthenticatedInferencePath(
 ): boolean {
   if (method !== "POST" && method !== "OPTIONS") return false;
   return (
+    /^\/api\/v1\/apps\/[^/]+\/inference\/chat\/completions\/?$/.test(
+      pathname,
+    ) ||
     /^\/api\/v1\/eliza\/agents\/[^/]+\/(?:stream|bridge)\/?$/.test(pathname) ||
     /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/[^/]+\/messages(?:\/stream)?\/?$/.test(
       pathname,

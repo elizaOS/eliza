@@ -58,6 +58,21 @@ bun run --cwd packages/cloud/shared preflight:messaging-gateways
 
 There is no build step here (`build:linked-workspaces` defers to the repo-root `build:core`).
 
+## Purchaser identity retention
+
+App billing eligibility uses `billing_eligibility_principals`, separately from
+the original actor recorded in `billing_identity_subjects`. Financial actor
+UUIDs and command intent remain unchanged when a user is erased; only the
+subject's `live_user_id` link becomes null. These retained records grant no
+authentication or account membership. Account deletion must remove the
+departing user's memberships after reconciling provider obligations, while
+preserving shared subscription and trial history for surviving administrators.
+
+Creating another workspace for the same purchaser reuses its eligibility
+principal. Automatically linking a newly created login identity to an erased
+identity requires a separate verified-identity policy; this retention mechanism
+does not infer that link from email, display name, or a replacement provider ID.
+
 ## Config
 
 `db/database-url.ts` resolves the Postgres URL: explicit `DATABASE_URL` / `TEST_DATABASE_URL` (Railway in production) wins; otherwise local dev falls back to a file-backed PGlite store at `pglite://<cwd>/.eliza/.pgdata` (override the path with `PGLITE_DATA_DIR` / `LOCAL_DATABASE_PATH`). The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, BitRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra). See `.env.example` for the full set.

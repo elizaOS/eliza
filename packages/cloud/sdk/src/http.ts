@@ -8,6 +8,7 @@
  * parsed bodies fail closed at explicit byte and chunk resource boundaries.
  */
 
+import { applyNativeApplicationInferenceHeaders } from "./native-application-inference.js";
 import {
   type CloudApiErrorBody,
   type CloudRequestOptions,
@@ -574,6 +575,7 @@ export class ElizaCloudHttpClient {
   private bearerToken: string | undefined;
   private readonly fetchImpl: typeof fetch;
   private readonly defaultHeaders: HeadersInit | undefined;
+  private readonly nativeApplicationSlot: string | undefined;
 
   constructor(options: ElizaCloudClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(
@@ -584,6 +586,7 @@ export class ElizaCloudHttpClient {
     this.bearerToken = options.bearerToken;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.defaultHeaders = options.defaultHeaders;
+    this.nativeApplicationSlot = options.nativeApplicationSlot;
   }
 
   setApiKey(key: string | undefined): void {
@@ -640,6 +643,12 @@ export class ElizaCloudHttpClient {
         headers.delete("X-API-Key");
       }
 
+      applyNativeApplicationInferenceHeaders({
+        slotKey: this.nativeApplicationSlot,
+        method,
+        path,
+        headers,
+      });
       const init: RequestInit = {
         method,
         headers,

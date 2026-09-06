@@ -268,13 +268,18 @@ function EnsurePrivateCloudSurfacesOnMount({
  */
 function PrivateCloudAppRoute({
   appElement,
+  cloudManagementElement,
 }: {
   appElement: ReactNode;
+  cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
   return (
     <StewardAuthProvider>
       <CloudManagementSessionGate>
-        <PrivateCloudRegistrationRoute appElement={appElement} />
+        <PrivateCloudRegistrationRoute
+          appElement={appElement}
+          cloudManagementElement={cloudManagementElement}
+        />
       </CloudManagementSessionGate>
     </StewardAuthProvider>
   );
@@ -282,8 +287,10 @@ function PrivateCloudAppRoute({
 
 function PrivateCloudRegistrationRoute({
   appElement,
+  cloudManagementElement,
 }: {
   appElement: ReactNode;
+  cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     subscribePrivateCloudRegistration,
@@ -309,7 +316,11 @@ function PrivateCloudRegistrationRoute({
       />
     );
   }
-  return <AppCatchAllRoute appElement={appElement} />;
+  return (
+    <>
+      {cloudManagementElement ?? <AppCatchAllRoute appElement={appElement} />}
+    </>
+  );
 }
 
 /**
@@ -394,9 +405,11 @@ function CanonicalCloudAppRedirect(): React.JSX.Element {
 function CloudRouteElement({
   route,
   appElement,
+  cloudManagementElement,
 }: {
   route: CloudRouteDef;
   appElement: ReactNode;
+  cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
   if (route.public) {
     return <>{applyRouteGate(route.gate, renderRouteElement(route))}</>;
@@ -406,7 +419,9 @@ function CloudRouteElement({
     return (
       <StewardAuthProvider>
         <CloudManagementSessionGate>
-          <AppCatchAllRoute appElement={appElement} />
+          {cloudManagementElement ?? (
+            <AppCatchAllRoute appElement={appElement} />
+          )}
         </CloudManagementSessionGate>
       </StewardAuthProvider>
     );
@@ -426,6 +441,8 @@ export interface CloudRouterShellProps {
    * under the catch-all `/*` route. The host owns its `AppProvider`.
    */
   appElement: ReactNode;
+  /** Hosted account management that needs a Cloud session but no agent runtime. */
+  cloudManagementElement?: ReactNode;
   /** Approved public homepage rendered only on the canonical/legacy marketing hosts. */
   marketingHomeElement?: ReactNode;
   /** Public downloads page rendered only on the canonical/legacy marketing hosts. */
@@ -535,6 +552,7 @@ const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
  */
 export function CloudRouterShell({
   appElement,
+  cloudManagementElement,
   marketingHomeElement,
   downloadsElement,
 }: CloudRouterShellProps): React.JSX.Element {
@@ -585,7 +603,11 @@ export function CloudRouterShell({
               key={route.path}
               path={route.path}
               element={
-                <CloudRouteElement route={route} appElement={appElement} />
+                <CloudRouteElement
+                  route={route}
+                  appElement={appElement}
+                  cloudManagementElement={cloudManagementElement}
+                />
               }
             />
           ))}
@@ -619,7 +641,12 @@ export function CloudRouterShell({
               app-shell page before the tab router resolves the path. */}
           <Route
             path="cloud/*"
-            element={<PrivateCloudAppRoute appElement={appElement} />}
+            element={
+              <PrivateCloudAppRoute
+                appElement={appElement}
+                cloudManagementElement={cloudManagementElement}
+              />
+            }
           />
 
           {/* Catch-all: the existing tab/view app (chat is home) — except on

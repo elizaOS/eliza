@@ -93,7 +93,7 @@
   /* Accent */
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
-  --accent-hover: #ff7d3a;
+  --accent-hover: #e85c17;
   --accent-muted: #c94400;
   --accent-subtle: rgba(255, 106, 31, 0.14);
   --accent-foreground: var(--brand-black);
@@ -364,7 +364,7 @@
 
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
-  --accent-hover: #ff7d3a;
+  --accent-hover: #e85c17;
   --accent-muted: #c94400;
   --accent-subtle: rgba(255, 106, 31, 0.16);
   --accent-foreground: var(--brand-black);

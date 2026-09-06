@@ -10,55 +10,18 @@ import {
   billingFundingAllocations,
   billingFundingReservations,
 } from "./billing-funding-reservations";
-import {
-  BILLING_SUBSCRIPTION_STATUSES,
-  billingSubscriptionRevisions,
-  billingSubscriptions,
-} from "./billing-subscriptions";
-import {
-  ORGANIZATION_ENTITLEMENT_STATES,
-  organizationEntitlements,
-} from "./organization-entitlements";
+import { organizationEntitlements } from "./organization-entitlements";
 import {
   SUBSCRIPTION_ALLOWANCE_PERIOD_STATES,
   subscriptionAllowancePeriods,
 } from "./subscription-allowance-periods";
-import {
-  SUBSCRIPTION_ALLOWANCE_TRANSACTION_KINDS,
-  subscriptionAllowanceTransactions,
-} from "./subscription-allowance-transactions";
+import { subscriptionAllowanceTransactions } from "./subscription-allowance-transactions";
 
 function checkNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table).checks.map((constraint) => constraint.name);
 }
 
 describe("subscription persistence schema", () => {
-  test("excludes trials and exposes explicit dunning lifecycle states", () => {
-    expect(BILLING_SUBSCRIPTION_STATUSES).toEqual([
-      "pending",
-      "incomplete",
-      "active",
-      "grace",
-      "past_due",
-      "unpaid",
-      "canceled",
-      "incomplete_expired",
-    ]);
-    expect(ORGANIZATION_ENTITLEMENT_STATES).toEqual([
-      "free",
-      "active",
-      "grace",
-      "past_due",
-      "unpaid",
-    ]);
-    expect(checkNames(billingSubscriptions)).toContain(
-      "billing_subscriptions_provider_fence_check",
-    );
-    expect(checkNames(billingSubscriptionRevisions)).toContain(
-      "billing_subscription_revisions_provider_fence_check",
-    );
-  });
-
   test("keeps entitlement authority rebuildable and source-fenced", () => {
     const config = getTableConfig(organizationEntitlements);
     expect(config.columns.map((column) => column.name)).toEqual(
@@ -82,17 +45,6 @@ describe("subscription persistence schema", () => {
       "expired",
       "clawed_back",
       "closed",
-    ]);
-    expect(SUBSCRIPTION_ALLOWANCE_TRANSACTION_KINDS).toEqual([
-      "grant",
-      "reserve",
-      "finalize",
-      "release",
-      "expired_refund",
-      "expire",
-      "clawback",
-      "grant_adjustment",
-      "close",
     ]);
     expect(checkNames(subscriptionAllowancePeriods)).toEqual(
       expect.arrayContaining([

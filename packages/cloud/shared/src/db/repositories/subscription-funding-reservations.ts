@@ -4,7 +4,8 @@
  * mutates purchased-credit balances; the owning authority supplies both.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { DbTransaction } from "../client";
 import {
   type BillingFundingAllocation,
@@ -45,7 +46,24 @@ export function microsToMoney(value: bigint, field = "amount"): CanonicalMoney {
   return `${value / 1_000_000n}.${(value % 1_000_000n).toString().padStart(6, "0")}` as CanonicalMoney;
 }
 
+export interface BillingFundingScope {
+  scopeId: string;
+  merchantKey: string;
+}
+
+/** Keeps legacy funding outside app scopes while allowing explicitly resolved app authority. */
+export function fundingScopePredicate(
+  table: { billing_scope_id: AnyPgColumn; merchant_key: AnyPgColumn },
+  scope?: BillingFundingScope,
+) {
+  return and(
+    scope ? eq(table.billing_scope_id, scope.scopeId) : isNull(table.billing_scope_id),
+    eq(table.merchant_key, scope ? scope.merchantKey : "platform"),
+  );
+}
+
 export interface CreateFundingPrerequisite {
+  billingScope?: BillingFundingScope;
   organizationId: string;
   logicalOperationId: string;
   requestDigest: string;
@@ -94,6 +112,8 @@ async function requireCreditReference(
 
 function exactReservationReplay(row: BillingFundingReservation, input: CreateFundingPrerequisite) {
   return (
+    row.billing_scope_id === (input.billingScope?.scopeId ?? null) &&
+    row.merchant_key === (input.billingScope?.merchantKey ?? "platform") &&
     row.request_digest === input.requestDigest &&
     row.funding_class === input.fundingClass &&
     row.requested_amount === input.requestedAmount &&
@@ -123,6 +143,7 @@ export class SubscriptionFundingReservationsRepository {
     tx: DbTransaction,
     organizationId: string,
     reservationId: string,
+    billingScope?: BillingFundingScope,
   ): Promise<LockedFundingReservation> {
     const [reservation] = await tx
       .select()
@@ -130,6 +151,7 @@ export class SubscriptionFundingReservationsRepository {
       .where(
         and(
           eq(billingFundingReservations.organization_id, organizationId),
+          fundingScopePredicate(billingFundingReservations, billingScope),
           eq(billingFundingReservations.id, reservationId),
         ),
       )
@@ -147,6 +169,7 @@ export class SubscriptionFundingReservationsRepository {
       .where(
         and(
           eq(billingFundingAllocations.organization_id, organizationId),
+          fundingScopePredicate(billingFundingAllocations, billingScope),
           eq(billingFundingAllocations.reservation_id, reservationId),
         ),
       )
@@ -176,6 +199,8 @@ export class SubscriptionFundingReservationsRepository {
       .insert(billingFundingReservations)
       .values({
         organization_id: input.organizationId,
+        billing_scope_id: input.billingScope?.scopeId ?? null,
+        merchant_key: input.billingScope?.merchantKey ?? "platform",
         logical_operation_id: input.logicalOperationId,
         request_digest: input.requestDigest,
         funding_class: input.fundingClass,
@@ -197,6 +222,7 @@ export class SubscriptionFundingReservationsRepository {
         .where(
           and(
             eq(billingFundingReservations.organization_id, input.organizationId),
+            fundingScopePredicate(billingFundingReservations, input.billingScope),
             eq(billingFundingReservations.logical_operation_id, input.logicalOperationId),
           ),
         )
@@ -207,7 +233,7 @@ export class SubscriptionFundingReservationsRepository {
           logicalOperationId: input.logicalOperationId,
         });
       }
-      const replay = await this.lockById(tx, input.organizationId, existing.id);
+      const replay = await this.lockById(tx, input.organizationId, existing.id, input.billingScope);
       await requireCreditReference(
         tx,
         input.organizationId,
@@ -232,6 +258,8 @@ export class SubscriptionFundingReservationsRepository {
     if (allowance > 0n) {
       allocationValues.push({
         organization_id: input.organizationId,
+        billing_scope_id: input.billingScope?.scopeId ?? null,
+        merchant_key: input.billingScope?.merchantKey ?? "platform",
         reservation_id: reservation.id,
         sequence: 1,
         source: "allowance",
@@ -242,6 +270,8 @@ export class SubscriptionFundingReservationsRepository {
     if (purchased > 0n) {
       allocationValues.push({
         organization_id: input.organizationId,
+        billing_scope_id: input.billingScope?.scopeId ?? null,
+        merchant_key: input.billingScope?.merchantKey ?? "platform",
         reservation_id: reservation.id,
         sequence: allocationValues.length + 1,
         source: "purchased_credit",

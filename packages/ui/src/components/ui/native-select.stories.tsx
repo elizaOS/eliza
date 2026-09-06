@@ -27,3 +27,7 @@ export const Default: Story = {};
 export const Disabled: Story = {
   args: { disabled: true },
 };
+
+export const Compact: Story = {
+  args: { presentation: "compact" },
+};

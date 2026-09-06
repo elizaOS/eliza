@@ -275,6 +275,8 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
+APP_BILLING_ENVIRONMENT = "live"
+APP_BILLING_UI_ORIGIN = "https://cloud.eliza.app"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
 # Warm-pool claim half (#16961): the provision route only claims a pre-booted
@@ -399,6 +401,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS
 #                                      Exact allowlisted Cloud organization UUIDs
 #   STRIPE_SECRET_KEY                  Stripe billing
+#   STRIPE_TEST_SECRET_KEY             Optional test-mode app billing in production
+#   STRIPE_PLATFORM_BILLING_ORGANIZATION_ID  Owner of first-party platform merchant
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
@@ -647,6 +651,8 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "staging"
+APP_BILLING_ENVIRONMENT = "test"
+APP_BILLING_UI_ORIGIN = "https://cloud-staging.eliza.app"
 # Staging canary. Set false for an immediate rollback to the full app router.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 DATABASE_REGION = "na"
@@ -925,6 +931,8 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
+APP_BILLING_ENVIRONMENT = "live"
+APP_BILLING_UI_ORIGIN = "https://cloud.eliza.app"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
 # Warm-pool claim half (#16961): the provision route only claims a pre-booted

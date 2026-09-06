@@ -1,4 +1,5 @@
 /** Coordinates app-charge callback delivery and authorized room-message projection. */
+import { createAppNotificationSignature } from "@elizaos/cloud-sdk/app-notifications";
 import { MemoryType, stringToUuid } from "@elizaos/core";
 import { randomUUID } from "crypto";
 import Decimal from "decimal.js";
@@ -225,21 +226,6 @@ function formatUsd(amount: string): string {
   return `$${new Decimal(amount).toDecimalPlaces(2).toFixed(2)}`;
 }
 
-async function hmacHex(secret: string, message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
-  return Array.from(new Uint8Array(signature))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 export function sanitizeAppChargeMetadata(
   metadata: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -256,7 +242,7 @@ export async function createAppChargeCallbackSignature(
   timestamp: string,
   body: string,
 ): Promise<string> {
-  return `sha256=${await hmacHex(secret, `${timestamp}.${body}`)}`;
+  return createAppNotificationSignature(secret, timestamp, body);
 }
 
 export function createAppChargeCallbackPayload(

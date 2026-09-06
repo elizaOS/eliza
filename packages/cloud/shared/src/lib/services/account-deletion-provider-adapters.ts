@@ -8,6 +8,8 @@ import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
+import { decideAppBillingDeletionScope } from "../../db/repositories/app-billing-deletion-dispositions";
+import { readAppBillingDeletionObligations } from "../../db/repositories/app-billing-deletion-inventory";
 import { subscriptionAuthorityRepository } from "../../db/repositories/subscription-authority";
 import {
   agentBackupGcOutbox,
@@ -30,6 +32,7 @@ import {
   agentVaultKeyBackupBindings,
   agentVaultKeyGenerations,
 } from "../../db/schemas/agent-vault-key-authority";
+import { appBillingDeletionDispositions } from "../../db/schemas/app-billing-deletion-dispositions";
 import { apps } from "../../db/schemas/apps";
 import { managedDomains } from "../../db/schemas/managed-domains";
 import {
@@ -50,6 +53,10 @@ import type {
   AccountDeletionProviderInspection,
   AccountDeletionProviderPhase,
 } from "./account-deletion-saga";
+import {
+  type AppBillingDeletionRuntime,
+  recoverAppBillingForAccountDeletion,
+} from "./app-billing-deletion-recovery";
 import { deleteAppWithCleanup } from "./app-cleanup";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { oauthService } from "./oauth";
@@ -128,6 +135,7 @@ function isMissingStripeResource(error: unknown): boolean {
 }
 
 export interface AccountDeletionProviderAdapterDependencies {
+  appBillingRuntime?: AppBillingDeletionRuntime;
   backupAuthority?: AccountDeletionBackupAuthority;
   backupDatabase?: AccountDeletionBackupDatabase;
   computeDatabase?: AccountDeletionComputeDatabase;
@@ -343,7 +351,7 @@ export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventor
       table: "billing_subscription_incidents",
       column: "resolved_by_user_id",
       subject: "user",
-      action: "delete",
+      action: "null",
     },
     {
       table: "billing_subscription_commands",
@@ -358,8 +366,8 @@ export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventor
       action: "delete",
     },
     {
-      table: "billing_subscription_commands",
-      column: "requested_by_user_id",
+      table: "app_billing_members",
+      column: "user_id",
       subject: "user",
       action: "delete",
     },
@@ -554,6 +562,42 @@ export function createAccountDeletionProviderAdapters(
     },
     stripe: {
       async inspect(context) {
+        const commandRecovery = await recoverAppBillingForAccountDeletion(
+          context,
+          dependencies.appBillingRuntime,
+        );
+        if (commandRecovery === "pending")
+          return { state: "action_required", errorCode: "APP_BILLING_COMMAND_RECOVERY_REQUIRED" };
+        const appObligations = await readAppBillingDeletionObligations(context);
+        const closed = await dbWrite
+          .select({ scopeId: appBillingDeletionDispositions.scope_id })
+          .from(appBillingDeletionDispositions)
+          .where(
+            and(
+              eq(appBillingDeletionDispositions.request_id, context.requestId),
+              eq(appBillingDeletionDispositions.disposition, "close"),
+            ),
+          );
+        let requiresCleanup = closed.length > 0;
+        for (const obligation of appObligations) {
+          if (obligation.disposition !== "developer_owned" && !obligation.departingAdministrator)
+            continue;
+          const decision = await decideAppBillingDeletionScope({
+            scopeId: obligation.scopeId,
+            authority: {
+              kind: "account_deletion",
+              requestId: context.requestId,
+              requestDigest: context.requestDigest,
+              lifecycleRevision: context.lifecycleRevision,
+              phaseReceiptId: context.phaseReceiptId,
+              phaseGeneration: context.phaseGeneration,
+            },
+          });
+          if (decision.disposition === "close") requiresCleanup = true;
+        }
+        if (requiresCleanup)
+          return { state: "action_required", errorCode: "APP_BILLING_PROVIDER_CLEANUP_REQUIRED" };
+
         const [organization] = await dbWrite
           .select({ customerId: organizations.stripe_customer_id })
           .from(organizations)

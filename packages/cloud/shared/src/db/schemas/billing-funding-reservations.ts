@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { appBillingScopes } from "./app-billing";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
 import { subscriptionAllowancePeriods } from "./subscription-allowance-periods";
@@ -27,6 +28,8 @@ export const billingFundingReservations = pgTable(
   "billing_funding_reservations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
@@ -53,6 +56,10 @@ export const billingFundingReservations = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     id_organization_unique: uniqueIndex("billing_funding_reservations_id_org_idx").on(
       table.id,
       table.organization_id,
@@ -103,6 +110,8 @@ export const billingFundingAllocations = pgTable(
   "billing_funding_allocations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id").notNull(),
     reservation_id: uuid("reservation_id").notNull(),
     sequence: integer("sequence").notNull(),
@@ -127,6 +136,10 @@ export const billingFundingAllocations = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     id_organization_unique: uniqueIndex("billing_funding_allocations_id_org_idx").on(
       table.id,
       table.organization_id,

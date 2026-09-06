@@ -12,7 +12,10 @@
 import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { readActionFailureProvenance } from "../../types/action-failure";
 import { ModelType } from "../../types/model";
-import { isProviderContextOverflowFailure } from "../../utils/model-errors";
+import {
+	isModelFundingAuthorityError,
+	isProviderContextOverflowFailure,
+} from "../../utils/model-errors";
 import {
 	findNextCloseTag,
 	REASONING_TAG_NAMES,
@@ -286,7 +289,10 @@ export function isModelProviderFallbackError(
 	error: unknown,
 	modelType?: string,
 ): boolean {
-	if (modelType === ModelType.TEXT_TO_SPEECH) {
+	if (
+		isModelFundingAuthorityError(error) ||
+		modelType === ModelType.TEXT_TO_SPEECH
+	) {
 		return false;
 	}
 	const unwrapped = unwrapRetryError(error);
