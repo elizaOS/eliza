@@ -18,6 +18,11 @@ import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
+  type AgentPaymentResumeExecutionAuthority,
+  confirmAgentComputeStopInTransaction,
+  lockPaymentResumeProviderAuthorityInTransaction,
+} from "../../db/repositories/agent-compute-stop-intents";
+import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
   type AgentSandboxBackup,
@@ -429,6 +434,8 @@ export type ProvisionResult =
       sandboxRecord: AgentSandbox;
       bridgeUrl: string;
       healthUrl: string;
+      /** Present when automatic recovery reuses an already-published generation. */
+      reusedExisting?: true;
     }
   | {
       success: false;
@@ -3814,7 +3821,19 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     restoreOverride?: ProvisionRestoreOverride,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ): Promise<ProvisionResult> {
+    if (
+      paymentResume &&
+      (restoreOverride ||
+        paymentResume.agentId !== agentId ||
+        paymentResume.organizationId !== orgId)
+    ) {
+      throw new ElizaError("Automatic payment resume cannot change restore or tenant authority", {
+        code: "PAYMENT_RESUME_ADMISSION_CHANGED",
+        context: { agentId, organizationId: orgId },
+      });
+    }
     let reviewedRestore: PreparedReviewedProvisionRestore | undefined;
     if (restoreOverride?.kind === "from-reviewed-backup") {
       try {
@@ -3852,7 +3871,34 @@ export class ElizaSandboxService {
     let rec: AgentSandbox;
     let previousStatus: AgentSandboxStatus;
 
-    if (expectedAdmission) {
+    if (paymentResume) {
+      const prior = await dbWrite.transaction((tx) =>
+        lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "cleanup"),
+      );
+      if (this.getReplacementCleanupLocator(prior)) {
+        await this.retirePersistedReplacementCleanup(
+          agentId,
+          orgId,
+          undefined,
+          undefined,
+          "lifecycle",
+          { authority: paymentResume },
+        );
+      }
+      const admission =
+        await agentSandboxesRepository.admitPaymentResumeProvisioning(paymentResume);
+      rec = admission.sandbox;
+      previousStatus = admission.previousStatus;
+      if (previousStatus === "running" && rec.bridge_url && rec.health_url) {
+        return {
+          success: true,
+          sandboxRecord: rec,
+          bridgeUrl: rec.bridge_url,
+          healthUrl: rec.health_url,
+          reusedExisting: true,
+        };
+      }
+    } else if (expectedAdmission) {
       if (expectedAdmission.id !== agentId || expectedAdmission.organization_id !== orgId) {
         return { success: false, error: RESTORE_AUTHORITY_CHANGED };
       }
@@ -3960,7 +4006,7 @@ export class ElizaSandboxService {
           await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
           reviewedAdmissionFence = undefined;
         }
-        await this.markError(rec, message);
+        await this.markError(rec, message, paymentResume);
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -3977,7 +4023,7 @@ export class ElizaSandboxService {
     if (rec.database_status !== "ready" || !dbUri) {
       const db = await this.provisionAgentDatabase(rec);
       if (!db.success) {
-        await this.markError(rec, `Database provisioning failed: ${db.error}`);
+        await this.markError(rec, `Database provisioning failed: ${db.error}`, paymentResume);
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -4065,7 +4111,7 @@ export class ElizaSandboxService {
     } catch (envError) {
       // error-policy:J1 return a failed provision without losing its decryption cause.
       const message = envError instanceof Error ? envError.message : String(envError);
-      await this.markError(rec, `Environment decryption failed: ${message}`);
+      await this.markError(rec, `Environment decryption failed: ${message}`, paymentResume);
       return {
         success: false,
         sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -4104,7 +4150,10 @@ export class ElizaSandboxService {
           // the caller did NOT supply one do we inject the managed URL as
           // DATABASE_URL — the normal managed-agent path, byte-identical to before.
           const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
-          handle = await (await this.getProvider()).create({
+          const provider = await this.getProvider();
+          if (paymentResume) await dbWrite.transaction((tx) =>
+            lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "provider"));
+          handle = await provider.create({
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
@@ -4130,11 +4179,16 @@ export class ElizaSandboxService {
               sandboxId: rec.sandbox_id,
               nodeId: rec.node_id,
               containerName: rec.container_name,
-            }),
+            }, paymentResume),
           });
         }
       } catch (err) {
         // error-policy:J1 retain provider failure for the queue and cleanup boundaries.
+        if (paymentResume && err instanceof ElizaError && (
+          err.code === "PAYMENT_RESUME_PROVIDER_LEASE_LOST" ||
+          err.code === "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED" ||
+          err.code === "PAYMENT_RESUME_EXECUTION_NOT_FUNDED"
+        )) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         if (err instanceof SandboxReplacementCleanupUnresolvedError) {
           await this.persistUnresolvedReplacementCleanupFence(rec.id, rec.organization_id, err);
@@ -4146,7 +4200,7 @@ export class ElizaSandboxService {
             failureCause: err,
           };
         }
-        await this.markError(rec, `Sandbox creation failed: ${msg}`);
+        await this.markError(rec, `Sandbox creation failed: ${msg}`, paymentResume);
         return {
           success: false,
           sandboxRecord: await agentSandboxesRepository.findById(rec.id),
@@ -4191,7 +4245,9 @@ export class ElizaSandboxService {
             //       collision, and tearing down the very container we preserved.
             // Without this write the leave-and-reconcile path is defeated for
             // exactly the SSH-transport-blip case it exists for.
-            await this.persistContainerHandleForRetry(
+            // Automatic recovery retains its cleanup receipt until state restore
+            // and the final funded publication transaction both succeed.
+            if (!paymentResume) await this.persistContainerHandleForRetry(
               rec.id,
               rec.organization_id,
               rec.environment_revision,
@@ -4467,6 +4523,7 @@ export class ElizaSandboxService {
           handle,
           rec.environment_revision,
           updateData,
+          paymentResume,
         );
 
         // Re-enter the billable set on every successful provision. A
@@ -4476,7 +4533,9 @@ export class ElizaSandboxService {
         // free dedicated compute forever. The service-key resume/restart routes
         // already reactivate; do it here so ALL provision paths re-enter billing.
         // Idempotent + exempt-guarded (ne billing_status 'exempt').
-        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
+        if (!paymentResume) {
+          await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
+        }
 
         let completed = updated;
         if (isWarmPoolProvision) {
@@ -4545,6 +4604,12 @@ export class ElizaSandboxService {
         });
 
         try {
+          if (paymentResume) {
+            await this.retirePersistedReplacementCleanup(
+              rec.id, rec.organization_id, undefined, undefined, "lifecycle",
+              { authority: paymentResume, expectedHandle: handle },
+            );
+          } else {
           const current = await agentSandboxesRepository.findByIdAndOrg(
             rec.id,
             rec.organization_id,
@@ -4557,6 +4622,7 @@ export class ElizaSandboxService {
               throw new Error("Sandbox provider cannot prove failed provision absent");
             }
             await provider.stopForReplacement(handle.sandboxId);
+          }
           }
         } catch (stopErr) {
           // error-policy:J1 provisioning boundary translation — failed ghost
@@ -4603,6 +4669,7 @@ export class ElizaSandboxService {
     await this.markError(
       rec,
       `Provisioning failed after ${attemptsLabel}${giveUpReason}: ${lastError}`,
+      paymentResume,
     );
     return {
       success: false,
@@ -10061,18 +10128,15 @@ export class ElizaSandboxService {
           })
           .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
         if (stopIntent) {
-          await tx
-            .update(agentComputeStopIntents)
-            .set({
-              status: "provider_confirmed",
-              provider_confirmed_at: confirmedAt,
-              retained_backup_billing: retainedBackupBilling,
-              retained_backup_rate_per_hour: retainedBackupBilling
-                ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
-                : null,
-              updated_at: confirmedAt,
-            })
-            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+          await confirmAgentComputeStopInTransaction(tx, {
+            intentId: stopIntent.id,
+            agentId,
+            organizationId: orgId,
+            confirmedAt,
+            retainedBackupRatePerHour: retainedBackupBilling
+              ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+              : null,
+          });
         }
         return { success: true, containerStopped: true } as const;
       }
@@ -10165,18 +10229,15 @@ export class ElizaSandboxService {
           AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
       `);
       if (stopIntent) {
-        await tx
-          .update(agentComputeStopIntents)
-          .set({
-            status: "provider_confirmed",
-            provider_confirmed_at: confirmedAt,
-            retained_backup_billing: retainedBackupBilling,
-            retained_backup_rate_per_hour: retainedBackupBilling
-              ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
-              : null,
-            updated_at: confirmedAt,
-          })
-          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        await confirmAgentComputeStopInTransaction(tx, {
+          intentId: stopIntent.id,
+          agentId,
+          organizationId: orgId,
+          confirmedAt,
+          retainedBackupRatePerHour: retainedBackupBilling
+            ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+            : null,
+        });
       }
       return { success: true, containerStopped, backupId: suspendBackupId } as const;
     });
@@ -10220,12 +10281,25 @@ export class ElizaSandboxService {
   async executeResume(
     agentId: string,
     orgId: string,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ): Promise<{
     success: boolean;
     containerStarted: boolean;
     reprovisioned: boolean;
     error?: string;
   }> {
+    if (paymentResume) {
+      if (paymentResume.agentId !== agentId || paymentResume.organizationId !== orgId) {
+        throw new ElizaError("Payment resume tenant authority does not match its request", {
+          code: "PAYMENT_RESUME_ADMISSION_CHANGED",
+          context: { agentId, organizationId: orgId },
+        });
+      }
+      const result = await this.provision(agentId, orgId, undefined, paymentResume);
+      return result.success
+        ? { success: true, containerStarted: true, reprovisioned: result.reusedExisting !== true }
+        : { success: false, containerStarted: false, reprovisioned: true, error: result.error };
+    }
     // Read from the PRIMARY: a replica-lagged "Agent not found" / stale status
     // here would turn a legitimate resume into a terminal no-op (the daemon
     // maps "Agent not found" to completed), silently dropping the request. The
@@ -12001,16 +12075,38 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     expected: ReplacementCleanupExpectation,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ) {
     return {
       onReplacementCreateIntent: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "intent");
+        await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          "intent",
+          paymentResume,
+        );
       },
       onReplacementCreated: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "created");
+        await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          "created",
+          paymentResume,
+        );
       },
       onReplacementVpnRegistered: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "vpn");
+        await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          "vpn",
+          paymentResume,
+        );
       },
     };
   }
@@ -12252,6 +12348,7 @@ export class ElizaSandboxService {
     handle: SandboxHandle,
     expected: ReplacementCleanupExpectation,
     stage: "intent" | "created" | "vpn",
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ): Promise<void> {
     const incoming = this.replacementLocatorFromHandle(handle);
     if (stage === "intent" && (incoming.containerId !== null || incoming.vpnNodeId !== null)) {
@@ -12268,6 +12365,9 @@ export class ElizaSandboxService {
     }
     await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume && stage === "intent") {
+        await lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "provider");
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement ownership");
       const tierRejection = containerBackedServiceRejection(current, "replacement");
@@ -12280,6 +12380,8 @@ export class ElizaSandboxService {
         throw new Error("Agent deletion owns the lifecycle before replacement ownership");
       }
       const existing = this.getReplacementCleanupLocator(current);
+      // Post-effect callbacks may preserve the exact existing receipt after
+      // lease loss, but cannot establish a new replacement without admission.
       if (existing) {
         this.assertSameReplacementIdentity(existing, incoming);
         const containerId = existing.containerId ?? incoming.containerId;
@@ -12433,9 +12535,21 @@ export class ElizaSandboxService {
     handle: SandboxHandle,
     expectedEnvironmentRevision: number,
     updateData: Partial<NewAgentSandbox>,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
   ): Promise<AgentSandbox> {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume) {
+        if (paymentResume.agentId !== agentId || paymentResume.organizationId !== orgId) {
+          throw new ElizaError("Payment resume identity changed before replacement adoption", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+        // Restoration can outlive funding or its worker lease. Publication and
+        // billing must share the final locked authority check.
+        await lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "provider");
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement adoption");
       const tierRejection = containerBackedServiceRejection(current, "replacement");
@@ -12503,6 +12617,17 @@ export class ElizaSandboxService {
         )
         .returning();
       if (!adopted) throw new Error("Replacement adoption CAS failed");
+      if (paymentResume) {
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+          agentId,
+          new Date(),
+          orgId,
+          tx,
+        );
+        const completed = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+        if (!completed) throw new Error("Agent disappeared during replacement billing activation");
+        return completed;
+      }
       return adopted;
     });
   }
@@ -12548,6 +12673,10 @@ export class ElizaSandboxService {
     expectation?: AdminCanaryCleanupExpectation,
     onConvergedInTx?: (tx: DbTransaction) => Promise<void>,
     source: "lifecycle" | "background-reconcile" | "admin-converge" = "lifecycle",
+    paymentResume?: {
+      authority: AgentPaymentResumeExecutionAuthority;
+      expectedHandle?: SandboxHandle;
+    },
   ): Promise<"missing" | "clean" | "deferred" | "retired"> {
     const startedAt = Date.now();
     logger.info("[agent-sandbox] Replacement cleanup started", {
@@ -12557,11 +12686,49 @@ export class ElizaSandboxService {
     });
     const snapshot = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume) {
+        if (
+          paymentResume.authority.agentId !== agentId ||
+          paymentResume.authority.organizationId !== orgId
+        ) {
+          throw new ElizaError("Payment resume cleanup identity changed", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+        await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume.authority,
+          "cleanup",
+        );
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) return { state: "missing" as const };
       const tierRejection = containerBackedServiceRejection(current, "replacement");
       if (tierRejection) throw new Error(tierRejection);
       const locator = this.getReplacementCleanupLocator(current);
+      if (paymentResume?.expectedHandle) {
+        if (!locator) {
+          throw new ElizaError(
+            "Failed payment resume has no retained replacement cleanup identity",
+            {
+              code: "PAYMENT_RESUME_CLEANUP_REQUIRED",
+              context: { agentId },
+            },
+          );
+        }
+        const expected = this.replacementLocatorFromHandle(paymentResume.expectedHandle);
+        this.assertSameReplacementIdentity(locator, expected);
+        if (
+          locator.containerId !== expected.containerId ||
+          locator.vpnNodeId !== expected.vpnNodeId
+        ) {
+          throw new ElizaError("Failed payment resume replacement identity changed", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+      }
       if (expectation) {
         this.assertAdminCanaryCleanupExpectation(current, locator, expectation);
       }
@@ -12601,6 +12768,22 @@ export class ElizaSandboxService {
       elapsedMs: Date.now() - startedAt,
     });
 
+    if (paymentResume) {
+      await dbWrite.transaction(async (tx) => {
+        const current = await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume.authority,
+          "cleanup",
+        );
+        const currentLocator = this.getReplacementCleanupLocator(current);
+        if (!currentLocator || !this.replacementCleanupLocatorsEqual(currentLocator, locator)) {
+          throw new ElizaError("Payment resume cleanup identity changed before provider dispatch", {
+            code: "PAYMENT_RESUME_EXECUTION_AUTHORITY_CHANGED",
+            context: { agentId },
+          });
+        }
+      });
+    }
     await stopOnSpecificNodeForReplacement(
       locator.nodeId,
       locator.containerName,
@@ -12623,6 +12806,13 @@ export class ElizaSandboxService {
 
     const outcome = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
+      if (paymentResume) {
+        await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume.authority,
+          "cleanup",
+        );
+      }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) {
         throw expectation
@@ -13120,7 +13310,35 @@ export class ElizaSandboxService {
     return { backupId: backup.id, lifecycleRevision: sandbox.lifecycleRevision };
   }
 
-  private async markError(rec: AgentSandbox, msg: string) {
+  private async markError(
+    rec: AgentSandbox,
+    msg: string,
+    paymentResume?: AgentPaymentResumeExecutionAuthority,
+  ) {
+    if (paymentResume) {
+      await dbWrite.transaction(async (tx) => {
+        const current = await lockPaymentResumeProviderAuthorityInTransaction(
+          tx,
+          paymentResume,
+          "cleanup",
+        );
+        await tx
+          .update(agentSandboxes)
+          .set({
+            status: "error",
+            error_message: msg,
+            error_count: current.error_count + 1,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, current.id),
+              eq(agentSandboxes.organization_id, current.organization_id),
+            ),
+          );
+      });
+      return;
+    }
     await agentSandboxesRepository.update(rec.id, {
       status: "error",
       error_message: msg,

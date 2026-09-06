@@ -1,5 +1,6 @@
 /** Persists elapsed agent-compute charges and billing lifecycle transitions. */
 
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
@@ -296,8 +297,9 @@ export class AgentBillingRepository {
     sandboxId: string,
     now: Date,
     organizationId?: string,
+    tx?: DbTransaction,
   ): Promise<void> {
-    await dbWrite
+    await (tx ?? dbWrite)
       .update(agentSandboxes)
       .set({
         billing_status: "active" as AgentBillingStatus,
@@ -343,6 +345,54 @@ export class AgentBillingRepository {
     now: Date,
   ): Promise<AgentHourlyBillingOutcome> {
     return this.settleAccruedBillingBeforeLifecycleWithExecutor(tx, sandboxId, organizationId, now);
+  }
+
+  /**
+   * Called after locking a payment-stop receipt and its sandbox. Debt settlement
+   * precedes the organization lock, preserving the compute billing lock order.
+   * The caller must admit its resume in this same transaction and repeat this
+   * check at provider admission; a queue receipt does not reserve future funds.
+   */
+  async settlePaymentResumeFundingInTransaction(
+    tx: DbTransaction,
+    sandboxId: string,
+    organizationId: string,
+    now: Date,
+  ): Promise<"funded" | "unfunded" | "account_fenced"> {
+    const settlement = await this.settleAccruedBillingBeforeLifecycleInTransaction(
+      tx,
+      sandboxId,
+      organizationId,
+      now,
+    );
+    const [organization] = await tx
+      .select({
+        balance: organizations.credit_balance,
+        state: organizations.account_lifecycle_state,
+        active: organizations.is_active,
+        deletionRequestId: organizations.account_deletion_request_id,
+        paidWorkFencedAt: organizations.paid_work_fenced_at,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .for("update")
+      .limit(1);
+    if (!organization) {
+      throw new ElizaError("Payment resume funding authority is missing", {
+        code: "PAYMENT_RESUME_ORGANIZATION_MISSING",
+        context: { organizationId, sandboxId },
+      });
+    }
+    if (
+      !organization.active ||
+      organization.state !== "active" ||
+      organization.deletionRequestId !== null ||
+      organization.paidWorkFencedAt !== null
+    ) {
+      return "account_fenced";
+    }
+    const balance = parseOrgCreditBalance(organization.balance);
+    return settlement.status !== "insufficient_credits" && balance > 0 ? "funded" : "unfunded";
   }
 
   private async settleAccruedBillingBeforeLifecycleWithExecutor(

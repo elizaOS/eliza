@@ -24,6 +24,7 @@ process.env.MOCK_REDIS ||= "1";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
+import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import * as loggerActual from "../utils/logger";
@@ -54,6 +55,14 @@ const revokeForAgent = mock(async (_agentSandboxId: string) => {});
 
 function makeTx(txIndex: number) {
   return {
+    update: (table: unknown) => ({
+      set: () => ({
+        where: async () => {
+          if (table !== agentComputeStopIntents) throw new Error("Unexpected transaction update");
+          events.push({ tx: txIndex, kind: "revoke-payment-resume" });
+        },
+      }),
+    }),
     execute: async (query: SQL) => {
       const { sql: text, params } = new PgDialect().sqlToQuery(query);
       if (text.includes("pg_advisory_xact_lock")) {
@@ -285,6 +294,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "select-sandbox-for-enqueue",
       "select-active-job",
       "select-active-job",
+      "revoke-payment-resume",
       "insert-provision-job",
     ]);
     expect(phase3[0]?.detail).toBe("10000ms,30000ms");
