@@ -2,8 +2,8 @@
 # Converges one environment's PostgreSQL host on its assigned persistent volume.
 # Bootstrap never formats disks or initializes a populated/unknown cluster.
 # A new empty cluster requires a short-lived root-issued authorization; normal
-# recovery starts only matching existing data. Nightly encrypted logical backups
-# are installed but require the complete backup credential bundle to run.
+# recovery starts only matching existing data. Logical dumps and continuous WAL
+# backups require their respective complete repository credential bundles.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -31,6 +31,9 @@ packages:
   - pgbouncer
   - jq
   - rclone
+%{ if pitr_enabled ~}
+  - pgbackrest
+%{ endif ~}
 
 bootcmd:
   # Disable unattended-upgrades BEFORE cloud-init's package_update_upgrade_install
@@ -503,6 +506,7 @@ write_files:
       [Install]
       WantedBy=timers.target
 
+${pitr_files}
   - path: /etc/systemd/system/tenant-db-init.service
     owner: root:root
     permissions: '0644'
@@ -542,3 +546,8 @@ runcmd:
   # The backup timer is always enabled; the script itself no-ops until the
   # backup env file exists, so unarmed nodes stay quiet.
   - systemctl enable --now tenant-db-backup.timer
+%{ if pitr_enabled ~}
+  - install -d -o postgres -g postgres -m 0700 /var/lib/pgbackrest/lock
+  - systemctl enable --now tenant-db-pitr-init.service
+  - systemctl enable --now tenant-db-pitr-full.timer tenant-db-pitr-diff.timer tenant-db-pitr-check.timer
+%{ endif ~}

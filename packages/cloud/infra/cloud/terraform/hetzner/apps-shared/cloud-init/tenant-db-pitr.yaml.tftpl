@@ -1,0 +1,136 @@
+  # PostgreSQL must acknowledge archiving only after durable repository upload.
+  # This fragment is rendered only with a complete, independently scoped bundle.
+  - path: /etc/postgresql/16/main/conf.d/90-eliza-pitr.conf
+    owner: root:postgres
+    permissions: '0640'
+    defer: true
+    content: |
+      archive_mode = on
+      archive_timeout = '60s'
+      archive_command = '/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant archive-push %p'
+      wal_level = replica
+
+  - path: /etc/pgbackrest/eliza-tenant.conf
+    owner: postgres:postgres
+    permissions: '0600'
+    defer: true
+    content: |
+      [global]
+      repo1-type=s3
+      repo1-path=/tenant-pitr/${environment}
+      repo1-s3-endpoint=${repository.endpoint}
+      repo1-s3-bucket=${repository.bucket}
+      repo1-s3-region=${repository.region}
+      repo1-s3-uri-style=path
+      repo1-s3-key=${repository.access_key}
+      repo1-s3-key-secret=${repository.secret_key}
+      repo1-cipher-type=aes-256-cbc
+      repo1-cipher-pass=${repository.cipher_key}
+      repo1-storage-verify-tls=y
+      repo1-retention-full-type=time
+      repo1-retention-full=30
+      expire-auto=n
+      archive-async=n
+      archive-check=y
+      archive-timeout=120
+      log-level-file=off
+      log-level-console=info
+      lock-path=/var/lib/pgbackrest/lock
+      start-fast=y
+
+      [tenant]
+      pg1-path=/mnt/tenant-pgdata/16/main
+      pg1-socket-path=/var/run/postgresql
+      pg1-port=5432
+
+  - path: /etc/systemd/system/tenant-db-pitr-init.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Verify tenant WAL archiving and establish a full recovery point
+      Requires=tenant-db-init.service
+      After=tenant-db-init.service network-online.target
+      Wants=network-online.target
+      StartLimitIntervalSec=0
+
+      [Service]
+      Type=oneshot
+      User=postgres
+      UMask=0077
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant stanza-create
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant check
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant --type=full backup
+      RemainAfterExit=yes
+      Restart=on-failure
+      RestartSec=60s
+      TimeoutStartSec=infinity
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/tenant-db-pitr-backup@.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Tenant PostgreSQL %i backup
+      Requires=tenant-db-pitr-init.service
+      After=tenant-db-pitr-init.service
+
+      [Service]
+      Type=oneshot
+      User=postgres
+      UMask=0077
+      Nice=10
+      IOSchedulingClass=idle
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant --type=%i backup
+      TimeoutStartSec=infinity
+
+  - path: /etc/systemd/system/tenant-db-pitr-full.timer
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Timer]
+      OnCalendar=Sun *-*-* 01:00:00 UTC
+      Persistent=true
+      Unit=tenant-db-pitr-backup@full.service
+      [Install]
+      WantedBy=timers.target
+
+  - path: /etc/systemd/system/tenant-db-pitr-diff.timer
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Timer]
+      OnCalendar=Mon..Sat *-*-* 01:00:00 UTC
+      Persistent=true
+      Unit=tenant-db-pitr-backup@diff.service
+      [Install]
+      WantedBy=timers.target
+
+  - path: /etc/systemd/system/tenant-db-pitr-check.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Verify that tenant WAL reaches the encrypted repository
+      Requires=tenant-db-pitr-init.service
+      After=tenant-db-pitr-init.service
+      [Service]
+      Type=oneshot
+      User=postgres
+      UMask=0077
+      ExecStart=/usr/bin/pgbackrest --config=/etc/pgbackrest/eliza-tenant.conf --stanza=tenant check
+      TimeoutStartSec=180s
+
+  - path: /etc/systemd/system/tenant-db-pitr-check.timer
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Timer]
+      OnBootSec=2min
+      OnUnitInactiveSec=60s
+      Unit=tenant-db-pitr-check.service
+      [Install]
+      WantedBy=timers.target
