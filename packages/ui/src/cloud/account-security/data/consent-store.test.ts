@@ -2,7 +2,7 @@
  * Unit tests for consent-store: validates privacy-by-default false values
  * and localStorage write/read roundtrip.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getTrajectoryLoggingEnabled,
   getVisionEnabled,
@@ -15,18 +15,15 @@ describe("consent-store", () => {
 
   beforeEach(() => {
     storage.clear();
-    (globalThis as any).window = {
+    vi.stubGlobal("window", {
       localStorage: {
         getItem: (key: string) => storage.get(key) ?? null,
         setItem: (key: string, val: string) => storage.set(key, val),
         removeItem: (key: string) => storage.delete(key),
         clear: () => storage.clear(),
       },
-    };
-  });
-
-  afterEach(() => {
-    delete (globalThis as any).window;
+    });
+    return () => vi.unstubAllGlobals();
   });
 
   it("defaults to false for vision and trajectory logging", () => {
