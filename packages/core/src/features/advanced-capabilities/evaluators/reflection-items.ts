@@ -65,11 +65,14 @@ import {
 	type AddCurrentOp,
 	type AddDurableOp,
 	type ContradictOp,
+	CurrentCategoryEnum,
 	type DecayOp,
+	DurableCategoryEnum,
 	type ExtractorOp,
 	type ExtractorOutput,
 	parseExtractorOutputTolerant,
 	type StrengthenOp,
+	VerificationStatusEnum,
 } from "./factExtractor.schema.ts";
 import {
 	formatTaskCompletionStatus,
@@ -147,53 +150,73 @@ const structuredFieldsSchema: JSONSchema = {
 	additionalProperties: false,
 };
 
+const newFactProperties: Record<string, JSONSchema> = {
+	claim: { type: "string" },
+	structured_fields: structuredFieldsSchema,
+	keywords: { type: "array", items: { type: "string" } },
+	reason: { type: "string" },
+};
+
 const factOpsSchema: JSONSchema = {
 	type: "object",
 	properties: {
 		ops: {
 			type: "array",
 			items: {
-				type: "object",
-				properties: {
-					op: {
-						type: "string",
-						enum: [
-							"add_durable",
-							"add_current",
-							"strengthen",
-							"decay",
-							"contradict",
-						],
+				// Required fields belong to each operation; a shared optional-field
+				// object permits outputs that the extractor cannot process.
+				anyOf: [
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["add_durable"] },
+							...newFactProperties,
+							category: { type: "string", enum: DurableCategoryEnum.options },
+							verification_status: {
+								type: "string",
+								enum: VerificationStatusEnum.options,
+							},
+						},
+						required: ["op", "claim", "category"],
+						additionalProperties: false,
 					},
-					claim: { type: "string" },
-					category: { type: "string" },
-					// Strict-mode JSON schema validators require every object node to
-					// be closed. The prompt maps category-specific values into this
-					// finite key set so downstream projections can consume structured
-					// facts without reparsing language-specific claim text.
-					structured_fields: structuredFieldsSchema,
-					// No maxItems: strict structured-output validators (Cerebras, OpenAI
-					// strict) reject array length constraints outright — the whole
-					// extraction request 400s. The 16-keyword cap is enforced in code
-					// (zod trim + MAX_KEYWORDS at storage) instead of on the wire.
-					keywords: {
-						type: "array",
-						items: { type: "string" },
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["add_current"] },
+							...newFactProperties,
+							category: { type: "string", enum: CurrentCategoryEnum.options },
+							valid_at: { type: "string" },
+						},
+						required: ["op", "claim", "category"],
+						additionalProperties: false,
 					},
-					verification_status: { type: "string" },
-					valid_at: { type: "string" },
-					factId: { type: "string" },
-					proposedText: {
-						type: "string",
-						description:
-							"Required and nonblank for contradict: the complete corrected claim supported by the user's correction, preserving unchanged details. Proposes a replacement for review; never copy the old contradicted claim or invent missing details.",
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["strengthen", "decay"] },
+							factId: { type: "string" },
+							reason: { type: "string" },
+						},
+						required: ["op", "factId"],
+						additionalProperties: false,
 					},
-					reason: { type: "string" },
-				},
-				required: ["op"],
-				// Strict structured-output mode (Groq/Cerebras/OpenAI strict)
-				// requires every object to set additionalProperties: false.
-				additionalProperties: false,
+					{
+						type: "object",
+						properties: {
+							op: { type: "string", enum: ["contradict"] },
+							factId: { type: "string" },
+							proposedText: {
+								type: "string",
+								description:
+									"Required and nonblank for contradict: the complete corrected claim supported by the user's correction, preserving unchanged details. Proposes a replacement for review; never copy the old contradicted claim or invent missing details.",
+							},
+							reason: { type: "string" },
+						},
+						required: ["op", "factId", "reason", "proposedText"],
+						additionalProperties: false,
+					},
+				],
 			},
 		},
 	},

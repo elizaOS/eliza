@@ -7,7 +7,10 @@ import { createServer, type Server } from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ExtractorOutputSchema } from "../../../packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema";
+import { factMemoryEvaluator } from "../../../packages/core/src/features/advanced-capabilities/evaluators/reflection-items";
 import { evaluatorSchema } from "../../../packages/core/src/prompts/evaluator";
+import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
 import { handleActionPlanner, handleTextSmall } from "../models/text";
 
 interface WireRequest {
@@ -156,6 +159,75 @@ async function invoke(options: {
 }
 
 describe("Qwen3.8 response-schema wire contract", () => {
+  it.each([false, true])(
+    "enforces the fact operation contract on the actual provider request (stream=%s)",
+    async (stream) => {
+      const factId = "00000000-0000-0000-0000-0000000000ff";
+      const operations = [
+        { op: "add_durable", claim: "The user lives in Berlin.", category: "identity" },
+        { op: "add_current", claim: "The user is packing for a walk.", category: "working_on" },
+        { op: "strengthen", factId },
+        { op: "decay", factId },
+        {
+          op: "contradict",
+          factId,
+          reason: "The user corrected green to orange while keeping the remaining packing list.",
+          proposedText: "The packing list is an orange notebook and a charger, with no water.",
+        },
+      ];
+      const schema = {
+        type: "object",
+        properties: { factMemory: factMemoryEvaluator.schema },
+        required: ["factMemory"],
+        additionalProperties: false,
+      };
+      const original = structuredClone(schema);
+      reply = { factMemory: { ops: operations } };
+      expect(await invoke({ schema, stream, tools: [] })).toEqual(reply);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].response_format?.type).toBe("json_schema");
+      const wireSchema = requests[0].response_format?.json_schema?.schema;
+      if (!wireSchema) throw new Error("expected a strict fact operation schema on the wire");
+      expect(parseAndValidate(JSON.stringify(reply), wireSchema).valid).toBe(true);
+      expect(ExtractorOutputSchema.safeParse({ ops: operations }).success).toBe(true);
+      expect(schema).toEqual(original);
+
+      for (const [index, fields] of [
+        [4, ["proposedText", "factId", "reason", "op"]],
+        [0, ["op", "claim", "category"]],
+        [1, ["op", "claim", "category"]],
+        [2, ["op", "factId"]],
+        [3, ["op", "factId"]],
+      ] as const) {
+        for (const field of fields) {
+          const incomplete = Object.fromEntries(
+            Object.entries(operations[index]).filter(([key]) => key !== field)
+          );
+          const output = { ops: [incomplete] };
+          expect(
+            ExtractorOutputSchema.safeParse(output).success,
+            `${index}: missing ${field}`
+          ).toBe(false);
+          expect(
+            parseAndValidate(JSON.stringify({ factMemory: output }), wireSchema).valid,
+            `${index}: wire permits missing ${field}`
+          ).toBe(false);
+        }
+      }
+      for (const op of [
+        { ...operations[0], category: "working_on" },
+        { ...operations[1], category: "identity" },
+        { ...operations[0], verification_status: "unverified" },
+      ]) {
+        const output = { ops: [op] };
+        expect(ExtractorOutputSchema.safeParse(output).success).toBe(false);
+        expect(parseAndValidate(JSON.stringify({ factMemory: output }), wireSchema).valid).toBe(
+          false
+        );
+      }
+    }
+  );
+
   it.each(["cerebras", "openai"])(
     "preserves native-tool optional arguments only for the supported %s contract",
     async (provider) => {

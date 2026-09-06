@@ -17,6 +17,7 @@ import {
 	vi,
 } from "vitest";
 import { logger } from "../../../logger.ts";
+import { parseAndValidate } from "../../../runtime/validated-model-call.ts";
 import type {
 	Entity,
 	EvaluatorProcessorContext,
@@ -444,33 +445,32 @@ describe("reflection evaluator schemas are strict-structured-output safe", () =>
 		}
 	});
 
-	it("fact extraction advertises structured fields consumed by LifeOps projections", () => {
-		const schema = factMemoryEvaluator.schema as {
-			properties?: {
-				ops?: {
-					items?: {
-						properties?: {
-							structured_fields?: {
-								properties?: Record<string, unknown>;
-								additionalProperties?: boolean;
-							};
-						};
-					};
-				};
-			};
+	it("fact extraction preserves structured fields consumed by LifeOps projections", () => {
+		const structuredFields = {
+			preferredName: "Camille",
+			person: "Sam",
+			relationshipType: "friend",
+			platform: "discord",
+			handle: "camille",
+			travelBookingPreferences: "Window seat",
+			timezone: "Europe/Paris",
 		};
-		const structured =
-			schema.properties?.ops?.items?.properties?.structured_fields;
-		expect(structured?.additionalProperties).toBe(false);
-		expect(structured?.properties).toMatchObject({
-			preferredName: { type: "string" },
-			person: { type: "string" },
-			relationshipType: { type: "string" },
-			platform: { type: "string" },
-			handle: { type: "string" },
-			travelBookingPreferences: { type: "string" },
-			timezone: { type: "string" },
-		});
+		const output = {
+			ops: [
+				{
+					op: "add_durable",
+					claim: "The user's preferred name is Camille.",
+					category: "identity",
+					structured_fields: structuredFields,
+				},
+			],
+		};
+		const validation = parseAndValidate(
+			JSON.stringify(output),
+			factMemoryEvaluator.schema,
+		);
+		expect(validation.valid).toBe(true);
+		expect(factMemoryEvaluator.parse?.(validation.parsed)).toEqual(output);
 	});
 
 	it("fact extraction prompt names structured fields on the production evaluator path", () => {
