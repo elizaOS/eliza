@@ -34,6 +34,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  env?: Record<string, string>;
   environment?: string;
   if?: string;
   needs?: string | string[];
@@ -66,6 +67,58 @@ interface TelegramExecution {
   stderr: string;
   stdout: string;
   summary: string;
+}
+
+// Jobs that deploy from a pristine tree materialise it at `CHECKOUT_DIR`, a
+// checkout of this repository, so a path under it resolves the same way a
+// repository-relative one does. Any other expression-valued or absolute
+// working directory is not something this test can resolve, and is skipped.
+const CHECKOUT_DIR_PREFIX = "${{ env.CHECKOUT_DIR }}";
+
+/**
+ * Collects every checked-in script a workflow step hands to `node` or `bun`,
+ * paired with the directory the step runs in, discarding the references this
+ * repository cannot resolve on its own.
+ */
+function literalScriptReferences(parsed: WorkflowFile): Array<{
+  job: string;
+  step: string;
+  workingDirectory: string;
+  script: string;
+}> {
+  const references: Array<{
+    job: string;
+    step: string;
+    workingDirectory: string;
+    script: string;
+  }> = [];
+  for (const [job, definition] of Object.entries(parsed.jobs ?? {})) {
+    for (const step of definition.steps ?? []) {
+      if (!step.run) continue;
+      const declared = step["working-directory"] ?? ".";
+      let workingDirectory = declared;
+      if (declared === CHECKOUT_DIR_PREFIX) {
+        workingDirectory = ".";
+      } else if (declared.startsWith(`${CHECKOUT_DIR_PREFIX}/`)) {
+        workingDirectory = declared.slice(CHECKOUT_DIR_PREFIX.length + 1);
+      } else if (declared.includes("${{") || declared.startsWith("/")) {
+        continue;
+      }
+      for (const match of step.run.matchAll(
+        /(?:^|\s)(?:node|bun)\s+(?:\\\s*)?([^\s'"]+\.(?:mjs|cjs|js|ts))/g,
+      )) {
+        const script = match[1];
+        if (script.includes("$")) continue;
+        references.push({
+          job,
+          step: step.name ?? "(unnamed)",
+          workingDirectory,
+          script,
+        });
+      }
+    }
+  }
+  return references;
 }
 
 const workflow = readFileSync(workflowPath, "utf8");
@@ -1306,5 +1359,38 @@ describe("homepage deployment workflow", () => {
     expect(homepageValidationIndex).toBeGreaterThan(uiBuildIndex);
     expect(coreBuildIndex).toBeGreaterThan(-1);
     expect(webBuildIndex).toBeGreaterThan(homepageValidationIndex);
+  });
+
+  it("resolves every literal workflow script reference from its own working directory", () => {
+    // #30311 was a path that resolved somewhere unintended. The assertions
+    // covering these invocations are string matches, so they cannot tell a
+    // working path from one that points at nothing — resolve them instead.
+    for (const [label, parsed] of [
+      ["cloud-cf-deploy.yml", parsedWorkflow],
+      ["cloud-cf-release.yml", parsedReleaseWorkflow],
+    ] as const) {
+      // The CHECKOUT_DIR rewrite above is only sound while that directory is a
+      // checkout of this repository; pin the premise rather than assume it.
+      for (const [job, definition] of Object.entries(parsed.jobs ?? {})) {
+        const checkoutDir = definition.env?.CHECKOUT_DIR;
+        if (checkoutDir === undefined) continue;
+        expect(checkoutDir, `${label} ${job}`).toContain("/eliza-checkout-");
+      }
+
+      const references = literalScriptReferences(parsed);
+      // A regex that stopped matching would make this vacuous.
+      expect(references.length, label).toBeGreaterThan(0);
+      for (const reference of references) {
+        const resolved = path.resolve(
+          repositoryRoot,
+          reference.workingDirectory,
+          reference.script,
+        );
+        expect(
+          existsSync(resolved),
+          `${label} ${reference.job} / ${reference.step}: ${reference.script}`,
+        ).toBe(true);
+      }
+    }
   });
 });
