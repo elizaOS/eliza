@@ -263,7 +263,10 @@ bun --env-file=.env.local --conditions=eliza-source packages/agent/scripts/cereb
 
 Both output and database paths must be new. The report contains full model and
 wire output, fixture definitions, before/after domain records, final isolation
-readbacks, and explicit failures. The database is retained after canonical
+readbacks, and explicit failures. Checks reject foreign-fixture claims and
+contradictory same-message completion rows even alongside valid results. Full
+reasons and relationship descriptions still require semantic inspection; a
+nonempty explanation alone is not proof of grounded reasoning. The database is retained after canonical
 runtime shutdown; this command does not certify restart durability. It makes
 nominally two merged evaluator calls, with every actual attempt recorded.
 Inspect and scan artifacts before publishing.

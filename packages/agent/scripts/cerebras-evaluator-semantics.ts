@@ -207,7 +207,12 @@ export async function readSemanticEffects(
         roomId: fixture.roomId as UUID,
         unique: false,
       }),
-      relationships.getEntityIdentities(fixture.entityId as UUID),
+      Promise.all(
+        [
+          fixture.entityId,
+          ...(fixture.colleagueId ? [fixture.colleagueId] : []),
+        ].map((id) => relationships.getEntityIdentities(id as UUID)),
+      ).then((rows) => rows.flat()),
       runtime.getRelationships({ entityIds: [fixture.entityId as UUID] }),
       runtime.getCache<TaskCompletionAssessment>(
         getTaskCompletionCacheKey(fixture.messageId as UUID),
@@ -230,7 +235,73 @@ export function assertSemanticEffects(
   fixture: SemanticFixture,
   effects: SemanticEffects,
   agentId: string,
+  fixtures: readonly SemanticFixture[],
 ): void {
+  const foreignFixtures = fixtures.filter(
+    (candidate) => candidate.id !== fixture.id,
+  );
+  const foreignMarkers = foreignFixtures.flatMap((candidate) => [
+    candidate.town,
+    candidate.handle,
+    candidate.entityId,
+    candidate.messageId,
+  ]);
+  const containsForeignFixture = (value: unknown) => {
+    const serialized = JSON.stringify(value).toLowerCase();
+    return foreignMarkers.some((marker) =>
+      serialized.includes(marker.toLowerCase()),
+    );
+  };
+  for (const fact of effects.facts) {
+    if (
+      fact.entityId !== fixture.entityId ||
+      fact.roomId !== fixture.roomId ||
+      fact.agentId !== agentId ||
+      containsForeignFixture(fact)
+    )
+      throw new Error(
+        `${fixture.id}: contaminated fact ownership or foreign fixture content`,
+      );
+  }
+  for (const identity of effects.identities) {
+    if (
+      identity.entityId !== fixture.entityId ||
+      containsForeignFixture(identity)
+    )
+      throw new Error(
+        `${fixture.id}: contaminated identity ownership or foreign fixture content`,
+      );
+  }
+  for (const reflection of effects.reflections) {
+    const metadata = reflection.metadata;
+    if (
+      reflection.agentId !== agentId ||
+      reflection.entityId !== agentId ||
+      reflection.roomId !== fixture.roomId ||
+      containsForeignFixture(reflection)
+    )
+      throw new Error(
+        `${fixture.id}: contaminated completion ownership or foreign fixture content`,
+      );
+    if (
+      metadata?.type === MemoryType.CUSTOM &&
+      metadata.messageId === fixture.messageId &&
+      (metadata.taskAssessed !== true ||
+        metadata.taskCompleted !== fixture.completed ||
+        typeof metadata.taskCompletionReason !== "string" ||
+        !metadata.taskCompletionReason.trim())
+    )
+      throw new Error(
+        `${fixture.id}: contradictory same-message completion row`,
+      );
+  }
+  if (
+    effects.relationships.some(containsForeignFixture) ||
+    (effects.completion && containsForeignFixture(effects.completion))
+  )
+    throw new Error(
+      `${fixture.id}: foreign fixture content in relationship or completion`,
+    );
   const ownedFacts = effects.facts.filter(
     (fact) =>
       fact.entityId === fixture.entityId &&
@@ -651,7 +722,7 @@ async function main() {
           throw new Error(
             `${fixture.id}: evaluator errors ${JSON.stringify(run.result.errors)}`,
           );
-        assertSemanticEffects(fixture, run.after, runtime.agentId);
+        assertSemanticEffects(fixture, run.after, runtime.agentId, fixtures);
       } else {
         if (!run.result.errors.length)
           throw new Error(
@@ -669,7 +740,7 @@ async function main() {
       );
       finalReadbacks.push({ fixtureId: fixture.id, effects });
       if (finish === "original")
-        assertSemanticEffects(fixture, effects, runtime.agentId);
+        assertSemanticEffects(fixture, effects, runtime.agentId, fixtures);
       else assertNoSemanticEffects(effects);
     }
     status = "success";
