@@ -2,7 +2,7 @@
 /** Simulates hostile and truncated Smithers workers for subprocess lifecycle tests. */
 
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const prefix = '__ELIZA_SMTHRS__';
 const payload = JSON.parse(readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, 'utf8'));
@@ -37,6 +37,13 @@ if (mode === 'ignore-termination') {
     emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
     process.exit(0);
   }, 100);
+} else if (mode === 'event-before-acknowledged-result') {
+  emit({ kind: 'event', event: { type: 'TaskStarted' } });
+  const handshake = setInterval(() => {
+    if (!existsSync(payload.input.handshakePath)) return;
+    clearInterval(handshake);
+    emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
+  }, 5);
 } else if (mode === 'event-before-result') {
   emit({ kind: 'event', event: { type: 'TaskStarted' } });
   emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
