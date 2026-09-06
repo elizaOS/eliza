@@ -236,8 +236,10 @@ export function buildTriagePrompt(
 
 // Legacy JSON fallback: strip a surrounding markdown code fence from older
 // model output, e.g. ```json\n[...]\n``` or ```\n[...]\n```.
+// Alternation is longest-first: nothing anchors the end of the info string, so a
+// leading `json` would match inside ```json5 and strand the "5" in the capture.
 const TRIAGE_CODE_FENCE_PATTERN =
-  /^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+  /^\s*```(?:json5|json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
 // Parse a legacy JSON array returned by older classifier prompts. We tolerate
 // code fences and leading <think> blocks, but we do NOT regex-slice an array

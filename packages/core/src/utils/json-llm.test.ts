@@ -35,6 +35,22 @@ describe("extractAndParseJSONObjectFromText", () => {
 		).toEqual({ ok: true });
 	});
 
+	it("extracts JSON from a ```json5 fenced block", () => {
+		// The helper parses with JSON5, so a model is free to label the fence
+		// `json5`. The info string is not anchored, so a `json`-first alternation
+		// matched only the first four characters and left the "5" at the head of
+		// the capture, which JSON5.parse then rejected.
+		expect(
+			extractAndParseJSONObjectFromText("```json5\n{ ok: true, }\n```"),
+		).toEqual({ ok: true });
+	});
+
+	it("extracts JSON from a ```JSON5 fenced block with CRLF line endings", () => {
+		expect(
+			extractAndParseJSONObjectFromText("```JSON5\r\n[1, 2, 3]\r\n```"),
+		).toEqual([1, 2, 3]);
+	});
+
 	it("accepts JSON5 leniency (unquoted keys, single quotes, trailing comma)", () => {
 		expect(extractAndParseJSONObjectFromText("{ a: 1, b: 'two', }")).toEqual({
 			a: 1,
