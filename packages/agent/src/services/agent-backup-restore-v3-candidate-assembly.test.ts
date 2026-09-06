@@ -18,7 +18,7 @@ import {
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
 } from "@elizaos/shared";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { assembleAgentBackupRestoreV3Candidate } from "./agent-backup-restore-v3-candidate-assembly";
 import { materializeAgentBackupRestoreV3CandidateCharacter } from "./agent-backup-restore-v3-candidate-character";
 import {
@@ -27,6 +27,7 @@ import {
 } from "./agent-backup-restore-v3-candidate-fs";
 import { stageAgentBackupRestoreV3CandidateRecord } from "./agent-backup-restore-v3-candidate-records";
 import { prepareAgentBackupRestoreV3Generation } from "./agent-backup-restore-v3-generation";
+import { commitAgentBackupRestoreV3Generation } from "./agent-backup-restore-v3-generation-commit";
 import { createAgentBackupRestoreV3ProcessMaterializer } from "./agent-backup-restore-v3-materializer-process";
 
 const roots = new Set<string>();
@@ -222,6 +223,157 @@ async function generationTarget(root: string) {
 }
 
 describe("private runtime-generation preparation", () => {
+  it("commits the exact layout after lost rename acknowledgement and never restores over live database writes", async () => {
+    const { root, input } = await fixture(true);
+    const generationFs = await generationTarget(root);
+    const preparedReceipt = await prepareAgentBackupRestoreV3Generation({
+      ...input,
+      generationFs,
+      control: control(),
+    });
+    const runtimeRoot = await fs.mkdtemp(
+      path.join(await fs.realpath(os.tmpdir()), "restore-v3-live-"),
+    );
+    roots.add(runtimeRoot);
+    await fs.chmod(runtimeRoot, 0o700);
+    const stat = await fs.stat(runtimeRoot, { bigint: true });
+    const request = {
+      generationFs,
+      preparedReceipt,
+      runtimeRoot,
+      runtimeRootIdentity: {
+        device: String(stat.dev),
+        inode: String(stat.ino),
+      },
+    };
+    const intent = path.join(
+      generationFs.attemptRoot,
+      ".restore-v3-generation-commit-intent.json",
+    );
+    const marker = path.join(
+      generationFs.attemptRoot,
+      ".restore-v3-generation-committed.json",
+    );
+    await expect(
+      commitAgentBackupRestoreV3Generation({
+        ...request,
+        runtimeRoot: root,
+        control: control(),
+      }),
+    ).rejects.toThrow();
+    await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      commitAgentBackupRestoreV3Generation({
+        ...request,
+        runtimeRootIdentity: { device: String(stat.dev), inode: "1" },
+        control: control(),
+      }),
+    ).rejects.toThrow();
+    await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
+    const destination = path.join(
+      runtimeRoot,
+      `generation-${preparedReceipt.receiptSha256}`,
+    );
+    await fs.mkdir(destination, { mode: 0o700 });
+    const occupied = await fs.stat(destination, { bigint: true });
+    await expect(
+      commitAgentBackupRestoreV3Generation({ ...request, control: control() }),
+    ).rejects.toThrow();
+    expect((await fs.stat(destination, { bigint: true })).ino).toBe(
+      occupied.ino,
+    );
+    await expect(fs.access(intent)).rejects.toMatchObject({ code: "ENOENT" });
+    await fs.rmdir(destination);
+
+    const cancelled = new AbortController();
+    const rename = fs.rename.bind(fs);
+    const fault = vi
+      .spyOn(fs, "rename")
+      .mockImplementation(async (from, to) => {
+        await rename(from, to);
+        if (String(from).endsWith("/generation"))
+          cancelled.abort(new Error("lost rename acknowledgement"));
+      });
+    try {
+      await expect(
+        commitAgentBackupRestoreV3Generation({
+          ...request,
+          control: { ...control(), signal: cancelled.signal },
+        }),
+      ).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_ABORTED",
+      });
+    } finally {
+      fault.mockRestore();
+    }
+    await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fs.access(path.join(generationFs.attemptRoot, "generation")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    const media = path.join(destination, "state/media/photo.bin");
+    const original = await fs.stat(media);
+    await fs.writeFile(media, "altered before commit");
+    await expect(
+      commitAgentBackupRestoreV3Generation({ ...request, control: control() }),
+    ).rejects.toThrow();
+    await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    await fs.writeFile(media, MEDIA);
+    await fs.utimes(media, original.atimeMs / 1000, original.mtimeMs / 1000);
+
+    const committed = await commitAgentBackupRestoreV3Generation({
+      ...request,
+      control: control(),
+    });
+    const markerBytes = await fs.readFile(marker);
+    const markerBefore = await fs.stat(marker, { bigint: true });
+    expect(await fs.readFile(committed.paths.character)).toEqual(
+      Buffer.from(CHARACTER),
+    );
+    expect(
+      await fs.readFile(path.join(committed.paths.state, "vault.json")),
+    ).toEqual(Buffer.from(VAULT));
+    const database = new PGlite(committed.paths.database);
+    databases.add(database);
+    expect(
+      (await database.query("SELECT fact FROM assembly_fact")).rows,
+    ).toEqual([{ fact: FACT }]);
+    await database.exec(
+      "INSERT INTO assembly_fact (id, fact) VALUES (2, 'written after restore commit')",
+    );
+    await database.close();
+    databases.delete(database);
+    expect(
+      await commitAgentBackupRestoreV3Generation({
+        ...request,
+        control: control(),
+      }),
+    ).toEqual(committed);
+    expect(await fs.readFile(marker)).toEqual(markerBytes);
+    expect((await fs.stat(marker, { bigint: true })).ino).toBe(
+      markerBefore.ino,
+    );
+    expect((await fs.stat(marker, { bigint: true })).mtimeNs).toBe(
+      markerBefore.mtimeNs,
+    );
+    const reopened = new PGlite(committed.paths.database);
+    databases.add(reopened);
+    expect(
+      (await reopened.query("SELECT fact FROM assembly_fact ORDER BY fact"))
+        .rows,
+    ).toEqual([{ fact: FACT }, { fact: "written after restore commit" }]);
+    await reopened.close();
+    databases.delete(reopened);
+
+    const moved = `${destination}-replaced`;
+    await fs.rename(destination, moved);
+    await fs.mkdir(destination, { mode: 0o700 });
+    await expect(
+      commitAgentBackupRestoreV3Generation({ ...request, control: control() }),
+    ).rejects.toThrow();
+    expect(await fs.readdir(destination)).toEqual([]);
+    expect(await fs.readFile(marker)).toEqual(markerBytes);
+  }, 120_000);
+
   it("copies the five-component runtime layout, preserves source bytes, and replays without rewriting", async () => {
     const { root, attemptRoot, input } = await fixture(true);
     const generationFs = await generationTarget(root);
