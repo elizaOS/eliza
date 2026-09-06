@@ -13,7 +13,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AgentRuntime,
+  type AgentRuntime,
   buildInferenceTimingDevPayload,
   ChannelType,
   createMessageMemory,
@@ -28,7 +28,6 @@ import {
   type Memory,
   type ModelEventPayload,
   ModelType,
-  type Plugin,
   redactSensitiveText,
   runWithInferenceTiming,
   type UUID,
@@ -521,7 +520,7 @@ async function main(): Promise<void> {
     libraryPath: string;
     librarySha256: string;
   } | null = null;
-  const bootstrapPlugins: Plugin[] = [];
+  let bootNative: ((runtime: AgentRuntime) => Promise<void>) | undefined;
   if (nativeEmbedding) {
     const modelsDir = process.env.MODELS_DIR?.trim();
     if (!modelsDir || !embedding.model)
@@ -555,16 +554,7 @@ async function main(): Promise<void> {
         .update(await readFile(libraryPath))
         .digest("hex"),
     };
-    bootstrapPlugins.push({
-      name: "benchmark-native-boot",
-      description:
-        "Uses the canonical local inference boot without replacing its model handlers",
-      init: async (_config, runtime) => {
-        if (!(runtime instanceof AgentRuntime))
-          throw new Error("Native benchmark requires AgentRuntime");
-        await ensureLocalInferenceHandler(runtime);
-      },
-    });
+    bootNative = ensureLocalInferenceHandler;
   }
   const cacheMode = process.env.ELIZA_CEREBRAS_CACHE_MODE?.trim();
   if (
@@ -630,9 +620,10 @@ async function main(): Promise<void> {
   const { default: openaiPlugin } = await import(
     "../../../plugins/plugin-openai/index.ts"
   );
+  process.stderr.write("[cerebras-benchmark] initializing runtime\n");
   const { runtime, cleanup } = await createTestRuntime({
     characterName: "CerebrasLatencyAudit",
-    plugins: [...bootstrapPlugins, openaiPlugin],
+    plugins: [openaiPlugin],
     embeddingDimensions: embedding.dimensions,
   });
   const originalFetch = globalThis.fetch;
@@ -648,6 +639,13 @@ async function main(): Promise<void> {
     (evidence) => wireEvidence.push(evidence),
   );
   try {
+    if (bootNative) {
+      process.stderr.write(
+        "[cerebras-benchmark] booting canonical native embeddings\n",
+      );
+      await bootNative(runtime);
+    }
+    process.stderr.write("[cerebras-benchmark] runtime ready\n");
     const modelUsageEvents: ModelEventPayload[] = [];
     runtime.registerEvent(EventType.MODEL_USED, async (payload) => {
       modelUsageEvents.push(payload);
