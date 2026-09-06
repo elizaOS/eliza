@@ -8,6 +8,7 @@
  * the PR.
  */
 import { describe, expect, it, vi } from "vitest";
+import { handleTextSmall } from "../models/text";
 
 const aiMocks = vi.hoisted(() => ({
   generateText: vi.fn(),
@@ -96,7 +97,6 @@ describe("streamStructured tool-input-delta forwarding", () => {
     armToolForcedStream({ alsoText: true });
 
     const onStreamChunk = vi.fn();
-    const { handleTextSmall } = await import("../models/text");
     const stream = (await handleTextSmall(createRuntime(), {
       prompt: "stage-1",
       stream: true,
@@ -124,7 +124,6 @@ describe("streamStructured tool-input-delta forwarding", () => {
   it("streamStructured=true: non-delta fullStream parts (start/end/finish) are filtered out", async () => {
     armToolForcedStream();
 
-    const { handleTextSmall } = await import("../models/text");
     const stream = (await handleTextSmall(createRuntime(), {
       prompt: "stage-1",
       stream: true,
@@ -159,7 +158,6 @@ describe("streamStructured tool-input-delta forwarding", () => {
       usage: companion(),
     });
 
-    const { handleTextSmall } = await import("../models/text");
     const stream = (await handleTextSmall(createRuntime(), {
       prompt: "abort structured stream",
       stream: true,
@@ -193,7 +191,6 @@ describe("streamStructured tool-input-delta forwarding", () => {
       })
     );
 
-    const { handleTextSmall } = await import("../models/text");
     const stream = (await handleTextSmall(createRuntime(), {
       prompt: "plain stream",
       stream: true,

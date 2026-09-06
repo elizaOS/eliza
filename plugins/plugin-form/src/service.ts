@@ -1531,7 +1531,8 @@ export class FormService extends Service {
       nextField,
       status: session.status,
       pendingCancelConfirmation:
-        session.cancelConfirmationAsked && session.status === "active",
+        session.cancelConfirmationAsked &&
+        (session.status === "active" || session.status === "ready"),
       pendingExternalFields,
     };
   }

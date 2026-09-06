@@ -120,7 +120,9 @@ mock.module("@/lib/services/stripe-checkout-orders", () => ({
   },
 }));
 mock.module("@/lib/stripe", () => ({
-  requireStripe: () => ({}),
+  requireStripe: () => ({
+    charges: { retrieve: async (id: string) => ({ id, invoice: null }) },
+  }),
 }));
 
 const { processStripeEvent } = await import("../src/queue/stripe-event");
@@ -168,6 +170,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_1",
+              invoice: null,
               amount_refunded: 5000,
               payment_intent: "pi_1",
             },
@@ -215,6 +218,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_taxed",
+              invoice: null,
               amount_refunded: 5000,
               payment_intent: "pi_taxed",
             },
@@ -266,6 +270,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_pack",
+              invoice: null,
               amount_refunded: 250,
               payment_intent: "pi_pack",
             },
@@ -308,6 +313,7 @@ describe("stripe queue credit clawbacks", () => {
           data: {
             object: {
               id: "ch_1",
+              invoice: null,
               amount_refunded: 5000,
               payment_intent: "pi_1",
             },

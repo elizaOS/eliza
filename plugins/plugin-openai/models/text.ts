@@ -2013,8 +2013,8 @@ function enrichProviderCallError(error: unknown): unknown {
 
 /**
  * Whether a thrown model-call error is a transient provider hiccup that is
- * worth retrying. The AI SDK already retries clear-cut retryables (408/409/429/
- * 5xx) via its own `maxRetries`, but Cerebras under load returns its transient
+ * worth retrying. This layer owns retries for transient 408/409/429/5xx
+ * responses. Cerebras under load also returns its transient
  * "Encountered a server error, please try again" as an HTTP **400**, which the
  * SDK classifies as non-retryable and surfaces immediately — failing a coding
  * build that the very same request would complete on a second attempt (observed
@@ -2058,12 +2058,41 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
   return SPURIOUS_TOOL_PAIRING_400_RE.test(providerErrorSearchText(error));
 }
 
+function isPermanentQuotaError(error: unknown): boolean {
+  const codes = new Set(["insufficient_quota", "credit_balance_exhausted"]);
+  const inspect = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null) return false;
+    const record = value as Record<string, unknown>;
+    return (
+      (typeof record.code === "string" && codes.has(record.code)) ||
+      (typeof record.type === "string" && codes.has(record.type)) ||
+      (typeof record.error === "object" &&
+        record.error !== null &&
+        ["code", "type"].some((key) => {
+          const field = (record.error as Record<string, unknown>)[key];
+          return typeof field === "string" && codes.has(field);
+        }))
+    );
+  };
+  if (typeof error !== "object" || error === null) return false;
+  const record = error as Record<string, unknown>;
+  if (inspect(record) || inspect(record.data)) return true;
+  if (typeof record.responseBody !== "string") return false;
+  try {
+    return inspect(JSON.parse(record.responseBody));
+  } catch {
+    // error-policy:J3 malformed provider bodies cannot establish permanent quota exhaustion.
+    return false;
+  }
+}
+
 function isTransientProviderError(error: unknown): boolean {
   const e = error as
     | { statusCode?: number; status?: number; message?: string; data?: unknown }
     | undefined;
   if (!e) return false;
   const status = e.statusCode ?? e.status;
+  if (status === 429 && isPermanentQuotaError(error)) return false;
   if (status === 408 || status === 409 || status === 429) return true;
   if (typeof status === "number" && status >= 500 && status < 600) return true;
   // Include the raw response body: the AI SDK derives `message` from the
@@ -2160,6 +2189,23 @@ function describeRetryReason(error: unknown): string {
   return (error as { message?: string })?.message ?? String(error);
 }
 
+function providerRetryDelay(error: unknown, fallbackMs: number): number {
+  if (typeof error !== "object" || error === null) return fallbackMs;
+  const headers = (error as { responseHeaders?: Record<string, string> }).responseHeaders;
+  if (!headers) return fallbackMs;
+  const milliseconds = headers["retry-after-ms"];
+  const secondsOrDate = headers["retry-after"];
+  let delay = Number.NaN;
+  if (milliseconds?.trim()) delay = Number(milliseconds);
+  if (!Number.isFinite(delay) && secondsOrDate?.trim()) {
+    const seconds = Number(secondsOrDate);
+    delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(secondsOrDate) - Date.now();
+  }
+  // Retain the SDK's supported retry-header window while consolidating retry
+  // ownership. The same abort-aware wait handles server and local backoff.
+  return Number.isFinite(delay) && delay >= 0 && delay < 60_000 ? delay : fallbackMs;
+}
+
 /**
  * The single backoff seam every transient-retry lane goes through. Two jobs:
  *
@@ -2167,7 +2213,7 @@ function describeRetryReason(error: unknown): string {
  *    MODEL_USED and the result's `providerMetadata` surface, and emits one
  *    structured warn (lane/attempt/reason/model/backoff) per retry so a
  *    degraded provider is visible without wire captures.
- * 2. Abort-awareness — the exponential delay (capped at 3s + jitter) is where
+ * 2. Abort-awareness — the provider-directed or exponential delay is where
  *    a cancelled request would otherwise sit for seconds; an abort rejects the
  *    wait immediately with the caller's reason, so no attempt can start after
  *    cancellation.
@@ -2183,8 +2229,10 @@ async function waitForTransientRetry(opts: {
   const { lane, maxRetries, error, model, signal, state } = opts;
   state.retryCount += 1;
   state.lastRetryReason = describeRetryReason(error);
-  const backoffMs =
-    Math.min(3000, 300 * 2 ** (state.retryCount - 1)) + Math.floor(Math.random() * 200);
+  const backoffMs = providerRetryDelay(
+    error,
+    Math.min(3000, 300 * 2 ** (state.retryCount - 1)) + Math.floor(Math.random() * 200)
+  );
   logger.warn(
     {
       src: "plugin-openai",
@@ -2319,10 +2367,23 @@ async function consumeStreamWithTransientRetry(
         onChunk?.(chunk);
         text += chunk;
       }
-      const toolCalls = await result.toolCalls;
-      const usage = await result.usage;
-      const finishReason = (await result.finishReason) as string | undefined;
+      // Observe every companion before propagating the provider error. Failed
+      // requests can reject toolCalls with a generic NoOutputGeneratedError,
+      // which must not hide the captured failure from the retry classifier.
+      const [toolsOutcome, usageOutcome, finishOutcome, textOutcome] = await Promise.allSettled([
+        result.toolCalls,
+        result.usage,
+        result.finishReason,
+        result.text,
+      ]);
       if (capturedError) throw capturedError;
+      if (toolsOutcome.status === "rejected") throw toolsOutcome.reason;
+      if (usageOutcome.status === "rejected") throw usageOutcome.reason;
+      if (finishOutcome.status === "rejected") throw finishOutcome.reason;
+      if (textOutcome.status === "rejected") throw textOutcome.reason;
+      const toolCalls = toolsOutcome.value;
+      const usage = usageOutcome.value;
+      const finishReason = finishOutcome.value as string | undefined;
       return { text, toolCalls, usage, finishReason };
     } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
@@ -2493,6 +2554,9 @@ async function generateTextByModelType(
   const generateParams: NativeTextParams = {
     model,
     ...deepToWellFormedUnicode(promptOrMessages),
+    // This layer owns retries so the SDK cannot retry permanent quota failures
+    // before our provider-aware classifier observes the response.
+    maxRetries: 0,
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
     ...(params.signal ? { abortSignal: params.signal } : {}),
@@ -2615,8 +2679,8 @@ async function generateTextByModelType(
     // empty stream (or as a throw on the first pull), and at that point
     // nothing has reached the user, so a fresh attempt is invisible. Once a
     // token has been delivered a failure stays fatal — replaying a partial
-    // stream would double-deliver text. The first item is pre-pulled here and
-    // replayed by the generator below; abandoned attempts get their companion
+    // stream would double-deliver text. The prefix through the first forwarded
+    // delta is pre-pulled and replayed below; abandoned attempts get their companion
     // promises defused so an errored, unconsumed result cannot surface as an
     // unhandled rejection.
     let result!: Awaited<ReturnType<typeof streamText>>;
@@ -2629,8 +2693,10 @@ async function generateTextByModelType(
     let streamCompanions!: ReturnType<typeof observeStreamCompanions>;
     let streamIterator!: AsyncIterator<unknown>;
     let firstItem: IteratorResult<unknown> | undefined;
+    let attemptPrefix: unknown[] = [];
     for (let attempt = 0; ; attempt++) {
       capturedStreamError = undefined;
+      attemptPrefix = [];
       attestLlmInputSubstring(details);
       result = await streamText({
         ...generateParams,
@@ -2645,8 +2711,24 @@ async function generateTextByModelType(
       const source = params.streamStructured === true ? result.fullStream : result.textStream;
       streamIterator = (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
       try {
-        firstItem = await streamIterator.next();
+        for (;;) {
+          firstItem = await streamIterator.next();
+          if (firstItem.done) break;
+          attemptPrefix.push(firstItem.value);
+          if (params.streamStructured !== true) break;
+          // fullStream emits lifecycle frames before the HTTP request settles.
+          // Retain the prefix until an argument delta can reach the caller;
+          // otherwise a start frame would commit a still-retryable attempt.
+          const part = firstItem.value as {
+            type: string;
+            inputTextDelta?: string;
+            delta?: string;
+          };
+          if (part.type === "tool-input-delta" && (part.inputTextDelta ?? part.delta)) break;
+        }
       } catch (error) {
+        // error-policy:J2 the captured provider failure is classified below and
+        // rethrown by the stream boundary when recovery is not permitted.
         firstItem = undefined;
         capturedStreamError ??= error;
       }
@@ -2683,9 +2765,9 @@ async function generateTextByModelType(
         state: retryState,
       });
     }
-    // Replays the pre-pulled first item, then continues the committed attempt.
+    // Replay every retained frame of the selected attempt in its original order.
     const iterateStream = async function* (): AsyncGenerator<unknown> {
-      if (firstItem && !firstItem.done) yield firstItem.value;
+      yield* attemptPrefix;
       if (firstItem?.done) return;
       for (;;) {
         const next = await streamIterator.next();

@@ -1,6 +1,6 @@
 name: Deploy Eliza Provisioning Worker
 
-run-name: Provisioning worker ${{ inputs.environment || 'staging' }} ${{ inputs.deployment_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
+run-name: Provisioning worker ${{ inputs.mode == 'diagnose' && 'diagnostic ' || '' }}${{ inputs.environment || 'staging' }} ${{ inputs.deployment_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
 
 # SSHes to the Hetzner provisioning host and deploys one immutable commit,
 # installs the systemd unit shipped at packages/cloud/scripts/admin/eliza-provisioning-worker.service,
@@ -12,6 +12,18 @@ run-name: Provisioning worker ${{ inputs.environment || 'staging' }} ${{ inputs.
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Deploy, or read a staging worker diagnostic without changing the host
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - diagnose
+      expected_worker_sha:
+        description: Exact currently deployed worker commit; required only for diagnose
+        required: false
+        type: string
       environment:
         description: 'Target environment (host + secrets resolved from this)'
         required: true
@@ -50,7 +62,18 @@ jobs:
       deployment_sha: ${{ steps.snapshot.outputs.deployment_sha }}
     steps:
       - id: env
+        env:
+          MODE: ${{ inputs.mode }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          TRUSTED_REF: ${{ github.ref }}
         run: |
+          set -euo pipefail
+          if [ "$MODE" = diagnose ]; then
+            [ "$TRUSTED_REF" = refs/heads/develop ] && [ "$TARGET_ENVIRONMENT" = staging ] || {
+              echo "::error::Worker diagnostics require staging from refs/heads/develop"
+              exit 1
+            }
+          fi
           # Production is a protected release target. A manual dispatch from
           # any non-main ref must never be able to select production secrets or
           # deploy the current main snapshot while running unreviewed code.
@@ -73,6 +96,8 @@ jobs:
           echo "Resolved: environment=$env branch=$branch"
       - id: snapshot
         env:
+          MODE: ${{ inputs.mode }}
+          EXPECTED_WORKER_SHA: ${{ inputs.expected_worker_sha }}
           BRANCH: ${{ steps.env.outputs.branch }}
           EFFECT_DIGEST: ${{ inputs.effect_digest }}
           GH_TOKEN: ${{ github.token }}
@@ -81,6 +106,17 @@ jobs:
           TARGET_ENVIRONMENT: ${{ steps.env.outputs.environment }}
         run: |
           set -euo pipefail
+          if [ "$MODE" = diagnose ]; then
+            [[ "$EXPECTED_WORKER_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Diagnostics require an exact lowercase 40-hex expected_worker_sha"
+              exit 1
+            }
+            [ -z "$EFFECT_DIGEST" ] && [ -z "$REQUESTED_SHA" ] || {
+              echo "::error::Diagnostics do not accept deployment or reconciler inputs"
+              exit 1
+            }
+            exit 0
+          fi
           if [ "${{ github.event_name }}" = "push" ]; then
             deployment_sha="$PUSH_SHA"
           elif [ -n "$REQUESTED_SHA" ]; then
@@ -119,7 +155,49 @@ jobs:
           echo "deployment_sha=$deployment_sha" >> "$GITHUB_OUTPUT"
           echo "Resolved immutable deployment snapshot: $deployment_sha"
 
+  diagnose:
+    name: Read staging worker diagnostic
+    needs: determine-env
+    if: inputs.mode == 'diagnose'
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 5
+    steps:
+      - name: Checkout reviewed diagnostic source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Prepare reviewed diagnostic
+        id: diagnostic
+        run: |
+          set -euo pipefail
+          source_base64=$(base64 -w0 packages/cloud/scripts/admin/staging-worker-diagnostic.mjs)
+          echo "source_base64=$source_base64" >> "$GITHUB_OUTPUT"
+      - name: Read source-locked worker state
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          EXPECTED_WORKER_SHA: ${{ inputs.expected_worker_sha }}
+          DIAGNOSTIC_SOURCE_BASE64: ${{ steps.diagnostic.outputs.source_base64 }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: EXPECTED_WORKER_SHA,DIAGNOSTIC_SOURCE_BASE64
+          script: |
+            set -euo pipefail
+            [[ "$EXPECTED_WORKER_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            # Read the existing lock without creating or changing any host file.
+            exec 9</tmp/eliza-provisioning-worker-deploy.lock
+            flock -s -w 30 9 || exit 1
+            printf '%s' "$DIAGNOSTIC_SOURCE_BASE64" | base64 --decode | \
+              /usr/bin/env -i PATH=/usr/bin:/bin \
+              /usr/bin/node --input-type=module - "$EXPECTED_WORKER_SHA"
+
   deploy:
+    if: inputs.mode != 'diagnose'
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
