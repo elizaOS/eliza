@@ -1,23 +1,10 @@
 /**
- * Streaming PCM downlink playback sink for the realtime voice-session client.
- *
- * Downlink frames are pcm16 (Int16 LE, 16 kHz mono) from Cartesia. Playback
- * holds only a bounded startup/recovery reserve, then streams continuously; a
- * full-clip barrier would add seconds of dead air, while zero reserve exposes
- * provider/network chunk jitter as audible pauses.
- *
- * Implementation:
- *   - AudioWorklet ring buffer when available (WebView 113 has it, but a
- *     hardened embedded WebView may not — VERIFIED at runtime, never assumed).
- *   - ScriptProcessor fallback pulls from the same JS-side queue.
- *   - `beginInput()` / `finishInput()` bound each server utterance so a short
- *     final clip never waits forever for the reserve. `flush()` empties every
- *     queue immediately for barge-in.
- *   - iOS autoplay: the AudioContext starts suspended until a user gesture calls
- *     `unlock()`. `enqueue` before unlock buffers; nothing is dropped, but a
- *     caller should surface "tap to enable sound" via `needsUnlock`.
- *
- * Tests inject a fake AudioContext to drive the real queue/flush/unlock code.
+ * Streams realtime voice-session PCM16 downlink into the browser audio graph.
+ * Both worklet and ScriptProcessor sinks consume context-rate PCM, so frames
+ * are resampled before entering the startup reserve and playback queues.
+ * Utterance boundaries release short clips; handoffs preserve queued audio,
+ * and barge-in clears queued audio and interpolation history together.
+ * Suspended contexts retain frames until a user gesture unlocks playback.
  */
 
 import { logger } from "@elizaos/logger";
@@ -238,6 +225,42 @@ export interface VoiceSessionPlayback {
   stop(): Promise<void>;
 }
 
+/**
+ * Causal interpolation needs only the previous sample, so even a final
+ * single-sample frame plays without an end-of-stream message. At non-native
+ * rates it delays the waveform by one source sample (62.5 microseconds),
+ * holding the first value at startup. Integer phase survives frame boundaries
+ * without accumulating floating-point timing drift.
+ */
+class DownlinkResampler {
+  private phase = 0;
+  private previous: number | null = null;
+
+  constructor(private readonly targetRate: number) {}
+
+  push(input: Float32Array): Float32Array {
+    if (this.targetRate === VOICE_PCM_SAMPLE_RATE) return input;
+    const output: number[] = [];
+    for (const sample of input) {
+      const previous = this.previous ?? sample;
+      while (this.phase < this.targetRate) {
+        output.push(
+          previous + (sample - previous) * (this.phase / this.targetRate),
+        );
+        this.phase += VOICE_PCM_SAMPLE_RATE;
+      }
+      this.phase -= this.targetRate;
+      this.previous = sample;
+    }
+    return Float32Array.from(output);
+  }
+
+  reset(): void {
+    this.phase = 0;
+    this.previous = null;
+  }
+}
+
 export async function createVoiceSessionPlayback(
   options: VoiceSessionPlaybackOptions = {},
 ): Promise<VoiceSessionPlayback> {
@@ -251,10 +274,6 @@ export async function createVoiceSessionPlayback(
         isPlaybackAudioContextLike,
       );
       if (!context) throw new Error("AudioContext unavailable for playback");
-      // Request a 16 kHz context so the pcm16 downlink plays at native rate with
-      // no resample; if the platform ignores it (Safari sometimes forces 44.1),
-      // the ScriptProcessor/worklet plays the raw samples — a pitch shift the
-      // caller can correct later, but correctness of framing/flush is unaffected.
       return context;
     });
 
@@ -265,6 +284,7 @@ export async function createVoiceSessionPlayback(
     options.preRollMs ?? DEFAULT_VOICE_PLAYBACK_PRE_ROLL_MS,
   );
   const preRollSamples = Math.round((ctx.sampleRate * preRollMs) / 1_000);
+  const resampler = new DownlinkResampler(ctx.sampleRate);
   if (signal?.aborted) {
     await ctx.close().catch(() => {});
     throw new VoicePlaybackSetupCancelledError(signal.reason);
@@ -610,13 +630,14 @@ export async function createVoiceSessionPlayback(
     },
     beginInput() {
       if (stopped) return;
+      resampler.reset();
       inputFinished = false;
       firstQueuedAtMs = null;
       lastFrameAtMs = null;
     },
     enqueue(bytes: Uint8Array) {
       if (stopped) return;
-      const samples = int16BytesToFloatPcm(bytes);
+      const samples = resampler.push(int16BytesToFloatPcm(bytes));
       if (samples.length === 0) return;
       // Surface the browser autoplay gate as soon as real audio arrives, even
       // while the startup jitter reserve is still accumulating. Waiting until
@@ -660,6 +681,7 @@ export async function createVoiceSessionPlayback(
     },
     beginHandoff(crossfadeMs: number) {
       if (stopped) return;
+      resampler.reset();
       // All old-response samples must enter the handoff queue before new
       // response audio, including samples held for autoplay or startup reserve.
       // Suspended contexts accept queued samples without making them audible.
@@ -697,6 +719,7 @@ export async function createVoiceSessionPlayback(
       return snapshotStats();
     },
     flush() {
+      resampler.reset();
       // Immediate silence for barge-in — clear BOTH the deferred and live queues.
       preUnlockQueue.length = 0;
       preUnlockSamples = 0;

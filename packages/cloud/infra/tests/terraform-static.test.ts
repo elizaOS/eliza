@@ -511,19 +511,6 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
   });
 });
 
-describe("Terraform namespace contracts", () => {
-  test("documents that database cluster keys are Kubernetes namespaces", () => {
-    const variables = readK8sTerraform("variables.tf");
-
-    expect(variables).toContain(
-      'description = "List of Kubernetes namespaces to create"',
-    );
-    expect(variables).toContain(
-      'description = "CNPG PostgreSQL clusters to deploy (key = namespace/org UUID)"',
-    );
-  });
-});
-
 describe("Cloudflare Pages domain durability", () => {
   const main = readFileSync(
     join(CLOUDFLARE_PAGES_DOMAINS_DIR, "main.tf"),

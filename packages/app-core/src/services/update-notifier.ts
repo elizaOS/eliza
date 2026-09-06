@@ -8,6 +8,7 @@ import {
   loadElizaConfig,
   resolveChannel,
 } from "@elizaos/agent";
+import { logger } from "@elizaos/core";
 import { theme } from "@elizaos/shared";
 
 let notified = false;
@@ -16,12 +17,7 @@ export function scheduleUpdateNotification(): void {
   if (notified) return;
   notified = true;
 
-  let config: Partial<ReturnType<typeof loadElizaConfig>> = {};
-  try {
-    config = loadElizaConfig();
-  } catch {
-    // Keep behavior resilient to malformed config files: continue with defaults.
-  }
+  const config = loadElizaConfig();
   if (config.update?.checkOnStart === false) return;
   if (process.env.CI || !process.stderr.isTTY) return;
 
@@ -37,7 +33,8 @@ export function scheduleUpdateNotification(): void {
           `${theme.muted("Run")} ${theme.command("eliza update")} ${theme.muted("to install")}\n\n`,
       );
     })
-    // error-policy:J6 fire-and-forget update check; a network/registry failure
-    // must never disrupt CLI startup and there is nothing to notify about.
-    .catch(() => {});
+    // error-policy:J1 The optional CLI notification reports registry failure without blocking the command.
+    .catch((error: unknown) => {
+      logger.warn({ error }, "[UpdateNotifier] Update check failed");
+    });
 }

@@ -87,6 +87,20 @@ describe("validateCorpusTarget", () => {
     expect(result.issues).toEqual([]);
   });
 
+  it("reports physical source lines after blank and malformed JSONL rows", async () => {
+    const targetPath = await makeTempDir();
+    const shardPath = path.join(targetPath, "x", "1234", "2024-08.jsonl");
+    await fs.mkdir(path.dirname(shardPath), { recursive: true });
+    await fs.writeFile(shardPath, "\n{\n\n{}\n", "utf8");
+    const result = await validateCorpusTarget(targetPath);
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues
+        .filter((issue) => issue.code === "schema-invalid")
+        .map((issue) => issue.line),
+    ).toEqual([2, 4]);
+  });
+
   it("preserves structured JSONL parse issues while rebuilding the manifest", async () => {
     const targetPath = await makeTempDir();
     const shardPath = path.join(targetPath, "x", "1234", "2024-08.jsonl");

@@ -1,10 +1,7 @@
 /**
- * Fail-closed baseUrl validation shared by LoginClient, LoginAuth, and
- * AgentClient. These clients transmit platform keys, app secrets, bearer
- * tokens, and HMAC-signed credentials; none of that may travel to a plaintext
- * non-loopback endpoint. The CLI enforces the same rule
- * (packages/cli/src/api.ts normalizeBaseUrl) — this keeps the control
- * consistent across the operator and server-side surfaces (SEC-048).
+ * Applies the shared credential-transport policy for LoginClient and LoginAuth.
+ * Non-loopback endpoints require HTTPS unless the caller explicitly accepts an
+ * insecure transport; embedded credentials, queries and fragments are rejected.
  */
 
 function isLoopbackHostname(hostname: string): boolean {

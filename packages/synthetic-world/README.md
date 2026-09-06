@@ -6,7 +6,7 @@ and journal repository, then execute synchronous or asynchronous domain
 mutations on the guarded transaction context. The SQLite compatibility adapter
 remains available for local use.
 
-SW-2 adds a production-derived controller that durably claims one boot attempt,
+The production controller durably claims one boot attempt,
 boots the canonical `@elizaos/agent` runtime against an explicit PGlite path,
 and reads the persisted agent entity back through the production repository.
 Its proof records the sorted plugin names observed on `runtime.plugins` and the

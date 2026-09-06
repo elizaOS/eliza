@@ -42,9 +42,8 @@ bun run dev
 `bun install` also prepares submodules and patches, provisions supported host
 build prerequisites, and builds or verifies the staged desktop
 `libelizainference`. The embedding GGUF remains runtime-managed and downloads
-automatically during local-inference warmup. The legacy archive artifact bundle
-is never pulled implicitly; fetch it deliberately with
-`bun run fetch:archive-artifacts` if you need those fixtures.
+automatically during local-inference warmup. Fetch archived artifact fixtures explicitly with
+`bun run fetch:archive-artifacts` when needed.
 
 Common repository commands:
 

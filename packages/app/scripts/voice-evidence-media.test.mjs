@@ -6,6 +6,8 @@
  * ELIZA_FFMPEG_BIN / ELIZA_FFPROBE_BIN / the packaged statics). Where the
  * runner has neither they report an explicit skip; the snapshot suites and the
  * fail-closed resolution contract run unconditionally.
+ * Media cases have a 30-second budget for chained encoder/probe processes;
+ * their assertions concern artifact integrity, not encoder throughput.
  */
 
 import { spawnSync } from "node:child_process";
@@ -586,7 +588,7 @@ describeWithMedia("web voice media evidence", () => {
     expect(projectedMic.sha256).toBe(projectedTts.sha256);
     expectManifestIntegrity(fixture.outDir, result);
     expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
-  });
+  }, 30_000);
 
   test("refuses payload-only evidence without system loopback", () => {
     const tools = resolveMediaTools();
@@ -596,7 +598,7 @@ describeWithMedia("web voice media evidence", () => {
     expect(() => finalizeWebVoiceEvidence(fixture)).toThrow(
       /Missing system loopback/,
     );
-  });
+  }, 30_000);
 
   test("refuses a trajectory that is not correlated to the network turn", () => {
     const tools = resolveMediaTools();
@@ -615,7 +617,7 @@ describeWithMedia("web voice media evidence", () => {
     expect(() => finalizeWebVoiceEvidence(fixture)).toThrow(
       /does not match the network correlation id/,
     );
-  });
+  }, 30_000);
 
   test("refuses a failed live route and a silent system capture", () => {
     const tools = resolveMediaTools();
@@ -655,7 +657,7 @@ describeWithMedia("web voice media evidence", () => {
       fixture.systemLoopback,
     ]);
     expect(() => finalizeWebVoiceEvidence(fixture)).toThrow(/silent/);
-  });
+  }, 30_000);
 
   test("refuses evidence requested for a different revision", () => {
     const tools = resolveMediaTools();
@@ -669,45 +671,49 @@ describeWithMedia("web voice media evidence", () => {
     ).toThrow(/does not match HEAD/);
     expect(fs.existsSync(fixture.outDir)).toBe(false);
     expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
-  });
+  }, 30_000);
 
   test.each([
     ["revision", "0".repeat(40)],
     ["sessionId", "replayed-voice-session"],
     ["cell", "web.failure-paths"],
     ["execution", "COMMAND_EXIT_NONZERO"],
-  ])("refuses a matrix report with mismatched %s authority", (field, value) => {
-    const revision = currentHead();
-    const sessionId = "voice-web-live-session-123456";
-    const matrix = {
-      schema: "eliza_voice_live_matrix_v2",
-      revision,
-      sessionId,
-      mode: "run",
-      selection: { filterCount: 1, matched: 1, errorCode: null },
-      summary: { pass: 1, fail: 0, pending: 0, skip: 0 },
-      cells: [
-        {
-          id: "web.live.railway-roundtrip",
-          platform: "web",
-          status: "pass",
-          probe: { available: true, code: "WEB_LIVE_READY" },
-          execution: {
-            exitCode: 0,
-            signalCode: null,
-            code: "COMMAND_PASSED",
+  ])(
+    "refuses a matrix report with mismatched %s authority",
+    (field, value) => {
+      const revision = currentHead();
+      const sessionId = "voice-web-live-session-123456";
+      const matrix = {
+        schema: "eliza_voice_live_matrix_v2",
+        revision,
+        sessionId,
+        mode: "run",
+        selection: { filterCount: 1, matched: 1, errorCode: null },
+        summary: { pass: 1, fail: 0, pending: 0, skip: 0 },
+        cells: [
+          {
+            id: "web.live.railway-roundtrip",
+            platform: "web",
+            status: "pass",
+            probe: { available: true, code: "WEB_LIVE_READY" },
+            execution: {
+              exitCode: 0,
+              signalCode: null,
+              code: "COMMAND_PASSED",
+            },
           },
-        },
-      ],
-    };
-    if (field === "cell") matrix.cells[0].id = value;
-    else if (field === "execution") matrix.cells[0].execution.code = value;
-    else matrix[field] = value;
+        ],
+      };
+      if (field === "cell") matrix.cells[0].id = value;
+      else if (field === "execution") matrix.cells[0].execution.code = value;
+      else matrix[field] = value;
 
-    expect(() => assertLiveMatrixReport(matrix, revision, sessionId)).toThrow(
-      /revision- and session-bound Railway cell pass/,
-    );
-  });
+      expect(() => assertLiveMatrixReport(matrix, revision, sessionId)).toThrow(
+        /revision- and session-bound Railway cell pass/,
+      );
+    },
+    30_000,
+  );
 
   test("removes staging after a transcode fails and publishes nothing", () => {
     const tools = resolveMediaTools();
@@ -727,7 +733,7 @@ describeWithMedia("web voice media evidence", () => {
     );
     expect(fs.existsSync(fixture.outDir)).toBe(false);
     expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
-  });
+  }, 30_000);
 
   test("rejects a staged manifest that diverges from the verified result", () => {
     const tools = resolveMediaTools();
@@ -760,7 +766,7 @@ describeWithMedia("web voice media evidence", () => {
     expect(mutated).toBe(true);
     expect(fs.existsSync(fixture.outDir)).toBe(false);
     expect(evidenceStagingSiblings(fixture.outDir)).toEqual([]);
-  });
+  }, 30_000);
 
   test("refuses root, existing, and symlink publication destinations", () => {
     const tools = resolveMediaTools();
@@ -795,7 +801,7 @@ describeWithMedia("web voice media evidence", () => {
       "owned by caller",
     );
     expect(fs.readdirSync(target)).toEqual([]);
-  });
+  }, 30_000);
 
   test("refuses an MP4 without an audio stream", () => {
     const tools = resolveMediaTools();
@@ -803,7 +809,7 @@ describeWithMedia("web voice media evidence", () => {
     const file = path.join(root, "video-only.mp4");
     video(file, tools);
     expect(() => inspectAudibleMp4(file, tools)).toThrow(/no audio stream/);
-  });
+  }, 30_000);
 });
 
 describeWithMedia("packaged desktop voice media evidence", () => {
@@ -1135,7 +1141,7 @@ describeWithMedia("packaged desktop voice media evidence", () => {
     expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
       /synchronized, session-bound.*physical microphone and system-output loopback capture/,
     );
-  });
+  }, 30_000);
 
   test("refuses wav-direct as packaged real-microphone evidence", () => {
     const tools = resolveMediaTools();
@@ -1179,7 +1185,7 @@ describeWithMedia("packaged desktop voice media evidence", () => {
         tools,
       }),
     ).toThrow(/not a local real-mic pass/);
-  });
+  }, 30_000);
 });
 
 describeWithMedia("hardware audio fingerprint correlation", () => {
@@ -1233,5 +1239,5 @@ describeWithMedia("hardware audio fingerprint correlation", () => {
         tools,
       ),
     ).toThrow(/fingerprint/);
-  });
+  }, 30_000);
 });
