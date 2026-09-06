@@ -1,4 +1,11 @@
 /**
+ * The service that actually handled and billed a request routed through this
+ * OpenAI-compatible plugin. One exported union so adding a provider is a
+ * one-line change the compiler propagates to every consumer.
+ */
+export type OpenAiUsageProvider = "cerebras" | "evolink" | "openzoo" | "openai";
+
+/**
  * Supported audio formats for transcription
  */
 export type AudioFormat = "mp3" | "wav" | "webm" | "ogg" | "flac" | "mp4";
@@ -287,7 +294,7 @@ export interface TextStreamResult {
   /** Concrete backend and model identity retained through runtime stream consumption. */
   providerMetadata?: {
     modelName: string;
-    provider: "cerebras" | "evolink" | "openai";
+    provider: OpenAiUsageProvider;
     /**
      * Transient attempts re-issued before this stream was served; 0 = clean
      * first attempt. Present so consumers can tell a degraded-provider success
