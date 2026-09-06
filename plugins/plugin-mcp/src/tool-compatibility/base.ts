@@ -11,7 +11,7 @@
  * schema cannot RangeError the event loop.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { JSONSchema7 } from "json-schema";
+import type { JSONSchema7, JSONSchema7TypeName } from "json-schema";
 import { assertMcpJsonSchemaBudget } from "../utils/schema-budget";
 
 export interface StringConstraints {
@@ -82,8 +82,21 @@ export abstract class McpToolCompatibility {
 
   protected processSchema(schema: JSONSchema7): JSONSchema7 {
     const processed = { ...schema };
+    const type = processed.type;
 
-    switch (processed.type) {
+    // JSON Schema permits `type` to be an array (e.g. ["string","null"]) — the
+    // standard nullable/optional encoding emitted by Zod .nullable() and many
+    // MCP servers. A string switch never matches such a node, so without this
+    // branch it fell through to processGenericSchema, which strips no per-type
+    // keywords and never recurses into properties/items. That leaked provider-
+    // unsupported keywords (format, pattern, min*/max*, ...) on every nullable
+    // field and everything nested under a nullable object/array to strict
+    // function-calling providers (Gemini/OpenAI), which 400 on them.
+    if (Array.isArray(type)) {
+      return this.processUnionTypeSchema(processed, type);
+    }
+
+    switch (type) {
       case "string":
         return this.processStringSchema(processed);
       case "number":
@@ -96,6 +109,47 @@ export abstract class McpToolCompatibility {
       default:
         return this.processGenericSchema(processed);
     }
+  }
+
+  protected processUnionTypeSchema(
+    schema: JSONSchema7,
+    types: readonly JSONSchema7TypeName[]
+  ): JSONSchema7 {
+    // Route the node through each concrete per-type processor it declares so
+    // the matching unsupported keywords are stripped (and folded into the
+    // description) and nested properties/items are recursed. Each processor
+    // copies the node and leaves `type` untouched, so the original nullable
+    // `type` array is preserved on the output. "null" and "boolean" carry no
+    // strippable validation keywords. processGenericSchema runs last to keep
+    // combinator (oneOf/anyOf/allOf) handling identical to the scalar path.
+    //
+    // JSON Schema `type` arrays are unordered sets, so sort the members before
+    // folding: two servers describing the same field with `["integer","string"]`
+    // vs `["string","integer"]` must yield byte-identical tool descriptions.
+    // `type` on the output stays the original array — the per-type processors
+    // never touch it, so sorting only fixes the fold order, not the emitted
+    // nullable shape.
+    let current: JSONSchema7 = schema;
+    for (const member of [...types].sort()) {
+      switch (member) {
+        case "string":
+          current = this.processStringSchema(current);
+          break;
+        case "number":
+        case "integer":
+          current = this.processNumberSchema(current);
+          break;
+        case "array":
+          current = this.processArraySchema(current);
+          break;
+        case "object":
+          current = this.processObjectSchema(current);
+          break;
+        default:
+          break;
+      }
+    }
+    return this.processGenericSchema(current);
   }
 
   protected processStringSchema(schema: JSONSchema7): JSONSchema7 {
