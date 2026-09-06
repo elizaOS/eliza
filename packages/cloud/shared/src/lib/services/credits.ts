@@ -1333,6 +1333,14 @@ export class CreditsService {
             auto_top_up_enabled = false,
             updated_at = NOW()
           FROM candidate
+          -- Gated on the insert ONLY, deliberately: a fully drained org has
+          -- applied_amount = 0 and new_balance = current_balance, so this
+          -- UPDATE changes nothing but the flag -- and that is exactly the case
+          -- that most needs it, because auto top-up fires on a LOW balance. Do
+          -- not add an applied_amount > 0 guard to skip a no-op balance write;
+          -- it would leave the flag on for the org with nothing left to
+          -- recover. Pinned by "disables auto top-up even when a drained org
+          -- recovers nothing" in __tests__/credits-reconcile.test.ts.
           WHERE o.id = candidate.id
             AND EXISTS (SELECT 1 FROM inserted)
           RETURNING o.credit_balance AS new_balance
