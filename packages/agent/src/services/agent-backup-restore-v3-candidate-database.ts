@@ -18,6 +18,7 @@ import {
 } from "@elizaos/shared";
 import {
   type AgentBackupRestoreV3CandidateFs,
+  type AgentBackupRestoreV3CandidateFsLock,
   type AgentBackupRestoreV3CandidateTreeProof,
   isAgentBackupRestoreV3CandidateFs,
 } from "./agent-backup-restore-v3-candidate-fs";
@@ -43,13 +44,22 @@ const OUTPUT_DIRECTORY = "components/database";
 const FINISH_MARKER = ".restore-v3-component-c1.database-extracted.json";
 const MAXIMUM_COMPRESSED_BYTES = 1024 * 1024 * 1024;
 const FINISH_MAXIMUM_BYTES = 32 * 1024;
+export const AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_DIRECTORY =
+  ".restore-v3-database-validation";
+export const AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_COPY_MARKER =
+  ".restore-v3-component-c1.validation-copy-extracted.json";
+type DatabaseDirectory =
+  | typeof OUTPUT_DIRECTORY
+  | typeof AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_DIRECTORY;
 
-export interface AgentBackupRestoreV3CandidateDatabaseExtractionReceipt {
+export interface AgentBackupRestoreV3CandidateDatabaseExtractionReceipt<
+  Directory extends DatabaseDirectory = typeof OUTPUT_DIRECTORY,
+> {
   readonly version: 1;
   readonly format: "elizaos.agent-backup.restore-v3-database-extracted.v1";
   readonly sessionSha256: string;
   readonly component: Readonly<AgentBackupRestoreV3ComponentReceipt>;
-  readonly outputDirectory: typeof OUTPUT_DIRECTORY;
+  readonly outputDirectory: Directory;
   readonly lastRecordReceiptSha256: string;
   readonly tree: Readonly<AgentBackupRestoreV3CandidateTreeProof>;
   readonly finishSha256: string;
@@ -125,12 +135,46 @@ function receiptSnapshot(
   });
 }
 
-export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
+export interface AgentBackupRestoreV3CandidateDatabaseInput {
   readonly candidateFs: AgentBackupRestoreV3CandidateFs;
   readonly session: Readonly<AgentBackupRestoreV3StagingSession>;
   readonly receipt: Readonly<AgentBackupRestoreV3ComponentReceipt>;
   readonly control: Readonly<AgentBackupRestoreV3OperationControl>;
-}): Promise<Readonly<AgentBackupRestoreV3CandidateDatabaseExtractionReceipt>> {
+}
+
+export function extractAgentBackupRestoreV3CandidateDatabase(
+  input: Readonly<AgentBackupRestoreV3CandidateDatabaseInput>,
+): Promise<Readonly<AgentBackupRestoreV3CandidateDatabaseExtractionReceipt>> {
+  return extractDatabaseAt(input, OUTPUT_DIRECTORY, FINISH_MARKER);
+}
+
+/** Only the validator consumes this disposable copy, while holding the root lock. */
+export function extractAgentBackupRestoreV3CandidateDatabaseValidationCopy(
+  input: Readonly<AgentBackupRestoreV3CandidateDatabaseInput>,
+  heldLock: AgentBackupRestoreV3CandidateFsLock,
+): Promise<
+  Readonly<
+    AgentBackupRestoreV3CandidateDatabaseExtractionReceipt<
+      typeof AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_DIRECTORY
+    >
+  >
+> {
+  return extractDatabaseAt(
+    input,
+    AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_DIRECTORY,
+    AGENT_BACKUP_RESTORE_V3_DATABASE_VALIDATION_COPY_MARKER,
+    heldLock,
+  );
+}
+
+async function extractDatabaseAt<Directory extends DatabaseDirectory>(
+  input: Readonly<AgentBackupRestoreV3CandidateDatabaseInput>,
+  outputDirectory: Directory,
+  finishMarker: string,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
+): Promise<
+  Readonly<AgentBackupRestoreV3CandidateDatabaseExtractionReceipt<Directory>>
+> {
   const exact = snapshotOwnDataRecord(
     input,
     ["candidateFs", "session", "receipt", "control"],
@@ -153,13 +197,14 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
   const control = snapshotOperationControl(
     exact.control as AgentBackupRestoreV3OperationControl,
   );
-  const lock = await candidateFs.acquireLock(
-    ".restore-v3-materialize-c1.lock",
-    control,
-  );
+  const lock =
+    heldLock ??
+    (await candidateFs.acquireLock(".restore-v3-materialize-c1.lock", control));
   let primaryFailure: unknown;
   let result:
-    | Readonly<AgentBackupRestoreV3CandidateDatabaseExtractionReceipt>
+    | Readonly<
+        AgentBackupRestoreV3CandidateDatabaseExtractionReceipt<Directory>
+      >
     | undefined;
   try {
     const sessionSha256 = await bindAgentBackupRestoreV3CandidateRecordSession({
@@ -306,11 +351,7 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
     }
     let extractionFailure: unknown;
     try {
-      await candidateFs.ensureFileTreeDirectory(
-        OUTPUT_DIRECTORY,
-        control,
-        lock,
-      );
+      await candidateFs.ensureFileTreeDirectory(outputDirectory, control, lock);
       const extracted = await readAgentBackupRestoreV3PgliteArchive({
         tar: decodedTar(),
         control,
@@ -325,7 +366,7 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
         visit: async (entry, consume) => {
           if (entry.type === "directory") {
             await candidateFs.ensureFileTreeDirectory(
-              `${OUTPUT_DIRECTORY}/${entry.path}`,
+              `${outputDirectory}/${entry.path}`,
               control,
               lock,
             );
@@ -333,7 +374,7 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
             return;
           }
           const writer = await candidateFs.createFileTreeFile(
-            OUTPUT_DIRECTORY,
+            outputDirectory,
             {
               path: entry.path,
               sizeBytes: entry.sizeBytes,
@@ -369,7 +410,7 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
           "Database extraction has no terminal record receipt",
         );
       const tree = await candidateFs.proveTree(
-        OUTPUT_DIRECTORY,
+        outputDirectory,
         undefined,
         control,
         lock,
@@ -389,7 +430,7 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
           "elizaos.agent-backup.restore-v3-database-extracted.v1" as const,
         sessionSha256,
         component,
-        outputDirectory: OUTPUT_DIRECTORY as typeof OUTPUT_DIRECTORY,
+        outputDirectory,
         lastRecordReceiptSha256,
         tree,
       };
@@ -400,14 +441,14 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
           .digest("hex"),
       });
       await candidateFs.publishDurableJson(
-        FINISH_MARKER,
+        finishMarker,
         finish,
         { maximumBytes: FINISH_MAXIMUM_BYTES },
         control,
         lock,
       );
       const persisted = await candidateFs.readDurableJson(
-        FINISH_MARKER,
+        finishMarker,
         { maximumBytes: FINISH_MAXIMUM_BYTES },
         control,
         lock,
@@ -437,7 +478,7 @@ export async function extractAgentBackupRestoreV3CandidateDatabase(input: {
     primaryFailure = cause;
   }
   try {
-    await lock.release(internalCleanupControl());
+    if (!heldLock) await lock.release(internalCleanupControl());
   } catch (cause) {
     // error-policy:J2 Both failures remain inspectable; neither becomes success.
     if (primaryFailure !== undefined)
