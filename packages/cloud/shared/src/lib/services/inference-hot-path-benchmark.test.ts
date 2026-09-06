@@ -91,17 +91,19 @@ mock.module("./inference-api-key-auth", () => ({
 }));
 mock.module("./admin", () => ({
   adminService: {
-    shouldBlockUser: async () => {
+    shouldBlockUserConsistent: async () => {
       moderationCalls++;
       return false;
+    },
+    shouldBlockUser: async () => {
+      throw new Error("Inference refresh must not use cached moderation standing");
     },
   },
 }));
 mock.module("./content-moderation", () => ({
   contentModerationService: {
     shouldBlockUser: async () => {
-      moderationCalls++;
-      return false;
+      throw new Error("Inference refresh must use primary admin moderation authority");
     },
   },
 }));
