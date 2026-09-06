@@ -90,56 +90,71 @@ test.describe("confused-user onboarding", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("the onboarding composer stays enabled while external prefill is gated, and tapping still completes", async ({
+  test("typed setup intent stays local, choices still complete, and the request returns to the ready composer", async ({
     page,
   }) => {
     await injectFullCapabilityHost(page);
     const state = await installHomeRoutes(page);
+    // Typing emits metadata-only lifecycle telemetry. The zero-key smoke
+    // backend does not implement this optional diagnostic endpoint, so this
+    // scenario acknowledges it without changing the shared onboarding routes.
+    await page.route("**/api/interactions/composer", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 204 });
+    });
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
     const leaks = trackSentinelLeaks(page);
-    // The confused user's attempt to type must NEVER reach the agent as a chat
-    // POST — capture any body that carries the attempted sentence.
+    const pendingRequest = "does this thing even work?";
+    // A pre-agent request belongs to the local conductor and must never reach
+    // the runtime as a chat POST while setup is incomplete.
     const chatSends: string[] = [];
     page.on("request", (request) => {
       if (request.method() !== "POST") return;
       const body = request.postData();
-      if (body?.includes("does this thing even work")) {
+      if (body?.includes(pendingRequest)) {
         chatSends.push(`${request.url()} :: ${body.slice(0, 200)}`);
       }
     });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    // The chat-native conductor keeps ordinary text input usable while its
-    // programmatic prefill seam remains gated. Tapping a structured choice is
-    // still a deterministic way to complete setup.
+    // The helper proves this is the real chat-first runtime chooser and that
+    // its composer advertises the setup-only accessibility boundary.
     await expectChatFirstOnboarding(page);
 
     const composer = page.getByTestId("chat-composer-textarea");
-    await expect(composer).toBeEnabled();
-    await page.evaluate(() => {
-      window.dispatchEvent(
-        new CustomEvent("eliza:chat:prefill", {
-          detail: { text: "does this thing even work?" },
-        }),
-      );
-    });
-    await page.waitForTimeout(500);
+    await composer.fill(pendingRequest);
+    await composer.press("Enter");
     await expect(composer).toHaveValue("");
-    await screenshot(page, "composer-gates-external-prefill");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.localStorage.getItem("eliza:first-run:pending-text"),
+        ),
+      )
+      .toContain(pendingRequest);
+    await expect(
+      page.getByText(/Choose above: Cloud is easiest; local keeps things/i),
+    ).toBeVisible();
+    await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
+    await screenshot(page, "typed-intent-stays-in-setup");
 
-    // A gated external prefill must not POST setup or leak a chat send.
+    // The conductor acknowledged the request locally: no setup completion and
+    // no chat send has happened yet.
     expect(
       state.firstRunPosts.length,
-      "a gated onboarding prefill must not trigger any first-run POST",
+      "conductor text must not trigger setup completion",
     ).toBe(0);
     expect(
       chatSends,
-      "a gated onboarding prefill must never reach the server",
+      "typed setup text must not reach the runtime before completion",
     ).toEqual([]);
     expect(leaks).toEqual([]);
 
-    // The user finishes by tapping through — the only real path forward. One
-    // POST at the end, still zero leaks.
+    // Choices remain the authority for provisioning. Completion releases the
+    // retained request into the real composer for the user to review and send.
     await page.getByTestId(RUNTIME_CHOICE("local")).click();
     const onDevice = page.getByTestId(PROVIDER_CHOICE("on-device"));
     await expect(onDevice).toBeVisible({ timeout: 15_000 });
@@ -149,8 +164,9 @@ test.describe("confused-user onboarding", () => {
     await skip.click();
 
     await expectOnboardingSettleToFull(page);
+    await expect(composer).toHaveValue(pendingRequest, { timeout: 15_000 });
     await settleHomeEntrance(page);
-    await screenshot(page, "tapped-through-home");
+    await screenshot(page, "intent-restored-after-setup");
 
     expect(state.firstRunPosts.length).toBe(1);
     expect(chatSends).toEqual([]);
@@ -281,9 +297,8 @@ test.describe("confused-user onboarding", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
 
     // Nothing was persisted (no POST yet) → the conductor re-seeds a fresh
-    // onboarding surface: the runtime CHOICE is unlocked (re-offered) while the
-    // text composer stays enabled and external prefill remains gated, matching
-    // the first paint.
+    // onboarding surface: the runtime CHOICE and conductor-only composer are
+    // both available again, matching the first-paint contract.
     await expectChatFirstOnboarding(page);
     await screenshot(page, "after-reload-fresh-onboarding");
 
