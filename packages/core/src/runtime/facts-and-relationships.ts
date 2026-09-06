@@ -766,24 +766,18 @@ async function persistFactsAndRelationships(
 		typeof runtime.createMemory === "function"
 	) {
 		for (const rel of parsed.relationships) {
-			const normalized = resolveRedactedRelationshipEnds(
-				normalizeRelationshipForPersistence(rel),
+			const normalized = humanizeRelationshipEnds(
+				resolveRedactedRelationshipEnds(
+					normalizeRelationshipForPersistence(rel),
+					runtime,
+					message,
+				),
+				roomEntities,
 				runtime,
 				message,
 			);
 			if (!normalized) continue;
-			const sourceEntityId = resolveRelationshipEntityId(
-				normalized.subject,
-				roomEntities,
-				runtime,
-				message,
-			);
-			const targetEntityId = resolveRelationshipEntityId(
-				normalized.object,
-				roomEntities,
-				runtime,
-				message,
-			);
+			const { sourceEntityId, targetEntityId } = normalized;
 			const echoText = `${normalized.subject} ${normalized.predicate} ${normalized.object}`;
 			await runtime.createMemory(
 				{
@@ -907,10 +901,10 @@ const REDACTION_PLACEHOLDER_PATTERN = /^\[REDACTED:[A-Z0-9_]+\]$/;
  * identifies that same speaker as the owner. Other redacted ends are unresolved.
  */
 function resolveRedactedRelationshipEnds(
-	normalized: { subject: string; predicate: string; object: string } | null,
+	normalized: MessageHandlerExtractedRelationship | null,
 	runtime: IAgentRuntime,
 	message: Memory,
-): { subject: string; predicate: string; object: string } | null {
+): MessageHandlerExtractedRelationship | null {
 	if (!normalized) return null;
 	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.object)) return null;
 	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.subject)) {
@@ -921,6 +915,80 @@ function resolveRedactedRelationshipEnds(
 			: null;
 	}
 	return normalized;
+}
+
+/**
+ * Render known IDs as human labels while retaining their identity separately.
+ * Display names may collide with role aliases or other participants' names;
+ * resolving them again would attach the relationship to a different person.
+ */
+function humanizeRelationshipEnds(
+	normalized: MessageHandlerExtractedRelationship | null,
+	entities: readonly RoomEntityRef[],
+	runtime: IAgentRuntime,
+	message: Memory,
+):
+	| (MessageHandlerExtractedRelationship & {
+			sourceEntityId?: UUID;
+			targetEntityId?: UUID;
+	  })
+	| null {
+	if (!normalized) return null;
+	const safeLabel = (value: string): string | null => {
+		const label = cleanText(value);
+		return label &&
+			!asUuidOrNull(label) &&
+			!/\[REDACTED(?::[A-Z0-9_]+)?\]/i.test(label) &&
+			!containsSecretSignal(label) &&
+			runtime.redactSecrets(label) === label
+			? label
+			: null;
+	};
+	const humanize = (
+		value: string,
+	): { value: string; entityId?: UUID; fromId: boolean } | null => {
+		const uuid = asUuidOrNull(value);
+		if (!uuid) {
+			return {
+				value,
+				entityId: resolveRelationshipEntityId(
+					value,
+					entities,
+					runtime,
+					message,
+				),
+				fromId: false,
+			};
+		}
+		if (uuid === message.entityId) {
+			return { value: "User", entityId: uuid, fromId: true };
+		}
+		if (uuid === runtime.agentId) {
+			const name = safeLabel(runtime.character.name ?? "Agent");
+			return name ? { value: name, entityId: uuid, fromId: true } : null;
+		}
+		const entity = entities.find((candidate) => candidate.id === uuid);
+		const name = entity?.names.map(safeLabel).find((candidate) => candidate);
+		return name ? { value: name, entityId: uuid, fromId: true } : null;
+	};
+	const subject = humanize(normalized.subject);
+	const object = humanize(normalized.object);
+	if (!subject || !object) return null;
+	// Two people can share a display name; only proven identity makes a self-loop.
+	if (
+		object.fromId &&
+		object.entityId &&
+		subject.entityId === object.entityId
+	) {
+		return null;
+	}
+	return {
+		...normalized,
+		subject: subject.value,
+		object: object.value,
+		sourceEntityId: subject.entityId,
+		targetEntityId: object.entityId,
+	};
 }
 
 function sanitizePersistedFact(runtime: IAgentRuntime, value: string): string {

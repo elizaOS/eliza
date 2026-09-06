@@ -526,6 +526,38 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("deletes only the explicit id and preserves unrelated facts from the same source message", async () => {
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, {
+      text: "The user's dog is named Biscuit.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-and-jazz" },
+    });
+    seedFact(rows, {
+      text: "User has_dog Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-and-jazz" },
+    });
+    seedFact(rows, {
+      text: "User likes jazz.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-and-jazz" },
+    });
+    const preservedRows = structuredClone(rows.slice(1));
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId: String(id),
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(rows).toEqual(preservedRows);
+    expect(result.effectReceipts).toHaveLength(1);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      resource: { id },
+      outcome: "applied",
+    });
+  });
+
   it("preserves a different same-message claim sharing the queried subject", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, {

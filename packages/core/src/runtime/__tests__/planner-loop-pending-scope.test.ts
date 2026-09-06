@@ -1554,25 +1554,71 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toContain("favorite-color");
 	});
 
-	it("a delete that missed its target by description and then succeeded by id is one operation: the evaluator's message ships", async () => {
-		// Live 2026-09-06 03:21 (tj-bc44686b79099c): MEMORY_DELETE by query
-		// missed, a search found the record, MEMORY_DELETE by memoryId succeeded,
-		// the evaluator finished honestly — and the stale miss forced a
-		// synthesis that replaced the evaluator's sentence.
+	it.each([
+		{
+			name: "a replacement body merely quotes the missed target",
+			failedParams: { action: "update", query: "favorite color" },
+			successfulParams: {
+				action: "update",
+				memoryId: "00000000-0000-0000-0000-0000000000b1",
+				text: "This unrelated note quotes the words favorite color.",
+			},
+			successfulResult: {
+				success: true,
+				text: "Updated the unrelated note.",
+				data: { op: "update" },
+			},
+		},
+		{
+			name: "the same description identifies a resource in another container",
+			failedParams: {
+				action: "update",
+				query: "favorite color",
+				memoryId: "00000000-0000-0000-0000-0000000000a2",
+				roomId: "00000000-0000-0000-0000-0000000000a1",
+			},
+			successfulParams: {
+				action: "update",
+				memoryId: "00000000-0000-0000-0000-0000000000b1",
+				roomId: "00000000-0000-0000-0000-0000000000b2",
+				text: "Updated favorite color.",
+			},
+			successfulResult: {
+				success: true,
+				text: "Updated favorite color in the other room.",
+				data: { op: "update" },
+			},
+		},
+		{
+			name: "a partial success still lists the missed target as failed",
+			failedParams: { action: "delete", query: "favorite color" },
+			successfulParams: { action: "delete", query: "coffee preference" },
+			successfulResult: {
+				success: true,
+				text: "Deleted the coffee preference; favorite color was not found.",
+				data: {
+					op: "delete",
+					deletedCount: 1,
+					failed: [{ query: "favorite color", error: "MEMORY_NOT_FOUND" }],
+				},
+			},
+		},
+	])("keeps target-miss failure authority when $name", async (scenario) => {
+		const honestReply =
+			"The other change succeeded, but I couldn't find the requested favorite color record.";
 		const h = harness({
-			userMessage: "forget that I like my coffee with oat milk",
+			userMessage: "Change my favorite color record and the other record.",
 			plans: [
 				{
 					text: "",
 					toolCalls: [
 						{
-							...call("MEMORY_DELETE", "final"),
-							id: "del-1",
+							...call("MEMORY", "final"),
+							id: "missed-target",
 							arguments: {
-								eliza_turn_scope: "final",
-								action: "delete",
-								query: "prefer oat milk in coffee",
+								...scenario.failedParams,
 								confirm: true,
+								eliza_turn_scope: "final",
 							},
 						},
 					],
@@ -1581,102 +1627,45 @@ describe("canonical evaluation of grounded internal receipts", () => {
 					text: "",
 					toolCalls: [
 						{
-							...call("MEMORY_DELETE", "final"),
-							id: "del-2",
+							...call("MEMORY", "final"),
+							id: "other-target",
 							arguments: {
-								eliza_turn_scope: "final",
-								action: "delete",
-								memoryId: "d940f8b3-ceb9-466d-8245-a156909d7d62",
+								...scenario.successfulParams,
 								confirm: true,
+								eliza_turn_scope: "final",
 							},
 						},
 					],
 				},
+				honestReply,
 			],
 			evaluations: [
-				continueWork("Not found by wording; delete the record by id."),
-				finish("Got it, forgot about the oat milk."),
+				continueWork(
+					"The requested target was not found; another change remains.",
+				),
+				finish("Both requested records were changed."),
+				honestReply,
 			],
 			results: [
 				{
 					success: false,
-					text: 'No stored memory matches "prefer oat milk in coffee". Scanned all 20 stored row(s).',
-					data: { error: "MEMORY_NOT_FOUND", actionName: "MEMORY_DELETE" },
+					text: 'No stored memory matches "favorite color".',
+					data: { error: "MEMORY_NOT_FOUND", actionName: "MEMORY" },
 				},
 				{
-					success: true,
+					...scenario.successfulResult,
 					transcriptVisibility: "internal",
-					text: "Forgot memory d940f8b3-ceb9-466d-8245-a156909d7d62: User prefers oat milk in their coffee.",
-					data: { actionName: "MEMORY_DELETE", op: "delete" },
 				},
 			],
-			intents: ["forget coffee preference"],
+			intents: ["change favorite color", "change the other record"],
 		});
 		const result = await h.run();
-		expect(h.executed).toEqual(["MEMORY_DELETE", "MEMORY_DELETE"]);
-		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
-		expect(result.finalMessage).toBe("Got it, forgot about the oat milk.");
-	});
-
-	it("a target miss is not resolved by a later delete whose result names a different record", async () => {
-		const h = harness({
-			userMessage: "forget that I like my coffee with oat milk",
-			plans: [
-				{
-					text: "",
-					toolCalls: [
-						{
-							...call("MEMORY_DELETE", "final"),
-							id: "del-1",
-							arguments: {
-								eliza_turn_scope: "final",
-								action: "delete",
-								query: "prefer oat milk in coffee",
-								confirm: true,
-							},
-						},
-					],
-				},
-				{
-					text: "",
-					toolCalls: [
-						{
-							...call("MEMORY_DELETE", "final"),
-							id: "del-2",
-							arguments: {
-								eliza_turn_scope: "final",
-								action: "delete",
-								memoryId: "0b1c2d3e-4f50-4617-8899-aabbccddeeff",
-								confirm: true,
-							},
-						},
-					],
-				},
-				"I removed a memory about tea, but I couldn't find the oat milk one.",
-			],
-			evaluations: [
-				continueWork("Try the id."),
-				finish("Got it, forgot about the oat milk."),
-				"I removed a memory about tea, but I couldn't find the oat milk one.",
-			],
-			results: [
-				{
-					success: false,
-					text: 'No stored memory matches "prefer oat milk in coffee".',
-					data: { error: "MEMORY_NOT_FOUND", actionName: "MEMORY_DELETE" },
-				},
-				{
-					success: true,
-					transcriptVisibility: "internal",
-					text: "Forgot memory 0b1c2d3e-4f50-4617-8899-aabbccddeeff: User takes their tea with honey.",
-					data: { actionName: "MEMORY_DELETE", op: "delete" },
-				},
-			],
-			intents: ["forget coffee preference"],
+		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
+		expect(result.trajectory.steps[0].result).toMatchObject({
+			success: false,
+			data: { error: "MEMORY_NOT_FOUND" },
 		});
-		const result = await h.run();
-		expect(result.finalMessage).not.toBe("Got it, forgot about the oat milk.");
-		expect(result.finalMessage).toContain("couldn't find the oat milk");
+		expect(result.finalMessage).toBe(honestReply);
 	});
 
 	it("malformed-call supersession keeps every supplied target of the failed call", () => {
