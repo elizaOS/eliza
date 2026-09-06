@@ -21,7 +21,7 @@ export const INFO_THRESHOLD = 60;
 export const ERROR_THRESHOLD = 120;
 export const WINDOW_MS = 1000;
 
-type ImportMetaWithEnv = ImportMeta & {
+type ImportMetaWithEnv = {
   env?: Record<string, boolean | string | undefined>;
 };
 
