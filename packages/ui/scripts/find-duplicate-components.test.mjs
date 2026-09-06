@@ -45,6 +45,17 @@ test("generated mobile platform bundles and staging roots are outside maintained
     isMaintainedSource(
       fileURLToPath(
         new URL(
+          "../../app-core/platforms/android/app/src/main/assets/agent/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isMaintainedSource(
+      fileURLToPath(
+        new URL(
           "../../agent/dist-mobile-ios/agent-bundle.tsx",
           import.meta.url,
         ),

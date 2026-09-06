@@ -47,7 +47,11 @@ describe("full API dispatch over local IPC", () => {
         skipListen: true,
         skipDeferredStartupWork: true,
       });
-      for (const headers of [{}, { authorization: "Bearer wrong" }]) {
+      const deniedHeaders: Record<string, string>[] = [
+        {},
+        { authorization: "Bearer wrong" },
+      ];
+      for (const headers of deniedHeaders) {
         expect(
           (await dispatchApiRoute({ ...request(runtime), headers })).status,
         ).toBe(401);
