@@ -470,6 +470,25 @@ describe("parseInteractionBlocks", () => {
 		expect(parsed.cleanedText).toBe("Hello there, friend.");
 	});
 
+	it("preserves interaction grammar inside fenced code blocks", () => {
+		const text = [
+			"To offer a choice, emit this marker:",
+			"",
+			"```",
+			"[CHOICE:approval]",
+			"yes=Approve",
+			"no=Deny",
+			"[/CHOICE]",
+			"```",
+			"",
+			"That's the whole syntax.",
+		].join("\n");
+		const parsed = parseInteractionBlocks(text);
+
+		expect(parsed.blocks).toEqual([]);
+		expect(parsed.cleanedText).toBe(text);
+	});
+
 	it("removes a single claimed block and tidies surrounding whitespace", () => {
 		const parsed = parseInteractionBlocks(
 			"Pick one:\n[CHOICE:a]\nx=X\n[/CHOICE]",
