@@ -44,7 +44,7 @@ import {
 } from "./lib/dev-process-lifecycle.mjs";
 import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
-import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
+import { resolveSupervisedViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
@@ -1014,15 +1014,33 @@ function buildCapacitorPluginsIfNeeded(childEnv) {
 function startVite() {
   const childEnv = createDevChildEnv(process.env);
 
-  // Keep Vite on the same executable that launched this orchestrator. A
-  // Bun-launched checkout must not gain an undeclared Node installation
-  // requirement before either dev child can start.
+  // Pin the supervised Vite child to Node 24+ even when this orchestrator runs
+  // under Bun. Vite proxies the dashboard's `/api` and `/ws` traffic, and its
+  // dev-server WebSocket proxy depends on Node HTTP-upgrade semantics that the
+  // repo-pinned Bun (`bun@1.3.14`) does not fully implement: under a Bun-hosted
+  // Vite the `/ws` upgrade stays in `CONNECTING` and fails while ordinary
+  // `/api` HTTP proxying still succeeds, silently dropping live notifications
+  // and chat events. The API runtime is resolved independently and may still be
+  // Bun-backed. (Observed on the pinned Bun 1.3.x; re-verify on newer Bun before
+  // removing the pin.)
   const viteForce = process.env.ELIZA_VITE_FORCE === "1";
-  const { command: viteCmd, args: viteArgs } = resolveViteCommand({
-    appDir: path.join(cwd, appDir),
-    force: viteForce,
-    port: UI_PORT,
-  });
+  let viteCmd;
+  let viteArgs;
+  try {
+    ({ command: viteCmd, args: viteArgs } = resolveSupervisedViteCommand({
+      appDir: path.join(cwd, appDir),
+      force: viteForce,
+      port: UI_PORT,
+    }));
+  } catch (err) {
+    // error-policy:J1 boundary translation — the supervisor cannot start the UI
+    // dev server without a compliant Node runtime for the Vite proxy child.
+    console.error(
+      `  ${green(logPrefix)} Cannot start the UI dev server: ${err.message}`,
+    );
+    cleanup(1);
+    return;
+  }
   if (viteForce) {
     console.log(
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,

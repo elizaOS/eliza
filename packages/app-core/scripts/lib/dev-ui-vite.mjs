@@ -4,11 +4,21 @@
  * same Vite major while still resolving source-conditioned TypeScript imports
  * before the dev server exists. Central validation keeps dashboard and
  * shared-worktree launch paths in sync.
+ *
+ * `resolveViteCommand` keeps its generic default (Bun when the caller runs
+ * under Bun) so the standalone app launchers stay Bun-backed.
+ * `resolveSupervisedViteCommand` pins the combined `bun run dev` supervisor's
+ * Vite child to Node 24+: Vite's dev-server WebSocket proxy depends on Node
+ * HTTP-upgrade semantics that the repo-pinned Bun (`bun@1.3.14`) does not fully
+ * implement, so under a Bun-hosted Vite the `/ws` upgrade stays in `CONNECTING`
+ * and fails while ordinary `/api` HTTP proxying still succeeds. (Observed on the
+ * pinned Bun 1.3.x; re-verify on newer Bun before removing the pin.)
  */
 
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { resolveNodeExecPath } from "../run-node-runtime.mjs";
 
 export function resolveViteCommand({
   appDir,
@@ -44,4 +54,44 @@ export function resolveViteCommand({
   if (port !== undefined) args.push("--port", String(port));
   args.push(...viteArgs);
   return { command: runtimePath, args };
+}
+
+/**
+ * Resolves the Vite command for the supervised `bun run dev` orchestrator,
+ * pinning the child to a Node 24+ executable regardless of the runtime that
+ * launched the orchestrator. The supervisor proxies `/api` and `/ws` traffic
+ * through Vite, whose dev-server WebSocket proxy depends on Node HTTP-upgrade
+ * semantics that the repo-pinned Bun (`bun@1.3.14`) does not fully implement;
+ * under a Bun-hosted Vite the `/ws` upgrade stays in `CONNECTING` and fails
+ * while `/api` HTTP proxying still succeeds. The API runtime is resolved
+ * independently and may still be Bun-backed. (Observed on the pinned Bun 1.3.x;
+ * re-verify on newer Bun before removing the pin.)
+ *
+ * Node resolution reuses the repository's Node-runtime machinery (minimum major
+ * enforcement, Bun-executable rejection, `ELIZA_NODE_PATH` override) and throws
+ * an actionable error if no compliant Node is available.
+ */
+export function resolveSupervisedViteCommand({
+  appDir,
+  force = false,
+  port,
+  viteArgs = [],
+  currentExecPath = process.execPath,
+  platform = process.platform,
+  explicitNodePath = process.env.ELIZA_NODE_PATH,
+  resolveNodePath = resolveNodeExecPath,
+}) {
+  const runtimePath = resolveNodePath({
+    currentExecPath,
+    platform,
+    explicitNodePath: explicitNodePath?.trim() || undefined,
+  });
+  return resolveViteCommand({
+    appDir,
+    force,
+    runtime: "node",
+    runtimePath,
+    port,
+    viteArgs,
+  });
 }
