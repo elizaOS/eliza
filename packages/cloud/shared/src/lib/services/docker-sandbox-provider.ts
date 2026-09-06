@@ -74,6 +74,7 @@ import {
   buildDockerCreateWithSecretEnvCommand,
   buildEnsureNetworkCmd,
   buildExactRestoreStagingVolumeCleanupCommand,
+  buildProtectedHostDirectoryCommands,
   buildReplacementCandidateObservedCommand,
   buildReplacementCreatedContainerIdProofCommand,
   buildReplacementSecretArtifactsCleanupCommand,
@@ -3774,11 +3775,19 @@ export class DockerSandboxProvider implements SandboxProvider {
             // No plaintext temporary file is written until the durable intent
             // callback above has committed. Exact mode coordinates both vault
             // and Docker env producers with the remote attempt tombstone.
-            const prepareVolumeCommand = `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`;
+            const prepareVolumeCommands = [
+              "/data",
+              "/data/agents",
+              volumePath,
+              `${volumePath}/eliza`,
+            ].flatMap((path) => buildProtectedHostDirectoryCommands(path, true));
             // A delayed producer must observe cancellation before recreating
             // directories that cleanup has already removed.
             if (!remoteCompletionTracker) {
-              await ssh.exec(prepareVolumeCommand, DOCKER_CMD_TIMEOUT_MS);
+              await ssh.exec(
+                ["set -eu", ...prepareVolumeCommands].join("; "),
+                DOCKER_CMD_TIMEOUT_MS,
+              );
             }
             await ensureVolumeVaultPassphrase(
               (cmd, input, timeoutMs) => ssh.execStdin(cmd, input, timeoutMs),
@@ -3786,7 +3795,7 @@ export class DockerSandboxProvider implements SandboxProvider {
               DOCKER_CMD_TIMEOUT_MS,
               environmentVars.ELIZA_VAULT_PASSPHRASE,
               remoteCompletionTracker ? replacementAttemptId : undefined,
-              remoteCompletionTracker ? [prepareVolumeCommand] : [],
+              remoteCompletionTracker ? prepareVolumeCommands : [],
             );
             return ssh.execStdin(
               dockerCreateWithSecretEnvCmd,
