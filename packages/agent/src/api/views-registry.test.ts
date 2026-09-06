@@ -652,6 +652,54 @@ describe("generateViewHeroSvg", () => {
 });
 
 describe("registerBuiltinViews", () => {
+  it.each([true, false])(
+    "restores the wallet fallback after unload (builtins first: %s)",
+    async (builtinsFirst) => {
+      if (builtinsFirst) registerBuiltinViews();
+      const plugin = {
+        ...pluginWith(PLUGIN, [
+          urlView("wallet", {
+            label: "Plugin Wallet",
+            path: "/wallet",
+            relatedActions: ["WALLET"],
+          }),
+        ]),
+        packageName: "@elizaos/plugin-wallet",
+      };
+      await registerPluginViews(plugin, FIXTURE_DIR);
+      registerBuiltinViews();
+      expect(getView("wallet")?.pluginName).toBe(PLUGIN);
+      expect(getView("wallet")?.relatedActions).toEqual(["WALLET"]);
+      expect(listViews().filter((view) => view.id === "wallet")).toHaveLength(
+        1,
+      );
+      unregisterPluginViews(PLUGIN);
+      expect(getView("wallet")?.builtin).toBe(true);
+      expect(getView("wallet")?.label).toBe("Wallet");
+      expect(getView("wallet")?.path).toBe("/wallet");
+    },
+  );
+
+  it("does not yield a fallback to a different package or route", async () => {
+    registerBuiltinViews();
+    await registerPluginViews(
+      pluginWith(PLUGIN, [
+        urlView("wallet", { label: "Other", path: "/wallet" }),
+      ]),
+      FIXTURE_DIR,
+    );
+    expect(getView("wallet")?.builtin).toBe(true);
+    await registerPluginViews(
+      {
+        ...pluginWith(PLUGIN, [
+          urlView("wallet", { label: "Other", path: "/different" }),
+        ]),
+        packageName: "@elizaos/plugin-wallet",
+      },
+      FIXTURE_DIR,
+    );
+    expect(getView("wallet")?.builtin).toBe(true);
+  });
   it("registers first-party views as available builtins and is idempotent", () => {
     registerBuiltinViews();
     const first = listViews({ includeAllKinds: true }).filter(

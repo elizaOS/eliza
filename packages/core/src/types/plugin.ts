@@ -909,6 +909,8 @@ export interface ViewDeclaration {
 	 * Used as the URL segment: `/api/views/<id>/bundle.js`.
 	 */
 	id: string;
+	/** Built-in fallback only: package that may replace this view at the same id and path. */
+	fallbackFor?: string;
 	/** Display label shown in the view manager and agent responses. */
 	label: string;
 	/** Caller-role requirement enforced at every server/view interaction boundary. */
