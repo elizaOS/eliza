@@ -321,10 +321,8 @@ async function applyAddDirective(
 	// Dedupe against the LIVE slot (unlike trait gates) so two near-identical
 	// directives emitted in one run collapse to one entry.
 	const existing = store.getSlot(userId, runtime.agentId).custom_directives;
-	const isDuplicate = existing.some(
-		(directive) =>
-			factLexicalSimilarity([op.text], [directive]) >=
-			DEDUP_SIMILARITY_THRESHOLD,
+	const isDuplicate = existing.some((directive) =>
+		factClaimsEquivalent(op.text, directive),
 	);
 	if (isDuplicate) return "deduped";
 	await store.addDirective({
@@ -364,10 +362,7 @@ async function applyAddPreferenceFact(
 		if (factPolarityDiffers(op.claim, candidateText)) continue;
 		// Promoting a Stage-1 observation rewrites its classification, so only the
 		// identical claim qualifies; a durable preference is merely strengthened.
-		if (
-			isSameMessageStageFact(candidate.memory, message) &&
-			!factClaimsEquivalent(op.claim, candidateText)
-		) {
+		if (!factClaimsEquivalent(op.claim, candidateText)) {
 			continue;
 		}
 		const similarity = factLexicalSimilarity(targetValues, [
