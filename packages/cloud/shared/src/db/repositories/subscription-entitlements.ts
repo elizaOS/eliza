@@ -6,7 +6,8 @@
 import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
-import { dbRead, writeTransaction } from "../helpers";
+import type { DbTransaction } from "../client";
+import { dbWrite, writeTransaction } from "../helpers";
 import {
   type BillingSubscriptionRevision,
   billingSubscriptionRevisions,
@@ -85,6 +86,8 @@ export function deriveSubscriptionEntitlementValues(
       ...FREE_ENTITLEMENT_VALUES,
       effective_from: revision.ended_at ?? revision.canceled_at ?? revision.recorded_at,
       source_digest: revision.provider_object_digest,
+      source_subscription_id: revision.subscription_id,
+      source_subscription_revision: revision.revision,
     };
   }
   if (
@@ -102,6 +105,19 @@ export function deriveSubscriptionEntitlementValues(
       },
     });
   }
+  const effectiveUntil =
+    revision.status === "grace" ? revision.grace_expires_at : revision.current_period_end;
+  if (
+    effectiveUntil === null ||
+    !Number.isFinite(effectiveUntil.getTime()) ||
+    !Number.isFinite(revision.current_period_start.getTime()) ||
+    effectiveUntil <= revision.current_period_start
+  ) {
+    throw new ElizaError("Subscription entitlement requires a valid lifecycle deadline", {
+      code: SUBSCRIPTION_ENTITLEMENT_SOURCE_NOT_FOUND,
+      context: { subscriptionId: revision.subscription_id, status: revision.status },
+    });
+  }
   const plan = resolveSubscriptionPlanDefinition(revision.plan_key, revision.catalog_version);
   return {
     completions_rpm: plan.rateLimits.completionsRpm,
@@ -117,7 +133,7 @@ export function deriveSubscriptionEntitlementValues(
     state: revision.status,
     entitlement_effective: revision.status === "active" || revision.status === "grace",
     effective_from: revision.current_period_start,
-    effective_until: revision.current_period_end,
+    effective_until: effectiveUntil,
     catalog_version: revision.catalog_version,
     source_digest: revision.provider_object_digest,
     source_subscription_id: revision.subscription_id,
@@ -127,7 +143,7 @@ export function deriveSubscriptionEntitlementValues(
 
 export class SubscriptionEntitlementsRepository {
   async find(organizationId: string): Promise<OrganizationEntitlement | undefined> {
-    const [row] = await dbRead
+    const [row] = await dbWrite
       .select()
       .from(organizationEntitlements)
       .where(eq(organizationEntitlements.organization_id, organizationId))
@@ -138,132 +154,182 @@ export class SubscriptionEntitlementsRepository {
   async rebuild(
     input: RebuildSubscriptionEntitlementInput,
   ): Promise<RebuildSubscriptionEntitlementResult> {
-    return writeTransaction(async (tx) => {
-      const [organization] = await tx
-        .select({ id: organizations.id })
-        .from(organizations)
-        .where(eq(organizations.id, input.organizationId))
-        .limit(1)
-        .for("update");
-      if (!organization) {
-        throw new ElizaError("Entitlement organization does not exist", {
-          code: SUBSCRIPTION_ENTITLEMENT_TENANT_NOT_FOUND,
-          context: { organizationId: input.organizationId },
-        });
-      }
+    return writeTransaction((tx) => this.rebuildInTransaction(tx, input));
+  }
 
-      let values: RebuildValues;
-      {
-        const [subscription] = await tx
-          .select({ id: billingSubscriptions.id })
-          .from(billingSubscriptions)
-          .where(
-            and(
-              eq(billingSubscriptions.organization_id, input.organizationId),
-              eq(billingSubscriptions.id, input.sourceSubscriptionId),
-            ),
-          )
-          .limit(1)
-          .for("update");
-        if (!subscription) {
-          throw new ElizaError("Entitlement source subscription does not exist", {
-            code: SUBSCRIPTION_ENTITLEMENT_SOURCE_NOT_FOUND,
-            context: {
-              organizationId: input.organizationId,
-              subscriptionId: input.sourceSubscriptionId,
-            },
-          });
-        }
-        const [revision] = await tx
-          .select()
-          .from(billingSubscriptionRevisions)
-          .where(
-            and(
-              eq(billingSubscriptionRevisions.organization_id, input.organizationId),
-              eq(billingSubscriptionRevisions.subscription_id, input.sourceSubscriptionId),
-              eq(billingSubscriptionRevisions.revision, input.sourceSubscriptionRevision),
-            ),
-          )
-          .limit(1);
-        if (!revision) {
-          throw new ElizaError("Entitlement source revision does not exist", {
-            code: SUBSCRIPTION_ENTITLEMENT_SOURCE_NOT_FOUND,
-            context: {
-              subscriptionId: input.sourceSubscriptionId,
-              revision: input.sourceSubscriptionRevision,
-            },
-          });
-        }
-        values = deriveSubscriptionEntitlementValues(revision);
-      }
+  /** Compose publication with lifecycle writes; the transaction owns organization-first locks. */
+  async rebuildInTransaction(
+    tx: DbTransaction,
+    input: RebuildSubscriptionEntitlementInput,
+  ): Promise<RebuildSubscriptionEntitlementResult> {
+    const [organization] = await tx
+      .select({
+        id: organizations.id,
+        subscriptionAuthorityId: organizations.subscription_authority_id,
+        subscriptionAuthorityState: organizations.subscription_authority_state,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for("update");
+    if (!organization) {
+      throw new ElizaError("Entitlement organization does not exist", {
+        code: SUBSCRIPTION_ENTITLEMENT_TENANT_NOT_FOUND,
+        context: { organizationId: input.organizationId },
+      });
+    }
 
-      const [current] = await tx
+    let values: RebuildValues;
+    {
+      const [subscription] = await tx
         .select()
-        .from(organizationEntitlements)
-        .where(eq(organizationEntitlements.organization_id, input.organizationId))
+        .from(billingSubscriptions)
+        .where(
+          and(
+            eq(billingSubscriptions.organization_id, input.organizationId),
+            eq(billingSubscriptions.id, input.sourceSubscriptionId),
+          ),
+        )
         .limit(1)
         .for("update");
-      if (
-        current &&
-        Object.entries(values).every(([key, requested]) =>
-          sameEntitlementValue(current[key as keyof OrganizationEntitlement], requested),
-        )
-      ) {
-        return { entitlement: current, replayed: true };
-      }
-
-      const actualRevision = current?.projection_revision ?? null;
-      if (actualRevision !== input.expectedProjectionRevision) {
-        entitlementConflict("Entitlement projection compare-and-swap failed", {
-          organizationId: input.organizationId,
-          expectedRevision: input.expectedProjectionRevision,
-          actualRevision,
+      if (!subscription) {
+        throw new ElizaError("Entitlement source subscription does not exist", {
+          code: SUBSCRIPTION_ENTITLEMENT_SOURCE_NOT_FOUND,
+          context: {
+            organizationId: input.organizationId,
+            subscriptionId: input.sourceSubscriptionId,
+          },
         });
       }
-      const nextRevision = (actualRevision ?? -1) + 1;
-      const now = await readPostLockDatabaseNow(tx);
-      if (!current) {
-        const [entitlement] = await tx
-          .insert(organizationEntitlements)
-          .values({
-            ...values,
-            organization_id: input.organizationId,
-            projection_revision: nextRevision,
-            rebuilt_at: now,
-            updated_at: now,
-          })
-          .returning();
-        if (!entitlement) {
-          entitlementConflict("Entitlement insert returned no row", {
+      if (subscription.lifecycle_revision !== input.sourceSubscriptionRevision) {
+        entitlementConflict("Entitlement source is not the current lifecycle revision", {
+          organizationId: input.organizationId,
+          subscriptionId: subscription.id,
+          requestedRevision: input.sourceSubscriptionRevision,
+          currentRevision: subscription.lifecycle_revision,
+        });
+      }
+      if (
+        organization.subscriptionAuthorityState !== "current" ||
+        organization.subscriptionAuthorityId !== subscription.id
+      ) {
+        entitlementConflict(
+          "Entitlement source is not the current account subscription authority",
+          {
             organizationId: input.organizationId,
+            subscriptionId: subscription.id,
+            authorityState: organization.subscriptionAuthorityState,
+          },
+        );
+      }
+      const [revision] = await tx
+        .select()
+        .from(billingSubscriptionRevisions)
+        .where(
+          and(
+            eq(billingSubscriptionRevisions.organization_id, input.organizationId),
+            eq(billingSubscriptionRevisions.subscription_id, input.sourceSubscriptionId),
+            eq(billingSubscriptionRevisions.revision, input.sourceSubscriptionRevision),
+          ),
+        )
+        .limit(1);
+      if (!revision) {
+        throw new ElizaError("Entitlement source revision does not exist", {
+          code: SUBSCRIPTION_ENTITLEMENT_SOURCE_NOT_FOUND,
+          context: {
+            subscriptionId: input.sourceSubscriptionId,
+            revision: input.sourceSubscriptionRevision,
+          },
+        });
+      }
+      for (const field of [
+        "plan_key",
+        "catalog_version",
+        "status",
+        "current_period_start",
+        "current_period_end",
+        "grace_expires_at",
+        "provider_object_digest",
+        "canceled_at",
+        "ended_at",
+      ] as const) {
+        if (!sameEntitlementValue(subscription[field], revision[field])) {
+          entitlementConflict("Entitlement source differs from committed lifecycle authority", {
+            organizationId: input.organizationId,
+            subscriptionId: subscription.id,
+            field,
           });
         }
-        return { entitlement, replayed: false };
       }
+      values = deriveSubscriptionEntitlementValues(revision);
+    }
 
+    const [current] = await tx
+      .select()
+      .from(organizationEntitlements)
+      .where(eq(organizationEntitlements.organization_id, input.organizationId))
+      .limit(1)
+      .for("update");
+    if (
+      current &&
+      Object.entries(values).every(([key, requested]) =>
+        sameEntitlementValue(current[key as keyof OrganizationEntitlement], requested),
+      )
+    ) {
+      return { entitlement: current, replayed: true };
+    }
+
+    const actualRevision = current?.projection_revision ?? null;
+    if (actualRevision !== input.expectedProjectionRevision) {
+      entitlementConflict("Entitlement projection compare-and-swap failed", {
+        organizationId: input.organizationId,
+        expectedRevision: input.expectedProjectionRevision,
+        actualRevision,
+      });
+    }
+    const nextRevision = (actualRevision ?? -1) + 1;
+    const now = await readPostLockDatabaseNow(tx);
+    if (!current) {
       const [entitlement] = await tx
-        .update(organizationEntitlements)
-        .set({
+        .insert(organizationEntitlements)
+        .values({
           ...values,
+          organization_id: input.organizationId,
           projection_revision: nextRevision,
           rebuilt_at: now,
           updated_at: now,
         })
-        .where(
-          and(
-            eq(organizationEntitlements.organization_id, input.organizationId),
-            eq(organizationEntitlements.projection_revision, input.expectedProjectionRevision!),
-          ),
-        )
         .returning();
       if (!entitlement) {
-        entitlementConflict("Entitlement projection compare-and-swap lost", {
+        entitlementConflict("Entitlement insert returned no row", {
           organizationId: input.organizationId,
-          expectedRevision: input.expectedProjectionRevision,
         });
       }
       return { entitlement, replayed: false };
-    });
+    }
+
+    const [entitlement] = await tx
+      .update(organizationEntitlements)
+      .set({
+        ...values,
+        projection_revision: nextRevision,
+        rebuilt_at: now,
+        updated_at: now,
+      })
+      .where(
+        and(
+          eq(organizationEntitlements.organization_id, input.organizationId),
+          eq(organizationEntitlements.projection_revision, input.expectedProjectionRevision!),
+        ),
+      )
+      .returning();
+    if (!entitlement) {
+      entitlementConflict("Entitlement projection compare-and-swap lost", {
+        organizationId: input.organizationId,
+        expectedRevision: input.expectedProjectionRevision,
+      });
+    }
+    return { entitlement, replayed: false };
   }
 }
 

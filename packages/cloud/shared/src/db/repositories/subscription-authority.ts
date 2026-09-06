@@ -156,6 +156,24 @@ function requireActivationAllowed(
   }
 }
 
+function requireCurrentAccountAuthority(
+  organization: Pick<
+    typeof organizations.$inferSelect,
+    "subscription_authority_id" | "subscription_authority_state"
+  >,
+  subscriptionId: string,
+): void {
+  if (
+    organization.subscription_authority_state !== "current" ||
+    organization.subscription_authority_id !== subscriptionId
+  ) {
+    conflict("Subscription is not the current account authority", {
+      subscriptionId,
+      authorityState: organization.subscription_authority_state,
+    });
+  }
+}
+
 function isExactCreateReplay(row: BillingSubscription, values: SubscriptionCreateValues) {
   const { id: requestedId, organization_id: requestedOrganizationId, ...lifecycleValues } = values;
   return (
@@ -229,6 +247,8 @@ export class SubscriptionAuthorityRepository {
       const [organization] = await tx
         .select({
           id: organizations.id,
+          subscription_authority_id: organizations.subscription_authority_id,
+          subscription_authority_state: organizations.subscription_authority_state,
           account_lifecycle_state: organizations.account_lifecycle_state,
           paid_work_fenced_at: organizations.paid_work_fenced_at,
           stripe_customer_id: organizations.stripe_customer_id,
@@ -292,6 +312,7 @@ export class SubscriptionAuthorityRepository {
             revision: existing.lifecycle_revision,
           });
         }
+        requireCurrentAccountAuthority(organization, existing.id);
         return { subscription: existing, revision, replayed: true };
       }
 
@@ -340,6 +361,7 @@ export class SubscriptionAuthorityRepository {
             revision: subscription.lifecycle_revision,
           });
         }
+        requireCurrentAccountAuthority(organization, subscription.id);
         return { subscription, revision, replayed: true };
       }
 
@@ -353,6 +375,13 @@ export class SubscriptionAuthorityRepository {
           revision: 1,
         });
       }
+      await tx
+        .update(organizations)
+        .set({
+          subscription_authority_id: subscription.id,
+          subscription_authority_state: "current",
+        })
+        .where(eq(organizations.id, values.organization_id));
       return { subscription, revision, replayed: false };
     });
   }
@@ -362,6 +391,8 @@ export class SubscriptionAuthorityRepository {
       const [organization] = await tx
         .select({
           id: organizations.id,
+          subscription_authority_id: organizations.subscription_authority_id,
+          subscription_authority_state: organizations.subscription_authority_state,
           account_lifecycle_state: organizations.account_lifecycle_state,
           paid_work_fenced_at: organizations.paid_work_fenced_at,
           stripe_customer_id: organizations.stripe_customer_id,
@@ -376,6 +407,7 @@ export class SubscriptionAuthorityRepository {
           context: { organizationId: input.organizationId },
         });
       }
+      requireCurrentAccountAuthority(organization, input.subscriptionId);
       requireActivationAllowed(organization, input.values);
       const [current] = await tx
         .select()

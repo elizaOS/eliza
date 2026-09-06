@@ -7,9 +7,11 @@ import {
   bigint,
   boolean,
   check,
+  foreignKey,
   index,
   jsonb,
   numeric,
+  type PgTableExtraConfig,
   pgSequence,
   pgTable,
   text,
@@ -17,6 +19,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
+import { billingSubscriptions } from "./billing-subscriptions";
 
 export const organizationBalanceRevisionSequence = pgSequence("organization_balance_revision_seq");
 
@@ -38,6 +42,14 @@ export const organizations = pgTable(
   "organizations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    // Lifecycle creation establishes this identity; cancellation retains it so
+    // an older subscription cannot regain authority after its replacement ends.
+    // Historical backfill ambiguity is distinct from having no subscription.
+    subscription_authority_id: uuid("subscription_authority_id"),
+    subscription_authority_state: text("subscription_authority_state")
+      .$type<"none" | "current" | "unavailable">()
+      .notNull()
+      .default("none"),
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
     credit_balance: numeric("credit_balance", { precision: 16, scale: 6 })
@@ -108,7 +120,16 @@ export const organizations = pgTable(
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
   },
-  (table) => ({
+  (table): PgTableExtraConfig => ({
+    subscription_authority_tenant_fk: foreignKey({
+      columns: [table.subscription_authority_id, table.id],
+      foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
+      name: "organizations_subscription_authority_tenant_fk",
+    }).onDelete("restrict"),
+    subscription_authority_check: check(
+      "organizations_subscription_authority_check",
+      sql`(${table.subscription_authority_state} = 'current' AND ${table.subscription_authority_id} IS NOT NULL) OR (${table.subscription_authority_state} IN ('none', 'unavailable') AND ${table.subscription_authority_id} IS NULL)`,
+    ),
     slug_idx: index("organizations_slug_idx").on(table.slug),
     stripe_customer_authority_unique: uniqueIndex("organizations_stripe_customer_authority_unique")
       .on(table.stripe_customer_id)

@@ -78,7 +78,7 @@ export const organizationEntitlements = pgTable(
     }).onDelete("restrict"),
     plan_state_check: check(
       "organization_entitlements_plan_state_check",
-      sql`${table.plan_key} IN ('free','plus_monthly','pro_monthly') AND ${table.state} IN ('free','active','grace','past_due','unpaid') AND ((${table.plan_key} = 'free' AND ${table.state} = 'free' AND ${table.entitlement_effective} AND ${table.source_subscription_id} IS NULL AND ${table.source_subscription_revision} IS NULL) OR (${table.plan_key} <> 'free' AND ${table.state} <> 'free' AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND (${table.entitlement_effective} = (${table.state} IN ('active','grace')))))`,
+      sql`${table.plan_key} IN ('free','plus_monthly','pro_monthly') AND ${table.state} IN ('free','active','grace','past_due','unpaid') AND ((${table.plan_key} = 'free' AND ${table.state} = 'free' AND ${table.entitlement_effective} AND (${table.source_subscription_id} IS NULL) = (${table.source_subscription_revision} IS NULL)) OR (${table.plan_key} <> 'free' AND ${table.state} <> 'free' AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND (${table.entitlement_effective} = (${table.state} IN ('active','grace')))))`,
     ),
     effective_bounds_check: check(
       "organization_entitlements_effective_bounds_check",
