@@ -410,6 +410,7 @@ export async function runPollingBackend(
   tidRef: { current: ReturnType<typeof setTimeout> | null },
   target: RuntimeTarget = "embedded-local",
 ): Promise<void> {
+  const completionAtPollStart = deps.firstRunCompletionCommittedRef.current;
   const describeBackendFailure = (
     err: unknown,
     timedOut: boolean,
@@ -917,6 +918,26 @@ export async function runPollingBackend(
       deps.setFirstRunCloudProvisionedContainer(Boolean(cloudProvisioned));
       let sessionComplete =
         complete || deps.firstRunCompletionCommittedRef.current;
+
+      // A saved renderer session can outlive the embedded backend's data.
+      // Reconcile that cache with runtime state without resetting a running
+      // legacy installation or completion committed during this poll.
+      if (
+        !complete &&
+        sessionComplete &&
+        completionAtPollStart &&
+        ctx?.hadPriorFirstRun
+      ) {
+        const status = await traceIfStalled(
+          boundedProbe(client.getStatus()),
+          "first-run-runtime-status",
+        );
+        if (cancelled.current || effectRunRef.current !== effectRunId) return;
+        if (status.state === "not_started") {
+          deps.firstRunCompletionCommittedRef.current = false;
+          sessionComplete = false;
+        }
+      }
 
       // Preserve backend-complete installs even when this browser has no prior
       // local state (for example headless/VPS setups or a fresh visit to a
