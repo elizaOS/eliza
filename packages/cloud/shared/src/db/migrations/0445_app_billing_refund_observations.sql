@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS app_billing_refund_observations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  observation_sequence bigserial NOT NULL UNIQUE,
-  command_id uuid NOT NULL REFERENCES billing_subscription_commands(id) ON DELETE RESTRICT,
+  observation_sequence bigserial NOT NULL CONSTRAINT app_billing_refund_observations_sequence_unique UNIQUE,
+  command_id uuid NOT NULL CONSTRAINT app_billing_refund_observations_command_fk REFERENCES billing_subscription_commands(id) ON DELETE RESTRICT,
   request_id uuid NOT NULL,
   request_digest text NOT NULL,
   lifecycle_revision bigint NOT NULL,

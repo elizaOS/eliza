@@ -187,7 +187,7 @@ it("does not offer provider recovery for a refund superseded before dispatch", a
     screen.queryByRole("button", { name: "View refund status" }),
   ).toBeNull();
   await user.click(screen.getByRole("button", { name: "Review payment" }));
-  await screen.findByRole("button", { name: "Confirm refund and keep access" });
+  await screen.findByLabelText("Refund amount in USD cents");
   expect(
     value.calls.some(
       (call) =>

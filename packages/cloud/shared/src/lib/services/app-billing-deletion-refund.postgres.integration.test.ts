@@ -1,4 +1,4 @@
-/** Exercises purchaser recovery through the real command journal, PostgreSQL finalizer and Stripe SDK with controlled HTTP. */
+/** Exercises deletion-authorized refund recovery through real PostgreSQL, original command records and the Stripe SDK with controlled HTTP. */
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -73,7 +73,7 @@ async function buyer(eligibilityPrincipalId?: string): Promise<{
   return { identity, scopeId: scope.scopeId, planId };
 }
 
-describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Stripe HTTP", () => {
+describe.skipIf(!postgresUrl)("deletion refund recovery with PostgreSQL and Stripe HTTP", () => {
   beforeAll(async () => {
     db = new Client({ connectionString: postgresUrl });
     await db.connect();

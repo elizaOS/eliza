@@ -11,12 +11,12 @@ BEGIN
     AND c.state_revision=NEW.command_revision AND c.execution_generation=NEW.execution_generation
     AND (c.lease_expires_at IS NULL OR (isfinite(c.lease_expires_at) AND c.lease_expires_at<=clock_timestamp()))
     AND o->>'merchantId'=c.merchant_id::text AND o->>'providerAccountId'=c.request_payload->'source'->'merchant'->>'stripeAccountId'
-    AND (o->>'livemode')::boolean=c.livemode AND o->>'apiVersion'='2024-11-20.acacia'
+    AND o->'livemode'=to_jsonb(c.livemode) AND o->>'apiVersion'='2024-11-20.acacia'
     AND o->>'digest'=encode(sha256(convert_to(app_billing_refund_canonical_json(v),'UTF8')),'hex')
     AND o->>'inputDigest'=encode(sha256(convert_to(app_billing_refund_canonical_json(expected),'UTF8')),'hex')
     AND isfinite((o->>'observedAt')::timestamptz) AND (o->>'observedAt')::timestamptz>=c.provider_started_at AND (o->>'observedAt')::timestamptz<=clock_timestamp()
     AND v->>'refundId' ~ '^re_[A-Za-z0-9]+$' AND v->>'chargeId' ~ '^ch_[A-Za-z0-9]+$'
-    AND (v->>'amountCents')::bigint=(c.request_payload->>'amountCents')::bigint
+    AND jsonb_typeof(v->'amountCents')='number' AND (v->>'amountCents')::bigint=(c.request_payload->>'amountCents')::bigint
     AND v->>'currency'=c.request_payload->'source'->'invoice'->'plan'->>'currency'
     AND v ? 'status' AND (v->'status'='null'::jsonb OR v->>'status' IN('pending','requires_action','succeeded','failed','canceled'))
     AND (c.status<>'SUCCEEDED' OR (c.provider_result=result AND NEW.discovery IS NULL))

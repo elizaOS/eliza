@@ -1,7 +1,9 @@
 /** Retains immutable provider refund observations against original administration commands without changing access or creating another execution journal. */
+import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
+  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -23,10 +25,10 @@ export const appBillingRefundObservations = pgTable(
   "app_billing_refund_observations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    observation_sequence: bigserial("observation_sequence", { mode: "number" }).notNull().unique(),
-    command_id: uuid("command_id")
+    observation_sequence: bigserial("observation_sequence", { mode: "number" })
       .notNull()
-      .references(() => billingSubscriptionCommands.id, { onDelete: "restrict" }),
+      .unique("app_billing_refund_observations_sequence_unique"),
+    command_id: uuid("command_id").notNull(),
     request_id: uuid("request_id").notNull(),
     request_digest: text("request_digest").notNull(),
     lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull(),
@@ -41,9 +43,16 @@ export const appBillingRefundObservations = pgTable(
       jsonb("discovery").$type<
         BillingProviderObservation<{ status: "found"; object: AppBillingRefundObservationValue }>
       >(),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .default(sql`clock_timestamp()`)
+      .notNull(),
   },
   (t) => ({
+    command: foreignKey({
+      columns: [t.command_id],
+      foreignColumns: [billingSubscriptionCommands.id],
+      name: "app_billing_refund_observations_command_fk",
+    }).onDelete("restrict"),
     recent: index("app_billing_refund_observations_command_idx").on(
       t.command_id,
       t.observation_sequence,
