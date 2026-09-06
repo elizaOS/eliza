@@ -115,7 +115,8 @@ test("Vite resolution succeeds with a PATH that contains Bun and no Node executa
 
 test("resolveSupervisedViteCommand pins the supervised child to a Node 24+ runtime", () => {
   // The supervisor may run under Bun; the Vite proxy child must still be Node so
-  // its `/api` and `/ws` proxy does not crash on `socket.destroySoon`.
+  // its `/ws` WebSocket proxy upgrade completes instead of hanging in
+  // `CONNECTING` under a Bun-hosted Vite.
   const resolveNodePath = ({ currentExecPath, platform, explicitNodePath }) => {
     expect(currentExecPath).toBe("/usr/local/bin/bun");
     expect(platform).toBe("linux");

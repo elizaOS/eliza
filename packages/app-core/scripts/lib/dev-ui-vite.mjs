@@ -8,9 +8,10 @@
  * `resolveViteCommand` keeps its generic default (Bun when the caller runs
  * under Bun) so the standalone app launchers stay Bun-backed.
  * `resolveSupervisedViteCommand` pins the combined `bun run dev` supervisor's
- * Vite child to Node 24+: Vite's HTTP/WebSocket proxy calls Node socket methods
- * (for example `socket.destroySoon`) that Bun does not implement, so a
- * Bun-spawned Vite proxy crashes on ordinary `/api` and `/ws` traffic.
+ * Vite child to Node 24+: Vite's dev-server WebSocket proxy depends on Node
+ * HTTP-upgrade semantics that Bun does not fully implement, so under a
+ * Bun-hosted Vite the `/ws` upgrade stays in `CONNECTING` and fails while
+ * ordinary `/api` HTTP proxying still succeeds.
  */
 
 import { existsSync } from "node:fs";
@@ -58,9 +59,11 @@ export function resolveViteCommand({
  * Resolves the Vite command for the supervised `bun run dev` orchestrator,
  * pinning the child to a Node 24+ executable regardless of the runtime that
  * launched the orchestrator. The supervisor proxies `/api` and `/ws` traffic
- * through Vite, whose proxy relies on Node-only socket methods; spawning that
- * proxy under Bun crashes with `socket.destroySoon is not a function`. The API
- * runtime is resolved independently and may still be Bun-backed.
+ * through Vite, whose dev-server WebSocket proxy depends on Node HTTP-upgrade
+ * semantics that Bun does not fully implement; under a Bun-hosted Vite the
+ * `/ws` upgrade stays in `CONNECTING` and fails while `/api` HTTP proxying
+ * still succeeds. The API runtime is resolved independently and may still be
+ * Bun-backed.
  *
  * Node resolution reuses the repository's Node-runtime machinery (minimum major
  * enforcement, Bun-executable rejection, `ELIZA_NODE_PATH` override) and throws

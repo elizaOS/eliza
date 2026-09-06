@@ -35,10 +35,13 @@ the matching staging API and authenticated Cloud app hosts.
 ### Node runtime for the supervised Vite proxy
 
 `bun run dev` proxies the dashboard's `/api` and `/ws` traffic through Vite,
-whose proxy calls Node-only socket methods (for example `socket.destroySoon`)
-that Bun does not implement. `dev-ui.mjs` therefore pins its **Vite child** to a
-Node 24+ executable even when the orchestrator itself runs under Bun; the API
-runtime is resolved independently and may stay Bun-backed. A checkout without a
+whose dev-server WebSocket proxy depends on Node HTTP-upgrade semantics that Bun
+does not fully implement: under a Bun-hosted Vite the `/ws` upgrade stays in
+`CONNECTING` and fails (silently dropping live notifications and chat events)
+while ordinary `/api` HTTP proxying still succeeds. `dev-ui.mjs` therefore pins
+its **Vite child** to a Node 24+ executable even when the orchestrator itself
+runs under Bun; the API runtime is resolved independently and may stay
+Bun-backed. A checkout without a
 compliant Node (the pinned `engines.node`) fails at supervisor start with an
 actionable `No usable Node.js 24+ executable found` message. Install Node 24+,
 or set `ELIZA_NODE_PATH=/absolute/path/to/node` if a compliant Node is not on
