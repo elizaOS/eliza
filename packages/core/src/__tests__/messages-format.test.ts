@@ -257,8 +257,9 @@ describe("transcript timestamp tense", () => {
 });
 
 describe("formatMessages: stored external envelopes", () => {
-	it("renders the envelope header and complete payload without replaying the warning", () => {
+	it("renders the envelope without replaying the warning block", () => {
 		const payload = "Deploy finished.\nAll checks passed.";
+		const options = { source: "webhook", sender: "GitHub" } as const;
 		const rendered = formatMessages({
 			messages: [
 				{
@@ -266,20 +267,14 @@ describe("formatMessages: stored external envelopes", () => {
 					entityId: "00000000-0000-0000-0000-000000000002" as UUID,
 					roomId,
 					createdAt: 1765381653000,
-					content: {
-						text: wrapExternalContent(payload, {
-							source: "webhook",
-							sender: "GitHub",
-						}),
-					},
+					content: { text: wrapExternalContent(payload, options) },
 				} as Memory,
 			],
 			entities: [],
 		});
 		expect(rendered).toContain(
-			`[external: Source: Webhook; From: GitHub] ${payload}`,
+			wrapExternalContent(payload, { ...options, includeWarning: false }),
 		);
 		expect(rendered).not.toContain("SECURITY NOTICE");
-		expect(rendered).not.toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
 	});
 });

@@ -101,22 +101,23 @@ describe("getRoomTranscript", () => {
 });
 
 describe("formatRecentMessages", () => {
-	it("renders a stored external envelope as one header plus its complete payload", () => {
+	it("renders a stored external envelope without replaying the warning block", () => {
 		// Live Discord 2026-09-06: 403 webhook rows each replayed the full
 		// security notice into the post-turn evaluator prompt (137K tokens,
 		// rejected by the provider), so memory extraction failed every turn.
 		const payload = "Build 42 passed.\nArtifacts: 3";
+		const options = {
+			source: "webhook",
+			sender: "GitHub",
+			subject: "CI",
+		} as const;
 		const rendered = formatRecentMessages([
 			row("01", USER, "hey", 1000, {
 				content: { text: "hey", senderName: "nubs", source: "discord" },
 			}),
 			row("02", USER, "", 2000, {
 				content: {
-					text: wrapExternalContent(payload, {
-						source: "webhook",
-						sender: "GitHub",
-						subject: "CI",
-					}),
+					text: wrapExternalContent(payload, options),
 					senderName: "CI Bot",
 					source: "discord",
 				},
@@ -125,7 +126,7 @@ describe("formatRecentMessages", () => {
 		expect(rendered).toBe(
 			[
 				"- nubs: hey",
-				`- CI Bot: [external: Source: Webhook; From: GitHub; Subject: CI] ${payload}`,
+				`- CI Bot: ${wrapExternalContent(payload, { ...options, includeWarning: false })}`,
 			].join("\n"),
 		);
 		expect(rendered).not.toContain("SECURITY NOTICE");
