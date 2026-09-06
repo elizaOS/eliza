@@ -224,3 +224,18 @@ describe("parseAnswers", () => {
     expect(() => parseAnswers(raw, QUESTIONS)).toThrowError(EvidenceError);
   });
 });
+
+describe("diagnostic Unicode previews", () => {
+  it("repairs a surrogate split only in the invalid-response preview", () => {
+    const raw = "x".repeat(199) + "😀" + "tail";
+    try {
+      parseAnswers(raw, QUESTIONS);
+      throw new Error("invalid JSON was accepted");
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidenceError);
+      const preview = (error as EvidenceError).context?.rawPreview;
+      expect(preview).toBe("x".repeat(199) + "\uFFFD");
+      expect((preview as string).isWellFormed()).toBe(true);
+    }
+  });
+});

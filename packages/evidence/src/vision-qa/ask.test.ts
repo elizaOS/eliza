@@ -123,6 +123,28 @@ describe("askAboutImage against a stub server", () => {
     }
   });
 
+  it("sends and returns complete text beyond diagnostic preview lengths", async () => {
+    const question = "context ".repeat(1000) + "😀 final question";
+    const answer = "answer ".repeat(1000) + "😀 final answer";
+    const questions = [{ id: "long", question }];
+    const response = JSON.stringify({
+      answers: [{ id: "long", answer, confidence: 0.9, details: answer }],
+    });
+    const { server, url, requests } = await startStub([response]);
+    try {
+      const result = await askAboutImage(
+        imagePath,
+        questions,
+        baseOptions(url),
+      );
+      expect(JSON.stringify(requests[0])).toContain(question);
+      expect(result.answers[0].answer).toBe(answer);
+      expect(result.answers[0].details).toBe(answer);
+    } finally {
+      server.close();
+    }
+  });
+
   it("spends exactly one corrective retry on a malformed first response and counts it", async () => {
     const { server, url, requests } = await startStub([
       "not json at all",

@@ -439,3 +439,73 @@ disable-model-invocation: true
     }
   });
 });
+
+describe("state skill namespace selection", () => {
+  it("keeps managed, active and explicitly selected stores distinct", () => {
+    const root = createTempDir("skill-state-selection");
+    const empty = join(root, "empty");
+    mkdirSync(empty);
+    const writeSkill = (directory: string, name: string) => {
+      mkdirSync(join(directory, name), { recursive: true });
+      writeFileSync(
+        join(directory, name, "SKILL.md"),
+        `---\nname: ${name}\ndescription: Selected fixture\n---\nbody`,
+      );
+    };
+    const managed = join(root, "skills");
+    const active = join(managed, "curated", "active");
+    const proposed = join(managed, "curated", "proposed");
+    writeSkill(managed, "managed-skill");
+    writeSkill(active, "active-skill");
+    writeSkill(proposed, "draft-skill");
+    try {
+      const options = { agentDir: root, cwd: empty, bundledSkillsDir: empty };
+      const result = loadSkills(options);
+      assert.deepStrictEqual(
+        result.skills
+          .map(({ name, source }) => ({ name, source }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        [
+          { name: "active-skill", source: "curated" },
+          { name: "managed-skill", source: "managed" },
+        ],
+      );
+      const explicit = loadSkills({ ...options, skillPaths: [proposed] });
+      assert.ok(
+        explicit.skills.some(
+          (skill) => skill.name === "draft-skill" && skill.source === "path",
+        ),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves default managed state after module import", () => {
+    const root = createTempDir("skill-state-current");
+    const previous = process.env.ELIZA_STATE_DIR;
+    const managed = join(root, "skills", "current-state");
+    mkdirSync(managed, { recursive: true });
+    writeFileSync(
+      join(managed, "SKILL.md"),
+      "---\nname: current-state\ndescription: Current state fixture\n---\nbody",
+    );
+    try {
+      process.env.ELIZA_STATE_DIR = root;
+      const result = loadSkills({
+        cwd: root,
+        bundledSkillsDir: join(root, "empty"),
+      });
+      assert.ok(
+        result.skills.some(
+          (skill) =>
+            skill.name === "current-state" && skill.source === "managed",
+        ),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previous;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

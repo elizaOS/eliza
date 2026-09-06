@@ -1,6 +1,6 @@
 # @elizaos/cloud-infra
 
-Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifests, Helm values files, Terraform roots, Docker Compose, and shell scripts. This package has no TypeScript source and is not published to npm.
+Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifests, Helm values files, Terraform roots, Docker Compose, and shell scripts. This package has no production TypeScript library and is not published to npm.
 
 ## What it contains
 
@@ -42,7 +42,7 @@ Short version:
 
 ## Local development cluster
 
-Brings up a `kind` cluster with Postgres 17 (CloudNativePG), Redis (Bitnami), a redis-rest REST adapter, and an optional shared Eliza agent.
+Brings up a `kind` cluster with Postgres 17 (CloudNativePG), Redis (Bitnami), a redis-rest REST adapter, and an optional shared Eliza agent. Run the shell examples below from `packages/cloud/infra`.
 
 ```bash
 # 1. Copy and fill secrets
@@ -97,7 +97,7 @@ See `cloud/terraform/hetzner/ARCHITECTURE.md` for the two-tier (control plane / 
 
 ## Tests
 
-YAML structure smoke tests — validate Helm values files and K8s manifests without a running cluster or cloud credentials.
+Tests validate configuration boundaries and exercise local repair scripts without a running cluster or cloud credentials. Run from the repository root:
 
 ```bash
 bun run --cwd packages/cloud/infra test

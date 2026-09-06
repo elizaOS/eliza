@@ -36,7 +36,6 @@ import type {
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const CONFIG_DIR_NAME = ".elizaos";
-const DEFAULT_AGENT_DIR = resolveStateDir();
 
 function validateName(
   name: string,
@@ -169,6 +168,7 @@ function loadSkillsFromDirInternal(
   source: string,
   includeRootFiles: boolean,
   visitedDirectories = new Set<string>(),
+  excludedDirectories: readonly string[] = [],
 ): LoadSkillsResult {
   const skills: Skill[] = [];
   const diagnostics: SkillDiagnostic[] = [];
@@ -180,6 +180,8 @@ function loadSkillsFromDirInternal(
   let entries: import("node:fs").Dirent[];
   try {
     const realDirectory = realpathSync(dir);
+    if (excludedDirectories.some((root) => isUnderPath(realDirectory, root)))
+      return { skills, diagnostics };
     if (visitedDirectories.has(realDirectory)) return { skills, diagnostics };
     visitedDirectories.add(realDirectory);
     entries = readdirSync(dir, { withFileTypes: true });
@@ -229,6 +231,7 @@ function loadSkillsFromDirInternal(
         source,
         false,
         visitedDirectories,
+        excludedDirectories,
       );
       skills.push(...subResult.skills);
       diagnostics.push(...subResult.diagnostics);
@@ -302,8 +305,9 @@ function isUnderPath(target: string, root: string): boolean {
  * Sources are loaded in precedence order (later sources override earlier):
  * 1. Bundled skills (from this package)
  * 2. User/managed skills (<stateDir>/skills)
- * 3. Project skills (<cwd>/.elizaos/skills)
- * 4. Explicit skill paths
+ * 3. Curated active skills (<stateDir>/skills/curated/active)
+ * 4. Project skills (<cwd>/.elizaos/skills)
+ * 5. Explicit skill paths
  *
  * @param options - Loading options
  * @returns Loaded skills and diagnostics
@@ -318,7 +322,7 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
     managedSkillsDir,
   } = options;
 
-  const resolvedAgentDir = agentDir ?? DEFAULT_AGENT_DIR;
+  const resolvedAgentDir = agentDir ?? resolveStateDir();
   const resolvedManagedDir =
     managedSkillsDir ?? join(resolvedAgentDir, "skills");
   const projectSkillsDir = resolve(cwd, CONFIG_DIR_NAME, "skills");
@@ -372,9 +376,27 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
     if (resolvedBundledDir) {
       addSkills(loadSkillsFromDirInternal(resolvedBundledDir, "bundled", true));
     }
-    addSkills(loadSkillsFromDirInternal(resolvedManagedDir, "managed", true));
+    const curatedDir = dirname(getCuratedActiveDir(resolvedAgentDir));
+    const excludedManagedRoots = [
+      curatedDir,
+      join(resolvedManagedDir, "curated"),
+    ].map((root) => (existsSync(root) ? realpathSync(root) : resolve(root)));
+    // Curated namespaces have a separate activation step; managed recursion cannot select them.
     addSkills(
-      loadSkillsFromDirInternal(getCuratedActiveDir(), "curated", true),
+      loadSkillsFromDirInternal(
+        resolvedManagedDir,
+        "managed",
+        true,
+        new Set(),
+        excludedManagedRoots,
+      ),
+    );
+    addSkills(
+      loadSkillsFromDirInternal(
+        getCuratedActiveDir(resolvedAgentDir),
+        "curated",
+        true,
+      ),
     );
     addSkills(loadSkillsFromDirInternal(projectSkillsDir, "project", true));
   }

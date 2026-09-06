@@ -427,3 +427,84 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     },
   );
 });
+
+describe("native-rate streaming playback", () => {
+  it.each([16_000, 44_100, 48_000])(
+    "preserves tone duration, pitch, and chunk continuity at %i Hz",
+    async (rate) => {
+      const source = Float32Array.from(
+        { length: 1600 },
+        (_, index) => 0.5 * Math.sin((2 * Math.PI * 400 * index) / 16_000),
+      );
+      async function render(chunkSize: number) {
+        const ctx = new FakePlaybackAudioContext(rate);
+        const drained = vi.fn();
+        const playback = await createVoiceSessionPlayback({
+          createAudioContext: () => ctx,
+          onDrained: drained,
+        });
+        await playback.unlock();
+        for (let offset = 0; offset < source.length; offset += chunkSize) {
+          playback.enqueue(
+            floatPcmToInt16Bytes(source.subarray(offset, offset + chunkSize)),
+          );
+        }
+        const expectedLength = Math.ceil((source.length * rate) / 16_000);
+        const output = scriptNodeOf(ctx).render(expectedLength);
+        expect(drained).not.toHaveBeenCalled();
+        expect(scriptNodeOf(ctx).render(1)[0]).toBe(0);
+        expect(drained).toHaveBeenCalledOnce();
+        await playback.stop();
+        return output;
+      }
+      const whole = await render(source.length);
+      const chunked = await render(7);
+      expect(chunked).toEqual(whole);
+      let rising = 0;
+      for (let index = 1; index < whole.length; index += 1) {
+        if (whole[index - 1] <= 0 && whole[index] > 0) rising += 1;
+      }
+      expect(rising).toBe(40);
+    },
+  );
+
+  it.each([44_100, 48_000])(
+    "resets interpolation on barge-in and emits a final single sample at %i Hz",
+    async (rate) => {
+      const ctx = new FakePlaybackAudioContext(rate);
+      const playback = await createVoiceSessionPlayback({
+        createAudioContext: () => ctx,
+      });
+      playback.enqueue(pcmFrame(-1, 1));
+      playback.flush();
+      playback.enqueue(pcmFrame(1, 1));
+      await playback.unlock();
+      const count = Math.ceil(rate / 16_000);
+      expect(Array.from(scriptNodeOf(ctx).render(count + 1))).toEqual([
+        ...new Array(count).fill(1),
+        0,
+      ]);
+      await playback.stop();
+    },
+  );
+
+  it("sends context-rate PCM to the worklet after unlock", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const ctx = new FakePlaybackWorkletAudioContext(48_000);
+    const playback = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+    });
+    playback.enqueue(pcmFrame(0.5, 160));
+    const node = FakeVoiceAudioWorkletNode.instances[0];
+    expect(node.postedMessages).toEqual([]);
+    await playback.unlock();
+    const message = node.postedMessages[0] as {
+      type: string;
+      pcm: Float32Array;
+    };
+    expect(message.type).toBe("pcm");
+    expect(message.pcm.length).toBe(480);
+    for (const sample of message.pcm) expect(sample).toBeCloseTo(0.5, 4);
+    await playback.stop();
+  });
+});

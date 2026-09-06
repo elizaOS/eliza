@@ -126,16 +126,16 @@ export function clearSkillsDirCache(): void {
  *
  * Honors the state directory resolved by @elizaos/core.
  */
-function resolveCuratedBaseDir(): string {
-  return join(resolveStateDir(), "skills", "curated");
+function resolveCuratedBaseDir(stateDir = resolveStateDir()): string {
+  return join(stateDir, "skills", "curated");
 }
 
 /**
  * Absolute path to the curated **active** skills directory. Skills here are
  * loaded into the runtime alongside bundled and managed skills.
  */
-export function getCuratedActiveDir(): string {
-  return join(resolveCuratedBaseDir(), "active");
+export function getCuratedActiveDir(stateDir?: string): string {
+  return join(resolveCuratedBaseDir(stateDir), "active");
 }
 
 /**

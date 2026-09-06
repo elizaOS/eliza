@@ -8,7 +8,7 @@ import type { Attachment } from "discord.js";
 import { logger } from "../src/logger";
 import { VoiceMessageHandler } from "../src/voice-message-handler";
 
-// Store original env
+const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
 function makeAttachment(overrides: Partial<Attachment> = {}): Attachment {
@@ -25,6 +25,7 @@ function makeAttachment(overrides: Partial<Attachment> = {}): Attachment {
 describe("VoiceMessageHandler storage integration", () => {
   afterEach(() => {
     process.env = { ...originalEnv };
+    globalThis.fetch = originalFetch;
     mock.restore();
   });
 

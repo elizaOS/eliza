@@ -1,8 +1,9 @@
-// Reconciles operator index behavior for Kubernetes cloud services.
+/** Registers admission, reconciliation, and deployment watches for managed Server resources. */
 import { a, Capability, K8s, Log } from "pepr";
 import { applyResources } from "./controller/generators";
-import { Server, type ServerPhase } from "./crd/generated/server-v1alpha1";
+import { Server } from "./crd/generated/server-v1alpha1";
 import { validator } from "./crd/validator";
+import { DeploymentStatusTracker } from "./deployment-status";
 import { finalizer, patchServerStatus, reconciler } from "./reconciler";
 import { setServerState } from "./redis";
 import "./crd/register";
@@ -28,10 +29,18 @@ When(Server)
   })
   .Finalize(async (instance) => {
     await finalizer(instance);
-    if (instance.metadata?.name) lastPhase.delete(instance.metadata.name);
+    if (instance.metadata?.name) {
+      deploymentStatus.forget(
+        instance.metadata.name,
+        instance.metadata.namespace ?? "eliza-agents",
+      );
+    }
   });
 
-const lastPhase = new Map<string, string>();
+const deploymentStatus = new DeploymentStatusTracker(
+  setServerState,
+  patchServerStatus,
+);
 
 function hasStatus(error: unknown, status: number): boolean {
   return (
@@ -46,7 +55,7 @@ When(a.Deployment)
   .IsUpdated()
   .InNamespace("eliza-agents")
   .WithLabel("eliza.ai/managed-by", "server-operator")
-  .Watch(async (deploy) => {
+  .Reconcile(async (deploy) => {
     const serverName = deploy.metadata?.labels?.["eliza.ai/server"];
     if (!serverName) return;
 
@@ -54,26 +63,7 @@ When(a.Deployment)
     const ready = deploy.status?.readyReplicas ?? 0;
     const ns = deploy.metadata?.namespace ?? "eliza-agents";
 
-    let phase: ServerPhase;
-    if (replicas === 0) phase = "ScaledDown";
-    else if (ready > 0) phase = "Running";
-    else phase = "Pending";
-
-    if (lastPhase.get(serverName) === phase) return;
-    lastPhase.set(serverName, phase);
-
-    Log.info(
-      `Server ${serverName}: phase → ${phase} (replicas=${replicas}, ready=${ready})`,
-    );
-
-    const url = `http://${serverName}.${ns}.svc:3000`;
-    await setServerState(serverName, phase.toLowerCase(), url);
-
-    await patchServerStatus(serverName, ns, {
-      phase,
-      replicas: ready,
-      lastActivity: new Date().toISOString(),
-    });
+    await deploymentStatus.update(serverName, ns, replicas, ready);
   });
 
 // Self-healing: re-deploy Deployments if deleted externally
