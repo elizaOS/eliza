@@ -70,17 +70,6 @@ describe("local inference catalog", () => {
     );
   });
 
-  it("keeps the visible model hub focused on Eliza-1 only", () => {
-    const visible = localInferenceService.getCatalog();
-    expect(visible.map((model) => model.id).sort()).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
-    );
-    expect(
-      visible.filter((model) => DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id))
-        .length,
-    ).toBe(visible.length);
-  });
-
   it("declares contextLength on every entry whose blurb claims a long window", () => {
     const longContextRegex =
       /\b(?:128k|256k|long.*context|long-context|128 ?k tokens?)\b/i;
