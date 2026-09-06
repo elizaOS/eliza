@@ -302,6 +302,7 @@ async function parseSettlementFenceResponse(response: Response): Promise<Settlem
     }
     return value as SettlementFenceResponse;
   } catch (error) {
+    // error-policy:J2 preserve malformed acknowledgement details in the typed transport failure.
     // A committed transition can lose its response. Treat malformed 2xx as
     // acknowledgement ambiguity so the caller replays the monotonic request.
     throw new InferenceAdmissionGateUnavailableError(
@@ -957,6 +958,7 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
         AbortSignal.timeout(SETTLEMENT_FENCE_GATE_TIMEOUT_MS),
       );
     } catch (error) {
+      // error-policy:J2 retry the idempotent fence, then rethrow with the last acknowledgement failure.
       lastAmbiguousError = error;
       if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
       break;
@@ -980,6 +982,7 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
       lease.estimatedCostUsd = Math.max(lease.estimatedCostUsd, payload.estimatedCostUsd);
       return;
     } catch (error) {
+      // error-policy:J2 retry the idempotent fence, then rethrow with the last acknowledgement failure.
       lastAmbiguousError = error;
       if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
       break;
