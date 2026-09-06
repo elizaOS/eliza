@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setNavigationConstraint } from "./navigation-execution.js";
 import { createViewsAction, createViewsAliasAction } from "./views.js";
 import { createViewsClient, type ViewSummary } from "./views-client.js";
+import { runViewsList } from "./views-list.js";
 import { runViewsShow } from "./views-show.js";
 
 let server: Server;
@@ -100,6 +101,27 @@ function turn<T>(run: () => T, disposition: "allow" | "deny" = "allow"): T {
 }
 
 describe("navigation execution policy", () => {
+	it("keeps caller-filtered catalog absence distinct from a global existence or role claim", async () => {
+		const listed = await runViewsList({ client: createViewsClient() });
+		const missing = await turn(() =>
+			show({ options: { ...options, view: "restricted-archive" } }),
+		);
+		expect(listed.success).toBe(true);
+		expect(listed.data?.views).toMatchObject([{ id: "calendar" }]);
+		expect(missing.success).toBe(false);
+		expect(missing.data?.navigation).toMatchObject({ status: "not-found" });
+		// This wire metadata reaches model continuation alongside the authorized
+		// rows. A missing target cannot acquire a global or authorization cause.
+		for (const result of [listed, missing]) {
+			expect(result.data?.catalogScope).toEqual({
+				visibility: "caller-authorized",
+				missingView: "unavailable-to-caller",
+				missingViewCause: "unknown",
+			});
+			expect(result.text).toContain(JSON.stringify(result.data?.catalogScope));
+		}
+		expect(posts).toEqual([]);
+	});
 	it("rejects planner arguments that attempt to override a forbidden turn", async () => {
 		const result = await turn(() => show(), "deny");
 		expect(posts).toEqual([]);

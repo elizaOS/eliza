@@ -27,6 +27,10 @@ import {
 	navigationDispatchBlock,
 	navigationRequestSignal,
 } from "./navigation-execution.js";
+import {
+	CALLER_VIEW_CATALOG_SCOPE,
+	VIEW_CATALOG_SCOPE_CONTEXT,
+} from "./view-catalog-scope.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import { isRealtimeVoiceTurn } from "./view-delivery.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
@@ -731,7 +735,7 @@ export async function runViewsShow({
 	}
 
 	if (resolution.kind === "none") {
-		const text = `No view matches ${describeTargetReference(target)}. Try \`action=list\` to see available views.`;
+		const text = `No view matches ${describeTargetReference(target)} in the caller-authorized catalog. ${VIEW_CATALOG_SCOPE_CONTEXT} Try \`action=list\` to see available views.`;
 		return {
 			success: false,
 			text,
@@ -740,6 +744,7 @@ export async function runViewsShow({
 			data: {
 				target: targetReferenceLogView(target),
 				navigation: receipt("not-found", null),
+				catalogScope: CALLER_VIEW_CATALOG_SCOPE,
 			},
 		};
 	}
