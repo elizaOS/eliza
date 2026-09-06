@@ -153,4 +153,7 @@ export { MIN_PASSWORD_LENGTH } from "./archive-format.js";
 export { assemblePayload } from "./archive-writer.js";
 export { mapToCharacter } from "./character-mapper.js";
 export { tierMemories } from "./memory-tiering.js";
-export { readOcAgentHome } from "./openclaw-reader.js";
+export {
+  MigrationSourceReadError,
+  readOcAgentHome,
+} from "./openclaw-reader.js";

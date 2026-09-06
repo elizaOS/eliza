@@ -5,11 +5,17 @@
  * awareness preference order, daily/named memory classification and ordering,
  * non-file and non-markdown skips, CRLF normalization at the read boundary,
  * secrets-dir flagging, sqlite-store detection plus the detect-vs-ingest
- * warning contract, and the key-classification predicates.
+ * warning contract, the key-classification predicates, and the
+ * unreadable-vs-absent optional-source disposition (absent tolerated;
+ * wrong-type directory, FIFO, symlink-through-a-file (ENOTDIR), and EACCES
+ * rejected with the cause preserved).
  *
  * Drives the real exported reader against real temp directories (and real
- * sqlite bytes when this runtime exposes node:sqlite) — no mocks.
+ * sqlite bytes when this runtime exposes node:sqlite) — no mocks; unreadable
+ * cases use real filesystem shapes (directory, FIFO, symlink-through-a-file,
+ * chmod 000).
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -20,10 +26,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   isPlaybookMemory,
   isSelfMemory,
+  MigrationSourceReadError,
   PLAYBOOK_MEMORY_KEYS,
   readOcAgentHome,
   SELF_MEMORY_KEYS,
 } from "./openclaw-reader.js";
+
+/** Root bypasses discretionary read bits, so the EACCES case is uid-gated. */
+const NON_ROOT =
+  typeof process.getuid === "function" ? process.getuid() !== 0 : false;
+
+/** `mkfifo` is POSIX-only, so the FIFO case is skipped on Windows runners. */
+const POSIX = process.platform !== "win32";
 
 const made: string[] = [];
 
@@ -401,6 +415,136 @@ describe("sqlite memory stores", () => {
       expect(source.warnings.join("\n")).not.toContain("other.sqlite");
     },
   );
+});
+
+describe("unreadable optional sources fail before archive creation", () => {
+  it("still tolerates a genuinely absent optional persona file", () => {
+    const home = makeHome();
+    // MEMORY.md present, SOUL/IDENTITY/AGENTS/USER/TOOLS all absent (ENOENT).
+    write(home, "MEMORY.md", "curated-only");
+    const source = readOcAgentHome(home, "kai");
+    expect(source.curatedMemory).toBe("curated-only");
+    expect(source.soul).toBeUndefined();
+    expect(source.identity).toBeUndefined();
+    expect(source.agents).toBeUndefined();
+    expect(source.user).toBeUndefined();
+    expect(source.tools).toBeUndefined();
+    // A curated home is not "empty", so no persona-missing warning fires.
+    expect(source.warnings.some((w) => w.includes("No persona"))).toBe(false);
+  });
+
+  it("rejects a persona path that exists but is the wrong type (directory)", () => {
+    const home = makeHome();
+    write(home, "MEMORY.md", "curated");
+    // SOUL.md is a directory, not a file: existing-but-wrong-type must fail
+    // rather than silently classify the persona as missing.
+    fs.mkdirSync(path.join(home, "SOUL.md"));
+    let caught: unknown;
+    try {
+      readOcAgentHome(home, "kai");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(MigrationSourceReadError);
+    const error = caught as MigrationSourceReadError;
+    expect(error.context.path).toBe(path.join(home, "SOUL.md"));
+    expect(error.context.operation).toBe("read");
+    // The type-guard rejects before readFileSync; the cause names the wrong type.
+    expect((error.cause as Error).message).toContain("directory");
+    expect((error.cause as Error).message).toContain("regular file");
+  });
+
+  it.runIf(POSIX)(
+    "rejects a FIFO persona source instead of blocking migrate-agent",
+    () => {
+      const home = makeHome();
+      write(home, "MEMORY.md", "curated");
+      // A FIFO SOUL.md: readFileSync on a FIFO blocks forever waiting for a
+      // writer, hanging migrate-agent. The type-guard must reject it up front
+      // (regression for the reopened wrong-type case in #30754).
+      const soul = path.join(home, "SOUL.md");
+      execFileSync("mkfifo", [soul]);
+      let caught: unknown;
+      try {
+        readOcAgentHome(home, "kai");
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(MigrationSourceReadError);
+      const error = caught as MigrationSourceReadError;
+      expect(error.context.path).toBe(soul);
+      expect(error.context.operation).toBe("read");
+      expect((error.cause as Error).message).toContain("FIFO");
+      expect((error.cause as Error).message).toContain("regular file");
+    },
+  );
+
+  it("rejects an existing-but-unreadable persona path and preserves the cause (ENOTDIR)", () => {
+    const home = makeHome();
+    write(home, "MEMORY.md", "curated");
+    // A SOUL.md symlink whose target traverses a regular file yields a
+    // deterministic non-ENOENT errno (ENOTDIR) on stat regardless of the test
+    // uid: the path exists but cannot be inspected.
+    write(home, "blocker", "i am a file, not a directory");
+    fs.symlinkSync(
+      path.join(home, "blocker", "inner"),
+      path.join(home, "SOUL.md"),
+    );
+    let caught: unknown;
+    try {
+      readOcAgentHome(home, "kai");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(MigrationSourceReadError);
+    const error = caught as MigrationSourceReadError;
+    expect(error.context.path).toBe(path.join(home, "SOUL.md"));
+    // The underlying fs error is preserved as the cause, not discarded.
+    expect(error.cause).toBeInstanceOf(Error);
+    expect((error.cause as NodeJS.ErrnoException).code).toBe("ENOTDIR");
+  });
+
+  it.runIf(NON_ROOT)(
+    "rejects an EACCES-unreadable persona file and preserves the cause",
+    () => {
+      const home = makeHome();
+      write(home, "MEMORY.md", "curated");
+      const soul = path.join(home, "SOUL.md");
+      write(home, "SOUL.md", "secret persona");
+      fs.chmodSync(soul, 0o000);
+      try {
+        let caught: unknown;
+        try {
+          readOcAgentHome(home, "kai");
+        } catch (err) {
+          caught = err;
+        }
+        expect(caught).toBeInstanceOf(MigrationSourceReadError);
+        const error = caught as MigrationSourceReadError;
+        expect(error.context.path).toBe(soul);
+        expect(error.context.operation).toBe("read");
+        expect((error.cause as NodeJS.ErrnoException).code).toBe("EACCES");
+      } finally {
+        // Restore so afterEach cleanup can remove the temp home.
+        fs.chmodSync(soul, 0o644);
+      }
+    },
+  );
+
+  it("still surfaces the SQLite compatibility warning alongside the read split", () => {
+    const home = makeHome();
+    write(home, "SOUL.md", "soul");
+    // A non-database .sqlite store: readable-but-uningestable memory must keep
+    // emitting the explicit compatibility warning, unchanged by the new
+    // unreadable-source disposition.
+    write(home, "memory/broken.sqlite", "this is not a database");
+    const source = readOcAgentHome(home, "kai");
+    expect(source.soul).toBe("soul");
+    expect(source.sqliteUningested).toBe(true);
+    expect(source.warnings).toHaveLength(1);
+    expect(source.warnings[0]).toContain("DETECTED 1 sqlite memory store(s)");
+    expect(source.warnings[0]).toContain("could NOT read");
+  });
 });
 
 describe("key classification predicates", () => {
