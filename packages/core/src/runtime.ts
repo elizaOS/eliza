@@ -6398,10 +6398,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const raw = this.getSetting("ELIZA_BRAIN_PROVIDER");
 		const override = typeof raw === "string" ? raw.trim() : "";
 		if (!override) return undefined;
-		const hasHandler = TEXT_GENERATION_MODEL_KEYS.some((key) =>
-			this.models.get(key)?.some((m) => m.provider === override),
-		);
-		return hasHandler ? override : undefined;
+		return override;
 	}
 
 	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
@@ -7093,43 +7090,17 @@ export class AgentRuntime implements IAgentRuntime {
 		// Runtime preferred-provider override: when the caller did not pin a
 		// provider and this is a text-generation model, honor the runtime-selected
 		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
-		// between loaded providers with no restart. It is a hint only — if that
-		// provider resolves no handlers for this model the default chain is used
-		// instead (see resolveTextProviderOverride), so the override can never
-		// strand the brain. Unset → byte-identical to prior behavior.
+		// between loaded providers with no restart. A selection is a strict pin:
+		// failure or missing registration must not silently switch providers.
 		const providerOverride =
 			provider === undefined &&
 			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
 				? this.resolveTextProviderOverride()
 				: undefined;
-		const overrideResolved = providerOverride
-			? this.resolveModelRegistrations(requestedModelKey, providerOverride)
-			: [];
-		// The override provider goes FIRST, but the remaining default-chain
-		// registrations stay behind it as the failover tail. Without the tail a
-		// rate-limited override provider strands the brain (its throw has no next
-		// registration to fall to) even though healthy backup providers are
-		// registered — violating the "never strands the brain" contract of
-		// resolveTextProviderOverride. The failover loop below still only
-		// advances on fallback-class errors, so a healthy pinned provider keeps
-		// winning every call.
-		const resolvedModels =
-			overrideResolved.length > 0
-				? [
-						...overrideResolved,
-						...this.resolveModelRegistrations(
-							requestedModelKey,
-							requestedProvider,
-						).filter(
-							(candidate) =>
-								!overrideResolved.some(
-									(chosen) =>
-										chosen.handler === candidate.handler &&
-										chosen.modelKey === candidate.modelKey,
-								),
-						),
-					]
-				: this.resolveModelRegistrations(requestedModelKey, requestedProvider);
+		const resolvedModels = this.resolveModelRegistrations(
+			requestedModelKey,
+			providerOverride ?? requestedProvider,
+		);
 		if (resolvedModels.length === 0) {
 			this.throwNoModelHandler(requestedModelKey);
 		}
