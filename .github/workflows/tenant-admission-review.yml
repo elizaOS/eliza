@@ -1,5 +1,7 @@
 name: Tenant PostgreSQL admission proof
 on:
+  push:
+    branches: [fix/review-tenant-boot-30781]
   workflow_dispatch:
 permissions:
   contents: read
