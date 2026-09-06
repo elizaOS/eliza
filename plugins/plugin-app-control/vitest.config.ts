@@ -170,6 +170,10 @@ export default defineConfig({
 			// "<coreSrc>/index.node.ts/client-public" (ENOTDIR) instead of the
 			// subpath source module.
 			{
+				find: /^@elizaos\/core\/errors$/,
+				replacement: path.join(coreSrc, "errors.ts"),
+			},
+			{
 				find: /^@elizaos\/core\/client-public$/,
 				replacement: path.join(coreSrc, "client-public.ts"),
 			},
