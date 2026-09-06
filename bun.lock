@@ -217,7 +217,7 @@
         "@capacitor/preferences": "8.0.1",
         "@capacitor/push-notifications": "8.1.2",
         "@capacitor/share": "^8.0.0",
-        "@capacitor/status-bar": "8.0.2",
+        "@capacitor/status-bar": "8.0.3",
         "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-agent": "workspace:*",
         "@elizaos/capacitor-appblocker": "workspace:*",
@@ -3880,7 +3880,7 @@
 
     "@capacitor/share": ["@capacitor/share@8.0.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-3cSBKBCJVon54rKDROP2rqGyeGks4pBh9TbaEk9S375Kbek/ZHe72N50zIa0Vn9Eac/SuhwgehO/mmA4CsUOiw=="],
 
-    "@capacitor/status-bar": ["@capacitor/status-bar@8.0.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-WXs8YB8B9eEaPZz+bcdY6t2nForF1FLoj/JU0Dl9RRgQnddnS98FEEyDooQhaY7wivr000j4+SC1FyeJkrFO7A=="],
+    "@capacitor/status-bar": ["@capacitor/status-bar@8.0.3", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-csSpfNeN49Hx9JaQBSJEIiEbOLtXg3kcc2IpScq2fu5L520h3AWEvsxoH8Srk1jxfRKepaJ4S4sqSC3foI4AgA=="],
 
     "@capacitor/synapse": ["@capacitor/synapse@1.0.4", "", {}, "sha512-/C1FUo8/OkKuAT4nCIu/34ny9siNHr9qtFezu4kxm6GY1wNFxrCFWjfYx5C1tUhVGz3fxBABegupkpjXvjCHrw=="],
 
