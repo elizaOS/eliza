@@ -241,7 +241,7 @@ export function getConnectorModeConfigFormHint(
 
 /**
  * Channel-mode classification for connectors with NO declared mode list —
- * the single-credential-form connectors (bluesky, matrix, msteams, …) whose
+ * the single-credential-form connectors (bluesky, matrix, …) whose
  * whole setup surface belongs to one lens. Keyed by normalized connector id;
  * a connector plugin can register its own via
  * {@link registerConnectorChannelModeFallback}. Connectors absent from both
@@ -506,19 +506,14 @@ for (const connectorId of [
   "farcaster",
   "nostr",
   "matrix",
-  "msteams",
-  "mattermost",
   "google-chat",
   "feishu",
   "line",
-  "zalo",
-  "tlon",
-  "nextcloud-talk",
   "twitch",
 ]) {
   registerConnectorChannelModeFallback(connectorId, "bot");
 }
 
-for (const connectorId of ["instagram", "zalouser", "google"]) {
+for (const connectorId of ["instagram", "google"]) {
   registerConnectorChannelModeFallback(connectorId, "delegate");
 }

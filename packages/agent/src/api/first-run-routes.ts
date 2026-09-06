@@ -6,9 +6,10 @@
  * The POST handler is the single writer that turns the onboarding form into a
  * persisted `ElizaConfig`: character persona, UI preset/avatar/voice/theme,
  * deployment target and service routing, provider credentials, connectors
- * (Telegram/Discord/WhatsApp/Twilio/Blooio), GitHub token, inventory RPC keys,
- * sandbox mode, and the `meta.firstRunComplete` marker; it also mirrors the
- * character onto the live runtime and the agent DB row.
+ * (Telegram/Discord/WhatsApp; Twilio credentials feed the first-party
+ * voice/SMS actions, not a registry transport — #24373), GitHub token,
+ * inventory RPC keys, sandbox mode, and the `meta.firstRunComplete` marker; it
+ * also mirrors the character onto the live runtime and the agent DB row.
  *
  * Auth boundary: these routes are reachable before first-run state exists.
  * `GET /api/wallet/keys` self-gates to 403 once first-run has persisted, and
@@ -632,7 +633,7 @@ export async function handleFirstRunRoutes(
       process.env.GITHUB_TOKEN = body.githubToken.trim();
     }
 
-    // ── Connectors (Telegram, Discord, WhatsApp, Twilio, Blooio) ────────
+    // ── Connectors (Telegram, Discord, WhatsApp; Twilio env passthrough) ──
     if (!config.connectors) config.connectors = {};
     const explicitConnectors = asRecord(body.connectors);
     if (explicitConnectors) {
@@ -673,6 +674,10 @@ export async function handleFirstRunRoutes(
         sessionPath: body.whatsappSessionPath.trim(),
       };
     }
+    // Twilio credentials feed the first-party personal-assistant voice/SMS
+    // actions and the @elizaos/plugin-phone transport — keep this first-run
+    // path even though the external @elizaos/plugin-twilio registry entry is
+    // unregistered (#24373).
     if (
       body.twilioAccountSid &&
       typeof body.twilioAccountSid === "string" &&
@@ -702,32 +707,6 @@ export async function handleFirstRunRoutes(
           body.twilioPhoneNumber as string
         ).trim();
       }
-    }
-    if (
-      body.blooioApiKey &&
-      typeof body.blooioApiKey === "string" &&
-      body.blooioApiKey.trim()
-    ) {
-      if (!config.env) config.env = {};
-      const trimmedKey = (body.blooioApiKey as string).trim();
-      (config.env as Record<string, string>).BLOOIO_API_KEY = trimmedKey;
-      process.env.BLOOIO_API_KEY = trimmedKey;
-
-      const blooioConnector: Record<string, string> = { apiKey: trimmedKey };
-
-      if (
-        body.blooioPhoneNumber &&
-        typeof body.blooioPhoneNumber === "string" &&
-        body.blooioPhoneNumber.trim()
-      ) {
-        const trimmedPhone = (body.blooioPhoneNumber as string).trim();
-        (config.env as Record<string, string>).BLOOIO_PHONE_NUMBER =
-          trimmedPhone;
-        process.env.BLOOIO_PHONE_NUMBER = trimmedPhone;
-        blooioConnector.fromNumber = trimmedPhone;
-      }
-
-      config.connectors.blooio = blooioConnector;
     }
 
     const explicitFeatures = asRecord(body.features);

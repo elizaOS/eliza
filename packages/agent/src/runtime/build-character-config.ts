@@ -153,10 +153,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "SLACK_BOT_TOKEN",
     "SLACK_APP_TOKEN",
     "SLACK_USER_TOKEN",
-    "MSTEAMS_APP_ID",
-    "MSTEAMS_APP_PASSWORD",
-    "MATTERMOST_BOT_TOKEN",
-    "MATTERMOST_BASE_URL",
     // Matrix connector — only the genuine credentials live here (redactable
     // secrets). The homeserver URL, user/room/device IDs, the verify-allowlist,
     // and the behaviour flags are PUBLIC identifiers and are bridged as plain

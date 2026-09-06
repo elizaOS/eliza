@@ -20,10 +20,7 @@ export const CONNECTOR_SECRET_FIELDS: Readonly<
   telegram: ["botToken"],
   telegramAccount: ["appHash"],
   slack: ["botToken", "appToken", "userToken", "signingSecret"],
-  msteams: ["appPassword"],
-  mattermost: ["botToken"],
   googlechat: ["serviceAccountKey"],
-  blooio: ["apiKey", "webhookSecret"],
 };
 
 export function connectorVaultKey(

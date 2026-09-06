@@ -33,7 +33,6 @@ import {
   DiscordLocalConfigSchema,
   GoogleChatConfigSchema,
   IMessageConfigSchema,
-  MSTeamsConfigSchema,
   NamedRtmpSourceSchema,
   PumpfunStreamConfigSchema,
   SlackConfigSchema,
@@ -161,7 +160,6 @@ const ConnectorsSchema = z
     googlechat: GoogleChatConfigSchema.optional(),
     slack: SlackConfigSchema.optional(),
     imessage: IMessageConfigSchema.optional(),
-    msteams: MSTeamsConfigSchema.optional(),
     twitch: TwitchConnectorConfigSchema.optional(),
   })
   .passthrough() // Allow extension connector configs (nostr, matrix, zalo, etc.)

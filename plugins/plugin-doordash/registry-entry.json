@@ -10,9 +10,11 @@
     "features.doordash": {
       "type": "boolean",
       "required": false,
+      "sensitive": false,
       "default": false,
       "label": "Enable DoorDash",
-      "help": "Enable DoorDash through a configured MCP adapter."
+      "help": "Enable the DoorDash food-ordering integration (alternatively set MCP_SERVER_DOORDASH_URL).",
+      "advanced": false
     }
   },
   "render": {
@@ -20,7 +22,7 @@
     "pinTo": [],
     "style": "card",
     "icon": "ShoppingBag",
-    "group": "connectors",
+    "group": "feature-other",
     "groupOrder": 30,
     "actions": ["enable", "configure"]
   },

@@ -13,7 +13,7 @@ export default buildConnectorCertificationScenario({
     {
       type: "connectorStatus",
       connector: "imessage",
-      provider: "BlueBubbles / Blooio",
+      provider: "iMessage bridge",
       state: "helper-disconnected",
     },
   ],

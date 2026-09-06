@@ -25,13 +25,10 @@ describe("CONNECTOR_ENV_MAP", () => {
   it("exports a field-to-env mapping for every supported connector", () => {
     expect(Object.keys(CONNECTOR_ENV_MAP).sort()).toEqual(
       [
-        "blooio",
         "discord",
         "discordLocal",
         "googlechat",
         "imessage",
-        "mattermost",
-        "msteams",
         "slack",
         "telegram",
         "telegramAccount",
@@ -309,10 +306,7 @@ describe("collectConnectorEnvVars", () => {
       telegramAccount: { phone: "+1555", appId: 1234 },
       slack: { botToken: "xoxb", appToken: "xapp" },
       imessage: { cliPath: "/usr/bin/imsg", allowFrom: ["a", "b"] },
-      msteams: { appId: "teams-id", appPassword: "teams-pw" },
-      mattermost: { botToken: "mm-token", baseUrl: "https://mm.example" },
       googlechat: { serviceAccountKey: "{}" },
-      blooio: { apiKey: "bloo", fromNumber: "+100", webhookPort: 8080 },
     });
 
     expect(env.TELEGRAM_BOT_TOKEN).toBe("tg");
@@ -322,14 +316,7 @@ describe("collectConnectorEnvVars", () => {
     expect(env.SLACK_APP_TOKEN).toBe("xapp");
     expect(env.IMESSAGE_CLI_PATH).toBe("/usr/bin/imsg");
     expect(env.IMESSAGE_ALLOW_FROM).toBe("a,b");
-    expect(env.MSTEAMS_APP_ID).toBe("teams-id");
-    expect(env.MSTEAMS_APP_PASSWORD).toBe("teams-pw");
-    expect(env.MATTERMOST_BOT_TOKEN).toBe("mm-token");
-    expect(env.MATTERMOST_BASE_URL).toBe("https://mm.example");
     expect(env.GOOGLE_CHAT_SERVICE_ACCOUNT_KEY).toBe("{}");
-    expect(env.BLOOIO_API_KEY).toBe("bloo");
-    expect(env.BLOOIO_PHONE_NUMBER).toBe("+100");
-    expect(env.BLOOIO_WEBHOOK_PORT).toBe("8080");
   });
 
   it("lets WhatsApp sessionPath overwrite authDir, then the first enabled account overwrite both", () => {
