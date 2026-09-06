@@ -565,11 +565,16 @@ function throwIfDirectCloudDispatchDeadlineElapsed(
 async function directCloudFetch(
   url: string,
   init?: RequestInit,
+  timeoutMs?: number,
 ): Promise<Response> {
   throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
   const transport = desktopHttpTransportForUrl(url);
   if (transport) {
-    return transport.request(url, init ?? {}, undefined);
+    return transport.request(
+      url,
+      init ?? {},
+      timeoutMs === undefined ? undefined : { timeoutMs },
+    );
   }
   return fetchAgentTransport.request(url, init ?? {}, undefined);
 }
@@ -995,7 +1000,11 @@ async function fetchDirectCloudWithTimeout<T>(
 
   try {
     response = await Promise.race([
-      directCloudFetch(url, { ...init, signal: controller.signal }),
+      directCloudFetch(
+        url,
+        { ...init, signal: controller.signal },
+        DIRECT_CLOUD_HTTP_TIMEOUT_MS,
+      ),
       aborted,
     ]);
     // Keep the same request deadline alive until the body is fully consumed.
@@ -3530,18 +3539,27 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       };
     }
 
-    const res = await directCloudFetch(
-      resolveBrowserCloudApiRequestUrl(`${authApiBase}/api/auth/cli-session`),
+    const url = resolveBrowserCloudApiRequestUrl(
+      `${authApiBase}/api/auth/cli-session`,
+    );
+    const result = await fetchDirectCloudWithTimeout(
+      url,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: requestSessionId }),
       },
+      { method: "POST", url },
+      async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        data: response.ok ? recordOrNull(await response.json()) : null,
+      }),
     );
-    if (!res.ok) {
-      return { ok: false, error: `Login failed (${res.status})` };
+    if (!result.ok) {
+      return { ok: false, error: `Login failed (${result.status})` };
     }
-    const responseData = recordOrNull(await res.json());
+    const responseData = result.data;
     const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
     if (!sessionId) {
       return {

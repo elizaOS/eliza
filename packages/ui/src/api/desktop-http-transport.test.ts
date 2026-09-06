@@ -84,6 +84,59 @@ describe("desktopHttpTransportForUrl", () => {
     expect(response?.status).toBe(200);
   });
 
+  it("settles a canceled bridge request and permits a fresh retry", async () => {
+    runtimeMock.isElectrobunRuntime.mockReturnValue(true);
+    const desktopHttpRequest = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise(() => undefined))
+      .mockResolvedValueOnce({ status: 200, body: '{"ready":true}' });
+    bridgeMock.getElectrobunRendererRpc.mockReturnValue({
+      request: { desktopHttpRequest },
+    });
+    const transport = desktopHttpTransportForUrl("https://api.eliza.app");
+    if (!transport) throw new Error("Missing desktop transport");
+    const controller = new AbortController();
+    const result = transport.request(
+      "https://api.eliza.app/api/auth/cli-session",
+      { signal: controller.signal },
+    );
+    const rejection = expect(result).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    controller.abort();
+    await rejection;
+    const response = await transport.request(
+      "https://api.eliza.app/api/auth/cli-session",
+      {},
+    );
+    await expect(response.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("enforces the caller deadline when the native bridge never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      runtimeMock.isElectrobunRuntime.mockReturnValue(true);
+      const desktopHttpRequest = vi.fn(() => new Promise(() => undefined));
+      bridgeMock.getElectrobunRendererRpc.mockReturnValue({
+        request: { desktopHttpRequest },
+      });
+      const transport = desktopHttpTransportForUrl("https://api.eliza.app");
+      if (!transport) throw new Error("Missing desktop transport");
+      const result = transport.request(
+        "https://api.eliza.app/api/auth/cli-session",
+        {},
+        { timeoutMs: 1000 },
+      );
+      const rejection = expect(result).rejects.toMatchObject({
+        name: "TimeoutError",
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("leaves unconfigured local HTTP and HTTPS URLs on the regular fetch path", () => {
     runtimeMock.isElectrobunRuntime.mockReturnValue(true);
 

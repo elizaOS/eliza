@@ -2824,7 +2824,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await act(async () => vi.advanceTimersByTimeAsync(50));
     expect(turn("first-run:cloud-login-waiting")?.text).toContain(
-      "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+      "Preparing Cloud sign-in… Complete sign-in in your browser when it opens. You can retry here if it does not open.",
     );
     expect(turn("first-run:cloud-login-waiting")?.text).toContain(
       "__first_run__:cloud-login:retry=Open sign-in again",
