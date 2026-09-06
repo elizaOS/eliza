@@ -86,7 +86,14 @@ const FILE_ACTIONS: Record<FileOperation, FileHandler> = {
 
 const WORKSPACE_OPERATION_PARAMETERS: Record<FileOperation, readonly string[]> =
   {
-    read: ["file_path", "offset", "limit", "unit", "expectedRevision"],
+    read: [
+      "file_path",
+      "reference",
+      "offset",
+      "limit",
+      "unit",
+      "expectedRevision",
+    ],
     write: ["file_path", "content", "overwrite"],
     edit: [
       "file_path",
@@ -545,6 +552,13 @@ export const fileAction: Action = {
       description: "For action=grep: include 1-based line numbers.",
       required: false,
       schema: { type: "boolean" },
+    },
+    {
+      name: "reference",
+      description:
+        "For action=read, an opaque file reference from a previous read. Requires expectedRevision; omit file_path.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "offset",

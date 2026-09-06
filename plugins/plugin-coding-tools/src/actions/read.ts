@@ -16,6 +16,10 @@ import {
   type State,
 } from "@elizaos/core";
 import {
+  publishFileReadReference,
+  resolveFileReadReference,
+} from "../lib/file-read-reference.js";
+import {
   capTranscriptForChat,
   failureToActionResult,
   fencePreformatted,
@@ -255,11 +259,40 @@ export async function readFileHandler(
       reason: "missing_param",
       message: "no roomId",
     });
-  const filePath = readStringParam(options, "file_path");
+  let filePath = readStringParam(options, "file_path");
+  const reference = readStringParam(options, "reference");
+  const expectedRevision = readStringParam(options, "expectedRevision");
+  if (reference) {
+    if (filePath || !expectedRevision)
+      return failureToActionResult({
+        reason: "invalid_param",
+        message:
+          "A reference read requires expectedRevision and must omit file_path",
+      });
+    try {
+      const locator = await resolveFileReadReference({
+        reference,
+        agentId: runtime.agentId,
+        conversationId,
+      });
+      if (locator.revision !== expectedRevision)
+        return failureToActionResult({
+          reason: "stale_read",
+          message: "The supplied revision does not match the file reference",
+        });
+      filePath = locator.path;
+    } catch {
+      // error-policy:J1 A locator does not disclose existence outside its owner scope.
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: "File reference is unavailable for this conversation",
+      });
+    }
+  }
   if (!filePath)
     return failureToActionResult({
       reason: "missing_param",
-      message: "file_path is required",
+      message: "file_path or reference is required",
     });
   const input = resolveInputPath(runtime, conversationId, filePath);
   if (!input.ok) return failureToActionResult(input.failure);
@@ -325,7 +358,7 @@ export async function readFileHandler(
         message: "byte offset exceeds the file size",
       });
     const currentRevision = fileRevision(before);
-    const expected = readStringParam(options, "expectedRevision");
+    const expected = expectedRevision;
     if (offset > 0 && !expected)
       return failureToActionResult({
         reason: "invalid_param",
@@ -402,13 +435,20 @@ export async function readFileHandler(
       );
     const text = window.content;
     const sliceSha256 = createHash("sha256").update(text).digest("hex");
-    const opaqueRef = `file:${createHash("sha256").update(checked.resolved).digest("hex")}`;
+    const opaqueRef =
+      reference ??
+      (await publishFileReadReference({
+        agentId: runtime.agentId,
+        conversationId,
+        path: checked.resolved,
+        revision: currentRevision,
+      }));
     const readView = buildReadView({
       reference: {
         kind: "file",
         ref: opaqueRef,
         revision: currentRevision,
-        resumability: "non-resumable",
+        resumability: "restart-safe",
       },
       slice: {
         range: {

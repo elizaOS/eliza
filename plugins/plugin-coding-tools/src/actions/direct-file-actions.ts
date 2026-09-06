@@ -24,8 +24,15 @@ export const readAction: Action = {
   parameters: [
     {
       name: "file_path",
-      description: "Absolute file path.",
-      required: true,
+      description: "File path for an initial read; omit when using reference.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "reference",
+      description:
+        "Opaque file reference from a previous read; use instead of file_path with expectedRevision.",
+      required: false,
       schema: { type: "string" },
     },
     {

@@ -6,6 +6,15 @@ Native coding tools (READ, WRITE, EDIT, FILE, SHELL, WORKTREE) for Eliza agents 
 
 Adds filesystem operations, shell command execution, and git worktree management to an Eliza agent. The plugin is **opt-in**: it auto-enables when `config.features.codingTools` (or legacy `config.features["coding-agent"]`) is truthy and the runtime environment supports a terminal (disabled on `ELIZA_BUILD_VARIANT=store` and on iOS; Android only when `ELIZA_RUNTIME_MODE=local-yolo`). All actions are gated to `contexts: ["code", "terminal", "automation"]`. FILE and WORKTREE require `roleGate: minRole=ADMIN`; SHELL requires `roleGate: minRole=OWNER`.
 
+FILE and READ return complete text when `limit` is omitted. A bounded read returns
+an opaque `reference` and revision. Continue with `reference`, `expectedRevision`,
+`offset`, and an optional `limit`; omit `file_path` for reference reads. Locators
+persist privately under the state directory and are scoped to the agent and
+conversation. Every continuation rechecks the current sandbox policy and file
+revision, including after a process restart. A reference does not grant file
+access. Missing, changed, tampered, or inaccessible sources fail without returning
+unseen content. WRITE and EDIT still require a read in their current process.
+
 ## Plugin surface
 
 ### Actions
