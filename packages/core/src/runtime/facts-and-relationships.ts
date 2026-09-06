@@ -765,7 +765,9 @@ async function persistFactsAndRelationships(
 		typeof runtime.createMemory === "function"
 	) {
 		for (const rel of parsed.relationships) {
-			const normalized = normalizeRelationshipForPersistence(rel);
+			const normalized = resolveRedactedRelationshipEnds(
+				normalizeRelationshipForPersistence(rel),
+			);
 			if (!normalized) continue;
 			const sourceEntityId = resolveRelationshipEntityId(
 				normalized.subject,
@@ -892,6 +894,26 @@ function normalizeRelationshipForPersistence(
 	if (isLowSignalCandidate(subject) || isLowSignalCandidate(object))
 		return null;
 	return { subject, predicate, object };
+}
+
+const REDACTION_PLACEHOLDER_PATTERN = /^\[REDACTED:[A-Z0-9_]+\]$/;
+
+/**
+ * The extraction prompt redacts the owner's entity id, and the model echoes
+ * the placeholder back as a relationship end ("[REDACTED:ELIZA_ADMIN_ENTITY_ID]
+ * has_dog Biscuit" was stored live 2026-09-06 05:38). A placeholder subject is
+ * the speaker and becomes "User"; a placeholder object names nobody and drops
+ * the relationship.
+ */
+function resolveRedactedRelationshipEnds(
+	normalized: { subject: string; predicate: string; object: string } | null,
+): { subject: string; predicate: string; object: string } | null {
+	if (!normalized) return null;
+	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.object)) return null;
+	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.subject)) {
+		return { ...normalized, subject: "User" };
+	}
+	return normalized;
 }
 
 function sanitizePersistedFact(runtime: IAgentRuntime, value: string): string {
