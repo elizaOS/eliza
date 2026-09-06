@@ -1,15 +1,83 @@
 /**
  * Exercises both organization limit backends: exact Worker-side Durable Object
  * windows for cache-only inference and the non-Worker Redis decision lease.
- * Backends are mocked only at their transport boundaries so routing,
- * convergence, carried-count flushing, and fail-closed responses remain real.
+ * Transport backends and the primary policy transaction are controlled boundaries;
+ * lease routing, stamp comparison, carry flushing and response handling remain real.
+ * Actual policy locking/publication is covered by organization-quota-policy.pglite
+ * and subscription-reconciliation.pglite integration suites.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
 import * as inferenceAdmissionActual from "../services/inference-admission-gate";
+import * as snapshotActual from "../services/inference-admission-snapshot";
 import * as orgRateLimitsActual from "../services/org-rate-limits";
+import * as policyAdmissionActual from "../services/organization-policy-admission";
+import type {
+  OrganizationPolicyStamp,
+  OrganizationQuotaPolicy,
+} from "../services/organization-quota-policy";
 import * as rateLimitRedisActual from "./rate-limit-redis";
+
+const initialAuthority: OrganizationPolicyStamp = {
+  generation: "1",
+  source: "legacy",
+  sourceSubscriptionId: null,
+  sourceRevision: null,
+  projectionRevision: null,
+  catalogVersion: null,
+  effectiveFrom: "2026-01-01T00:00:00.000Z",
+  effectiveUntil: null,
+};
+let policyAuthority = initialAuthority;
+let policyRpm = 120;
+let policyUnavailable = false;
+let policyReads = 0;
+let regenerations = 0;
+let snapshotWarms = 0;
+let redisMaxRequests: number[] = [];
+function policyFixture(): OrganizationQuotaPolicy {
+  const unavailable = { status: "unavailable" as const, code: "UNUSED_RESOURCE_BOUNDARY" };
+  return {
+    authority: policyAuthority,
+    tier: policyUnavailable
+      ? { status: "unavailable", code: "ORG_RATE_LIMIT_SOURCE_INVALID" }
+      : {
+          status: "available",
+          value: {
+            tierName: "paid",
+            completionsRpm: policyRpm,
+            embeddingsRpm: policyRpm,
+            standardRpm: policyRpm,
+            strictRpm: policyRpm,
+          },
+        },
+    subscriptionFunded: false,
+    tierSourceCreditTotal: "10",
+    observedAt: new Date().toISOString(),
+    balance: { status: "available", value: { balanceUsd: 10, revision: "1" } },
+    overrides: { completionsRpm: null, embeddingsRpm: null, standardRpm: null, strictRpm: null },
+    limits: {
+      characters: unavailable,
+      sandboxes: unavailable,
+      nonEagerSandboxes: unavailable,
+      containers: unavailable,
+      apps: unavailable,
+      storage: unavailable,
+    },
+  };
+}
+mock.module("../services/organization-policy-admission", () => ({
+  ...policyAdmissionActual,
+  withOrganizationPolicyAdmission: async <T>(
+    _org: string,
+    _expected: OrganizationPolicyStamp | undefined,
+    operation: (policy: OrganizationQuotaPolicy) => Promise<T>,
+  ) => {
+    policyReads++;
+    return operation(policyFixture());
+  },
+}));
 
 let redisChecks = 0;
 let redisResult: rateLimitRedisActual.RateLimitResult;
@@ -20,9 +88,12 @@ let admissionRequests: Array<
   Parameters<typeof inferenceAdmissionActual.consumeInferenceRateLimit>[0]
 > = [];
 let tierReads = 0;
-let tierConfig = { windowMs: 60_000, maxRequests: 120 };
+let tierConfig = { windowMs: 60_000, maxRequests: 120, authority: policyAuthority };
 let tierCacheResolution:
-  | { kind: "ready"; config: { windowMs: number; maxRequests: number } }
+  | {
+      kind: "ready";
+      config: { windowMs: number; maxRequests: number; authority: OrganizationPolicyStamp };
+    }
   | {
       kind: "warming" | "unavailable";
       cacheRead: "miss" | "invalid" | "unavailable" | "error";
@@ -57,6 +128,7 @@ mock.module("./rate-limit-redis", () => ({
     options?: { carriedCount?: number },
   ) => {
     redisChecks++;
+    redisMaxRequests.push(maxRequests);
     redisKeys.push(key);
     const carried = options?.carriedCount ?? 0;
     carriedCounts.push(carried);
@@ -89,8 +161,23 @@ mock.module("../services/inference-admission-gate", () => ({
   },
 }));
 
+mock.module("../services/inference-admission-snapshot", () => ({
+  ...snapshotActual,
+  warmInferenceAdmissionSnapshot: async () => {
+    snapshotWarms++;
+    return null;
+  },
+}));
 mock.module("../services/org-rate-limits", () => ({
   ...orgRateLimitsActual,
+  recalculateOrgTier: async () => {
+    regenerations++;
+    tierCacheResolution = {
+      kind: "ready",
+      config: { windowMs: 60_000, maxRequests: policyRpm, authority: policyAuthority },
+    };
+    return policyFixture().tier;
+  },
   getOrgRpmForEndpoint: async () => {
     tierReads++;
     return tierConfig;
@@ -119,8 +206,10 @@ const originalHotPathCaches = process.env.INFERENCE_HOT_PATH_CACHES;
 
 afterAll(() => {
   mock.module("./rate-limit-redis", () => rateLimitRedisActual);
+  mock.module("../services/organization-policy-admission", () => policyAdmissionActual);
   mock.module("../services/inference-admission-gate", () => inferenceAdmissionActual);
   mock.module("../services/org-rate-limits", () => orgRateLimitsActual);
+  mock.module("../services/inference-admission-snapshot", () => snapshotActual);
   for (const [name, value] of [
     ["REDIS_RATE_LIMITING", originalRedisRateLimiting],
     ["INFERENCE_HOT_PATH_CACHES", originalHotPathCaches],
@@ -154,7 +243,14 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     redisCheckWaiters.length = 0;
     simulateWindow = false;
     windowCount = 0;
-    tierConfig = { windowMs: 60_000, maxRequests: 120 };
+    policyAuthority = initialAuthority;
+    policyRpm = 120;
+    policyUnavailable = false;
+    policyReads = 0;
+    regenerations = 0;
+    snapshotWarms = 0;
+    redisMaxRequests = [];
+    tierConfig = { windowMs: 60_000, maxRequests: 120, authority: policyAuthority };
     tierCacheResolution = { kind: "ready", config: tierConfig };
     redisResult = {
       allowed: true,
@@ -184,14 +280,14 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     const org = uid();
     expect(await enforceOrgRateLimit(org, "completions")).toBeNull();
     expect(redisChecks).toBe(1);
-    expect(tierReads).toBe(1);
+    expect(tierReads).toBe(0);
 
     for (let i = 0; i < 5; i++) {
       expect(await enforceOrgRateLimit(org, "completions")).toBeNull();
     }
     // 120 rpm × 5s/60s window → local budget 10; 5 repeats fit in it.
     expect(redisChecks).toBe(1);
-    expect(tierReads).toBe(1);
+    expect(tierReads).toBe(0);
   });
 
   test("cache-only mode uses the cached tier and Durable Object without Redis", async () => {
@@ -225,7 +321,7 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     await expect(result).rejects.toBeInstanceOf(OrgRateLimitCacheNotReadyError);
     await expect(result).rejects.toMatchObject({
       state: "warming",
-      cacheRead: "miss",
+      cacheRead: "invalid",
     });
     expect(admissionChecks).toBe(0);
     expect(redisChecks).toBe(0);
@@ -328,6 +424,49 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     redisCheckWaiters[2]();
     expect(await owner).toBeNull();
     expect(await whileOwnerInFlight).toBeNull();
+  });
+
+  test("changed primary generation invalidates a positive lease and carries usage into its new limit", async () => {
+    const org = uid();
+    await enforceOrgRateLimit(org, "completions");
+    await enforceOrgRateLimit(org, "completions");
+    expect(redisChecks).toBe(1);
+    policyAuthority = { ...initialAuthority, generation: "2" };
+    policyRpm = 3;
+    await enforceOrgRateLimit(org, "completions");
+    expect(redisMaxRequests).toEqual([120, 3]);
+    expect(carriedCounts).toEqual([0, 1]);
+    expect(policyReads).toBe(3);
+  });
+  test("unavailable primary tier rejects before either limiter backend", async () => {
+    policyUnavailable = true;
+    await expect(enforceOrgRateLimit(uid(), "completions")).rejects.toMatchObject({
+      state: "warming",
+      cacheRead: "invalid",
+    });
+    expect(redisChecks).toBe(0);
+    expect(admissionChecks).toBe(0);
+  });
+  test("stale cache-only stamp warms current observations and retry uses the changed policy", async () => {
+    policyAuthority = { ...initialAuthority, generation: "2" };
+    policyRpm = 3;
+    const org = uid();
+    const background: Promise<unknown>[] = [];
+    const options = {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (work: Promise<unknown>) => background.push(work) },
+    };
+    await expect(enforceOrgRateLimit(org, "completions", options)).rejects.toMatchObject({
+      state: "warming",
+      cacheRead: "invalid",
+    });
+    expect(admissionChecks).toBe(0);
+    expect(redisChecks).toBe(0);
+    await Promise.all(background);
+    expect(regenerations).toBe(1);
+    expect(snapshotWarms).toBe(1);
+    expect(await enforceOrgRateLimit(org, "completions", options)).toBeNull();
+    expect(admissionRequests.map((request) => request.maxRequests)).toEqual([3]);
   });
 
   test("a denial is leased: repeats within the TTL 429 without another Redis round-trip", async () => {
