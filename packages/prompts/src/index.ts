@@ -759,6 +759,7 @@ Domain routing (when context is available):
 - X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors
 - desktop/native-app/browser/Finder/window screenshots/control -> browser or automation
 - LifeOps browser bridge/companion/extension/tab/settings -> browser; add settings/connectors for config/connection
+- calendar reads route to the promoted children by name: "what's next / when is my next event" -> ["CALENDAR_NEXT_EVENT"], "what's on my calendar today/this week/next week" -> ["CALENDAR_FEED"], "find/when is <event>" -> ["CALENDAR_SEARCH_EVENTS"]; writes -> CALENDAR_CREATE_EVENT / CALENDAR_UPDATE_EVENT / CALENDAR_DELETE_EVENT. Never invent names such as CALENDAR_READ or CALENDAR_LIST_EVENTS, and never route a calendar read to VIEWS (live 2026-09-06: "when is my next event?" was sent to VIEWS with made-up capabilities and failed twice)
 - explicit requests to remember/save/note durable owner facts/preferences ("remember that I…", "remember aisle seats", "don't forget my…") -> memory + candidateActions=["MEMORY_CREATE"] (forget -> ["MEMORY_DELETE"], correct -> ["MEMORY_UPDATE"], recall -> ["MEMORY_SEARCH"]), never simple (settings only when the request also changes behaviour/configuration); a bare statement of a preference or fact with no remember directive stays simple (extract.facts persists it); documents only create/search/edit document/file
 
 Otherwise: list relevant context ids. If only general exists and tool needed, use contexts=["general"].
