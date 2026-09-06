@@ -4,6 +4,10 @@
  * FINISH without replaying settled actions or discarding the queued batch.
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../../streaming-context";
 import { createUnavailableGroundedActionReply } from "../../types/action-reply";
 import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
@@ -12,7 +16,12 @@ import {
 	malformedCallSupersededBy,
 	runPlannerLoop,
 } from "../planner-loop";
-import type { PlannerRuntime, PlannerToolResult } from "../planner-types";
+import type {
+	PlannerLoopParams,
+	PlannerRuntime,
+	PlannerToolResult,
+} from "../planner-types";
+import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 function call(name: string, scope?: "more_work_pending" | "final") {
 	return {
@@ -24,46 +33,49 @@ function call(name: string, scope?: "more_work_pending" | "final") {
 	};
 }
 
-/** The grounded receipt render's `{complete, message}` object as the model returns it. */
-function render(message: string, complete = true) {
-	return JSON.stringify({ complete, message });
-}
-
 /** An evaluator verdict that the recorded results do not yet satisfy the request. */
 function continueWork(thought: string) {
 	return JSON.stringify({ thought, success: false, decision: "CONTINUE" });
 }
 
-function finish(messageToUser: string, success = true) {
+function finish(
+	messageToUser: string,
+	success = true,
+	effectReceiptIds?: string[],
+) {
 	return JSON.stringify({
 		thought: "Judge the complete recorded results.",
 		success,
 		decision: "FINISH",
 		messageToUser,
+		...(effectReceiptIds ? { effectReceiptIds } : {}),
 	});
 }
 
 function harness(args: {
 	plans: Array<string | { text: string; toolCalls: ReturnType<typeof call>[] }>;
-	evaluations: string[];
+	evaluations: Array<
+		| string
+		| {
+				text: string;
+				usage: { promptTokens: number; completionTokens: number };
+		  }
+	>;
 	results?: PlannerToolResult[];
 	intents?: string[];
-	/** TEXT_SMALL responses for the grounded receipt render. */
-	renders?: string[];
 	userMessage?: string;
 }) {
 	let plannerIndex = 0;
 	let evaluatorIndex = 0;
-	let renderIndex = 0;
 	let resultIndex = 0;
 	const executed: string[] = [];
 	const useModel = vi.fn<PlannerRuntime["useModel"]>(async (type) => {
 		const response =
 			type === ModelType.ACTION_PLANNER
 				? args.plans[plannerIndex++]
-				: type === ModelType.TEXT_SMALL
-					? args.renders?.[renderIndex++]
-					: args.evaluations[evaluatorIndex++];
+				: type === ModelType.RESPONSE_HANDLER
+					? args.evaluations[evaluatorIndex++]
+					: undefined;
 		if (response === undefined) {
 			throw new Error(
 				`Unexpected model call ${String(type)} after ${useModel.mock.calls
@@ -83,7 +95,7 @@ function harness(args: {
 			}
 		);
 	});
-	const run = () =>
+	const run = (overrides: Partial<PlannerLoopParams> = {}) =>
 		runPlannerLoop({
 			runtime: { useModel },
 			context: {
@@ -113,6 +125,7 @@ function harness(args: {
 			},
 			config: { maxIterations: 6 },
 			executeToolCall,
+			...overrides,
 		});
 	return { run, useModel, executed };
 }
@@ -630,7 +643,7 @@ describe("planner-declared pending work", () => {
 	});
 });
 
-describe("grounded receipt gate (single declared intent, one verified internal action)", () => {
+describe("canonical evaluation of grounded internal receipts", () => {
 	const appliedReceipt: EffectReceipt = {
 		receiptId: "calendar-receipt-1",
 		operation: "calendar.event.create",
@@ -695,21 +708,183 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 	});
 	const modelCalls = (h: ReturnType<typeof harness>, type: string) =>
 		h.useModel.mock.calls.filter(([calledType]) => calledType === type).length;
-	const renderPromptOf = (h: ReturnType<typeof harness>) => {
+	const evaluationPromptOf = (h: ReturnType<typeof harness>) => {
 		const request = h.useModel.mock.calls.find(
-			([t]) => t === ModelType.TEXT_SMALL,
-		)?.[1] as { messages?: Array<{ content: string }> } | undefined;
-		return (request?.messages ?? []).map((m) => m.content).join("\n");
+			([t]) => t === ModelType.RESPONSE_HANDLER,
+		)?.[1];
+		return JSON.stringify(request?.messages);
 	};
 
-	it("renders the reply from committed receipt facts, carries receipt ids and raw provenance, and skips the evaluator", async () => {
-		// Live 2026-09-05: the evaluator re-judged a verified calendar create with
-		// a 15K-token prompt (0.8–1.0 s) only to phrase facts the action had
-		// already produced.
+	it("preserves prior-turn preferences and character in one canonical receipt evaluation", async () => {
+		const preference =
+			"Use Spanish for the next calendar confirmation only; do not save that preference.";
+		const character = "You are Eliza, a warm conversational teammate.";
+		const system = "Respect the current conversation and authorized evidence.";
+		const retainedContext = `${"Authorized calendar detail. ".repeat(200)}Complete context end.`;
+		const reply = "Añadí tu sesión de gimnasio para el martes a las siete.";
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [finish(reply)],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run({
+			context: {
+				id: "continuous-calendar-conversation",
+				staticPrefix: {
+					systemPrompt: { content: system, stable: true },
+					characterPrompt: { content: character, stable: true },
+				},
+				events: [
+					{
+						id: "conversation",
+						type: "provider",
+						name: "RECENT_MESSAGES",
+						text: `User: ${preference}\nAssistant: Entendido.`,
+					},
+					{
+						id: "authorized-calendar-context",
+						type: "provider",
+						name: "CALENDAR",
+						text: retainedContext,
+					},
+					{
+						id: "current-message",
+						type: "message",
+						message: {
+							role: "user",
+							content: "add gym session tuesday at 7am please",
+						},
+					},
+					{
+						id: "handler",
+						type: "message_handler",
+						metadata: { plan: { intents: ["add gym session to calendar"] } },
+					},
+				],
+			},
+		});
+		const finalCalls = h.useModel.mock.calls.filter(
+			([type]) => type !== ModelType.ACTION_PLANNER,
+		);
+		expect(finalCalls).toHaveLength(1);
+		const request = finalCalls[0][1] as {
+			messages: Array<{ role: string; content: unknown }>;
+			maxTokens?: number;
+		};
+		const prompt = JSON.stringify(request.messages);
+		expect(prompt).toContain(preference);
+		expect(prompt).toContain(character);
+		expect(prompt).toContain(system);
+		expect(prompt).toContain(retainedContext);
+		expect(prompt).toContain(appliedReceipt.receiptId);
+		expect(prompt).toContain("Created “Gym session” for Sep 8, 7:00 AM PDT.");
+		expect(request.messages.map(({ role }) => role)).toContain("tool");
+		expect(request.maxTokens).toBeUndefined();
+		expect(finalCalls[0][0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(h.executed).toEqual(["CALENDAR"]);
+		expect(result.finalMessage).toBe(reply);
+	});
+
+	it("honors the custom evaluator after a committed internal action", async () => {
+		const messageToUser = "Tu sesión de gimnasio está en el calendario.";
+		const evaluate = vi.fn<NonNullable<PlannerLoopParams["evaluate"]>>(
+			async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "The captured create settled the requested change.",
+				messageToUser,
+				effectReceiptIds: [appliedReceipt.receiptId],
+				raw: { messageToUser },
+			}),
+		);
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [],
-			renders: [render("Added your gym session for Tuesday at 7:00 AM.")],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const result = await h.run({ evaluate });
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(evaluate.mock.calls[0][0].trajectory.steps[0].result).toMatchObject({
+			effectReceipts: [appliedReceipt],
+		});
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(result.finalMessage).toBe(messageToUser);
+		expect(result.evaluator?.raw?.messageToUser).toBe(messageToUser);
+	});
+
+	it("reports receipt evaluation usage and structured stream output without leaking raw model chunks", async () => {
+		const reply = "Added your gym session for Tuesday at 7am.";
+		const usage = { promptTokens: 1400, completionTokens: 84 };
+		const response = finish(reply, true, [appliedReceipt.receiptId]);
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [{ text: response, usage }],
+			results: [internalCalendarResult()],
+			intents: ["add gym session to calendar"],
+		});
+		const model = h.useModel.getMockImplementation();
+		if (!model) throw new Error("Missing deterministic model adapter");
+		h.useModel.mockImplementation(async (...args) => {
+			if (args[0] !== ModelType.ACTION_PLANNER) {
+				await getStreamingContext()?.onStreamChunk?.(response);
+			}
+			return model(...args);
+		});
+		const onEvaluation = vi.fn();
+		const onStreamChunk = vi.fn();
+		const onModelUsage = vi.fn();
+		const messageToUser = vi.fn();
+		const stages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: () => "receipt-conversation",
+			recordStage: async (_id, stage) => {
+				stages.push(stage);
+			},
+			endTrajectory: async () => undefined,
+			load: async () => null,
+			list: async () => [],
+		};
+		const result = await runWithStreamingContext(
+			{ onEvaluation, onStreamChunk },
+			() =>
+				h.run({
+					onModelUsage,
+					evaluatorEffects: { messageToUser },
+					recorder,
+					trajectoryId: "receipt-conversation",
+				}),
+		);
+		expect(onStreamChunk).not.toHaveBeenCalled();
+		expect(onEvaluation).toHaveBeenCalledTimes(1);
+		expect(onEvaluation.mock.calls[0][0].evaluation).toMatchObject({
+			messageToUser: reply,
+			effectReceiptIds: [appliedReceipt.receiptId],
+		});
+		expect(messageToUser).toHaveBeenCalledExactlyOnceWith(reply);
+		expect(onModelUsage).toHaveBeenCalledExactlyOnceWith(usage);
+		expect(result.modelUsage).toEqual({ ...usage, modelCalls: 1 });
+		const evaluationStages = stages.filter(({ kind }) => kind === "evaluation");
+		expect(evaluationStages).toHaveLength(1);
+		expect(evaluationStages[0].model).toMatchObject({
+			modelType: ModelType.RESPONSE_HANDLER,
+			response,
+			usage,
+		});
+		expect(result.finalMessage).toBe(reply);
+	});
+
+	it("carries the evaluator's committed receipt selection and exact original prose", async () => {
+		const h = harness({
+			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+			evaluations: [
+				finish("Added your gym session for Tuesday at 7:00 AM.", true, [
+					appliedReceipt.receiptId,
+				]),
+			],
 			results: [internalCalendarResult()],
 			intents: ["add gym session to calendar"],
 		});
@@ -718,31 +893,26 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		expect(result.finalMessage).toBe(
 			"Added your gym session for Tuesday at 7:00 AM.",
 		);
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
 		expect(result.evaluator).toMatchObject({
 			decision: "FINISH",
 			success: true,
 			effectReceiptIds: ["calendar-receipt-1"],
 			raw: {
 				messageToUser: "Added your gym session for Tuesday at 7:00 AM.",
-				source: "grounded_receipt_render",
 			},
 		});
-		const prompt = renderPromptOf(h);
+		const prompt = evaluationPromptOf(h);
 		expect(prompt).toContain("Created “Gym session” for Sep 8, 7:00 AM PDT.");
-		expect(prompt).toContain(
-			"User's message: add gym session tuesday at 7am please",
-		);
-		expect(prompt).toContain("Understood intent: add gym session to calendar");
-		expect(prompt).toContain("never expose ids");
+		expect(prompt).toContain("add gym session tuesday at 7am please");
+		expect(prompt).toContain("add gym session to calendar");
 	});
 
-	it("gates a read whose receipt is a plain no-op without claiming a side effect", async () => {
+	it("evaluates a read whose receipt is a plain no-op without claiming a side effect", async () => {
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [],
-			renders: [render("You have a gym session on Tuesday at 7:00 AM.")],
+			evaluations: [finish("You have a gym session on Tuesday at 7:00 AM.")],
 			results: [
 				internalCalendarResult([readNoopReceipt], {
 					data: {
@@ -759,8 +929,8 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 			intents: ["list calendar events for tuesday"],
 		});
 		const result = await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
 		expect(result.evaluator?.effectReceiptIds).toBeUndefined();
 	});
 
@@ -768,7 +938,6 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
-			renders: [render("should not be used")],
 			results: [
 				internalCalendarResult([appliedReceipt], { turnComplete: false }),
 			],
@@ -783,7 +952,6 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("I couldn't find that event.", false)],
-			renders: [render("should not be used")],
 			results: [internalCalendarResult([mutationNoopReceipt])],
 			intents: ["delete the gym session"],
 		});
@@ -796,7 +964,6 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("The event was rolled back.", false)],
-			renders: [render("should not be used")],
 			results: [internalCalendarResult([appliedReceipt, rolledBackReceipt])],
 			intents: ["add gym session to calendar"],
 		});
@@ -811,7 +978,6 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 			evaluations: [
 				finish("Added the gym session; the note is still pending.", false),
 			],
-			renders: [render("should not be used")],
 			results: [internalCalendarResult()],
 		});
 		await h.run();
@@ -837,7 +1003,6 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
 			evaluations: [finish("The calendar rejected the event.", false)],
-			renders: [render("should not be used")],
 			results: [internalCalendarResult([failed])],
 			intents: ["add gym session to calendar"],
 		});
@@ -853,7 +1018,6 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 				{ text: "", toolCalls: [call("NOTES", "final")] },
 			],
 			evaluations: [finish("Added it."), finish("Added it and noted it.")],
-			renders: [render("should not be used")],
 			results: [
 				internalCalendarResult(),
 				{
@@ -899,8 +1063,12 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 					],
 				},
 			],
-			evaluations: [],
-			renders: [render("Added the gym session and the dentist visit.")],
+			evaluations: [
+				finish("Added the gym session and the dentist visit.", true, [
+					appliedReceipt.receiptId,
+					dentistReceipt.receiptId,
+				]),
+			],
 			results: [
 				internalCalendarResult(),
 				internalCalendarResult([dentistReceipt], {
@@ -918,9 +1086,9 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		});
 		const result = await h.run();
 		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
-		// No intermediate evaluator; the fully settled batch ends in one render.
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		// No intermediate evaluator; the fully settled batch ends in one evaluation.
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
 		expect(result.trajectory.evaluatorOutputs[0]).toMatchObject({
 			decision: "NEXT_RECOMMENDED",
 			recommendedToolCallId: "calendar-dentist",
@@ -929,16 +1097,15 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		expect(result.evaluator).toMatchObject({
 			decision: "FINISH",
 			effectReceiptIds: ["calendar-receipt-1", "calendar-receipt-2"],
-			raw: { source: "grounded_receipt_render" },
+			raw: { messageToUser: "Added the gym session and the dentist visit." },
 		});
-		const prompt = renderPromptOf(h);
-		expect(prompt).toContain("Operation 1");
-		expect(prompt).toContain("Operation 2");
+		const prompt = evaluationPromptOf(h);
+		expect(prompt).toContain("calendar-gym");
+		expect(prompt).toContain("calendar-dentist");
 		expect(prompt).toContain("Created “Gym session” for Sep 8, 7:00 AM PDT.");
 		expect(prompt).toContain("Created “Dentist visit” for Sep 9, 3:00 PM PDT.");
-		expect(prompt).toContain(
-			"Understood intents: add the gym session; add the dentist visit",
-		);
+		expect(prompt).toContain("add the gym session");
+		expect(prompt).toContain("add the dentist visit");
 		expect(result.finalMessage).toBe(
 			"Added the gym session and the dentist visit.",
 		);
@@ -957,25 +1124,18 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 					},
 				},
 			}),
-			// The read + the applied create still settle the batch for one render.
-			1,
-			1,
 		],
 		[
 			"the step asked for evaluation",
 			internalCalendarResult([appliedReceipt], { turnComplete: false }),
-			2,
-			0,
 		],
 		[
 			"the step's receipt was a mutation no-op",
 			internalCalendarResult([mutationNoopReceipt]),
-			2,
-			0,
 		],
 	])(
 		"keeps the per-step evaluator inside a batch when %s",
-		async (_label, firstResult, evaluatorCalls, renderCalls) => {
+		async (_label, firstResult) => {
 			const h = harness({
 				plans: [
 					{
@@ -1003,14 +1163,13 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 					}),
 					finish("Both done."),
 				],
-				renders: [render("Both done.")],
 				results: [firstResult, internalCalendarResult()],
 				intents: ["add the requested calendar events"],
 			});
 			const result = await h.run();
 			expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
-			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(evaluatorCalls);
-			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(renderCalls);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
 			expect(result.finalMessage).toBe("Both done.");
 		},
 	);
@@ -1486,11 +1645,7 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		);
 	});
 
-	it("declines the gate and lets the full evaluator continue when the render reports partial completion (two appointments, one created)", async () => {
-		// Review 2026-09-05: one verified receipt plus one declared intent proves
-		// one action, not the whole request. When the render judges the facts
-		// cover only part of the message, the evaluator — not this gate — decides,
-		// and here it continues the remaining create instead of finishing.
+	it("continues a partially completed request directly without a second verdict or replaying the first create", async () => {
 		const dentistReceipt: EffectReceipt = {
 			...appliedReceipt,
 			receiptId: "calendar-receipt-2",
@@ -1526,14 +1681,10 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 				continueWork(
 					"Only the gym session exists; the dentist visit is still missing.",
 				),
-			],
-			renders: [
-				render(
-					"Added your gym session for Tuesday at 7:00 AM. The dentist visit was not added.",
-					false,
-				),
-				render(
+				finish(
 					"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
+					true,
+					[appliedReceipt.receiptId, dentistReceipt.receiptId],
 				),
 			],
 			results: [
@@ -1553,10 +1704,14 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		});
 		const result = await h.run();
 		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
-		// Partial render → evaluator CONTINUE → second create → the settled batch
-		// is rendered once more, this time judged complete.
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(2);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
 		expect(result.evaluator).toMatchObject({
 			decision: "FINISH",
 			success: true,
@@ -1565,97 +1720,35 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 		expect(result.finalMessage).toBe(
 			"Added the gym session for Tuesday at 7am and the dentist visit for Wednesday at 3pm.",
 		);
-		const renderPrompt = renderPromptOf(h);
-		expect(renderPrompt).toContain(
-			"User's message: add gym tuesday at 7am and a dentist visit wednesday at 3pm",
-		);
-		expect(renderPrompt).toContain('"complete": true or false');
-	});
-
-	it.each([
-		[
-			"preamble before the object",
-			'Not complete yet {"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}',
-		],
-		[
-			"an array wrapping the object",
-			'[{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}]',
-		],
-		[
-			"trailing prose after the object",
-			'{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."} All done.',
-		],
-		[
-			"a fence with prose outside it",
-			'Here you go:\n```json\n{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}\n```',
-		],
-	])(
-		"falls back to the evaluator when the render carries %s",
-		async (_label, renderText) => {
-			const h = harness({
-				plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-				evaluations: [finish("Added your gym session for Tuesday at 7am.")],
-				renders: [renderText],
-				results: [internalCalendarResult()],
-				intents: ["add gym session to calendar"],
-			});
-			const result = await h.run();
-			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
-			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-			expect(result.evaluator?.raw?.source).toBeUndefined();
-			expect(result.finalMessage).toBe(
-				"Added your gym session for Tuesday at 7am.",
-			);
-		},
-	);
-
-	it("accepts the object inside one exact whole-response code fence", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [],
-			renders: [
-				'```json\n{"complete": true, "message": "Added your gym session for Tuesday at 7:00 AM."}\n```',
-			],
-			results: [internalCalendarResult()],
-			intents: ["add gym session to calendar"],
-		});
-		const result = await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(0);
-		expect(result.finalMessage).toBe(
-			"Added your gym session for Tuesday at 7:00 AM.",
+		const prompt = evaluationPromptOf(h);
+		expect(prompt).toContain(
+			"add gym tuesday at 7am and a dentist visit wednesday at 3pm",
 		);
 	});
 
-	it("falls back to the evaluator when the render is not the {complete, message} contract", async () => {
+	it("preserves a requested detailed reply without imposing a generation cap", async () => {
+		const message = Array.from(
+			{ length: 120 },
+			(_, index) =>
+				`Calendar detail ${index + 1}: the gym session is Tuesday at 7am.`,
+		).join("\n");
 		const h = harness({
 			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
-			renders: ["Added your gym session for Tuesday at 7:00 AM."],
+			evaluations: [finish(message, true, [appliedReceipt.receiptId])],
 			results: [internalCalendarResult()],
 			intents: ["add gym session to calendar"],
+			userMessage:
+				"Add the gym session and return the full detailed confirmation.",
 		});
 		const result = await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
+		expect(result.finalMessage).toBe(message);
+		expect(result.evaluator?.raw?.messageToUser).toBe(message);
+		expect(h.executed).toEqual(["CALENDAR"]);
 		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-		expect(result.finalMessage).toBe(
-			"Added your gym session for Tuesday at 7am.",
-		);
-	});
-
-	it("falls back to the evaluator when the render is empty", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
-			renders: ["   "],
-			results: [internalCalendarResult()],
-			intents: ["add gym session to calendar"],
-		});
-		const result = await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(1);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-		expect(result.finalMessage).toBe(
-			"Added your gym session for Tuesday at 7am.",
-		);
+		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+		const request = h.useModel.mock.calls.find(
+			([type]) => type === ModelType.RESPONSE_HANDLER,
+		)?.[1];
+		expect(request?.maxTokens).toBeUndefined();
 	});
 });

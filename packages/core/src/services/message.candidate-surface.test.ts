@@ -17,6 +17,78 @@ const actions: Action[] = [
 ];
 
 describe("budgeted model-selected action surface", () => {
+	it.each([
+		"One quick conversation test: use Spanish for the next note confirmation only. Do not save that preference; just keep it in this conversation.",
+		"Do not save it.",
+	])(
+		"does not override a model-classified no-save conversation: %s",
+		(text) => {
+			const reply =
+				"Noted — when the next note confirmation comes up, I'll do it in Spanish for just that one, no saved preference.";
+			const result = messageHandlerFromFieldResult(
+				{
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					intents: [],
+					candidateActionNames: [],
+					replyText: reply,
+					replyEffectStatus: "none",
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+				},
+				undefined,
+				{ actions: [{ name: "OWNER_GOALS" }], messageText: text },
+			);
+
+			expect(result.plan.simple).toBe(true);
+			expect(result.plan.requiresTool).toBe(false);
+			expect(result.plan.candidateActions ?? []).toEqual([]);
+			expect(result.plan.reply).toBe(reply);
+		},
+	);
+
+	it.each([
+		{ name: "pending effect", fields: { replyEffectStatus: "pending" } },
+		{ name: "applied effect", fields: { replyEffectStatus: "applied" } },
+		{
+			name: "model-selected goal action",
+			fields: { candidateActionNames: ["OWNER_GOALS"] },
+		},
+		{ name: "declared goal intent", fields: { intents: ["save the goal"] } },
+		{ name: "non-simple context", fields: { contexts: ["general"] } },
+		{
+			name: "legacy missing effect status",
+			fields: { replyEffectStatus: undefined },
+		},
+		{ name: "progress-only reply", fields: { replyText: "On it." } },
+		{ name: "empty reply", fields: { replyText: "" } },
+	])("preserves goal planning for $name", ({ fields }) => {
+		const result = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: [],
+				replyText: "Your goal belongs in your owner goals.",
+				replyEffectStatus: "none",
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+				...fields,
+			},
+			undefined,
+			{
+				actions: [{ name: "OWNER_GOALS" }],
+				messageText: "Save that goal.",
+			},
+		);
+
+		expect(result.plan.simple).toBe(false);
+		expect(result.plan.requiresTool).toBe(true);
+		expect(result.plan.candidateActions).toContain("OWNER_GOALS");
+	});
+
 	it("preserves the model's complete intent list in the planner handoff", () => {
 		const intents = [
 			"open notes",

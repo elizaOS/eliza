@@ -4064,6 +4064,54 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("keeps the model's transient conversation preference reply out of owner-goal planning", async () => {
+		// Real trajectory step-1788661046440-f956fk: the model correctly chose
+		// simple/none/no intents, but the text heuristic matched "save that"
+		// inside "Do not save that preference" and forced an OWNER_GOALS review.
+		const reply =
+			"Noted — when the next note confirmation comes up, I'll do it in Spanish for just that one, no saved preference.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: [],
+				replyText: reply,
+				extra: { replyEffectStatus: "none" },
+			}),
+		]);
+		const goalHandler = vi.fn<Action["handler"]>(async () => ({
+			success: true,
+			text: "Unexpected goal action.",
+		}));
+		runtime.actions = [
+			{
+				name: "OWNER_GOALS",
+				description: "Manage durable owner goals.",
+				validate: async () => true,
+				handler: goalHandler,
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "One quick conversation test: use Spanish for the next note confirmation only. Do not save that preference; just keep it in this conversation.",
+				mentionContext: { isMention: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(goalHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(reply);
+		}
+	});
+
 	it("answers a trivial math turn directly despite a views capability-token overlap (tj-501e594bfb23a7)", async () => {
 		// Full Stage-1 pipeline fence for the VIEWS hijack: Stage 1 answers
 		// "whats 17 times 23?" with contexts=["simple"] / replyText="391" /

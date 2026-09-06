@@ -6490,8 +6490,8 @@ export function messageHandlerFromFieldResult(
 					currentMessageText,
 				)
 			: ({ names: [], kind: null } as DirectCurrentRequestCandidateInference);
-	// Text-derived view hints cannot override a completed model answer unless
-	// the model also declared work or an effect requiring verification.
+	// Text-derived view/goal hints cannot override a completed model answer
+	// unless the model also declared work or an effect requiring verification.
 	const directCurrentCandidateActions =
 		shouldSuppressInferredCandidateEscalation({
 			inference: directCurrentInference,
@@ -7351,11 +7351,11 @@ function inferDirectCurrentRequestCandidateInference(
 }
 
 /**
- * Keep answered simple turns out of planning when only inferred view metadata
- * suggests a tool. Surface-word matches also require the model's explicit
- * no-effect classification and no declared intent; legacy incomplete envelopes
- * remain conservative. Model-selected actions and pending/applied effects keep
- * their normal planning and verification paths.
+ * Keep answered simple turns out of planning when only inferred view/goal
+ * metadata suggests a tool. Surface-word and goal matches also require the
+ * model's explicit no-effect classification and no declared intent; legacy
+ * incomplete envelopes remain conservative. Model-selected actions and
+ * pending/applied effects keep their normal planning and verification paths.
  */
 function shouldSuppressInferredCandidateEscalation(args: {
 	inference: DirectCurrentRequestCandidateInference;
@@ -7368,7 +7368,8 @@ function shouldSuppressInferredCandidateEscalation(args: {
 	if (
 		args.inference.kind !== "view-capability" &&
 		!(
-			args.inference.kind === "view-surface" &&
+			(args.inference.kind === "view-surface" ||
+				args.inference.kind === "owner-goals") &&
 			args.stageOneReplyEffectStatus === "none" &&
 			args.stageOneIntents.length === 0
 		)
