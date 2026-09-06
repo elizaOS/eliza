@@ -1,4 +1,9 @@
-// Defines cloud shared vast endpoints behavior for backend service consumers.
+/**
+ * Resolves configured Vast model endpoints and fallback routing for provider factories.
+ * Present malformed maps fail explicitly; absent maps retain environment/default routing.
+ */
+import { ElizaError } from "@elizaos/core";
+import { z } from "zod";
 import { getVastApiModelId, isVastNativeModel, VAST_NATIVE_MODELS } from "../models";
 import { getProviderKey } from "./provider-env";
 
@@ -12,16 +17,23 @@ export interface VastEndpointConfig {
 
 type EnvReader = (name: string) => string | null;
 
-type VastEndpointJsonValue =
-  | string
-  | {
-      baseUrl?: string;
-      url?: string;
-      apiKey?: string;
-      apiKeyEnv?: string;
-      apiModelId?: string;
-      model?: string;
-    };
+const EndpointEntrySchema = z.union([
+  z.string().min(1),
+  z
+    .object({
+      baseUrl: z.string().min(1).optional(),
+      url: z.string().min(1).optional(),
+      apiKey: z.string().min(1).optional(),
+      apiKeyEnv: z.string().min(1).optional(),
+      apiModelId: z.string().min(1).optional(),
+      model: z.string().min(1).optional(),
+    })
+    .strict()
+    .refine((value) => Boolean(value.baseUrl || value.url)),
+]);
+const EndpointMapSchema = z.record(z.string(), EndpointEntrySchema);
+const FallbackMapSchema = z.record(z.string(), z.string().min(1));
+type VastEndpointJsonValue = z.infer<typeof EndpointEntrySchema>;
 
 function trimTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
@@ -42,15 +54,29 @@ function defaultApiModelId(model: string): string {
   return translated;
 }
 
-function parseEndpointMap(raw: string | null): Record<string, VastEndpointJsonValue> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return parsed as Record<string, VastEndpointJsonValue>;
-  } catch {
-    return {};
+function parseConfiguredMap<T>(raw: string | null, variable: string, schema: z.ZodType<T>): T {
+  let parsed: unknown = {};
+  if (raw?.trim()) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // error-policy:J3 configuration is invalid; parser messages can contain credentials.
+      throw new ElizaError(`Invalid JSON in ${variable}`, {
+        code: "INVALID_VAST_ROUTING_CONFIG",
+        context: { variable },
+        cause: new SyntaxError("Configured routing map contains invalid JSON"),
+      });
+    }
   }
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    throw new ElizaError(`Invalid routing map in ${variable}`, {
+      code: "INVALID_VAST_ROUTING_CONFIG",
+      context: { variable },
+      cause: new TypeError("Configured routing map does not match its expected field types"),
+    });
+  }
+  return result.data;
 }
 
 function readJsonEndpoint(
@@ -62,7 +88,11 @@ function readJsonEndpoint(
   baseUrl?: string;
   apiModelId?: string;
 } | null {
-  const endpointMap = parseEndpointMap(reader("VAST_ENDPOINTS_JSON"));
+  const endpointMap = parseConfiguredMap(
+    reader("VAST_ENDPOINTS_JSON"),
+    "VAST_ENDPOINTS_JSON",
+    EndpointMapSchema,
+  );
   const config = endpointMap[model];
   if (!config) return null;
   if (typeof config === "string") {
@@ -143,17 +173,20 @@ export function resolveVastFallbackModel(
   reader: EnvReader = getProviderKey,
 ): string | null {
   if (!isVastNativeModel(model)) return null;
-  const rawMap = parseEndpointMap(reader("VAST_FALLBACK_MODEL_MAP_JSON"));
+  const rawMap = parseConfiguredMap(
+    reader("VAST_FALLBACK_MODEL_MAP_JSON"),
+    "VAST_FALLBACK_MODEL_MAP_JSON",
+    FallbackMapSchema,
+  );
   const fallback =
-    typeof rawMap[model] === "string"
-      ? (rawMap[model] as string)
-      : model === "vast/eliza-1-27b-256k"
-        ? "vast/eliza-1-27b"
-        : model === "vast/eliza-1-27b"
-          ? "vast/eliza-1-9b"
-          : model === "vast/eliza-1-9b"
-            ? "vast/eliza-1-2b"
-            : null;
+    rawMap[model] ??
+    (model === "vast/eliza-1-27b-256k"
+      ? "vast/eliza-1-27b"
+      : model === "vast/eliza-1-27b"
+        ? "vast/eliza-1-9b"
+        : model === "vast/eliza-1-9b"
+          ? "vast/eliza-1-2b"
+          : null);
 
   if (!fallback || fallback === model || !isVastNativeModel(fallback)) return null;
   return hasDedicatedVastEndpointConfigured(fallback, reader) ? fallback : null;

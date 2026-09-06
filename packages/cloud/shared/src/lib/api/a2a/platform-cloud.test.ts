@@ -18,6 +18,7 @@ const executeCloudCapabilityRest = mock();
 const requireCurrentBillingManagerSession = mock();
 const requireUserOrApiKeyWithOrg = mock();
 const taskStoreSet = mock();
+const taskStoreGet = mock();
 const loggerError = mock();
 const requestCancellation = mock();
 
@@ -72,7 +73,7 @@ mock.module("../../services/containers", () => ({
 mock.module("../../services/a2a-task-store", () => ({
   a2aTaskStoreService: {
     set: taskStoreSet,
-    get: mock(),
+    get: taskStoreGet,
     updateTaskState: mock(),
   },
 }));
@@ -122,6 +123,7 @@ beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
   requireCurrentBillingManagerSession.mockReset();
   taskStoreSet.mockReset();
+  taskStoreGet.mockReset();
   requestCancellation.mockReset();
   loggerError.mockReset();
 
@@ -305,5 +307,65 @@ describe("Cloud platform A2A billing cancellation authority", () => {
 
     expect(requestCancellation).not.toHaveBeenCalled();
     expect(taskStoreSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("A2A response history selection", () => {
+  test("limits send responses without discarding persisted history", async () => {
+    const response = (await handlePlatformA2aJsonRpc(context, {
+      jsonrpc: "2.0",
+      id: "send-history",
+      method: "message/send",
+      params: {
+        message: {
+          role: "user",
+          parts: [{ type: "data", data: { skill: "cloud.capabilities.list" } }],
+        },
+        configuration: { historyLength: 1 },
+      },
+    })) as JSONRPCSuccessResponse<Task>;
+    const persisted = taskStoreSet.mock.calls[0][1].task as Task;
+    expect(response.result.history).toEqual([persisted.status.message!]);
+    expect(persisted.history?.[0].role).toBe("user");
+    taskStoreGet.mockResolvedValue({ task: persisted });
+    for (const historyLength of [undefined, 0]) {
+      const readback = (await handlePlatformA2aJsonRpc(context, {
+        jsonrpc: "2.0",
+        id: "get-history",
+        method: "tasks/get",
+        params: { id: persisted.id, ...(historyLength === undefined ? {} : { historyLength }) },
+      })) as JSONRPCSuccessResponse<Task>;
+      expect(readback.result.history).toEqual(persisted.history);
+      expect(readback.result.history?.map((message) => message.role)).toEqual(["user", "agent"]);
+    }
+    const latest = (await handlePlatformA2aJsonRpc(context, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tasks/get",
+      params: { id: persisted.id, historyLength: 1 },
+    })) as JSONRPCSuccessResponse<Task>;
+    expect(latest.result.history).toEqual([persisted.status.message!]);
+    expect(persisted.history?.[0].role).toBe("user");
+  });
+
+  test("rejects malformed task queries before auth and storage", async () => {
+    for (const historyLength of [-1, 1.5, "1", null, Number.MAX_SAFE_INTEGER + 1]) {
+      const response = (await handlePlatformA2aJsonRpc(context, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tasks/get",
+        params: { id: "task", historyLength },
+      })) as JSONRPCErrorResponse;
+      expect(response.error.code).toBe(-32602);
+    }
+    const missingId = (await handlePlatformA2aJsonRpc(context, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tasks/get",
+      params: { historyLength: 1 },
+    })) as JSONRPCErrorResponse;
+    expect(missingId.error.code).toBe(-32602);
+    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(taskStoreGet).not.toHaveBeenCalled();
   });
 });
