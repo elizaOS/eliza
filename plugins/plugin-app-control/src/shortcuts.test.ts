@@ -24,6 +24,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			),
 		).toEqual([
 			"app-control.view-command-shortcut",
+			"app-control.view-context-planning",
 			"app-control.create-choice-shortcut",
 		]);
 		expect(

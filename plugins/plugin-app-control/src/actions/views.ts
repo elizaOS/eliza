@@ -2652,6 +2652,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				schema: { type: "string" },
 			},
 			{
+				name: "navigationIntent",
+				description:
+					"Use planner-step for an explicit target within a contextual or compound plan. The per-step target takes precedence over unrelated original-message clauses.",
+				required: false,
+				schema: { type: "string", enum: ["planner-step"] },
+			},
+			{
+				name: "navigationStepId",
+				description:
+					"Unique plan-step identity for separately tracking navigation and domain receipts.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
 				name: "id",
 				description: "Alias for `view`.",
 				required: false,
@@ -3088,6 +3102,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType,
 							callback,
 							originatingClientId: readViewInteractionClientId(message),
+							resolveCallerRoles: async () =>
+								(await ownerCheck(runtime, message))
+									? ["OWNER"]
+									: resolveViewCallerRoles(runtime, message),
 						});
 
 					case "close":
