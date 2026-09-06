@@ -23,19 +23,43 @@ vi.mock("../../state/TranslationContext.hooks", () => ({
   }),
 }));
 
+function makeCatalogModel(
+  id: string,
+  overrides?: Partial<CatalogModel>,
+): CatalogModel {
+  return {
+    id,
+    displayName: `Eliza-1 ${id.replace("eliza-1-", "").toUpperCase()}`,
+    hfRepo: "elizaos/eliza-1",
+    ggufFile: `${id}.gguf`,
+    params: "4B",
+    quant: "Q4_K_M",
+    sizeGb: 2.5,
+    minRamGb: 6,
+    category: "chat",
+    bucket: "small",
+    blurb: `Model ${id}`,
+    hiddenFromCatalog: false,
+    ...overrides,
+  };
+}
+
 const mockHardware: HardwareProbe = {
   platform: "darwin",
   arch: "arm64",
-  totalMemoryBytes: 24 * 1024 * 1024 * 1024,
-  freeMemoryBytes: 16 * 1024 * 1024 * 1024,
+  totalRamGb: 24,
+  freeRamGb: 16,
+  gpu: null,
   cpuCores: 8,
+  appleSilicon: true,
+  recommendedBucket: "mid",
+  source: "os-fallback",
 };
 
 const mockActive: ActiveModelState = {
-  slot: "TEXT_LARGE",
   modelId: null,
-  activeState: "idle",
-  loadedModel: null,
+  loadedAt: null,
+  status: "idle",
 };
 
 describe("ModelHubView publication filtering", () => {
@@ -45,15 +69,10 @@ describe("ModelHubView publication filtering", () => {
 
   it("renders unavailable banner and no download buttons when all catalog models are pending", () => {
     const pendingCatalog: CatalogModel[] = [
-      {
-        id: "eliza-1-9b",
-        name: "Eliza 1 9B",
+      makeCatalogModel("eliza-1-9b", {
         bucket: "large",
-        sizeBytes: 6 * 1024 * 1024 * 1024,
         publishStatus: "pending",
-        hiddenFromCatalog: false,
-        ggufFile: "eliza-1-9b.gguf",
-      } as CatalogModel,
+      }),
     ];
 
     render(
@@ -81,30 +100,14 @@ describe("ModelHubView publication filtering", () => {
 
   it("renders model rows with download button when published models exist", () => {
     const mixedCatalog: CatalogModel[] = [
-      {
-        id: "eliza-1-4b",
-        name: "Eliza 1 4B",
+      makeCatalogModel("eliza-1-4b", {
         bucket: "mid",
-        sizeBytes: 3 * 1024 * 1024 * 1024,
-        sizeGb: 3.0,
-        params: "4B",
-        quant: "Q4_K_M",
         publishStatus: "published",
-        hiddenFromCatalog: false,
-        ggufFile: "eliza-1-4b.gguf",
-      } as CatalogModel,
-      {
-        id: "eliza-1-9b",
-        name: "Eliza 1 9B",
+      }),
+      makeCatalogModel("eliza-1-9b", {
         bucket: "large",
-        sizeBytes: 6 * 1024 * 1024 * 1024,
-        sizeGb: 6.0,
-        params: "9B",
-        quant: "Q4_K_M",
         publishStatus: "pending",
-        hiddenFromCatalog: false,
-        ggufFile: "eliza-1-9b.gguf",
-      } as CatalogModel,
+      }),
     ];
 
     render(
