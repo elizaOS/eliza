@@ -67,9 +67,7 @@ interface GmailDraftContext {
   readonly preview: string;
 }
 
-const GMAIL_READ_DEFAULT_BYTES = 16_384;
 const GMAIL_READ_MAX_BYTES = 65_536;
-const GMAIL_READ_DEFAULT_UNITS = 100;
 const GMAIL_READ_MAX_UNITS = 200;
 
 function readInteger(value: number | undefined, fallback: number, maximum: number): number {
@@ -311,11 +309,14 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       });
     }
     const unit: ReadRangeUnit = request.unit ?? "byte";
-    const limit = readInteger(
-      request.limit,
-      unit === "byte" ? GMAIL_READ_DEFAULT_BYTES : GMAIL_READ_DEFAULT_UNITS,
-      unit === "byte" ? GMAIL_READ_MAX_BYTES : GMAIL_READ_MAX_UNITS
-    );
+    const limit =
+      request.limit === undefined
+        ? undefined
+        : readInteger(
+            request.limit,
+            0,
+            unit === "byte" ? GMAIL_READ_MAX_BYTES : GMAIL_READ_MAX_UNITS
+          );
     if (limit === 0) {
       throw new ElizaError("Gmail read limit must advance", { code: "GMAIL_READ_INVALID_RANGE" });
     }
@@ -441,6 +442,24 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       offset,
       limit,
       headReads,
+      beforeBatch: async () => {
+        let currentRevision: string | null;
+        try {
+          providerRevisionReads += 1;
+          currentRevision = await service.getGmailMessageRevision(target);
+        } catch (cause) {
+          // error-policy:J2 Provider authorization failures must abort complete reads.
+          throw new ElizaError("Gmail provider authorization or revision check failed", {
+            code: "GMAIL_READ_PROVIDER_FAILED",
+            cause,
+          });
+        }
+        if (currentRevision !== loaded.manifest.providerRevision) {
+          throw new ElizaError("Gmail message changed or became unavailable during complete read", {
+            code: currentRevision === null ? "GMAIL_READ_NOT_FOUND" : "GMAIL_READ_STALE_REVISION",
+          });
+        }
+      },
     });
     const revision = page.manifest.publicRevision;
     const reference = page.reference;
@@ -467,7 +486,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         providerRevisionReads,
         providerBodyFetches,
       },
-      ...(readView.slice.hasMore
+      ...(readView.slice.hasMore && limit !== undefined
         ? {
             control: {
               action: "read_message" as const,

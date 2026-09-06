@@ -92,6 +92,45 @@ function gmailMessage(overrides: Record<string, unknown> = {}) {
 }
 
 describe("GoogleGmailAdapter", () => {
+  it.each(["byte", "line", "fragment"] as const)(
+    "returns complete %s content with no implicit limit",
+    async (unit) => {
+      const text = "complete 🙂漢字\n\n".repeat(30_000) + "FINAL GMAIL EVIDENCE";
+      const runtime = runtimeWithGoogleService({
+        getGmailMessageDetail: vi.fn(async () => ({ message: gmailMessage(), bodyText: text })),
+      });
+      const result = await new GoogleGmailAdapter().readMessage(runtime, {
+        messageId: "msg_1",
+        requesterEntityId: actionMessage.entityId,
+        requesterRoomId: actionMessage.roomId,
+        unit,
+      });
+      expect(result.text).toBe(text);
+      expect(result.readView.slice.hasMore).toBe(false);
+      expect(result.control).toBeUndefined();
+    }
+  );
+
+  it("rejects an entire complete read when provider authorization disappears between batches", async () => {
+    const runtime = runtimeWithGoogleService({
+      getGmailMessageDetail: vi.fn(async () => ({
+        message: gmailMessage(),
+        bodyText: "private".repeat(100_000),
+      })),
+      getGmailMessageRevision: vi
+        .fn()
+        .mockResolvedValueOnce("history-1")
+        .mockRejectedValue(new Error("OAuth grant revoked")),
+    });
+    await expect(
+      new GoogleGmailAdapter().readMessage(runtime, {
+        messageId: "msg_1",
+        requesterEntityId: actionMessage.entityId,
+        requesterRoomId: actionMessage.roomId,
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_PROVIDER_FAILED" });
+  });
+
   it("maps triage messages from the Google service into message refs", async () => {
     const listGmailTriageMessages = vi.fn(async () => [gmailMessage()]);
     const runtime = runtimeWithGoogleService({ listGmailTriageMessages });
@@ -539,11 +578,10 @@ describe("MESSAGE Gmail progressive body reads", () => {
       requesterEntityId: actionMessage.entityId,
       requesterRoomId: actionMessage.roomId,
     });
-    expect(Buffer.byteLength(huge.text)).toBe(16_384);
+    expect(huge.text).toBe("x".repeat(70_000));
     expect(huge.readView.slice).toMatchObject({
-      range: { unit: "byte", start: 0, end: 16_384, total: 70_000 },
-      hasMore: true,
-      nextOffset: 16_384,
+      range: { unit: "byte", start: 0, end: 70_000, total: 70_000 },
+      hasMore: false,
     });
     await expect(
       hugeAdapter.readMessage(hugeRuntime, {

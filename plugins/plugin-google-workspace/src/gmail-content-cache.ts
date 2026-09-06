@@ -484,7 +484,9 @@ export async function readGmailContentPage(args: {
   authorization: GmailContentAuthorization;
   unit: "byte" | "line" | "fragment";
   offset: number;
-  limit: number;
+  limit?: number;
+  /** Revalidates provider access before each complete-read database batch. */
+  beforeBatch?: () => Promise<void>;
   /** Exact manifest queries already performed by the caller for this page. */
   headReads?: number;
 }): Promise<GmailContentPage> {
@@ -502,20 +504,39 @@ export async function readGmailContentPage(args: {
       context: { offset: args.offset, total, unit: args.unit },
     });
   }
-  const requestedEnd = Math.min(args.offset + args.limit, total);
+  const requestedEnd = args.limit === undefined ? total : Math.min(args.offset + args.limit, total);
   const descriptors = selectedDescriptors(manifest, args.unit, args.offset, requestedEnd);
-  if (descriptors.length > GMAIL_CONTENT_PAGE_MAX_SEGMENTS) {
+  if (args.limit !== undefined && descriptors.length > GMAIL_CONTENT_PAGE_MAX_SEGMENTS) {
     throw new ElizaError("Gmail unit page exceeds bounded source work; retry with byte units", {
       code: "GMAIL_READ_UNIT_TOO_LARGE",
       context: { unit: args.unit, segmentRows: descriptors.length },
     });
   }
-  const rows = descriptors.length
-    ? await args.runtime.adapter.getMemoriesByIds(
-        descriptors.map((entry) => entry.id),
+  const rows: Memory[] = [];
+  let headReads = args.headReads ?? 1;
+  for (let start = 0; start < descriptors.length; start += GMAIL_CONTENT_PAGE_MAX_SEGMENTS) {
+    if (args.limit === undefined) {
+      await args.beforeBatch?.();
+      const current = await loadGmailContentManifest({
+        runtime: args.runtime,
+        reference: gmailContentReference(args.loaded.memory.id as UUID),
+        authorization: args.authorization,
+      });
+      headReads += 1;
+      if (current.manifest.publicRevision !== manifest.publicRevision) {
+        throw new ElizaError("Gmail content changed during complete read", {
+          code: "GMAIL_READ_STALE_REVISION",
+        });
+      }
+    }
+    const batch = descriptors.slice(start, start + GMAIL_CONTENT_PAGE_MAX_SEGMENTS);
+    rows.push(
+      ...(await args.runtime.adapter.getMemoriesByIds(
+        batch.map((entry) => entry.id),
         GMAIL_CONTENT_SEGMENT_TABLE
-      )
-    : [];
+      ))
+    );
+  }
   const byId = new Map(rows.map((row) => [row.id, row]));
   const ordered = descriptors.map((descriptor) => {
     const row = byId.get(descriptor.id);
@@ -568,10 +589,15 @@ export async function readGmailContentPage(args: {
     const base = descriptors[0]?.[`${args.unit}Start`] ?? args.offset;
     text = values.slice(args.offset - base, requestedEnd - base).join("");
   }
-  if (encoder.encode(text).length > GMAIL_CONTENT_SEGMENT_MAX_BYTES) {
+  if (args.limit !== undefined && encoder.encode(text).length > GMAIL_CONTENT_SEGMENT_MAX_BYTES) {
     throw new ElizaError("Gmail unit page exceeds the 64 KiB result bound", {
       code: "GMAIL_READ_UNIT_TOO_LARGE",
       context: { unit: args.unit },
+    });
+  }
+  if (args.limit === undefined && args.offset === 0 && digest(text) !== manifest.sourceSha256) {
+    throw new ElizaError("Complete Gmail content does not match its source digest", {
+      code: "GMAIL_READ_CACHE_CORRUPT",
     });
   }
   return {
@@ -581,7 +607,7 @@ export async function readGmailContentPage(args: {
     total,
     manifest,
     reference: gmailContentReference(args.loaded.memory.id as UUID),
-    sourceWork: { headReads: args.headReads ?? 1, segmentRows: rows.length },
+    sourceWork: { headReads, segmentRows: rows.length },
   };
 }
 

@@ -53,6 +53,42 @@ async function publish(value: string, rt = runtime(), now?: number) {
 }
 
 describe("Gmail segmented content cache", () => {
+  it("rejects the entire read when the cached head is removed between batches", async () => {
+    const cached = await publish("private complete body".repeat(40_000));
+    let batches = 0;
+    await expect(
+      readGmailContentPage({
+        runtime: cached.rt,
+        loaded: cached.loaded,
+        authorization: cached.authorization,
+        unit: "byte",
+        offset: 0,
+        beforeBatch: async () => {
+          if (++batches === 2)
+            await cached.rt.adapter.deleteMemories([cached.built.head.id as UUID]);
+        },
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_REFERENCE_UNRESOLVED" });
+    expect(batches).toBe(2);
+  });
+
+  it.each(["byte", "line", "fragment"] as const)(
+    "reassembles a complete %s source larger than one database batch",
+    async (unit) => {
+      const text = "complete 🙂עברית漢字\n\n".repeat(30_000) + "FINAL CACHE EVIDENCE";
+      const cached = await publish(text);
+      const page = await readGmailContentPage({
+        runtime: cached.rt,
+        loaded: cached.loaded,
+        authorization: cached.authorization,
+        unit,
+        offset: 0,
+      });
+      expect(page.text).toBe(text);
+      expect(page.end).toBe(page.total);
+    }
+  );
+
   it("preserves Unicode boundaries and reads 1 MiB and 10 MiB late canaries with bounded rows", async () => {
     for (const size of [1024 * 1024, 10 * 1024 * 1024]) {
       const canary = "😀LATE-CANARY";
