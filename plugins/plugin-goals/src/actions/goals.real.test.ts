@@ -328,4 +328,38 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
     expect(parseInteractionBlocks(tapTurn.reply).blocks).toHaveLength(0);
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
+
+  it("handles update with missing id or missing fields", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-update-missing-fields",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "update",
+              params: { id: "goal-123" },
+              missing: [],
+              confidence: 0.95,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "Update goal goal-123",
+    );
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error?: string } | undefined)?.error).toBe(
+      "missing_fields",
+    );
+    expect(reply).toContain(
+      "At least one of title or description is required for update.",
+    );
+  });
 });
