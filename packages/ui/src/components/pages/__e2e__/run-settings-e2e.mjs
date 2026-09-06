@@ -18,7 +18,7 @@
  *   bun run --cwd packages/ui test:settings-e2e
  */
 
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -266,6 +266,8 @@ const context = await browser.newContext({
   reducedMotion: "reduce",
 });
 const p = await context.newPage();
+const walkthrough = p.video();
+if (!walkthrough) throw new Error("Settings walkthrough recording unavailable");
 const pageErrors = [];
 p.on("pageerror", (e) => pageErrors.push(String(e)));
 
@@ -530,16 +532,11 @@ for (const width of [760, 390]) {
 
 await p.close();
 await context.close();
-await browser.close();
 
-// Name the recorded walkthrough deterministically.
-for (const f of await readdir(outDir)) {
-  if (f.endsWith(".webm") && f !== "walkthrough.webm") {
-    await rename(join(outDir, f), join(outDir, "walkthrough.webm"));
-    console.log("  🎥 walkthrough.webm");
-    break;
-  }
-}
+// Save this page's completed recording, never a stale file from an earlier run.
+await walkthrough.saveAs(join(outDir, "walkthrough.webm"));
+await browser.close();
+console.log("  🎥 walkthrough.webm");
 
 // Page errors from stubbed-data sections are contained by the per-section
 // error boundary; NOTHING may escape to a page error — a real shell TypeError
