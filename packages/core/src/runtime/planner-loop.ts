@@ -6967,11 +6967,11 @@ function hasInFlightActionClaim(candidate: string): boolean {
 			);
 			const precedingRequest =
 				/^\s*(?:if|when|once|after)\s+you\b/i.test(before) &&
-				/\b(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+				/\b(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
 					before,
 				);
 			const followingRequest =
-				/\b(?:if|when|once|after)\s+you\s+(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+				/\b(?:if|when|once|after)\s+you\s+(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
 					after,
 				);
 			const requestedInput =
