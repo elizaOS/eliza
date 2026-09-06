@@ -43,11 +43,17 @@ export const agentComputeStopIntents = pgTable(
       .default("billing_request"),
     status: text("status").$type<AgentComputeStopIntentStatus>().notNull().default("pending"),
     job_id: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    resume_job_id: uuid("resume_job_id").references(() => jobs.id, { onDelete: "set null" }),
+    resume_started_at: timestamp("resume_started_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),
     last_error: text("last_error"),
     next_attempt_at: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_confirmed_at: timestamp("provider_confirmed_at", { withTimezone: true }),
+    /** Exact stopped generation; legacy receipts without this proof cannot authorize automatic resume. */
+    provider_confirmed_lifecycle_revision: bigint("provider_confirmed_lifecycle_revision", {
+      mode: "bigint",
+    }),
     retained_backup_billing: boolean("retained_backup_billing").notNull().default(false),
     retained_backup_rate_per_hour: numeric("retained_backup_rate_per_hour", {
       precision: 18,
@@ -81,6 +87,14 @@ export const agentComputeStopIntents = pgTable(
         OR (${table.retained_backup_billing} = false AND ${table.retained_backup_rate_per_hour} IS NULL)`,
     ),
     attempts_check: check("agent_compute_stop_intents_attempts_check", sql`${table.attempts} >= 0`),
+    confirmed_revision_check: check(
+      "agent_compute_stop_intents_confirmed_revision_check",
+      sql`${table.provider_confirmed_lifecycle_revision} IS NULL OR (
+        ${table.provider_confirmed_lifecycle_revision} >= 0
+        AND ${table.provider_confirmed_at} IS NOT NULL
+        AND ${table.status} IN ('provider_confirmed', 'superseded')
+      )`,
+    ),
   }),
 );
 

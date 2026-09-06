@@ -15,6 +15,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -99,6 +100,7 @@ beforeAll(async () => {
       usageRecords,
       generations,
       agentSandboxes,
+      agentComputeStopIntents,
       jobs,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
