@@ -1,6 +1,6 @@
 /**
- * Fail-closed workflow contract for exact-SHA staging latency certification
- * and sanitized-only Worker Tail evidence retention.
+ * Fail-closed workflow contract for trusted-develop staging latency certification
+ * and sanitized-only Worker telemetry evidence retention.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -18,6 +18,7 @@ const orchestratorSource = readFileSync(
 
 interface Step {
   name?: string;
+  if?: string;
   uses?: string;
   run?: string;
   with?: Record<string, string | boolean | number>;
@@ -65,10 +66,19 @@ describe("Cloud latency certification workflow", () => {
     expect(source).not.toContain("environment: production");
   });
 
-  test("requires an exact SHA and keeps the auth lane explicitly optional", () => {
+  test("requires an exact deployed SHA and keeps the auth lane explicitly optional", () => {
     const inputs = workflow.on?.workflow_dispatch?.inputs;
-    expect(inputs?.expected_deploy_sha).toMatchObject({
+    expect(inputs?.expected_deploy_sha).toEqual({
+      description:
+        "Exact 40-character develop ancestor that staging must serve.",
       required: true,
+      type: "string",
+    });
+    expect(inputs?.acknowledged_contract_digest).toEqual({
+      description:
+        "Exact SHA-256 acknowledgement after reviewing verifier changes since the deployed revision; blank when unchanged.",
+      required: false,
+      default: "",
       type: "string",
     });
     expect(inputs?.run_auth).toEqual({
@@ -88,9 +98,9 @@ describe("Cloud latency certification workflow", () => {
     const preflight = step(
       "Validate trusted exact-SHA dispatch and protected credentials",
     ).run;
-    expect(preflight).toContain('"$EXPECTED_DEPLOY_SHA" != "$GITHUB_SHA"');
     expect(preflight).toContain('"$GITHUB_REF" != "refs/heads/develop"');
     expect(preflight).toContain("^[a-f0-9]{40}$");
+    expect(preflight).not.toContain('"$EXPECTED_DEPLOY_SHA" != "$GITHUB_SHA"');
     expect(preflight).toContain('if [[ "$RUN_AUTH" == "true" ]]');
     expect(preflight).toContain(
       'if [[ "$RUN_SUSPENDED" == "true" && "$RUN_AUTH" != "true" ]]',
@@ -136,9 +146,16 @@ describe("Cloud latency certification workflow", () => {
       "node packages/cloud/scripts/cloud-latency-certification.mjs",
     );
     expect(run).toContain('--deploy-sha "$EXPECTED_DEPLOY_SHA"');
+    expect(run).toContain(
+      '--acknowledged-contract-digest "$ACKNOWLEDGED_CONTRACT_DIGEST"',
+    );
     expect(run).toContain("args+=(--auth)");
     expect(run).toContain("args+=(--suspended)");
     expect(run).not.toContain("wrangler tail");
+    expect(orchestratorSource).toContain("verifyCertificationSource({");
+    expect(orchestratorSource).toContain("sourceRef: env.GITHUB_REF");
+    expect(orchestratorSource).toContain("sourceSha: env.GITHUB_SHA");
+    expect(orchestratorSource).toContain("deploySha: options.deploySha");
   });
 
   test("installs only pinned Bun for the pinned Wrangler Tail client", () => {
@@ -166,24 +183,30 @@ describe("Cloud latency certification workflow", () => {
     ).toBe(true);
   });
 
-  test("uploads only explicitly sanitized evidence and never raw Tail material", () => {
-    const cleanup = step("Remove private Worker Tail material");
-    expect(cleanup.run).toContain(
-      'private_tail_directories=("$RUNNER_TEMP"/eliza-inference-auth-tail-*)',
-    );
+  test("uploads only sanitized evidence and removes all private telemetry", () => {
+    const cleanup = step("Remove private Worker telemetry material");
+    expect(cleanup.if).toBe(`\${{ always() }}`);
+    expect(cleanup.run).toContain("private_directories=(");
+    expect(cleanup.run).toContain('"$RUNNER_TEMP"/eliza-inference-auth-tail-*');
+    expect(cleanup.run).toContain('"$RUNNER_TEMP"/eliza-inference-trace-*');
+    expect(cleanup.run).toContain('[[ ! -d "$directory" || -L "$directory" ]]');
     expect(cleanup.run).toContain('rm -rf -- "$directory"');
     expect(job?.steps?.indexOf(cleanup)).toBeLessThan(
       job?.steps?.indexOf(step("Upload sanitized certification evidence")) ??
         -1,
     );
     const upload = step("Upload sanitized certification evidence");
+    expect(upload.if).toBe(`\${{ always() }}`);
     expect(upload.uses).toBe(
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     );
     const paths = String(upload.with?.path ?? "");
+    expect(paths).toContain("source.json");
+    expect(paths).toContain("deployment.json");
     expect(paths).toContain("paired.jsonl");
     expect(paths).toContain("inference-auth.jsonl");
     expect(paths).toContain("inference-auth-worker.jsonl");
+    expect(paths).toContain("inference-traces.json");
     expect(paths).toContain("summary.json");
     expect(paths).not.toContain("raw");
     expect(paths).not.toContain("stderr");
