@@ -5162,7 +5162,17 @@ export async function handleChatRoutes(
             route: "POST /api/agents/:id/message",
             err: getErrorMessage(err),
             code: err instanceof ElizaError ? err.code : undefined,
-            stack: err instanceof Error ? err.stack : undefined,
+            context: err instanceof ElizaError ? err.context : undefined,
+            // One line: the console transport keeps only the first line of a
+            // multi-line value, which hid every frame.
+            frames:
+              err instanceof Error && err.stack
+                ? err.stack
+                    .split("\n")
+                    .slice(1, 12)
+                    .map((frame) => frame.trim())
+                    .join(" <- ")
+                : undefined,
           },
           "[eliza-api] compat message route failed",
         );
