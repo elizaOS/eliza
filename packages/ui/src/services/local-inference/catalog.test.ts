@@ -15,6 +15,7 @@ import {
   selectRecommendedModelForSlot,
 } from "./recommendation";
 import { localInferenceService } from "./service";
+import type { HardwareProbe } from "./types";
 
 const EXPECTED_ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-2b": "eliza-1-2B",
@@ -167,7 +168,7 @@ describe("local inference catalog", () => {
   });
 
   it("selectRecommendedModelForSlot on 24 GB Apple Silicon skips pending 9B and selects published 4B", () => {
-    const appleSiliconHardware: import("./types").HardwareProbe = {
+    const appleSiliconHardware: HardwareProbe = {
       totalRamGb: 24,
       freeRamGb: 16,
       gpu: null,
