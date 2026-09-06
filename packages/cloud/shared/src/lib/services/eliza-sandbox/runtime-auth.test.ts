@@ -15,7 +15,7 @@ afterEach(() => {
 });
 describe("replacement runtime authentication contract", () => {
   test("keeps /api/status protected while only GET /api/health bypasses authentication", () => {
-    const agentApiDirectory = new URL("../../../../../../agent/src/api", import.meta.url);
+    const agentApiDirectory = new URL("../../../../../../agent/src/api/", import.meta.url);
     const routeClassifierSource = readFileSync(
       new URL("static-file-server.ts", agentApiDirectory),
       "utf8",
