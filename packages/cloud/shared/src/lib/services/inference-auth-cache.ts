@@ -557,9 +557,12 @@ export async function writeOrgBalanceHint(
   };
   // Physical lifetime is orgBalanceStale (5m): the hint must survive past the
   // orgBalance freshness window so getGateBalanceUsd can serve it stale-while-
-  // revalidate. `balanceAt` is the freshness clock the reader checks; the debit
-  // settler (lowerOrgBalanceHint) and top-ups (invalidateOrgBalanceHint) still
-  // keep the served value correct on writes.
+  // revalidate. `balanceAt` is the freshness clock the reader checks; the served
+  // value is kept correct by the two writers that follow an authoritative
+  // mutation — the debit settler republishes the committed balance and revision
+  // (republishOrgBalanceHint), and every other credit mutation evicts the entry
+  // (CacheInvalidation.onCreditMutation, plus invalidateOrgBalanceHint on a
+  // failed or refused debit).
   const outcome = await cache.setWithOutcome(
     CacheKeys.inference.orgBalance(orgId),
     hint,
@@ -579,33 +582,19 @@ export async function invalidateOrgBalanceHint(orgId: string): Promise<void> {
 }
 
 /**
- * Write the org-balance gate hint ONLY when it lowers the cached value. Used by
- * the debit settler: a debit can only reduce a balance, so an out-of-order
- * concurrent debit must never raise the cached gate value (which would
- * over-admit the optimistic path). A fresh authoritative read still uses
- * `writeOrgBalanceHint` (it is the source of truth); top-ups invalidate the hint.
- */
-export async function lowerOrgBalanceHint(
-  orgId: string,
-  balanceUsd: number,
-  balanceAt: number,
-): Promise<void> {
-  const existing = await readOrgBalanceHint(orgId);
-  if (!existing) return;
-  if (existing.balanceUsd <= balanceUsd) return;
-  await writeOrgBalanceHint(orgId, balanceUsd, balanceAt, existing.balanceRevision);
-}
-
-/**
  * Publish one authoritative post-debit balance snapshot with a single cache
  * write and no cache readback.
  *
- * Unlike {@link lowerOrgBalanceHint}, this seeds an entry after the committed
- * debit's invalidation deletes the old hint, preventing the next Worker turn
- * from failing closed on an avoidable cache miss. The projection is not the
- * monetary authority: Worker provider dispatch is serialized by the
- * revision-aware InferenceAdmissionGate Durable Object. Non-Worker paths use
- * the atomic DB-ledger admission or reserve credits synchronously; the legacy
+ * This is an unconditional write, and it has to be: it seeds an entry after the
+ * committed debit's invalidation has already deleted the old hint, preventing
+ * the next Worker turn from failing closed on an avoidable cache miss. A
+ * lower-only writer cannot do that job — with no entry present there is
+ * nothing to lower.
+ *
+ * The projection is not the monetary authority: Worker provider dispatch is
+ * serialized by the revision-aware InferenceAdmissionGate Durable Object.
+ * Non-Worker paths use the atomic DB-ledger admission or reserve credits
+ * synchronously; the legacy
  * KV lane cannot dispatch from this projection. A delayed projection write can
  * therefore be stale, but it cannot authorize spend by itself; the next Durable
  * Object admission applies only a newer revision and accounts for active holds.

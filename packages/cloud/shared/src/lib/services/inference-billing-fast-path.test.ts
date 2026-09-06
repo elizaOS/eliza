@@ -652,7 +652,7 @@ describe("sweepStalePendingInferenceCharges", () => {
   });
 });
 
-describe("#9899 hardening: backstop durability, lower-only hint, claim atomicity", () => {
+describe("#9899 hardening: backstop durability, hint republication, claim atomicity", () => {
   test("writePendingInferenceCharge reports true when the backstop persists", async () => {
     const input = chargeInput();
     const ok = await writePendingInferenceCharge(input, Date.now());
