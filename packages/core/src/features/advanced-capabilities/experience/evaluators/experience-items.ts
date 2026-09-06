@@ -14,6 +14,7 @@
  */
 import { logger } from "../../../../logger.ts";
 import { stringifyForDiagnostics } from "../../../../runtime/json-output.ts";
+import { compactExternalEnvelopeForPrompt } from "../../../../security/external-content.ts";
 import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
@@ -456,7 +457,9 @@ export const experiencePatternEvaluator: Evaluator<
 			(memory) => !isSyntheticMemory(memory),
 		);
 		const conversationContext = recentMessages
-			.map((memory) => memory.content.text)
+			.map((memory) =>
+				compactExternalEnvelopeForPrompt(memory.content.text ?? ""),
+			)
 			.filter(
 				(text): text is string => typeof text === "string" && text.length > 0,
 			)

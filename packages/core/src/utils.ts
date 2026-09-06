@@ -20,11 +20,12 @@
  * `export * from "./utils"` resolves to, so helpers under `utils/` that must be
  * reachable from the package are re-exported at the bottom.
  */
+
 import Handlebars from "handlebars";
 import z from "zod";
-
 import logger from "./logger";
 import { replaceIndexedNameTokens } from "./name-tokens";
+import { compactExternalEnvelopeForPrompt } from "./security/external-content";
 import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
@@ -528,7 +529,12 @@ export const formatMessages = ({
 			continue;
 		}
 
-		const messageText = (message.content as Content).text;
+		// Stored external envelopes render as a one-token provenance marker plus
+		// the payload; the warning block belongs to the message being acted on.
+		const rawMessageText = (message.content as Content).text;
+		const messageText = rawMessageText
+			? compactExternalEnvelopeForPrompt(rawMessageText)
+			: rawMessageText;
 		const reactedMessageText = (message.content as Content).reactedMessageText;
 		const messageActions = (message.content as Content).actions;
 		const messageThought = (message.content as Content).thought;

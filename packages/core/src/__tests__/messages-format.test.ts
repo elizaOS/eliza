@@ -4,7 +4,9 @@
  * restoration, bot-sender tagging, and timestamp tense in the rendered
  * transcript. Pure formatter test — no runtime or model.
  */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { wrapExternalContent } from "../security/external-content";
 import type { Entity, Media, Memory, UUID } from "../types/index.ts";
 import { formatMessages, formatPosts } from "../utils.ts";
 
@@ -252,5 +254,27 @@ describe("transcript timestamp tense", () => {
 		});
 
 		expect(rendered).toContain("Date: 5 minutes ago");
+	});
+});
+
+describe("formatMessages with stored external envelopes", () => {
+	it("renders a wrapped message as a compact provenance marker plus payload", () => {
+		const wrapped = wrapExternalContent("what time is it for me right now?", {
+			source: "api",
+		});
+		const out = formatMessages({
+			messages: [
+				{
+					id: "00000000-0000-0000-0000-0000000000a1",
+					entityId: "00000000-0000-0000-0000-0000000000e0",
+					roomId: "00000000-0000-0000-0000-0000000000c0",
+					createdAt: 1,
+					content: { text: wrapped },
+				} as never,
+			],
+			entities: [],
+		} as never);
+		expect(out).toContain("[external:API] what time is it for me right now?");
+		expect(out).not.toContain("SECURITY NOTICE");
 	});
 });
