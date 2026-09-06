@@ -1,4 +1,28 @@
-/** A bounded readiness probe with diagnostics safe to include in dev logs. */
+/** Bounded readiness probes with diagnostics safe to include in dev logs. */
+
+/**
+ * Confirm a short probe timeout before counting it toward killing the runtime.
+ * A loaded development host can serve healthy responses outside the interactive
+ * readiness budget. The longer probe still bounds recovery for a stalled child;
+ * explicit unhealthy responses and connection failures are never hidden.
+ */
+export async function probeApiHealthWithConfirmation(
+  port,
+  { timeoutMs = 1500, confirmationTimeoutMs = 10_000, ...options } = {},
+) {
+  const initial = await probeApiHealth(port, { ...options, timeoutMs });
+  if (initial.reason !== "timeout") return initial;
+  const confirmation = await probeApiHealth(port, {
+    ...options,
+    timeoutMs: confirmationTimeoutMs,
+  });
+  return {
+    ...confirmation,
+    elapsedMs: initial.elapsedMs + confirmation.elapsedMs,
+    recheckedAfterTimeout: true,
+  };
+}
+
 export async function probeApiHealth(
   port,
   { fetchImpl = fetch, timeoutMs = 1500, now = () => performance.now() } = {},

@@ -28,7 +28,10 @@ import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
-import { probeApiHealth } from "./lib/dev-api-health.mjs";
+import {
+  probeApiHealth,
+  probeApiHealthWithConfirmation,
+} from "./lib/dev-api-health.mjs";
 import {
   applyDevCloudTarget,
   configureDevCloudEnvironment,
@@ -1241,10 +1244,11 @@ if (uiOnly) {
   apiHealthWatchdog = createApiHealthWatchdog({
     check: async () => {
       const childPid = apiProcess?.pid ?? null;
-      return { ...(await probeApiHealth(API_PORT)), childPid };
+      return { ...(await probeApiHealthWithConfirmation(API_PORT)), childPid };
     },
     onProbe: (probe) => {
-      if (probe.healthy && !probe.recovered) return;
+      if (probe.healthy && !probe.recovered && !probe.recheckedAfterTimeout)
+        return;
       // Closed diagnostic fields only: never log response bodies or transport
       // error text, which can include credentials or private runtime context.
       console.error(

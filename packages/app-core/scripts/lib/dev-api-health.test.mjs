@@ -1,6 +1,10 @@
+/** Real HTTP tests distinguish slow readiness from stalled or unhealthy children. */
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { probeApiHealth } from "./dev-api-health.mjs";
+import {
+  probeApiHealth,
+  probeApiHealthWithConfirmation,
+} from "./dev-api-health.mjs";
 
 let server;
 
@@ -20,6 +24,50 @@ afterEach(async () => {
 });
 
 describe("probeApiHealth", () => {
+  it("confirms a slow healthy server before allowing a watchdog restart", async () => {
+    const port = await serve((_request, response) => {
+      setTimeout(() => response.end(JSON.stringify({ ready: true })), 120);
+    });
+    expect(
+      await probeApiHealthWithConfirmation(port, {
+        timeoutMs: 40,
+        confirmationTimeoutMs: 1000,
+      }),
+    ).toMatchObject({
+      healthy: true,
+      reason: "ready",
+      recheckedAfterTimeout: true,
+    });
+  });
+
+  it("still fails a stalled server after the bounded confirmation", async () => {
+    const port = await serve(() => {});
+    expect(
+      await probeApiHealthWithConfirmation(port, {
+        timeoutMs: 40,
+        confirmationTimeoutMs: 80,
+      }),
+    ).toMatchObject({
+      healthy: false,
+      reason: "timeout",
+      recheckedAfterTimeout: true,
+    });
+  });
+
+  it("does not retry an explicit unhealthy response", async () => {
+    let requests = 0;
+    const port = await serve((_request, response) => {
+      requests += 1;
+      response.writeHead(503);
+      response.end();
+    });
+    expect(await probeApiHealthWithConfirmation(port)).toMatchObject({
+      healthy: false,
+      reason: "http_error",
+    });
+    expect(requests).toBe(1);
+  });
+
   it("keeps ready, booting, and HTTP failure distinct across real responses", async () => {
     let status = 200;
     let body = { ready: true };
