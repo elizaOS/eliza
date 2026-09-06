@@ -205,6 +205,28 @@ exit 17
     expect(script).toContain("sudo tailscale debug prefs");
     expect(script).toContain('((.Self.HostName // "") == $h');
     expect(script).toContain('.ControlURL // ""');
+    // Both identity proofs — the pre-enrollment check and the post-enrollment
+    // one — pass the hostname as a jq argument rather than interpolating it
+    // into the program, so a single remaining site cannot satisfy this.
+    expect(script.match(/jq -e --arg h "\$CP_ROUTER_HOST"/g)).toHaveLength(2);
+    // This file's contract is redaction: a captured daemon blob may be fed to
+    // jq, never echoed, printed or cat-ed into the log.
+    for (const captured of [
+      "STATUS_JSON",
+      "PREFS_JSON",
+      "FINAL_STATUS_JSON",
+      "FINAL_PREFS_JSON",
+    ]) {
+      expect(script, captured).not.toMatch(
+        new RegExp(`(?:echo|printf|cat)[^\\n]*\\$(?:\\{)?${captured}`),
+      );
+    }
+    // Every jq read of a captured status discards its stdout.
+    for (const match of script.matchAll(
+      /<<<"\$(?:FINAL_)?STATUS_JSON"[^\n]*/g,
+    )) {
+      expect(match[0], match[0]).toContain(">/dev/null");
+    }
     expect(script).toContain('headscale users create "$user" >/dev/null');
   });
 
