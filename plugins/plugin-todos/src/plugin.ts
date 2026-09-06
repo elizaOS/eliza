@@ -16,27 +16,6 @@ export const todosRuntimePlugin: Plugin = {
   providers: [currentTodosProvider],
   services: [TodosService],
   schema: dbSchema,
-  views: [
-    {
-      id: "todos",
-      label: "Todos",
-      description: "Three-lane todo board: Today / Upcoming / Someday",
-      icon: "ListChecks",
-      path: "/todos",
-      responseContext: { primaryContext: "todos" },
-      modalities: ["gui"],
-      bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
-      componentExport: "TodosView",
-      tags: ["todos", "tasks", "productivity"],
-      relatedActions: ["OWNER_TODOS"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-  ],
   async dispose(runtime) {
     const service = runtime.getService<TodosService>(TodosService.serviceType);
     await service?.stop();

@@ -11,11 +11,13 @@
  */
 
 import { describe, expect, test } from "vitest";
-import bootPlugin, { todosRuntimePlugin } from "../src/plugin.js";
+import bootPlugin, { todosPlugin, todosRuntimePlugin } from "../src/plugin.js";
 
 describe("Todos boot-registration view contract", () => {
   test("the boot-imported `/plugin` default export declares the todos view", () => {
-    expect(bootPlugin).toBe(todosRuntimePlugin);
+    expect(bootPlugin).toBe(todosPlugin);
+    expect(todosRuntimePlugin.views ?? []).toHaveLength(0);
+    expect(bootPlugin.views).toHaveLength(1);
 
     const views = bootPlugin.views ?? [];
     const todosView = views.find((view) => view.id === "todos");
