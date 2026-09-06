@@ -1,10 +1,7 @@
 /**
- * Pins the NOTES action's operation-parsing contract against a real
- * `NotesService` over a temp-file store. The case that matters: an operation
- * name this action does not implement must NOT degrade into a read. The action
- * advertises DELETE_NOTE / SEARCH_NOTES / UPDATE_NOTE as similes, so a planner
- * emitting `action: "remove"` is expected traffic — and silently listing the
- * notes in response contradicts this action's own routing contract.
+ * Exercises Notes dispatch, validation, ownership, and persistence against a
+ * real NotesService over a temp-file store. Scripted model outputs drive the
+ * real core planner to verify corrected-call recovery and unrelated failures.
  */
 
 import { promises as fs } from "node:fs";
@@ -20,7 +17,12 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  type PlannerToolCall,
+  runPlannerLoop,
+} from "../../../packages/core/src/runtime/planner-loop.js";
 import { notesAction } from "./action.js";
+import { notesPlugin } from "./plugin.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import { parseNoteContent } from "./validation.js";
@@ -66,7 +68,222 @@ async function run(
   return result;
 }
 
+async function executorHarness(): Promise<IAgentRuntime> {
+  const runtime = await harness();
+  Object.assign(runtime, {
+    actions: notesPlugin.actions,
+    agentId: "agent-id" as UUID,
+    getRoom: vi.fn(async () => null),
+    reportError: vi.fn(),
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  });
+  return runtime;
+}
+
+function execute(
+  runtime: IAgentRuntime,
+  call: PlannerToolCall,
+  userRoles: Parameters<typeof executePlannedToolCall>[1]["userRoles"] = [
+    "OWNER",
+  ],
+) {
+  return executePlannedToolCall(
+    runtime,
+    {
+      message: {
+        id: "message-id" as UUID,
+        entityId: "owner-id" as UUID,
+        roomId: "room-id" as UUID,
+        content: { text: "Create the requested note." },
+      } as Memory,
+      activeContexts: ["notes"],
+      userRoles,
+    },
+    call,
+  );
+}
+
+describe("promoted Notes execution", () => {
+  it("creates, lists, updates, and deletes through the registered children", async () => {
+    const runtime = await executorHarness();
+    const created = await execute(runtime, {
+      name: "NOTES_CREATE",
+      params: {
+        content:
+          "Conversation context QA\nBring the blue notebook and charger; no water.",
+      },
+    });
+    expect(created.success).toBe(true);
+    expect(created.data?.note).toMatchObject({
+      title: "Conversation context QA",
+      body: "Bring the blue notebook and charger; no water.",
+    });
+    const updated = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: {
+        content: "Conversation context QA",
+        body: "Conversation context QA\nBring only the blue notebook.",
+      },
+    });
+    expect(updated.success).toBe(true);
+    expect(updated.data?.noteId).toBe(created.data?.noteId);
+    const listed = await execute(runtime, {
+      name: "NOTES_LIST",
+      params: { content: "" },
+    });
+    expect(listed.data?.notes).toMatchObject([
+      {
+        title: "Conversation context QA",
+        body: "Bring only the blue notebook.",
+      },
+    ]);
+    expect(listed.data?.filterApplied).toBe(false);
+    const deleted = await execute(runtime, {
+      name: "NOTES_DELETE",
+      params: { content: "Conversation context QA" },
+    });
+    expect(deleted.success).toBe(true);
+    expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+  });
+
+  it.each([
+    ["NOTES_CREATE", { body: "Bring the notebook." }, "content"],
+    ["NOTES_CREATE", { content: "" }, "content"],
+    ["NOTES_UPDATE", { body: "Replacement" }, "content"],
+    ["NOTES_UPDATE", { content: "" }, "content"],
+    ["NOTES_UPDATE", { content: "Existing note" }, "body"],
+    ["NOTES_UPDATE", { content: "Existing note", body: "" }, "body"],
+    ["NOTES_DELETE", {}, "content"],
+    ["NOTES_DELETE", { content: "" }, "content"],
+  ])(
+    "rejects incomplete %s arguments before writing: %j",
+    async (name, params, missing) => {
+      const runtime = await executorHarness();
+      await run(runtime, {
+        action: "create",
+        content: "Existing note\nKeep this body.",
+      });
+      const before = (await run(runtime, { action: "list" })).data?.notes;
+      const rejected = await execute(runtime, { name, params });
+      expect(rejected.success).toBe(false);
+      expect(rejected.data?.parameterErrors).toEqual(
+        expect.arrayContaining([expect.stringContaining(missing)]),
+      );
+      expect((await run(runtime, { action: "list" })).data?.notes).toEqual(
+        before,
+      );
+    },
+  );
+
+  it("denies a non-owner promoted write without changing the store", async () => {
+    const runtime = await executorHarness();
+    const rejected = await execute(
+      runtime,
+      {
+        name: "NOTES_CREATE",
+        params: { content: "Unauthorized note" },
+      },
+      ["USER"],
+    );
+    expect(rejected.success).toBe(false);
+    expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+  });
+
+  it.each([
+    { name: "NOTES", related: true },
+    { name: "NOTES", related: false },
+    { name: "NOTES_CREATE", related: true },
+    { name: "NOTES_CREATE", related: false },
+  ])(
+    "retains only unresolved $name failure authority after a related retry: $related",
+    async ({ name, related }) => {
+      const runtime = await executorHarness();
+      const body = "Bring the blue notebook and charger; no water.";
+      const content = related
+        ? `Conversation context QA\n${body}`
+        : "Dentist appointment\nTuesday afternoon.";
+      const useModel = vi
+        .fn()
+        .mockResolvedValue(
+          "The first note could not be saved; the second note was saved.",
+        )
+        .mockResolvedValueOnce({
+          toolCalls: [
+            {
+              id: "missing-content",
+              name,
+              arguments: { action: "create", body },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          toolCalls: [
+            { id: "retry", name, arguments: { action: "create", content } },
+          ],
+        });
+      const completion = "Hecho. La nota solicitada está guardada.";
+      const result = await runPlannerLoop({
+        runtime: { useModel },
+        context: { id: "notes-recovery", events: [] },
+        executeToolCall: (call) => execute(runtime, call),
+        evaluate: ({ trajectory }) => {
+          const lastResult = trajectory.steps.at(-1)?.result;
+          return lastResult?.success
+            ? {
+                success: true,
+                decision: "FINISH",
+                thought: "The requested note was saved.",
+                messageToUser: completion,
+                effectReceiptIds: lastResult.effectReceipts?.map(
+                  (receipt) => receipt.receiptId,
+                ),
+              }
+            : {
+                success: false,
+                decision: "CONTINUE",
+                thought: "Correct the missing content.",
+              };
+        },
+      });
+      expect((await run(runtime, { action: "list" })).data?.count).toBe(1);
+      expect(
+        result.trajectory.steps.filter(
+          (step) => step.result?.success === false,
+        ),
+      ).toHaveLength(1);
+      if (related) {
+        expect(result.finalMessage).toBe(completion);
+        expect(useModel).toHaveBeenCalledTimes(2);
+      } else {
+        expect(result.finalMessage).not.toBe(completion);
+        expect(useModel.mock.calls.length).toBeGreaterThan(2);
+      }
+    },
+  );
+});
+
 describe("NOTES operation parsing", () => {
+  it.each(["text", "note", "title"])(
+    "preserves the direct handler's legacy %s content alias",
+    async (alias) => {
+      const runtime = await harness();
+      const created = await run(runtime, {
+        action: "create",
+        [alias]: "Legacy title",
+        body: "Legacy body",
+      });
+      expect(created.success).toBe(true);
+      expect(
+        (await run(runtime, { action: "list" })).data?.notes,
+      ).toMatchObject([{ title: "Legacy title", body: "Legacy body" }]);
+    },
+  );
+
   it("keeps canonical Notes aliases distinct from generic view navigation", () => {
     expect(notesAction.similes).toEqual(
       expect.arrayContaining(["NOTES_LIST", "NOTES_READ", "SEARCH_NOTES"]),
