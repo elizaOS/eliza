@@ -173,6 +173,7 @@ export default defineConfig({
       "scripts/ensure-fused-inference-install.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
       "scripts/lib/electrobun-loopback-hardening.test.mjs",
+      "scripts/lib/fused-artifact-integrity.test.mjs",
       "scripts/lib/linux-artifact-permissions.test.mjs",
       // Uses Node.js built-in test runner (node:test), not vitest; runs in
       // `bun run test:script-suites` (node --test list).
