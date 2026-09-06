@@ -185,6 +185,42 @@ describe("recentConversationsProvider", () => {
     expect(recall.text).toContain("hello there");
   });
 
+  it("judges recall on the request inside a document-augmentation wrapper", async () => {
+    const augmented = (request: string): Memory =>
+      ({
+        ...message(),
+        content: {
+          text: [
+            "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+            "<contextual_documents>",
+            '<source title="notes" similarity="0.900">',
+            "team conversation notes from last week",
+            "</source>",
+            "</contextual_documents>",
+            "",
+            "<user_request>",
+            request,
+            "</user_request>",
+          ].join("\n"),
+        },
+      }) as Memory;
+
+    const plain = await recentConversationsProvider.get(
+      makeRuntime(),
+      augmented("what time is it right now?"),
+      EMPTY_STATE,
+    );
+    expect(plain.text).toContain("Stored conversation manifest:");
+    expect(plain.text).not.toContain("hello there");
+
+    const recall = await recentConversationsProvider.get(
+      makeRuntime(),
+      augmented("what did we say about this earlier?"),
+      EMPTY_STATE,
+    );
+    expect(recall.text).toContain("hello there");
+  });
+
   it("expands linked aliases into complete eager context and a body-free manifest", async () => {
     getVerifiedRelatedEntityIds.mockResolvedValue([ENTITY_ID, ALIAS_ENTITY_ID]);
     const completeTexts = Array.from(

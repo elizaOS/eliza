@@ -48,6 +48,7 @@ export {
 	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
 	unwrapUserMessageText,
+	unwrapUserMessageTextForDetection,
 } from "./incoming-message-security.js";
 export {
 	ENVELOPE_LEAK_NOTICE,

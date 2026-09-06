@@ -8,6 +8,8 @@
 
 import crypto from "node:crypto";
 
+export { userRequestFromAugmentedText } from "./augmented-request.ts";
+
 import type {
   AccessContext,
   AgentRuntime,
@@ -494,28 +496,11 @@ export async function maybeAugmentChatMessageWithDocuments(
     });
   }
 
-  // The user's own words survive augmentation under the same stamp the
-  // inbound security envelope uses, so relevance gates test the request and
-  // not this instruction wrapper (live 2026-09-06: recent-conversations
-  // matched "conversation" inside the wrapper on every API turn and sent its
-  // complete cross-platform corpus eagerly).
-  const priorMetadata = ((message.content as Content).metadata ?? {}) as Record<
-    string,
-    unknown
-  >;
   return {
     ...message,
     content: {
       ...(message.content as Content),
       text: augmentedText,
-      metadata: {
-        ...priorMetadata,
-        userPayloadText:
-          typeof priorMetadata.userPayloadText === "string" &&
-          priorMetadata.userPayloadText.trim().length > 0
-            ? priorMetadata.userPayloadText
-            : userPrompt,
-      },
     },
   };
 }

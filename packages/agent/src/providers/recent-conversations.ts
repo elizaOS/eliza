@@ -31,9 +31,11 @@ import {
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
   toWellFormedUnicode,
+  unwrapUserMessageTextForDetection,
   validateActionKeywords,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
+import { userRequestFromAugmentedText } from "../api/augmented-request.ts";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -45,13 +47,17 @@ import {
   roomSourceTag,
 } from "../shared/conversation-format.ts";
 
-function userPayloadText(message: Memory): string {
-  const metadata = message.content.metadata as
-    | Record<string, unknown>
-    | undefined;
-  const payload = metadata?.userPayloadText;
-  if (typeof payload === "string" && payload.trim().length > 0) return payload;
-  return message.content.text ?? "";
+/**
+ * The user's own words for the recall test: the runtime's retained payload
+ * when the inbound text was armoured by incoming-message-security (this is a
+ * scoring boundary, so the detection variant that never collapses to "" is
+ * the right one), then the `<user_request>` body when document augmentation
+ * wrapped the request in its instruction preamble.
+ */
+function relevanceTextOf(message: Memory): string {
+  return userRequestFromAugmentedText(
+    unwrapUserMessageTextForDetection(message) || (message.content.text ?? ""),
+  );
 }
 
 function attachmentPromptSummary(attachments: readonly Media[]): string {
@@ -239,20 +245,15 @@ export const recentConversationsProvider: Provider = {
       // "conversation" and so matched a recall keyword on every turn (live
       // 2026-09-06: a 33-char time question reached here as 653 chars). Only
       // the user's own words may carry the recall signal.
-      const relevanceText = userPayloadText(message);
+      const relevanceText = relevanceTextOf(message);
       const eagerRelevant = validateActionKeywords(
         { ...message, content: { ...message.content, text: relevanceText } },
         [],
         relevanceKeywords,
       );
-      runtime.logger?.warn?.(
+      runtime.logger?.debug?.(
         {
           src: "provider:recent-conversations",
-          metadataKeys: Object.keys(
-            (message.content.metadata as Record<string, unknown> | undefined) ??
-              {},
-          ),
-          textHead: (message.content.text ?? "").slice(0, 160),
           eagerRelevant,
           keywordCount: relevanceKeywords.length,
           matchedKeyword: eagerRelevant
