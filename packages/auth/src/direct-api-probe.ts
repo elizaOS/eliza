@@ -1,6 +1,8 @@
 /**
- * Verifies direct API credentials with provider round-trips for account-pool
- * callers that cannot detect cached-but-revoked keys from local state alone.
+ * Verifies direct-provider credentials with bounded diagnostics and catalogs.
+ * OpenRouter authentication uses its current-key endpoint because the public
+ * model catalog does not prove credential ownership; new account providers
+ * never reflect their untrusted failure bodies across the enrollment boundary.
  */
 import type { DirectAccountProvider } from "./types.ts";
 
@@ -35,6 +37,13 @@ export function directProviderBaseUrl(
       return (
         process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1"
       );
+    case "openrouter-api":
+      return (
+        process.env.OPENROUTER_BASE_URL?.trim() ||
+        "https://openrouter.ai/api/v1"
+      );
+    case "xai-api":
+      return process.env.XAI_BASE_URL?.trim() || "https://api.x.ai/v1";
   }
 }
 
@@ -43,15 +52,34 @@ export interface DirectApiProbeResult {
   status: number;
   error?: string;
   latencyMs: number;
+  /**
+   * Complete OpenRouter/xAI model catalog within the response-size safety
+   * bound. Other direct providers never read a successful body.
+   */
+  modelIds?: string[];
+  /** True when the catalog response exceeded the byte safety bound. */
+  modelCatalogTruncated?: boolean;
+  /**
+   * True when the key authenticated but the optional catalog could not be
+   * fetched (non-2xx status or transport failure). Distinct from an empty
+   * catalog so callers can show "catalog unavailable" rather than "no models".
+   */
+  modelCatalogUnavailable?: boolean;
 }
 
-/**
- * Ceiling on the provider error body kept for diagnostics. Orders of magnitude
- * above any real provider error, so in practice nothing is lost — but the base
- * URL is operator-configurable through the `*_BASE_URL` overrides, so the read
- * must not be unbounded. Exceeding it rejects the optional body as a whole;
- * partial provider text is never presented as the provider's diagnostic.
- */
+/** Providers whose successful probe also reads a bounded model catalog. */
+const CATALOG_PROVIDERS: ReadonlySet<DirectAccountProvider> = new Set([
+  "openrouter-api",
+  "xai-api",
+]);
+
+interface ModelCatalogOutcome {
+  modelIds?: string[];
+  modelCatalogTruncated?: true;
+  modelCatalogUnavailable?: true;
+}
+
+const MAX_MODEL_CATALOG_BYTES = 1_048_576;
 const MAX_PROBE_FAILURE_BODY_BYTES = 64 * 1024;
 
 async function readProbeFailureBody(response: Response): Promise<string> {
@@ -97,10 +125,118 @@ async function readProbeFailureBody(response: Response): Promise<string> {
   }
 }
 
+async function readBoundedResponseText(
+  response: Response,
+): Promise<{ text: string; truncated: boolean }> {
+  const reader = response.body?.getReader();
+  if (!reader) return { text: "", truncated: false };
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const next = await reader.read();
+    if (next.done) break;
+    if (total + next.value.byteLength > MAX_MODEL_CATALOG_BYTES) {
+      await reader.cancel();
+      return { text: "", truncated: true };
+    }
+    chunks.push(next.value);
+    total += next.value.byteLength;
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(merged), truncated: false };
+}
+
+function parseBoundedModelIds(text: string): {
+  modelIds?: string[];
+  truncated: boolean;
+} {
+  if (!text) return { truncated: false };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // error-policy:J3 provider catalog JSON is untrusted. A malformed optional
+    // catalog does not turn a successful authenticated probe into fake models.
+    return { truncated: false };
+  }
+  if (!parsed || typeof parsed !== "object" || !("data" in parsed)) {
+    return { truncated: false };
+  }
+  const data = (parsed as { data?: unknown }).data;
+  if (!Array.isArray(data)) return { truncated: false };
+  const unique = new Set<string>();
+  for (const item of data) {
+    if (!item || typeof item !== "object") continue;
+    const id = (item as { id?: unknown }).id;
+    if (typeof id !== "string") continue;
+    const normalized = id.trim();
+    if (!normalized || normalized.length > 256) continue;
+    unique.add(normalized);
+  }
+  return {
+    ...(unique.size > 0 ? { modelIds: [...unique] } : {}),
+    truncated: false,
+  };
+}
+
+async function readModelCatalog(
+  response: Response,
+): Promise<ModelCatalogOutcome> {
+  if (!response.ok) return { modelCatalogUnavailable: true };
+  const catalogBody = await readBoundedResponseText(response);
+  const catalog = catalogBody.truncated
+    ? { truncated: true }
+    : parseBoundedModelIds(catalogBody.text);
+  return {
+    ...(catalog.modelIds ? { modelIds: catalog.modelIds } : {}),
+    ...(catalog.truncated ? { modelCatalogTruncated: true as const } : {}),
+  };
+}
+
+async function readAuthenticatedModelCatalog(
+  response: Response,
+): Promise<ModelCatalogOutcome> {
+  try {
+    return await readModelCatalog(response);
+  } catch {
+    // error-policy:J4 user-facing degrade — authentication already succeeded;
+    // a malformed, oversized, or unreadable catalog is unavailable metadata,
+    // not a fabricated credential failure.
+    return { modelCatalogUnavailable: true };
+  }
+}
+
+async function fetchOpenRouterCatalog(
+  baseUrl: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<ModelCatalogOutcome> {
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      method: "GET",
+      signal,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    return await readModelCatalog(response);
+  } catch {
+    // error-policy:J4 user-facing degrade — the catalog is optional metadata
+    // fetched after `/key` has already proven the credential. A transport
+    // failure becomes the explicit `modelCatalogUnavailable` state that the
+    // account test route and UI render, never an empty "no models" catalog.
+    return { modelCatalogUnavailable: true };
+  }
+}
+
 /**
- * Verify a direct-API key against the provider with a minimal authed GET
- * (`/models`). `ok` is true only on a 2xx; a 401/403 (revoked/invalid) returns
- * `ok:false` with the status so the caller can mark the account needs-reauth.
+ * Verify a direct-API key against a provider-owned authenticated endpoint.
+ * OpenRouter uses `/key` and only then reads its authenticated `/models` catalog;
+ * xAI authenticates through `/models` and reads that bounded catalog; every
+ * other provider authenticates through `/models` and never reads a 2xx body.
  */
 export async function probeDirectApiKey(
   providerId: DirectAccountProvider,
@@ -121,24 +257,52 @@ export async function probeDirectApiKey(
               "x-api-key": apiKey,
             },
           })
-        : await fetch(`${baseUrl}/models`, {
-            method: "GET",
-            signal: controller.signal,
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
+        : await fetch(
+            `${baseUrl}/${providerId === "openrouter-api" ? "key" : "models"}`,
+            {
+              method: "GET",
+              signal: controller.signal,
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+              },
             },
-          });
-    const latencyMs = Date.now() - start;
+          );
     if (!response.ok) {
-      const text = await readProbeFailureBody(response);
+      const preserveProviderDiagnostic =
+        providerId !== "openrouter-api" && providerId !== "xai-api";
+      const diagnostic = preserveProviderDiagnostic
+        ? `: ${await readProbeFailureBody(response)}`
+        : "";
       return {
         ok: false,
         status: response.status,
-        error: `${providerId} ${response.status}: ${text}`,
-        latencyMs,
+        // Provider bodies are untrusted and have historically included request
+        // diagnostics. Never reflect one across the account API boundary where
+        // it could echo credentials into UI state, logs, or evidence.
+        error: preserveProviderDiagnostic
+          ? `${providerId} ${response.status}${diagnostic}`
+          : `${providerId} credential probe failed (HTTP ${response.status})`,
+        latencyMs: Date.now() - start,
       };
     }
-    return { ok: true, status: response.status, latencyMs };
+    // Only the catalog providers read a successful body; every other direct
+    // provider keeps its historical status-only probe and never reads one.
+    const catalog: ModelCatalogOutcome =
+      providerId === "openrouter-api"
+        ? await fetchOpenRouterCatalog(baseUrl, apiKey, controller.signal)
+        : CATALOG_PROVIDERS.has(providerId)
+          ? await readAuthenticatedModelCatalog(response)
+          : {};
+    return {
+      ok: true,
+      status: response.status,
+      latencyMs: Date.now() - start,
+      ...(catalog.modelIds ? { modelIds: catalog.modelIds } : {}),
+      ...(catalog.modelCatalogTruncated ? { modelCatalogTruncated: true } : {}),
+      ...(catalog.modelCatalogUnavailable
+        ? { modelCatalogUnavailable: true }
+        : {}),
+    };
   } catch (err) {
     // error-policy:J1 boundary translation — callers need a typed failed probe
     // for transport/timeout failures, distinct from an authenticated HTTP status.

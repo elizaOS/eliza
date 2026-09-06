@@ -32,6 +32,7 @@ import {
   type FirstRunCredentialInputs,
   type FirstRunLlmPersistenceSelection,
   type FirstRunLocalProviderId,
+  getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
   getFirstRunProviderSignalEnvKeys,
   getStoredFirstRunProviderId,
@@ -374,12 +375,17 @@ function applyLocalProviderCapabilities(
   }
 
   const providerOption = getFirstRunProviderOption(normalizedProvider);
-  if (providerOption?.envKey) {
+  const directAccountProvider =
+    getDirectAccountProviderForFirstRunProvider(normalizedProvider);
+  const accountPoolOwnsCredential =
+    directAccountProvider === "openrouter-api" ||
+    directAccountProvider === "xai-api";
+  if (providerOption?.envKey && !accountPoolOwnsCredential) {
     const apiKey = trimToUndefined(selection.apiKey);
     if (apiKey) {
       setEnvValue(config, providerOption.envKey, apiKey);
     }
-  } else {
+  } else if (!accountPoolOwnsCredential) {
     for (const envKey of getFirstRunProviderSignalEnvKeys(normalizedProvider)) {
       const value = trimToUndefined(selection.apiKey);
       if (value) {

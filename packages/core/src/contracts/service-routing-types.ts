@@ -60,6 +60,8 @@ export const LINKED_ACCOUNT_PROVIDER_IDS = [
 	"zai-api",
 	"moonshot-api",
 	"cerebras-api",
+	"openrouter-api",
+	"xai-api",
 ] as const;
 
 export type LinkedAccountProviderId =

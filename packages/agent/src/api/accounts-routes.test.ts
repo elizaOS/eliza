@@ -6,7 +6,11 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ElizaError, LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ElizaError,
+  LINKED_ACCOUNT_PROVIDER_IDS,
+} from "@elizaos/core";
 import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +19,7 @@ const fakes = vi.hoisted(() => ({
   poolAccounts: [] as Array<Record<string, unknown>>,
   poolAvailable: true,
   deleteAccount: vi.fn(),
+  applyAccountPoolApiCredentials: vi.fn(async () => {}),
   getAccessToken: vi.fn(async () => "access-token"),
   probeDirectApiKey: vi.fn(
     async (): Promise<{
@@ -22,6 +27,8 @@ const fakes = vi.hoisted(() => ({
       status: number;
       latencyMs: number;
       error?: string;
+      modelIds?: string[];
+      modelCatalogTruncated?: boolean;
     }> => ({
       ok: true,
       status: 200,
@@ -113,6 +120,7 @@ vi.mock("@elizaos/auth/oauth-flow", () => ({
 vi.mock("../runtime/host-bridge.ts", () => ({
   getAgentHostBridge: () => ({
     getDefaultAccountPool: () => (fakes.poolAvailable ? fakes.pool : null),
+    applyAccountPoolApiCredentials: fakes.applyAccountPoolApiCredentials,
   }),
 }));
 
@@ -398,6 +406,20 @@ describe("accounts routes", () => {
         },
       });
     }
+    for (const providerId of ["openrouter-api", "xai-api"]) {
+      expect(
+        response.providers.find((item) => item.providerId === providerId),
+      ).toMatchObject({
+        runtimeEligibility: {
+          chat: { available: true, credentialPath: "direct-api" },
+          codingAgent: {
+            available: false,
+            credentialPath: "none",
+            unavailableReason: expect.any(String),
+          },
+        },
+      });
+    }
   });
 
   it("sets, surfaces, validates, and clears subscriptionEndsAt through PATCH", async () => {
@@ -468,7 +490,10 @@ describe("accounts routes", () => {
     });
     await handleAccountsRoutes(created.ctx);
     expect(fakes.saveAccount).toHaveBeenCalledOnce();
+    // First enrollment of an established direct provider stays offline-safe.
+    expect(fakes.probeDirectApiKey).not.toHaveBeenCalled();
     expect(created.jsonCalls[0]?.status).toBe(201);
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(1);
 
     fakes.poolAccounts = [{ ...linkedAccount }];
     fakes.accounts = [
@@ -489,6 +514,8 @@ describe("accounts routes", () => {
       enabled: false,
       priority: 2,
     });
+    // Disabling re-runs the pool export so the live credential follows.
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(2);
 
     const tested = makeContext(
       "POST",
@@ -519,6 +546,337 @@ describe("accounts routes", () => {
       expect.objectContaining({ owner: "runtime" }),
     );
     expect(deleted.jsonCalls[0]?.body).toEqual({ deleted: true });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(4);
+  });
+
+  it("re-exports pool credentials with the configured route after a label-only patch is skipped", async () => {
+    fakes.poolAccounts = [{ ...linkedAccount }];
+    fakes.accounts = [
+      { id: "account-1", providerId: "openai-api", label: "Primary" },
+    ];
+    const renamed = makeContext("PATCH", "/api/accounts/openai-api/account-1", {
+      label: "Only renamed",
+    });
+    await handleAccountsRoutes(renamed.ctx);
+    expect(fakes.applyAccountPoolApiCredentials).not.toHaveBeenCalled();
+
+    const created = makeContext("POST", "/api/accounts/xai-api", {
+      source: "api-key",
+      label: "Work",
+      apiKey: "xai-live-value",
+    });
+    created.ctx.state.config = {
+      accountStrategies: { "xai-api": "round-robin" },
+      serviceRouting: {
+        llmText: {
+          backend: "grok",
+          accountIds: ["pinned"],
+          strategy: "priority",
+        },
+      },
+    } as unknown as AccountsRouteContext["state"]["config"];
+    await handleAccountsRoutes(created.ctx);
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledWith({
+      activeBackend: "grok",
+      accountStrategies: { "xai-api": "round-robin" },
+      serviceRouting: expect.objectContaining({
+        llmText: expect.objectContaining({ backend: "grok" }),
+      }),
+    });
+    delete process.env.XAI_API_KEY;
+  });
+
+  it.each([
+    ["openrouter-api", "sk-or-test-value"],
+    ["xai-api", "xai-test-value"],
+  ] as const)(
+    "preflights, stores, and live-exports %s without reflecting the secret",
+    async (providerId, apiKey) => {
+      const envKey =
+        providerId === "openrouter-api" ? "OPENROUTER_API_KEY" : "XAI_API_KEY";
+      delete process.env[envKey];
+
+      const created = makeContext("POST", `/api/accounts/${providerId}`, {
+        source: "api-key",
+        label: "Coding account",
+        apiKey,
+      });
+      await handleAccountsRoutes(created.ctx);
+
+      expect(fakes.probeDirectApiKey).toHaveBeenCalledWith(providerId, apiKey);
+      expect(fakes.saveAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId }),
+        expect.anything(),
+      );
+      expect(created.jsonCalls[0]?.status).toBe(201);
+      // The route never writes a paid-provider key directly. The account-pool
+      // export is the serialized live authority and owns any env transition.
+      expect(process.env[envKey]).toBeUndefined();
+      expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(created.jsonCalls)).not.toContain(apiKey);
+      delete process.env[envKey];
+    },
+  );
+
+  it("replaces and revokes the real runtime setting after pool synchronization", async () => {
+    const runtime = new AgentRuntime({
+      character: {
+        name: "account-route-runtime-authority",
+        settings: { secrets: { OPENROUTER_API_KEY: "stale-token" } },
+      },
+      settings: { OPENROUTER_API_KEY: "stale-token" },
+    });
+    const setSetting = vi.spyOn(runtime, "setSetting");
+    const setRuntime = (ctx: AccountsRouteContext) => {
+      ctx.state.runtime = runtime;
+      ctx.state.config = {
+        serviceRouting: { llmText: { backend: "openrouter" } },
+      } as AccountsRouteContext["state"]["config"];
+    };
+
+    fakes.applyAccountPoolApiCredentials.mockImplementation(async () => {
+      process.env.OPENROUTER_API_KEY = "token-a-value";
+      process.env.OPENAI_API_KEY = "token-a-value";
+      process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    });
+    const created = makeContext("POST", "/api/accounts/openrouter-api", {
+      source: "api-key",
+      label: "OpenRouter",
+      apiKey: "token-a-value",
+    });
+    setRuntime(created.ctx);
+    await handleAccountsRoutes(created.ctx);
+    expect(created.errorCalls).toEqual([]);
+    expect(created.jsonCalls[0]?.status).toBe(201);
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledOnce();
+    expect(setSetting).toHaveBeenCalledWith(
+      "OPENROUTER_API_KEY",
+      "token-a-value",
+      true,
+    );
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-a-value");
+
+    fakes.poolAccounts = [
+      {
+        ...linkedAccount,
+        id: "account-1",
+        providerId: "openrouter-api",
+        label: "OpenRouter",
+      },
+    ];
+    fakes.accounts = [
+      {
+        id: "account-1",
+        providerId: "openrouter-api",
+        label: "OpenRouter",
+        source: "api-key",
+        credentials: { access: "token-a-value" },
+        createdAt: 1,
+      },
+    ];
+    fakes.applyAccountPoolApiCredentials.mockImplementation(async () => {
+      process.env.OPENROUTER_API_KEY = "token-b-value";
+      process.env.OPENAI_API_KEY = "token-b-value";
+    });
+    const replaced = makeContext("POST", "/api/accounts/openrouter-api", {
+      source: "api-key",
+      label: "OpenRouter",
+      apiKey: "token-b-value",
+      replaceAccountId: "account-1",
+    });
+    setRuntime(replaced.ctx);
+    await handleAccountsRoutes(replaced.ctx);
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-b-value");
+
+    fakes.applyAccountPoolApiCredentials.mockImplementation(async () => {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+    });
+    const disabled = makeContext(
+      "PATCH",
+      "/api/accounts/openrouter-api/account-1",
+      { enabled: false },
+    );
+    setRuntime(disabled.ctx);
+    await handleAccountsRoutes(disabled.ctx);
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+  });
+
+  it("revokes the runtime setting when a disable sync retracts env and then fails", async () => {
+    const runtime = new AgentRuntime({
+      character: {
+        name: "account-route-runtime-fail-closed",
+        secrets: { OPENROUTER_API_KEY: "revoked-token" },
+      },
+      settings: { OPENROUTER_API_KEY: "revoked-token" },
+    });
+    fakes.poolAccounts = [
+      {
+        ...linkedAccount,
+        id: "account-1",
+        providerId: "openrouter-api",
+        enabled: true,
+      },
+    ];
+    process.env.OPENROUTER_API_KEY = "revoked-token";
+    process.env.OPENAI_API_KEY = "revoked-token";
+    process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    fakes.applyAccountPoolApiCredentials.mockImplementationOnce(async () => {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+      throw new Error("credential read failed");
+    });
+    const disabled = makeContext(
+      "PATCH",
+      "/api/accounts/openrouter-api/account-1",
+      { enabled: false },
+    );
+    disabled.ctx.state.runtime = runtime;
+    disabled.ctx.state.config = {
+      serviceRouting: { llmText: { backend: "openrouter" } },
+    } as AccountsRouteContext["state"]["config"];
+
+    await expect(handleAccountsRoutes(disabled.ctx)).rejects.toThrow(
+      "credential read failed",
+    );
+
+    expect(fakes.poolAccounts[0]?.enabled).toBe(false);
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+    expect(runtime.getSetting("OPENAI_API_KEY")).toBeNull();
+    expect(runtime.getSetting("OPENAI_BASE_URL")).toBeNull();
+  });
+
+  it("revokes live authority when credential removal succeeds but metadata deletion fails", async () => {
+    const runtime = new AgentRuntime({
+      character: {
+        name: "account-delete-partial-failure",
+        secrets: { OPENROUTER_API_KEY: "removed-token" },
+      },
+      settings: { OPENROUTER_API_KEY: "removed-token" },
+    });
+    process.env.OPENROUTER_API_KEY = "removed-token";
+    process.env.OPENAI_API_KEY = "removed-token";
+    process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    fakes.pool.deleteMetadata.mockRejectedValueOnce(
+      new Error("metadata write failed"),
+    );
+    fakes.applyAccountPoolApiCredentials.mockImplementationOnce(async () => {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+    });
+    const deleted = makeContext(
+      "DELETE",
+      "/api/accounts/openrouter-api/account-1",
+    );
+    deleted.ctx.state.runtime = runtime;
+    deleted.ctx.state.config = {
+      serviceRouting: { llmText: { backend: "openrouter" } },
+    } as AccountsRouteContext["state"]["config"];
+    try {
+      await expect(handleAccountsRoutes(deleted.ctx)).rejects.toThrow(
+        "metadata write failed",
+      );
+      expect(fakes.deleteAccount).toHaveBeenCalled();
+      expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+      expect(runtime.getSetting("OPENAI_API_KEY")).toBeNull();
+      expect(runtime.getSetting("OPENAI_BASE_URL")).toBeNull();
+    } finally {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+    }
+  });
+
+  it("rejects an unverified OpenRouter credential without persisting it", async () => {
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      latencyMs: 4,
+      error: "openrouter-api 401: unauthorized",
+    });
+    const created = makeContext("POST", "/api/accounts/openrouter-api", {
+      source: "api-key",
+      label: "Rejected account",
+      apiKey: "sk-or-revoked-value",
+    });
+
+    await handleAccountsRoutes(created.ctx);
+
+    expect(created.errorCalls).toEqual([
+      { message: "openrouter-api 401: unauthorized", status: 400 },
+    ]);
+    expect(fakes.saveAccount).not.toHaveBeenCalled();
+    expect(fakes.pool.upsert).not.toHaveBeenCalled();
+  });
+
+  it("returns bounded model discovery from an xAI account probe", async () => {
+    fakes.poolAccounts = [
+      { ...linkedAccount, providerId: "xai-api", id: "xai-account" },
+    ];
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      latencyMs: 7,
+      modelIds: ["grok-4", "grok-code-fast-1"],
+      modelCatalogTruncated: true,
+    });
+
+    const tested = makeContext(
+      "POST",
+      "/api/accounts/xai-api/xai-account/test",
+    );
+    await handleAccountsRoutes(tested.ctx);
+
+    expect(tested.jsonCalls[0]?.body).toEqual({
+      ok: true,
+      latencyMs: 7,
+      status: 200,
+      modelIds: ["grok-4", "grok-code-fast-1"],
+      modelCatalogTruncated: true,
+    });
+  });
+
+  it("keeps direct provider failures active until an authenticated probe heals them", async () => {
+    fakes.poolAccounts = [
+      { ...linkedAccount, providerId: "openrouter-api", id: "router" },
+    ];
+    fakes.accounts = [
+      { id: "router", providerId: "openrouter-api", label: "Router" },
+    ];
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      latencyMs: 5,
+      error: "credential rejected",
+    });
+
+    const rejected = makeContext(
+      "POST",
+      "/api/accounts/openrouter-api/router/refresh-usage",
+    );
+    await handleAccountsRoutes(rejected.ctx);
+    expect(rejected.jsonCalls[0]?.body).toMatchObject({
+      account: { health: "needs-reauth" },
+    });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledOnce();
+
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      latencyMs: 4,
+    });
+    const healed = makeContext(
+      "POST",
+      "/api/accounts/openrouter-api/router/refresh-usage",
+    );
+    await handleAccountsRoutes(healed.ctx);
+    expect(healed.jsonCalls[0]?.body).toMatchObject({
+      account: { health: "ok" },
+    });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(2);
   });
 
   it("verifies and replaces an API credential in place without duplicating the account", async () => {
@@ -716,7 +1074,7 @@ describe("accounts routes", () => {
     }
   });
 
-  it("keeps terminal credential health terminal during usage refresh", async () => {
+  it("heals terminal direct credential health only after a provider probe succeeds", async () => {
     fakes.poolAccounts = [
       {
         ...linkedAccount,
@@ -731,10 +1089,11 @@ describe("accounts routes", () => {
     await handleAccountsRoutes(refreshed.ctx);
     expect(refreshed.jsonCalls[0]?.body).toMatchObject({
       account: {
-        health: "needs-reauth",
-        healthDetail: { lastError: "refresh token revoked", lastChecked: 1 },
+        health: "ok",
+        healthDetail: { lastChecked: expect.any(Number) },
       },
     });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledOnce();
   });
 
   it.each(["anthropic_usage.invalid_shape", "anthropic_usage.invalid_json"])(
