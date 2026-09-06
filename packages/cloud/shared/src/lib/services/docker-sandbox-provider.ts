@@ -4920,11 +4920,21 @@ export class DockerSandboxProvider implements SandboxProvider {
             },
           );
         }
-        await withTimeout(
-          headscaleClient.deleteNode(locator.vpnNodeId),
-          HEADSCALE_CLEANUP_TIMEOUT_MS,
-          "replacement headscale cleanup",
-        );
+        let deleteFailure: ElizaError | undefined;
+        try {
+          await withTimeout(
+            headscaleClient.deleteNode(locator.vpnNodeId),
+            HEADSCALE_CLEANUP_TIMEOUT_MS,
+            "replacement headscale cleanup",
+          );
+        } catch (error) {
+          // error-policy:J1 An uncertain delete is settled by strict exact-ID readback below.
+          deleteFailure = new ElizaError("Headscale delete acknowledgement is unresolved", {
+            code: "SANDBOX_REPLACEMENT_HEADSCALE_DELETE_UNRESOLVED",
+            cause: error,
+            context: { vpnNodeId: locator.vpnNodeId },
+          });
+        }
         const remainingNodes = await withTimeout(
           headscaleClient.listNodesStrict(),
           HEADSCALE_CLEANUP_TIMEOUT_MS,
@@ -4936,6 +4946,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             `[docker-sandbox] Cannot prove Headscale node ${locator.vpnNodeId} absent after cleanup`,
             {
               code: "SANDBOX_REPLACEMENT_HEADSCALE_RETIREMENT_UNPROVEN",
+              cause: deleteFailure,
               context: {
                 containerName: locator.containerName,
                 vpnNodeId: locator.vpnNodeId,
@@ -4943,6 +4954,12 @@ export class DockerSandboxProvider implements SandboxProvider {
               severity: "fatal",
             },
           );
+        }
+        if (deleteFailure) {
+          logger.info("[docker-sandbox] Exact Headscale absence settled an uncertain delete", {
+            vpnNodeId: locator.vpnNodeId,
+            replacementAttemptId: locator.replacementAttemptId,
+          });
         }
       } else if (locator.vpnNodeName) {
         if (locator.replacementSecretCleanupVersion === 1 && locator.containerId) {

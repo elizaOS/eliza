@@ -2347,6 +2347,42 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).not.toHaveBeenCalled();
   });
 
+  test.each(["absent", "surviving", "unavailable"] as const)(
+    "reconciles a lost exact Headscale delete response (%s)",
+    async (observation) => {
+      stubNodeLookup();
+      stubSsh(async () => {
+        throw new Error(`Error response from daemon: No such container: ${CONTAINER_NAME}`);
+      });
+      const deleteFailure = new Error("Headscale delete response was lost");
+      const deleteVpn = spyOn(headscaleClient, "deleteNode").mockRejectedValue(deleteFailure);
+      const readback = spyOn(headscaleClient, "listNodesStrict").mockImplementation(async () => {
+        if (observation === "unavailable") throw new Error("Headscale readback unavailable");
+        // A different immutable node with the same name must not be deleted.
+        const other = headscaleNode("1999", "agent-replacement", "2026-07-23T00:05:02.000Z");
+        return observation === "surviving"
+          ? [
+              other,
+              headscaleNode(EXACT_VPN_NODE_ID, "agent-replacement", "2026-07-23T00:05:02.000Z"),
+            ]
+          : [other];
+      });
+      const cleanup = replacementProvider().stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        EXACT_VPN_NODE_ID,
+        replacementIdentity(),
+      );
+      if (observation === "absent") {
+        await expect(cleanup).resolves.toBeUndefined();
+      } else {
+        await expect(cleanup).rejects.toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      }
+      expect(readback).toHaveBeenCalledTimes(1);
+      expect(deleteVpn.mock.calls).toEqual([[EXACT_VPN_NODE_ID]]);
+    },
+  );
+
   test("retains the fence when exact Headscale deletion does not make node 1404 absent", async () => {
     stubNodeLookup();
     const { commands } = stubSsh(async () => {
