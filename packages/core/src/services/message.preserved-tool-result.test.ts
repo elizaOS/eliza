@@ -15,6 +15,7 @@ import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
+import { TrajectoryLimitExceeded } from "../runtime/limits";
 import type { PlannerToolResult } from "../runtime/planner-loop";
 import type {
 	Action,
@@ -337,6 +338,97 @@ describe("planner-loop death after a completed tool", () => {
 		expect(actionCalls).toBe(0);
 		expect(visibleTexts(harness.callbacks)).toEqual([]);
 		expect(harness.reportedScopes).not.toContain("MessageService.plannerLoop");
+	});
+
+	it("does not rescue a partial result when the default tool-call budget stops a batch", async () => {
+		const savedItems: number[] = [];
+		const harness = await createHarness({
+			actionResult: {
+				success: true,
+				text: "Item saved.",
+				data: { userFacingText: "Item saved." },
+			},
+		});
+		harness.runtime.actions[0].handler = async (
+			_runtime,
+			_message,
+			_state,
+			options,
+		) => {
+			const item = options?.parameters?.item;
+			if (typeof item !== "number") throw new Error("Missing requested item");
+			savedItems.push(item);
+			return {
+				success: true,
+				text: "Item saved.",
+				data: { userFacingText: "Item saved.", item },
+			};
+		};
+		harness.runtime.actions[0].parameters?.push({
+			name: "item",
+			description: "Distinct requested item",
+			required: true,
+			schema: { type: "number" },
+		});
+		let stageOne = true;
+		harness.runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			async () => {
+				if (stageOne) {
+					stageOne = false;
+					return stageOneToolTurn();
+				}
+				return JSON.stringify({
+					success: true,
+					decision: "NEXT_RECOMMENDED",
+					thought: "The remaining distinct entries still need saving.",
+					recommendedToolCallId: `save-${savedItems.length}`,
+				});
+			},
+			"limit-test",
+			200,
+		);
+		const limit = new TrajectoryLimitExceeded({
+			kind: "tool_calls",
+			max: 16,
+			observed: 17,
+		});
+		harness.runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async () => {
+				throw limit;
+			},
+			"limit-test",
+			200,
+		);
+		harness.runtime.registerModel(
+			ModelType.ACTION_PLANNER,
+			async () => ({
+				toolCalls: Array.from({ length: 17 }, (_, i) => ({
+					id: `save-${i}`,
+					name: "LOOKUP",
+					args: { action: "create", item: i },
+				})),
+			}),
+			"limit-test",
+			200,
+		);
+		await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(
+				harness.runtime,
+				"Save all seventeen distinct requested entries in order.",
+			),
+			harness.callback,
+		);
+		expect(savedItems).toEqual(Array.from({ length: 16 }, (_, i) => i));
+		expect(harness.callbacks).toContainEqual(
+			expect.objectContaining({ failureKind: "planner_exhaustion" }),
+		);
+		expect(visibleTexts(harness.callbacks)).not.toContain("Item saved.");
+		expect(harness.sent).toContainEqual(
+			expect.objectContaining({ failureKind: "planner_exhaustion" }),
+		);
 	});
 
 	it.each([false, true])(
