@@ -112,6 +112,7 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
       "0398_app_billing_webhook_recovery",
       "0399_app_billing_checkout_expiry",
       "0400_app_billing_membership_authority",
+      "0402_app_billing_application_slots",
       "0403_app_billing_import_commands",
       "0404_app_billing_import_guards",
       "0405_app_billing_import_allowance",
@@ -129,6 +130,11 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
       "0427_app_billing_paid_resume_progress",
       "0428_app_billing_deletion_checkout",
       "0430_app_billing_completed_checkout",
+      "0432_billing_owner_subjects",
+      "0433_billing_owner_subject_guards",
+      "0434_billing_owner_subject_creation",
+      "0435_billing_owner_source_anchors",
+      "0436_billing_owner_subject_backfill",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),

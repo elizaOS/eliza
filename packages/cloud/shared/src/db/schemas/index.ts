@@ -66,6 +66,7 @@ export * from "./auto-top-up-attempts";
 export * from "./billing-cancel-commands";
 export * from "./billing-funding-reservations";
 export * from "./billing-identities";
+export * from "./billing-owner-subjects";
 export * from "./billing-subscriptions";
 export * from "./cli-auth-sessions";
 export * from "./cloud-files";
