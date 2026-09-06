@@ -120,7 +120,9 @@ mock.module("@/lib/services/stripe-checkout-orders", () => ({
   },
 }));
 mock.module("@/lib/stripe", () => ({
-  requireStripe: () => ({}),
+  requireStripe: () => ({
+    charges: { retrieve: async (id: string) => ({ id, invoice: null }) },
+  }),
 }));
 
 const { processStripeEvent } = await import("../src/queue/stripe-event");

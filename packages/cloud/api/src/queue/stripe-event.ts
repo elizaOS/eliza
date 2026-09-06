@@ -115,6 +115,82 @@ function roundedDivide(numerator: bigint, denominator: bigint): bigint {
 }
 
 /**
+ * Recurring objects cannot enter purchased-credit fulfillment. The Acacia
+ * webhook shape links invoices directly; newer signed webhook versions use
+ * parent.subscription_details. Metadata never establishes this distinction.
+ */
+async function requiresSubscriptionReconciliation(
+  event: Stripe.Event,
+): Promise<boolean> {
+  if (event.type.startsWith("customer.subscription.")) return true;
+  const object = event.data.object;
+  if (event.type.startsWith("checkout.session.")) {
+    return "mode" in object && object.mode === "subscription";
+  }
+  if (event.type.startsWith("charge.dispute.")) {
+    const dispute = event.data.object as Stripe.Dispute;
+    const charge =
+      typeof dispute.charge === "string"
+        ? await requireStripe().charges.retrieve(dispute.charge)
+        : dispute.charge;
+    return hasLinkedInvoice(charge);
+  }
+  if (
+    event.type.startsWith("payment_intent.") ||
+    event.type === "charge.refunded"
+  ) {
+    return hasLinkedInvoice(object);
+  }
+  return event.type.startsWith("invoice.") && isRecurringInvoice(object);
+}
+
+function isRecurringInvoice(object: object): boolean {
+  if (
+    "subscription" in object &&
+    object.subscription !== null &&
+    object.subscription !== undefined
+  ) {
+    return true;
+  }
+  if (
+    "parent" in object &&
+    typeof object.parent === "object" &&
+    object.parent !== null &&
+    "type" in object.parent &&
+    object.parent.type === "subscription_details"
+  ) {
+    return true;
+  }
+  return (
+    "billing_reason" in object &&
+    typeof object.billing_reason === "string" &&
+    object.billing_reason.startsWith("subscription")
+  );
+}
+
+/** Retrieve invoice authority before allowing a linked payment into legacy fulfillment. */
+async function hasLinkedInvoice(object: object): Promise<boolean> {
+  if (
+    !("invoice" in object) ||
+    object.invoice === null ||
+    object.invoice === undefined
+  )
+    return false;
+  const invoice = object.invoice;
+  const id =
+    typeof invoice === "string"
+      ? invoice
+      : typeof invoice === "object" &&
+          "id" in invoice &&
+          typeof invoice.id === "string"
+        ? invoice.id
+        : null;
+  // An invalid reference cannot establish one-time payment authority.
+  if (!id) return true;
+  return isRecurringInvoice(await requireStripe().invoices.retrieve(id));
+}
+
+/**
  * Process a single Stripe event message.
  *
  * Returns `ack` on success and permanent failures (bad data we cannot
@@ -128,6 +204,35 @@ export async function processStripeEvent(
   logger.info(
     `[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`,
   );
+
+  // No recurring finalizer is registered yet. Retain the complete signed
+  // delivery in the existing retry/DLQ path until it can be reconciled; an
+  // unknown handler or legacy metadata disposition is not durable application.
+  try {
+    if (await requiresSubscriptionReconciliation(event)) {
+      logger.error(
+        "[Stripe Queue] Subscription reconciliation unavailable; retaining delivery",
+        {
+          eventId: event.id,
+          eventType: event.type,
+          attempts: delivery.attempts,
+          code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE",
+        },
+      );
+      return "retry";
+    }
+  } catch (error) {
+    // error-policy:J1 Provider classification failures remain retryable regardless of error wording.
+    logger.error(
+      "[Stripe Queue] Invoice classification unavailable; retaining delivery",
+      {
+        eventId: event.id,
+        eventType: event.type,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return "retry";
+  }
 
   try {
     switch (event.type) {
