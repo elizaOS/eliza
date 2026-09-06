@@ -3811,9 +3811,18 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/local-inference/catalog") {
+    const installedIds = new Set(
+      (await listInstalledModels()).map((m) => m.id),
+    );
+    const downloadingIds = new Set(
+      [...downloads.values()].map((j) => j.modelId),
+    );
     return json({
       models: filterSettingsDefaultLocalModels(MODEL_CATALOG).filter(
-        isPublishedLocalModel,
+        (model) =>
+          isPublishedLocalModel(model) ||
+          installedIds.has(model.id) ||
+          downloadingIds.has(model.id),
       ),
     });
   }
