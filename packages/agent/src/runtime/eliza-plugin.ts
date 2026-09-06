@@ -226,7 +226,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           },
           delete: {
             description:
-              "Delete an existing memory. Supply confirm:true and either memoryId or a unique query.",
+              "Delete saved knowledge the user asked to forget. Supply confirm:true and either memoryId or a unique query. If the tool returns candidates, review their full text and delete only records expressing the requested claim by memoryId. Shared source messages can contain unrelated facts; preserve those. Verify the requested claim is gone before reporting completion.",
           },
         },
       }).map((action) => {

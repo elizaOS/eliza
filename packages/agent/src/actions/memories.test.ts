@@ -526,6 +526,32 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("preserves a different same-message claim sharing the queried subject", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "user's dog is named Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-care" },
+    });
+    const careId = seedFact(rows, {
+      text: "The user's dog needs a daily walk",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-care" },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "user's dog is named Biscuit",
+      confirm: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(result.effectReceipts).toBeUndefined();
+    expect(rows).toHaveLength(2);
+    expect(
+      rows.find((row) => row.memory.id === careId)?.memory.content.text,
+    ).toBe("The user's dog needs a daily walk");
+  });
+
   it.each(["delete", "update"] as const)(
     "%s matches clock forms without changing a different time or owner's fact",
     async (action) => {
@@ -570,7 +596,7 @@ describe("MEMORY op:delete by query scope", () => {
       }
     },
   );
-  it("forgetting a claim also forgets the requester's same-message sibling facts written in another shape", async () => {
+  it("returns sibling candidates for selective deletion by id before any mutation", async () => {
     // Live 2026-09-06 05:40: "forget my dog's name" removed "user's dog is
     // named Biscuit" and left the extractor's "User has_dog Biscuit" row from
     // the same message, so the bot still knew the name.
@@ -590,13 +616,30 @@ describe("MEMORY op:delete by query scope", () => {
       entityId: USER_ID,
       metadata: { messageId: "msg-jazz" },
     });
+    const targetIds = rows.slice(0, 2).map((row) => row.memory.id);
+    const originalRows = structuredClone(rows);
     const result = await runAction(runtime, makeMessage(), {
       action: "delete",
       query: "user's dog is named Biscuit",
       confirm: true,
     });
-    expect(result.success).toBe(true);
-    expect(result.values).toMatchObject({ deletedCount: 2 });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_AMBIGUOUS_QUERY",
+      candidates: expect.arrayContaining(
+        targetIds.map((id) => expect.objectContaining({ id })),
+      ),
+    });
+    expect(result.effectReceipts).toBeUndefined();
+    expect(rows).toEqual(originalRows);
+    for (const memoryId of targetIds) {
+      const deletion = await runAction(runtime, makeMessage(), {
+        action: "delete",
+        memoryId,
+        confirm: true,
+      });
+      expect(deletion.success).toBe(true);
+    }
     const left = rows.filter((row) => row.tableName === "facts");
     expect(left).toHaveLength(1);
     expect(String(left[0]?.memory.content.text)).toContain("jazz");

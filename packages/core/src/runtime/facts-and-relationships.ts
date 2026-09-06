@@ -25,6 +25,7 @@ import {
 	factClaimsEquivalent,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { resolveCanonicalOwnerId } from "../roles.ts";
 import { isMobilePlatform } from "../runtime-env";
 import type {
 	MessageHandlerExtract,
@@ -767,6 +768,8 @@ async function persistFactsAndRelationships(
 		for (const rel of parsed.relationships) {
 			const normalized = resolveRedactedRelationshipEnds(
 				normalizeRelationshipForPersistence(rel),
+				runtime,
+				message,
 			);
 			if (!normalized) continue;
 			const sourceEntityId = resolveRelationshipEntityId(
@@ -899,19 +902,23 @@ function normalizeRelationshipForPersistence(
 const REDACTION_PLACEHOLDER_PATTERN = /^\[REDACTED:[A-Z0-9_]+\]$/;
 
 /**
- * The extraction prompt redacts the owner's entity id, and the model echoes
- * the placeholder back as a relationship end ("[REDACTED:ELIZA_ADMIN_ENTITY_ID]
- * has_dog Biscuit" was stored live 2026-09-06 05:38). A placeholder subject is
- * the speaker and becomes "User"; a placeholder object names nobody and drops
- * the relationship.
+ * A redaction marker is not identity evidence. Only the canonical owner marker
+ * can resolve to the speaker, and only when trusted runtime configuration
+ * identifies that same speaker as the owner. Other redacted ends are unresolved.
  */
 function resolveRedactedRelationshipEnds(
 	normalized: { subject: string; predicate: string; object: string } | null,
+	runtime: IAgentRuntime,
+	message: Memory,
 ): { subject: string; predicate: string; object: string } | null {
 	if (!normalized) return null;
 	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.object)) return null;
 	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.subject)) {
-		return { ...normalized, subject: "User" };
+		if (normalized.subject !== "[REDACTED:ELIZA_ADMIN_ENTITY_ID]") return null;
+		const ownerId = asUuidOrNull(resolveCanonicalOwnerId(runtime) ?? "");
+		return ownerId && ownerId === message.entityId
+			? { ...normalized, subject: "User" }
+			: null;
 	}
 	return normalized;
 }

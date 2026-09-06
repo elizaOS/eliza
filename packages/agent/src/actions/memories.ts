@@ -1346,11 +1346,9 @@ async function doDeleteByQuery(
     };
   }
 
-  // The post-turn extractor stores the same claim in other shapes ("has_dog
-  // Biscuit" beside "user's dog is named Biscuit") under the same messageId.
-  // Forgetting the claim forgets the requester's own fact rows born from that
-  // same message too, or the bot keeps "knowing" what it just said it forgot
-  // (live 2026-09-06 05:40, tj-3cc2db2e607c9e).
+  // One source message can contain both another rendering of this claim and
+  // unrelated facts. Partial retrieval overlap is not deletion authority;
+  // expose these candidates to the planner before changing any records.
   const messageIdOf = (c: MemoryCandidate): string | undefined => {
     const value = (c.memory.metadata as { messageId?: unknown } | undefined)
       ?.messageId;
@@ -1373,9 +1371,25 @@ async function doDeleteByQuery(
       c.memory.entityId === message.entityId &&
       forgottenMessageIds.has(messageIdOf(c) ?? ""),
   );
+  if (sameMessageSiblings.length > 0) {
+    const candidates = [...matched, ...sameMessageSiblings].map((candidate) =>
+      toListItem(candidate.memory, candidate.type),
+    );
+    return {
+      success: false,
+      text: [
+        `No records were deleted. The source message also produced other partially matching facts. Review these candidates and delete only records expressing the user's requested claim by memoryId; preserve other facts even when they came from the same message.`,
+        ...candidates.map(
+          (item) =>
+            `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`,
+        ),
+      ].join("\n"),
+      data: { error: "MEMORY_AMBIGUOUS_QUERY", candidates },
+    };
+  }
 
   const deleted: MemoryListItem[] = [];
-  for (const c of [...matched, ...sameMessageSiblings]) {
+  for (const c of matched) {
     const id = c.memory.id;
     if (!id) continue;
     await runtime.deleteMemory(id);

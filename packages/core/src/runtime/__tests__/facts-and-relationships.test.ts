@@ -45,12 +45,16 @@ function makeState(): State {
 	};
 }
 
-function makeRuntime(modelResponse: unknown): FactsRuntime {
+function makeRuntime(
+	modelResponse: unknown,
+	settings: Record<string, string> = {},
+): FactsRuntime {
 	const runtime = {
 		agentId: "00000000-0000-0000-0000-000000000002" as UUID,
 		character: { name: "Eliza", system: "You are concise.", bio: "" },
 		actions: [],
 		providers: [],
+		getSetting: vi.fn((key: string) => settings[key]),
 		redactSecrets: vi.fn((text: string) =>
 			text.replace(/\b(?:sk|csk)-[A-Za-z0-9_-]+/g, "[REDACTED]"),
 		),
@@ -805,10 +809,8 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(params.messages?.[1]?.content).not.toContain("room_entities:");
 	});
 
-	it("stores a redaction-placeholder subject as the speaker and drops a placeholder object", async () => {
-		// Live 2026-09-06 05:38: the model echoed the prompt's redacted owner id
-		// back as the subject and "[REDACTED:ELIZA_ADMIN_ENTITY_ID] has_dog
-		// Biscuit" was persisted verbatim.
+	it("resolves the redacted canonical owner only when that owner is speaking and drops a placeholder object", async () => {
+		const message = makeMessage();
 		const runtime = makeRuntime(
 			JSON.stringify({
 				facts: [],
@@ -826,10 +828,11 @@ describe("runFactsAndRelationshipsStage", () => {
 				],
 				thought: "two rels",
 			}),
+			{ ELIZA_ADMIN_ENTITY_ID: message.entityId },
 		);
 		const result = await runFactsAndRelationshipsStage({
 			runtime,
-			message: makeMessage(),
+			message,
 			state: makeState(),
 			extract: {
 				relationships: [
@@ -855,11 +858,56 @@ describe("runFactsAndRelationshipsStage", () => {
 					text: "User has_dog Biscuit",
 					subject: "User",
 				}),
+				metadata: expect.objectContaining({
+					sourceEntityId: message.entityId,
+				}),
 			}),
 			"facts",
 			true,
 		);
 	});
+
+	it.each([
+		{
+			name: "another speaker quoting the canonical owner",
+			subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+			ownerId: "00000000-0000-0000-0000-000000000009",
+		},
+		{
+			name: "an unknown redacted identity even in the owner's turn",
+			subject: "[REDACTED:OTHER_ENTITY_ID]",
+			ownerId: "00000000-0000-0000-0000-000000000001",
+		},
+		{
+			name: "a redacted owner without configured identity",
+			subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+			ownerId: "",
+		},
+	])(
+		"never assigns $name to the current speaker",
+		async ({ subject, ownerId }) => {
+			const relationships = [
+				{ subject, predicate: "works_with", object: "Alice" },
+			];
+			const runtime = makeRuntime(
+				JSON.stringify({
+					facts: [],
+					relationships,
+					thought: "one relationship",
+				}),
+				{ ELIZA_ADMIN_ENTITY_ID: ownerId },
+			);
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { relationships },
+			});
+			expect(result.written.relationships).toBe(0);
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+			expect(runtime.createRelationship).not.toHaveBeenCalled();
+		},
+	);
 
 	it("persists relationships under the facts table and upserts resolved entity edges when kept", async () => {
 		const runtime = makeRuntime(
