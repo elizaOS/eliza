@@ -1343,8 +1343,36 @@ async function doDeleteByQuery(
     };
   }
 
+  // The post-turn extractor stores the same claim in other shapes ("has_dog
+  // Biscuit" beside "user's dog is named Biscuit") under the same messageId.
+  // Forgetting the claim forgets the requester's own fact rows born from that
+  // same message too, or the bot keeps "knowing" what it just said it forgot
+  // (live 2026-09-06 05:40, tj-3cc2db2e607c9e).
+  const messageIdOf = (c: MemoryCandidate): string | undefined => {
+    const value = (c.memory.metadata as { messageId?: unknown } | undefined)
+      ?.messageId;
+    return typeof value === "string" && value ? value : undefined;
+  };
+  const matchedIds = new Set(matched.map((c) => c.memory.id));
+  const forgottenMessageIds = new Set(
+    matched
+      .filter(
+        (c) => c.type === "facts" && c.memory.entityId === message.entityId,
+      )
+      .map(messageIdOf)
+      .filter((value): value is string => value !== undefined),
+  );
+  const sameMessageSiblings = scan.matches.filter(
+    (c) =>
+      !matchedIds.has(c.memory.id) &&
+      c.type === "facts" &&
+      !!message.entityId &&
+      c.memory.entityId === message.entityId &&
+      forgottenMessageIds.has(messageIdOf(c) ?? ""),
+  );
+
   const deleted: MemoryListItem[] = [];
-  for (const c of matched) {
+  for (const c of [...matched, ...sameMessageSiblings]) {
     const id = c.memory.id;
     if (!id) continue;
     await runtime.deleteMemory(id);

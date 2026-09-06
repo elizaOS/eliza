@@ -133,7 +133,12 @@ function makeRuntime(options?: {
 
 function seedFact(
   rows: StoredRow[],
-  fields: { text: string; entityId: UUID; roomId?: UUID },
+  fields: {
+    text: string;
+    entityId: UUID;
+    roomId?: UUID;
+    metadata?: Record<string, unknown>;
+  },
 ): UUID {
   const id = crypto.randomUUID() as UUID;
   rows.push({
@@ -143,6 +148,7 @@ function seedFact(
       agentId: AGENT_ID,
       roomId: fields.roomId ?? ROOM_ID,
       content: { text: fields.text },
+      ...(fields.metadata ? { metadata: fields.metadata } : {}),
       createdAt: Date.now(),
     } as Memory,
     tableName: "facts",
@@ -520,6 +526,38 @@ describe("MEMORY mutations settle with receipts for the grounded reply gate", ()
 });
 
 describe("MEMORY op:delete by query scope", () => {
+  it("forgetting a claim also forgets the requester's same-message sibling facts written in another shape", async () => {
+    // Live 2026-09-06 05:40: "forget my dog's name" removed "user's dog is
+    // named Biscuit" and left the extractor's "User has_dog Biscuit" row from
+    // the same message, so the bot still knew the name.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "user's dog is named Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-1" },
+    });
+    seedFact(rows, {
+      text: "User has_dog Biscuit",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-dog-1" },
+    });
+    seedFact(rows, {
+      text: "User likes jazz.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-jazz" },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "user's dog is named Biscuit",
+      confirm: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.values).toMatchObject({ deletedCount: 2 });
+    const left = rows.filter((row) => row.tableName === "facts");
+    expect(left).toHaveLength(1);
+    expect(String(left[0]?.memory.content.text)).toContain("jazz");
+  });
+
   it("matches clock times across abbreviation dots and spacing (6am vs 6a.m. vs 6 am)", async () => {
     // Live 2026-09-06 02:36: "forget that I usually wake up at 6am" scanned 20
     // rows and matched nothing against "The user usually wakes up at 6a.m.".
