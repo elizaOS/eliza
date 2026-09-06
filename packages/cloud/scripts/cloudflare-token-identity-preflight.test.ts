@@ -215,6 +215,11 @@ test("protected dispatch selection executes zero-model preflight and refuses arb
   ).toEqual(["token-identity-preflight"]);
   expect(
     jobs
+      .filter(([, job]) => admitted(job.if, true, "refs/heads/staging"))
+      .map(([name]) => name),
+  ).toEqual(["token-identity-preflight"]);
+  expect(
+    jobs
       .filter(([, job]) => admitted(job.if, true, "refs/heads/untrusted"))
       .map(([name]) => name),
   ).toEqual([]);
@@ -277,6 +282,14 @@ process.on('beforeExit', () => { if (calls !== 2 || unexpected) process.exitCode
   expect(records.every((item) => item.tokenIdSha256 === digest)).toBe(true);
   for (const privateValue of [id, token, accountId, secretMarker])
     expect(accepted.stdout).not.toContain(privateValue);
+  const staging = spawnSync("bash", ["-c", shell], {
+    cwd: root,
+    env: { ...env, GITHUB_REF: "refs/heads/staging" },
+    encoding: "utf8",
+  });
+  expect(staging.status).toBe(0);
+  expect(staging.stderr).toBe("");
+  expect(staging.stdout).toBe(accepted.stdout);
   const rejected = spawnSync("bash", ["-c", shell], {
     cwd: root,
     env: { ...env, GITHUB_REF: "refs/heads/untrusted" },
