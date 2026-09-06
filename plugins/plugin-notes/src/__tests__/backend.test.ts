@@ -26,7 +26,8 @@ import {
 import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
 import { NotesStore, notesStateFilePath } from "../store.js";
-import type { StickyNote } from "../types.js";
+import { reconstructNoteContent, type StickyNote } from "../types.js";
+import { parseNoteContent } from "../validation.js";
 
 const temporaryDirectories: string[] = [];
 const testRuntimes: AgentRuntime[] = [];
@@ -217,7 +218,7 @@ describe("NotesStore", () => {
 
     const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
     expect(persisted).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
@@ -374,6 +375,148 @@ describe("NotesStore", () => {
     });
     expect(() => store.snapshot()).toThrow("not valid JSON");
   });
+
+  it("keeps a migrated v1 note at the body-length bound writable after reload (#29033)", async () => {
+    // A v1 body already at the 20,000-character limit gains one separator
+    // character during the v1→v2 upgrade. Before the persisted-body bound was
+    // widened, the next mutation reparsed the upgraded draft as v2 and rejected
+    // the 20,001-character body, leaving the store effectively read-only. This
+    // exercises the full load → mutate → stop → reload path so both the legacy
+    // bytes and the new write must survive exactly.
+    const filePath = await temporaryStateFile();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const legacyBody = "x".repeat(20_000);
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 4,
+        persistedAt: "2026-07-16T12:00:00.000Z",
+        notes: [
+          {
+            id: "note-legacy",
+            title: "Legacy header",
+            body: legacyBody,
+            color: "yellow",
+            createdAt: "2026-07-16T12:00:00.000Z",
+            updatedAt: "2026-07-16T12:00:00.000Z",
+          },
+        ],
+      }),
+      "utf8",
+    );
+
+    const legacyReconstructed = `Legacy header\n${legacyBody}`;
+    const service = await serviceFor(filePath);
+    const migrated = service.getNote("note-legacy");
+    expect(migrated.body).toHaveLength(20_001);
+    expect(reconstructNoteContent(migrated)).toBe(legacyReconstructed);
+
+    // The mutation is the write that reparses the upgraded draft as v2; it must
+    // not fail because the migrated body is one character over the input bound.
+    const added = await service.createNote({
+      title: "New note",
+      body: "After upgrade",
+    });
+    await service.stop();
+
+    // On reload the document is already v2 on disk, so it is reparsed as v2
+    // without a second migration; the persisted body must still validate.
+    const reloaded = await serviceFor(filePath);
+    const reloadedLegacy = reloaded.getNote("note-legacy");
+    expect(reloadedLegacy.body).toHaveLength(20_001);
+    expect(reconstructNoteContent(reloadedLegacy)).toBe(legacyReconstructed);
+    const reloadedNew = reloaded.getNote(added.id);
+    expect(reloadedNew).toMatchObject({
+      title: "New note",
+      body: "After upgrade",
+    });
+    await reloaded.stop();
+  });
+});
+
+describe("Notes content round-trip (#29003)", () => {
+  // The create→render round-trip must commit exactly what the user wrote. These
+  // drive the real durable service (parse → createNote → snapshot → restart)
+  // and assert the reconstructed content equals the input, so a corrupt split
+  // can never reach the durable document or the planner-facing description.
+  const roundTripInputs: Array<[string, string]> = [
+    ["a long unwrapped single line", "a".repeat(300)],
+    [
+      "a long URL that must not gain a line break",
+      `https://example.com/${"x".repeat(280)}`,
+    ],
+    ["a blank line after the title", "Meeting\n\nDiscuss roadmap"],
+    ["trailing blank lines", "Shopping\nmilk\neggs\n\n"],
+    [
+      "a multi-paragraph body with internal blank lines",
+      "Roadmap\n\nQ1\n\nQ2\n\nQ3",
+    ],
+  ];
+
+  for (const [name, original] of roundTripInputs) {
+    it(`commits ${name} without corruption and reloads it intact`, async () => {
+      const filePath = await temporaryStateFile();
+      const service = await serviceFor(filePath);
+      const created = await service.createNote(parseNoteContent(original));
+      // The committed record reconstructs to the exact user input.
+      expect(reconstructNoteContent(created)).toBe(original);
+      // The bounded label never exceeds the schema's list-label ceiling.
+      expect(created.title.length).toBeGreaterThan(0);
+      expect(created.title.length).toBeLessThanOrEqual(240);
+
+      const snapshotNote = service.snapshot().notes[0];
+      if (!snapshotNote) throw new Error("snapshot note missing");
+      expect(reconstructNoteContent(snapshotNote)).toBe(original);
+      await service.stop();
+
+      // The durable bytes on disk survive a restart with the same content.
+      const restarted = await serviceFor(filePath);
+      const persistedNote = restarted.getNote(created.id);
+      expect(reconstructNoteContent(persistedNote)).toBe(original);
+      await restarted.stop();
+    });
+  }
+
+  it("upgrades a v1 durable document to the v2 body layout on load", async () => {
+    const filePath = await temporaryStateFile();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    // A pre-existing v1 record: body stored without its leading separator, the
+    // way the retired view rebuilt content as `title + "\n" + body`.
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 4,
+        persistedAt: "2026-07-16T12:00:00.000Z",
+        notes: [
+          {
+            id: "note-legacy-1",
+            title: "Header Line",
+            body: "First paragraph\nSecond paragraph",
+            color: "yellow",
+            createdAt: "2026-07-16T12:00:00.000Z",
+            updatedAt: "2026-07-16T12:00:00.000Z",
+          },
+        ],
+      }),
+      "utf8",
+    );
+
+    const service = await serviceFor(filePath);
+    const note = service.getNote("note-legacy-1");
+    // Migration restores the separator so v2 reconstruction reproduces exactly
+    // what the v1 view showed — no re-corruption of the historical note.
+    expect(note.body).toBe("\nFirst paragraph\nSecond paragraph");
+    expect(reconstructNoteContent(note)).toBe(
+      "Header Line\nFirst paragraph\nSecond paragraph",
+    );
+    // A subsequent write persists the upgraded v2 schema version.
+    await service.createNote(parseNoteContent("Fresh note"));
+    await service.stop();
+    const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
+    expect(persisted.schemaVersion).toBe(2);
+  });
 });
 
 describe("Notes capabilities", () => {
@@ -423,8 +566,11 @@ describe("Notes capabilities", () => {
       success: true,
       text: "Created note “Demo Checklist”.",
     });
+    // The body keeps the leading "\n" separator of the equivalent two-line note
+    // so the stored record round-trips through `reconstructNoteContent`; the
+    // view and action surfaces trim it, so the rendered details are unchanged.
     expect(service.listNotes()).toMatchObject([
-      { title: "Demo Checklist", body: "mic, charger, water" },
+      { title: "Demo Checklist", body: "\nmic, charger, water" },
     ]);
   });
 
@@ -466,7 +612,9 @@ describe("Notes capabilities", () => {
       id: noteId,
     });
     expect(service.getNote(noteId)).toMatchObject({
-      body: "Polished draft",
+      // `body` keeps the verbatim remainder (with its leading separator), so
+      // `reconstructNoteContent` returns the exact content the user wrote.
+      body: "\nPolished draft",
       color: "green",
     });
     await expect(
@@ -821,8 +969,8 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_NOT_FOUND" },
     });
     expect(service.listNotes().map((note) => note.body)).toEqual([
-      "Evening",
-      "Morning",
+      "\nEvening",
+      "\nMorning",
     ]);
   });
 
@@ -1032,15 +1180,15 @@ describe("Notes capabilities", () => {
     );
     expect(updated).toMatchObject({
       success: true,
-      data: { note: { title: "Shopping list", body: "Done shopping" } },
+      data: { note: { title: "Shopping list", body: "\nDone shopping" } },
     });
     // "Todo" remains unchanged; order may shift after update.
     expect(
       service.listNotes().map((n) => ({ title: n.title, body: n.body })),
     ).toEqual(
       expect.arrayContaining([
-        { title: "Shopping list", body: "Done shopping" },
-        { title: "Todo", body: "Fix the bug" },
+        { title: "Shopping list", body: "\nDone shopping" },
+        { title: "Todo", body: "\nFix the bug" },
       ]),
     );
   });
@@ -1084,7 +1232,7 @@ describe("Notes capabilities", () => {
 
     // Nothing was mutated.
     expect(service.listNotes().map((n) => n.body)).toEqual(
-      expect.arrayContaining(["Morning sync", "Afternoon review"]),
+      expect.arrayContaining(["\nMorning sync", "\nAfternoon review"]),
     );
   });
 

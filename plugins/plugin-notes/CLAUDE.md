@@ -10,9 +10,18 @@ This package owns one intentionally focused Cloud surface:
 - `notes` — note CRUD with one user-authored content field and optional color.
 
 The persisted schema retains a derived first-line label plus body for stable
-lookup and compatibility with existing notes. That split is deterministic:
-planner capabilities accept one `content` value and never ask a model to invent
-a separate title or summary. The view renders the combined content as one field.
+lookup and compatibility with existing notes. That split is deterministic and
+lossless: `parseNoteContent` stores `title` as the first line bounded to 240
+characters (a lookup/agent-surface label) and `body` as the *verbatim*
+remainder, so `reconstructNoteContent` (`title + body`) returns exactly the
+content the user wrote. Planner capabilities accept one `content` value and
+never ask a model to invent a separate title or summary. A long first line is
+never split with an injected newline, and a blank line placed after the first
+line is never dropped. `reconstructNoteContent` in `src/types.ts` is the single
+reconstruction the view and validators share so the round-trip cannot drift.
+Documents are schema version 2; a version 1 document (whose `body` omitted the
+separator its retired view re-inserted) is migrated on load by restoring the
+leading newline, so an existing note reads back exactly as it rendered before.
 
 Managed dedicated agents load the runtime plugin through the `lean-chat`
 profile. The app build loads `src/register.ts` through the manifest-driven app

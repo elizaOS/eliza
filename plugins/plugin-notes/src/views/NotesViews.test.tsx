@@ -9,14 +9,20 @@ import { ApiError } from "@elizaos/ui/api/client-types-core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotesSnapshot, StickyNote } from "../types.js";
+import { parseNoteContent } from "../validation.js";
 import type { NotesState } from "./useNotesState.js";
 
 const stateHook = vi.hoisted(() => vi.fn());
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: (definition: { id: string }) => ({
+  useAgentElement: (definition: { id: string; description?: string }) => ({
     ref: { current: null },
-    agentProps: { "data-agent-id": definition.id },
+    // Surface the planner-visible description so a test can assert the exact
+    // model-facing content the row contributes (#29003).
+    agentProps: {
+      "data-agent-id": definition.id,
+      "data-agent-description": definition.description ?? "",
+    },
   }),
 }));
 
@@ -39,7 +45,9 @@ function stickyNote(overrides: Partial<StickyNote> = {}): StickyNote {
   return {
     id: "note-1",
     title: "Release checklist",
-    body: "Verify the signed build",
+    // v2 stores the verbatim remainder, including its leading separator, so the
+    // view's `title + body` reconstruction reproduces the exact content.
+    body: "\nVerify the signed build",
     color: "yellow",
     createdAt: "2026-07-22T12:00:00.000Z",
     updatedAt: "2026-07-22T12:00:00.000Z",
@@ -425,4 +433,32 @@ describe("chat-only presentation", () => {
     expect(firstHeading.style.overflowWrap).toBe("anywhere");
     expect(firstBody.style.overflowWrap).toBe("anywhere");
   });
+
+  // The row's agent description is the planner-visible create→render endpoint the
+  // user reads back. Rendering a note parsed by the real `parseNoteContent` must
+  // expose the exact authored text, so a long single line is not broken by an
+  // injected newline and a blank line after the first line is not dropped
+  // (#29003).
+  it.each([
+    ["a".repeat(300)],
+    ["Meeting\n\nDiscuss roadmap"],
+    [`https://example.com/${"x".repeat(280)}`],
+    ["Shopping\nmilk\neggs\n\n"],
+  ])(
+    "exposes parsed content %# to the planner without corrupting the round-trip",
+    (original) => {
+      const parsed = parseNoteContent(original);
+      const populated = snapshot(1);
+      populated.notes = [stickyNote({ ...parsed })];
+      stateHook.mockReturnValue(hookState({ snapshot: populated }));
+
+      const notes = render(<NotesView />);
+
+      expect(
+        notes.container
+          .querySelector('[data-agent-id="note-1"]')
+          ?.getAttribute("data-agent-description"),
+      ).toBe(original);
+    },
+  );
 });
