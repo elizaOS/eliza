@@ -1,5 +1,7 @@
 name: Pi OpenRouter Certification
 on:
+  push:
+    branches: [codex/review-pi-openrouter-certification-20260905]
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -21,7 +23,7 @@ jobs:
           persist-credentials: false
       - name: Bind certification to the reviewed commit
         env:
-          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          EXPECTED_SHA: ${{ github.event_name == 'push' && github.sha || inputs.expected_sha }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/codex/review-pi-openrouter-certification-20260905
