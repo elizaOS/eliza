@@ -55,6 +55,13 @@ revision and returns a no-op without another audit. Paused, archived, scheduled,
 and non-task definitions cannot use this transition; scheduled tasks retain
 occurrence completion. Completed undated todos stay visible in the read DTO.
 
+A supplied deletion target constrains that operation even when the complete
+message names other records for later steps. Exact IDs and titles retain their
+identity through owner and keep/leave exclusions; missing or excluded targets
+cannot be replaced by another named record. An empty optional target does not
+hide an explicit title. Existing unambiguous title aliases remain supported;
+enumerated deletion applies only when no single target was supplied.
+
 ## Definition creation retries
 
 Owner definition creation accepts an optional `idempotencyKey` (1–256 non-NUL
