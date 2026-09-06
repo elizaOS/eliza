@@ -397,6 +397,7 @@
   "browserworkspace.AgentBrowserSessions": "Agent browser sessions",
   "browserworkspace.AgentTabs": "Agent Tabs",
   "browserworkspace.AppTabs": "App Tabs",
+  "browserworkspace.Back": "Back",
   "browserworkspace.Background": "Background",
   "browserworkspace.BrowserBridgeAvailable": "Browser Bridge Available",
   "browserworkspace.BrowserBridgeCheckingTitle": "Checking your browser connection",
