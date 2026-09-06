@@ -118,6 +118,54 @@ export interface AgentServingPlacement {
   locator: AgentSandboxPlacementLocator;
 }
 
+/** A provider observation bound to the immutable deletion resource authority. */
+export interface AgentDeletionResourceReceipt {
+  state: "absent";
+  authorityHash: string;
+  observedAt: string;
+  providerReceipt: string;
+}
+export type AgentDeletionResourceObservation = { state: "unknown" } | AgentDeletionResourceReceipt;
+
+/** Filesystem identity observed through the still-existing container's durable bind mount. */
+export interface AgentDeletionVolumeCapture {
+  state: "captured";
+  authorityHash: string;
+  observedAt: string;
+  path: string;
+  nodeBootId: string;
+  rootDevice: string;
+  rootInode: string;
+  stateDevice: string;
+  stateInode: string;
+}
+
+/** Absence retains the filesystem generation needed to audit or replay the removal. */
+export interface AgentDeletionVolumeReceipt extends AgentDeletionResourceReceipt {
+  capture: AgentDeletionVolumeCapture;
+}
+
+/** Account purge is explicit; other deletions must establish recoverable state before disk reclamation. */
+export type AgentDeletionResourcePolicy =
+  | { kind: "account_purge"; requestId: string; lifecycleRevision: number }
+  | { kind: "recovery_required" };
+
+/** Resource ownership retained until every deletion phase has explicit evidence. */
+export interface AgentDeletionResourceManifest {
+  version: 1;
+  deletionAttemptId: string;
+  deletionPolicy: AgentDeletionResourcePolicy;
+  agentId: string;
+  organizationId: string;
+  servingPlacement: AgentServingPlacement | null;
+  localStateRetention: AgentLocalStateRetention | null;
+  resources: {
+    volume: { state: "unknown" } | AgentDeletionVolumeCapture | AgentDeletionVolumeReceipt;
+    vpn: { state: "unknown" };
+    secrets: AgentDeletionResourceObservation;
+  };
+}
+
 /** Durable protection for the only local state copy during payment suspension. */
 export interface AgentLocalStateRetention {
   version: 1;
@@ -423,6 +471,10 @@ export const agentSandboxes = pgTable(
     local_state_retention: jsonb("local_state_retention").$type<AgentLocalStateRetention>(),
     /** Null identifies legacy rows whose serving placement has not been captured. */
     serving_placement: jsonb("serving_placement").$type<AgentServingPlacement>(),
+    /** Captured before compute removal; unresolved resources retain this owner row. */
+    deletion_resource_manifest: jsonb(
+      "deletion_resource_manifest",
+    ).$type<AgentDeletionResourceManifest>(),
     bridge_port: integer("bridge_port"),
     web_ui_port: integer("web_ui_port"),
     headscale_ip: text("headscale_ip"),

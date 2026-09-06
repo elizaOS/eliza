@@ -7,6 +7,7 @@
  * for container VPN enrollment via the Headscale API.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 
 const HEADSCALE_API_URL = process.env.HEADSCALE_API_URL || "http://localhost:8081";
@@ -267,7 +268,12 @@ export class HeadscaleClient {
   /** List nodes while propagating API failures to callers that must fail closed. */
   async listNodesStrict(): Promise<HeadscaleNode[]> {
     const data = await this.request<{ nodes?: HeadscaleNode[] }>("GET", "/api/v1/node");
-    return data.nodes ?? [];
+    if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.nodes)) {
+      throw new ElizaError("Headscale node inventory response is malformed", {
+        code: "HEADSCALE_NODE_INVENTORY_INVALID",
+      });
+    }
+    return data.nodes;
   }
 
   /** Find a node by its hostname. */

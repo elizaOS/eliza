@@ -23,6 +23,13 @@ import {
   lockPaymentResumeProviderAuthorityInTransaction,
 } from "../../db/repositories/agent-compute-stop-intents";
 import {
+  assertDeletionResourceManifestOwner,
+  captureDeletionResourceManifest,
+  validateDeletionSecretReceipt,
+  validateDeletionVolumeCapture,
+  validateDeletionVolumeReceipt,
+} from "../../db/repositories/agent-deletion-resource-manifest";
+import {
   admitLocalRetentionInTransaction,
   assertRetainedNodePublicationAuthorityInTransaction,
   type LocalRetentionStopAuthority,
@@ -47,6 +54,12 @@ import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
+import type {
+  AgentDeletionResourceManifest,
+  AgentDeletionResourceReceipt,
+  AgentDeletionVolumeCapture,
+  AgentDeletionVolumeReceipt,
+} from "../../db/schemas/agent-sandboxes";
 import {
   type AgentBackupStateData,
   type AgentExecutionTier,
@@ -76,6 +89,7 @@ import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
 import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
+import { requireIrreversibleOrganizationDeletion } from "./account-lifecycle-authority";
 import {
   assertAdminCanaryCanonicalOrDemoPair,
   assertDemoSourceImage,
@@ -2833,6 +2847,32 @@ export class ElizaSandboxService {
       return { success: false, error: precheck.error };
     }
     let deletionOwnership = precheck;
+    const initialManifest = precheck.resourceManifest;
+    if (initialManifest && initialManifest.resources.volume.state === "unknown") {
+      const provider = await this.getProvider();
+      if (!provider.captureDeletionVolume) {
+        return { success: false, error: "Provider cannot capture deletion volume authority" };
+      }
+      const capture = await withTimeout(
+        provider.captureDeletionVolume(initialManifest),
+        SANDBOX_DELETE_STOP_TIMEOUT_MS,
+        `agent-delete volume capture ${agentId}`,
+      );
+      const lifecycleRevision = await this.persistDeletionResourceObservation(
+        agentId,
+        orgId,
+        deletionOwnership,
+        { kind: "volume", value: capture },
+      );
+      deletionOwnership = {
+        ...deletionOwnership,
+        lifecycleRevision,
+        resourceManifest: {
+          ...initialManifest,
+          resources: { ...initialManifest.resources, volume: capture },
+        },
+      };
+    }
 
     logger.info("[agent-sandbox] Deleting agent", {
       agentId,
@@ -2924,7 +2964,7 @@ export class ElizaSandboxService {
         orgId,
         precheck.deletionAttemptId,
         precheck.nodeId,
-        precheck.lifecycleRevision,
+        deletionOwnership.lifecycleRevision,
       );
       const outcome = release.outcome;
       if (release.lifecycleRevision !== null) {
@@ -2947,6 +2987,73 @@ export class ElizaSandboxService {
       } else {
         logger.info("[agent-sandbox] Deletion node-slot release", context);
       }
+    }
+
+    const manifest = deletionOwnership.resourceManifest;
+    if (
+      containerProvenNotRunning &&
+      manifest &&
+      manifest.resources.secrets.state === "unknown" &&
+      manifest.servingPlacement?.locator.replacementSecretCleanupVersion === 1
+    ) {
+      const provider = await this.getProvider();
+      if (provider.cleanupDeletionSecretArtifacts) {
+        const receipt = await withTimeout(
+          provider.cleanupDeletionSecretArtifacts(manifest),
+          SANDBOX_DELETE_STOP_TIMEOUT_MS,
+          `agent-delete secret cleanup ${agentId}`,
+        );
+        const lifecycleRevision = await this.persistDeletionSecretReceipt(
+          agentId,
+          orgId,
+          deletionOwnership,
+          receipt,
+        );
+        deletionOwnership = {
+          ...deletionOwnership,
+          lifecycleRevision,
+          resourceManifest: {
+            ...manifest,
+            resources: { ...manifest.resources, secrets: receipt },
+          },
+        };
+      }
+    }
+
+    const volumeManifest = deletionOwnership.resourceManifest;
+    if (
+      containerProvenNotRunning &&
+      volumeManifest?.deletionPolicy.kind === "account_purge" &&
+      volumeManifest.resources.volume.state === "captured" &&
+      volumeManifest.resources.volume.path === `/data/agents/${agentId}` &&
+      volumeManifest.resources.secrets.state === "absent"
+    ) {
+      const provider = await this.getProvider();
+      if (!provider.cleanupDeletionVolume)
+        return { success: false, error: "Provider cannot retire the captured deletion volume" };
+      await requireIrreversibleOrganizationDeletion(orgId, dbWrite, {
+        deletionRequestId: volumeManifest.deletionPolicy.requestId,
+        revision: volumeManifest.deletionPolicy.lifecycleRevision,
+      });
+      const receipt = await withTimeout(
+        provider.cleanupDeletionVolume(volumeManifest),
+        SANDBOX_DELETE_STOP_TIMEOUT_MS,
+        `agent-delete volume cleanup ${agentId}`,
+      );
+      const lifecycleRevision = await this.persistDeletionResourceObservation(
+        agentId,
+        orgId,
+        deletionOwnership,
+        { kind: "volume_retirement", value: receipt },
+      );
+      deletionOwnership = {
+        ...deletionOwnership,
+        lifecycleRevision,
+        resourceManifest: {
+          ...volumeManifest,
+          resources: { ...volumeManifest.resources, volume: receipt },
+        },
+      };
     }
 
     // Revoke both credential owners before deleting the row. The source-pool
@@ -3137,6 +3244,7 @@ export class ElizaSandboxService {
         deletionStartedAt: Date;
         preDeleteBackupId: string | null;
         deletionLocator: SandboxDeletionLocator | null;
+        resourceManifest: AgentDeletionResourceManifest | null;
       }
     | { ok: false; error: string }
   > {
@@ -3150,6 +3258,10 @@ export class ElizaSandboxService {
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { ok: false as const, error: "Agent not found" };
+      const purgeAuthority =
+        authorization === "account_deletion"
+          ? await requireIrreversibleOrganizationDeletion(orgId, tx)
+          : null;
       if (this.getReplacementCleanupLocator(rec)) {
         return {
           ok: false as const,
@@ -3259,10 +3371,22 @@ export class ElizaSandboxService {
       // re-derive it from a row this deletion has already moved to
       // `deletion_pending` — which would read as "still counted" forever and free
       // a live sibling's slot on every retry (#17185).
+      const resourceManifest = captureDeletionResourceManifest(
+        rec,
+        deletionAttemptId,
+        purgeAuthority
+          ? {
+              kind: "account_purge",
+              requestId: purgeAuthority.deletionRequestId,
+              lifecycleRevision: purgeAuthority.revision,
+            }
+          : { kind: "recovery_required" },
+      );
       const [owned] = await tx
         .update(agentSandboxes)
         .set({
           status: "deletion_pending",
+          deletion_resource_manifest: resourceManifest,
           // Consume queued cancellation authority before any provider effect.
           // A failed job can be requeued after teardown; its old bridge URL
           // must not make that generation reversible again.
@@ -3404,15 +3528,99 @@ export class ElizaSandboxService {
         deletionStartedAt: owned.deletionStartedAt,
         preDeleteBackupId,
         deletionLocator,
+        resourceManifest,
       };
     });
   }
 
-  /**
-   * Phase 3 of `deleteAgent` (see there): short write transaction that re-takes
-   * the lifecycle lock, re-validates (a concurrent provision could have started
-   * while the out-of-transaction teardown ran), then deletes the sandbox row.
-   */
+  private async persistDeletionSecretReceipt(
+    agentId: string,
+    orgId: string,
+    ownership: { deletionAttemptId: string; lifecycleRevision: number },
+    receipt: AgentDeletionResourceReceipt,
+  ): Promise<number> {
+    return this.persistDeletionResourceObservation(agentId, orgId, ownership, {
+      kind: "secrets",
+      value: receipt,
+    });
+  }
+
+  /** Store provider observations only while the same deletion still owns the row. */
+  private async persistDeletionResourceObservation(
+    agentId: string,
+    orgId: string,
+    ownership: { deletionAttemptId: string; lifecycleRevision: number },
+    observation:
+      | { kind: "volume"; value: AgentDeletionVolumeCapture }
+      | { kind: "volume_retirement"; value: AgentDeletionVolumeReceipt }
+      | { kind: "secrets"; value: AgentDeletionResourceReceipt },
+  ): Promise<number> {
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (
+        !rec ||
+        rec.status !== "deletion_pending" ||
+        rec.deletion_attempt_id !== ownership.deletionAttemptId ||
+        rec.lifecycle_revision !== ownership.lifecycleRevision ||
+        !rec.deletion_resource_manifest
+      ) {
+        throw new ElizaError("Deletion resource receipt lost its lifecycle authority", {
+          code: "AGENT_DELETE_RESOURCE_RECEIPT_STALE",
+          context: { agentId, orgId },
+        });
+      }
+      const manifest = captureDeletionResourceManifest(rec, ownership.deletionAttemptId)!;
+      if (manifest.deletionPolicy.kind === "account_purge") {
+        await requireIrreversibleOrganizationDeletion(orgId, tx, {
+          deletionRequestId: manifest.deletionPolicy.requestId,
+          revision: manifest.deletionPolicy.lifecycleRevision,
+        });
+      }
+
+      if (observation.kind === "volume") {
+        validateDeletionVolumeCapture(manifest, observation.value);
+        if (manifest.resources.volume.state !== "unknown")
+          throw new ElizaError("Deletion volume authority is already captured", {
+            code: "AGENT_DELETE_VOLUME_CAPTURE_IMMUTABLE",
+            context: { agentId, orgId },
+          });
+      } else if (observation.kind === "volume_retirement") {
+        validateDeletionVolumeReceipt(manifest, observation.value);
+      } else {
+        validateDeletionSecretReceipt(manifest, observation.value);
+      }
+      const resources =
+        observation.kind !== "secrets"
+          ? { ...manifest.resources, volume: observation.value }
+          : { ...manifest.resources, secrets: observation.value };
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({
+          deletion_resource_manifest: {
+            ...manifest,
+            resources,
+          },
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.lifecycle_revision, ownership.lifecycleRevision),
+            eq(agentSandboxes.deletion_attempt_id, ownership.deletionAttemptId),
+          ),
+        )
+        .returning({ revision: agentSandboxes.lifecycle_revision });
+      if (!updated)
+        throw new ElizaError("Deletion resource receipt publication lost its generation", {
+          code: "AGENT_DELETE_RESOURCE_RECEIPT_STALE",
+          context: { agentId, orgId },
+        });
+      return updated.revision;
+    });
+  }
+
   private async commitAgentRowDelete(
     agentId: string,
     orgId: string,
@@ -3450,6 +3658,22 @@ export class ElizaSandboxService {
           success: false,
           error: "Agent deletion ownership changed",
         } as const;
+      }
+
+      if (rec.deletion_resource_manifest) {
+        assertDeletionResourceManifestOwner(
+          rec.deletion_resource_manifest,
+          rec,
+          ownership.deletionAttemptId,
+        );
+        const resources = rec.deletion_resource_manifest.resources;
+        if (
+          resources?.secrets?.state !== "absent" ||
+          Object.values(resources).some((resource) => resource.state !== "absent")
+        ) {
+          return { success: false, error: "Agent resource cleanup is still unresolved" } as const;
+        }
+        validateDeletionSecretReceipt(rec.deletion_resource_manifest, resources.secrets);
       }
 
       if (ownership.preDeleteBackupId) {

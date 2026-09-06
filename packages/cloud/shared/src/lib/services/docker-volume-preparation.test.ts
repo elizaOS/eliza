@@ -95,6 +95,19 @@ test("cancelled replacement cannot recreate its removed volume during vault prep
     ).rejects.toThrow("exited with code 79");
     expect(existsSync(volume)).toBe(true);
     expect(existsSync(join(attempts, activeAttempt, "vault-stdin"))).toBe(false);
+
+    rmSync(volume, { recursive: true });
+    writeFileSync(join(attempts, "retired-agent-volume-11111111-1111-4111-8111-111111111111"), "", {
+      mode: 0o600,
+    });
+    const lateAttempt = "55555555-5555-4555-8555-555555555555";
+    await expect(
+      ensureVolumeVaultPassphrase(execStdin, productionVolume, 5_000, undefined, lateAttempt, [
+        `mkdir -p ${shellQuote(productionVolume)}`,
+      ]),
+    ).rejects.toThrow("exited with code 75");
+    expect(existsSync(volume)).toBe(false);
+    expect(existsSync(join(attempts, lateAttempt, "vault-stdin"))).toBe(false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

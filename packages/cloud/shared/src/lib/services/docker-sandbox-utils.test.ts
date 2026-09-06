@@ -8,6 +8,7 @@ import {
   allocatePort,
   buildAgentContainerLabelArgs,
   buildAgentContainerLabelFlags,
+  buildDeletionVolumeCleanupCommand,
   buildDockerContainerEnvTransport,
   buildDockerCreateWithSecretEnvCommand,
   buildExactRestoreStagingVolumeCleanupCommand,
@@ -427,15 +428,21 @@ describe("secret container environment transport (#22060)", () => {
     ).toThrow("differs from its container identity");
   });
 
-  test.each([
-    "descendant-bind",
-    "ancestor-bind",
-    "nested-host-mount",
-    "host-mount-source",
-    "mount-inventory-failure",
-    "unresolved-foreign-create",
-    "unmounted",
-  ] as const)("staging directory cleanup respects mounted ownership (%s)", async (scenario) => {
+  test.each(
+    [
+      "descendant-bind",
+      "ancestor-bind",
+      "nested-host-mount",
+      "host-mount-source",
+      "mount-inventory-failure",
+      "unresolved-foreign-create",
+      "marker-flush-failure",
+      "unmounted",
+    ].flatMap((scenario) => [
+      { scenario, ordinary: false },
+      { scenario, ordinary: true },
+    ]),
+  )("volume cleanup respects mounted ownership (%j)", async ({ scenario, ordinary }) => {
     const { spawn } = await import("node:child_process");
     const fs = await import("node:fs");
     const os = await import("node:os");
@@ -447,14 +454,21 @@ describe("secret container environment transport (#22060)", () => {
     const restoreAttemptId = "22222222-2222-4222-8222-222222222222";
     const replacementAttemptId = "33333333-3333-4333-8333-333333333333";
     const containerName = `agent-restore-${agentId}-${restoreAttemptId}`;
-    const productionVolume = `/data/agents/.restore/${agentId}/${restoreAttemptId}`;
-    const volume = path.join(relocatedData, "agents", ".restore", agentId, restoreAttemptId);
+    const productionVolume = ordinary
+      ? `/data/agents/${agentId}`
+      : `/data/agents/.restore/${agentId}/${restoreAttemptId}`;
+    const volume = ordinary
+      ? path.join(relocatedData, "agents", agentId)
+      : path.join(relocatedData, "agents", ".restore", agentId, restoreAttemptId);
     const attempts = path.join(root, "attempts");
     const attemptDirectory = path.join(attempts, replacementAttemptId);
     const rmMarker = path.join(root, "rm-invoked");
     const sentinel = path.join(volume, "must-survive");
     fs.mkdirSync(bin, { recursive: true, mode: 0o700 });
     fs.mkdirSync(volume, { recursive: true, mode: 0o700 });
+    if (ordinary) fs.mkdirSync(path.join(volume, "eliza"), { mode: 0o700 });
+    const bootFile = path.join(root, "boot-id");
+    fs.writeFileSync(bootFile, restoreAttemptId);
     fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(attemptDirectory, "cancelled"), "cancelled\n", { mode: 0o600 });
     fs.writeFileSync(sentinel, "durable-data", { mode: 0o600 });
@@ -463,10 +477,16 @@ describe("secret container environment transport (#22060)", () => {
       fs.mkdirSync(otherAttempt, { mode: 0o700 });
       fs.writeFileSync(path.join(otherAttempt, "active"), "", { mode: 0o600 });
     }
+    // Linux fsync is substituted here; the real Linux drill owns filesystem durability execution.
+    fs.writeFileSync(
+      path.join(bin, "sync"),
+      '#!/bin/sh\nif test -n "$ELIZA_TEST_SYNC_FAILURE"; then exit 76; fi\nexit 0\n',
+      { mode: 0o700 },
+    );
     fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
     fs.writeFileSync(
       path.join(bin, "stat"),
-      '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") printf 1 ;; *) exit 64 ;; esac\n',
+      '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") printf 1 ;; "%d|%i") printf "1|2" ;; *) exit 64 ;; esac\n',
       { mode: 0o700 },
     );
     fs.writeFileSync(
@@ -485,11 +505,26 @@ describe("secret container environment transport (#22060)", () => {
       { mode: 0o700 },
     );
 
-    const command = buildExactRestoreStagingVolumeCleanupCommand(
-      containerName,
-      replacementAttemptId,
-      productionVolume,
+    const command = (
+      ordinary
+        ? buildDeletionVolumeCleanupCommand("a".repeat(64), agentId, replacementAttemptId, {
+            state: "captured",
+            authorityHash: "b".repeat(64),
+            observedAt: new Date().toISOString(),
+            path: productionVolume,
+            nodeBootId: restoreAttemptId,
+            rootDevice: "1",
+            rootInode: "2",
+            stateDevice: "1",
+            stateInode: "2",
+          })
+        : buildExactRestoreStagingVolumeCleanupCommand(
+            containerName,
+            replacementAttemptId,
+            productionVolume,
+          )
     )
+      .replaceAll("/proc/sys/kernel/random/boot_id", bootFile)
       .replaceAll("/var/lib/eliza/replacement-attempts", attempts)
       .replaceAll("/data", relocatedData)
       .replaceAll("chmod 700 --", "chmod 700")
@@ -523,6 +558,7 @@ describe("secret container environment transport (#22060)", () => {
                       ELIZA_TEST_DOCKER_CONTAINER_PRESENT: "1",
                       ELIZA_TEST_RM_DELETE_VOLUME: volume,
                     };
+      if (scenario === "marker-flush-failure") environment.ELIZA_TEST_SYNC_FAILURE = "1";
       const removable = scenario === "unmounted";
       expect(await run(environment)).toBe(removable ? 0 : 76);
       expect(fs.existsSync(rmMarker)).toBe(removable);

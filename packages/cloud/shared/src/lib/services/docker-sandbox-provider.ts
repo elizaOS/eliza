@@ -9,8 +9,25 @@
  */
 
 import {
+  deletionResourceAuthorityHash,
+  parseDeletionVolumeCaptureOutput,
+  validateDeletionVolumeCapture,
+  validateDeletionVolumeReceipt,
+} from "../../db/repositories/agent-deletion-resource-manifest";
+import { servingDeletionAuthority } from "../../db/repositories/agent-serving-placement";
+import type {
+  AgentDeletionResourceManifest,
+  AgentDeletionResourceReceipt,
+  AgentDeletionVolumeCapture,
+  AgentDeletionVolumeReceipt,
+} from "../../db/schemas/agent-sandboxes";
+import {
+  buildDeletionVolumeCaptureCommand,
+  buildDeletionVolumeCleanupCommand,
   buildExactRestoreBootFencedCommand,
   buildExactRestoreDockerBootFencedCommand,
+  getDeletionVolumeCleanupReceipt,
+  parseDockerCreateAttemptCleanupReceipt,
 } from "./docker-sandbox-utils";
 
 export {
@@ -5372,6 +5389,157 @@ export class DockerSandboxProvider implements SandboxProvider {
         });
       });
     }
+  }
+
+  private deletionVolumeAuthority(manifest: AgentDeletionResourceManifest) {
+    const retained = manifest.localStateRetention;
+    const serving = manifest.servingPlacement;
+    const authority =
+      retained ??
+      (serving
+        ? servingDeletionAuthority(serving, {
+            agentId: manifest.agentId,
+            nodeId: serving.locator.nodeId,
+            sandboxId: serving.locator.sandboxId,
+            containerName: serving.locator.containerName,
+          })
+        : null);
+    if (!authority || authority.agentId !== manifest.agentId)
+      throw new ElizaError("Deletion volume lacks exact container authority", {
+        code: "SANDBOX_DELETE_VOLUME_AUTHORITY_MISSING",
+        context: { agentId: manifest.agentId },
+      });
+    return authority;
+  }
+
+  async cleanupDeletionVolume(
+    manifest: AgentDeletionResourceManifest,
+  ): Promise<AgentDeletionVolumeReceipt> {
+    const capture = manifest.resources.volume;
+    if (manifest.deletionPolicy.kind !== "account_purge" || capture.state !== "captured")
+      throw new ElizaError(
+        "Volume cleanup requires an authorized account purge and captured state",
+        {
+          code: "SANDBOX_DELETE_VOLUME_PURGE_NOT_AUTHORIZED",
+          context: { agentId: manifest.agentId },
+        },
+      );
+    validateDeletionVolumeCapture(manifest, capture);
+    const authority = this.deletionVolumeAuthority(manifest);
+    const receipt = await this.withRetainedContainerConnection(authority, async (ssh) => {
+      const output = await ssh.exec(
+        buildLocalDockerDaemonCommand(
+          buildDeletionVolumeCleanupCommand(
+            authority.containerId,
+            manifest.agentId,
+            manifest.deletionAttemptId,
+            capture,
+          ),
+        ),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      if (output.trim() !== getDeletionVolumeCleanupReceipt(capture))
+        throw new ElizaError("Volume cleanup did not return its exact absence receipt", {
+          code: "SANDBOX_DELETE_VOLUME_RECEIPT_MISSING",
+          context: { agentId: manifest.agentId },
+        });
+      return {
+        state: "absent" as const,
+        authorityHash: deletionResourceAuthorityHash(manifest),
+        observedAt: new Date().toISOString(),
+        providerReceipt: output.trim(),
+        capture,
+      };
+    });
+    validateDeletionVolumeReceipt(manifest, receipt);
+    return receipt;
+  }
+
+  async captureDeletionVolume(
+    manifest: AgentDeletionResourceManifest,
+  ): Promise<AgentDeletionVolumeCapture> {
+    const authority = this.deletionVolumeAuthority(manifest);
+    return this.withRetainedContainerConnection(authority, async (ssh) => {
+      const output = await ssh.exec(
+        buildLocalDockerDaemonCommand(
+          buildDeletionVolumeCaptureCommand(
+            authority.containerId,
+            manifest.agentId,
+            manifest.deletionAttemptId,
+          ),
+        ),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      return parseDeletionVolumeCaptureOutput(manifest, output);
+    });
+  }
+
+  async cleanupDeletionSecretArtifacts(
+    manifest: AgentDeletionResourceManifest,
+  ): Promise<AgentDeletionResourceReceipt> {
+    const placement = manifest.servingPlacement;
+    const locator = placement?.locator;
+    if (
+      !placement ||
+      !locator ||
+      locator.replacementSecretCleanupVersion !== 1 ||
+      !isCanonicalNodeAuthorityUuid(locator.replacementAttemptId) ||
+      !placement.volumePath ||
+      (manifest.localStateRetention &&
+        manifest.localStateRetention.containerId !== locator.containerId)
+    ) {
+      throw new ElizaError("Deletion lacks captured secret artifact authority", {
+        code: "SANDBOX_DELETE_SECRET_AUTHORITY_MISSING",
+        context: { agentId: manifest.agentId },
+      });
+    }
+    const attemptId = locator.replacementAttemptId;
+    const authority = servingDeletionAuthority(placement, {
+      agentId: manifest.agentId,
+      nodeId: locator.nodeId,
+      sandboxId: locator.sandboxId,
+      containerName: locator.containerName,
+    });
+    const expectedVolume = locator.restoreAttemptId
+      ? `/data/agents/.restore/${manifest.agentId}/${locator.restoreAttemptId}`
+      : `/data/agents/${manifest.agentId}`;
+    if (
+      placement.volumePath !== expectedVolume ||
+      (locator.restoreAttemptId &&
+        (!isCanonicalNodeAuthorityUuid(locator.restoreAttemptId) ||
+          !isCanonicalNodeAuthorityUuid(locator.nodeIncarnation)))
+    ) {
+      throw new ElizaError("Deletion secret volume authority is inconsistent", {
+        code: "SANDBOX_DELETE_SECRET_VOLUME_INVALID",
+        context: { agentId: manifest.agentId },
+      });
+    }
+    const command = buildReplacementSecretArtifactsCleanupCommand(
+      locator.containerName,
+      attemptId,
+      placement.volumePath,
+    );
+    await this.withRetainedContainerConnection(authority, async (ssh) => {
+      const output = await ssh.exec(
+        locator.restoreAttemptId
+          ? buildExactRestoreBootFencedCommand(locator.nodeIncarnation!, command)
+          : command,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      const receipt = parseDockerCreateAttemptCleanupReceipt(output, attemptId);
+      if (receipt.containerId && receipt.containerId !== authority.containerId) {
+        throw new ElizaError("Deletion secret receipt names a different container", {
+          code: "SANDBOX_DELETE_SECRET_CONTAINER_MISMATCH",
+          context: { agentId: manifest.agentId },
+        });
+      }
+    });
+    return {
+      state: "absent",
+      authorityHash: deletionResourceAuthorityHash(manifest),
+      observedAt: new Date().toISOString(),
+      providerReceipt: getReplacementSecretArtifactsCleanupReceipt(attemptId),
+    };
   }
 
   async stopForDeletion(

@@ -8,10 +8,18 @@ process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.MOCK_REDIS = "1";
 
 import { PROVISIONING_JOB_TEST_TABLES } from "../../lib/services/__tests__/tier-upgrade-pglite-schema";
+import {
+  getDeletionVolumeCleanupReceipt,
+  getReplacementSecretArtifactsCleanupReceipt,
+} from "../../lib/services/docker-sandbox-utils";
 import { ElizaSandboxService } from "../../lib/services/eliza-sandbox";
 import type { SandboxProvider } from "../../lib/services/sandbox-provider";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
 import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
+import type {
+  AgentDeletionResourceReceipt,
+  AgentDeletionVolumeReceipt,
+} from "../schemas/agent-sandboxes";
 import { type AgentLocalStateRetention, agentSandboxes } from "../schemas/agent-sandboxes";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import { jobs } from "../schemas/jobs";
@@ -22,14 +30,28 @@ import {
   releaseAgentLifecycleBindingInTransaction,
 } from "./agent-compute-stop-intents";
 import {
+  deletionResourceAuthorityHash,
+  parseDeletionVolumeCaptureOutput,
+} from "./agent-deletion-resource-manifest";
+import {
   admitLocalRetentionInTransaction,
   assertRetainedNodePublicationAuthorityInTransaction,
 } from "./agent-local-state-retention";
-
 import { agentSandboxesRepository } from "./agent-sandboxes";
 
 beforeAll(async () => {
   for (const statement of PROVISIONING_JOB_TEST_TABLES) await dbWrite.execute(sql.raw(statement));
+  // Start from the pre-manifest table, then exercise the actual additive SQL
+  // through lifecycle admission and final-delete consumers below.
+  await dbWrite.execute(
+    sql.raw("ALTER TABLE agent_sandboxes DROP COLUMN deletion_resource_manifest"),
+  );
+  const resourceMigration = await readFile(
+    new URL("../migrations/0367_agent_deletion_resource_manifest.sql", import.meta.url),
+    "utf8",
+  );
+  await dbWrite.execute(sql.raw(resourceMigration));
+  await dbWrite.execute(sql.raw(resourceMigration));
   await dbWrite.execute(
     sql.raw(
       `CREATE TABLE docker_nodes (
@@ -1132,5 +1154,463 @@ test.each([
       result.lifecycleRevision!,
     );
     expect(replay.outcome).toBe("not-owned");
+  },
+);
+
+test("deletion manifest survives retry and unresolved resources prevent owner-row removal", async () => {
+  const { authority, captured } = await seed();
+  await dbWrite
+    .update(organizations)
+    .set({
+      account_lifecycle_state: "deletion_irreversible",
+      account_lifecycle_revision: 2,
+      account_deletion_request_id: crypto.randomUUID(),
+      is_active: false,
+    })
+    .where(eq(organizations.id, authority.organizationId));
+  await dbWrite
+    .update(agentSandboxes)
+    .set({ local_state_retention: { ...captured, state: "stopped" } })
+    .where(eq(agentSandboxes.id, authority.agentId));
+  type Prepared = {
+    ok: boolean;
+    sandboxId: string | null;
+    environmentRevision: number;
+    lifecycleRevision: number;
+    deletionAttemptId: string;
+    deletionStartedAt: Date;
+    preDeleteBackupId: string | null;
+  };
+  const service = new ElizaSandboxService() as unknown as {
+    prepareAgentDelete: (
+      id: string,
+      orgId: string,
+      authorization: "account_deletion",
+    ) => Promise<Prepared>;
+    commitAgentRowDelete: (
+      id: string,
+      orgId: string,
+      ownership: Prepared,
+    ) => Promise<{ success: boolean; error?: string }>;
+  };
+  const prepared = await service.prepareAgentDelete(
+    authority.agentId,
+    authority.organizationId,
+    "account_deletion",
+  );
+  expect(prepared.ok).toBe(true);
+  const [before] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(before.deletion_resource_manifest?.localStateRetention?.containerId).toBe(
+    captured.containerId,
+  );
+  expect(before.deletion_resource_manifest?.deletionAttemptId).toBe(prepared.deletionAttemptId);
+  const originalPolicy = before.deletion_resource_manifest!.deletionPolicy;
+  if (originalPolicy.kind !== "account_purge") throw new Error("Expected purge authority");
+  for (const changed of [
+    {
+      account_deletion_request_id: crypto.randomUUID(),
+      account_lifecycle_revision: originalPolicy.lifecycleRevision,
+    },
+    {
+      account_deletion_request_id: originalPolicy.requestId,
+      account_lifecycle_revision: originalPolicy.lifecycleRevision + 1,
+    },
+  ]) {
+    await dbWrite
+      .update(organizations)
+      .set(changed)
+      .where(eq(organizations.id, authority.organizationId));
+    await expect(
+      service.prepareAgentDelete(authority.agentId, authority.organizationId, "account_deletion"),
+    ).rejects.toThrow("policy cannot change within an admitted generation");
+    const [unchanged] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, authority.agentId));
+    expect(unchanged).toEqual(before);
+  }
+  await dbWrite
+    .update(organizations)
+    .set({
+      account_deletion_request_id: originalPolicy.requestId,
+      account_lifecycle_revision: originalPolicy.lifecycleRevision,
+    })
+    .where(eq(organizations.id, authority.organizationId));
+
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      deletion_resource_manifest: {
+        ...before.deletion_resource_manifest!,
+        deletionPolicy: { kind: "recovery_required" },
+      },
+    })
+    .where(eq(agentSandboxes.id, authority.agentId));
+  const [recoveryOwned] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  await expect(
+    service.prepareAgentDelete(authority.agentId, authority.organizationId, "account_deletion"),
+  ).rejects.toThrow("policy cannot change within an admitted generation");
+  const [notEscalated] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(notEscalated.lifecycle_revision).toBe(recoveryOwned.lifecycle_revision);
+  expect(notEscalated.deletion_resource_manifest).toEqual(recoveryOwned.deletion_resource_manifest);
+  await dbWrite
+    .update(agentSandboxes)
+    .set({ deletion_resource_manifest: before.deletion_resource_manifest })
+    .where(eq(agentSandboxes.id, authority.agentId));
+  const retry = await service.prepareAgentDelete(
+    authority.agentId,
+    authority.organizationId,
+    "account_deletion",
+  );
+  expect(retry.ok).toBe(true);
+  const [retried] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(retried.deletion_resource_manifest).toEqual(before.deletion_resource_manifest);
+  expect(
+    await service.commitAgentRowDelete(authority.agentId, authority.organizationId, retry),
+  ).toEqual({
+    success: false,
+    error: "Agent resource cleanup is still unresolved",
+  });
+  const [remaining] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(remaining.deletion_attempt_id).toBe(prepared.deletionAttemptId);
+  expect(remaining.deletion_resource_manifest).toEqual(before.deletion_resource_manifest);
+  await dbWrite
+    .update(agentSandboxes)
+    .set({ local_state_retention: { ...captured, containerId: "b".repeat(64) } })
+    .where(eq(agentSandboxes.id, authority.agentId));
+  await expect(
+    service.prepareAgentDelete(authority.agentId, authority.organizationId, "account_deletion"),
+  ).rejects.toThrow("Deletion resources changed after their manifest was captured");
+  const [changed] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(changed.deletion_resource_manifest).toEqual(before.deletion_resource_manifest);
+  const oldRevision = changed.lifecycle_revision;
+  await dbWrite.execute(
+    sql`UPDATE agent_sandboxes SET deletion_resource_manifest = jsonb_set(deletion_resource_manifest, '{deletionAttemptId}', to_jsonb(${crypto.randomUUID()}::text)) WHERE id = ${authority.agentId}`,
+  );
+  const [foreign] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  await expect(
+    service.prepareAgentDelete(authority.agentId, authority.organizationId, "account_deletion"),
+  ).rejects.toThrow("Deletion resource manifest belongs to a different lifecycle authority");
+  const [afterRefusal] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(afterRefusal.lifecycle_revision).toBe(foreign.lifecycle_revision);
+  expect(afterRefusal.lifecycle_revision).toBeGreaterThan(oldRevision);
+});
+
+test("secret cleanup receipt commits only for its captured deletion revision and survives retry", async () => {
+  const { authority, captured } = await seed();
+  await dbWrite
+    .update(organizations)
+    .set({
+      account_lifecycle_state: "deletion_irreversible",
+      account_lifecycle_revision: 2,
+      account_deletion_request_id: crypto.randomUUID(),
+      is_active: false,
+    })
+    .where(eq(organizations.id, authority.organizationId));
+  const attempt = crypto.randomUUID();
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      serving_placement: {
+        version: 1,
+        volumePath: `/data/agents/${authority.agentId}`,
+        locator: {
+          sandboxId: captured.containerName,
+          containerName: captured.containerName,
+          containerId: captured.containerId,
+          nodeId: captured.nodeId,
+          nodeRecordId: captured.nodeRecordId,
+          nodeHostname: captured.hostname,
+          nodeSshPort: captured.sshPort,
+          nodeSshUser: captured.sshUser,
+          nodeHostKeyFingerprint: captured.hostKeyFingerprint,
+          replacementAttemptId: attempt,
+          replacementSecretCleanupVersion: 1,
+        },
+      },
+    })
+    .where(eq(agentSandboxes.id, authority.agentId));
+  type Ownership = { deletionAttemptId: string; lifecycleRevision: number };
+  const service = new ElizaSandboxService() as unknown as {
+    prepareAgentDelete: (
+      id: string,
+      org: string,
+      authorization: "account_deletion",
+    ) => Promise<Ownership & { ok: boolean }>;
+    persistDeletionResourceObservation: (
+      id: string,
+      org: string,
+      owner: Ownership,
+      observation:
+        | { kind: "volume"; value: ReturnType<typeof parseDeletionVolumeCaptureOutput> }
+        | { kind: "volume_retirement"; value: AgentDeletionVolumeReceipt },
+    ) => Promise<number>;
+    persistDeletionSecretReceipt: (
+      id: string,
+      org: string,
+      owner: Ownership,
+      receipt: AgentDeletionResourceReceipt,
+    ) => Promise<number>;
+  };
+  const prepared = await service.prepareAgentDelete(
+    authority.agentId,
+    authority.organizationId,
+    "account_deletion",
+  );
+  expect(prepared.ok).toBe(true);
+  const [row] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  const receipt: AgentDeletionResourceReceipt = {
+    state: "absent",
+    authorityHash: deletionResourceAuthorityHash(row.deletion_resource_manifest!),
+    observedAt: new Date().toISOString(),
+    providerReceipt: getReplacementSecretArtifactsCleanupReceipt(attempt),
+  };
+  await expect(
+    service.persistDeletionSecretReceipt(authority.agentId, authority.organizationId, prepared, {
+      ...receipt,
+      authorityHash: "f".repeat(64),
+    }),
+  ).rejects.toThrow("does not match captured authority");
+  await expect(
+    service.persistDeletionSecretReceipt(
+      authority.agentId,
+      authority.organizationId,
+      { ...prepared, lifecycleRevision: prepared.lifecycleRevision - 1 },
+      receipt,
+    ),
+  ).rejects.toThrow("lost its lifecycle authority");
+  const [unchanged] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(unchanged.lifecycle_revision).toBe(row.lifecycle_revision);
+  expect(unchanged.deletion_resource_manifest?.resources.secrets).toEqual({ state: "unknown" });
+  const purgePolicy = row.deletion_resource_manifest!.deletionPolicy;
+  if (purgePolicy.kind !== "account_purge") throw new Error("Expected purge authority");
+  for (const changed of [
+    {
+      account_deletion_request_id: crypto.randomUUID(),
+      account_lifecycle_revision: purgePolicy.lifecycleRevision,
+    },
+    {
+      account_deletion_request_id: purgePolicy.requestId,
+      account_lifecycle_revision: purgePolicy.lifecycleRevision + 1,
+    },
+  ]) {
+    await dbWrite
+      .update(organizations)
+      .set(changed)
+      .where(eq(organizations.id, authority.organizationId));
+    await expect(
+      service.persistDeletionSecretReceipt(
+        authority.agentId,
+        authority.organizationId,
+        prepared,
+        receipt,
+      ),
+    ).rejects.toMatchObject({ code: "ACCOUNT_DELETION_PURGE_NOT_AUTHORIZED" });
+    const [fenced] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, authority.agentId));
+    expect(fenced).toEqual(row);
+  }
+  await dbWrite
+    .update(organizations)
+    .set({
+      account_deletion_request_id: purgePolicy.requestId,
+      account_lifecycle_revision: purgePolicy.lifecycleRevision,
+    })
+    .where(eq(organizations.id, authority.organizationId));
+  const revision = await service.persistDeletionSecretReceipt(
+    authority.agentId,
+    authority.organizationId,
+    prepared,
+    receipt,
+  );
+  expect(revision).toBeGreaterThan(row.lifecycle_revision);
+  await expect(
+    service.persistDeletionSecretReceipt(
+      authority.agentId,
+      authority.organizationId,
+      prepared,
+      receipt,
+    ),
+  ).rejects.toThrow("lost its lifecycle authority");
+  const retry = await service.prepareAgentDelete(
+    authority.agentId,
+    authority.organizationId,
+    "account_deletion",
+  );
+  expect(retry.ok).toBe(true);
+  const [after] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(after.deletion_resource_manifest?.resources.secrets).toEqual(receipt);
+  expect(after.deletion_resource_manifest?.resources.volume).toEqual({ state: "unknown" });
+  expect(after.deletion_resource_manifest?.resources.vpn).toEqual({ state: "unknown" });
+  const volume = parseDeletionVolumeCaptureOutput(
+    after.deletion_resource_manifest!,
+    `ELIZA_DELETION_VOLUME_V1|${crypto.randomUUID()}|8|101|8|102|/data/agents/${authority.agentId}`,
+  );
+  const owner = {
+    deletionAttemptId: after.deletion_attempt_id!,
+    lifecycleRevision: after.lifecycle_revision,
+  };
+  const volumeRevision = await service.persistDeletionResourceObservation(
+    authority.agentId,
+    authority.organizationId,
+    owner,
+    { kind: "volume", value: volume },
+  );
+  expect(volumeRevision).toBeGreaterThan(owner.lifecycleRevision);
+  await expect(
+    service.persistDeletionResourceObservation(
+      authority.agentId,
+      authority.organizationId,
+      { ...owner, lifecycleRevision: volumeRevision },
+      { kind: "volume", value: { ...volume, rootInode: "999" } },
+    ),
+  ).rejects.toThrow("already captured");
+  const finalRetry = await service.prepareAgentDelete(
+    authority.agentId,
+    authority.organizationId,
+    "account_deletion",
+  );
+  expect(finalRetry.ok).toBe(true);
+  const [final] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(final.deletion_resource_manifest?.resources.volume).toEqual(volume);
+  expect(final.deletion_resource_manifest?.resources.secrets).toEqual(receipt);
+  const absence: AgentDeletionVolumeReceipt = {
+    state: "absent",
+    authorityHash: deletionResourceAuthorityHash(final.deletion_resource_manifest!),
+    observedAt: new Date().toISOString(),
+    providerReceipt: getDeletionVolumeCleanupReceipt(volume),
+    capture: volume,
+  };
+  const finalOwner = {
+    deletionAttemptId: final.deletion_attempt_id!,
+    lifecycleRevision: final.lifecycle_revision,
+  };
+  for (const invalid of [
+    { ...absence, providerReceipt: "unverified absence" },
+    { ...absence, capture: { ...volume, rootInode: "999" } },
+    { ...absence, authorityHash: "f".repeat(64) },
+  ]) {
+    await expect(
+      service.persistDeletionResourceObservation(
+        authority.agentId,
+        authority.organizationId,
+        finalOwner,
+        { kind: "volume_retirement", value: invalid },
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_DELETE_VOLUME_RECEIPT_INVALID" });
+    const [unchanged] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, authority.agentId));
+    expect(unchanged).toEqual(final);
+  }
+  const retiredRevision = await service.persistDeletionResourceObservation(
+    authority.agentId,
+    authority.organizationId,
+    finalOwner,
+    { kind: "volume_retirement", value: absence },
+  );
+  expect(retiredRevision).toBeGreaterThan(finalOwner.lifecycleRevision);
+  await expect(
+    service.persistDeletionResourceObservation(
+      authority.agentId,
+      authority.organizationId,
+      finalOwner,
+      { kind: "volume_retirement", value: absence },
+    ),
+  ).rejects.toThrow("lost its lifecycle authority");
+  const retiredRetry = await service.prepareAgentDelete(
+    authority.agentId,
+    authority.organizationId,
+    "account_deletion",
+  );
+  expect(retiredRetry.ok).toBe(true);
+  const [retired] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, authority.agentId));
+  expect(retired.deletion_resource_manifest?.resources.volume).toEqual(absence);
+  expect(retired.deletion_resource_manifest?.resources.vpn).toEqual({ state: "unknown" });
+});
+
+test.each(["active", "recovery", "missing-request", "active-flag", "invalid-revision"])(
+  "account purge admission rejects %s canonical authority without changing the agent",
+  async (scenario) => {
+    const { authority, captured } = await seed();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ local_state_retention: captured })
+      .where(eq(agentSandboxes.id, authority.agentId));
+    await dbWrite
+      .update(organizations)
+      .set({
+        account_lifecycle_state:
+          scenario === "active"
+            ? "active"
+            : scenario === "recovery"
+              ? "deletion_recovery"
+              : "deletion_irreversible",
+        account_lifecycle_revision: scenario === "invalid-revision" ? 0 : 2,
+        account_deletion_request_id: scenario === "missing-request" ? null : crypto.randomUUID(),
+        is_active: scenario === "active-flag",
+      })
+      .where(eq(organizations.id, authority.organizationId));
+    const [before] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, authority.agentId));
+    const service = new ElizaSandboxService() as unknown as {
+      prepareAgentDelete(
+        id: string,
+        orgId: string,
+        authorization: "account_deletion",
+      ): Promise<unknown>;
+    };
+    await expect(
+      service.prepareAgentDelete(authority.agentId, authority.organizationId, "account_deletion"),
+    ).rejects.toMatchObject({ code: "ACCOUNT_DELETION_PURGE_NOT_AUTHORIZED" });
+    const [after] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, authority.agentId));
+    expect(after).toEqual(before);
   },
 );

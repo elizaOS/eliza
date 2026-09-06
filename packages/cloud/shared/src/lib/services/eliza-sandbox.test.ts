@@ -36,6 +36,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import * as accountLifecycleAuthority from "./account-lifecycle-authority";
 import { apiKeysService } from "./api-keys";
 import { DockerSSHClient } from "./docker-ssh";
 import {
@@ -621,6 +622,7 @@ function customSandbox(): AgentSandbox {
     environment_revision: 0,
     lifecycle_revision: 0,
     serving_placement: null,
+    deletion_resource_manifest: null,
     node_id: "node-1",
     container_name: "agent-e06bb509",
     bridge_port: 18923,
@@ -6581,6 +6583,220 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       deleteCharacter.mockRestore();
     }
   });
+
+  test.each(["capture-fails", "persist-fails", "captured"] as const)(
+    "volume observation is durable before compute teardown (%s)",
+    async (scenario) => {
+      const svc = await makeSvc();
+      const events: string[] = [];
+      const manifest: NonNullable<AgentSandbox["deletion_resource_manifest"]> = {
+        version: 1,
+        agentId: AGENT,
+        organizationId: ORG,
+        deletionAttemptId: "44444444-4444-4444-8444-444444444444",
+        deletionPolicy: {
+          kind: "account_purge",
+          requestId: crypto.randomUUID(),
+          lifecycleRevision: 2,
+        },
+        servingPlacement: null,
+        localStateRetention: null,
+        resources: {
+          volume: { state: "unknown" },
+          vpn: { state: "unknown" },
+          secrets: { state: "unknown" },
+        },
+      };
+      const prepared = {
+        ok: true as const,
+        sandboxId: SANDBOX_ID,
+        status: "running",
+        sourcePoolId: null,
+        lifecycleRevision: 8,
+        deletionAttemptId: manifest.deletionAttemptId,
+        resourceManifest: manifest,
+      };
+      const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue(prepared);
+      const internals = svc as unknown as {
+        getProvider: () => Promise<object>;
+        persistDeletionResourceObservation: (...args: unknown[]) => Promise<number>;
+      };
+      const provider = spyOn(internals, "getProvider").mockResolvedValue({
+        captureDeletionVolume: async () => {
+          events.push("capture");
+          if (scenario === "capture-fails") throw new Error("capture failed");
+          return {
+            state: "captured",
+            authorityHash: "a".repeat(64),
+            observedAt: new Date().toISOString(),
+            path: `/data/agents/${AGENT}`,
+            nodeBootId: "33333333-3333-4333-8333-333333333333",
+            rootDevice: "8",
+            rootInode: "101",
+            stateDevice: "8",
+            stateInode: "102",
+          };
+        },
+      });
+      const persist = spyOn(internals, "persistDeletionResourceObservation").mockImplementation(
+        async () => {
+          events.push("persist");
+          if (scenario === "persist-fails") throw new Error("persist failed");
+          return 9;
+        },
+      );
+      const stop = spyOn(svc, "runBoundedSandboxStop").mockImplementation(async () => {
+        events.push("stop");
+        return { kind: "stop-failed", error: new Error("deliberate stop refusal") };
+      });
+      try {
+        if (scenario === "captured") {
+          expect(await svc.deleteAgent(AGENT, ORG)).toMatchObject({ success: false });
+          expect(events).toEqual(["capture", "persist", "stop"]);
+        } else {
+          await expect(svc.deleteAgent(AGENT, ORG)).rejects.toThrow(
+            scenario === "capture-fails" ? "capture failed" : "persist failed",
+          );
+          expect(stop).not.toHaveBeenCalled();
+        }
+      } finally {
+        prepare.mockRestore();
+        provider.mockRestore();
+        persist.mockRestore();
+        stop.mockRestore();
+      }
+    },
+  );
+
+  test.each([
+    "complete",
+    "authority-lost",
+    "provider-fails",
+    "persist-fails",
+    "recovery-required",
+  ] as const)(
+    "volume retirement requires current authority and durable publication (%s)",
+    async (scenario) => {
+      const svc = await makeSvc();
+      const events: string[] = [];
+      const requestId = crypto.randomUUID();
+      const capture = {
+        state: "captured" as const,
+        authorityHash: "a".repeat(64),
+        observedAt: new Date().toISOString(),
+        path: `/data/agents/${AGENT}`,
+        nodeBootId: crypto.randomUUID(),
+        rootDevice: "8",
+        rootInode: "101",
+        stateDevice: "8",
+        stateInode: "102",
+      };
+      const receipt = {
+        state: "absent" as const,
+        authorityHash: capture.authorityHash,
+        observedAt: capture.observedAt,
+        providerReceipt: "provider-boundary-fixture",
+        capture,
+      };
+      const manifest: NonNullable<AgentSandbox["deletion_resource_manifest"]> = {
+        version: 1,
+        agentId: AGENT,
+        organizationId: ORG,
+        deletionAttemptId: crypto.randomUUID(),
+        deletionPolicy:
+          scenario === "recovery-required"
+            ? { kind: "recovery_required" }
+            : { kind: "account_purge", requestId, lifecycleRevision: 2 },
+        servingPlacement: null,
+        localStateRetention: null,
+        resources: { volume: capture, vpn: { state: "unknown" }, secrets: receipt },
+      };
+      const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+        ok: true,
+        sandboxId: SANDBOX_ID,
+        status: "stopped",
+        sourcePoolId: null,
+        lifecycleRevision: 8,
+        resourceManifest: manifest,
+      });
+      const stop = spyOn(svc, "runBoundedSandboxStop").mockImplementation(async () => {
+        events.push("stop");
+        return { kind: "not-running-proven" };
+      });
+      const authority = spyOn(
+        accountLifecycleAuthority,
+        "requireIrreversibleOrganizationDeletion",
+      ).mockImplementation(async () => {
+        events.push("authority");
+        if (scenario === "authority-lost") throw new Error("authority lost");
+        return {
+          state: "deletion_irreversible",
+          active: false,
+          revision: 2,
+          deletionRequestId: requestId,
+        };
+      });
+      const internals = svc as unknown as {
+        getProvider(): Promise<object>;
+        persistDeletionResourceObservation(...args: unknown[]): Promise<number>;
+      };
+      const provider = spyOn(internals, "getProvider").mockResolvedValue({
+        cleanupDeletionVolume: async () => {
+          events.push("remove");
+          if (scenario === "provider-fails") throw new Error("provider failed");
+          return receipt;
+        },
+      });
+      const persist = spyOn(internals, "persistDeletionResourceObservation").mockImplementation(
+        async () => {
+          events.push("persist");
+          if (scenario === "persist-fails") throw new Error("persistence failed");
+          return 9;
+        },
+      );
+      const revoke = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+      const commit = spyOn(svc, "commitAgentRowDelete").mockImplementation(async () => {
+        events.push("commit");
+        return { success: false, error: "VPN remains unresolved" };
+      });
+      try {
+        if (scenario === "complete" || scenario === "recovery-required") {
+          expect(await svc.deleteAgent(AGENT, ORG)).toMatchObject({
+            success: false,
+            error: "VPN remains unresolved",
+          });
+          expect(events).toEqual(
+            scenario === "complete"
+              ? ["stop", "authority", "remove", "persist", "commit"]
+              : ["stop", "commit"],
+          );
+          if (scenario === "complete")
+            expect(commit.mock.calls[0][2]).toMatchObject({
+              lifecycleRevision: 9,
+              resourceManifest: { resources: { volume: receipt } },
+            });
+        } else {
+          await expect(svc.deleteAgent(AGENT, ORG)).rejects.toThrow();
+          expect(commit).not.toHaveBeenCalled();
+          expect(events).toEqual(
+            scenario === "authority-lost"
+              ? ["stop", "authority"]
+              : scenario === "provider-fails"
+                ? ["stop", "authority", "remove"]
+                : ["stop", "authority", "remove", "persist"],
+          );
+        }
+      } finally {
+        prepare.mockRestore();
+        stop.mockRestore();
+        authority.mockRestore();
+        provider.mockRestore();
+        persist.mockRestore();
+        revoke.mockRestore();
+        commit.mockRestore();
+      }
+    },
+  );
 
   test("(a) teardown timeout completes the attempt but retains a reconciliation tombstone", async () => {
     const svc = await makeSvc();

@@ -1731,6 +1731,15 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       };
       const queued = await provisioningJobService.enqueueAgentDeleteOnce(request);
       if (admitted) {
+        await dbWrite
+          .update(organizations)
+          .set({
+            account_lifecycle_state: "deletion_irreversible",
+            account_lifecycle_revision: 2,
+            account_deletion_request_id: crypto.randomUUID(),
+            is_active: false,
+          })
+          .where(eq(organizations.id, orgId));
         const service = elizaSandboxService as unknown as {
           prepareAgentDelete: (
             id: string,

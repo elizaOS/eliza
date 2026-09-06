@@ -2577,6 +2577,13 @@
       "when": 1796083200011,
       "tag": "0366_agent_identities",
       "breakpoints": true
+    },
+    {
+      "idx": 368,
+      "version": "7",
+      "when": 1796083200012,
+      "tag": "0367_agent_deletion_resource_manifest",
+      "breakpoints": true
     }
   ]
 }

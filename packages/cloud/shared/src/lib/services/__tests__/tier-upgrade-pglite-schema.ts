@@ -225,6 +225,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "container_name" text,
   "local_state_retention" jsonb,
   "serving_placement" jsonb,
+  "deletion_resource_manifest" jsonb,
   "bridge_port" integer,
   "web_ui_port" integer,
   "headscale_ip" text,

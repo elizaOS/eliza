@@ -1,6 +1,12 @@
 /** Coordinates cloud service sandbox provider contracts behind route handlers. */
 
 import { ElizaError } from "@elizaos/core";
+import type {
+  AgentDeletionResourceManifest,
+  AgentDeletionResourceReceipt,
+  AgentDeletionVolumeCapture,
+  AgentDeletionVolumeReceipt,
+} from "../../db/schemas/agent-sandboxes";
 import {
   type AgentExecutionTier,
   type AgentSandboxPlacementLocator,
@@ -287,6 +293,18 @@ export interface SandboxProvider {
    * unreachable container would create two live agents after the node returns.
    */
   stopForReplacement?(sandboxId: string): Promise<void>;
+  /** Removes attempt-scoped plaintext only; volume and VPN need separate receipts. */
+  /** Observes the durable bind before its container disappears; never authorizes volume removal. */
+  captureDeletionVolume?(
+    manifest: AgentDeletionResourceManifest,
+  ): Promise<AgentDeletionVolumeCapture>;
+  cleanupDeletionVolume?(
+    manifest: AgentDeletionResourceManifest,
+  ): Promise<AgentDeletionVolumeReceipt>;
+  cleanupDeletionSecretArtifacts?(
+    manifest: AgentDeletionResourceManifest,
+  ): Promise<AgentDeletionResourceReceipt>;
+
   /**
    * Stops an exact container without removal, capacity release or credential
    * teardown. The caller must persist local-state retention and hold current

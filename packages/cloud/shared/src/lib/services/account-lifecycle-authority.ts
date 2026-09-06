@@ -1,6 +1,8 @@
 /** Primary-writer lifecycle authority checked at final paid/provider boundaries. */
 
+import { ElizaError } from "@elizaos/core";
 import { eq } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { organizations } from "../../db/schemas/organizations";
 
@@ -29,8 +31,9 @@ function isOrganizationLifecycleState(
 /** Reads the canonical account authority from the primary, never a replica/cache. */
 export async function readOrganizationLifecycleAuthority(
   organizationId: string,
+  reader: Pick<DbTransaction, "select"> = dbWrite,
 ): Promise<OrganizationLifecycleAuthority | null> {
-  const [organization] = await dbWrite
+  const [organization] = await reader
     .select({
       state: organizations.account_lifecycle_state,
       revision: organizations.account_lifecycle_revision,
@@ -69,4 +72,30 @@ export async function requireActiveOrganizationLifecycle(
     throw new AccountLifecycleFencedError();
   }
   return authority;
+}
+
+/** Admission requires canonical irreversible account state before waiving recovery capture. */
+export async function requireIrreversibleOrganizationDeletion(
+  organizationId: string,
+  reader: Pick<DbTransaction, "select"> = dbWrite,
+  expected?: { deletionRequestId: string; revision: number },
+): Promise<OrganizationLifecycleAuthority & { deletionRequestId: string }> {
+  const authority = await readOrganizationLifecycleAuthority(organizationId, reader);
+  if (
+    !authority ||
+    authority.active ||
+    authority.state !== "deletion_irreversible" ||
+    !authority.deletionRequestId ||
+    !Number.isSafeInteger(authority.revision) ||
+    authority.revision <= 0 ||
+    (expected !== undefined &&
+      (authority.deletionRequestId !== expected.deletionRequestId ||
+        authority.revision !== expected.revision))
+  ) {
+    throw new ElizaError("Account lifecycle does not authorize irreversible agent deletion", {
+      code: "ACCOUNT_DELETION_PURGE_NOT_AUTHORIZED",
+      context: { organizationId },
+    });
+  }
+  return { ...authority, deletionRequestId: authority.deletionRequestId };
 }

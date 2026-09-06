@@ -6,7 +6,9 @@
  * allocation, and node configuration parsing.
  */
 
+import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
+import type { AgentDeletionVolumeCapture } from "../../db/schemas/agent-sandboxes";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 
@@ -980,8 +982,28 @@ function restoreVolumeRetirementMarker(volumePath: string): string | null {
   return `${REPLACEMENT_ATTEMPT_CONTROL_ROOT}/retired-volume-${match[1]}-${match[2]}`;
 }
 
-function restoreVolumeAdmissionCommands(volumePath: string): string[] {
-  const marker = restoreVolumeRetirementMarker(volumePath);
+/** Ordinary agent IDs also remain retired after their original volume is reclaimed. */
+function volumeRetirementMarker(volumePath: string): string | null {
+  const restored = restoreVolumeRetirementMarker(volumePath);
+  if (restored) return restored;
+  const match = /^\/data\/agents\/([0-9a-f-]{36})$/.exec(volumePath);
+  if (!match) return null;
+  assertCanonicalReplacementPathAttemptId(match[1]!);
+  return `${REPLACEMENT_ATTEMPT_CONTROL_ROOT}/retired-agent-volume-${match[1]}`;
+}
+
+/** Flush the marker and its containing directory entries before destructive work. */
+function persistVolumeRetirementCommand(volumePath: string): string {
+  const marker = volumeRetirementMarker(volumePath);
+  if (!marker)
+    throw new ElizaError("Volume retirement path is not canonical", {
+      code: "SANDBOX_VOLUME_RETIREMENT_PATH_INVALID",
+    });
+  return `secure_existing_control_file ${shellQuote(marker)}; sync -- ${shellQuote(marker)} "$attempt_root" "$control_parent" /var/lib`;
+}
+
+function volumeAdmissionCommands(volumePath: string): string[] {
+  const marker = volumeRetirementMarker(volumePath);
   return marker
     ? [`test ! -e ${shellQuote(marker)} && test ! -L ${shellQuote(marker)} || exit 75`]
     : [];
@@ -1298,7 +1320,7 @@ export function buildVolumeVaultPassphraseCommand(
           ...replacementAttemptControlPrelude(replacementAttemptId),
           'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
           'chmod 600 -- "$attempt_lock"',
-          ...restoreVolumeAdmissionCommands(volumePath),
+          ...volumeAdmissionCommands(volumePath),
           ...fencedPreparationCommands,
         ]
       : secureFileShellPrelude("$(id -u)")),
@@ -1616,7 +1638,7 @@ export function buildExactRestoreStagingVolumeCleanupCommand(
     // A lost SSH channel releases flock before dockerd necessarily settles.
     // Every submitted create must have an exact recorded ID before inventory
     // can prove that no late daemon commit will attach the retired volume.
-    'for control_directory in "$attempt_root"/*; do if test -d "$control_directory"; then secure_private_directory_proof "$control_directory"; if test -e "$control_directory/active" || test -L "$control_directory/active"; then secure_private_regular_file_proof "$control_directory/active" 76; secure_private_regular_file_proof "$control_directory/candidate-id" 76; observed_id=$(cat -- "$control_directory/candidate-id"); case "$observed_id" in ""|*[!0-9a-f]*) exit 76 ;; esac; test "${#observed_id}" = 64 || exit 76; fi; fi; done',
+    unsettledVolumeCreateExclusionCommand(),
     'if test -e "$attempt_active" || test -L "$attempt_active"; then secure_private_regular_file_proof "$attempt_active" 76; secure_private_regular_file_proof "$attempt_candidate_id" 76; fi',
     'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then secure_private_regular_file_proof "$attempt_candidate_id" 76; candidate_id=$(cat -- "$attempt_candidate_id"); case "$candidate_id" in ""|*[!0-9a-f]*) exit 76 ;; esac; test "${#candidate_id}" = 64 || exit 76; candidate_matches=$(docker container ls -aq --no-trunc --filter "id=$candidate_id"); test -z "$candidate_matches" || exit 76; fi',
     `name_matches=$(docker container ls -aq --no-trunc --filter ${shellQuote(`name=^/${containerName}$`)}); test -z "$name_matches" || exit 76`,
@@ -1626,10 +1648,11 @@ export function buildExactRestoreStagingVolumeCleanupCommand(
     safeDirectoryProof(restoreRoot, false),
     safeDirectoryProof(agentRoot, true),
     `if test -L ${volume}; then exit 76; fi`,
-    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; secure_existing_control_file ${shellQuote(restoreVolumeRetirementMarker(exactVolumePath)!)}; rm -rf --one-file-system -- ${volume}; fi`,
-    `secure_existing_control_file ${shellQuote(restoreVolumeRetirementMarker(exactVolumePath)!)}`,
+    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; ${persistVolumeRetirementCommand(exactVolumePath)}; rm -rf --one-file-system -- ${volume}; fi`,
+    persistVolumeRetirementCommand(exactVolumePath),
     `if test -e ${volume} || test -L ${volume}; then exit 76; fi`,
-    `if test -e ${shellQuote(agentRoot)} && test ! -L ${shellQuote(agentRoot)}; then rmdir -- ${shellQuote(agentRoot)} 2>/dev/null || :; fi`,
+    `if test -e ${shellQuote(agentRoot)} && test ! -L ${shellQuote(agentRoot)}; then sync -- ${shellQuote(agentRoot)}; rmdir -- ${shellQuote(agentRoot)} 2>/dev/null || :; fi`,
+    `sync -- ${shellQuote(restoreRoot)}`,
     'secure_private_regular_file_proof "$attempt_cancelled" 75',
     'if test -e "$attempt_active" || test -L "$attempt_active"; then secure_private_regular_file_proof "$attempt_active" 76; secure_private_regular_file_proof "$attempt_candidate_id" 76; fi',
     `printf '%s\n' ${shellQuote(receipt)}`,
@@ -1817,7 +1840,7 @@ export function buildDockerCreateWithSecretEnvCommand(options: {
           ...replacementAttemptControlPrelude(replacementAttemptId),
           'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
           'chmod 600 -- "$attempt_lock"',
-          ...restoreVolumeAdmissionCommands(
+          ...volumeAdmissionCommands(
             options.exactReplacement!.volumePath ??
               getReplacementVolumePath(options.exactReplacement!.containerName),
           ),
@@ -1939,4 +1962,118 @@ export function resolveVpnTeardown(state: {
   if (state.vpnNodeId) return { kind: "by-id", nodeId: state.vpnNodeId };
   if (state.previousVpnNodeId) return { kind: "skip-preserved" };
   return { kind: "by-name" };
+}
+
+/** Observe the owned bind mount before container removal, under the shared volume lifecycle lock. */
+export function buildDeletionVolumeCaptureCommand(
+  containerId: string,
+  agentId: string,
+  deletionAttemptId: string,
+): string {
+  validateAgentId(agentId);
+  assertCanonicalReplacementPathAttemptId(deletionAttemptId);
+  if (!/^[0-9a-f]{64}$/.test(containerId))
+    throw new ElizaError("Volume capture requires an exact Docker ID", {
+      code: "SANDBOX_DELETE_VOLUME_CONTAINER_INVALID",
+    });
+  const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  const mountPattern = `^bind[|]/data/agents/(${agentId}|[.]restore/${agentId}/${uuid})/eliza$`;
+  return [
+    "set -eu",
+    "umask 077",
+    ...replacementAttemptControlPrelude(deletionAttemptId),
+    `identity=$(docker container inspect --format '{{.Id}}|{{index .Config.Labels "ai.elizaos.agent-id"}}' ${shellQuote(containerId)})`,
+    `test "$identity" = ${shellQuote(`${containerId}|${agentId}`)} || exit 76`,
+    `mount_source=$(docker container inspect --format '{{range .Mounts}}{{if eq .Destination "/root/.eliza"}}{{.Type}}|{{.Source}}{{end}}{{end}}' ${shellQuote(containerId)})`,
+    `printf '%s\n' "$mount_source" | grep -Eq ${shellQuote(mountPattern)} || exit 76`,
+    "volume_path=${mount_source#bind|}",
+    "volume_path=${volume_path%/eliza}",
+    ...buildProtectedHostDirectoryCommands("/data"),
+    ...buildProtectedHostDirectoryCommands("/data/agents"),
+    `case "$volume_path" in /data/agents/.restore/*) secure_parent_directory_proof /data/agents/.restore; secure_parent_directory_proof ${shellQuote(`/data/agents/.restore/${agentId}`)} ;; esac`,
+    'secure_parent_directory_proof "$volume_path"',
+    'secure_parent_directory_proof "$volume_path/eliza"',
+    `container_pid=$(docker container inspect --format '{{.State.Pid}}' ${shellQuote(containerId)})`,
+    'case "$container_pid" in ""|*[!0-9]*) exit 76 ;; esac',
+    "boot_id=$(cat /proc/sys/kernel/random/boot_id)",
+    "root_identity=$(stat -c '%d|%i' -- \"$volume_path\")",
+    "state_identity=$(stat -c '%d|%i' -- \"$volume_path/eliza\")",
+    'if test "$container_pid" -gt 0; then mounted_identity=$(stat -Lc \'%d|%i\' -- "/proc/$container_pid/root/root/.eliza"); test "$mounted_identity" = "$state_identity" || exit 76; fi',
+    `test "$(docker container inspect --format '{{.State.Pid}}' ${shellQuote(containerId)})" = "$container_pid" || exit 76`,
+    'printf \'ELIZA_DELETION_VOLUME_V1|%s|%s|%s|%s\\n\' "$boot_id" "$root_identity" "$state_identity" "$volume_path"',
+  ].join("; ");
+}
+
+/** Unknown in-flight daemon creates prevent any host volume from being retired. */
+function unsettledVolumeCreateExclusionCommand(): string {
+  return 'for control_directory in "$attempt_root"/*; do if test -d "$control_directory"; then secure_private_directory_proof "$control_directory"; if test -e "$control_directory/active" || test -L "$control_directory/active"; then secure_private_regular_file_proof "$control_directory/active" 76; secure_private_regular_file_proof "$control_directory/candidate-id" 76; observed_id=$(cat -- "$control_directory/candidate-id"); case "$observed_id" in ""|*[!0-9a-f]*) exit 76 ;; esac; test "${#observed_id}" = 64 || exit 76; fi; fi; done';
+}
+
+/** Exact receipt binds absence to the captured filesystem generation and deletion authority. */
+export function getDeletionVolumeCleanupReceipt(capture: AgentDeletionVolumeCapture): string {
+  const digest = createHash("sha256")
+    .update(
+      JSON.stringify([
+        capture.authorityHash,
+        capture.nodeBootId,
+        capture.path,
+        capture.rootDevice,
+        capture.rootInode,
+        capture.stateDevice,
+        capture.stateInode,
+      ]),
+    )
+    .digest("hex");
+  return `ELIZA_DELETION_VOLUME_ABSENT_V1 ${digest}`;
+}
+
+/** Permanently retire an ordinary agent volume after the caller authorizes irreversible purge. */
+export function buildDeletionVolumeCleanupCommand(
+  containerId: string,
+  agentId: string,
+  deletionAttemptId: string,
+  capture: AgentDeletionVolumeCapture,
+): string {
+  validateAgentId(agentId);
+  assertCanonicalReplacementPathAttemptId(deletionAttemptId);
+  assertCanonicalReplacementPathAttemptId(capture.nodeBootId);
+  if (
+    !/^[0-9a-f]{64}$/.test(containerId) ||
+    capture.path !== `/data/agents/${agentId}` ||
+    !/^[0-9a-f]{64}$/.test(capture.authorityHash) ||
+    ![capture.rootDevice, capture.stateDevice].every((value) => /^[0-9]+$/.test(value)) ||
+    ![capture.rootInode, capture.stateInode].every((value) => /^[1-9][0-9]*$/.test(value))
+  ) {
+    throw new ElizaError("Volume retirement requires a complete ordinary-volume capture", {
+      code: "SANDBOX_DELETE_VOLUME_CAPTURE_INVALID",
+    });
+  }
+  const volume = shellQuote(capture.path);
+  const receipt = shellQuote(getDeletionVolumeCleanupReceipt(capture));
+  const marker = shellQuote(volumeRetirementMarker(capture.path)!);
+  return [
+    "set -eu",
+    "umask 077",
+    ...replacementAttemptControlPrelude(deletionAttemptId, "exclusive"),
+    `test "$(cat /proc/sys/kernel/random/boot_id)" = ${shellQuote(capture.nodeBootId)} || exit 78`,
+    unsettledVolumeCreateExclusionCommand(),
+    `exact_matches=$(docker container ls -aq --no-trunc --filter ${shellQuote(`id=${containerId}`)}); test -z "$exact_matches" || exit 76`,
+    `all_container_ids=$(docker container ls -aq --no-trunc); for existing_id in $all_container_ids; do mount_sources=$(docker inspect --format '{{range .Mounts}}{{println .Source}}{{end}}' "$existing_id"); if printf '%s\n' "$mount_sources" | awk -v root=${volume} 'length($0) > 0 && ($0 == root || index($0, root "/") == 1 || $0 == "/" || index(root, $0 "/") == 1) { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; done`,
+    `mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi`,
+    "secure_parent_directory_proof /data",
+    "secure_parent_directory_proof /data/agents",
+    'retirement_intent="$attempt_dir/volume-retirement"',
+    "retirement_started=0",
+    `if test -e "$retirement_intent" || test -L "$retirement_intent"; then secure_private_regular_file_proof "$retirement_intent" 76; test "$(cat -- "$retirement_intent")" = ${receipt} || exit 76; secure_private_regular_file_proof ${marker} 76; retirement_started=1; fi`,
+    `test ! -L ${volume} || exit 76`,
+    `if test -e ${volume}; then secure_parent_directory_proof ${volume}; test "$(stat -c '%d|%i' -- ${volume})" = ${shellQuote(`${capture.rootDevice}|${capture.rootInode}`)} || exit 76; if test -e ${volume}/eliza || test -L ${volume}/eliza; then secure_parent_directory_proof ${volume}/eliza; test "$(stat -c '%d|%i' -- ${volume}/eliza)" = ${shellQuote(`${capture.stateDevice}|${capture.stateInode}`)} || exit 76; else test "$retirement_started" = 1 || exit 76; fi; else test "$retirement_started" = 1 || exit 76; fi`,
+    persistVolumeRetirementCommand(capture.path),
+    `if test "$retirement_started" = 0; then (set -C; printf '%s\n' ${receipt} > "$retirement_intent") || exit 76; fi`,
+    'secure_private_regular_file_proof "$retirement_intent" 76',
+    'sync -- "$retirement_intent" "$attempt_dir" "$attempt_root"',
+    `if test -e ${volume}; then rm -rf --one-file-system -- ${volume}; fi`,
+    `test ! -e ${volume} && test ! -L ${volume} || exit 76`,
+    "sync -- /data/agents",
+    `printf '%s\n' ${receipt}`,
+  ].join("; ");
 }
