@@ -718,7 +718,7 @@ describe("sandbox registry", () => {
     });
 
     expect(errorSpy).toHaveBeenCalledWith(
-      "[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): redis down",
+      "[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here; heartbeat cannot recreate a missing trio and fails closed with SANDBOX_REGISTRY_OWNERSHIP_LOST): redis down",
     );
     expect(reportError).toHaveBeenCalledExactlyOnceWith(
       "eliza.sandboxRegistry",
