@@ -1,11 +1,11 @@
-/** Exercises stage desktop fused lib staleness behavior with deterministic app-core test fixtures. */
+/** Exercises native-library freshness checks against an isolated Git source checkout and staged library fixtures. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { nativeLibraryInventory } from "./lib/fused-artifact-integrity.mjs";
 
@@ -14,14 +14,48 @@ import { nativeLibraryInventory } from "./lib/fused-artifact-integrity.mjs";
 // a native lib that no longer matches the fork source; a stamp matching the
 // current fork exits 0.
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const script = path.join(scriptDir, "stage-desktop-fused-lib.mjs");
+const fixtureRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), "fused-source-fixture-"),
+);
+after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+const fixtureScripts = path.join(fixtureRoot, "packages/app-core/scripts");
+fs.mkdirSync(path.join(fixtureScripts, "lib"), { recursive: true });
+for (const relative of [
+  "stage-desktop-fused-lib.mjs",
+  "lib/fused-artifact-integrity.mjs",
+  "lib/setup-state-dir.mjs",
+]) {
+  fs.copyFileSync(
+    path.join(scriptDir, relative),
+    path.join(fixtureScripts, relative),
+  );
+}
+const script = path.join(fixtureScripts, "stage-desktop-fused-lib.mjs");
 const forkDir = path.join(
-  scriptDir,
-  "..",
-  "..",
-  "..",
+  fixtureRoot,
   "plugins/plugin-local-inference/native/llama.cpp",
 );
+fs.mkdirSync(forkDir, { recursive: true });
+fs.writeFileSync(
+  path.join(forkDir, "CMakeLists.txt"),
+  "project(fused_fixture)\n",
+);
+execFileSync("git", ["init", "--quiet", forkDir]);
+execFileSync("git", ["-C", forkDir, "add", "CMakeLists.txt"]);
+execFileSync("git", [
+  "-C",
+  forkDir,
+  "-c",
+  "user.name=Fixture",
+  "-c",
+  "user.email=fixture@example.invalid",
+  "-c",
+  "commit.gpgsign=false",
+  "commit",
+  "--quiet",
+  "-m",
+  "Initialize native source fixture",
+]);
 const libName =
   process.platform === "win32"
     ? "elizainference.dll"
@@ -31,13 +65,9 @@ const libName =
 const STAMP = ".eliza-fused-build-stamp.json";
 
 function currentFork() {
-  try {
-    return execFileSync("git", ["-C", forkDir, "rev-parse", "HEAD"], {
-      encoding: "utf8",
-    }).trim();
-  } catch {
-    return "unknown";
-  }
+  return execFileSync("git", ["-C", forkDir, "rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
 }
 
 /** Run `--check --out <dir>`; return the process exit code (0 fresh, 2 stale). */
@@ -125,9 +155,6 @@ test("--check: stamp from a DIFFERENT fork commit is STALE → exit 2", () => {
         builtAt: "old",
       }),
     );
-    // Only meaningful when we can read a real (different) fork HEAD; if the fork
-    // submodule isn't checked out, forkCommit() is "unknown" and would also
-    // differ from the all-zeros commit, so this still asserts STALE.
     assert.equal(checkExitCode(dir), 2);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
