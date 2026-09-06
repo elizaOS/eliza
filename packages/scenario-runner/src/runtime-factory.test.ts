@@ -15,6 +15,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter";
 import {
+  assertProviderQualifiedEnvironment,
   clearLlmWireMockEnvForLiveProvider,
   configureExplicitCliScenarioPlanner,
   deterministicScheduledDispatchRenderText,
@@ -23,11 +24,25 @@ import {
   isPostTurnEvaluationPrompt,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
+  providerQualifiedEnvironmentProblems,
   resolveScenarioDeterministicModelCall,
   resolveScenarioProviderConfig,
   scenarioLiveProviderPreflightProblems,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
+
+describe("provider-qualified environment preflight", () => {
+  it("rejects an OpenAI base URL on IPv6 loopback", () => {
+    const env = { OPENAI_BASE_URL: "http://[::1]:11434/v1" };
+
+    expect(providerQualifiedEnvironmentProblems(env)).toEqual([
+      "OPENAI_BASE_URL is not a production provider endpoint",
+    ]);
+    expect(() => assertProviderQualifiedEnvironment(env)).toThrow(
+      "[scenario-runner] provider-qualified environment preflight failed: OPENAI_BASE_URL is not a production provider endpoint",
+    );
+  });
+});
 
 describe("explicit CLI scenario planner", () => {
   it("registers and calls the CLI ACTION_PLANNER for a required WORKFLOW turn", async () => {
