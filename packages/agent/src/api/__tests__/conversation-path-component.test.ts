@@ -180,6 +180,9 @@ describe("conversation route path-component decoding", () => {
       "GET",
       "/api/conversations/%61/messages",
     );
+    context.state.runtime = {} as NonNullable<
+      ConversationRouteState["runtime"]
+    >;
 
     await expect(handleConversationRoutes(context)).resolves.toBe(true);
 
@@ -193,6 +196,9 @@ describe("conversation route path-component decoding", () => {
       "GET",
       "/api/conversations/%2561/messages",
     );
+    context.state.runtime = {} as NonNullable<
+      ConversationRouteState["runtime"]
+    >;
 
     await expect(handleConversationRoutes(context)).resolves.toBe(true);
 
@@ -208,6 +214,9 @@ describe("conversation route path-component decoding", () => {
       "GET",
       "/api/conversations/%2F/messages",
     );
+    context.state.runtime = {} as NonNullable<
+      ConversationRouteState["runtime"]
+    >;
 
     await expect(handleConversationRoutes(context)).resolves.toBe(true);
 

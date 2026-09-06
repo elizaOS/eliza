@@ -3093,16 +3093,16 @@ export async function handleConversationRoutes(
       "conversation id",
     );
     if (convId === null) return true;
+    if (!state.runtime) {
+      error(res, "Agent runtime not available", 503);
+      return true;
+    }
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
       return true;
     }
     if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
-      return true;
-    }
-    if (!state.runtime) {
-      json(res, { messages: [] });
       return true;
     }
     const runtime = state.runtime;
