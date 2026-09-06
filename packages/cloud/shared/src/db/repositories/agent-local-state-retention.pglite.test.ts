@@ -215,6 +215,9 @@ test("the real suspension service commits a retained stop and its confirmation",
     async create() {
       throw new Error("Must not replace retained state");
     },
+    async checkRetainedContainerHealth() {
+      return true;
+    },
     async checkHealth() {
       return !stopped;
     },
@@ -255,6 +258,9 @@ test("a lost stop result preserves pending state and a retry confirms the same c
   const provider: SandboxProvider = {
     async create() {
       throw new Error("Unexpected replacement");
+    },
+    async checkRetainedContainerHealth() {
+      return true;
     },
     async checkHealth() {
       return false;
@@ -307,6 +313,9 @@ async function suspendedResumeFixture() {
   const provider: SandboxProvider = {
     async create() {
       throw new Error("Retained recovery must not create");
+    },
+    async checkRetainedContainerHealth() {
+      return true;
     },
     async checkHealth() {
       return true;
@@ -426,6 +435,9 @@ test("refill after a lost stop response resumes the same container under the own
     async create() {
       throw new Error("Must not create during pending-stop refill");
     },
+    async checkRetainedContainerHealth() {
+      return true;
+    },
     async checkHealth() {
       return running;
     },
@@ -485,6 +497,9 @@ test("pending-stop refill cannot publish after its worker lease expires during r
   const provider: SandboxProvider = {
     async create() {
       throw new Error("Unexpected create");
+    },
+    async checkRetainedContainerHealth() {
+      return true;
     },
     async checkHealth() {
       await dbWrite.update(jobExecutionLeases).set({ expires_at: new Date(0) });
@@ -632,6 +647,9 @@ test("backup failure captures and commits exact local retention before uncertain
   const provider: SandboxProvider = {
     async create() {
       throw new Error("Unexpected replacement");
+    },
+    async checkRetainedContainerHealth() {
+      return true;
     },
     async checkHealth() {
       return true;
@@ -948,4 +966,25 @@ test("expired manual stop lease cannot stop the retained container or take its o
   const [agent] = await dbWrite.select().from(agentSandboxes);
   expect(agent.status).toBe("running");
   expect(agent.local_state_retention?.stopIntentId).toBe(captured.stopIntentId);
+});
+
+test("successful ingress cannot publish an unhealthy retained container", async () => {
+  const { service, provider, authority, captured } = await manualResumeFixture();
+  let stopped = false;
+  provider.checkRetainedContainerHealth = async (locator) => {
+    expect(locator.containerId).toBe(captured.containerId);
+    return false;
+  };
+  provider.stopRetainingState = async (locator) => {
+    stopped = true;
+    return { containerId: locator.containerId, state: "exited", restartPolicy: "no" };
+  };
+  await expect(
+    service.executeResume(authority.agentId, authority.organizationId, authority),
+  ).rejects.toThrow("Retained container recovery failed");
+  expect(stopped).toBe(true);
+  const [agent] = await dbWrite.select().from(agentSandboxes);
+  expect(agent.status).toBe("stopped");
+  expect(agent.bridge_url).toBeNull();
+  expect(agent.local_state_retention?.containerId).toBe(captured.containerId);
 });

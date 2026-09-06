@@ -60,6 +60,7 @@ import {
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
   captureDockerRetainedContainer,
+  checkDockerRetainedContainerHealth,
   resumeDockerRetainedContainer,
   stopDockerRetainingState,
 } from "./docker-retained-stop";
@@ -5253,6 +5254,26 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Cannot prove VPN registration settled for ${locator.containerName}`,
       );
     }
+  }
+
+  async checkRetainedContainerHealth(locator: SandboxRetainedStopLocator): Promise<boolean> {
+    return this.withRetainedContainerConnection(locator, async (ssh) => {
+      const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        if (
+          await checkDockerRetainedContainerHealth(
+            (command, timeout) => ssh.exec(command, timeout),
+            locator.containerId,
+            locator.agentId,
+          )
+        )
+          return true;
+        const remaining = deadline - Date.now();
+        if (remaining > 0)
+          await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, remaining)));
+      }
+      return false;
+    });
   }
 
   async resumeRetainedContainer(

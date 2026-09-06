@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   captureDockerRetainedContainer,
+  checkDockerRetainedContainerHealth,
   resumeDockerRetainedContainer,
   stopDockerRetainingState,
 } from "./docker-retained-stop";
@@ -144,4 +145,60 @@ test("capture refuses an agent label mismatch before deriving stop authority", a
       AGENT,
     ),
   ).toBe(ID);
+});
+
+describe("exact retained-container health", () => {
+  const healthy = `${ID}|${AGENT}|running|true|false|false|false|no|healthy`;
+  test("reads the immutable ID and accepts healthy owned compute", async () => {
+    const commands: string[] = [];
+    expect(
+      await checkDockerRetainedContainerHealth(
+        async (command) => {
+          commands.push(command);
+          return healthy;
+        },
+        ID,
+        AGENT,
+      ),
+    ).toBe(true);
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toContain(`'${ID}'`);
+    expect(commands[0]).not.toContain("curl");
+  });
+  for (const [name, response] of [
+    ["unhealthy", healthy.replace(/healthy$/, "unhealthy")],
+    ["starting", healthy.replace(/healthy$/, "starting")],
+    ["missing health", healthy.replace(/healthy$/, "none")],
+    ["stopped", healthy.replace("running|true", "exited|false")],
+    ["restart enabled", healthy.replace("|no|", "|always|")],
+    ["paused", healthy.replace("running|true|false|false", "paused|true|false|true")],
+  ])
+    test(`does not admit ${name}`, async () => {
+      expect(await checkDockerRetainedContainerHealth(async () => response, ID, AGENT)).toBe(false);
+    });
+  for (const response of [
+    healthy.replace(ID, "b".repeat(64)),
+    healthy.replace(AGENT, crypto.randomUUID()),
+    "healthy",
+  ]) {
+    test("rejects mismatched or malformed authority", async () => {
+      await expect(
+        checkDockerRetainedContainerHealth(async () => response, ID, AGENT),
+      ).rejects.toThrow();
+    });
+  }
+  test("does not dispatch an unvalidated identity", async () => {
+    let calls = 0;
+    await expect(
+      checkDockerRetainedContainerHealth(
+        async () => {
+          calls++;
+          return healthy;
+        },
+        "name",
+        AGENT,
+      ),
+    ).rejects.toThrow();
+    expect(calls).toBe(0);
+  });
 });
