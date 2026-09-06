@@ -30,6 +30,8 @@ import {
   agentSandboxes,
 } from "../../schemas/agent-sandboxes";
 import { dockerNodes } from "../../schemas/docker-nodes";
+import { jobExecutionLeases } from "../../schemas/job-execution-leases";
+import { jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
@@ -53,10 +55,12 @@ import {
 } from "../agent-sandbox-replacement-attempts";
 import {
   admitAgentSandboxReplacementResourcesInTransaction,
+  admitSettledJobReplacementResourcesInTransaction,
   recordAgentSandboxReplacementResourceAbsenceInTransaction,
   recordAgentSandboxReplacementVolumeCaptureInTransaction,
   scheduleAgentSandboxReplacementResourceCleanupInTransaction,
 } from "../agent-sandbox-replacement-resources";
+import { jobsRepository } from "../jobs";
 
 const TIMEOUT = 120_000;
 const ORGANIZATION_ID = "00000000-0000-4000-8000-00000000a001";
@@ -888,6 +892,52 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await dbWrite.execute(
+      sql.raw(`CREATE TABLE IF NOT EXISTS jobs (
+        id uuid PRIMARY KEY,
+        type text NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        data jsonb NOT NULL,
+        data_storage text NOT NULL DEFAULT 'inline',
+        data_key text,
+        agent_id text,
+        character_id text,
+        result jsonb,
+        result_storage text NOT NULL DEFAULT 'inline',
+        result_key text,
+        error text,
+        error_storage text NOT NULL DEFAULT 'inline',
+        error_key text,
+        attempts integer NOT NULL DEFAULT 0,
+        max_attempts integer NOT NULL DEFAULT 3,
+        execution_interruptions integer NOT NULL DEFAULT 0,
+        retryable_requeues integer NOT NULL DEFAULT 0,
+        organization_id uuid NOT NULL,
+        user_id uuid,
+        api_key_id uuid,
+        generation_id uuid,
+        webhook_url text,
+        webhook_status text,
+        estimated_completion_at timestamp,
+        scheduled_for timestamp NOT NULL DEFAULT now(),
+        started_at timestamp,
+        execution_generation uuid,
+        execution_quiesced_at timestamp,
+        completed_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );`),
+    );
+    await dbWrite.execute(
+      sql.raw(`CREATE TABLE IF NOT EXISTS job_execution_leases (
+        job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+        execution_generation uuid NOT NULL,
+        owner_id uuid NOT NULL,
+        expires_at timestamp NOT NULL,
+        heartbeat_at timestamp NOT NULL DEFAULT now(),
+        created_at timestamp NOT NULL DEFAULT now()
+      );`),
+    );
     for (const statement of readFileSync(
       new URL("../../migrations/0381_agent_replacement_attempt_vpn_authority.sql", import.meta.url),
       "utf8",
@@ -931,6 +981,8 @@ beforeAll(async () => {
 }, TIMEOUT);
 
 beforeEach(async () => {
+  await dbWrite.delete(jobExecutionLeases);
+  await dbWrite.delete(jobs);
   expect(schemaFailure).toBe("");
   await dbWrite.execute(
     sql.raw(`ALTER TABLE agent_sandbox_replacement_attempts
@@ -1041,6 +1093,127 @@ afterAll(async () => {
 });
 
 describe("agent sandbox replacement attempts", () => {
+  for (const mode of ["completed", "retry", "requeue", "recovery", "rejected-adoption"] as const) {
+    test(`settles job and candidate cleanup ownership atomically (${mode})`, async () => {
+      const ownerId = "00000000-0000-4000-8000-00000000c001";
+      await dbWrite.insert(jobs).values({
+        id: LIFECYCLE_JOB_ID,
+        type: "agent_upgrade",
+        status: "in_progress",
+        started_at: new Date("2020-01-01T00:00:00.000Z"),
+        data: {},
+        organization_id: ORGANIZATION_ID,
+        agent_id: AGENT_ID,
+        user_id: USER_ID,
+        execution_generation: LIFECYCLE_EXECUTION_GENERATION,
+      });
+      await dbWrite.insert(jobExecutionLeases).values({
+        job_id: LIFECYCLE_JOB_ID,
+        execution_generation: LIFECYCLE_EXECUTION_GENERATION,
+        owner_id: ownerId,
+        expires_at: new Date(Date.now() + 60_000),
+      });
+      await startAgentSandboxReplacementAttempt(startInput());
+      await recordAgentSandboxReplacementIntent(reference(), locator("intent"));
+      await recordAgentSandboxReplacementCreated(reference(), locator("created"));
+      await recordAgentSandboxReplacementVpnRegistered(reference(), locator("vpn"));
+      await recordAgentSandboxReplacementProviderSucceeded(
+        reference(),
+        locator("final"),
+        PROVIDER_DIGEST,
+      );
+      const input = {
+        jobId: LIFECYCLE_JOB_ID,
+        executionGeneration: LIFECYCLE_EXECUTION_GENERATION,
+        agentId: AGENT_ID,
+        organizationId: ORGANIZATION_ID,
+      };
+      await expect(
+        dbWrite.transaction((tx) => admitSettledJobReplacementResourcesInTransaction(tx, input)),
+      ).rejects.toMatchObject({ code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED" });
+      const [claimed] = await dbWrite.select().from(jobs);
+      const [source] = await dbWrite.select().from(agentSandboxes);
+      if (mode === "rejected-adoption") {
+        const candidate = locator("final");
+        await dbWrite
+          .update(agentSandboxes)
+          .set({
+            sandbox_id: candidate.sandboxId,
+            node_id: candidate.nodeId,
+            container_name: candidate.containerName,
+          })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+        await expect(
+          jobsRepository.settleExecution(claimed, "completed", undefined, ownerId),
+        ).rejects.toThrow();
+        expect((await dbWrite.select().from(jobs))[0]).toEqual(claimed);
+        expect(await dbWrite.select().from(jobExecutionLeases)).toHaveLength(1);
+        expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
+          "provider_succeeded",
+        );
+        return;
+      }
+      if (mode === "completed")
+        expect(await jobsRepository.settleExecution(claimed, "completed", undefined, ownerId)).toBe(
+          true,
+        );
+      else if (mode === "requeue")
+        expect(
+          await jobsRepository.retryLaterWithoutIncrementingAttempts(
+            claimed,
+            "candidate validation interrupted",
+            0,
+            ownerId,
+          ),
+        ).toBeDefined();
+      else if (mode === "recovery") {
+        await dbWrite.delete(jobExecutionLeases);
+        expect(
+          await jobsRepository.recoverStaleJobs({
+            type: "agent_upgrade",
+            organizationId: ORGANIZATION_ID,
+            staleThresholdMs: 1_000,
+          }),
+        ).toMatchObject({ retried: 1, failures: [] });
+      } else
+        expect(
+          await jobsRepository.incrementAttempt(
+            claimed.id,
+            "candidate health unavailable",
+            3,
+            undefined,
+            LIFECYCLE_EXECUTION_GENERATION,
+            ownerId,
+          ),
+        ).toBeDefined();
+      const [settled] = await dbWrite.select().from(jobs);
+      expect(settled.status).toBe(mode === "completed" ? "completed" : "pending");
+      expect(settled.execution_quiesced_at).not.toBeNull();
+      expect(await dbWrite.select().from(jobExecutionLeases)).toEqual([]);
+      const [released] = await dbWrite.select().from(agentSandboxes);
+      expect(released.lifecycle_job_id).toBeNull();
+      expect(released.lifecycle_execution_generation).toBeNull();
+      expect(released.sandbox_id).toBe(source.sandbox_id);
+      expect(released.node_id).toBe(source.node_id);
+      const attempt = await getAgentSandboxReplacementAttempt(reference());
+      expect(attempt?.state).toBe("cleanup_in_progress");
+      expect(attempt?.cleanup_resource_manifest?.resources.volume.state).toBe("unknown");
+      expect(
+        await dbWrite.transaction((tx) =>
+          scheduleAgentSandboxReplacementResourceCleanupInTransaction(tx, 1),
+        ),
+      ).toEqual([reference()]);
+      await expect(
+        dbWrite.transaction((tx) =>
+          admitSettledJobReplacementResourcesInTransaction(tx, {
+            ...input,
+            executionGeneration: "00000000-0000-4000-8000-00000000c002",
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED" });
+    });
+  }
+
   test("rotates failed cleanup candidates instead of starving later retained attempts", async () => {
     const secondAgentId = "00000000-0000-4000-8000-00000000b002";
     const secondAttemptId = "00000000-0000-4000-8000-00000000b003";

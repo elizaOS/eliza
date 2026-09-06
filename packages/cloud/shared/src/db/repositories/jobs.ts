@@ -31,7 +31,23 @@ import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
 import { releaseAgentLifecycleBindingInTransaction } from "./agent-compute-stop-intents";
+import { admitSettledJobReplacementResourcesInTransaction } from "./agent-sandbox-replacement-resources";
 import { cutoverResumeWindowAllows, msWindowTimestampMatch } from "./job-timestamp-fence";
+
+async function releaseSettledLifecycleBindingInTransaction(
+  tx: DbTransaction,
+  input: Parameters<typeof releaseAgentLifecycleBindingInTransaction>[1],
+  jobType: string,
+): Promise<void> {
+  if (
+    [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_DOWNGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE].some(
+      (type) => type === jobType,
+    )
+  ) {
+    await admitSettledJobReplacementResourcesInTransaction(tx, input);
+  }
+  await releaseAgentLifecycleBindingInTransaction(tx, input);
+}
 
 export {
   cutoverResumeWindowAllows,
@@ -1463,13 +1479,17 @@ export class JobsRepository {
           );
       }
       if (hasAgentLifecycleFence(params.job) && params.job.execution_generation) {
-        await releaseAgentLifecycleBindingInTransaction(tx, {
-          agentId: params.job.agent_id,
-          organizationId: params.job.organization_id,
-          jobId: params.job.id,
-          executionGeneration: params.job.execution_generation,
-          preserveConfirmedStop: params.job.type === JOB_TYPES.AGENT_SUSPEND,
-        });
+        await releaseSettledLifecycleBindingInTransaction(
+          tx,
+          {
+            agentId: params.job.agent_id,
+            organizationId: params.job.organization_id,
+            jobId: params.job.id,
+            executionGeneration: params.job.execution_generation,
+            preserveConfirmedStop: params.job.type === JOB_TYPES.AGENT_SUSPEND,
+          },
+          params.job.type,
+        );
       }
       // `incrementAttempt` hands `hydrateJob(updated)` to its writeback AND to
       // its caller, and the post-commit hook reads fields an offloaded row does
@@ -1699,13 +1719,17 @@ export class JobsRepository {
         );
 
       if (hasAgentLifecycleFence(claimedJob)) {
-        await releaseAgentLifecycleBindingInTransaction(tx, {
-          agentId: claimedJob.agent_id,
-          organizationId: claimedJob.organization_id,
-          jobId: claimedJob.id,
-          executionGeneration: generation,
-          preserveConfirmedStop: claimedJob.type === JOB_TYPES.AGENT_SUSPEND,
-        });
+        await releaseSettledLifecycleBindingInTransaction(
+          tx,
+          {
+            agentId: claimedJob.agent_id,
+            organizationId: claimedJob.organization_id,
+            jobId: claimedJob.id,
+            executionGeneration: generation,
+            preserveConfirmedStop: claimedJob.type === JOB_TYPES.AGENT_SUSPEND,
+          },
+          claimedJob.type,
+        );
       }
       return true;
     });
@@ -1855,13 +1879,17 @@ export class JobsRepository {
       }
 
       if (hasAgentLifecycleFence(job) && expectedExecutionGeneration) {
-        await releaseAgentLifecycleBindingInTransaction(tx, {
-          agentId: job.agent_id,
-          organizationId: job.organization_id,
-          jobId: job.id,
-          executionGeneration: expectedExecutionGeneration,
-          preserveConfirmedStop: job.type === JOB_TYPES.AGENT_SUSPEND,
-        });
+        await releaseSettledLifecycleBindingInTransaction(
+          tx,
+          {
+            agentId: job.agent_id,
+            organizationId: job.organization_id,
+            jobId: job.id,
+            executionGeneration: expectedExecutionGeneration,
+            preserveConfirmedStop: job.type === JOB_TYPES.AGENT_SUSPEND,
+          },
+          job.type,
+        );
       }
 
       return result;
@@ -2002,13 +2030,17 @@ export class JobsRepository {
           );
       }
       if (hasAgentLifecycleFence(claimedJob)) {
-        await releaseAgentLifecycleBindingInTransaction(tx, {
-          agentId: claimedJob.agent_id,
-          organizationId: claimedJob.organization_id,
-          jobId: claimedJob.id,
-          executionGeneration: generation,
-          preserveConfirmedStop: claimedJob.type === JOB_TYPES.AGENT_SUSPEND,
-        });
+        await releaseSettledLifecycleBindingInTransaction(
+          tx,
+          {
+            agentId: claimedJob.agent_id,
+            organizationId: claimedJob.organization_id,
+            jobId: claimedJob.id,
+            executionGeneration: generation,
+            preserveConfirmedStop: claimedJob.type === JOB_TYPES.AGENT_SUSPEND,
+          },
+          claimedJob.type,
+        );
       }
       return row;
     });

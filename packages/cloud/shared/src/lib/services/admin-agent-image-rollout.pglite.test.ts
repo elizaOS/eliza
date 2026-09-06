@@ -353,6 +353,8 @@ beforeAll(async () => {
       agent_id uuid NOT NULL,
       state text NOT NULL,
       restore_attempt_id uuid,
+      lifecycle_job_id uuid,
+      lifecycle_execution_generation uuid,
       cleanup_resource_manifest jsonb,
       updated_at timestamptz NOT NULL DEFAULT NOW()
     )`);

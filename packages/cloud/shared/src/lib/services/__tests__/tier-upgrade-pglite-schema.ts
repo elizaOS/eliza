@@ -12,7 +12,10 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
     "id" uuid PRIMARY KEY,
     "organization_id" uuid NOT NULL,
     "agent_id" uuid NOT NULL,
-    "state" text NOT NULL
+    "state" text NOT NULL,
+    "restore_attempt_id" uuid,
+    "lifecycle_job_id" uuid,
+    "lifecycle_execution_generation" uuid
   )`,
   `CREATE TABLE IF NOT EXISTS "organizations" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),

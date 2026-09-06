@@ -1,6 +1,6 @@
 /** Retains ordinary candidate resources under the replacement ledger before remote retirement. */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getVolumePath } from "../../lib/services/docker-sandbox-utils";
 import type { DbTransaction } from "../client";
 import {
@@ -14,6 +14,7 @@ import {
   type AgentDeletionVpnReceipt,
   agentSandboxes,
 } from "../schemas/agent-sandboxes";
+import { jobs } from "../schemas/jobs";
 import {
   assertDeletionResourceManifestOwner,
   deletionResourceAuthorityHash,
@@ -272,4 +273,55 @@ export async function scheduleAgentSandboxReplacementResourceCleanupInTransactio
     agentId: row.agent_id,
     organizationId: row.organization_id,
   }));
+}
+
+/** Admit unadopted successful candidates before settlement releases their creating job generation. */
+export async function admitSettledJobReplacementResourcesInTransaction(
+  tx: DbTransaction,
+  input: { jobId: string; agentId: string; organizationId: string; executionGeneration: string },
+): Promise<void> {
+  const [execution] = await tx
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.id, input.jobId),
+        eq(jobs.agent_id, input.agentId),
+        eq(jobs.organization_id, input.organizationId),
+        eq(jobs.execution_generation, input.executionGeneration),
+        inArray(jobs.type, ["agent_upgrade", "agent_downgrade", "agent_admin_canary_image"]),
+        inArray(jobs.status, ["pending", "completed", "failed", "cancelled"]),
+        sql`${jobs.execution_quiesced_at} IS NOT NULL`,
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!execution)
+    throw conflict("Replacement cleanup requires its creating execution's settlement");
+  const attempts = await tx
+    .select({ id: agentSandboxReplacementAttempts.id })
+    .from(agentSandboxReplacementAttempts)
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.agent_id, input.agentId),
+        eq(agentSandboxReplacementAttempts.organization_id, input.organizationId),
+        eq(agentSandboxReplacementAttempts.lifecycle_job_id, input.jobId),
+        eq(
+          agentSandboxReplacementAttempts.lifecycle_execution_generation,
+          input.executionGeneration,
+        ),
+        isNull(agentSandboxReplacementAttempts.restore_attempt_id),
+        inArray(agentSandboxReplacementAttempts.state, [
+          "provider_succeeded",
+          "cleanup_in_progress",
+        ]),
+      ),
+    );
+  for (const attempt of attempts) {
+    await admitAgentSandboxReplacementResourcesInTransaction(tx, {
+      attemptId: attempt.id,
+      agentId: input.agentId,
+      organizationId: input.organizationId,
+    });
+  }
 }
