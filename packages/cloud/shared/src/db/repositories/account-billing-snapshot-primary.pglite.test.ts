@@ -33,3 +33,79 @@ test("the full primary reader and public projection preserve source and exact am
     },
   });
 }, 120_000);
+
+test("paid snapshot uses admitted policy and preserves null ceilings across balance changes", async () => {
+  const { subscriptionAuthorityRepository } = await import("./subscription-authority");
+  const { subscriptionEntitlementsRepository } = await import("./subscription-entitlements");
+  const { readPrimaryAccountBillingSnapshot } = await import("./account-billing-snapshot");
+  const { readOrganizationQuotaPolicy } = await import(
+    "../../lib/services/organization-quota-policy"
+  );
+  const org = "61000000-0000-4000-8000-000000000001";
+  const sub = "62000000-0000-4000-8000-000000000001";
+  const current = await subscriptionAuthorityRepository.findById(org, sub);
+  if (!current) throw new Error("Expected real subscription fixture");
+  const {
+    id: _id,
+    organization_id: _org,
+    lifecycle_revision: _revision,
+    created_at: _created,
+    updated_at: _updated,
+    ...values
+  } = current;
+  const advanced = await subscriptionAuthorityRepository.advance({
+    organizationId: org,
+    subscriptionId: sub,
+    expectedRevision: 1,
+    source: "webhook",
+    observation: "authoritative_provider_retrieval",
+    values: {
+      ...values,
+      current_period_start: new Date(Date.now() - 86_400_000),
+      current_period_end: new Date(Date.now() + 86_400_000),
+      provider_object_digest: "c".repeat(64),
+    },
+  });
+  await subscriptionEntitlementsRepository.rebuild({
+    organizationId: org,
+    sourceSubscriptionId: sub,
+    sourceSubscriptionRevision: advanced.subscription.lifecycle_revision,
+    expectedProjectionRevision: 1,
+  });
+  const admitted = await readOrganizationQuotaPolicy(org);
+  const before = await readPrimaryAccountBillingSnapshot(org);
+  expect(before.policyLimits).toEqual(admitted.limits);
+  expect(before.configuredTier).toMatchObject({
+    status: "available",
+    tier: admitted.tier.status === "available" ? admitted.tier.value : undefined,
+    tierSourceCreditTotal: null,
+  });
+  expect(before.policyLimits).toMatchObject({
+    characters: { status: "unavailable" },
+    sandboxes: { status: "unavailable" },
+    nonEagerSandboxes: { status: "unavailable" },
+    containers: { status: "unavailable" },
+    apps: { status: "unavailable" },
+    storage: { status: "unavailable" },
+  });
+  await database
+    .getPgliteClientForTests()
+    .exec(
+      `UPDATE organizations SET credit_balance='0.000001', balance_revision=2 WHERE id='${org}'`,
+    );
+  const after = await readPrimaryAccountBillingSnapshot(org);
+  expect(after.organization.creditBalance).toBe("0.000001");
+  expect(after.policyLimits).toEqual(before.policyLimits);
+  expect(after.configuredTier).toEqual(before.configuredTier);
+  await database
+    .getPgliteClientForTests()
+    .exec(
+      `UPDATE billing_subscriptions SET lifecycle_revision=lifecycle_revision+1 WHERE id='${sub}'`,
+    );
+  const stale = await readPrimaryAccountBillingSnapshot(org);
+  expect(stale.policyLimits).toMatchObject({
+    status: "unavailable",
+    code: "ORGANIZATION_POLICY_UNAVAILABLE",
+  });
+  expect(stale.configuredTier.status).toBe("unavailable");
+}, 120_000);

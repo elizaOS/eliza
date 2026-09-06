@@ -117,6 +117,8 @@ beforeAll(async () => {
       stripe_customer_id text
     );
     CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
+    CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
     CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY,
       organization_id uuid NOT NULL REFERENCES organizations(id),
@@ -125,6 +127,7 @@ beforeAll(async () => {
   `);
   await applyMigration("0373_subscription_authority.sql");
   await applyMigration("0379_subscription_account_authority.sql");
+  await applyMigration("0380_organization_policy_authority.sql");
 });
 
 beforeEach(async () => {

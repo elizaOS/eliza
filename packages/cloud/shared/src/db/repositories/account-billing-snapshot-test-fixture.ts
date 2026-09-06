@@ -8,10 +8,15 @@ const DIGEST = "b".repeat(64);
 /** Only empty infrastructure fixtures use schema-derived column types; no billing constraints are replaced. */
 async function emptyTable(execute: (query: string) => Promise<unknown>, table: PgTable) {
   const config = getTableConfig(table);
-  const columns = config.columns.map((column) => {
-    const type = "enumValues" in column && column.enumValues ? "text" : column.getSQLType();
-    return `"${column.name}" ${type}`;
-  });
+  const columns = config.columns
+    .filter(
+      (column) =>
+        column.name !== "limit_override_authorized" && column.name !== "quota_admission_scope",
+    )
+    .map((column) => {
+      const type = "enumValues" in column && column.enumValues ? "text" : column.getSQLType();
+      return `"${column.name}" ${type}`;
+    });
   await execute(`CREATE TABLE "${config.name}" (${columns.join(", ")})`);
 }
 
@@ -49,10 +54,16 @@ export async function createBillingSnapshotFixture(
   ]) {
     await emptyTable(execute, table);
   }
+  await execute(
+    await readFile(
+      new URL("../migrations/0380_organization_policy_authority.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   // A server-side lock gives the test an observable pause in the real reader,
   // without replacing its DB adapter, transaction configuration or selectors.
   await execute(`CREATE FUNCTION snapshot_pause() RETURNS integer LANGUAGE plpgsql VOLATILE AS $$ BEGIN ${pauseStatement} RETURN NULL; END $$;
-      CREATE VIEW org_rate_limit_overrides AS SELECT '${ORG}'::uuid organization_id, snapshot_pause() completions_rpm, NULL::integer embeddings_rpm, NULL::integer standard_rpm, NULL::integer strict_rpm;
+      CREATE VIEW org_rate_limit_overrides AS SELECT '${ORG}'::uuid id, '${ORG}'::uuid organization_id, NULL::text note, now()::timestamp created_at, now()::timestamp updated_at, snapshot_pause() completions_rpm, NULL::integer embeddings_rpm, NULL::integer standard_rpm, NULL::integer strict_rpm;
       INSERT INTO organizations(id, credit_balance, balance_revision, balance_decrease_revision, settings, is_active, auto_top_up_enabled, account_lifecycle_state) VALUES ('${ORG}', '10.000001', 1, 0, '{}', true, false, 'active');
       INSERT INTO billing_subscriptions(id, organization_id, provider_environment, stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start, current_period_end, lifecycle_revision, provider_object_digest)
       VALUES('${SUB}', '${ORG}', 'test', 'cus_snapshot', 'sub_snapshot', 'si_snapshot', 'plus_monthly', 'v1', 'active', '2026-08-01Z', '2026-09-01Z', 1, '${DIGEST}');

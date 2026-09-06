@@ -410,10 +410,6 @@ export type RuntimeTierCacheObservation =
 
 export interface AccountBillingSnapshotSources {
   primary(): Promise<PrimaryAccountBillingReadModel>;
-  appLimit(): number;
-  maxCloudCharacters(creditBalance: number, settings?: unknown): number;
-  maxNonTerminalAgents(creditBalance: number | undefined): number;
-  maxContainers(creditBalance: number, settings?: unknown): number;
   runtimeTierCache(): Promise<RuntimeTierCacheObservation>;
   autoTopUpRuntimeEnabled(): boolean;
   /** Current request identity used only to project a fail-closed UI affordance. */
@@ -424,7 +420,6 @@ export interface AccountBillingSnapshotSources {
     userAnonymous: boolean;
     organizationActive: boolean;
   };
-  defaultStorageBytesLimit: bigint;
   now(): Date;
 }
 
@@ -494,18 +489,6 @@ function canonicalDecimal(raw: unknown, scale: number, field: string): string {
   return decimal.toFixed(scale);
 }
 
-function decimalForQuota(raw: unknown, field: string): number {
-  const canonical = canonicalDecimal(raw, 6, field);
-  // The landed quota helpers still accept a JS number. This adapter is used
-  // only to call those canonical threshold resolvers; the monetary observation
-  // and every serialized comparison value remain the exact decimal string.
-  const numeric = new Decimal(canonical).toNumber();
-  if (!Number.isFinite(numeric)) {
-    throw invalidSourceData(`${field} cannot be compared with the quota authority`);
-  }
-  return numeric;
-}
-
 function exactRemaining(limit: string, used: string, reserved: string): string {
   const remaining = BigInt(limit) - BigInt(used) - BigInt(reserved);
   return (remaining > 0n ? remaining : 0n).toString();
@@ -524,8 +507,8 @@ function observedCountLimit(input: {
   const remaining =
     limit.status === "available"
       ? available(
-          source,
-          observedAt,
+          limit.source,
+          limit.observedAt,
           exactValue(exactRemaining(limit.value.value, used, reserved), "count"),
         )
       : unavailable<ExactBillingValue>(source, observedAt, "limit_unavailable", false);
@@ -1002,14 +985,12 @@ export async function buildAccountBillingSnapshot(
     let balance: Observed<
       AccountBillingSnapshotV2["balance"] extends Observed<infer T> ? T : never
     >;
-    let balanceForQuota: number | null = null;
     try {
       const amount = canonicalDecimal(
         primary.organization.creditBalance,
         6,
         "organizations.credit_balance",
       );
-      balanceForQuota = decimalForQuota(amount, "organizations.credit_balance");
       balance = available(balanceSource, observedAt, {
         balance: { ...exactValue(amount, "usd"), unit: "usd", currency: "USD" },
         revision: canonicalInteger(
@@ -1024,25 +1005,27 @@ export async function buildAccountBillingSnapshot(
       balance = unavailable(balanceSource, observedAt, "invalid_balance_authority", false);
     }
 
+    const policyObservedAt = primary.policyObservedAt;
+    const policyLimit = (
+      resource: keyof import("./organization-quota-policy").OrganizationQuotaPolicy["limits"],
+      source: string,
+      unit: "count" | "byte" = "count",
+    ): Observed<ExactBillingValue> => {
+      if ("status" in primary.policyLimits)
+        return unavailable(source, policyObservedAt, primary.policyLimits.code, true);
+      const resolved = primary.policyLimits[resource];
+      if (resolved.status !== "available")
+        return unavailable(source, policyObservedAt, resolved.code, true);
+      return available(
+        resolved.source,
+        policyObservedAt,
+        exactValue(canonicalInteger(resolved.limit.toString(), "policy limit"), unit),
+      );
+    };
+
     const characterSource = "cloud-character-quota";
     const characterUsed = canonicalInteger(primary.cloudCharacterCount, "cloud character count");
-    let characterLimit: Observed<ExactBillingValue>;
-    try {
-      if (balanceForQuota === null) throw invalidSourceData("balance source unavailable");
-      const limit = sources.maxCloudCharacters(balanceForQuota, primary.organization.settings);
-      if (!isUsableLimit(limit)) throw invalidSourceData("cloud character limit is invalid");
-      characterLimit = available(characterSource, observedAt, exactValue(String(limit), "count"));
-    } catch (error) {
-      // error-policy:J4 — typed character-cap source failures degrade this cap;
-      // unrelated helper defects still escape through unavailableReason.
-      unavailableReason(error);
-      characterLimit = unavailable(
-        characterSource,
-        observedAt,
-        "character_limit_unavailable",
-        false,
-      );
-    }
+    const characterLimit = policyLimit("characters", characterSource);
     const cloudCharacters = observedCountLimit({
       source: characterSource,
       observedAt,
@@ -1057,12 +1040,12 @@ export async function buildAccountBillingSnapshot(
     });
     cloudCharacters.reserved = notApplicable(
       characterSource,
-      observedAt,
+      policyObservedAt,
       "character_creation_has_no_separate_reserved_lifecycle",
     );
     cloudCharacters.deleting = notApplicable(
       characterSource,
-      observedAt,
+      policyObservedAt,
       "character_deletion_has_no_separate_counted_state",
     );
 
@@ -1070,28 +1053,8 @@ export async function buildAccountBillingSnapshot(
     const sandboxUsed = canonicalInteger(primary.sandboxCounts.used, "used sandboxes");
     const sandboxReserved = canonicalInteger(primary.sandboxCounts.reserved, "reserved sandboxes");
     const sandboxDeleting = canonicalInteger(primary.sandboxCounts.deleting, "deleting sandboxes");
-    let nonEagerLimit: Observed<ExactBillingValue>;
-    let eagerLimit: Observed<ExactBillingValue>;
-    try {
-      const limit = sources.maxNonTerminalAgents(undefined);
-      if (!isUsableLimit(limit)) throw invalidSourceData("non-eager sandbox limit is invalid");
-      nonEagerLimit = available(sandboxSource, observedAt, exactValue(String(limit), "count"));
-    } catch (error) {
-      // error-policy:J4 — typed fixed sandbox-cap failures degrade only this cap.
-      unavailableReason(error);
-      nonEagerLimit = unavailable(sandboxSource, observedAt, "sandbox_limit_unavailable", false);
-    }
-    try {
-      if (balanceForQuota === null) throw invalidSourceData("balance source unavailable");
-      const limit = sources.maxNonTerminalAgents(balanceForQuota);
-      if (!isUsableLimit(limit)) throw invalidSourceData("eager sandbox limit is invalid");
-      eagerLimit = available(sandboxSource, observedAt, exactValue(String(limit), "count"));
-    } catch (error) {
-      // error-policy:J4 — typed balance-derived sandbox-cap failures degrade only
-      // the eager cap; the non-eager result remains independent.
-      unavailableReason(error);
-      eagerLimit = unavailable(sandboxSource, observedAt, "sandbox_limit_unavailable", false);
-    }
+    const nonEagerLimit = policyLimit("nonEagerSandboxes", sandboxSource);
+    const eagerLimit = policyLimit("sandboxes", sandboxSource);
     const sandboxPolicy: LimitCountPolicy = {
       included: ["pending", "provisioning", "running", "stopped", "sleeping"],
       excluded: ["pool rows", "disconnected", "error", "deletion_pending", "deletion_failed"],
@@ -1127,23 +1090,7 @@ export async function buildAccountBillingSnapshot(
       primary.containerCounts.deleting,
       "deleting containers",
     );
-    let containerLimit: Observed<ExactBillingValue>;
-    try {
-      if (balanceForQuota === null) throw invalidSourceData("balance source unavailable");
-      const limit = sources.maxContainers(balanceForQuota, primary.containerSettings);
-      if (!isUsableLimit(limit)) throw invalidSourceData("container limit is invalid");
-      containerLimit = available(containerSource, observedAt, exactValue(String(limit), "count"));
-    } catch (error) {
-      // error-policy:J4 — typed container-cap failures are explicit and never
-      // replaced with a permissive default.
-      unavailableReason(error);
-      containerLimit = unavailable(
-        containerSource,
-        observedAt,
-        "container_limit_unavailable",
-        false,
-      );
-    }
+    const containerLimit = policyLimit("containers", containerSource);
     const containerLimits = observedCountLimit({
       source: containerSource,
       observedAt,
@@ -1162,17 +1109,7 @@ export async function buildAccountBillingSnapshot(
 
     const appSource = "apps-service";
     const appUsed = canonicalInteger(primary.appCount, "app count");
-    let appLimit: Observed<ExactBillingValue>;
-    try {
-      const limit = sources.appLimit();
-      if (!isUsableLimit(limit)) throw invalidSourceData("app limit is invalid");
-      appLimit = available(appSource, observedAt, exactValue(String(limit), "count"));
-    } catch (error) {
-      // error-policy:J4 — typed app-cap configuration failures are explicit;
-      // programming defects still abort.
-      unavailableReason(error);
-      appLimit = unavailable(appSource, observedAt, "app_limit_unavailable", false);
-    }
+    const appLimit = policyLimit("apps", appSource);
     const appLimits = observedCountLimit({
       source: appSource,
       observedAt,
@@ -1182,8 +1119,12 @@ export async function buildAccountBillingSnapshot(
       limit: appLimit,
       policy: { included: ["all apps rows"], excluded: [] },
     });
-    appLimits.reserved = notApplicable(appSource, observedAt, "apps_have_no_reserved_state");
-    appLimits.deleting = notApplicable(appSource, observedAt, "apps_have_no_deleting_quota_state");
+    appLimits.reserved = notApplicable(appSource, policyObservedAt, "apps_have_no_reserved_state");
+    appLimits.deleting = notApplicable(
+      appSource,
+      policyObservedAt,
+      "apps_have_no_deleting_quota_state",
+    );
 
     const storageSource = "org-storage-quota";
     const storageValueSource =
@@ -1193,16 +1134,8 @@ export async function buildAccountBillingSnapshot(
     try {
       if (primary.storageQuota === null) {
         storageUsed = "0";
-        storageLimitValue = canonicalInteger(
-          sources.defaultStorageBytesLimit.toString(),
-          "default storage bytes limit",
-        );
       } else {
         storageUsed = canonicalInteger(primary.storageQuota.bytesUsed, "storage bytes used");
-        storageLimitValue = canonicalInteger(
-          primary.storageQuota.bytesLimit,
-          "storage bytes limit",
-        );
       }
     } catch (error) {
       // error-policy:J4 — typed persisted/default quota corruption degrades only
@@ -1211,36 +1144,41 @@ export async function buildAccountBillingSnapshot(
       storageUsed = null;
       storageLimitValue = null;
     }
+    const resolvedStorageLimit = policyLimit("storage", storageSource, "byte");
+    if (resolvedStorageLimit.status === "available")
+      storageLimitValue = resolvedStorageLimit.value.value;
     const storageLimits: ObservedLimitSnapshot =
       storageUsed !== null && storageLimitValue !== null
         ? {
-            used: available(storageValueSource, observedAt, exactValue(storageUsed, "byte")),
+            used: available(storageValueSource, policyObservedAt, exactValue(storageUsed, "byte")),
             reserved: unavailable(
               storageValueSource,
-              observedAt,
+              policyObservedAt,
               "storage_reservation_decomposition_unavailable",
               false,
             ),
             deleting: unavailable(
               storageValueSource,
-              observedAt,
+              policyObservedAt,
               "storage_deletion_decomposition_unavailable",
               false,
             ),
-            limit: available(storageValueSource, observedAt, exactValue(storageLimitValue, "byte")),
+            limit: resolvedStorageLimit,
             remaining: available(
-              storageValueSource,
-              observedAt,
+              resolvedStorageLimit.status === "available"
+                ? resolvedStorageLimit.source
+                : storageSource,
+              policyObservedAt,
               exactValue(exactRemaining(storageLimitValue, storageUsed, "0"), "byte"),
             ),
             resetAt: notApplicable(
               storageValueSource,
-              observedAt,
+              policyObservedAt,
               "storage_quota_has_no_periodic_reset",
             ),
             countsTowardLimit: available(
               storageValueSource,
-              observedAt,
+              policyObservedAt,
               primary.storageQuota === null
                 ? {
                     included: [
@@ -1254,7 +1192,21 @@ export async function buildAccountBillingSnapshot(
                   },
             ),
           }
-        : unavailableLimit(storageSource, observedAt, "storage_quota_invalid", false);
+        : {
+            ...unavailableLimit(storageSource, policyObservedAt, "storage_quota_invalid", false),
+            ...(storageUsed !== null
+              ? {
+                  used: available(
+                    storageValueSource,
+                    policyObservedAt,
+                    exactValue(storageUsed, "byte"),
+                  ),
+                }
+              : {}),
+            ...(resolvedStorageLimit.status !== "available"
+              ? { limit: resolvedStorageLimit, remaining: resolvedStorageLimit }
+              : {}),
+          };
 
     const apiKeySource = "api_keys";
     const apiKeyUsed = canonicalInteger(primary.apiKeyCount, "api key count");
@@ -1271,16 +1223,23 @@ export async function buildAccountBillingSnapshot(
     let configuredTier: AccountBillingSnapshotV2["tier"]["configured"];
     if (primary.configuredTier.status === "available") {
       const tier = primary.configuredTier;
-      configuredTier = available("org-rate-limits", observedAt, {
+      configuredTier = available("org-rate-limits", policyObservedAt, {
         selectorKey: tier.tier.tierName,
-        tierSourceCreditTotalObserved: {
-          ...exactValue(
-            canonicalDecimal(tier.tierSourceCreditTotal, 6, "tier-source credit total observed"),
-            "usd",
-          ),
-          unit: "usd",
-          currency: "USD",
-        },
+        tierSourceCreditTotalObserved:
+          tier.tierSourceCreditTotal === null
+            ? null
+            : {
+                ...exactValue(
+                  canonicalDecimal(
+                    tier.tierSourceCreditTotal,
+                    6,
+                    "tier-source credit total observed",
+                  ),
+                  "usd",
+                ),
+                unit: "usd",
+                currency: "USD",
+              },
         overrides: {
           completionsRpm:
             tier.overrides.completionsRpm === null ? null : String(tier.overrides.completionsRpm),

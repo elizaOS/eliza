@@ -7,18 +7,26 @@
  */
 
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import type { RouteParams } from "../api/hono-next-style-params";
 import {
   consumeInferenceRateLimit,
   InferenceAdmissionGateUnavailableError,
 } from "../services/inference-admission-gate";
+import { warmInferenceAdmissionSnapshot } from "../services/inference-admission-snapshot";
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
 import {
-  getOrgRpmForEndpoint,
   getOrgRpmForEndpointCacheOnly,
   type OrgTierCacheExecutionContext,
+  recalculateOrgTier,
 } from "../services/org-rate-limits";
+import { withOrganizationPolicyAdmission } from "../services/organization-policy-admission";
+import {
+  isOrganizationPolicyStamp,
+  sameOrganizationPolicyStamp,
+} from "../services/organization-policy-stamp";
+import { requireOrganizationRateTier } from "../services/organization-quota-policy";
 import { logger } from "../utils/logger";
 import { getRequestCookie } from "../utils/request-cookie";
 import { checkRateLimitRedis, type RateLimitResult } from "./rate-limit-redis";
@@ -454,102 +462,154 @@ export async function enforceOrgRateLimit(
     config?: OrgRateLimitConfig;
   } = {},
 ): Promise<Response | null> {
-  if (options.cacheOnly) {
-    const config = options.config
-      ? options.config
-      : await getOrgRpmForEndpointCacheOnly(organizationId, endpointType, {
-          executionCtx: options.executionCtx,
-        });
-    if ("kind" in config && config.kind !== "ready") {
-      throw new OrgRateLimitCacheNotReadyError(config.kind, config.cacheRead);
-    }
-    const { windowMs, maxRequests } = "kind" in config ? config.config : config;
-    try {
-      const result = await consumeInferenceRateLimit({
-        organizationId,
-        endpointType,
-        windowMs,
-        maxRequests,
-      });
-      if (result.allowed) return null;
-      return rateLimitExceededResponse(result, maxRequests, windowMs, "durable-object");
-    } catch (error) {
-      // error-policy:J4 inference requests fail closed with a distinct
-      // retryable response when the authoritative Worker limiter is down.
-      if (error instanceof InferenceAdmissionGateUnavailableError) {
-        logger.warn("[RateLimit] Inference admission gate unavailable", {
-          organizationId,
-          endpointType,
-          error: error.message,
-        });
-        return rateLimitUnavailableResponse();
-      }
+  try {
+    return await withOrganizationPolicyAdmission(
+      organizationId,
+      options.config?.authority,
+      async (policy) => {
+        const authoritativeConfig: OrgRateLimitConfig = {
+          windowMs: 60_000,
+          maxRequests: requireOrganizationRateTier(policy)[`${endpointType}Rpm`],
+          authority: policy.authority,
+        };
+        if (options.cacheOnly) {
+          const config = options.config
+            ? options.config
+            : await getOrgRpmForEndpointCacheOnly(organizationId, endpointType, {
+                executionCtx: options.executionCtx,
+              });
+          if ("kind" in config && config.kind !== "ready") {
+            throw new OrgRateLimitCacheNotReadyError(config.kind, config.cacheRead);
+          }
+          const cachedConfig = "kind" in config ? config.config : config;
+          if (
+            !isOrganizationPolicyStamp(cachedConfig.authority) ||
+            !sameOrganizationPolicyStamp(cachedConfig.authority, policy.authority) ||
+            cachedConfig.maxRequests !== authoritativeConfig.maxRequests
+          )
+            throw new OrgRateLimitCacheNotReadyError("warming", "invalid");
+          const { windowMs, maxRequests } = authoritativeConfig;
+          try {
+            const result = await consumeInferenceRateLimit({
+              organizationId,
+              endpointType,
+              windowMs,
+              maxRequests,
+            });
+            if (result.allowed) return null;
+            return rateLimitExceededResponse(result, maxRequests, windowMs, "durable-object");
+          } catch (error) {
+            // error-policy:J4 inference requests fail closed with a distinct
+            // retryable response when the authoritative Worker limiter is down.
+            if (error instanceof InferenceAdmissionGateUnavailableError) {
+              logger.warn("[RateLimit] Inference admission gate unavailable", {
+                organizationId,
+                endpointType,
+                error: error.message,
+              });
+              return rateLimitUnavailableResponse();
+            }
+            throw error;
+          }
+        }
+
+        // Mirror withRateLimit: skip when Redis is not configured (dev/staging)
+        if (process.env.REDIS_RATE_LIMITING !== "true") return null;
+
+        const leaseEnabled = isHotPathCachesEnabled();
+        const leaseKey = `${organizationId}:${endpointType}`;
+        const now = Date.now();
+        // Read the lease even when the flag is off: a flag flip must still flush any
+        // pending carry into the window instead of orphaning it.
+        const lease = orgRateLimitLeases.get(leaseKey);
+        const flushToken = Symbol(leaseKey);
+        let ownsLeaseFlush = false;
+        let carriedCount = 0;
+
+        if (
+          leaseEnabled &&
+          lease &&
+          lease.expiresAt > now &&
+          isOrganizationPolicyStamp(lease.config.authority) &&
+          sameOrganizationPolicyStamp(lease.config.authority, policy.authority) &&
+          lease.config.maxRequests === authoritativeConfig.maxRequests
+        ) {
+          if (!lease.result.allowed) {
+            return rateLimitExceededResponse(
+              lease.result,
+              lease.config.maxRequests,
+              lease.config.windowMs,
+              "redis",
+            );
+          }
+          if (!lease.flushToken && lease.localUsed < lease.localBudget) {
+            lease.localUsed++;
+            return null;
+          }
+          // Local budget spent — fall through to the authoritative check, which
+          // flushes localUsed into the window before deciding.
+        }
+
+        if (lease && !lease.flushToken) {
+          carriedCount = lease.localUsed;
+          lease.localUsed = 0;
+          lease.flushToken = flushToken;
+          ownsLeaseFlush = true;
+        }
+
+        const config = authoritativeConfig;
+        const { windowMs, maxRequests } = config;
+        const key = `org:${organizationId}:${endpointType}`;
+        const result = await checkRateLimitRedis(key, windowMs, maxRequests, { carriedCount });
+        if (leaseEnabled) {
+          evictSettledLeases(now);
+          const currentLease = orgRateLimitLeases.get(leaseKey);
+          if (
+            !lease ||
+            (ownsLeaseFlush && currentLease === lease && lease.flushToken === flushToken)
+          ) {
+            orgRateLimitLeases.set(leaseKey, {
+              config,
+              result,
+              localUsed: lease && currentLease === lease ? lease.localUsed : 0,
+              localBudget: Math.min(
+                result.remaining,
+                Math.ceil((maxRequests * ORG_RATE_LIMIT_LEASE_TTL_MS) / windowMs),
+              ),
+              expiresAt: now + ORG_RATE_LIMIT_LEASE_TTL_MS,
+            });
+          }
+        } else if (lease && ownsLeaseFlush) {
+          // Flag flipped off: the carry above was just flushed — drop the entry.
+          orgRateLimitLeases.delete(leaseKey);
+        }
+        if (result.allowed) return null;
+        return rateLimitExceededResponse(result, maxRequests, windowMs, "redis");
+      },
+    );
+  } catch (error) {
+    // error-policy:J4 stale observations trigger keyed regeneration and the transport's retryable warming response.
+    if (
+      !(error instanceof OrgRateLimitCacheNotReadyError) &&
+      (!(error instanceof ElizaError) ||
+        !["ORGANIZATION_POLICY_STALE", "ORGANIZATION_POLICY_UNAVAILABLE"].includes(error.code))
+    )
       throw error;
-    }
-  }
-
-  // Mirror withRateLimit: skip when Redis is not configured (dev/staging)
-  if (process.env.REDIS_RATE_LIMITING !== "true") return null;
-
-  const leaseEnabled = isHotPathCachesEnabled();
-  const leaseKey = `${organizationId}:${endpointType}`;
-  const now = Date.now();
-  // Read the lease even when the flag is off: a flag flip must still flush any
-  // pending carry into the window instead of orphaning it.
-  const lease = orgRateLimitLeases.get(leaseKey);
-  const flushToken = Symbol(leaseKey);
-  let ownsLeaseFlush = false;
-  let carriedCount = 0;
-
-  if (leaseEnabled && lease && lease.expiresAt > now) {
-    if (!lease.result.allowed) {
-      return rateLimitExceededResponse(
-        lease.result,
-        lease.config.maxRequests,
-        lease.config.windowMs,
-        "redis",
+    if (options.executionCtx)
+      options.executionCtx.waitUntil(
+        Promise.all([
+          recalculateOrgTier(organizationId),
+          warmInferenceAdmissionSnapshot(organizationId),
+        ]).catch((cause) => {
+          // error-policy:J7 background policy regeneration is observed here; admission remains explicitly unavailable until it succeeds.
+          logger.warn("[RateLimit] Current policy regeneration failed", {
+            organizationId,
+            error: cause instanceof Error ? cause.message : String(cause),
+          });
+        }),
       );
-    }
-    if (!lease.flushToken && lease.localUsed < lease.localBudget) {
-      lease.localUsed++;
-      return null;
-    }
-    // Local budget spent — fall through to the authoritative check, which
-    // flushes localUsed into the window before deciding.
+    throw new OrgRateLimitCacheNotReadyError("warming", "invalid");
   }
-
-  if (lease && !lease.flushToken) {
-    carriedCount = lease.localUsed;
-    lease.localUsed = 0;
-    lease.flushToken = flushToken;
-    ownsLeaseFlush = true;
-  }
-
-  const config: OrgRateLimitConfig = await getOrgRpmForEndpoint(organizationId, endpointType);
-  const { windowMs, maxRequests } = config;
-  const key = `org:${organizationId}:${endpointType}`;
-  const result = await checkRateLimitRedis(key, windowMs, maxRequests, { carriedCount });
-  if (leaseEnabled) {
-    evictSettledLeases(now);
-    const currentLease = orgRateLimitLeases.get(leaseKey);
-    if (!lease || (ownsLeaseFlush && currentLease === lease && lease.flushToken === flushToken)) {
-      orgRateLimitLeases.set(leaseKey, {
-        config,
-        result,
-        localUsed: lease && currentLease === lease ? lease.localUsed : 0,
-        localBudget: Math.min(
-          result.remaining,
-          Math.ceil((maxRequests * ORG_RATE_LIMIT_LEASE_TTL_MS) / windowMs),
-        ),
-        expiresAt: now + ORG_RATE_LIMIT_LEASE_TTL_MS,
-      });
-    }
-  } else if (lease && ownsLeaseFlush) {
-    // Flag flipped off: the carry above was just flushed — drop the entry.
-    orgRateLimitLeases.delete(leaseKey);
-  }
-  if (result.allowed) return null;
-  return rateLimitExceededResponse(result, maxRequests, windowMs, "redis");
 }
 
 /**

@@ -38,12 +38,15 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY, account_lifecycle_state text NOT NULL DEFAULT 'active');
     CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
+    CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE(id, organization_id));
   `);
   for (const name of [
     "0373_subscription_authority.sql",
     "0374_subscription_funding_transaction_uniqueness.sql",
     "0379_subscription_account_authority.sql",
+    "0380_organization_policy_authority.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),

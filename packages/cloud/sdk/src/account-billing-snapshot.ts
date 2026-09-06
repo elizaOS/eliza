@@ -167,12 +167,15 @@ export interface ConfiguredInferenceTierSnapshot {
   selectorKey: string;
   /**
    * Input observed by the current tier selector after its legacy metadata
-   * exclusions. Economic qualification remains undecided by #23019.
+   * exclusions. Null means subscription policy selected the rates without a
+   * historical credit selector. Economic qualification remains undecided by #23019.
    */
-  tierSourceCreditTotalObserved: ExactBillingValue & {
-    unit: "usd";
-    currency: "USD";
-  };
+  tierSourceCreditTotalObserved:
+    | (ExactBillingValue & {
+        unit: "usd";
+        currency: "USD";
+      })
+    | null;
   overrides: {
     completionsRpm: string | null;
     embeddingsRpm: string | null;

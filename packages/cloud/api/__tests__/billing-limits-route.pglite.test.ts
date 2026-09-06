@@ -7,6 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -143,6 +144,32 @@ beforeAll(async () => {
       Reflect.deleteProperty(BigInt.prototype, "toJSON");
     }
   }
+
+  const { getPgliteClientForTests } = await import("@/db/client");
+  for (const name of [
+    "0373_subscription_authority.sql",
+    "0374_subscription_funding_transaction_uniqueness.sql",
+    "0379_subscription_account_authority.sql",
+  ]) {
+    const migration = await readFile(
+      new URL(`../../shared/src/db/migrations/${name}`, import.meta.url),
+      "utf8",
+    );
+    await getPgliteClientForTests().exec(migration);
+  }
+  // Storage came from the current schema; replay 0380 against its actual pre-migration shape.
+  await getPgliteClientForTests().exec(
+    "ALTER TABLE org_storage_quota DROP COLUMN limit_override_authorized; ALTER TABLE agent_sandboxes DROP COLUMN quota_admission_scope",
+  );
+  await getPgliteClientForTests().exec(
+    await readFile(
+      new URL(
+        "../../shared/src/db/migrations/0380_organization_policy_authority.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
 
   await dbWrite.insert(schemas.organizations).values([
     {
@@ -937,12 +964,12 @@ describe("GET /api/v1/billing/limits with PGlite", () => {
       },
       limit: {
         status: "available",
-        source: "org-storage-quota-default",
+        source: "legacy-storage-policy",
         value: { value: "5368709120", unit: "byte" },
       },
       remaining: {
         status: "available",
-        source: "org-storage-quota-default",
+        source: "legacy-storage-policy",
         value: { value: "5368709120", unit: "byte" },
       },
     });
@@ -965,7 +992,7 @@ describe("GET /api/v1/billing/limits with PGlite", () => {
     });
     expect(atLimit.v2.limits.storage.remaining).toMatchObject({
       status: "available",
-      source: "org-storage-quota",
+      source: "legacy-storage-policy",
       value: { value: "0", unit: "byte" },
     });
 

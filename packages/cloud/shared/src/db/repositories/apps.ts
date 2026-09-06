@@ -1,4 +1,5 @@
 /** Persists apps and serializes their database-backed cache identities across processes. */
+
 import { ElizaError } from "@elizaos/core";
 import {
   and,
@@ -21,6 +22,10 @@ import {
   metadataForDeploymentGeneration,
 } from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../../lib/services/organization-quota-policy";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -377,8 +382,8 @@ export class AppsRepository {
     });
   }
 
-  async countByOrganization(organizationId: string): Promise<number> {
-    const [row] = await dbRead
+  async countByOrganization(organizationId: string, tx?: DbTransaction): Promise<number> {
+    const [row] = await (tx ?? dbRead)
       .select({ count: count() })
       .from(apps)
       .where(eq(apps.organization_id, organizationId));
@@ -555,7 +560,7 @@ export class AppsRepository {
    */
   async createIfOrganizationBelowLimit(
     data: Omit<NewApp, "api_key_id">,
-    maxApps: number,
+    _requestedMaxApps: number,
     tx: DbTransaction,
   ): Promise<App | undefined> {
     await tx.execute(
@@ -567,7 +572,9 @@ export class AppsRepository {
       .from(apps)
       .where(eq(apps.organization_id, data.organization_id));
 
-    if ((row?.count ?? 0) >= maxApps) {
+    const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+    const maxApps = requireOrganizationResourceLimit(policy, "apps");
+    if (BigInt(row?.count ?? 0) >= maxApps) {
       return undefined;
     }
 

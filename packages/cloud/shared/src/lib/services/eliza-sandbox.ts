@@ -32,6 +32,7 @@ import {
 } from "../../db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
+import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
@@ -55,6 +56,7 @@ import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { AGENT_PRICING } from "../constants/agent-pricing";
+import { QUOTA_COUNTED_STATUSES } from "../constants/agent-sandbox-quota";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -116,6 +118,10 @@ import {
   prepareManagedElizaSharedEnvironment,
 } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "./organization-quota-policy";
 import {
   type PersonalDedicatedReviewedBackupChainEntry,
   personalDedicatedActivationAuthority,
@@ -207,6 +213,8 @@ export interface CreateAgentParams {
    * A create that would exceed the cap throws {@link AgentQuotaExceededError}.
    */
   maxNonTerminalAgents?: number;
+  quotaMode?: "eager" | "non-eager";
+  quotaAdmission?: "organization" | "trusted_internal";
 }
 
 /**
@@ -228,13 +236,7 @@ export interface CreateAgentParams {
  * agent — handing back a stopped/sleeping row would silently turn an
  * idempotent create into an implicit resume.
  */
-export const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
-  "pending",
-  "provisioning",
-  "running",
-  "stopped",
-  "sleeping",
-];
+export { QUOTA_COUNTED_STATUSES } from "../constants/agent-sandbox-quota";
 
 /** Thrown by createAgent when a fresh create would exceed `maxNonTerminalAgents`. */
 export class AgentQuotaExceededError extends Error {
@@ -242,7 +244,7 @@ export class AgentQuotaExceededError extends Error {
   readonly max: number;
   constructor(count: number, max: number) {
     super(
-      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}). Delete or stop an agent, or add credits to raise the limit.`,
+      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}). Remove an agent to free capacity.`,
     );
     this.name = "AgentQuotaExceededError";
     this.count = count;
@@ -303,6 +305,7 @@ export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAge
     user_id: params.userId,
     agent_name: params.agentName,
     agent_config: agentConfig,
+    quota_admission_scope: params.quotaAdmission ?? "unclassified",
     environment_vars: params.environmentVars ?? {},
     status,
     execution_tier: executionTier,
@@ -334,8 +337,17 @@ export function agentConfigForProvision(
 export async function assertOrgAgentQuota(
   tx: DbTransaction,
   organizationId: string,
-  cap: number,
+  _requestedCap: number,
+  mode: "eager" | "non-eager" = "eager",
 ): Promise<void> {
+  await lockOrganizationPolicy(tx, organizationId);
+  const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+  const cap = Number(
+    requireOrganizationResourceLimit(
+      policy,
+      mode === "non-eager" ? "nonEagerSandboxes" : "sandboxes",
+    ),
+  );
   const [{ count } = { count: 0 }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(agentSandboxes)
@@ -2264,7 +2276,7 @@ export class ElizaSandboxService {
       return dbWrite.transaction(async (tx) => {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
-        await assertOrgAgentQuota(tx, params.organizationId, cap);
+        await assertOrgAgentQuota(tx, params.organizationId, cap, params.quotaMode);
 
         const [created] = await tx
           .insert(agentSandboxes)
@@ -2309,7 +2321,12 @@ export class ElizaSandboxService {
       // (#11023 residual). Enforce the same per-org ceiling, still under the
       // org advisory lock.
       if (params.maxNonTerminalAgents !== undefined) {
-        await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
+        await assertOrgAgentQuota(
+          tx,
+          params.organizationId,
+          params.maxNonTerminalAgents,
+          params.quotaMode,
+        );
       }
 
       const [created] = await tx
@@ -2388,6 +2405,7 @@ export class ElizaSandboxService {
           tx,
           createParams.organizationId,
           createParams.maxNonTerminalAgents,
+          createParams.quotaMode,
         );
       }
 

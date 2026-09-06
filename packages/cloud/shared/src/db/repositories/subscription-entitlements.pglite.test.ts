@@ -38,6 +38,8 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY, account_lifecycle_state text NOT NULL DEFAULT 'active', paid_work_fenced_at timestamptz, stripe_customer_id text);
     CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
+    CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
   const migration = await readFile(
@@ -61,6 +63,12 @@ beforeAll(async () => {
   for (const statement of identityMigration.split("--> statement-breakpoint")) {
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
   }
+  await getPgliteClientForTests().exec(
+    await readFile(
+      new URL("../migrations/0380_organization_policy_authority.sql", import.meta.url),
+      "utf8",
+    ),
+  );
 });
 beforeEach(async () => {
   await getPgliteClientForTests().exec(`
@@ -314,4 +322,40 @@ describe("current-source entitlement publication", () => {
       expect(await entitlements.find(ORG_A)).toEqual(current.entitlement);
     },
   );
+});
+
+async function policyGenerationReceipt() {
+  return (
+    await getPgliteClientForTests().query<{ generation: string; audit_count: string }>(
+      `SELECT a.policy_generation::text AS generation, (SELECT count(*)::text FROM organization_policy_audit audit WHERE audit.organization_id=a.organization_id) AS audit_count FROM organization_subscription_authorities a WHERE organization_id='${ORG_A}'`,
+    )
+  ).rows[0];
+}
+
+test("entitlement replay does not advance policy generation or duplicate its audit", async () => {
+  const first = await entitlements.rebuild(request);
+  const published = await policyGenerationReceipt();
+  expect(published).toEqual({ generation: "1", audit_count: "1" });
+  expect((await entitlements.rebuild(request)).replayed).toBe(true);
+  expect(await entitlements.find(ORG_A)).toEqual(first.entitlement);
+  expect(await policyGenerationReceipt()).toEqual(published);
+});
+
+test("an outer failure rolls back entitlement policy generation and its audit together", async () => {
+  expect(await policyGenerationReceipt()).toEqual({ generation: "0", audit_count: "0" });
+  await expect(
+    writeTransaction(async (tx) => {
+      await entitlements.rebuildInTransaction(tx, request);
+      const { sql } = await import("drizzle-orm");
+      const rows = await tx.execute(
+        sql`SELECT policy_generation::text AS generation FROM organization_subscription_authorities WHERE organization_id=${ORG_A}`,
+      );
+      expect(rows.rows).toMatchObject([{ generation: "1" }]);
+      throw new Error("rollback after policy publication");
+    }),
+  ).rejects.toThrow("rollback after policy publication");
+  expect((await entitlements.find(ORG_A))?.plan_key).toBe("free");
+  expect(await policyGenerationReceipt()).toEqual({ generation: "0", audit_count: "0" });
+  await entitlements.rebuild(request);
+  expect(await policyGenerationReceipt()).toEqual({ generation: "1", audit_count: "1" });
 });

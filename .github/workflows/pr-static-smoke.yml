@@ -388,6 +388,8 @@ jobs:
             packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
+          bun test --config=/dev/null \
+            packages/cloud/shared/src/db/repositories/organization-policy.postgres.integration.test.ts
       - name: Require subscription authority outcome
         if: always()
         env:
