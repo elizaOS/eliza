@@ -8,11 +8,13 @@
  */
 
 import {
+	CANONICAL_ROLE_RANK,
 	type EffectReceipt,
 	ElizaError,
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
 	type RoleGate,
+	type RoleGateRole,
 	type ViewCapability,
 	type ViewCapabilityParameter,
 	type ViewType,
@@ -390,7 +392,36 @@ export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 		capabilities,
 		visibleInManager,
 		developerOnly,
+		roleGate: parseViewRoleGate(entry.roleGate),
 	};
+}
+
+/** Preserve catalog authorization metadata and reject malformed gates. */
+function parseViewRoleGate(value: unknown): RoleGate | undefined {
+	if (value === undefined) return undefined;
+	if (!isObject(value))
+		throw new ElizaError("Invalid view role gate", {
+			code: "VIEW_CATALOG_INVALID",
+		});
+	function role(input: unknown): RoleGateRole {
+		if (typeof input === "string" && Object.hasOwn(CANONICAL_ROLE_RANK, input))
+			return input as RoleGateRole;
+		throw new ElizaError("Invalid view gate role", {
+			code: "VIEW_CATALOG_INVALID",
+		});
+	}
+	const gate: RoleGate = {};
+	if (value.minRole !== undefined) gate.minRole = role(value.minRole);
+	for (const field of ["roles", "anyOf", "allOf", "noneOf"] as const) {
+		const entry = value[field];
+		if (entry === undefined) continue;
+		if (!Array.isArray(entry))
+			throw new ElizaError("Invalid view role list", {
+				code: "VIEW_CATALOG_INVALID",
+			});
+		gate[field] = entry.map(role);
+	}
+	return gate;
 }
 
 function parseViewList(body: unknown): ViewSummary[] {

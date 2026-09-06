@@ -436,6 +436,50 @@ describe("authenticated view loopback requests", () => {
 		}
 	});
 
+	it("preserves distinct planner step targets despite the original calendar clause", async () => {
+		const server = await startAuthenticatedViewsServer("step-token");
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_AUTH_TOKEN = "step-token";
+		const client = createViewsClient();
+		const message = {
+			entityId: "user-1",
+			roomId: "room-1",
+			agentId: "agent-1",
+			content: { text: "Open calendar, draft an event, then open notes" },
+		} as never;
+		const first = await runViewsShow({
+			client,
+			message,
+			options: {
+				view: "calendar",
+				navigationIntent: "planner-step",
+				navigationStepId: "calendar-step",
+			},
+		});
+		const second = await runViewsShow({
+			client,
+			message,
+			options: {
+				view: "notes",
+				navigationIntent: "planner-step",
+				navigationStepId: "notes-step",
+			},
+		});
+		expect(
+			server.requests
+				.filter((request) => request.method === "POST")
+				.map((request) => request.pathname),
+		).toEqual(["/api/views/calendar/navigate", "/api/views/notes/navigate"]);
+		expect(first.data).toMatchObject({
+			navigation: { viewId: "calendar", stepId: "calendar-step" },
+		});
+		expect(second.data).toMatchObject({
+			navigation: { viewId: "notes", stepId: "notes-step" },
+		});
+		expect(first.modelReplyRequired).toBe(true);
+		expect(second.modelReplyRequired).toBe(true);
+	});
+
 	it("authenticates the show action's direct navigate path with the legacy key", async () => {
 		const token = "views-show-legacy-token";
 		const server = await startAuthenticatedViewsServer(token);

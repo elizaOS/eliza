@@ -9,11 +9,13 @@ import type {
 	ActionResult,
 	HandlerCallback,
 	Memory,
+	RoleGateRole,
 	ViewType,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, satisfiesRoleGate } from "@elizaos/core";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
+import { resolveViewCommandShortcut } from "../evaluators/view-command-routing.js";
 import { getAppControlApiBase } from "../loopback-api.js";
 import {
 	describeTargetReference,
@@ -578,6 +580,8 @@ export interface RunViewsShowInput {
 	viewType?: ViewType;
 	callback?: HandlerCallback;
 	originatingClientId?: string;
+	userRoles?: readonly RoleGateRole[];
+	resolveCallerRoles?: () => Promise<readonly RoleGateRole[]>;
 }
 
 export async function runViewsShow({
@@ -586,14 +590,33 @@ export async function runViewsShow({
 	options,
 	viewType,
 	originatingClientId,
+	userRoles,
+	resolveCallerRoles,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = userRequestMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.
-	const rigidIntentViewId = matchViewCommand(messageText);
+	const plannerStep =
+		readStringOpt(options, "navigationIntent") === "planner-step";
+	const navigationStepId = readStringOpt(options, "navigationStepId");
+	const rigidIntentViewId = plannerStep
+		? null
+		: resolveViewCommandShortcut({
+				runtime: { actions: [{ name: "VIEWS" }] },
+				message,
+			});
 	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
 	const extractedTarget = extractViewTarget(message, options);
+	if (plannerStep && (!readStringOpt(options, "view") || !navigationStepId)) {
+		return {
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			text: "A planner navigation step requires an explicit view and navigationStepId. Domain work has not completed by navigation.",
+			data: { navigation: { status: "invalid", code: "VIEW_STEP_INVALID" } },
+		};
+	}
 	let target = extractedTarget ?? intentViewId;
 	if (!target) {
 		const text =
@@ -617,6 +640,7 @@ export async function runViewsShow({
 		}
 	}
 	if (
+		!plannerStep &&
 		isStandaloneNotesSurfaceRequest(messageText) &&
 		resolution.kind === "match" &&
 		resolution.view.id === "documents"
@@ -625,22 +649,20 @@ export async function runViewsShow({
 		resolution = resolveRegisteredNotesView(views);
 	}
 
-	// The user's own words are authoritative: when the message names a known
-	// domain surface, prefer that deterministic intent view over a (possibly
-	// hallucinated) model-supplied `view` param — but ONLY when the intent view
-	// is actually registered in this deployment. A weak/local planner emitting
-	// view:"wallet" for "open my calendar" is corrected here; an intent that maps
-	// to a surface this build doesn't have (e.g. task-coordinator without the
-	// coding plugin loaded) leaves the planner's explicit, registered target in
-	// place. So the model never needs to correctly GUESS the surface.
-	if (intentViewId) {
-		const intentResolution = resolveIntentViewInRegistry(intentViewId, views);
+	// Exact standalone commands retain weak-model correction. Planner-owned
+	// per-step targets are resolved independently, so a preceding calendar
+	// clause cannot overwrite a later Notes continuation.
+	if (rigidIntentViewId && !plannerStep) {
+		const intentResolution = resolveIntentViewInRegistry(
+			rigidIntentViewId,
+			views,
+		);
 		const intentRegistered =
 			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
 		const intentTarget =
 			intentResolution.kind === "match"
 				? intentResolution.view.id
-				: intentViewId;
+				: rigidIntentViewId;
 		const resolvedTarget =
 			resolution.kind === "match" ? resolution.view.id : target;
 		if (
@@ -677,6 +699,28 @@ export async function runViewsShow({
 	}
 
 	const view = resolution.view;
+	if (
+		!view.available ||
+		(view.roleGate &&
+			!satisfiesRoleGate(
+				resolveCallerRoles ? await resolveCallerRoles() : userRoles,
+				view.roleGate,
+			))
+	) {
+		return {
+			success: false,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			text: "The requested view is unavailable to this caller. Continue independently authorized domain work.",
+			data: {
+				navigation: {
+					status: "unavailable",
+					viewId: view.id,
+					navigationStepId,
+				},
+			},
+		};
+	}
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
 	const canonicalViewId = rigidIntentViewId ?? explicitAliasViewId;
@@ -730,6 +774,14 @@ export async function runViewsShow({
 				? { completedActionHandoffId: result.completedActionHandoffId }
 				: {}),
 		},
-		data: { view, ...(result.subview ? { subview: result.subview } : {}) },
+		data: {
+			view,
+			navigation: {
+				status: result.ok ? "confirmed" : "unconfirmed",
+				viewId: view.id,
+				...(navigationStepId ? { stepId: navigationStepId } : {}),
+			},
+			...(result.subview ? { subview: result.subview } : {}),
+		},
 	};
 }
