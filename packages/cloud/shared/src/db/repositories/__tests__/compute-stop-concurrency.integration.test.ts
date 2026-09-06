@@ -277,6 +277,8 @@ beforeAll(async () => {
         attempts integer NOT NULL DEFAULT 0, last_error text,
         next_attempt_at timestamptz NOT NULL DEFAULT now(), provider_started_at timestamptz,
         provider_confirmed_at timestamptz,
+        provider_confirmed_lifecycle_revision bigint, resume_job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
+        resume_started_at timestamptz,
         retained_backup_billing boolean NOT NULL DEFAULT false,
         retained_backup_rate_per_hour numeric(18,6), superseded_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()

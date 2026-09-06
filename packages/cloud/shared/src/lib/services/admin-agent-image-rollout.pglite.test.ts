@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -338,6 +339,7 @@ beforeAll(async () => {
       agentNodeIncarnationHistories,
       dockerNodes,
       agentSandboxes,
+      agentComputeStopIntents,
       jobs,
       jobExecutionLeases,
       providerAdmissions,

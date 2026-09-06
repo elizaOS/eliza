@@ -301,7 +301,10 @@ let depsPromise: Promise<WorkerDeps> | null = null;
  */
 export function __setDepsForTests(deps: WorkerDeps | null): void {
   depsPromise = deps ? Promise.resolve(deps) : null;
-  if (!deps) cachedWarmPoolManagerInstance = null;
+  if (!deps) {
+    cachedWarmPoolManagerInstance = null;
+    fundedResumeCursor = undefined;
+  }
 }
 
 async function loadDeps(): Promise<WorkerDeps> {
@@ -897,6 +900,19 @@ async function processReplacementCleanupReconcileCycle(
 ) {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.reconcileReplacementCleanupFences(batchSize);
+}
+
+let fundedResumeCursor: string | undefined;
+
+/** Advance one payment-recovery page without starving funded accounts behind unpaid ones. */
+export async function processFundedResumeReconcileCycle(batchSize: number) {
+  const { provisioningJobService } = await loadDeps();
+  const result = await provisioningJobService.reconcileFundedAgentResumes({
+    limit: batchSize,
+    afterIntentId: fundedResumeCursor,
+  });
+  fundedResumeCursor = result.nextCursor ?? undefined;
+  return result;
 }
 
 async function processHeartbeatCycle(
@@ -1837,6 +1853,19 @@ async function runWorkCycle(
 ): Promise<void> {
   const { withTimeout } = await loadDeps();
   const work = (async () => {
+    await runBoundedPhase(
+      logger,
+      "funded agent resume reconcile",
+      () => processFundedResumeReconcileCycle(config.batchSize),
+      (result) => {
+        if (result.queued > 0 || result.failures.length > 0) {
+          logger.info(
+            "[provisioning-worker] Funded agent resume reconciliation complete",
+            result,
+          );
+        }
+      },
+    );
     await runBoundedPhase(
       logger,
       "replacement cleanup reconcile",
