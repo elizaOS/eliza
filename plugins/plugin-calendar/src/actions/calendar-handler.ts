@@ -2047,12 +2047,14 @@ export function calendarTitleMatchesHint(title: string, hint: string): boolean {
  * permission to mutate a different day's event. Destination-only dates on an
  * update never identify its target, including when echoed into the query.
  */
-function resolveCalendarMutationCandidates(args: {
+export function resolveCalendarMutationCandidates(args: {
   action: "update" | "delete";
   events: LifeOpsCalendarEvent[];
   titleHint: string | undefined;
   texts: (string | undefined)[];
   timeZone: string;
+  /** Model-authored `details.date`, so a contradiction only it causes can be told apart from one the user stated. */
+  explicitDate?: string;
 }): LifeOpsCalendarEvent[] {
   const titleHint = args.titleHint;
   const byTitle = titleHint
@@ -2086,13 +2088,29 @@ function resolveCalendarMutationCandidates(args: {
   if (!constrainedDate) {
     return byTitle;
   }
-  return byTitle.filter(
+  const onDate = byTitle.filter(
     (event) =>
       compareLocalDates(
         calendarEventLocalDate(event, args.timeZone),
         constrainedDate,
       ) === 0,
   );
+  if (onDate.length === 0 && byTitle.length === 1 && args.explicitDate) {
+    // The only date came from the planner's `details.date` and it contradicts
+    // the single event carrying the requested title. The user's own words name
+    // no day, so the title identifies the target and the detail was a
+    // mis-resolved weekday (live 2026-09-06: "move my dentist appointment to
+    // friday at 4pm" arrived with date 2026-09-04 while the appointment sat on
+    // 2026-09-11, and the move was reported as not found). A day the user
+    // stated, or several title matches, still take the strict paths above.
+    const userStatedDate = resolveStatedTargetLocalDate({
+      action: args.action,
+      texts: args.texts.filter((text) => text !== args.explicitDate),
+      timeZone: args.timeZone,
+    });
+    if (!userStatedDate) return byTitle;
+  }
+  return onDate;
 }
 
 function resolveCreateEventCalendarTimeZone(
@@ -5019,6 +5037,7 @@ const calendarAction: CalendarHandlerAction = {
               intent,
               timeZone: planningTimeZone,
             }),
+            explicitDate: detailString(details, "date"),
             timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {
@@ -5366,6 +5385,7 @@ const calendarAction: CalendarHandlerAction = {
               intent,
               timeZone: planningTimeZone,
             }),
+            explicitDate: detailString(details, "date"),
             timeZone: planningTimeZone,
           });
           if (candidates.length === 0) {

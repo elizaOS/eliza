@@ -157,7 +157,7 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   timeMax: "Window end (exclusive) in the same format as timeMin.",
   timeZone:
     "IANA timezone for the supplied wall-clock times (e.g. America/New_York): use the user's configured timezone unless they name another. Include it for updates so an existing event's different timezone does not reinterpret the requested new time.",
-  date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). Use start/startAt, not date, for create_event.",
+  date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). A bare weekday name means its next upcoming occurrence from today, never a past date; when the user did not name the target's current day, omit date and let query locate the event. Use start/startAt, not date, for create_event.",
   oldTitle:
     "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
   newTitle:
