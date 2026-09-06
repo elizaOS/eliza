@@ -135,6 +135,14 @@ const stubBarrels = {
             return new Proxy(this, {
               get: (target, prop) => {
                 if (prop in target) return target[prop];
+                if (prop === "getLocalInferenceDeviceTier") {
+                  return () => Promise.resolve({
+                    tier: "GOOD",
+                    reason: "Fixture hardware supports local voice models",
+                    cpuOnly: false,
+                    mobile: false,
+                  });
+                }
                 if (prop === "listAppPermissions") {
                   return () => Promise.resolve([]);
                 }
@@ -335,6 +343,7 @@ for (const id of VISIBLE_SECTIONS) {
     `rail remains mounted while "${id}" is open`,
   );
   if (id === "voice") {
+    await assertSectionRendered(p, 'desktop "voice"');
     await p.waitForSelector(
       '[data-testid="voice-section-intent-autostart-voice"]',
     );
