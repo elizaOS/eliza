@@ -221,9 +221,7 @@ function buildPrompt(params: {
 		latestMessage,
 		responseTexts,
 		actionResults: Array.isArray(actionResults)
-			? renderActionResultsForModel(actionResults as ActionResult[], {
-					header: "",
-				}).text
+			? renderActionResultsForModel(actionResults as ActionResult[]).text
 			: stringifyForPrompt(actionResults ?? []),
 		providerContext,
 		// Rendered once here; sections refer to it instead of embedding their
@@ -235,7 +233,10 @@ function buildPrompt(params: {
 				? "(unavailable this turn)"
 				: formatRecentMessages(params.roomTranscript),
 	};
-	const shared = { roomTranscriptRendered: params.roomTranscript !== null };
+	const shared = {
+		roomTranscriptRendered: params.roomTranscript !== null,
+		actionResultsText: sharedParts.actionResults,
+	};
 
 	const sections: PromptSection[] = active.map(({ evaluator, prepared }) => {
 		const section = evaluator.prompt({

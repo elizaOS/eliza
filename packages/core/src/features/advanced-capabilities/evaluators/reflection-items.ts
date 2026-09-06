@@ -1221,6 +1221,15 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 		};
 	},
 	prompt({ prepared, options, shared }) {
+		const actionResultsText = renderActionResultsForModel(
+			prepared.actionResults,
+		).text;
+		// The cache may contain outcomes absent from state; share only an exact
+		// complete rendering so a cached failure can never disappear.
+		const actionResultsSection =
+			shared?.actionResultsText === actionResultsText
+				? 'Action results: see "Action results" in the Shared Turn Context above.'
+				: `Action results:\n${actionResultsText}`;
 		return `Evaluate if current user task is complete after agent response.
 
 Rules:
@@ -1232,8 +1241,7 @@ Did respond: ${options.didRespond === true ? "true" : "false"}
 
 ${recentMessagesSection(shared, prepared.recentMessages)}
 
-Action results:
-${renderActionResultsForModel(prepared.actionResults).text}`;
+${actionResultsSection}`;
 	},
 	parse(output) {
 		const result = SuccessOutputSchema.safeParse(output);

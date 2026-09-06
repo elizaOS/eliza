@@ -38,6 +38,8 @@ export interface EvaluatorRunContext {
 export interface EvaluatorSharedPromptContext {
 	/** The complete room transcript is rendered in the shared context. */
 	roomTranscriptRendered: boolean;
+	/** Exact action-result rendering already present in the shared context. */
+	actionResultsText?: string;
 }
 
 export interface EvaluatorPromptContext<TPrepared = unknown>

@@ -7,9 +7,14 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { factMemoryEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items";
-import { AgentRuntime } from "../runtime";
 import {
+	factMemoryEvaluator,
+	successEvaluator,
+} from "../features/advanced-capabilities/evaluators/reflection-items";
+import { AgentRuntime } from "../runtime";
+import { renderActionResultsForModel } from "../runtime/planner-rendering";
+import {
+	type ActionResult,
 	type Character,
 	type Evaluator,
 	type GenerateTextResult,
@@ -223,6 +228,98 @@ describe("EvaluatorService", () => {
 			expect(getServiceLoadPromise).not.toHaveBeenCalled();
 		},
 	);
+
+	it.each([false, true])(
+		"shares success action results only when the cache matches state (extra cached failure: %s)",
+		async (extraCachedFailure) => {
+			const runtime = makeRuntime();
+			const message = makeMessage();
+			const stateResults: ActionResult[] = [
+				{
+					success: true,
+					data: {
+						actionName: "NOTES_UPDATE",
+						noteId: "note-42",
+						body: "The note retains its complete receipt.\n\tIncluding whitespace.",
+					},
+				},
+			];
+			const cachedResults: ActionResult[] = structuredClone(stateResults);
+			if (extraCachedFailure) {
+				cachedResults.push({
+					success: false,
+					error: "Calendar write failed after the note update.",
+					data: { actionName: "CALENDAR_UPDATE_EVENT", eventId: "event-19" },
+				});
+			}
+			runtime.stateCache.set(`${message.id}_action_results`, {
+				values: {},
+				data: { actionResults: cachedResults },
+				text: "",
+			});
+			runtime.registerEvaluator({ ...successEvaluator, processors: [] });
+			let prompt = "";
+			runtime.useModel = vi.fn(async (_modelType, params) => {
+				prompt = String(params.messages?.[0]?.content ?? "");
+				return {
+					success: { completed: false, reason: "Inspect the receipts." },
+				};
+			}) as AgentRuntime["useModel"];
+			const providerText =
+				"Complete provider context with attachment and channel provenance.";
+
+			const result = await new EvaluatorService(runtime).run(message, {
+				values: {},
+				data: { actionResults: stateResults },
+				text: providerText,
+			});
+
+			expect(result.errors).toEqual([]);
+			expect(prompt).toContain(providerText);
+			const sharedRendering = renderActionResultsForModel(stateResults).text;
+			expect(prompt).toContain(sharedRendering);
+			if (extraCachedFailure) {
+				expect(prompt).toContain(
+					renderActionResultsForModel(cachedResults).text,
+				);
+				expect(prompt).toContain(
+					"Calendar write failed after the note update.",
+				);
+				expect(prompt).not.toContain('Action results: see "Action results"');
+			} else {
+				expect(prompt.split(sharedRendering)).toHaveLength(2);
+				expect(prompt).toContain('Action results: see "Action results"');
+			}
+		},
+	);
+
+	it("keeps the complete success action results when called without shared context", () => {
+		const runtime = makeRuntime();
+		const actionResults: ActionResult[] = [
+			{
+				success: false,
+				error: "The event is still unchanged.",
+				data: { actionName: "CALENDAR_UPDATE_EVENT", eventId: "event-19" },
+			},
+		];
+		const prompt = successEvaluator.prompt({
+			runtime,
+			message: makeMessage(),
+			state: { values: {}, data: {}, text: "" },
+			options: { didRespond: true },
+			prepared: {
+				recentMessages: [],
+				existingRelationships: [],
+				entities: [],
+				actionResults,
+			},
+		});
+
+		expect(prompt).toContain(
+			`Action results:\n${renderActionResultsForModel(actionResults).text}`,
+		);
+		expect(prompt).not.toContain('Action results: see "Action results"');
+	});
 
 	it("renders the room transcript once in the shared context for every section", async () => {
 		// Live 2026-09-05: five sections each embedded the whole room history.
