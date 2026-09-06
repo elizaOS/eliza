@@ -1874,7 +1874,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("### facts");
 	});
 
-	it("keeps live voice context bounded and losslessly searchable", async () => {
+	it("preserves complete eligible voice dialogue in the actual Stage-1 request", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				shouldRespond: "IGNORE",
@@ -1886,14 +1886,17 @@ describe("runV5MessageRuntimeStage1", () => {
 			{ length: 32 },
 			(_, index): Memory => ({
 				id: `00000000-0000-0000-0000-${String(index + 10).padStart(12, "0")}` as UUID,
-				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				entityId:
+					index % 2 === 0
+						? ("00000000-0000-0000-0000-000000000002" as UUID)
+						: runtime.agentId,
 				agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 				roomId: "00000000-0000-0000-0000-000000000004" as UUID,
 				createdAt: index + 10,
 				content: {
 					text:
 						index === 0
-							? "STALE_VOICE_ROOM_HISTORY"
+							? "EARLY_VOICE_INSTRUCTION: Ask for my approval before making any purchase."
 							: index === 31
 								? "RECENT_VOICE_ROOM_HISTORY"
 								: `voice room history ${index}`,
@@ -1943,8 +1946,17 @@ describe("runV5MessageRuntimeStage1", () => {
 		const wireText = JSON.stringify(messages ?? []);
 		expect(wireText).toContain("LOSSLESS_HISTORY_MANIFEST");
 		expect(wireText).not.toContain("EAGER_CROSS_ROOM_HISTORY");
-		expect(wireText).toContain("RECENT_VOICE_ROOM_HISTORY");
-		expect(wireText).not.toContain("STALE_VOICE_ROOM_HISTORY");
+		let previousPosition = -1;
+		for (const memory of recentMessages) {
+			const text = memory.content.text;
+			if (typeof text !== "string") {
+				throw new Error("Expected the test dialogue to contain text");
+			}
+			expect(wireText).toContain(text);
+			const position = wireText.indexOf(text);
+			expect(position).toBeGreaterThan(previousPosition);
+			previousPosition = position;
+		}
 	});
 
 	describe("Stage-1 cross-room history form", () => {
