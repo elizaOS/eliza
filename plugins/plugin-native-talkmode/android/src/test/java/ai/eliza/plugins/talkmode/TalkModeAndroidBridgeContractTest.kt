@@ -29,6 +29,26 @@ class TalkModeAndroidBridgeContractTest {
     }
 
     @Test
+    fun `phonemization uses authenticated local JSON transport`() {
+        val frame = JSONObject(TalkModeAndroidBridgeContract.localAgentTtsFrame(
+            "phonemes-1", "secret-token",
+            JSONObject().put("text", "Hello.").put("language", "en-US"),
+            phonemizeOnly = true
+        ))
+        val payload = frame.getJSONObject("payload")
+        assertEquals("/api/tts/local-inference/phonemize", payload.getString("path"))
+        assertEquals("application/json", payload.getJSONObject("headers").getString("Accept"))
+        assertEquals("Bearer secret-token", payload.getJSONObject("headers").getString("Authorization"))
+        val ipa = "həlˈoʊ".toByteArray(Charsets.UTF_8)
+        val reply = JSONObject().put("ok", true).put("result", JSONObject()
+            .put("status", 200).put("bodyEncoding", "base64")
+            .put("bodyBase64", Base64.getEncoder().encodeToString(ipa)))
+        assertTrue(TalkModeAndroidBridgeContract.decodeLocalAgentBodyResponse(reply.toString()) {
+            Base64.getDecoder().decode(it)
+        }.contentEquals(ipa))
+    }
+
+    @Test
     fun `local TTS response decodes exact WAV bytes and rejects failures`() {
         val wav = byteArrayOf(82, 73, 70, 70)
         val success = JSONObject().apply {
@@ -40,7 +60,7 @@ class TalkModeAndroidBridgeContractTest {
             })
         }
         assertTrue(
-            TalkModeAndroidBridgeContract.decodeLocalAgentWavResponse(
+            TalkModeAndroidBridgeContract.decodeLocalAgentBodyResponse(
                 success.toString(),
                 Base64.getDecoder()::decode
             ).contentEquals(wav)
@@ -51,7 +71,7 @@ class TalkModeAndroidBridgeContractTest {
             JSONObject().put("status", 503).put("bodyEncoding", "base64")
         )
         try {
-            TalkModeAndroidBridgeContract.decodeLocalAgentWavResponse(
+            TalkModeAndroidBridgeContract.decodeLocalAgentBodyResponse(
                 failure.toString(),
                 Base64.getDecoder()::decode
             )

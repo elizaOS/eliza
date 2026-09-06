@@ -1070,6 +1070,8 @@ class TalkModePlugin : Plugin() {
                             put("interrupted", true)
                             put("usedSystemTts", false)
                         })
+                    } else if (e is KokoroPhonemizationException) {
+                        call.reject(e.message, "LOCAL_TTS_PHONEMIZATION_FAILED", e)
                     } else {
                         // The on-device OmniVoice TTS assets aren't always staged
                         // (it 502s "TEXT_TO_SPEECH not available"). Rather than go
@@ -1246,7 +1248,7 @@ class TalkModePlugin : Plugin() {
         if (streamAndPlayBionicKokoroTts(text, directive)) {
             return@withContext
         }
-        val wavBytes = requestLocalAgentTtsWav(
+        val wavBytes = requestLocalAgentTtsBytes(
             buildLocalInferenceTtsPayload(text, directive)
         )
         try {
@@ -1286,9 +1288,9 @@ class TalkModePlugin : Plugin() {
      * Synthesize + play with the fused Kokoro-82M head in the bionic inference
      * host (ElizaBionicInferenceServer, op "tts") over its abstract-namespace
      * UDS. The host loads the same libelizainference that runs GPU text and
-     * synthesizes Kokoro PCM in-process — no musl agent, no HTTP, no 502 → no
-     * fallback to the platform TextToSpeech (the bug this fixes: the app was
-     * speaking with the Android system voice). Returns true on success; false if
+     * synthesizes Kokoro PCM in-process. The authenticated local agent first
+     * runs the bundled eSpeak phonemizer; the bionic library consumes its IPA.
+     * Phonemization failures are explicit. Returns true on success; false if
      * the host is unreachable so the caller can fall through.
      */
     private suspend fun streamAndPlayBionicKokoroTts(
@@ -1309,8 +1311,29 @@ class TalkModePlugin : Plugin() {
             return@withContext false
         }
         try {
+            val phonemization = try {
+                val bytes = requestLocalAgentTtsBytes(
+                    JSONObject().apply {
+                        put("text", trimmed)
+                        put("language", directive.stringOrNull("language") ?: "en-US")
+                    }.toString(),
+                    phonemizeOnly = true
+                )
+                JSONObject(String(bytes, Charsets.UTF_8)).also {
+                    if (it.getString("ipa").isBlank() || it.getString("phonemizer") != "phonemizer" ||
+                        it.getString("language") != "en-US") {
+                        throw IllegalStateException("Local agent returned invalid Kokoro phonemization")
+                    }
+                }
+            } catch (e: Exception) {
+                throw KokoroPhonemizationException(e)
+            }
+            val ipa = phonemization.getString("ipa")
+            sock.soTimeout = 180_000
             val req = JSONObject().apply {
                 put("op", "tts")
+                put("ipa", ipa)
+                put("language", phonemization.getString("language"))
                 put("text", trimmed)
                 put("speed", speed.toDouble())
             }.toString().toByteArray(Charsets.UTF_8)
@@ -1369,7 +1392,10 @@ class TalkModePlugin : Plugin() {
         }
     }
 
-    private fun requestLocalAgentTtsWav(payload: String): ByteArray {
+    private class KokoroPhonemizationException(cause: Exception) :
+        Exception("Local Kokoro phonemization failed: ${cause.message}", cause)
+
+    private fun requestLocalAgentTtsBytes(payload: String, phonemizeOnly: Boolean = false): ByteArray {
         val tokenFile = File(context.filesDir, "auth/local-agent-token")
         val token = tokenFile.takeIf { it.isFile }?.readText()?.trim().orEmpty()
         if (token.isEmpty()) {
@@ -1388,13 +1414,14 @@ class TalkModePlugin : Plugin() {
             val frame = TalkModeAndroidBridgeContract.localAgentTtsFrame(
                 requestId = "talkmode-tts-${UUID.randomUUID()}",
                 token = token,
-                body = JSONObject(payload)
+                body = JSONObject(payload),
+                phonemizeOnly = phonemizeOnly
             )
             socket.outputStream.write((frame + "\n").toByteArray(Charsets.UTF_8))
             socket.outputStream.flush()
             val line = socket.inputStream.bufferedReader(Charsets.UTF_8).readLine()
                 ?: throw IllegalStateException("Local agent TTS closed with no response")
-            return TalkModeAndroidBridgeContract.decodeLocalAgentWavResponse(line) {
+            return TalkModeAndroidBridgeContract.decodeLocalAgentBodyResponse(line) {
                 Base64.decode(it, Base64.NO_WRAP)
             }
         } finally {

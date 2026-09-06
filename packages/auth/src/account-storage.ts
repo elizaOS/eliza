@@ -152,10 +152,7 @@ function resolvePhysicalPath(target: string): string {
     existingAncestor = parent;
   }
 
-  return path.resolve(
-    fs.realpathSync.native(existingAncestor),
-    ...missingSegments,
-  );
+  return path.resolve(fs.realpathSync(existingAncestor), ...missingSegments);
 }
 
 function assertContained(
