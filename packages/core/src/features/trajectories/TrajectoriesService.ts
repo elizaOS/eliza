@@ -3256,12 +3256,12 @@ export class TrajectoriesService extends Service {
 		const statsResult = await this.executeRawSql(`
       SELECT
         count(*)::int AS total_trajectories,
-        COALESCE(sum(step_count), 0)::int AS total_steps,
-        COALESCE(sum(llm_call_count), 0)::int AS total_llm_calls,
-        COALESCE(sum(total_prompt_tokens), 0)::int AS total_prompt_tokens,
-        COALESCE(sum(total_completion_tokens), 0)::int AS total_completion_tokens,
-        COALESCE(sum(total_cache_read_input_tokens), 0)::int AS total_cache_read_input_tokens,
-        COALESCE(sum(total_cache_creation_input_tokens), 0)::int AS total_cache_creation_input_tokens,
+        COALESCE(sum(step_count), 0)::bigint AS total_steps,
+        COALESCE(sum(llm_call_count), 0)::bigint AS total_llm_calls,
+        COALESCE(sum(total_prompt_tokens), 0)::bigint AS total_prompt_tokens,
+        COALESCE(sum(total_completion_tokens), 0)::bigint AS total_completion_tokens,
+        COALESCE(sum(total_cache_read_input_tokens), 0)::bigint AS total_cache_read_input_tokens,
+        COALESCE(sum(total_cache_creation_input_tokens), 0)::bigint AS total_cache_creation_input_tokens,
         COALESCE(avg(duration_ms), 0)::int AS avg_duration_ms,
         COALESCE(avg(total_reward), 0)::real AS avg_reward
       FROM trajectories
