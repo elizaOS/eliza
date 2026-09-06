@@ -2217,10 +2217,17 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   // Electrobun's OverlaySyncController only fires onSync when the rect
   // *changes* — a small-but-stable rect persists.
   const browserSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const [iframeScale, setIframeScale] = useState(1);
   useEffect(() => {
     const surface = browserSurfaceRef.current;
     if (!surface || typeof ResizeObserver === "undefined") return;
     const pokeAll = (): void => {
+      // Cross-origin frames cannot inherit a mobile viewport policy from the
+      // host. Give narrow panels a compact 400px layout viewport and fit it
+      // into the surface, rather than clipping sites with that minimum width.
+      // Grow the logical height by the same ratio so no blank strip remains.
+      const width = surface.getBoundingClientRect().width;
+      setIframeScale(width > 0 ? Math.min(1, width / 400) : 1);
       for (const element of electrobunWebviewRefs.current.values()) {
         try {
           element?.syncDimensions(true);
@@ -2231,6 +2238,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     };
     const observer = new ResizeObserver(() => pokeAll());
     observer.observe(surface);
+    pokeAll();
     return () => {
       observer.disconnect();
     };
@@ -2623,7 +2631,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   }, []);
 
   const navNode = (
-    <div className="flex items-center gap-1 p-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-x-2 md:gap-y-1 md:px-2 md:py-0.5">
+    <div className="flex items-center gap-0 px-0.5 py-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-x-2 md:gap-y-1 md:px-2 md:py-0.5">
       <TooltipHint
         content={t("common.backToLauncher", {
           defaultValue: "Back to launcher",
@@ -2786,7 +2794,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11 shrink-0"
+        className="hidden size-11 shrink-0 md:inline-flex"
         aria-label={goLabel}
         disabled={
           busyAction !== null ||
@@ -3218,7 +3226,13 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
               // own theme based on the OS prefers-color-scheme; we can't force
               // that cross-origin without an extension content script.
               className={`absolute inset-0 h-full w-full border-0 bg-bg transition-opacity ${visibilityClass}`}
-              style={{ colorScheme: uiTheme }}
+              style={{
+                colorScheme: uiTheme,
+                width: `${100 / iframeScale}%`,
+                height: `${100 / iframeScale}%`,
+                transform: `scale(${iframeScale})`,
+                transformOrigin: "top left",
+              }}
               onPointerDownCapture={(event) => {
                 releaseBrowserWorkspaceIframeFocusReturn(event.currentTarget);
               }}
