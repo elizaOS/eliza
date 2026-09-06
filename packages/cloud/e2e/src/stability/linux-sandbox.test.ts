@@ -480,9 +480,14 @@ console.log(JSON.stringify({
         `user:${String(result.hostUid)}:`,
       );
 
-      const setupScript = path.join(
-        repoRoot,
-        "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+      // Feed the actual launcher through stdin: AppArmor drops root's DAC
+      // bypass, so the masked-tool fixture cannot traverse runner-owned homes.
+      const setupSource = await readFile(
+        path.join(
+          repoRoot,
+          "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+        ),
+        "utf8",
       );
       const missingBwrap = spawnSync(
         "sudo",
@@ -500,10 +505,11 @@ console.log(JSON.stringify({
           "/dev/null",
           "/usr/bin/bwrap",
           "/bin/bash",
-          setupScript,
+          "-s",
+          "--",
           "setup",
         ],
-        { encoding: "utf8" },
+        { encoding: "utf8", input: setupSource },
       );
       expect(missingBwrap.status).not.toBe(0);
       expect(missingBwrap.stderr).toContain("missing required command: bwrap");
@@ -523,10 +529,11 @@ console.log(JSON.stringify({
           "/dev/null",
           "/usr/sbin/iptables",
           "/bin/bash",
-          setupScript,
+          "-s",
+          "--",
           "setup",
         ],
-        { encoding: "utf8" },
+        { encoding: "utf8", input: setupSource },
       );
       expect(missingIptables.status).not.toBe(0);
       expect(missingIptables.stderr).toContain(
