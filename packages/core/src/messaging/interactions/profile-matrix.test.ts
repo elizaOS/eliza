@@ -13,6 +13,17 @@ import {
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../../../../..");
 
+function normalizeRelativePath(
+	relativePath: string,
+	separator = path.sep,
+): string {
+	return relativePath.split(separator).join("/");
+}
+
+function normalizeGoldenLineEndings(golden: string): string {
+	return golden.replace(/\r\n/g, "\n");
+}
+
 async function sourceFiles(directory: string): Promise<string[]> {
 	const files: string[] = [];
 	for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
@@ -47,7 +58,7 @@ async function productionRegistrationSites(): Promise<
 			)?.length;
 			if (registrations) {
 				found.push({
-					site: path.relative(pluginsRoot, file).replaceAll(path.sep, "/"),
+					site: normalizeRelativePath(path.relative(pluginsRoot, file)),
 					registrations,
 				});
 			}
@@ -57,6 +68,18 @@ async function productionRegistrationSites(): Promise<
 }
 
 describe("first-party interaction capability matrix", () => {
+	it("normalizes only platform separators and CRLF golden endings", () => {
+		expect(
+			normalizeRelativePath(
+				String.raw`plugin-instagram\src\service.ts`,
+				path.win32.sep,
+			),
+		).toBe("plugin-instagram/src/service.ts");
+		expect(normalizeGoldenLineEndings("first\r\nsecond\rthird\n")).toBe(
+			"first\nsecond\rthird\n",
+		);
+	});
+
 	it("covers every production registration site and invocation", async () => {
 		const declared = [
 			...new Set(
@@ -71,12 +94,12 @@ describe("first-party interaction capability matrix", () => {
 	});
 
 	it("matches the committed reviewer-readable golden artifact", async () => {
-		const golden = (
+		const golden = normalizeGoldenLineEndings(
 			await fs.readFile(
 				path.join(import.meta.dirname, "CAPABILITY_MATRIX.md"),
 				"utf8",
-			)
-		).replaceAll("\r\n", "\n");
+			),
+		);
 		expect(`${renderFirstPartyInteractionCapabilityMatrix()}\n`).toBe(golden);
 	});
 });

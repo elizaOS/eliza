@@ -122,7 +122,10 @@ export function ShellOverlays({
       <BugReportModal />
       <ComputerUseApprovalOverlay />
       <ShortcutsOverlay />
-      <ActionNoticeToast actionNotice={actionNotice} />
+      <ActionNoticeToast
+        actionNotice={actionNotice}
+        onDismiss={() => setState("actionNotice", null)}
+      />
     </>,
     document.body,
   );

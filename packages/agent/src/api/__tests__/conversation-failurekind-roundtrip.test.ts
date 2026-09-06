@@ -126,7 +126,8 @@ vi.mock("../server-helpers.ts", async () => {
         content: { text: prompt, source: "api", channelType: ChannelType.DM },
       },
     })),
-    resolveWalletModeGuidanceReply: () => null,
+    resolveWalletModeGuidanceReply: () =>
+      "LEGACY WALLET BYPASS MUST NOT BE USED",
     resolveAppUserName: () => "tester",
   };
 });
@@ -459,6 +460,33 @@ describe("conversation failureKind round-trip", () => {
     ) as { failureKind?: string };
     expect(parsed.failureKind).toBe("provider_issue");
   });
+
+  it.each(["/messages", "/messages/stream"])(
+    "always sends wallet wording through generation on %s",
+    async (suffix) => {
+      const { readChatRequestPayload, generateChatResponse } = await import(
+        "../chat-routes.ts"
+      );
+      vi.mocked(readChatRequestPayload).mockResolvedValueOnce({
+        prompt: "Read my wallet balance. Do not send or swap anything.",
+        channelType: ChannelType.DM,
+        source: "api",
+      });
+      const { ctx, record, captured } = createCtx(
+        "POST",
+        `/api/conversations/conv-1${suffix}`,
+        createState(),
+      );
+      const before = vi.mocked(generateChatResponse).mock.calls.length;
+      await handleConversationRoutes(ctx);
+      expect(vi.mocked(generateChatResponse).mock.calls.length).toBe(
+        before + 1,
+      );
+      expect(
+        JSON.stringify(captured.payload) + record.writes.join(""),
+      ).not.toContain("LEGACY WALLET BYPASS");
+    },
+  );
 
   it("non-streaming JSON response carries failureKind when the result carries one", async () => {
     generateResult = { failureKind: "insufficient_credits" };

@@ -274,13 +274,7 @@ export class RuntimeModelDispatch {
 		const raw = this.runtime.getSetting("ELIZA_BRAIN_PROVIDER");
 		const override = typeof raw === "string" ? raw.trim() : "";
 		if (!override) return undefined;
-		const hasHandler = TEXT_GENERATION_MODEL_KEYS.some((key) =>
-			this.host
-				.models()
-				.get(key)
-				?.some((m) => m.provider === override),
-		);
-		return hasHandler ? override : undefined;
+		return override;
 	}
 
 	isCanonicalModelCapabilityDisabled(modelType: string): boolean {
@@ -294,6 +288,7 @@ export class RuntimeModelDispatch {
 			: "embeddings";
 		throw new NoModelProviderConfiguredError(
 			`Canonical service routing does not configure the ${capability} capability. Add serviceRouting.${capability} before requesting ${modelType}.`,
+			"capability-disabled",
 		);
 	}
 
@@ -911,50 +906,35 @@ export class RuntimeModelDispatch {
 		// Runtime preferred-provider override: when the caller did not pin a
 		// provider and this is a text-generation model, honor the runtime-selected
 		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
-		// between loaded providers with no restart. It is a hint only — if that
-		// provider resolves no handlers for this model the default chain is used
-		// instead (see resolveTextProviderOverride), so the override can never
-		// strand the brain. Unset → byte-identical to prior behavior.
+		// between loaded providers with no restart. A selection is a strict pin:
+		// failure or missing registration must not silently switch providers.
 		const providerOverride =
 			provider === undefined &&
 			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
 				? this.resolveTextProviderOverride()
 				: undefined;
-		const overrideResolved = providerOverride
-			? this.resolveModelRegistrations(requestedModelKey, providerOverride)
-			: [];
-		// The override provider goes FIRST, but the remaining default-chain
-		// registrations stay behind it as the failover tail. Without the tail a
-		// rate-limited override provider strands the brain (its throw has no next
-		// registration to fall to) even though healthy backup providers are
-		// registered — violating the "never strands the brain" contract of
-		// resolveTextProviderOverride. The failover loop below still only
-		// advances on fallback-class errors, so a healthy pinned provider keeps
-		// winning every call.
-		const resolvedModels =
-			overrideResolved.length > 0
-				? [
-						...overrideResolved,
-						...this.resolveModelRegistrations(
-							requestedModelKey,
-							requestedProvider,
-						).filter(
-							(candidate) =>
-								!overrideResolved.some(
-									(chosen) =>
-										chosen.handler === candidate.handler &&
-										chosen.modelKey === candidate.modelKey,
-								),
-						),
-					]
-				: this.resolveModelRegistrations(requestedModelKey, requestedProvider);
+		const resolvedModels = this.resolveModelRegistrations(
+			requestedModelKey,
+			providerOverride ?? requestedProvider,
+		);
 		if (resolvedModels.length === 0) {
 			this.throwNoModelHandler(requestedModelKey);
 		}
 
 		let lastModelError: unknown;
+		let lastFailedModel: ResolvedModelRegistration | undefined;
 		let providerAttemptStartedOutput = false;
 		const providersWithExhaustedWarmingBudget = new Set<string>();
+		const providerAttempts: ModelProviderAttempt[] = [];
+		const registrationAttempted = (
+			candidate: ResolvedModelRegistration,
+		): boolean =>
+			providerAttempts.some(
+				(attempt) =>
+					attempt.modelType === candidate.modelKey &&
+					attempt.provider === candidate.provider &&
+					attempt.handler === candidate.handler,
+			);
 		for (
 			let resolvedIndex = 0;
 			resolvedIndex < resolvedModels.length;
@@ -964,7 +944,10 @@ export class RuntimeModelDispatch {
 			if (!resolvedModel) {
 				continue;
 			}
-			if (providersWithExhaustedWarmingBudget.has(resolvedModel.provider)) {
+			if (
+				providersWithExhaustedWarmingBudget.has(resolvedModel.provider) ||
+				registrationAttempted(resolvedModel)
+			) {
 				continue;
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
@@ -977,6 +960,7 @@ export class RuntimeModelDispatch {
 			};
 			const preprocessingStartedAt = Date.now();
 			let handlerStartedAt: number | null = null;
+			let providerAttempt: ModelProviderAttempt | undefined;
 			if (resolvedIndex === 0) {
 				recordInferenceSpan(
 					`model-routing:${String(modelType)}`,
@@ -1478,6 +1462,14 @@ export class RuntimeModelDispatch {
 				// typed zero-dispatch rejection records the same complete request.
 				modelParamsRef = modelParams;
 				promptContentRef = promptContent;
+				// Attach only to this attempt's fresh request, before admission freezes
+				// it. Symbols are not enumerated, measured, serialized, or deep-frozen.
+				if (isPlainObject(modelParams)) {
+					Object.defineProperty(modelParams, MODEL_PROVIDER_ATTEMPTS, {
+						value: providerAttempts,
+						enumerable: false,
+					});
+				}
 
 				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
 					let finalBudget = this.buildFinalModelInputBudget(
@@ -1595,6 +1587,12 @@ export class RuntimeModelDispatch {
 					attemptMeta,
 				);
 				handlerStartedAt = Date.now();
+				providerAttempt = {
+					modelType: resolvedModelKey,
+					provider: resolvedModel.provider,
+					handler,
+				};
+				providerAttempts.push(providerAttempt);
 				const { result: handlerResult, recordingState } =
 					await runWithModelCallRecordingScope(() =>
 						handler(
@@ -2060,13 +2058,19 @@ export class RuntimeModelDispatch {
 				) {
 					throw streamCallbackResult.error;
 				}
-				if (attemptPreparationFailed) {
+				const unavailableLocalText =
+					TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey) &&
+					isUnavailableLocalModel(error);
+				const rejectedLocalAdmission =
+					handlerStartedAt === null && unavailableLocalText;
+				if (attemptPreparationFailed || rejectedLocalAdmission) {
 					recordInferenceSpan(
 						`model-preprocess:${String(modelType)}`,
 						Date.now() - preprocessingStartedAt,
 						{ ...attemptMeta, outcome: "error" },
 					);
 					if (
+						!rejectedLocalAdmission &&
 						!(
 							error instanceof ElizaError &&
 							error.code === "EVALUATOR_INPUT_OVER_BUDGET"
@@ -2082,9 +2086,18 @@ export class RuntimeModelDispatch {
 					// so a later registration may still fit — advance the chain and
 					// rethrow the typed error only when the caller pinned a provider
 					// or no candidate remains.
-					lastModelError = error;
+					// An absent fallback cannot explain away an earlier dispatched
+					// provider's actionable failure (for example its quota error).
+					if (!rejectedLocalAdmission || lastModelError === undefined) {
+						lastModelError = error;
+						lastFailedModel = resolvedModel;
+					}
 					const nextAfterPreparation = resolvedModels[resolvedIndex + 1];
-					if (requestedProvider !== undefined || !nextAfterPreparation) {
+					if (requestedProvider !== undefined) throw error;
+					if (!nextAfterPreparation) {
+						if (rejectedLocalAdmission) {
+							this.rethrowModelFailoverError(lastModelError, lastFailedModel);
+						}
 						throw error;
 					}
 					this.logModelProviderFailover({
@@ -2134,14 +2147,27 @@ export class RuntimeModelDispatch {
 								: Date.now() - handlerStartedAt,
 					});
 				}
-				lastModelError = error;
+				// A model can unload between admission and dispatch. Record that
+				// real attempt, but retain the previous provider failure if absence
+				// is the only fallback outcome. Output/request errors stay decisive.
+				if (
+					!unavailableLocalText ||
+					lastModelError === undefined ||
+					providerAttemptStartedOutput ||
+					requestedProvider !== undefined
+				) {
+					lastModelError = error;
+					lastFailedModel = resolvedModel;
+				}
+				if (providerAttempt) providerAttempt.error = error;
 				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
 					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
 				}
 				const nextModelIndex = resolvedModels.findIndex(
 					(candidate, candidateIndex) =>
 						candidateIndex > resolvedIndex &&
-						!providersWithExhaustedWarmingBudget.has(candidate.provider),
+						!providersWithExhaustedWarmingBudget.has(candidate.provider) &&
+						!registrationAttempted(candidate),
 				);
 				const nextModel =
 					nextModelIndex >= 0 ? resolvedModels[nextModelIndex] : undefined;
@@ -2151,10 +2177,7 @@ export class RuntimeModelDispatch {
 					providerAttemptStartedOutput ||
 					!this.shouldFailOverModelProvider(error, requestedModelKey)
 				) {
-					this.rethrowModelFailoverError(error, {
-						modelKey: resolvedModelKey,
-						provider: resolvedModel.provider,
-					});
+					this.rethrowModelFailoverError(lastModelError, lastFailedModel);
 				}
 				this.logModelProviderFailover({
 					requestedModelKey,
@@ -2171,6 +2194,7 @@ export class RuntimeModelDispatch {
 		this.rethrowModelFailoverError(
 			lastModelError ??
 				new Error(`No handler found for delegate type: ${requestedModelKey}`),
+			lastFailedModel,
 		);
 	}
 
@@ -2459,3 +2483,10 @@ export class RuntimeModelDispatch {
 		}
 	}
 }
+
+import {
+	MODEL_PROVIDER_ATTEMPTS,
+	type ModelProviderAttempt,
+} from "../../types";
+
+import { isUnavailableLocalModel } from "./policy.js";

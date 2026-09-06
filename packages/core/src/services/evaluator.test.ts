@@ -7,14 +7,24 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { AgentRuntime } from "../runtime";
 import {
+	factMemoryEvaluator,
+	successEvaluator,
+} from "../features/advanced-capabilities/evaluators/reflection-items";
+import { AgentRuntime } from "../runtime";
+import { renderActionResultsForModel } from "../runtime/planner-rendering";
+import {
+	type ActionResult,
 	type Character,
 	type Evaluator,
+	type GenerateTextResult,
 	type Memory,
 	ModelType,
 } from "../types";
-import { EvaluatorService } from "./evaluator";
+import { ChannelType } from "../types/primitives";
+import { conversationMessagesHeader } from "../utils";
+import { EvaluatorService, runPostTurnEvaluators } from "./evaluator";
+import { getRoomTranscript } from "./evaluator-transcript";
 
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
@@ -62,6 +72,399 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it.each(["object", "JSON text", "native result"])(
+		"applies fact processors from %s model output",
+		async (shape) => {
+			const runtime = makeRuntime();
+			const message = makeMessage();
+			const claim =
+				"The packing list is an orange notebook and a charger, with no water.";
+			const output = {
+				factMemory: {
+					ops: [{ op: "add_current", claim, category: "working_on" }],
+				},
+			};
+			const raw =
+				shape === "object"
+					? output
+					: shape === "JSON text"
+						? JSON.stringify(output)
+						: ({
+								text: JSON.stringify(output),
+								toolCalls: [],
+								finishReason: "stop",
+								usage: {
+									promptTokens: 10,
+									completionTokens: 10,
+									totalTokens: 20,
+								},
+								providerMetadata: { provider: "cerebras" },
+							} satisfies GenerateTextResult);
+			runtime.registerEvaluator(factMemoryEvaluator);
+			runtime.useModel = vi.fn(async () => raw) as AgentRuntime["useModel"];
+
+			const result = await new EvaluatorService(runtime).run(message);
+
+			expect(result.processedEvaluators).toEqual(["factMemory"]);
+			expect(result.errors).toEqual([]);
+			expect(result.results[0]).toMatchObject({
+				success: true,
+				data: { added: 1 },
+			});
+			const facts = await runtime.getMemories({
+				tableName: "facts",
+				roomId: message.roomId,
+				unique: false,
+			});
+			expect(facts).toHaveLength(1);
+			expect(facts[0]).toMatchObject({
+				entityId: message.entityId,
+				roomId: message.roomId,
+				content: { text: claim },
+				metadata: { kind: "current" },
+			});
+		},
+	);
+
+	it("preserves a direct evaluator section named text", async () => {
+		const runtime = makeRuntime();
+		const process = vi.fn(async () => ({ success: true }));
+		runtime.registerEvaluator({
+			name: "text",
+			description: "Text-valued evaluator section",
+			schema: { type: "string" },
+			shouldRun: async () => true,
+			prompt: () => "Return a text section.",
+			processors: [{ name: "storeText", process }],
+		});
+		runtime.useModel = vi.fn(async () => ({
+			text: "A direct section",
+		})) as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		expect(result.processedEvaluators).toEqual(["text"]);
+		expect(result.errors).toEqual([]);
+		expect(process).toHaveBeenCalledWith(
+			expect.objectContaining({ output: "A direct section" }),
+		);
+	});
+
+	it.each(["not JSON", "[]", "null", "true", ""])(
+		"rejects invalid native result text %j without applying fact processors",
+		async (text) => {
+			const runtime = makeRuntime();
+			const message = makeMessage();
+			runtime.registerEvaluator(factMemoryEvaluator);
+			runtime.useModel = vi.fn(async () => ({
+				text,
+				toolCalls: [],
+				finishReason: "stop",
+			})) as AgentRuntime["useModel"];
+
+			const result = await new EvaluatorService(runtime).run(message);
+
+			expect(result.processedEvaluators).toEqual([]);
+			expect(result.results).toEqual([]);
+			expect(result.errors).toEqual([
+				{
+					evaluatorName: "post_turn",
+					error: "Evaluator model returned non-object output",
+				},
+			]);
+			expect(
+				await runtime.getMemories({
+					tableName: "facts",
+					roomId: message.roomId,
+					unique: false,
+				}),
+			).toEqual([]);
+		},
+	);
+
+	it("shares transcript reads within a runtime but never across runtimes", async () => {
+		const first = makeRuntime();
+		const second = makeRuntime();
+		const message = makeMessage();
+		const firstHistory = [
+			{ ...message, content: { text: "First agent context" } },
+		];
+		const secondHistory = [
+			{ ...message, content: { text: "Second agent context" } },
+		];
+		vi.spyOn(first, "getMemories").mockResolvedValue(firstHistory);
+		vi.spyOn(second, "getMemories").mockResolvedValue(secondHistory);
+		const firstRead = getRoomTranscript(first, message);
+		expect(getRoomTranscript(first, message)).toBe(firstRead);
+		expect(await firstRead).toEqual(firstHistory);
+		expect(await getRoomTranscript(second, message)).toEqual(secondHistory);
+		expect(first.getMemories).toHaveBeenCalledTimes(1);
+		expect(second.getMemories).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries a failed transcript read instead of caching an empty conversation", async () => {
+		const runtime = makeRuntime();
+		const message = makeMessage();
+		vi.spyOn(runtime, "getMemories")
+			.mockRejectedValueOnce(new Error("storage unavailable"))
+			.mockResolvedValue([message]);
+		await expect(getRoomTranscript(runtime, message)).rejects.toThrow(
+			"storage unavailable",
+		);
+		await expect(getRoomTranscript(runtime, message)).resolves.toEqual([
+			message,
+		]);
+		expect(runtime.getMemories).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([ChannelType.VOICE_DM, ChannelType.VOICE_GROUP])(
+		"does not serialize %s turns behind optional post-turn reflection",
+		async (channelType) => {
+			const runtime = makeRuntime();
+			const getServiceLoadPromise = vi.spyOn(runtime, "getServiceLoadPromise");
+			const message = makeMessage();
+			message.content.channelType = channelType;
+
+			await expect(runPostTurnEvaluators(runtime, message)).resolves.toBeNull();
+			expect(getServiceLoadPromise).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([false, true])(
+		"shares success action results only when the cache matches state (extra cached failure: %s)",
+		async (extraCachedFailure) => {
+			const runtime = makeRuntime();
+			const message = makeMessage();
+			const stateResults: ActionResult[] = [
+				{
+					success: true,
+					data: {
+						actionName: "NOTES_UPDATE",
+						noteId: "note-42",
+						body: "The note retains its complete receipt.\n\tIncluding whitespace.",
+					},
+				},
+			];
+			const cachedResults: ActionResult[] = structuredClone(stateResults);
+			if (extraCachedFailure) {
+				cachedResults.push({
+					success: false,
+					error: "Calendar write failed after the note update.",
+					data: { actionName: "CALENDAR_UPDATE_EVENT", eventId: "event-19" },
+				});
+			}
+			runtime.stateCache.set(`${message.id}_action_results`, {
+				values: {},
+				data: { actionResults: cachedResults },
+				text: "",
+			});
+			runtime.registerEvaluator({ ...successEvaluator, processors: [] });
+			let prompt = "";
+			runtime.useModel = vi.fn(async (_modelType, params) => {
+				prompt = String(params.messages?.[0]?.content ?? "");
+				return {
+					success: { completed: false, reason: "Inspect the receipts." },
+				};
+			}) as AgentRuntime["useModel"];
+			const providerText =
+				"Complete provider context with attachment and channel provenance.";
+
+			const result = await new EvaluatorService(runtime).run(message, {
+				values: {},
+				data: { actionResults: stateResults },
+				text: providerText,
+			});
+
+			expect(result.errors).toEqual([]);
+			expect(prompt).toContain(providerText);
+			const sharedRendering = renderActionResultsForModel(stateResults).text;
+			expect(prompt).toContain(sharedRendering);
+			if (extraCachedFailure) {
+				expect(prompt).toContain(
+					renderActionResultsForModel(cachedResults).text,
+				);
+				expect(prompt).toContain(
+					"Calendar write failed after the note update.",
+				);
+				expect(prompt).not.toContain('Action results: see "Action results"');
+			} else {
+				expect(prompt.split(sharedRendering)).toHaveLength(2);
+				expect(prompt).toContain('Action results: see "Action results"');
+			}
+		},
+	);
+
+	it("keeps the complete success action results when called without shared context", () => {
+		const runtime = makeRuntime();
+		const actionResults: ActionResult[] = [
+			{
+				success: false,
+				error: "The event is still unchanged.",
+				data: { actionName: "CALENDAR_UPDATE_EVENT", eventId: "event-19" },
+			},
+		];
+		const prompt = successEvaluator.prompt({
+			runtime,
+			message: makeMessage(),
+			state: { values: {}, data: {}, text: "" },
+			options: { didRespond: true },
+			prepared: {
+				recentMessages: [],
+				existingRelationships: [],
+				entities: [],
+				actionResults,
+			},
+		});
+
+		expect(prompt).toContain(
+			`Action results:\n${renderActionResultsForModel(actionResults).text}`,
+		);
+		expect(prompt).not.toContain('Action results: see "Action results"');
+	});
+
+	it("renders the room transcript once in the shared context for every section", async () => {
+		// Live 2026-09-05: five sections each embedded the whole room history.
+		const runtime = makeRuntime();
+		const transcript: Memory[] = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "I moved to Lisbon last week", source: "test" },
+			} as Memory,
+			{
+				id: "00000000-0000-0000-0000-000000000012" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000009" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "Congrats on the move!", source: "test" },
+			} as Memory,
+		];
+		runtime.getMemories = vi.fn(
+			async () => transcript,
+		) as AgentRuntime["getMemories"];
+		const sectionFor = (name: string): Evaluator => ({
+			name,
+			description: `${name} evaluator`,
+			providers: ["CONVERSATION_PROXIMITY"],
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: ({ shared }) =>
+				shared?.roomTranscriptRendered
+					? `${name}: see shared transcript`
+					: `${name}: OWN COPY`,
+			parse: (output) => output as never,
+		});
+		runtime.registerEvaluator(sectionFor("alpha"));
+		runtime.registerEvaluator(sectionFor("beta"));
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_modelType, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true }, beta: { ok: true } };
+		}) as AgentRuntime["useModel"];
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: "STAGE1-PROVIDER-BLOB",
+		});
+
+		expect(prompt.split("I moved to Lisbon last week")).toHaveLength(2);
+		expect(prompt).toContain("Room transcript");
+		expect(prompt).toContain("alpha: see shared transcript");
+		expect(prompt).toContain("beta: see shared transcript");
+		expect(prompt).not.toContain("OWN COPY");
+		expect(prompt).toContain("STAGE1-PROVIDER-BLOB");
+		expect(runtime.getMemories).toHaveBeenCalledTimes(1);
+	});
+
+	it("points the transcript slot at the provider conversation block instead of embedding a second copy", async () => {
+		// Live 2026-09-06: the RECENT_MESSAGES block, the room transcript and a
+		// section copy put the same 450-row conversation into one prompt three
+		// times (107K tokens); the provider limit was reachable as the room grew.
+		const runtime = makeRuntime();
+		const transcript: Memory[] = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "I moved to Lisbon last week", source: "test" },
+			} as Memory,
+		];
+		runtime.getMemories = vi.fn(
+			async () => transcript,
+		) as AgentRuntime["getMemories"];
+		runtime.registerEvaluator({
+			name: "alpha",
+			description: "alpha evaluator",
+			providers: ["CONVERSATION_PROXIMITY"],
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: ({ shared }) =>
+				shared?.roomTranscriptRendered
+					? "alpha: see shared transcript"
+					: "alpha: OWN COPY",
+			parse: (output) => output as never,
+		});
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_modelType, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true } };
+		}) as AgentRuntime["useModel"];
+		const block = `${conversationMessagesHeader(1)}\n(12:00) Nubs: I moved to Lisbon last week`;
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: { providers: { RECENT_MESSAGES: { text: block } } },
+			text: `# Current Time\nnow\n${block}`,
+		});
+
+		expect(prompt.split("I moved to Lisbon last week")).toHaveLength(2);
+		expect(prompt.split(conversationMessagesHeader(1))).toHaveLength(2);
+		expect(prompt).toContain(
+			'rendered once below in Provider context under "# Conversation Messages (',
+		);
+		expect(prompt).toContain("alpha: see shared transcript");
+		expect(prompt).not.toContain("OWN COPY");
+	});
+
+	it("keeps the full room transcript when only a message quotes the conversation heading", async () => {
+		const runtime = makeRuntime();
+		const transcript: Memory[] = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as Memory["id"],
+				entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+				roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+				content: { text: "I moved to Lisbon last week", source: "test" },
+			} as Memory,
+		];
+		runtime.getMemories = vi.fn(
+			async () => transcript,
+		) as AgentRuntime["getMemories"];
+		runtime.registerEvaluator({
+			name: "alpha",
+			description: "alpha evaluator",
+			providers: ["CONVERSATION_PROXIMITY"],
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "alpha section",
+			parse: (output) => output as never,
+		});
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_modelType, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true } };
+		}) as AgentRuntime["useModel"];
+
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: `${conversationMessagesHeader(7)} quoted inside a user message`,
+		});
+
+		expect(prompt).toContain("I moved to Lisbon last week");
+		expect(prompt).not.toContain("rendered once below in Provider context");
+	});
+
 	it("merges active evaluator sections into one structured model call", async () => {
 		const runtime = makeRuntime();
 		const processed: string[] = [];
@@ -149,87 +552,99 @@ describe("EvaluatorService", () => {
 		expect(result.errors).toEqual([]);
 	});
 
-	it("isolates invalid sections and processor failures", async () => {
-		const runtime = makeRuntime();
-		const processed: string[] = [];
+	it.each(["object", "native result"])(
+		"isolates invalid sections and processor failures from %s",
+		async (shape) => {
+			const runtime = makeRuntime();
+			const processed: string[] = [];
 
-		runtime.registerEvaluator({
-			name: "invalid",
-			description: "invalid section",
-			priority: 10,
-			schema: schema(),
-			shouldRun: async () => true,
-			prompt: () => "Extract invalid.",
-			parse: () => null,
-			processors: [
-				{
-					process: async () => {
-						processed.push("invalid");
+			runtime.registerEvaluator({
+				name: "invalid",
+				description: "invalid section",
+				priority: 10,
+				schema: schema(),
+				shouldRun: async () => true,
+				prompt: () => "Extract invalid.",
+				parse: () => null,
+				processors: [
+					{
+						process: async () => {
+							processed.push("invalid");
+						},
 					},
-				},
-			],
-		});
+				],
+			});
 
-		runtime.registerEvaluator({
-			name: "throws",
-			description: "throws section",
-			priority: 20,
-			schema: schema(),
-			shouldRun: async () => true,
-			prompt: () => "Extract throws.",
-			parse: (output) => output as never,
-			processors: [
-				{
-					name: "throwingProcessor",
-					process: async () => {
-						throw new Error("processor failed");
+			runtime.registerEvaluator({
+				name: "throws",
+				description: "throws section",
+				priority: 20,
+				schema: schema(),
+				shouldRun: async () => true,
+				prompt: () => "Extract throws.",
+				parse: (output) => output as never,
+				processors: [
+					{
+						name: "throwingProcessor",
+						process: async () => {
+							throw new Error("processor failed");
+						},
 					},
-				},
-			],
-		});
+				],
+			});
 
-		runtime.registerEvaluator({
-			name: "ok",
-			description: "ok section",
-			priority: 30,
-			schema: schema(),
-			shouldRun: async () => true,
-			prompt: () => "Extract ok.",
-			parse: (output) => output as never,
-			processors: [
-				{
-					process: async () => {
-						processed.push("ok");
-						return { success: true };
+			runtime.registerEvaluator({
+				name: "ok",
+				description: "ok section",
+				priority: 30,
+				schema: schema(),
+				shouldRun: async () => true,
+				prompt: () => "Extract ok.",
+				parse: (output) => output as never,
+				processors: [
+					{
+						process: async () => {
+							processed.push("ok");
+							return { success: true };
+						},
 					},
-				},
-			],
-		});
+				],
+			});
 
-		runtime.useModel = vi.fn(async () => ({
-			invalid: { ok: true },
-			throws: { ok: true },
-			ok: { ok: true },
-		})) as AgentRuntime["useModel"];
+			const output = {
+				invalid: { ok: true },
+				throws: { ok: true },
+				ok: { ok: true },
+			};
+			runtime.useModel = vi.fn(async () =>
+				shape === "object"
+					? output
+					: {
+							text: JSON.stringify(output),
+							toolCalls: [],
+							finishReason: "stop",
+						},
+			) as AgentRuntime["useModel"];
 
-		const result = await new EvaluatorService(runtime).run(makeMessage());
+			const result = await new EvaluatorService(runtime).run(makeMessage());
 
-		expect(processed).toEqual(["ok"]);
-		expect(result.processedEvaluators).toEqual(["throws", "ok"]);
-		expect(result.errors).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					evaluatorName: "invalid",
-					error: "Evaluator output section did not validate",
-				}),
-				expect.objectContaining({
-					evaluatorName: "throws",
-					processorName: "throwingProcessor",
-					error: "processor failed",
-				}),
-			]),
-		);
-	});
+			expect(processed).toEqual(["ok"]);
+			expect(result.processedEvaluators).toEqual(["throws", "ok"]);
+			expect(result.errors).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						evaluatorName: "invalid",
+						error: "Evaluator output section did not validate",
+					}),
+					expect.objectContaining({
+						evaluatorName: "throws",
+						processorName: "throwingProcessor",
+						error: "processor failed",
+					}),
+				]),
+			);
+		},
+	);
 
 	it("logs an unserializable invalid section without aborting the run", async () => {
 		const runtime = makeRuntime();
@@ -425,6 +840,48 @@ describe("EvaluatorService", () => {
 				evaluatorName: "post_turn",
 				completed: false,
 			}),
+		);
+	});
+
+	it("records post-turn rate limits without retrying reflection or escalating owner work", async () => {
+		const runtime = makeRuntime();
+		const process = vi.fn(async () => ({ success: true }));
+		runtime.registerEvaluator({
+			name: "reflection",
+			description: "Optional post-turn reflection",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Reflect on the completed turn.",
+			parse: (output) => output as never,
+			processors: [{ name: "saveReflection", process }],
+		});
+		const error = Object.assign(
+			new Error("Cerebras tokens per minute exceeded"),
+			{
+				status: 429,
+			},
+		);
+		const useModel = vi.fn().mockRejectedValue(error);
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+		const reportError = vi.spyOn(runtime, "reportError");
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(process).not.toHaveBeenCalled();
+		expect(result.processedEvaluators).toEqual([]);
+		expect(result.results).toEqual([]);
+		expect(result.errors).toEqual([
+			{ evaluatorName: "post_turn", error: error.message },
+		]);
+		expect(reportError).toHaveBeenCalledWith(
+			"EvaluatorService.evaluate",
+			error,
+			expect.objectContaining({ diagnosticOnly: true }),
+		);
+		expect(runtime.emitEvent).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ completed: false, error }),
 		);
 	});
 

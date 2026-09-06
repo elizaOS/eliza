@@ -171,6 +171,15 @@
       "owner": "UI tag-editor adapter",
       "reason": "Owns removal-control geometry inside the compound tag chip.",
       "matchCount": 1
+    },
+    {
+      "file": "packages/ui/src/components/pages/BrowserTabSwitcher.tsx",
+      "symbol": "BrowserTabCard",
+      "primitive": "Button",
+      "role": "action",
+      "owner": "UI browser tab switcher",
+      "reason": "Owns tab activation, selected preview presentation, agent-surface registration, and the independent close action.",
+      "matchCount": 2
     }
   ]
 }

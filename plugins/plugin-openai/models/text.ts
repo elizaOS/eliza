@@ -21,6 +21,8 @@ import {
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
+  getInferenceTimer,
+  getTrajectoryContext,
   JSON_SCHEMA_ARRAY_KEYWORDS,
   JSON_SCHEMA_MAP_KEYWORDS,
   JSON_SCHEMA_MIXED_MAP_KEYWORDS,
@@ -45,6 +47,7 @@ import {
   type LanguageModelUsage,
   type ModelMessage,
   Output,
+  RetryError,
   streamText,
   type ToolChoice,
   type ToolSet,
@@ -54,6 +57,7 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
+  getApiKey,
   getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
@@ -310,8 +314,8 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  *
  * In Cerebras mode the field defaults to `"low"` when unset only for the exact
  * models whose current provider contract exposes reasoning controls:
- * `gpt-oss-120b` and `zai-glm-4.7`. Both can spend a capped output budget on
- * hidden reasoning and return empty visible content when left unbounded.
+ * `gpt-oss-120b` and `zai-glm-4.7`. Qwen 3.8 defaults to `"none"` for
+ * interactive latency; explicit reasoning settings remain authoritative.
  * Family-name lookalikes and models without the knob must not receive the
  * field because compatible endpoints reject unsupported request properties.
  * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
@@ -379,6 +383,7 @@ function resolveThinkingOffReasoningEffort(
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
     if (cerebrasId === "gemma-4-31b") return "none";
+    if (cerebrasId === "qwen-3.8-27b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -400,6 +405,9 @@ function resolveCerebrasDefaultReasoningEffort(
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  // Cerebras defaults Qwen to high reasoning. Keep ordinary interactive
+  // calls non-reasoning unless the caller explicitly requests otherwise.
+  if (id === "qwen-3.8-27b") return "none";
   return undefined;
 }
 
@@ -409,7 +417,19 @@ function resolveReasoningEffort(
 ): ReasoningEffort | "none" | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (normalized) {
+  if (normalized === "none") {
+    if (
+      isCerebrasMode(runtime) &&
+      modelName &&
+      normalizeCerebrasModelId(modelName) === "qwen-3.8-27b"
+    )
+      return "none";
+    // "none" is a deliberate operator setting that only the documented
+    // endpoint above accepts on the wire. For every other model it resolves to
+    // that model's documented default below, silently: warning on every call
+    // for a recognized value is noise (live 2026-09-06: three warnings per
+    // Discord turn on gemma-4-31b, whose default already sends no field).
+  } else if (normalized) {
     if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
       return normalized as ReasoningEffort;
     }
@@ -499,14 +519,17 @@ function resolveProviderOptions(
 
 function buildStructuredOutput(
   responseSchema: unknown,
-  modelType: ModelTypeName
-): PreparedStructuredOutput {
+  modelType: ModelTypeName,
+  cerebrasResponseSchema = false
+): PreparedStructuredOutput | undefined {
   if (
     responseSchema &&
     typeof responseSchema === "object" &&
     "responseFormat" in responseSchema &&
     "parseCompleteOutput" in responseSchema
   ) {
+    // Opaque SDK output contracts cannot be checked by the plain-schema walk.
+    if (cerebrasResponseSchema) return undefined;
     return { output: responseSchema as NativeOutput };
   }
 
@@ -515,10 +538,23 @@ function buildStructuredOutput(
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
+  if (cerebrasResponseSchema && preparedSchema.transform) return undefined;
+  const compatibility = cerebrasResponseSchema ? { preservesShape: true } : undefined;
+  const sanitizedSchema = sanitizeJsonSchema(preparedSchema.schema, true, "$", undefined, {
+    preserveOptional: cerebrasResponseSchema,
+    responseCompatibility: compatibility,
+  });
+  // Keep the existing JSON-mode contract when strict normalization would
+  // change the returned shape or require an unsupported grammar construct.
+  if (compatibility && !compatibility.preservesShape) return undefined;
 
   return {
     output: Output.object({
-      schema: jsonSchema(sanitizeJsonSchema(preparedSchema.schema, true)),
+      schema: jsonSchema(
+        cerebrasResponseSchema
+          ? (normalizeSchemaForCerebras(sanitizedSchema, true) as JSONSchema7)
+          : sanitizedSchema
+      ),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }) as NativeOutput,
@@ -858,7 +894,9 @@ function normalizeNativeToolsForCall(
       }
       inputSchema = rawSchema as JSONSchema7;
     } else {
-      inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms);
+      inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms, {
+        preserveOptional: options.cerebrasMode,
+      });
     }
     if (options.cerebrasMode) {
       // User-supplied schemas may still contain empty-properties subobjects
@@ -1478,7 +1516,8 @@ function chooseRecordEntriesKey(properties: Record<string, unknown>): string {
 function strictSafeRecordValueSchema(
   additionalProperties: unknown,
   transforms?: RecordArgTransform[],
-  path = "$"
+  path = "$",
+  options?: Parameters<typeof sanitizeJsonSchema>[4]
 ): {
   schema: JSONSchema7;
   mode: RecordArgValueMode;
@@ -1495,7 +1534,7 @@ function strictSafeRecordValueSchema(
   }
   return {
     mode: "schema",
-    schema: sanitizeJsonSchema(additionalProperties, false, `${path}.*`, transforms),
+    schema: sanitizeJsonSchema(additionalProperties, false, `${path}.*`, transforms, options),
   };
 }
 
@@ -1527,9 +1566,15 @@ function sanitizeJsonSchema(
   schema: unknown,
   isRoot = false,
   path = "$",
-  transforms?: RecordArgTransform[]
+  transforms?: RecordArgTransform[],
+  options: {
+    preserveOptional?: boolean;
+    responseCompatibility?: { preservesShape: boolean };
+  } = {}
 ): JSONSchema7 {
+  const { responseCompatibility } = options;
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
     // closes this afterwards (explicit empty `properties` +
     // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
@@ -1541,6 +1586,17 @@ function sanitizeJsonSchema(
 
   const record = schema as Record<string, unknown>;
   let sanitized: Record<string, unknown> = { ...record };
+  if (
+    responseCompatibility &&
+    (Array.isArray(record.type) ||
+      "$ref" in record ||
+      "nullable" in record ||
+      "dependentRequired" in record ||
+      (record.type === "array" &&
+        (!record.items || typeof record.items !== "object" || Array.isArray(record.items))))
+  ) {
+    responseCompatibility.preservesShape = false;
+  }
 
   // This is the single wire choke point — every response_format schema
   // (buildStructuredOutput) and every tool schema (normalizeNativeTools)
@@ -1555,11 +1611,13 @@ function sanitizeJsonSchema(
   if (typeof sanitized.type !== "string") {
     const inferredType = inferJsonSchemaType(sanitized, isRoot);
     if (inferredType) {
+      if (responseCompatibility) responseCompatibility.preservesShape = false;
       sanitized.type = inferredType;
     }
   }
 
   if (isRoot && hasIllegalStrictRoot(sanitized)) {
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Wrap the original schema under properties.value. Strict-tool callers
     // that unwrap arguments will see `{ value: <original> }`. The recursion
     // below normalises the wrapped child like any other property.
@@ -1578,7 +1636,7 @@ function sanitizeJsonSchema(
   ) {
     const properties: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(sanitized.properties as Record<string, unknown>)) {
-      properties[key] = sanitizeJsonSchema(value, false, `${path}.${key}`, transforms);
+      properties[key] = sanitizeJsonSchema(value, false, `${path}.${key}`, transforms, options);
     }
     sanitized.properties = properties;
 
@@ -1586,10 +1644,18 @@ function sanitizeJsonSchema(
     const existingRequired = Array.isArray(sanitized.required)
       ? sanitized.required.filter((key): key is string => typeof key === "string")
       : [];
-    sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
+    // Cerebras supports optional fields in strict tools as well as responses.
+    // Requiring unused arguments invents values that fail runtime validation.
+    // Retain the all-properties-required rule for other strict providers.
+    if (!options.preserveOptional) {
+      sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
+    }
   }
 
   if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
+    // An omitted additionalProperties also permits extra keys. Preserve the
+    // existing response contract unless the caller explicitly closed it.
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     // Strict-grammar providers reject open maps (schema-valued or `true`
     // additionalProperties) with a hard 400, and provider strictness is
     // proxy-blind (an agent on api.eliza.app with OPENAI_API_KEY may still
@@ -1614,7 +1680,8 @@ function sanitizeJsonSchema(
       const { schema: valueSchema, mode } = strictSafeRecordValueSchema(
         sanitized.additionalProperties,
         transforms,
-        path
+        path,
+        options
       );
       properties[entriesKey] = strictSafeRecordEntriesSchema(valueSchema);
       sanitized.properties = properties;
@@ -1623,7 +1690,7 @@ function sanitizeJsonSchema(
           ...(Array.isArray(sanitized.required)
             ? sanitized.required.filter((key): key is string => typeof key === "string")
             : []),
-          ...Object.keys(properties),
+          ...(options.preserveOptional ? [entriesKey] : Object.keys(properties)),
         ]),
       ];
       transforms.push({ path, entriesKey, valueMode: mode });
@@ -1646,20 +1713,24 @@ function sanitizeJsonSchema(
   if (sanitized.items) {
     sanitized.items = Array.isArray(sanitized.items)
       ? sanitized.items.map((item, i) =>
-          sanitizeJsonSchema(item, false, `${path}.items[${i}]`, transforms)
+          sanitizeJsonSchema(item, false, `${path}.items[${i}]`, transforms, options)
         )
-      : sanitizeJsonSchema(sanitized.items, false, `${path}.items`, transforms);
+      : sanitizeJsonSchema(sanitized.items, false, `${path}.items`, transforms, options);
   }
 
   for (const arrayKey of JSON_SCHEMA_ARRAY_KEYWORDS) {
     const value = sanitized[arrayKey];
     if (Array.isArray(value)) {
+      if (responseCompatibility && arrayKey !== "anyOf") {
+        responseCompatibility.preservesShape = false;
+      }
       sanitized[arrayKey] = value.map((item, index) =>
         sanitizeJsonSchema(
           item,
           false,
           arrayKey === "prefixItems" ? `${path}.items[${index}]` : path,
-          transforms
+          transforms,
+          options
         )
       );
     }
@@ -1672,6 +1743,9 @@ function sanitizeJsonSchema(
   // reverse argument restoration understands.
   for (const singleKey of JSON_SCHEMA_SINGLE_KEYWORDS) {
     if (singleKey === "additionalProperties") continue;
+    if (responseCompatibility && singleKey in sanitized) {
+      responseCompatibility.preservesShape = false;
+    }
     const value = sanitized[singleKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const childPath =
@@ -1682,13 +1756,14 @@ function sanitizeJsonSchema(
           : singleKey === "unevaluatedProperties"
             ? `${path}.*`
             : path;
-      sanitized[singleKey] = sanitizeJsonSchema(value, false, childPath, transforms);
+      sanitized[singleKey] = sanitizeJsonSchema(value, false, childPath, transforms, options);
     }
   }
   for (const mapKey of JSON_SCHEMA_MAP_KEYWORDS) {
     if (mapKey === "properties") continue;
     const value = sanitized[mapKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (responseCompatibility) responseCompatibility.preservesShape = false;
       const walked: Record<string, unknown> = {};
       for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
         const childPath =
@@ -1697,7 +1772,7 @@ function sanitizeJsonSchema(
             : mapKey === "patternProperties"
               ? `${path}.*`
               : `${path}.${mapKey}.${key}`;
-        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms);
+        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms, options);
       }
       sanitized[mapKey] = walked;
     }
@@ -1705,12 +1780,13 @@ function sanitizeJsonSchema(
   for (const mixedMapKey of JSON_SCHEMA_MIXED_MAP_KEYWORDS) {
     const value = sanitized[mixedMapKey];
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if (responseCompatibility) responseCompatibility.preservesShape = false;
     const walked: Record<string, unknown> = {};
     for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
       walked[key] =
         !sub || typeof sub !== "object" || Array.isArray(sub)
           ? sub
-          : sanitizeJsonSchema(sub, false, path, transforms);
+          : sanitizeJsonSchema(sub, false, path, transforms, options);
     }
     sanitized[mixedMapKey] = walked;
   }
@@ -1882,7 +1958,7 @@ function createLlmCallDetails(
     responseSchema: originalParams.responseSchema,
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
-    temperature: params.temperature ?? 0,
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     maxTokens:
       typeof nativeParams?.maxOutputTokens === "number"
         ? nativeParams.maxOutputTokens
@@ -2058,6 +2134,161 @@ function isSpuriousToolPairingRejection(error: unknown): boolean {
   return SPURIOUS_TOOL_PAIRING_400_RE.test(providerErrorSearchText(error));
 }
 
+/**
+ * Per-model rate-limit cooldown shared by a runtime's text handlers. A
+ * provider that answers with a per-minute-bucket 429 (`Retry-After` beyond the
+ * transient lane's cap) will reject the same concrete model until the window
+ * resets; re-sending a 20-45K-token prompt to it — directly or through a
+ * runtime fallback alias that resolves to the same model — only burns the
+ * bucket further and delays failover. A runtime never inherits another
+ * runtime's cooldown; changing its endpoint or credential resets the memo.
+ * Entries expire at the provider's Retry-After and never block another model.
+ */
+const rateLimitCooldowns = new WeakMap<
+  IAgentRuntime,
+  { endpoint: string; credential: string | undefined; models: Map<string, number> }
+>();
+
+class ProviderRateLimitCooldownError extends Error {
+  readonly statusCode = 429;
+  readonly retryAfterMs: number;
+  constructor(modelName: string, retryAfterMs: number) {
+    super(
+      `${modelName} is rate limited (Too Many Requests; provider window resets in ${Math.ceil(retryAfterMs / 1000)}s); not re-sent`
+    );
+    this.name = "ProviderRateLimitCooldownError";
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function runtimeRateLimitCooldowns(runtime: IAgentRuntime): Map<string, number> {
+  const endpoint = getBaseURL(runtime);
+  const credential = getApiKey(runtime);
+  let cooldown = rateLimitCooldowns.get(runtime);
+  if (!cooldown || cooldown.endpoint !== endpoint || cooldown.credential !== credential) {
+    cooldown = { endpoint, credential, models: new Map() };
+    rateLimitCooldowns.set(runtime, cooldown);
+  }
+  for (const [model, until] of cooldown.models) {
+    if (until <= Date.now()) cooldown.models.delete(model);
+  }
+  return cooldown.models;
+}
+
+function assertModelNotCoolingDown(models: Map<string, number>, modelName: string): void {
+  const until = models.get(modelName);
+  if (until === undefined) return;
+  const remaining = until - Date.now();
+  if (remaining <= 0) {
+    models.delete(modelName);
+    return;
+  }
+  throw new ProviderRateLimitCooldownError(modelName, remaining);
+}
+
+function isModelCoolingDown(models: Map<string, number>, modelName: string): boolean {
+  const until = models.get(modelName);
+  if (until === undefined) return false;
+  if (until <= Date.now()) {
+    models.delete(modelName);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Operator-configured fallback model (`OPENAI_FALLBACK_MODEL`, alias
+ * `CEREBRAS_FALLBACK_MODEL`) used only while the requested model is held by a
+ * provider rate-limit cooldown. Undefined when unset or equal to the primary.
+ */
+function resolveFallbackModelName(
+  runtime: IAgentRuntime,
+  primaryModelName: string
+): string | undefined {
+  const raw =
+    getSetting(runtime, "OPENAI_FALLBACK_MODEL") ?? getSetting(runtime, "CEREBRAS_FALLBACK_MODEL");
+  const fallback = typeof raw === "string" ? raw.trim() : "";
+  if (!fallback || fallback === primaryModelName) return undefined;
+  return fallback;
+}
+
+/**
+ * The concrete model a request should use: the primary unless it is cooling
+ * down after a 429 and a distinct fallback is configured and not itself
+ * cooling down. Every slot keeps its primary model (live 2026-09-06: every
+ * slot pinned to one Cerebras model meant the runtime's slot chain re-sent
+ * held requests to the same model and the user saw a hold notice); the
+ * fallback is reached only for the duration of the provider's Retry-After.
+ */
+function selectRequestModelName(
+  models: Map<string, number>,
+  primaryModelName: string,
+  fallbackModelName: string | undefined
+): string {
+  if (!fallbackModelName) return primaryModelName;
+  if (!isModelCoolingDown(models, primaryModelName)) return primaryModelName;
+  if (isModelCoolingDown(models, fallbackModelName)) return primaryModelName;
+  return fallbackModelName;
+}
+
+function noteRateLimitCooldown(
+  models: Map<string, number>,
+  modelName: string,
+  error: unknown
+): void {
+  const status =
+    (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+    (error as { status?: number } | undefined)?.status;
+  if (status !== 429) return;
+  const retryAfterMs = providerRetryAfterMs(error);
+  if (retryAfterMs === undefined || retryAfterMs <= TRANSIENT_LANE_MAX_BACKOFF_MS) return;
+  // The cooldown is a timestamp, not an awaited retry. Preserve the provider's
+  // whole delay so a later alias cannot resend before the stated reset.
+  const untilMs = Date.now() + retryAfterMs;
+  const existing = models.get(modelName) ?? 0;
+  if (untilMs > existing) models.set(modelName, untilMs);
+  logger.warn(
+    { src: "plugin:openai", model: modelName, retryAfterSeconds: retryAfterMs / 1000 },
+    "[OpenAI] provider rate limit reached; holding this model until the window resets"
+  );
+}
+
+/** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
+const TRANSIENT_LANE_MAX_BACKOFF_MS = 3000;
+
+/**
+ * Read the provider's retry delay once for both retry admission and cooldowns.
+ * The millisecond header takes precedence over Retry-After seconds/date, matching
+ * the SDK transport contract. Invalid values fall through to the other header;
+ * missing or invalid hints leave the bounded exponential policy in control.
+ */
+function providerRetryAfterMs(error: unknown): number | undefined {
+  const headers = (error as { responseHeaders?: unknown } | undefined)?.responseHeaders;
+  if (!headers || typeof headers !== "object") return undefined;
+  let milliseconds: string | undefined;
+  let secondsOrDate: string | undefined;
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (typeof raw !== "string" || raw.trim().length === 0) continue;
+    if (key.toLowerCase() === "retry-after-ms") milliseconds = raw.trim();
+    if (key.toLowerCase() === "retry-after") secondsOrDate = raw.trim();
+  }
+  const explicitMilliseconds = milliseconds === undefined ? Number.NaN : Number(milliseconds);
+  if (Number.isFinite(explicitMilliseconds) && explicitMilliseconds >= 0)
+    return explicitMilliseconds;
+  if (secondsOrDate === undefined) return undefined;
+  const seconds = Number(secondsOrDate);
+  if (Number.isFinite(seconds))
+    return seconds >= 0 && Number.isFinite(seconds * 1000) ? seconds * 1000 : undefined;
+  const at = Date.parse(secondsOrDate);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined;
+}
+
+function providerRetryOutlastsTransientLane(error: unknown): boolean {
+  const retryAfterMs = providerRetryAfterMs(error);
+  return retryAfterMs !== undefined && retryAfterMs > TRANSIENT_LANE_MAX_BACKOFF_MS;
+}
+
 function isPermanentQuotaError(error: unknown): boolean {
   const codes = new Set(["insufficient_quota", "credit_balance_exhausted"]);
   const inspect = (value: unknown): boolean => {
@@ -2087,6 +2318,13 @@ function isPermanentQuotaError(error: unknown): boolean {
 }
 
 function isTransientProviderError(error: unknown): boolean {
+  // The plugin owns retries with SDK retries disabled. Defensively reject an
+  // already-exhausted SDK retry envelope rather than multiply another owner's
+  // attempts if a wrapped provider surfaces one.
+  if (RetryError.isInstance(error)) return false;
+  // A valid provider delay beyond this lane's wait budget must reach runtime
+  // fallback immediately. Never shorten the delay and resend early.
+  if (providerRetryOutlastsTransientLane(error)) return false;
   const e = error as
     | { statusCode?: number; status?: number; message?: string; data?: unknown }
     | undefined;
@@ -2189,23 +2427,6 @@ function describeRetryReason(error: unknown): string {
   return (error as { message?: string })?.message ?? String(error);
 }
 
-function providerRetryDelay(error: unknown, fallbackMs: number): number {
-  if (typeof error !== "object" || error === null) return fallbackMs;
-  const headers = (error as { responseHeaders?: Record<string, string> }).responseHeaders;
-  if (!headers) return fallbackMs;
-  const milliseconds = headers["retry-after-ms"];
-  const secondsOrDate = headers["retry-after"];
-  let delay = Number.NaN;
-  if (milliseconds?.trim()) delay = Number(milliseconds);
-  if (!Number.isFinite(delay) && secondsOrDate?.trim()) {
-    const seconds = Number(secondsOrDate);
-    delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(secondsOrDate) - Date.now();
-  }
-  // Retain the SDK's supported retry-header window while consolidating retry
-  // ownership. The same abort-aware wait handles server and local backoff.
-  return Number.isFinite(delay) && delay >= 0 && delay < 60_000 ? delay : fallbackMs;
-}
-
 /**
  * The single backoff seam every transient-retry lane goes through. Two jobs:
  *
@@ -2229,9 +2450,13 @@ async function waitForTransientRetry(opts: {
   const { lane, maxRetries, error, model, signal, state } = opts;
   state.retryCount += 1;
   state.lastRetryReason = describeRetryReason(error);
-  const backoffMs = providerRetryDelay(
-    error,
-    Math.min(3000, 300 * 2 ** (state.retryCount - 1)) + Math.floor(Math.random() * 200)
+  // Timers truncate fractional milliseconds; round up to honor the complete hint.
+  const backoffMs = Math.ceil(
+    providerRetryAfterMs(error) ??
+      Math.min(
+        TRANSIENT_LANE_MAX_BACKOFF_MS,
+        300 * 2 ** (state.retryCount - 1) + Math.floor(Math.random() * 200)
+      )
   );
   logger.warn(
     {
@@ -2319,6 +2544,130 @@ interface BufferedStreamResult {
   toolCalls: Awaited<ReturnType<typeof streamText<ToolSet>>["toolCalls"]> | undefined;
   usage: LanguageModelUsage | undefined;
   finishReason: string | undefined;
+  observeDelivery?: () => void;
+}
+
+type StreamAttemptTiming = {
+  onChunk: (event: {
+    chunk: {
+      type: string;
+      text?: string;
+      delta?: string;
+      inputTextDelta?: string;
+      rawValue?: unknown;
+    };
+  }) => void;
+  delivery: () => void;
+};
+
+function observeStreamTiming(runtime: IAgentRuntime, observe: () => void): void {
+  try {
+    observe();
+  } catch {
+    // error-policy:J7 diagnostics cannot alter stream delivery. Report only a
+    // fixed error: an observer exception can itself contain private payloads.
+    try {
+      runtime.reportError?.(
+        "OpenAI.streamTiming",
+        new ElizaError("Stream timing observation failed", {
+          code: "STREAM_TIMING_OBSERVER_FAILED",
+        })
+      );
+    } catch {
+      // error-policy:J7 a failed diagnostic sink must not recurse or replace
+      // the stream's own outcome.
+      return;
+    }
+  }
+}
+
+function createStreamTiming(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  mode: "live-text" | "live-structured" | "buffered-transform" | "buffered-full-surface"
+) {
+  let beginAttempt: ((attempt: number) => StreamAttemptTiming) | undefined;
+  observeStreamTiming(runtime, () => {
+    // Capture the owner before returning an async iterable; consumers may
+    // pull it from another ALS scope. No new timer or exporter is created.
+    const timer = getInferenceTimer();
+    if (!timer) return;
+    const streamCallId = globalThis.crypto.randomUUID();
+    const slot = Object.values(ModelType).find((known) => known === modelType) ?? "other";
+    const rawPurpose = getTrajectoryContext()?.purpose;
+    const purpose =
+      rawPurpose === "message_handler" ||
+      rawPurpose === "planner" ||
+      rawPurpose === "evaluation" ||
+      rawPurpose === "external_llm"
+        ? rawPurpose
+        : "other";
+    beginAttempt = (streamAttempt) => {
+      const meta = { streamCallId, streamAttempt, modelType: slot, mode, purpose };
+      const record = (name: string) =>
+        observeStreamTiming(runtime, () => timer.recordSpan(name, 0, meta));
+      record("openai.stream.mode");
+      let providerObserved = false;
+      let providerTimingObserved = false;
+      let sdkObserved = false;
+      let delivered = false;
+      return {
+        onChunk: ({ chunk }) =>
+          observeStreamTiming(runtime, () => {
+            if (chunk.type === "raw") {
+              // This is the first parsed SSE frame, not the first network byte.
+              // Inspect only numeric timing fields; never retain the raw payload.
+              if (!providerObserved) {
+                providerObserved = true;
+                record("openai.stream.first-provider-event");
+              }
+              const raw = chunk.rawValue;
+              if (
+                providerTimingObserved ||
+                !raw ||
+                typeof raw !== "object" ||
+                !("time_info" in raw)
+              )
+                return;
+              const info = raw.time_info;
+              if (!info || typeof info !== "object" || Array.isArray(info)) return;
+              const durations: Record<string, number> = {};
+              for (const [field, name] of [
+                ["queue_time", "queueMs"],
+                ["prompt_time", "promptMs"],
+                ["completion_time", "completionMs"],
+                ["total_time", "totalMs"],
+              ]) {
+                const seconds = (info as Record<string, unknown>)[field];
+                if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
+                  durations[name] = seconds * 1000;
+              }
+              if (Object.keys(durations).length > 0) {
+                providerTimingObserved = true;
+                timer.recordSpan("openai.stream.provider-timing", 0, { ...meta, ...durations });
+              }
+              return;
+            }
+            if (sdkObserved || (chunk.type !== "text-delta" && chunk.type !== "tool-input-delta"))
+              return;
+            const delta =
+              chunk.type === "text-delta"
+                ? (chunk.text ?? chunk.delta)
+                : (chunk.inputTextDelta ?? chunk.delta);
+            if (!delta) return;
+            sdkObserved = true;
+            // SDK onChunk runs after output parsing, not at raw HTTP arrival.
+            record("openai.stream.first-sdk-delta");
+          }),
+        delivery: () => {
+          if (delivered) return;
+          delivered = true;
+          record("openai.stream.first-adapter-delivery");
+        },
+      };
+    };
+  });
+  return beginAttempt;
 }
 
 /**
@@ -2342,6 +2691,7 @@ async function consumeStreamWithTransientRetry(
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
     beforeAttempt?: () => void;
+    streamTiming?: ReturnType<typeof createStreamTiming>;
   }
 ): Promise<BufferedStreamResult> {
   const maxRetries = opts.maxRetries ?? 5;
@@ -2355,15 +2705,18 @@ async function consumeStreamWithTransientRetry(
       // and rethrow after consumption so the retry below can act on it. (This
       // is the same reason opencode attaches an onError to its streamText.)
       let capturedError: unknown;
+      const attemptTiming = opts.streamTiming?.(attempt + 1);
       opts.beforeAttempt?.();
       const result = streamText({
         ...(generateParams as Parameters<typeof streamText>[0]),
         onError: ({ error }: { error: unknown }) => {
           capturedError = error;
         },
+        ...(attemptTiming ? { onChunk: attemptTiming.onChunk, includeRawChunks: true } : {}),
       });
       let text = "";
       for await (const chunk of result.textStream) {
+        if (chunk && onChunk) attemptTiming?.delivery();
         onChunk?.(chunk);
         text += chunk;
       }
@@ -2384,7 +2737,13 @@ async function consumeStreamWithTransientRetry(
       const toolCalls = toolsOutcome.value;
       const usage = usageOutcome.value;
       const finishReason = finishOutcome.value as string | undefined;
-      return { text, toolCalls, usage, finishReason };
+      return {
+        text,
+        toolCalls,
+        usage,
+        finishReason,
+        ...(attemptTiming ? { observeDelivery: attemptTiming.delivery } : {}),
+      };
     } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
       // cancelled errors rethrow enriched with the provider's real body
@@ -2408,6 +2767,11 @@ async function consumeStreamWithTransientRetry(
   }
 }
 
+const CEREBRAS_STRICT_RESPONSE_SCHEMA_MODELS: ReadonlySet<string> = new Set([
+  "qwen-3.8-27b",
+  "gemma-4-31b",
+]);
+
 /**
  * Generates text using the specified model type.
  *
@@ -2425,9 +2789,20 @@ async function generateTextByModelType(
 ): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
-  const modelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  // Keep retries and their failures bound to this call's endpoint/credential,
+  // even if runtime settings change while the HTTP request is in flight.
+  const modelCooldowns = runtimeRateLimitCooldowns(runtime);
+  const primaryModelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  const fallbackModelName = resolveFallbackModelName(runtime, primaryModelName);
+  const modelName = selectRequestModelName(modelCooldowns, primaryModelName, fallbackModelName);
   const usageProvider = getUsageProvider(runtime);
 
+  if (modelName !== primaryModelName) {
+    logger.info(
+      { src: "plugin:openai", modelType, primaryModel: primaryModelName, fallbackModel: modelName },
+      "[OpenAI] primary model is rate limited; serving this request with the configured fallback model"
+    );
+  }
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
   const providerOptions = resolveProviderOptions(params, runtime, modelName);
   const hasAttachments = (paramsWithAttachments.attachments?.length ?? 0) > 0;
@@ -2490,8 +2865,8 @@ async function generateTextByModelType(
         : { prompt: promptText };
   // AI SDK v6 derives the provider-level response format from its `output`
   // contract; a similarly named top-level setting is ignored by generateText.
-  // Cerebras accepts JSON mode but not the SDK's JSON Schema wire payload, so
-  // its unstructured JSON output deliberately carries no schema.
+  // Current Qwen supports strict response schemas without native tools. Other
+  // Cerebras contracts retain JSON mode with caller-side schema validation.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -2509,12 +2884,23 @@ async function generateTextByModelType(
   const sanitizedResponseSchema = paramsWithAttachments.responseSchema
     ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
     : undefined;
+  // Cerebras models with a strict json_schema contract (documented for Qwen 3.8
+  // and Gemma 4). Without it the evaluator/extractor calls on the second bucket
+  // ran in json_object mode, where prose + a fenced envelope came back and the
+  // planner read a protocol failure (live 2026-09-05).
+  const qwenResponseSchema =
+    cerebrasMode &&
+    CEREBRAS_STRICT_RESPONSE_SCHEMA_MODELS.has(normalizeCerebrasModelId(modelName)) &&
+    normalizedTools === undefined;
   const preparedOutput =
-    sanitizedResponseSchema && !cerebrasMode
-      ? buildStructuredOutput(sanitizedResponseSchema, modelType)
+    sanitizedResponseSchema && (!cerebrasMode || qwenResponseSchema)
+      ? buildStructuredOutput(sanitizedResponseSchema, modelType, qwenResponseSchema)
       : undefined;
   const requestedOutput: NativeOutput | undefined =
-    preparedOutput?.output ?? (responseFormatType === "json_object" ? Output.json() : undefined);
+    preparedOutput?.output ??
+    (responseFormatType === "json_object" || (cerebrasMode && sanitizedResponseSchema)
+      ? Output.json()
+      : undefined);
   const restoreResponseText = (text: string): string =>
     preparedOutput?.transform?.restoreText(text) ?? text;
 
@@ -2554,16 +2940,22 @@ async function generateTextByModelType(
   const generateParams: NativeTextParams = {
     model,
     ...deepToWellFormedUnicode(promptOrMessages),
-    // This layer owns retries so the SDK cannot retry permanent quota failures
-    // before our provider-aware classifier observes the response.
-    maxRetries: 0,
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
+    // The SDK's built-in retry honors a provider `Retry-After`, and Cerebras
+    // answers a per-minute token-bucket 429 with `Retry-After: 60`, so one
+    // model call blocked a user-visible turn for a full minute before the
+    // runtime could fail over (live 2026-09-05: 61.9s Stage-1, 63s post-turn
+    // tails). Retries are owned by the transient lanes below (bounded 3s
+    // backoff) and by the runtime's provider failover, never by the SDK.
+    maxRetries: 0,
     ...(params.signal ? { abortSignal: params.signal } : {}),
     // An omitted caller cap delegates the output boundary to the provider/model.
     ...(params.omitMaxTokens || params.maxTokens === undefined
       ? {}
       : { maxOutputTokens: params.maxTokens }),
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+    ...(params.topP !== undefined ? { topP: params.topP } : {}),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
@@ -2585,6 +2977,17 @@ async function generateTextByModelType(
       fullActionSurface === "true" ||
       fullActionSurface === "yes" ||
       fullActionSurface === "on";
+    const streamTiming = createStreamTiming(
+      runtime,
+      modelType,
+      preparedOutput?.transform
+        ? "buffered-transform"
+        : shouldBufferStream
+          ? "buffered-full-surface"
+          : params.streamStructured === true
+            ? "live-structured"
+            : "live-text"
+    );
     if (shouldBufferStream) {
       const details = createLlmCallDetails(
         modelName,
@@ -2598,6 +3001,7 @@ async function generateTextByModelType(
       details.response = "";
       const hasResponseTransform = preparedOutput?.transform !== undefined;
       const buffered = await recordLlmCall(runtime, details, async () => {
+        assertModelNotCoolingDown(modelCooldowns, modelName);
         const result = await consumeStreamWithTransientRetry(
           generateParams,
           hasResponseTransform ? undefined : params.onStreamChunk,
@@ -2606,8 +3010,12 @@ async function generateTextByModelType(
             retryState,
             maxRetries: 5,
             beforeAttempt: () => attestLlmInputSubstring(details),
+            streamTiming,
           }
-        );
+        ).catch((error: unknown) => {
+          noteRateLimitCooldown(modelCooldowns, modelName, error);
+          throw error;
+        });
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
           result.toolCalls,
@@ -2637,6 +3045,7 @@ async function generateTextByModelType(
       return {
         textStream: (async function* replayBufferedStream() {
           if (buffered.text) {
+            buffered.observeDelivery?.();
             if (hasResponseTransform) {
               params.onStreamChunk?.(buffered.text);
             }
@@ -2693,17 +3102,29 @@ async function generateTextByModelType(
     let streamCompanions!: ReturnType<typeof observeStreamCompanions>;
     let streamIterator!: AsyncIterator<unknown>;
     let firstItem: IteratorResult<unknown> | undefined;
+    let attemptTiming: StreamAttemptTiming | undefined;
     let attemptPrefix: unknown[] = [];
     for (let attempt = 0; ; attempt++) {
+      assertModelNotCoolingDown(modelCooldowns, modelName);
       capturedStreamError = undefined;
       attemptPrefix = [];
       attestLlmInputSubstring(details);
-      result = await streamText({
-        ...generateParams,
-        onError: ({ error }: { error: unknown }) => {
-          capturedStreamError = error;
-        },
-      });
+      attemptTiming = streamTiming?.(attempt + 1);
+      try {
+        result = await streamText({
+          ...generateParams,
+          onError: ({ error }: { error: unknown }) => {
+            capturedStreamError = error;
+            noteRateLimitCooldown(modelCooldowns, modelName, error);
+          },
+          ...(attemptTiming ? { onChunk: attemptTiming.onChunk, includeRawChunks: true } : {}),
+        });
+      } catch (error) {
+        // error-policy:J2 retain the provider failure and its cooldown even
+        // when dispatch rejects before exposing an iterable or onError event.
+        noteRateLimitCooldown(modelCooldowns, modelName, error);
+        throw error;
+      }
       // Companion promises can reject at the same instant as the first stream
       // pull. Observe them before that pull so an owner abort never becomes an
       // unhandled rejection while textStream remains the authoritative error.
@@ -2730,6 +3151,9 @@ async function generateTextByModelType(
         // error-policy:J2 the captured provider failure is classified below and
         // rethrown by the stream boundary when recovery is not permitted.
         firstItem = undefined;
+        if (capturedStreamError === undefined) {
+          noteRateLimitCooldown(modelCooldowns, modelName, error);
+        }
         capturedStreamError ??= error;
       }
       const failedBeforeFirstToken =
@@ -2906,12 +3330,14 @@ async function generateTextByModelType(
                   : null;
               if (!chunk) continue;
               responseChunks.push(chunk);
+              attemptTiming?.delivery();
               params.onStreamChunk?.(chunk);
               yield chunk;
             }
           } else {
             for await (const chunk of iterateStream()) {
               responseChunks.push(chunk as string);
+              if (chunk) attemptTiming?.delivery();
               params.onStreamChunk?.(chunk as string);
               yield chunk as string;
             }
@@ -2920,12 +3346,18 @@ async function generateTextByModelType(
           // error-policy:J2 context-adding rethrow — capture the stream-iteration
           // error so `finally` can finalize telemetry, then rethrow it below.
           streamIterationError = error;
+          if (error !== capturedStreamError) {
+            noteRateLimitCooldown(modelCooldowns, modelName, error);
+          }
         } finally {
           await finalizeStreamingTelemetry();
         }
         const streamError = enrichProviderCallError(
           streamIterationError ?? capturedStreamError ?? companionStreamError
         );
+        if (streamError && !streamIterationError && !capturedStreamError) {
+          noteRateLimitCooldown(modelCooldowns, modelName, streamError);
+        }
         settleStructuredText(streamError);
         if (streamError) throw streamError;
       })(),
@@ -2948,11 +3380,15 @@ async function generateTextByModelType(
     generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
+    assertModelNotCoolingDown(modelCooldowns, modelName);
     const result = await generateTextWithTransientRetry(generateParams, {
       model: modelName,
       retryState,
       maxRetries: 3,
       beforeAttempt: () => attestLlmInputSubstring(details),
+    }).catch((error: unknown) => {
+      noteRateLimitCooldown(modelCooldowns, modelName, error);
+      throw error;
     });
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(
@@ -3107,6 +3543,10 @@ export const __INTERNAL_sanitizeSchemaKeywords = {
 export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_enrichProviderCallError = enrichProviderCallError;
+/** @internal */
+export const __INTERNAL_selectRequestModelName = selectRequestModelName;
+/** @internal */
+export const __INTERNAL_resolveFallbackModelName = resolveFallbackModelName;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_isTransientProviderError = isTransientProviderError;
 /** @internal — exported for unit tests only. */

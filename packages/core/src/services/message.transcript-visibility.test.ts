@@ -330,6 +330,45 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		expect(harness.voiceHandler).toHaveBeenCalledTimes(1);
 	});
 
+	it("delivers a model-authored answer from an internal data-only action result", async () => {
+		const finalText = "You have 1 note.";
+		const harness = await createHarness(finalText);
+		harness.actionHandler.mockResolvedValue({
+			success: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			data: {
+				count: 1,
+				total: 1,
+				notes: [{ id: "note-1", title: "Packing", body: "Bring a charger." }],
+			},
+		});
+
+		const result = await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "How many notes do I have?"),
+			harness.callback,
+		);
+
+		expect(harness.actionHandler).toHaveBeenCalledTimes(1);
+		expect(result.actionResults?.[0]).toMatchObject({
+			transcriptVisibility: "internal",
+			data: { count: 1, total: 1 },
+		});
+		expect(result.actionResults?.[0]).not.toHaveProperty("text");
+		expect(result.responseContent?.text).toBe(finalText);
+		expect(result.responseContent?.transcriptVisibility).toBeUndefined();
+		expect(result.responseMessages).toHaveLength(1);
+		const persisted = await assistantMemories(harness.runtime);
+		expect(persisted).toHaveLength(1);
+		expect(persisted[0]?.content.text).toBe(finalText);
+		expect(persisted[0]?.content.transcriptVisibility).toBeUndefined();
+		expect(harness.callbacks).toHaveLength(1);
+		expect(harness.callbacks[0]?.text).toBe(finalText);
+		expect(harness.sent).toHaveLength(1);
+		expect(harness.sent[0]?.text).toBe(finalText);
+	});
+
 	it("preserves action attribution through the real message-service callback", async () => {
 		const visibleSummary = "The available views are ready.";
 		const harness = await createHarness(visibleSummary, visibleSummary);

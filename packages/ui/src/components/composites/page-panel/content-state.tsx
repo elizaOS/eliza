@@ -81,13 +81,11 @@ function LoadingContent({
   heading,
 }: Pick<LoadingContentStateProps, "description" | "heading">) {
   return (
-    <>
-      <Spinner size={20} />
-      <div className="mt-4 max-w-md space-y-2">
-        <div className="text-base font-medium text-txt-strong">{heading}</div>
-        {description ? <div className="sr-only">{description}</div> : null}
-      </div>
-    </>
+    <div className="flex max-w-md items-center justify-center gap-3 text-sm text-muted-strong">
+      <Spinner size={18} aria-hidden="true" className="shrink-0" />
+      <span>{heading}</span>
+      {description ? <span className="sr-only">{description}</span> : null}
+    </div>
   );
 }
 
@@ -285,6 +283,9 @@ export function ContentState(props: ContentStateProps) {
           "flex min-h-[42vh] flex-col items-center justify-center px-4 py-8 text-center",
           className,
         )}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
         {...containerProps}
       >
         <LoadingContent description={description} heading={heading} />
@@ -300,6 +301,9 @@ export function ContentState(props: ContentStateProps) {
           "items-center justify-center px-4 py-8 text-center",
           className,
         )}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
         {...containerProps}
       >
         <LoadingContent description={description} heading={heading} />
@@ -313,6 +317,9 @@ export function ContentState(props: ContentStateProps) {
         "flex min-h-[12rem] flex-col items-center justify-center px-4 py-8 text-center",
         className,
       )}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
       {...containerProps}
     >
       <LoadingContent description={description} heading={heading} />

@@ -453,6 +453,15 @@ const vitestResolveAlias: ModuleAlias[] = [
           ),
         },
         {
+          // Keep the UI client's error class in the same core module tree;
+          // the broad alias would resolve this as index.node.ts/errors.
+          find: /^@elizaos\/core\/errors$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts") ? "errors.ts" : "errors.js",
+          ),
+        },
+        {
           find: /^@elizaos\/core\/security\/kms$/,
           replacement: path.join(
             path.dirname(elizaCoreEntry),

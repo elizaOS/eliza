@@ -178,6 +178,7 @@ function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
     };
     if (typeof r.value === "string") el.value = r.value;
     if (r.focused === true) el.focused = true;
+    if (typeof r.visible === "boolean") el.visible = r.visible;
     out.push(el);
   }
   return out;

@@ -160,6 +160,7 @@ function* walk(directory) {
       (entry.isDirectory() && isHiddenSourceArtifactDirectory(entry.name)) ||
       [
         "node_modules",
+        ".vite",
         "dist",
         "build",
         "coverage",

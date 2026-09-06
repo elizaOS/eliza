@@ -39,12 +39,32 @@ export type PlannedReplyClaimKind =
 export function appliedEffectReceiptIdsForReply(
 	reply: string,
 	results: readonly ActionResult[],
+	evaluator?: EvaluatorOutput,
 ): readonly string[] {
 	const normalizedReply = reply.trim();
 	if (!normalizedReply) return [];
 	const allTurnReceipts = mergeEffectReceipts(
 		...results.map((result) => result.effectReceipts),
 	);
+	// Keep the model's proof attached to its original prose. Planner fallbacks,
+	// sanitizers and hooks must not borrow these IDs for a different message.
+	if (
+		evaluator?.decision === "FINISH" &&
+		!evaluator.protocolFailure &&
+		evaluator.messageToUser?.trim() === normalizedReply &&
+		typeof evaluator.raw?.messageToUser === "string" &&
+		evaluator.raw.messageToUser.trim() === normalizedReply
+	) {
+		const receipts = resolveAppliedUserFacingEffectReceipts(
+			{
+				verifiedUserFacing: true,
+				userFacingText: normalizedReply,
+				userFacingEffectReceiptIds: evaluator.effectReceiptIds,
+			},
+			allTurnReceipts,
+		);
+		if (receipts) return receipts.map((receipt) => receipt.receiptId);
+	}
 	for (const result of results) {
 		if (result.userFacingText?.trim() !== normalizedReply) continue;
 		const receipts = resolveAppliedUserFacingEffectReceipts(
@@ -91,7 +111,14 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 	reply: string;
 	results: readonly ActionResult[];
 	actions: readonly Action[];
+	evaluator?: EvaluatorOutput;
 }): boolean {
+	if (args.kind === "completed_side_effect") {
+		return (
+			appliedEffectReceiptIdsForReply(args.reply, args.results, args.evaluator)
+				.length > 0
+		);
+	}
 	const actionsByName = new Map(
 		args.actions.map((action) => [
 			normalizeActionIdentifier(action.name),
@@ -106,11 +133,6 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 			canonicalUserFacingText !== args.reply.trim()
 		) {
 			return false;
-		}
-		if (args.kind === "completed_side_effect") {
-			return (
-				appliedEffectReceiptIdsForReply(args.reply, args.results).length > 0
-			);
 		}
 		if (result.success !== true) return false;
 		const actionName =
@@ -147,7 +169,6 @@ export type PlannedReplyEgressDecision =
 	| {
 			verdict: "reject";
 			kind: PlannedReplyClaimKind;
-			fallbackReply: string;
 	  };
 
 export const UNVERIFIED_EFFECT_REPLY =
@@ -163,6 +184,7 @@ export function evaluatePlannedReplyEgress(args: {
 	reply: string;
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
+	evaluator?: EvaluatorOutput;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
@@ -173,6 +195,7 @@ export function evaluatePlannedReplyEgress(args: {
 				reply,
 				results: args.actionResults,
 				actions: args.actions,
+				evaluator: args.evaluator,
 			})
 		) {
 			return { verdict: "allow" };
@@ -180,13 +203,6 @@ export function evaluatePlannedReplyEgress(args: {
 		return {
 			verdict: "reject",
 			kind: "completed_side_effect",
-			// The planner may paraphrase a receipt-backed action by only punctuation
-			// or casing. Preserve the action's exact canonical text instead of
-			// replacing a real success with a false verification failure. Multiple
-			// distinct effects remain ambiguous and continue to fail closed.
-			fallbackReply:
-				uniqueAppliedCanonicalActionReply(args.actionResults) ??
-				UNVERIFIED_EFFECT_REPLY,
 		};
 	}
 	if (replyClaimsEmptyTrackedWorkState(reply)) {
@@ -203,18 +219,17 @@ export function evaluatePlannedReplyEgress(args: {
 		return {
 			verdict: "reject",
 			kind: "empty_tracked_state",
-			fallbackReply:
-				"I wasn't able to check your tracked tasks and notes just now, so I can't give you an accurate picture of the day. Want me to try again?",
 		};
 	}
 	return { verdict: "allow" };
 }
 
-export function enforceEffectGroundedVisibleContent(
-	runtime: Pick<IAgentRuntime, "logger">,
+export async function enforceEffectGroundedVisibleContent(
+	runtime: IAgentRuntime,
+	message: Memory,
 	response: Content,
 	actionName?: string,
-): Content {
+): Promise<Content> {
 	const hasEffectDeliveryBinding =
 		getEffectDeliveryBinding(response) !== undefined;
 	if (!hasEffectDeliveryBinding && response.effectReceiptIds !== undefined) {
@@ -237,8 +252,15 @@ export function enforceEffectGroundedVisibleContent(
 		);
 		return {
 			...stripEffectDeliveryBinding(response),
-			text: UNVERIFIED_EFFECT_REPLY,
-			agentVoiced: false,
+			text: (
+				await resolvePlannedReplyEgress({
+					runtime,
+					message,
+					reply: response.text ?? "",
+					actionResults: [],
+				})
+			).text,
+			agentVoiced: true,
 		};
 	}
 	return response;
@@ -407,3 +429,111 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 		})),
 	};
 }
+
+export function replyNamesStructuredEffectDestination(
+	reply: string,
+	effect: StructuredToolEffect,
+): boolean {
+	if (effect.effect !== "view_navigation" || !effect.label) return true;
+	const normalize = (value: string): string =>
+		value
+			.toLocaleLowerCase()
+			.replace(/[^\p{L}\p{N}]+/gu, " ")
+			.trim();
+	const normalizedReply = normalize(reply);
+	const normalizedLabel = normalize(effect.label);
+	return (
+		normalizedReply.length > 0 &&
+		normalizedLabel.length > 0 &&
+		normalizedReply.includes(normalizedLabel)
+	);
+}
+
+export async function resolvePlannedReplyEgress(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	reply: string;
+	actionResults: readonly ActionResult[];
+	evaluator?: EvaluatorOutput;
+}): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
+	const decision = evaluatePlannedReplyEgress({
+		reply: args.reply,
+		actionResults: args.actionResults,
+		actions: args.runtime.actions,
+		evaluator: args.evaluator,
+	});
+	if (args.reply.trim() && decision.verdict === "allow") {
+		return {
+			text: args.reply,
+			effectReceiptIds: appliedEffectReceiptIdsForReply(
+				args.reply,
+				args.actionResults,
+				args.evaluator,
+			),
+		};
+	}
+	const text = JSON.stringify({
+		request: args.message.content,
+		rejectedReply: args.reply,
+		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
+		results: renderActionResultsForModel([...args.actionResults]).text,
+	});
+	const rewritten = await rewriteActionCallbackInCharacter({
+		runtime: args.runtime,
+		message: args.message,
+		response: { text },
+		text,
+	});
+	const reply = rewritten?.text;
+	// The renderer selects proof for its own prose, not an action's canned
+	// wording. Resolve every selected ID against this turn's authoritative
+	// receipts; invented IDs, previews and rolled-back effects stay rejected.
+	const proof = rewritten?.effectReceiptIds.length
+		? resolveAppliedUserFacingEffectReceipts(
+				{
+					verifiedUserFacing: true,
+					userFacingText: reply,
+					userFacingEffectReceiptIds: rewritten.effectReceiptIds,
+				},
+				mergeEffectReceipts(
+					...args.actionResults.map((result) => result.effectReceipts),
+				),
+			)
+		: null;
+	const rewrittenDecision = reply
+		? evaluatePlannedReplyEgress({
+				reply,
+				actionResults: args.actionResults,
+				actions: args.runtime.actions,
+			})
+		: undefined;
+	if (
+		!reply ||
+		(rewritten?.effectReceiptIds.length && !proof) ||
+		(rewrittenDecision?.verdict !== "allow" &&
+			!(rewrittenDecision?.kind === "completed_side_effect" && proof))
+	) {
+		const error = new ElizaError(
+			"A grounded conversational reply could not be generated",
+			{
+				code: "REPLY_GROUNDING_FAILED",
+				context: { roomId: args.message.roomId, messageId: args.message.id },
+			},
+		);
+		args.runtime.reportError("MessageService.replyRecovery", error);
+		throw error;
+	}
+	return {
+		text: reply,
+		effectReceiptIds:
+			proof?.map((receipt) => receipt.receiptId) ??
+			appliedEffectReceiptIdsForReply(reply, args.actionResults),
+	};
+}
+
+import { ElizaError } from "../../errors";
+import { renderActionResultsForModel } from "../../runtime/planner-rendering.js";
+import type { EvaluatorOutput } from "../../runtime/planner-types.js";
+
+import { rewriteActionCallbackInCharacter } from "./delivery.js";
+import type { StructuredToolEffect } from "./reply-policy.js";

@@ -15,6 +15,8 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.mjs";
+// Pure catalog data; keep the Node-run stub aligned without loading a runtime.
+import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
 // production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a
@@ -4660,7 +4662,18 @@ const server = http.createServer(async (req, res) => {
     req.method === "GET" &&
     url.pathname === "/api/local-inference/voice-models"
   ) {
-    sendJson(req, res, 200, { installations: [] });
+    // Production lists known models even when no version is installed.
+    const installations = [
+      ...new Set(VOICE_MODEL_VERSIONS.map((version) => version.id)),
+    ]
+      .sort()
+      .map((id) => ({
+        id,
+        installedVersion: null,
+        pinned: false,
+        lastError: null,
+      }));
+    sendJson(req, res, 200, { installations });
     return;
   }
 

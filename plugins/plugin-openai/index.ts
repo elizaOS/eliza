@@ -26,7 +26,7 @@ import type {
   TextEmbeddingParams,
   TokenizeTextParams,
 } from "@elizaos/core";
-import { ElizaError, EventType, logger, ModelType } from "@elizaos/core";
+import { EventType, logger, ModelType } from "@elizaos/core";
 import {
   handleActionPlanner,
   handleImageDescription,
@@ -173,16 +173,11 @@ function preconnectProvider(runtime: IAgentRuntime): void {
       return;
     providerPreconnects.set(runtime, { baseURL, attemptedAt: now });
     preconnect(baseURL);
-  } catch (cause) {
-    // error-policy:J1 The ingress event reports speculative connection failure;
-    // the eventual model request remains responsible for its own result.
-    runtime.reportError(
-      "openai:preconnect",
-      new ElizaError(
-        "[OpenAI] Provider connection warm-up failed; inspect the configured endpoint",
-        { code: "OPENAI_PRECONNECT_FAILED", severity: "ephemeral", cause }
-      )
-    );
+  } catch {
+    // Connection warming is optional. Reporting an agent error here triggers
+    // proactive user notifications even when the actual model request succeeds.
+    // The model request owns provider failures; retain a quiet debug diagnostic.
+    logger.debug("[OpenAI] Connection warm-up unavailable; continuing with normal model requests.");
   }
 }
 

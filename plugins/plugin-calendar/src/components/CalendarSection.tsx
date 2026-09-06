@@ -31,8 +31,6 @@ import {
   type CalendarViewMode,
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
-import { CalendarSourceHealth } from "./CalendarSourceHealth.js";
-import { CalendarSourceManager } from "./CalendarSourceManager.js";
 import { EventEditorDrawer } from "./EventEditorDrawer.js";
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -1264,18 +1262,6 @@ export function CalendarSection({
             {proactiveLine}
           </p>
         ) : null}
-
-        <CalendarSourceHealth
-          status={calendar.status}
-          sources={calendar.sources}
-          refreshing={calendar.refreshing}
-          onRefresh={() => void calendar.refresh()}
-        />
-
-        <CalendarSourceManager
-          sourceHealth={calendar.sources}
-          onSelectionChanged={() => void calendar.refresh()}
-        />
 
         {calendar.error ? (
           <div

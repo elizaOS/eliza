@@ -164,6 +164,18 @@ describe("resolveServingAxes", () => {
     expect(axes.combination).toBe("both");
   });
 
+  it("keeps a selected remote host remote when that server calls itself local", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      clientRuntime: "remote",
+      deploymentRuntime: "local",
+      startupTarget: "embedded-local",
+    });
+    expect(axes.runtime).toBe("remote");
+    expect(axes.combination).toBe("inference-unknown");
+    expect(axes.inference).toBe("unknown");
+  });
+
   it("keeps hybrid local when the server also reports a local deployment runtime", () => {
     // buildDeploymentTarget persists elizacloud-hybrid as runtime "local",
     // so the authoritative snapshot must agree with the hybrid rule below it.
@@ -193,8 +205,8 @@ describe("resolveServingAxes", () => {
     expect(axes.inference).toBe("external");
     expect(axes.combination).toBe("external-inference");
     expect(axes.activeChatProvider).toBe("cerebras");
-    expect(servingAxesHeadline(axes)).toBe("Inference on cerebras");
-    expect(servingAxesDescription(axes)).toContain("cerebras");
+    expect(servingAxesHeadline(axes)).toBe("Inference on Cerebras");
+    expect(servingAxesDescription(axes)).toContain("Cerebras");
     // The exact falsehood the review caught.
     expect(axes.inference).not.toBe("local");
     expect(axes.inferenceFallback).toBe(false);

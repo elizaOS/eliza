@@ -13,10 +13,12 @@ import {
 async function deliver(reply: string) {
 	let calls = 0;
 	let navigations = 0;
+	let evaluations = 0;
 	const result = await runPlannerLoop({
 		runtime: {
-			useModel: async () =>
-				calls++ === 0
+			useModel: async () => {
+				if (calls >= 2) throw new Error("Unexpected extra planner round");
+				return calls++ === 0
 					? {
 							text: "",
 							toolCalls: [
@@ -31,7 +33,8 @@ async function deliver(reply: string) {
 								},
 							],
 						}
-					: { text: reply, toolCalls: [] },
+					: { text: reply, toolCalls: [] };
+			},
 		},
 		context: { id: "conditional-follow-up" },
 		tools: [
@@ -46,11 +49,17 @@ async function deliver(reply: string) {
 				modelReplyRequired: true,
 			};
 		},
-		evaluate: async () => {
-			throw new Error("Final navigation should not need an evaluator");
+		evaluate: async ({ trajectory }) => {
+			evaluations++;
+			expect(trajectory.steps.at(-1)?.result?.success).toBe(true);
+			return {
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Notes is open.",
+			};
 		},
 	});
-	return { result, navigations, calls };
+	return { result, navigations, calls, evaluations };
 }
 
 describe("conditional offers after completed navigation", () => {
@@ -69,10 +78,11 @@ describe("conditional offers after completed navigation", () => {
 		"preserves the complete explanation and user-dependent offer: %s",
 		async (offer) => {
 			const reply = `Notes is open. You can create, search, recolor, and delete notes. Your writing persists across sessions.\n\n${offer}`;
-			const { result, navigations, calls } = await deliver(reply);
+			const { result, navigations, calls, evaluations } = await deliver(reply);
 			expect(result.finalMessage).toBe(reply);
 			expect(navigations).toBe(1);
 			expect(calls).toBe(2);
+			expect(evaluations).toBe(0);
 		},
 	);
 	it.each([
@@ -99,9 +109,10 @@ describe("conditional offers after completed navigation", () => {
 		"does not let a conditional phrase excuse unsupported work: %s",
 		async (claim) => {
 			const reply = `Notes is open. ${claim}`;
-			const { result, navigations } = await deliver(reply);
+			const { result, navigations, evaluations } = await deliver(reply);
 			expect(result.finalMessage).not.toContain(claim);
-			expect(result.finalMessage).toBe("The requested action completed.");
+			expect(result.finalMessage).toBe("Notes is open.");
+			expect(evaluations).toBe(1);
 			expect(navigations).toBe(1);
 		},
 	);

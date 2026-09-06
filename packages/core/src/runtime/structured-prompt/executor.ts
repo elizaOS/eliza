@@ -775,7 +775,10 @@ ${section_end}`;
 				// failures and records an explicit failure state on exhaustion.
 				const modelErrorMessage = getErrorMessage(modelError);
 				const isTransientFailure = isTransientModelError(modelError);
-				const willRetry = currentRetry + 1 <= maxRetries;
+				// useModel has already tried the configured provider chain. A schema
+				// reroll cannot repair exhausted capacity and only repeats that chain.
+				const capacityExhausted = isRateLimitError(modelError);
+				const willRetry = !capacityExhausted && currentRetry + 1 <= maxRetries;
 				const failureMessage = isTransientFailure
 					? `Model call failed transiently${willRetry ? ", retrying" : ""}: ${modelErrorMessage}`
 					: `Model call failed: ${modelErrorMessage}`;
@@ -808,6 +811,8 @@ ${section_end}`;
 					this.clearStructuredOutputFailureState(state);
 					return null;
 				}
+
+				if (capacityExhausted) break;
 
 				if (currentRetry <= maxRetries) {
 					// Apply retry backoff for model errors
@@ -1289,7 +1294,11 @@ ${section_end}`;
 			}
 		}
 
-		// Max retries exceeded
+		// Retries exhausted, or the provider chain cannot currently serve a call.
+		const retriesUsed = Math.max(
+			0,
+			(lastStructuredFailure?.attempts ?? currentRetry) - 1,
+		);
 		if (extractor) {
 			const diagnosis = extractor.diagnose();
 			const diagnosticParts: string[] = [];
@@ -1305,12 +1314,12 @@ ${section_end}`;
 				);
 			}
 			extractor.signalError(
-				`Failed after ${maxRetries} retries. ${diagnosticParts.length > 0 ? diagnosticParts.join("; ") : "unknown error"}`,
+				`Failed after ${retriesUsed} retries. ${diagnosticParts.length > 0 ? diagnosticParts.join("; ") : "unknown error"}`,
 			);
 		}
 		await drainStructuredPromptDelivery();
 
-		const finalFailureMessage = `dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`;
+		const finalFailureMessage = `dynamicPromptExecFromState failed after ${retriesUsed} retries [${modelSchemaKey}]`;
 		const finalFailureSummary = `${metric.successfulAttempts}/${metric.totalAttempts} successful`;
 		if (
 			lastStructuredFailure?.kind === "model_error" &&
@@ -1330,7 +1339,7 @@ ${section_end}`;
 					source: "dpe",
 					kind: "parseSuccess",
 					value: 0.0,
-					reason: `No valid parse after ${maxRetries} retries`,
+					reason: `No valid parse after ${retriesUsed} retries`,
 				});
 				scoreCard.add({
 					source: "dpe",
@@ -1342,7 +1351,10 @@ ${section_end}`;
 					source: "dpe",
 					kind: "retriesUsed",
 					value: 0.0,
-					reason: "All retry attempts exhausted",
+					reason:
+						retriesUsed < maxRetries
+							? "Provider capacity exhausted"
+							: "All retry attempts exhausted",
 				});
 
 				const failTemplateHash = shortStringHash(
@@ -1364,7 +1376,7 @@ ${section_end}`;
 					parseSuccess: false,
 					schemaValid: false,
 					validationCodesMatched: false,
-					retriesUsed: maxRetries,
+					retriesUsed,
 					tokenEstimate: 0,
 					latencyMs: Date.now() - traceStartTime,
 					scoreCard: scoreCard.toJSON(),
@@ -1460,3 +1472,5 @@ ${section_end}`;
 		});
 	}
 }
+
+import { isRateLimitError } from "../../services/message/fallback-reply.js";

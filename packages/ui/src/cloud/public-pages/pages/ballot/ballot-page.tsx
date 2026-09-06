@@ -59,11 +59,32 @@ function normalizeError(error: unknown, t: TFn): string {
   });
 }
 
+/**
+ * Keep the captured scoped token available to this render without leaving the
+ * voting credential in browser history, copied links, or history sync.
+ */
+function stripBallotTokenFromAddressBar(
+  ballotId: string | undefined,
+  ballotSearch: string,
+): void {
+  if (typeof window === "undefined") return;
+  if (!ballotId || !new URLSearchParams(ballotSearch).has("token")) return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("token")) return;
+  url.searchParams.delete("token");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
 export default function BallotPage() {
   const t = useCloudT();
   const { ballotId } = useParams<{ ballotId: string }>();
   const [searchParams] = useSearchParams();
-  const presetToken = searchParams.get("token") ?? "";
+  const ballotSearch = searchParams.toString();
+  const presetToken = new URLSearchParams(ballotSearch).get("token") ?? "";
   const [ballot, setBallot] = useState<PublicBallot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +96,10 @@ export default function BallotPage() {
   usePageTitle(
     t("cloud.ballot.metaTitle", { defaultValue: "Ballot | Eliza Cloud" }),
   );
+
+  useEffect(() => {
+    stripBallotTokenFromAddressBar(ballotId, ballotSearch);
+  }, [ballotId, ballotSearch]);
 
   const load = useCallback(async () => {
     if (!ballotId) {

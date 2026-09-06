@@ -287,9 +287,14 @@ export {
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
 } from "./message/side-effect-claims.ts";
 
-export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
+export {
+	replyClaimsCompletedSideEffect,
+	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
+};
 
 /**
  * Default implementation of the MessageService interface.
@@ -575,3 +580,5 @@ export class DefaultMessageService implements IMessageService {
 		);
 	}
 }
+
+export { decideUmbrellaPlannerBudget } from "./message/planned-tool.js";

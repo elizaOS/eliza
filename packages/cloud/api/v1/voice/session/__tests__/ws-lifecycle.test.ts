@@ -478,7 +478,8 @@ function makeLocalTokenFetch(
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
-  finish: () => void;
+  enqueueReplyReady: (fullText: string) => void;
+  finish: (donePayload?: Record<string, unknown>) => void;
   fail: () => void;
   ready: Promise<void>;
 } {
@@ -506,8 +507,17 @@ function makeControlledCanonicalChunkFetch(): {
         encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`),
       );
     },
-    finish() {
-      controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+    enqueueReplyReady(fullText: string) {
+      controller?.enqueue(
+        encoder.encode(
+          `event: reply_ready\ndata: ${JSON.stringify({ type: "reply_ready", fullText })}\n\n`,
+        ),
+      );
+    },
+    finish(donePayload = {}) {
+      controller?.enqueue(
+        encoder.encode(`event: done\ndata: ${JSON.stringify(donePayload)}\n\n`),
+      );
       controller?.close();
     },
     fail() {
@@ -867,7 +877,7 @@ describe("voice-session WS lifecycle", () => {
     });
     await controlled.ready;
     controlled.enqueueChunk(
-      "Welcome home friend. This contextual greeting is intentionally long enough to begin speaking before the upstream stream fails, proving the fallback cannot double-speak.",
+      "Welcome home friend. This contextual greeting is intentionally long enough to cross the shared phrase ceiling and begin speaking as complete sentences before the upstream stream fails. The second complete sentence proves the fallback cannot double-speak after real model audio has already started.",
     );
     await flush();
     await flush();
@@ -919,7 +929,7 @@ describe("voice-session WS lifecycle", () => {
       transcriptChars: "hello agent".length,
       callerResponseTurnIndex: 1,
       isFirstCallerResponse: true,
-      configuredEndTimeoutMs: 640,
+      configuredEndTimeoutMs: 8_000,
       turnActiveMs: expect.any(Number),
       firstTranscriptOffsetMs: expect.any(Number),
       lastTranscriptToFinalMs: expect.any(Number),
@@ -937,6 +947,7 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(requests[0].body).toEqual({
       text: "hello agent",
+      channelType: "VOICE_DM",
       metadata: { clientTransport: "realtime_voice" },
       streamProtocol: "delta-v2",
     });
@@ -1705,7 +1716,7 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeSseFetch(
         [
-          "This deliberately long answer crosses the bounded streaming threshold at a natural word boundary so speech begins without chopping a short reply into tiny phrases",
+          "This deliberately long answer crosses the shared phrase ceiling at a natural word boundary while preserving complete spoken phrases for coherent prosody. It continues with enough useful detail to produce another complete phrase before the upstream response finishes, proving long replies still start speaking without chopping a final word into its own synthesis request. A third clause keeps this controlled stream open for the assertion.",
         ],
         {
           hang: true,
@@ -1739,11 +1750,13 @@ describe("voice-session WS lifecycle", () => {
     expect(aborted).toBe(true);
   });
 
-  test("sends a complete short reply as one terminal Sonic request", async () => {
+  test("sends a normal conversational reply as one terminal Sonic request", async () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
-      fetchImpl: makeSseFetch(["Sunlight reaches Earth quickly."]),
+      fetchImpl: makeSseFetch([
+        "The sky is blue because the atmosphere scatters shorter blue wavelengths of sunlight more than other colors.",
+      ]),
     });
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
@@ -1760,9 +1773,51 @@ describe("voice-session WS lifecycle", () => {
       .filter((entry) => entry.transcript);
     expect(requests).toHaveLength(1);
     expect(requests.map((request) => request.transcript).join("")).toBe(
-      "Sunlight reaches Earth quickly.",
+      "The sky is blue because the atmosphere scatters shorter blue wavelengths of sunlight more than other colors.",
     );
     expect(requests[0]?.continue).toBe(false);
+  });
+
+  test("starts a multi-sentence reply before terminal metadata without splitting words", async () => {
+    let aborted = false;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(
+        [
+          'Probably a spike in generation time or a hiccup in the stream. Those "thinking" pauses can come from later turn work.',
+        ],
+        {
+          hang: true,
+          onAbort: () => {
+            aborted = true;
+          },
+        },
+      ),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "why was that slow");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      transcript:
+        "Probably a spike in generation time or a hiccup in the stream.",
+      continue: true,
+    });
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(aborted).toBe(true);
   });
 
   test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
@@ -1906,7 +1961,7 @@ describe("voice-session WS lifecycle", () => {
     await controlled.ready;
 
     const streamedChunk =
-      "This first streamed phrase is intentionally long enough to cross the bounded streaming threshold at a natural word boundary before the response completes ";
+      "This first streamed sentence is intentionally long enough to contribute to the shared phrase ceiling without chopping any terminal word. A second complete sentence pushes the coherent first phrase to Cartesia before the response completes, while this final unfinished clause keeps the controlled upstream stream open for the assertion ";
     controlled.enqueueChunk(streamedChunk);
     await flush();
 
@@ -1922,6 +1977,68 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     cartesia.emitDone();
     await flush();
+    expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("reply-ready closes short TTS early but preserves late view navigation", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "open notes");
+    await controlled.ready;
+
+    controlled.enqueueChunk("Opened Notes.");
+    controlled.enqueueReplyReady("Opened Notes.");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const synthesisRequests = cartesia.sent.map(
+      (frame) =>
+        JSON.parse(frame) as { transcript?: string; continue?: boolean },
+    );
+    expect(synthesisRequests).toContainEqual(
+      expect.objectContaining({
+        transcript: "Opened Notes.",
+        continue: false,
+      }),
+    );
+
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+    expect(client.controlTypes()).not.toContain("usage");
+    expect(client.controlTypes()).not.toContain("navigate_view");
+
+    controlled.finish({
+      fullText: "Opened Notes.",
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "notes", viewPath: "/notes" },
+        },
+      ],
+    });
+    await flush();
+    await flush();
+
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+    ).toEqual([
+      {
+        t: "navigate_view",
+        viewId: "notes",
+        viewPath: "/notes",
+        traceId: expect.any(String),
+      },
+    ]);
     expect(client.controlTypes()).toContain("usage");
   });
 
@@ -2487,7 +2604,7 @@ describe("voice-session WS lifecycle", () => {
     ink.emitTurn("turn.end", "start the long response");
     await first.ready;
     first.enqueueChunk(
-      "The first canonical response is already audible, but its model stream remains open long enough to prove ordered conversation writes. ",
+      "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
     );
     await flush();
     await flush();
@@ -2539,7 +2656,7 @@ describe("voice-session WS lifecycle", () => {
     ink.emitTurn("turn.end", "start the long response");
     await first.ready;
     first.enqueueChunk(
-      "The first canonical response is already audible, but its model stream remains open long enough to prove ordered conversation writes. ",
+      "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
     );
     await flush();
     await flush();
@@ -2602,7 +2719,7 @@ describe("voice-session WS lifecycle", () => {
       ink.emitTurn("turn.end", "start the long response");
       await first.ready;
       first.enqueueChunk(
-        "The first canonical response is already audible, but its model stream remains open long enough to prove ordered conversation writes. ",
+        "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
       );
       await flush();
       await flush();

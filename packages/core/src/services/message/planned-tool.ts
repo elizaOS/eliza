@@ -489,12 +489,27 @@ export function subPlannerResultToPlannerToolResult(
 		transcriptVisibility: lastStep?.result?.transcriptVisibility,
 		...(internalTerminalPayload ? {} : { userFacingText }),
 		...(effectReceipts.length > 0 ? { effectReceipts } : {}),
+		...(terminalResult?.replyFailure
+			? { replyFailure: terminalResult.replyFailure }
+			: {}),
 		...(terminalUserFacingEffectReceiptIds
 			? {
 					userFacingEffectReceiptIds: terminalUserFacingEffectReceiptIds,
 				}
 			: {}),
 		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
+		...(evaluator?.decision === "FINISH" && evaluator.protocolFailure !== true
+			? {
+					subPlannerEvaluation: {
+						decision: "FINISH" as const,
+						success: evaluator.success === true,
+						...(typeof evaluator.messageToUser === "string" &&
+						evaluator.messageToUser.trim()
+							? { messageToUser: evaluator.messageToUser }
+							: {}),
+					},
+				}
+			: {}),
 		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
@@ -520,6 +535,7 @@ export function subPlannerResultToPlannerToolResult(
 export function collectPlannerTools(
 	context: ContextObject,
 	narrowedActions?: ReadonlyArray<Action>,
+	options: { expandSubActions?: boolean } = {},
 ): ToolDefinition[] {
 	const hasAnyAction = context.events.some(
 		(event) =>
@@ -534,6 +550,7 @@ export function collectPlannerTools(
 	const tierAParents = readTierAParentsFromContext(context);
 	const actionTools = buildPlannerToolsFromTieredActions(actions, {
 		tierAParents,
+		expandSubActions: options.expandSubActions,
 		actionLookup: new Map(
 			actions.map((action) => [action.name, action] as const),
 		),
@@ -635,6 +652,9 @@ export function collectPreviousActionResults(
 				...(step.result.effectReceipts !== undefined
 					? { effectReceipts: step.result.effectReceipts }
 					: {}),
+				...(step.result.replyFailure !== undefined
+					? { replyFailure: step.result.replyFailure }
+					: {}),
 				...(step.result.userFacingEffectReceiptIds !== undefined
 					? {
 							userFacingEffectReceiptIds:
@@ -703,6 +723,9 @@ export function collectPreviousActionResults(
 				: {}),
 			...(step.result.effectReceipts !== undefined
 				? { effectReceipts: step.result.effectReceipts }
+				: {}),
+			...(step.result.replyFailure !== undefined
+				? { replyFailure: step.result.replyFailure }
 				: {}),
 			...(step.result.userFacingEffectReceiptIds !== undefined
 				? {
@@ -793,3 +816,114 @@ export async function settleFailedDirectToolCallOnStream(
 		metadata: { deterministic: true },
 	});
 }
+
+export function decideUmbrellaPlannerBudget(args: {
+	umbrella: { estimatedInputTokens: number; dispatchThresholdTokens: number };
+	current: { estimatedInputTokens: number };
+}): UmbrellaPlannerBudgetDecision {
+	if (
+		args.umbrella.estimatedInputTokens <= args.umbrella.dispatchThresholdTokens
+	) {
+		return "under-dispatch-budget";
+	}
+	if (args.umbrella.estimatedInputTokens < args.current.estimatedInputTokens) {
+		return "smaller-than-complete-surface";
+	}
+	return "not-smaller";
+}
+
+export function collectBudgetedUmbrellaActions(args: {
+	actions: readonly Action[];
+	actionSurface: V5PlannerActionSurface;
+}): Action[] {
+	const parentNames = new Set(
+		args.actionSurface.summary.tierAParents.map((name) =>
+			normalizeActionIdentifier(name),
+		),
+	);
+	return args.actions.filter((action) =>
+		parentNames.has(normalizeActionIdentifier(action.name)),
+	);
+}
+
+export function collectBudgetedStageOneCandidateActions(args: {
+	actions: readonly Action[];
+	candidateActions: readonly string[];
+	contexts: readonly AgentContext[];
+}): Action[] {
+	if (args.candidateActions.length === 0) return [];
+
+	const actionLookup = buildRuntimeActionLookup({ actions: args.actions });
+	const selectedNames = new Set<string>();
+	for (const candidateName of args.candidateActions) {
+		const direct = resolveRuntimeAction(actionLookup, candidateName);
+		const resolved = direct
+			? [direct]
+			: parentAliasesForCandidateAction(candidateName)
+					.map((alias) => resolveRuntimeAction(actionLookup, alias))
+					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) return [];
+		for (const action of resolved) {
+			selectedNames.add(normalizeActionIdentifier(action.name));
+		}
+	}
+	// A candidate child is a routing hint, not a complete plan. Keep its
+	// authorized umbrella available so a compound request can use another
+	// operation after the first result (e.g. navigate, then read the page).
+	// Use declared relationships, never guessed name prefixes. Only parents
+	// already admitted by the execution gates may enter this surface.
+	for (const parent of args.actions) {
+		if (
+			parent.subActions?.some((child) =>
+				selectedNames.has(
+					normalizeActionIdentifier(
+						typeof child === "string" ? child : child.name,
+					),
+				),
+			)
+		) {
+			selectedNames.add(normalizeActionIdentifier(parent.name));
+		}
+	}
+	// Fill only domains missing from the resolved candidates. A synthetic
+	// candidate may resolve to VIEWS without the Notes data action. Once an
+	// explicit candidate covers a domain, do not add every related action:
+	// Calendar shares its context with many life-management tools, whose full
+	// schemas can overflow the model despite a precise CALENDAR selection.
+	const coveredContexts = new Set(
+		args.actions
+			.filter((action) =>
+				selectedNames.has(normalizeActionIdentifier(action.name)),
+			)
+			.flatMap((action) => action.contexts ?? [])
+			.map((context) => String(context).trim().toLowerCase()),
+	);
+	const uncoveredContexts = args.contexts.filter(
+		(context) => !coveredContexts.has(String(context).trim().toLowerCase()),
+	);
+	const noFocusedViewActions = new Set<string>();
+	for (const action of args.actions) {
+		if (
+			uiViewActionPriority(action, uncoveredContexts, noFocusedViewActions) ===
+			1
+		) {
+			selectedNames.add(normalizeActionIdentifier(action.name));
+		}
+	}
+
+	return args.actions.filter((action) =>
+		selectedNames.has(normalizeActionIdentifier(action.name)),
+	);
+}
+
+export type UmbrellaPlannerBudgetDecision =
+	| "under-dispatch-budget"
+	| "smaller-than-complete-surface"
+	| "not-smaller";
+
+import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.js";
+
+import { resolveRuntimeAction } from "./action-identifiers.js";
+import type { V5PlannerActionSurface } from "./action-surface.js";
+
+import { uiViewActionPriority } from "./provider-state.js";

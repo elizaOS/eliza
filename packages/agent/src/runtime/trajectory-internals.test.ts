@@ -4,7 +4,11 @@
  * ordering, logger scoring, and archive formatting. Drives the real module
  * with hand-built collaborators; no mocked return-value theatre.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  InferenceTurnTimer,
+  runWithInferenceTiming,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   appendCompleteTrajectoryTextRecords,
@@ -665,6 +669,68 @@ describe("trajectory logger scoring", () => {
         }),
       ),
     ).toBe(only);
+  });
+});
+
+describe("trajectory database timing", () => {
+  it("keeps frequent queries out of the bounded timing buffer", async () => {
+    const result = { rows: [{ private: "private-query-result" }] };
+    const db = {
+      async execute(query: { queryChunks: object[] }) {
+        expect(this).toBe(db);
+        expect(JSON.stringify(query)).toContain("private-query-text");
+        return result;
+      },
+    };
+    const rt = runtimeStub({ adapter: { db } });
+    const timer = new InferenceTurnTimer({ turnId: "query", label: "test" });
+    expect(
+      await runWithInferenceTiming(timer, () =>
+        executeRawSql(rt, "SELECT 'private-query-text'"),
+      ),
+    ).toBe(result);
+    const summary = timer.close();
+    expect(summary.spans).toEqual([]);
+    expect(JSON.stringify(summary)).not.toContain("private-query");
+  });
+
+  it("preserves transaction binding, executor and rejection while closing the span", async () => {
+    const failure = new Error("private-database-error");
+    const tx = {
+      async execute(query: { queryChunks: object[] }) {
+        expect(this).toBe(tx);
+        expect(JSON.stringify(query)).toContain("private-write-text");
+        throw failure;
+      },
+    };
+    const db = {
+      async execute() {
+        throw new Error("must use transaction executor");
+      },
+      async transaction<T>(work: (executor: typeof tx) => Promise<T>) {
+        expect(this).toBe(db);
+        return work(tx);
+      },
+    };
+    const timer = new InferenceTurnTimer({
+      turnId: "transaction",
+      label: "test",
+    });
+    await expect(
+      runWithInferenceTiming(timer, () =>
+        executeRawSqlTransaction(runtimeStub({ adapter: { db } }), (execute) =>
+          execute(
+            "UPDATE trajectories SET metadata_json = 'private-write-text'",
+          ),
+        ),
+      ),
+    ).rejects.toBe(failure);
+    const summary = timer.close();
+    expect(summary.spans.map(({ name }) => name)).toEqual([
+      "trajectory:db-transaction",
+    ]);
+    expect(summary.spans[0]?.meta).toBeUndefined();
+    expect(JSON.stringify(summary)).not.toContain("private-");
   });
 });
 

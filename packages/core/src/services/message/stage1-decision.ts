@@ -102,6 +102,8 @@ export async function generateStage1Decision(
 	args: V5MessageRuntimeInput,
 	{
 		senderRole,
+		ambientHardGate,
+		useProviderOverflow,
 		context,
 		availableContexts,
 		directMessageChannel,
@@ -110,6 +112,8 @@ export async function generateStage1Decision(
 		recorder,
 		trajectoryId,
 	}: {
+		ambientHardGate: boolean;
+		useProviderOverflow: boolean;
 		senderRole: Awaited<ReturnType<typeof resolveStage1SenderRole>>;
 		context: Awaited<ReturnType<typeof createV5MessageContextObject>>;
 		availableContexts: ReturnType<typeof listAvailableContextsForRole>;
@@ -123,10 +127,9 @@ export async function generateStage1Decision(
 	},
 	registerStageTask: (task: Promise<void>) => void,
 ) {
-	let useProviderOverflow = false;
-	const messageHandlerStartedAt = Date.now();
 	const voiceDirectMessageChannel =
 		args.message.content?.channelType === ChannelType.VOICE_DM;
+	const messageHandlerStartedAt = Date.now();
 	const stage1TurnSignal =
 		getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
@@ -424,11 +427,13 @@ export async function generateStage1Decision(
 	let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 	let messageHandler: MessageHandlerResult | null = null;
 	if (rawFieldParsed) {
+		const normalizedRawParsed =
+			normalizeRawParsedForFieldRegistry(rawFieldParsed);
 		fieldRunResult = await timeInferenceSpan(
 			"evaluators:response-handler-fields",
 			() =>
 				args.runtime.responseHandlerFieldRegistry.dispatch({
-					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
+					rawParsed: normalizedRawParsed,
 					runtime: args.runtime,
 					message: args.message,
 					state: args.state,
@@ -437,7 +442,21 @@ export async function generateStage1Decision(
 				}),
 		);
 		messageHandler = messageHandlerFromFieldResult(
-			fieldRunResult.parsed,
+			{
+				...fieldRunResult.parsed,
+				// Registry defaults are not an explicit model no-effect decision.
+				// Keep missing/malformed statuses conservative without discarding
+				// pending or applied statuses produced by field evaluators.
+				replyEffectStatus:
+					fieldRunResult.parsed.replyEffectStatus === "none" &&
+					!(
+						typeof normalizedRawParsed.replyEffectStatus === "string" &&
+						normalizedRawParsed.replyEffectStatus.trim().toLowerCase() ===
+							"none"
+					)
+						? undefined
+						: fieldRunResult.parsed.replyEffectStatus,
+			},
 			fieldRunResult,
 			{
 				actions: args.runtime.actions,

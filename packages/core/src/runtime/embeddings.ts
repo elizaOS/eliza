@@ -160,11 +160,25 @@ export class RuntimeEmbeddings {
 			embeddingProvider,
 		);
 		if (allRegistrations.length === 0) {
-			throw new Error(
-				embeddingProvider
-					? `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`
-					: "No TEXT_EMBEDDING model registered",
-			);
+			if (embeddingProvider) {
+				// The configured provider can register in a later plugin wave (live
+				// 2026-09-05: plugin-embeddings auto-enables after the first probe).
+				// A hard error here aborted the whole bootstrap in a retry loop; a
+				// probe error keeps the runtime in embedding-disabled mode until the
+				// deferred re-probe finds the handler, and never silently pins a
+				// different provider than the one the operator configured.
+				this.disableEmbeddingGeneration(
+					`Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler yet`,
+				);
+				throw new EmbeddingDimensionProbeError([
+					{
+						provider: embeddingProvider,
+						modelKey: ModelType.TEXT_EMBEDDING,
+						error: "no registered handler yet",
+					},
+				]);
+			}
+			throw new Error("No TEXT_EMBEDDING model registered");
 		}
 
 		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
@@ -276,8 +290,22 @@ export class RuntimeEmbeddings {
 			}
 
 			await this.runtime.adapter.ensureEmbeddingDimension(embedding.length);
+			const modelLabel = await this.guardEmbeddingStoreIdentity(
+				registration.provider,
+				embedding.length,
+			);
 			this.pinnedEmbeddingProvider = registration.provider;
 			this.enableEmbeddingGeneration();
+			this.runtime.logger.info(
+				{
+					src: "agent",
+					agentId: this.runtime.agentId,
+					provider: registration.provider,
+					modelLabel,
+					dimension: embedding.length,
+				},
+				"TEXT_EMBEDDING provider pinned",
+			);
 			// Reclaim any vectors left in a different dimension column — e.g. cloud
 			// 1536-dim embeddings after this agent switched to on-device gte-small
 			// (384-dim) — which a same-width search can never match again, then
@@ -503,4 +531,103 @@ export class RuntimeEmbeddings {
 	}): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
 		return this.runtime.adapter.getCachedEmbeddings(params);
 	}
+	private embeddingModelLabelForProvider(provider: string): string | null {
+		const read = (key: string): string | null => {
+			const value = this.runtime.getSetting(key);
+			return typeof value === "string" && value.trim().length > 0
+				? value.trim()
+				: null;
+		};
+		switch (provider) {
+			case "embeddings":
+				return read("EMBEDDING_MODEL");
+			case "openai":
+				return read("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+			case "elizacloud":
+				return read("ELIZAOS_CLOUD_EMBEDDING_MODEL");
+			default:
+				return LOCAL_EMBEDDING_PROVIDERS.has(provider)
+					? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
+					: null;
+		}
+	}
+
+	private async guardEmbeddingStoreIdentity(
+		provider: string,
+		dimension: number,
+	): Promise<string | null> {
+		const modelLabel = this.embeddingModelLabelForProvider(provider);
+		const next: EmbeddingStoreIdentity = {
+			provider,
+			modelLabel,
+			dimension,
+			recordedAt: new Date().toISOString(),
+		};
+		const describe = (identity: EmbeddingStoreIdentity): string =>
+			`${identity.provider}/${identity.modelLabel ?? "unknown-model"}@${identity.dimension}`;
+		const stored = await this.runtime.getCache<EmbeddingStoreIdentity>(
+			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+		);
+		if (!stored) {
+			this.runtime.logger.warn(
+				{ src: "agent", agentId: this.runtime.agentId, identity: next },
+				"No embedding store identity recorded for this agent; adopting the active embedder. If the existing vectors came from a different model, back up and rebuild a fresh index.",
+			);
+			await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			return modelLabel;
+		}
+		if (stored.dimension !== dimension) {
+			this.runtime.logger.info(
+				{ src: "agent", agentId: this.runtime.agentId, from: stored, to: next },
+				"Embedding width changed; the stale-dimension reconcile owns the old vectors",
+			);
+			await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			return modelLabel;
+		}
+		const sameModel =
+			stored.modelLabel !== null && modelLabel !== null
+				? stored.modelLabel === modelLabel
+				: stored.provider === provider;
+		if (sameModel) {
+			if (stored.provider !== provider || stored.modelLabel !== modelLabel) {
+				await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			}
+			return modelLabel;
+		}
+		const acknowledged = this.runtime.getSetting(
+			EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
+		);
+		const acceptedLabel = modelLabel ?? provider;
+		if (
+			typeof acknowledged === "string" &&
+			acknowledged.trim() === acceptedLabel
+		) {
+			this.runtime.logger.warn(
+				{ src: "agent", agentId: this.runtime.agentId, from: stored, to: next },
+				"Embedding store identity changed with operator acknowledgement",
+			);
+			await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
+			return modelLabel;
+		}
+		const reason =
+			`Embedding model changed from ${describe(stored)} to ${describe(next)} at the same ${dimension}-dim width; refusing to mix vector spaces. ` +
+			`Back up the store, rebuild a fresh index for this agent, then set ${EMBEDDING_STORE_ACCEPT_MODEL_SETTING}=${acceptedLabel}.`;
+		this.disableEmbeddingGeneration(reason);
+		throw new ElizaError(reason, {
+			code: "EMBEDDING_STORE_MODEL_MISMATCH",
+			context: { agentId: this.runtime.agentId, stored, next },
+		});
+	}
 }
+
+export interface EmbeddingStoreIdentity {
+	provider: string;
+	modelLabel: string | null;
+	dimension: number;
+	recordedAt: string;
+}
+
+export const EMBEDDING_STORE_IDENTITY_CACHE_KEY = "embedding:store-identity";
+
+export const EMBEDDING_STORE_ACCEPT_MODEL_SETTING =
+	"ELIZA_EMBEDDING_STORE_ACCEPT_MODEL";

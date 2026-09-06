@@ -23,6 +23,7 @@ import {
   MAX_SQL_JSON_SANITIZE_STRING_BYTES,
   SQL_JSON_SANITIZE_UNBOUNDED,
   sanitizeJsonObject,
+  serializeJsonb,
 } from "../../sanitize-json";
 
 describe("sanitizeJsonObject", () => {
@@ -290,5 +291,98 @@ describe("sanitizeJsonObject", () => {
     };
     expect(() => sanitizeJsonObject(value)).toThrowError(ElizaError);
     expect(calls).toBe(0);
+  });
+});
+
+describe("memory jsonb serialization", () => {
+  it("preserves shared sibling values while breaking actual ancestor cycles", () => {
+    const shared: Record<string, unknown> = { label: "a\u0000b" };
+    const input = { first: shared, second: shared, list: [shared] };
+    expect(JSON.parse(serializeJsonb(input) as string)).toEqual({
+      first: { label: "ab" },
+      second: { label: "ab" },
+      list: [{ label: "ab" }],
+    });
+    shared.self = shared;
+    expect(JSON.parse(serializeJsonb(input) as string)).toEqual({
+      first: { label: "ab", self: null },
+      second: { label: "ab", self: null },
+      list: [{ label: "ab", self: null }],
+    });
+    expect(shared.self).toBe(shared);
+  });
+
+  it("charges repeated subtrees against the serialized node budget", () => {
+    const shared = Array.from({ length: 100 }, () => "value");
+    const repeated = Array.from({ length: 100 }, () => shared);
+    expect(() => serializeJsonb(repeated)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("decodes legacy JSON before removing NULs and preserves literal escapes", () => {
+    const literal = String.raw`C:\notes\version-3.5 \u0000`;
+    const encoded = JSON.stringify({ text: literal, thought: "a\u0000b" });
+    expect(JSON.parse(serializeJsonb(encoded) as string)).toEqual({
+      text: literal,
+      thought: "ab",
+    });
+    expect(encoded).toContain("\\u0000");
+  });
+
+  it("rejects malformed legacy JSON without copying its content into errors", () => {
+    const input = '{"secret":"private-value"';
+    let rejected: unknown;
+    try {
+      serializeJsonb(input);
+    } catch (error) {
+      rejected = error;
+    }
+    expect(rejected).toMatchObject({ code: "SQL_JSON_INVALID" });
+    expect(String(rejected)).not.toContain("private-value");
+    expect((rejected as Error).cause).toBeUndefined();
+  });
+
+  it("bounds encoded bytes before decoding, including UTF-8 expansion", () => {
+    for (const input of [
+      `${" ".repeat(MAX_SQL_JSON_SANITIZE_BYTES)}null`,
+      JSON.stringify("é".repeat(MAX_SQL_JSON_SANITIZE_BYTES / 2)),
+    ]) {
+      expect(() => serializeJsonb(input)).toThrowError(
+        expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+      );
+    }
+    const supported = JSON.stringify({ text: "x".repeat(1024) });
+    expect(serializeJsonb(supported)).toBe(supported);
+  });
+});
+
+describe("legacy jsonb lexical preservation", () => {
+  it("retains arbitrary-precision numeric tokens while stripping NUL string escapes", () => {
+    const input = String.raw`{ "counter": 9007199254740993, "fraction": 0.1234567890123456789, "label": "a\u0000b" }`;
+    expect(serializeJsonb(input)).toBe(
+      '{ "counter": 9007199254740993, "fraction": 0.1234567890123456789, "label": "ab" }'
+    );
+  });
+
+  it("distinguishes literal backslash runs from actual NUL escapes in values and keys", () => {
+    for (let count = 0; count < 6; count++) {
+      const prefix = "\\".repeat(count);
+      const key = `${prefix}key\u0000end`;
+      const content = `${prefix}\u0000text`;
+      const literal = `${prefix}\\u0000text`;
+      const input = JSON.stringify({ [key]: content, literal });
+      expect(JSON.parse(serializeJsonb(input) as string)).toEqual({
+        [`${prefix}keyend`]: `${prefix}text`,
+        literal,
+      });
+    }
+  });
+
+  it("rejects sanitized key collisions instead of silently overwriting durable data", () => {
+    const input = JSON.stringify({ key: "first", "k\u0000ey": "second" });
+    expect(() => serializeJsonb(input)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
   });
 });

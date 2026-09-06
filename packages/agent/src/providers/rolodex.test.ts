@@ -119,7 +119,7 @@ afterEach(() => {
 });
 
 describe("rolodexProvider metadata", () => {
-  it("declares ADMIN-gated, turn-scoped, contacts/memory routing", () => {
+  it("declares ADMIN-gated, turn-scoped, contacts-only routing", () => {
     expect(rolodexProvider.name).toBe("rolodex");
     expect(rolodexProvider.description).toBe(
       "Known contacts and relationships across all connected platforms (the Rolodex).",
@@ -129,9 +129,9 @@ describe("rolodexProvider metadata", () => {
     );
     expect(rolodexProvider.dynamic).toBe(true);
     expect(rolodexProvider.position).toBe(7);
-    expect(rolodexProvider.contexts).toEqual(["contacts", "memory"]);
+    expect(rolodexProvider.contexts).toEqual(["contacts"]);
     expect(rolodexProvider.contextGate).toEqual({
-      anyOf: ["contacts", "memory"],
+      anyOf: ["contacts"],
     });
     expect(rolodexProvider.cacheStable).toBe(false);
     expect(rolodexProvider.cacheScope).toBe("turn");

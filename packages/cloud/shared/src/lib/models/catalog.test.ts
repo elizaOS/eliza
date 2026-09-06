@@ -29,6 +29,23 @@ describe("#8426 text catalog recommendation invariants", () => {
     expect(model?.tags).toContain("recommended");
   });
 
+  test("the default and BYOK alias each have one consistent catalog entry", () => {
+    const defaults = STATIC_TEXT_CATALOG_MODELS.filter(
+      (model) => model.id === CEREBRAS_DEFAULT_TEXT_MODEL,
+    );
+    const aliases = STATIC_TEXT_CATALOG_MODELS.filter(
+      (model) => model.id === `cerebras:${CEREBRAS_DEFAULT_TEXT_MODEL}`,
+    );
+    expect(defaults).toHaveLength(1);
+    expect(aliases).toHaveLength(1);
+    expect(defaults[0]?.context_window).toBe(65536);
+    expect(defaults[0]?.max_tokens).toBe(32768);
+    expect(aliases[0]?.context_window).toBe(defaults[0]?.context_window);
+    expect(aliases[0]?.max_tokens).toBe(defaults[0]?.max_tokens);
+    expect(defaults[0]?.supported_parameters).toContain("reasoning_effort");
+    expect(aliases[0]?.supported_parameters).toContain("reasoning_effort");
+  });
+
   test("the flaky :nitro gateway model is reachable but NOT recommended", () => {
     expect(BITROUTER_NITRO_TEXT_MODEL).toContain(":nitro");
     const nitro = byId(BITROUTER_NITRO_TEXT_MODEL);

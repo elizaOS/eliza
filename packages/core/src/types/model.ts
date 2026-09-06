@@ -532,6 +532,8 @@ export interface SpanSamplerPlan {
  * request still works, just without forcing.
  */
 export interface GenerateTextParams {
+	/** Non-enumerable runtime metadata; never part of the provider request body. */
+	[MODEL_PROVIDER_ATTEMPTS]?: ModelProviderAttempt[];
 	/** Runtime-only hook used to prepare request content for each resolved model attempt. */
 	prepareModelAttempt?: (
 		attempt: ModelAttemptContext,
@@ -710,6 +712,19 @@ export interface GenerateTextParams {
 	 *           via the `x-eliza-span-samplers` header.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
+}
+
+/** Shared only by dispatches within one useModel call, including router delegates. */
+export const MODEL_PROVIDER_ATTEMPTS: unique symbol = Symbol.for(
+	"eliza.modelProviderAttempts",
+);
+
+/** Exact dispatched registration, not a provider-wide or cross-call blacklist. */
+export interface ModelProviderAttempt {
+	modelType: string;
+	provider: string;
+	handler: object;
+	error?: unknown;
 }
 
 /** Exact registration identity selected for one runtime model attempt. */
@@ -1553,19 +1568,52 @@ const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set(
 	TEXT_GENERATION_MODEL_TYPES,
 );
 
+// A chain is consulted only after the requested registration failed with a
+// failover-class error (rate limit, 5xx, timeout, provider warming budget); a
+// healthy primary is never bypassed. Every text tier therefore ends in a
+// registration of a different tier so a deployment that splits its small and
+// large slots across two provider models (two rate-limit buckets) has a
+// cross-bucket candidate after an exhausted bucket, instead of a hard failure
+// (TEXT_SMALL/TEXT_LARGE had no chain) or a replay into the same bucket.
 const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
-	[ModelType.TEXT_NANO]: [ModelType.TEXT_NANO, ModelType.TEXT_SMALL],
-	[ModelType.TEXT_MEDIUM]: [ModelType.TEXT_MEDIUM, ModelType.TEXT_SMALL],
-	[ModelType.TEXT_MEGA]: [ModelType.TEXT_MEGA, ModelType.TEXT_LARGE],
+	[ModelType.TEXT_NANO]: [
+		ModelType.TEXT_NANO,
+		ModelType.TEXT_SMALL,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_LARGE,
+	],
+	[ModelType.TEXT_SMALL]: [
+		ModelType.TEXT_SMALL,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_LARGE,
+	],
+	[ModelType.TEXT_MEDIUM]: [
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_SMALL,
+		ModelType.TEXT_LARGE,
+	],
+	[ModelType.TEXT_LARGE]: [
+		ModelType.TEXT_LARGE,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_SMALL,
+	],
+	[ModelType.TEXT_MEGA]: [
+		ModelType.TEXT_MEGA,
+		ModelType.TEXT_LARGE,
+		ModelType.TEXT_MEDIUM,
+	],
 	[ModelType.RESPONSE_HANDLER]: [
 		ModelType.RESPONSE_HANDLER,
 		ModelType.TEXT_NANO,
 		ModelType.TEXT_SMALL,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_LARGE,
 	],
 	[ModelType.ACTION_PLANNER]: [
 		ModelType.ACTION_PLANNER,
 		ModelType.TEXT_MEDIUM,
 		ModelType.TEXT_SMALL,
+		ModelType.TEXT_LARGE,
 	],
 };
 

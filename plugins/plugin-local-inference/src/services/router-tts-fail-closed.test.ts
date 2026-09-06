@@ -161,7 +161,9 @@ describe("router fails closed for TEXT_TO_SPEECH (#12253)", () => {
 
 describe("non-TTS slots keep transient failover", () => {
 	it("rotates TEXT_LARGE to the next provider on failure (prefer-local, cloud-only)", async () => {
-		const primaryError = new Error("openai 500");
+		const primaryError = Object.assign(new Error("openai server failure"), {
+			status: 500,
+		});
 		const openaiHandler = vi.fn(async () => {
 			throw primaryError;
 		});

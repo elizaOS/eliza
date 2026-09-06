@@ -4,6 +4,11 @@
 # Entries here are reviewed false positives. Add a comment above each
 # fingerprint explaining why it is safe.
 
+# Historical security-test fixture: this base64 literal decodes to
+# "fixture-value-123456789" and tests rejection of encoded credentials.
+# The current fixture computes that encoding; keep the full history scan active.
+f5aaa84aa0b5cf3dcd018f4e35f9c7243c5cc80c:plugins/plugin-agent-orchestrator/src/__tests__/diff-review-gate.test.ts:generic-api-key:244
+
 # PEM envelope template wrapper in normalizePem(). The wrapper shapes
 # operator-provided env content into canonical PEM markers; no key
 # material is committed. A later commit splits the markers across string

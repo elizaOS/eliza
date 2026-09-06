@@ -237,6 +237,7 @@ function buildChatPromptForBilling(request: ChatRequest): string {
 type ReasoningEffort = "none" | "low" | "medium" | "high";
 
 const CEREBRAS_REASONING_EFFORTS = {
+  "qwen-3.8-27b": ["none", "low", "medium", "high"],
   "gemma-4-31b": ["none", "low", "medium", "high"],
   "gpt-oss-120b": ["low", "medium", "high"],
   "zai-glm-4.7": ["none"],

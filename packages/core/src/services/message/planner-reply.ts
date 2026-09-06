@@ -33,10 +33,12 @@ import { withActionResultsForPrompt } from "./response-state.js";
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
 import type { V5MessageRuntimeInput } from "./turn-input.js";
 
-export function finalizePlannerReply(
+export async function finalizePlannerReply(
 	args: V5MessageRuntimeInput,
 	{
 		plannerResult,
+		replyRecovered,
+		recoveredReply,
 		exposedPlannerActions,
 		plannerState,
 		ambientTurn,
@@ -49,6 +51,10 @@ export function finalizePlannerReply(
 		deliveredVisibleTexts,
 	}: {
 		plannerResult: PlannerLoopResult;
+		replyRecovered: boolean;
+		recoveredReply:
+			| Awaited<ReturnType<typeof resolvePlannedReplyEgress>>
+			| undefined;
 		exposedPlannerActions: Action[];
 		plannerState: State;
 		ambientTurn: boolean;
@@ -63,7 +69,7 @@ export function finalizePlannerReply(
 		}>;
 		deliveredVisibleTexts: Set<string>;
 	},
-): V5MessageRuntimeStage1Result {
+): Promise<V5MessageRuntimeStage1Result> {
 	const actionResults = collectPreviousActionResults(
 		plannerResult.trajectory,
 		exposedPlannerActions,
@@ -229,20 +235,25 @@ export function finalizePlannerReply(
 	// not mint, and would replace a verified coding result with a false
 	// "couldn't verify" fallback.
 	const finalReplyEgressDecision =
-		args.codingMode === true
+		args.codingMode === true || recoveredReply?.text === effectiveReplyText
 			? ({ verdict: "allow" } as const)
 			: evaluatePlannedReplyEgress({
 					reply: effectiveReplyText,
 					actionResults,
 					actions: args.runtime.actions,
+					evaluator: plannerResult.evaluator,
 				});
 	if (finalReplyEgressDecision.verdict === "reject") {
-		effectiveReplyText = finalReplyEgressDecision.fallbackReply;
+		recoveredReply = await resolvePlannedReplyEgress({
+			runtime: args.runtime,
+			message: args.message,
+			reply: effectiveReplyText,
+			actionResults,
+			evaluator: plannerResult.evaluator,
+		});
+		effectiveReplyText = recoveredReply.text;
+		replyRecovered = true;
 	}
-	const effectiveReplyReceiptIds = appliedEffectReceiptIdsForReply(
-		effectiveReplyText,
-		actionResults,
-	);
 	const plannedTextRepeatsEarlyReply =
 		earlyReplySent &&
 		normalizeVisibleTextForDuplicateCheck(effectiveReplyText) ===
@@ -418,11 +429,26 @@ export function finalizePlannerReply(
 			},
 			"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
 		);
-		effectiveReplyText = zeroDeliveryRecovery.text;
-		strippedPlannedReplyText = zeroDeliveryRecovery.text;
-		effectiveDeliveredReplyText = zeroDeliveryRecovery.text;
+		recoveredReply = await resolvePlannedReplyEgress({
+			runtime: args.runtime,
+			message: args.message,
+			reply: zeroDeliveryRecovery.text,
+			actionResults,
+		});
+		effectiveReplyText = recoveredReply.text;
+		strippedPlannedReplyText = effectiveReplyText;
+		effectiveDeliveredReplyText = effectiveReplyText;
+		replyRecovered = true;
 		shouldSendPlannedText = true;
 	}
+	const effectiveReplyReceiptIds =
+		recoveredReply?.text === effectiveDeliveredReplyText
+			? recoveredReply.effectReceiptIds
+			: appliedEffectReceiptIdsForReply(
+					effectiveDeliveredReplyText,
+					actionResults,
+					plannerResult.evaluator,
+				);
 	// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
 	// provenance. A byte-exact canonical action result also needs preservation:
 	// `verifiedUserFacing` promises do-not-paraphrase semantics, so routing that
@@ -430,9 +456,12 @@ export function finalizePlannerReply(
 	// punctuation or exact values. Mixed evaluator/tool prose and hardcoded
 	// fallbacks remain unmarked so canned strings still receive the voice pass.
 	const effectiveReplyIsModelVoice =
-		!plannedText &&
-		stageOneAck.length > 0 &&
-		effectiveReplyText === stageOneAck;
+		(!plannedText &&
+			stageOneAck.length > 0 &&
+			effectiveReplyText === stageOneAck) ||
+		(effectiveReplyReceiptIds.length > 0 &&
+			plannerResult.evaluator?.messageToUser?.trim() ===
+				effectiveDeliveredReplyText);
 	const effectiveReplyIsCanonicalActionText = actionResults.some(
 		(result) =>
 			result.verifiedUserFacing === true &&
@@ -459,7 +488,9 @@ export function finalizePlannerReply(
 							plannerResult.trajectory.steps.at(-1)?.thought ??
 							messageHandler.thought,
 						agentVoiced:
-							effectiveReplyIsModelVoice || effectiveReplyIsCanonicalActionText,
+							replyRecovered ||
+							effectiveReplyIsModelVoice ||
+							effectiveReplyIsCanonicalActionText,
 						...(effectiveReplyReceiptIds.length > 0
 							? { effectReceiptIds: effectiveReplyReceiptIds }
 							: {}),
@@ -478,3 +509,5 @@ export function finalizePlannerReply(
 				},
 	};
 }
+
+import { resolvePlannedReplyEgress } from "./egress-policy.js";

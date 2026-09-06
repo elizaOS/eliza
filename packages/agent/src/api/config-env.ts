@@ -184,7 +184,7 @@ function serialise<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
-function resolveConfigEnvPath(stateDir: string | undefined): string {
+export function resolveConfigEnvPath(stateDir: string | undefined): string {
   const dir = stateDir ?? resolveStateDir();
   return path.join(dir, CONFIG_ENV_FILENAME);
 }

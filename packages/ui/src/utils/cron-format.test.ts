@@ -11,6 +11,13 @@ describe("describeCron", () => {
     expect(describeCron("*/5 * * * *")).toBe("Every 5 minutes");
   });
 
+  it("describes evenly spaced hour schedules without mislabeling uneven steps", () => {
+    expect(describeCron("0 */6 * * *")).toBe("Every 6 hours");
+    expect(describeCron("0 */1 * * *")).toBe("Every hour");
+    expect(describeCron("0 */5 * * *")).toBeNull();
+    expect(describeCron("0 */0 * * *")).toBeNull();
+  });
+
   it("recognises top-of-the-hour", () => {
     expect(describeCron("0 * * * *")).toBe("Every hour");
   });

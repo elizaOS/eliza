@@ -1550,6 +1550,68 @@ describe("view-surface overlap miss-budget cap (vim-window shape)", () => {
 	const VIM_ANSWER =
 		"Use :q to close the current window, or Ctrl-w c to close a split.";
 
+	it("retains an explicitly no-effect model answer through both routing backstops", () => {
+		const messageText =
+			"What view am I looking at right now? Just answer; do not navigate or change anything.";
+		const actions = [replyAction, viewsAction];
+		const routed = messageHandlerFromFieldResult(
+			{
+				...stageOneAnswered("You're looking at the Calendar view."),
+				replyEffectStatus: "none",
+			},
+			undefined,
+			{ actions, messageText },
+		);
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+		const afterBackstop = applyDirectCurrentCandidateBackstopToMessageHandler(
+			routed,
+			{ actions, messageText },
+		);
+		expect(afterBackstop.plan.requiresTool).toBe(false);
+		expect(afterBackstop.plan.reply).toBe(
+			"You're looking at the Calendar view.",
+		);
+		const gate = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) => evaluator.name === "core.simple_registered_action_request",
+		);
+		expect(
+			gate?.shouldRun({
+				message: messageWithText(messageText),
+				messageHandler: afterBackstop,
+				runtime: { actions },
+			} as never),
+		).toBe(false);
+	});
+
+	it.each([
+		{ replyEffectStatus: "pending", intents: [], candidates: [] },
+		{ replyEffectStatus: "applied", intents: [], candidates: [] },
+		{ replyEffectStatus: "none", intents: ["Open Notes"], candidates: [] },
+		{ replyEffectStatus: "none", intents: [], candidates: ["VIEWS"] },
+	])(
+		"does not suppress model-declared navigation or effects: %j",
+		(signals) => {
+			const routed = messageHandlerFromFieldResult(
+				{
+					...stageOneAnswered(
+						"The requested panel is ready.",
+						signals.candidates,
+					),
+					replyEffectStatus: signals.replyEffectStatus,
+					intents: signals.intents,
+				},
+				undefined,
+				{
+					actions: [replyAction, viewsAction],
+					messageText: "open the notes panel",
+				},
+			);
+			expect(routed.plan.requiresTool).toBe(true);
+			expect(routed.plan.candidateActions).toContain("VIEWS");
+		},
+	);
+
 	it("caps the miss budget on an answered turn escalated only by a view-surface overlap", () => {
 		const routed = messageHandlerFromFieldResult(
 			stageOneAnswered(VIM_ANSWER),

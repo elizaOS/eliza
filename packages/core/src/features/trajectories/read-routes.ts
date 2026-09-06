@@ -28,6 +28,10 @@ interface ServiceTrajectoryListItem {
 	endTime?: number | null;
 	durationMs?: number | null;
 	llmCallCount: number;
+	totalPromptTokens?: number;
+	totalCompletionTokens?: number;
+	totalCacheReadInputTokens?: number;
+	totalCacheCreationInputTokens?: number;
 	createdAt: string;
 	updatedAt?: string;
 }
@@ -40,6 +44,17 @@ interface ServiceLlmCall {
 	purpose?: string;
 	actionType?: string;
 	stepType?: string;
+	timestamp?: number;
+	systemPrompt?: string;
+	userPrompt?: string;
+	temperature?: number;
+	maxTokens?: number;
+	maxTokensOmitted?: boolean;
+	latencyMs?: number;
+	promptTokens?: number;
+	completionTokens?: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
 }
 
 interface ServiceProviderAccess {
@@ -179,6 +194,10 @@ function listItemToUi(
 		id: item.id,
 		status: normalizeStatus(item.status),
 		llmCallCount: item.llmCallCount,
+		totalPromptTokens: item.totalPromptTokens,
+		totalCompletionTokens: item.totalCompletionTokens,
+		totalCacheReadInputTokens: item.totalCacheReadInputTokens,
+		totalCacheCreationInputTokens: item.totalCacheCreationInputTokens,
 		agentId: item.agentId,
 		source: item.source,
 		roomId: item.roomId ?? metadataRoomId(metadata),
@@ -214,6 +233,18 @@ function detailToUi(
 		for (const c of calls) {
 			llmCalls.push({
 				id: c.callId,
+				stepId: step.stepId,
+				timestamp: c.timestamp,
+				systemPrompt: c.systemPrompt,
+				userPrompt: c.userPrompt,
+				temperature: c.temperature,
+				maxTokens: c.maxTokens,
+				maxTokensOmitted: c.maxTokensOmitted,
+				latencyMs: c.latencyMs,
+				promptTokens: c.promptTokens,
+				completionTokens: c.completionTokens,
+				cacheReadInputTokens: c.cacheReadInputTokens,
+				cacheCreationInputTokens: c.cacheCreationInputTokens,
 				model: c.model,
 				response: c.response,
 				...(c.provider ? { provider: c.provider } : {}),

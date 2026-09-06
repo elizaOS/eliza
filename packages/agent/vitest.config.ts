@@ -210,6 +210,13 @@ export default defineConfig({
           "plugins/plugin-openai/utils/config.ts",
         ),
       },
+      {
+        // Core's src re-exports `@elizaos/prompts`, which ships no dist in
+        // this lane — anchor it to source so suites importing @elizaos/core
+        // load (same fix plugin-app-control's config carries).
+        find: /^@elizaos\/prompts$/,
+        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
+      },
       ...baseAliases,
       {
         find: /^@elizaos\/vault$/,

@@ -1,13 +1,17 @@
 /** Renders passive feedback outside transformed and collapsible shell containers. */
+import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ActionNotice } from "../../state/types";
 import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 
 export function ActionNoticeToast({
   actionNotice,
+  onDismiss,
 }: {
   actionNotice: ActionNotice | null;
+  onDismiss?: () => void;
 }) {
   if (!actionNotice || typeof document === "undefined") return null;
   return createPortal(
@@ -37,6 +41,19 @@ export function ActionNoticeToast({
       <span className="min-w-0 text-left leading-snug whitespace-pre-wrap break-words">
         {actionNotice.text}
       </span>
+      {onDismiss ? (
+        <Button
+          type="button"
+          variant="ghostMuted"
+          size="icon-lg"
+          shape="circle"
+          aria-label="Dismiss notification"
+          className="pointer-events-auto shrink-0"
+          onClick={onDismiss}
+        >
+          <X size={16} aria-hidden="true" />
+        </Button>
+      ) : null}
     </Alert>,
     document.body,
   );

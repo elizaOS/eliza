@@ -430,3 +430,23 @@ export function listAvailableContextsForRole(
 	}
 	return registry.listAvailable(role);
 }
+
+export function isStage1AmbientHardGated(
+	runtime: IAgentRuntime,
+	message: Memory,
+): boolean {
+	try {
+		return (
+			resolveStage1ReplyGateMode(runtime, message) === "addressed_or_ambient"
+		);
+	} catch (error) {
+		// error-policy:J7 personality lookup is advisory routing context. A store
+		// failure must fail open to the participatory default, not force the
+		// restrained gate.
+		runtime.reportError("MessageService.resolveAmbientReplyGate", error, {
+			roomId: message.roomId,
+			entityId: message.entityId,
+		});
+		return false;
+	}
+}

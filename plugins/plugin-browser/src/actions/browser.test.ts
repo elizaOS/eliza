@@ -3,6 +3,7 @@
  */
 
 import type { HandlerCallback } from "@elizaos/core";
+import { validateToolArgs } from "@elizaos/core/actions/validate-tool-args";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";
 import { browserAction } from "./browser.js";
@@ -17,7 +18,8 @@ function runtimeWithService(service: unknown) {
 
 function browserService(result: Record<string, unknown> = {}) {
   return {
-    execute: vi.fn(async (command) => ({
+    execute: vi.fn(async (command, targetId?: string) => ({
+      targetId: targetId ?? "workspace",
       mode: "workspace",
       subaction: command.subaction,
       ...result,
@@ -44,6 +46,181 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it("allows automatic target selection and plugin-registered target IDs", async () => {
+    const automatic = validateToolArgs(browserAction, {
+      action: "snapshot",
+      target: "",
+    });
+    expect(automatic.valid).toBe(true);
+    expect(automatic.args).not.toHaveProperty("target");
+    const { service } = await runBrowserAction({ parameters: automatic.args });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "snapshot" }),
+      undefined,
+    );
+    expect(
+      validateToolArgs(browserAction, {
+        action: "snapshot",
+        target: "custom-registered-browser",
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("accepts an omitted tab operation without weakening enum validation", async () => {
+    const validation = validateToolArgs(browserAction, {
+      action: "snapshot",
+      id: "btab_1",
+      tabAction: "",
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.args).not.toHaveProperty("tabAction");
+    const { service, result } = await runBrowserAction({
+      parameters: validation.args,
+    });
+    expect(result?.success).toBe(true);
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "snapshot", id: "btab_1" }),
+      undefined,
+    );
+    expect(
+      validateToolArgs(browserAction, {
+        action: "tab",
+        tabAction: "erase-everything",
+      }).valid,
+    ).toBe(false);
+  });
+
+  it.each(["navigate", "snapshot", "back", "forward", "scroll"])(
+    "dispatches %s when the model leaves the optional direction empty",
+    async (action) => {
+      const validation = validateToolArgs(browserAction, {
+        action,
+        target: "workspace",
+        id: "btab_1",
+        url: "https://example.com",
+        direction: "",
+        tabAction: "",
+      });
+      expect(validation.valid).toBe(true);
+      expect(validation.args).not.toHaveProperty("direction");
+      expect(validation.args).not.toHaveProperty("tabAction");
+      const { service, result } = await runBrowserAction({
+        parameters: validation.args,
+      });
+      expect(service?.execute).toHaveBeenCalledTimes(1);
+      expect(service?.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: action,
+          id: "btab_1",
+          direction: undefined,
+        }),
+        "workspace",
+      );
+      expect(result?.success).toBe(true);
+      if (action === "scroll") expect(result?.text).toContain("Scrolled down");
+    },
+  );
+
+  it("omits declared optional sentinels without dropping empty text", async () => {
+    const validation = validateToolArgs(browserAction, {
+      action: "fill",
+      selector: "#query",
+      text: "",
+      target: "",
+      direction: "",
+      tabAction: "",
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.args).toMatchObject({ text: "" });
+    for (const name of ["target", "direction", "tabAction"]) {
+      expect(validation.args).not.toHaveProperty(name);
+    }
+    const { service } = await runBrowserAction({ parameters: validation.args });
+    expect(service?.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "fill",
+        selector: "#query",
+        text: "",
+      }),
+      undefined,
+    );
+  });
+
+  it.each(["down", "left", "right", "up"])(
+    "preserves explicit scroll direction %s through validation and dispatch",
+    async (direction) => {
+      const validation = validateToolArgs(browserAction, {
+        action: "scroll",
+        direction,
+        pixels: 480,
+      });
+      expect(validation.valid).toBe(true);
+      const { service } = await runBrowserAction({
+        parameters: validation.args,
+      });
+      expect(service?.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: "scroll",
+          direction,
+          pixels: 480,
+        }),
+        undefined,
+      );
+    },
+  );
+
+  it.each(["back", "forward", "diagonal", "null"])(
+    "rejects non-scroll direction %s rather than treating it as omitted",
+    (direction) => {
+      const validation = validateToolArgs(browserAction, {
+        action: "scroll",
+        direction,
+      });
+      expect(validation.valid).toBe(false);
+      expect(validation.args).toBeUndefined();
+      expect(validation.invalidParameterNames).toEqual(["direction"]);
+    },
+  );
+
+  it("still rejects an empty or unsupported operation selector", () => {
+    for (const action of ["", "erase-everything"]) {
+      const validation = validateToolArgs(browserAction, { action });
+      expect(validation.valid).toBe(false);
+      expect(validation.invalidParameterNames).toEqual(["action"]);
+    }
+  });
+
+  it.each([
+    { action: "snapshot", selector: undefined },
+    { action: "get", selector: "h1" },
+  ])(
+    "dispatches $action using its explicit page-read contract",
+    async (parameters) => {
+      const service = browserService({ value: "Example Domain" });
+      const { result } = await runBrowserAction({ service, parameters });
+      expect(service.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: parameters.action,
+          selector: parameters.selector,
+        }),
+        undefined,
+      );
+      expect(result?.success).toBe(true);
+      expect(result?.data.result.value).toBe("Example Domain");
+    },
+  );
+
+  it("routes page-reading planner aliases to the canonical browser action", () => {
+    expect(browserAction.similes).toEqual(
+      expect.arrayContaining([
+        "BROWSER_GET_CONTEXT",
+        "BROWSER_GET_PAGE_STATE",
+        "BROWSER_READ_PAGE",
+        "BROWSER_SNAPSHOT",
+      ]),
+    );
+  });
+
   it("normalizes legacy action aliases and forwards target overrides", async () => {
     const service = browserService({
       tabs: [
@@ -75,6 +252,7 @@ describe("BROWSER action", () => {
           success: true,
           mode: "workspace",
           subaction: "tab",
+          targetId: "bridge",
         },
       }),
     );
@@ -107,10 +285,16 @@ describe("BROWSER action", () => {
     );
     expect(result).toMatchObject({
       text: "Opened example.com/path.",
-      userFacingText: "Opened example.com/path.",
-      verifiedUserFacing: true,
       turnComplete: true,
+      modelReplyRequired: true,
+      values: {
+        targetId: "workspace",
+        viewId: "browser",
+        viewPath: "/browser",
+      },
     });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(browserAction.suppressEarlyReply).toBe(true);
   });
 
@@ -171,10 +355,11 @@ describe("BROWSER action", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       text: "Opened example.com.",
-      userFacingText: "Opened example.com.",
-      verifiedUserFacing: true,
       turnComplete: true,
+      modelReplyRequired: true,
     });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("verifiedUserFacing");
   });
 
   it("does not fail the browser action when compact progress delivery fails", async () => {
@@ -281,16 +466,15 @@ describe("BROWSER action", () => {
     const closeService = browserService({ closed: true });
     const cursorService = browserService({ value: { x: 10.4, y: 20.6 } });
 
-    await expect(
-      runBrowserAction({
-        service: valueService,
-        parameters: { action: "state" },
-      }),
-    ).resolves.toMatchObject({
-      result: {
-        text: 'Browser state result (workspace):\n{\n  "ok": true\n}',
-      },
+    const state = await runBrowserAction({
+      service: valueService,
+      parameters: { action: "state" },
     });
+    expect(state.result).toMatchObject({
+      text: 'Browser state result (workspace):\n{\n  "ok": true\n}',
+    });
+    expect(state.result).not.toHaveProperty("verifiedUserFacing");
+    expect(state.result).not.toHaveProperty("userFacingText");
     await expect(
       runBrowserAction({
         service: snapshotService,

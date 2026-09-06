@@ -11,7 +11,10 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import { normalizeTopics } from "./builtin-field-evaluators";
+import {
+	normalizeReplyEffectStatus,
+	normalizeTopics,
+} from "./builtin-field-evaluators";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
 import {
 	looksLikeRawFieldTranscript,
@@ -93,10 +96,17 @@ export function parseMessageHandlerOutput(
 	if (candidateActions === null || intents === null) return null;
 
 	const extract = parseExtract(parsed);
+	const replyEffectStatus = normalizeReplyEffectStatus(
+		parsed.replyEffectStatus,
+	);
 
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: replyRaw,
+		...(typeof parsed.replyEffectStatus === "string" &&
+		parsed.replyEffectStatus.trim().toLowerCase() === replyEffectStatus
+			? { replyEffectStatus }
+			: {}),
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;
@@ -158,10 +168,17 @@ function parseMessageHandlerFieldTranscript(
 		addressedTo: splitTranscriptList(fields.addressedTo),
 		topics: splitTranscriptList(fields.topics),
 	});
+	const replyEffectStatus = normalizeReplyEffectStatus(
+		fields.replyEffectStatus,
+	);
 
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: replyRaw,
+		...(typeof fields.replyEffectStatus === "string" &&
+		fields.replyEffectStatus.trim().toLowerCase() === replyEffectStatus
+			? { replyEffectStatus }
+			: {}),
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;

@@ -1,27 +1,7 @@
 /**
- * One-pass clarifying-question termination under the required-tool gate.
- *
- * Live regression (tj-28a877e591e5f3, 2026-08-27): "create a mew event for
- * today" — Stage 1 marked the turn tool-required with a resolvable VIEWS
- * candidate, but the planner (correctly) had nothing to act on without more
- * input and drafted the clarifying REPLY "What's the event for?". The
- * required-tool gate treated that REPLY-only pass as a miss and re-planned
- * FOUR times (~13.7s, 4x planner latency + ~100 stacked prompt tokens per
- * pass), each pass re-drafting the identical question, before the
- * miss-budget exhaustion hatch shipped the very text pass 1 produced.
- *
- * A clarifying question is a terminal outcome by construction — the planner
- * is asking the user for input it needs before any tool can act, so a
- * corrective re-prompt cannot progress the turn. These tests pin:
- *   1. a REPLY-only clarify pass terminates after exactly ONE planner call
- *      (native tool-call lane and JSON no-tool-calls lane);
- *   2. legit multi-pass flows survive: tool call, then follow-up planning,
- *      then a terminal reply (including a post-tool question);
- *   3. identical rejected REPLY drafts never stack duplicate corrective
- *      events into the planner transcript (non-question answers keep the
- *      full corrective budget, but the retry instruction appears once);
- *   4. coding builds keep the corrective budget — a premature question is
- *      still re-prompted there.
+ * A question is not evidence that a required action can be skipped. Clarification
+ * may finish directly when no action is required, or after the action handler
+ * reports missing input. Required-action retries retain deduplicated context.
  */
 import { describe, expect, it, vi } from "vitest";
 import { runPlannerLoop } from "../planner-loop";
@@ -34,9 +14,7 @@ const replyToolCall = (id: string, text: string) => ({
 });
 
 describe("planner-loop clarifying-question termination", () => {
-	it("terminates after ONE planner pass when a REPLY-only clarifying question hits the required-tool gate", async () => {
-		// The live shape: every pass drafts the same clarifying REPLY. With the
-		// one-pass termination the loop must never re-plan at all.
+	it("terminates after one REPLY-only clarification when no action is required", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => replyToolCall("reply-1", CLARIFY_TEXT)),
 			logger: { warn: vi.fn() },
@@ -46,7 +24,6 @@ describe("planner-loop clarifying-question termination", () => {
 			runtime,
 			context: { id: "ctx" },
 			tools: [{ name: "VIEWS", description: "Open a UI view." }],
-			requireNonTerminalToolCall: true,
 			config: { maxRequiredToolMisses: 3 },
 			executeToolCall: vi.fn(),
 			evaluate: vi.fn(),
@@ -57,7 +34,7 @@ describe("planner-loop clarifying-question termination", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("terminates after ONE planner pass on a JSON-lane clarify with no tool calls", async () => {
+	it("terminates after one JSON-lane clarification when no action is required", async () => {
 		const runtime = {
 			useModel: vi.fn(
 				async () =>
@@ -70,7 +47,6 @@ describe("planner-loop clarifying-question termination", () => {
 			runtime,
 			context: { id: "ctx" },
 			tools: [{ name: "VIEWS", description: "Open a UI view." }],
-			requireNonTerminalToolCall: true,
 			config: { maxRequiredToolMisses: 3 },
 			executeToolCall: vi.fn(),
 			evaluate: vi.fn(),
@@ -80,6 +56,163 @@ describe("planner-loop clarifying-question termination", () => {
 		expect(result.finalMessage).toBe("Which calendar should I put it on?");
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
+
+	it.each(["native", "json"] as const)(
+		"does not let question-shaped prose bypass a required action in the %s lane",
+		async (lane) => {
+			for (const draft of [
+				"The answer is 391?",
+				"How about 391.",
+				"Please confirm the answer is 391.",
+				"The answer is 391.",
+			]) {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(
+							lane === "native"
+								? replyToolCall("reply-1", draft)
+								: JSON.stringify({
+										thought: "A tentative answer.",
+										toolCalls: [],
+										messageToUser: draft,
+									}),
+						)
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "fetch-1",
+									name: "WEB_FETCH",
+									arguments: { url: "https://example.com/" },
+								},
+							],
+						}),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi.fn(async () => ({
+					success: true,
+					text: "The page gives the answer as 392.",
+				}));
+				const evaluate = vi.fn(async () => ({
+					success: true,
+					decision: "FINISH" as const,
+					messageToUser: "The page says 392.",
+				}));
+				const result = await runPlannerLoop({
+					runtime,
+					context: { id: "ctx" },
+					tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+					requireNonTerminalToolCall: true,
+					config: { maxRequiredToolMisses: 3 },
+					executeToolCall,
+					evaluate,
+				});
+
+				expect(executeToolCall, draft).toHaveBeenCalledExactlyOnceWith(
+					{
+						id: "fetch-1",
+						name: "WEB_FETCH",
+						params: { url: "https://example.com/" },
+					},
+					expect.objectContaining({ iteration: 2 }),
+				);
+				expect(runtime.useModel, draft).toHaveBeenCalledTimes(2);
+				expect(result.finalMessage, draft).toBe("The page says 392.");
+			}
+		},
+	);
+
+	it.each([
+		["native", "awaitingUserInput"],
+		["native", "missingField"],
+		["json", "awaitingUserInput"],
+		["json", "missingField"],
+	] as const)(
+		"retries a %s question through the handler, then relays its %s clarification without replay",
+		async (lane, marker) => {
+			const intent = "Create an event today.";
+			const parameters = { action: "create", intent };
+			const clarification = "What should the event be called?";
+			const reply = (id: string, text: string) =>
+				lane === "native"
+					? replyToolCall(id, text)
+					: JSON.stringify({ toolCalls: [], messageToUser: text });
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(reply("premature-reply", CLARIFY_TEXT))
+					.mockResolvedValueOnce(
+						lane === "native"
+							? {
+									text: "",
+									toolCalls: [
+										{
+											id: "calendar-1",
+											name: "CALENDAR",
+											arguments: parameters,
+										},
+									],
+								}
+							: JSON.stringify({
+									toolCalls: [
+										{ id: "calendar-1", name: "CALENDAR", args: parameters },
+									],
+								}),
+					)
+					.mockResolvedValueOnce(reply("clarification-reply", clarification)),
+				logger: { warn: vi.fn() },
+			};
+			// Missing input is a handler result, not evidence of a mutation. Leave
+			// user-facing text to the next planner pass to exercise the safe relay.
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "",
+				data:
+					marker === "awaitingUserInput"
+						? { awaitingUserInput: true }
+						: { missingField: "title" },
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "The owner must supply the event title.",
+			}));
+			const result = await runPlannerLoop({
+				runtime,
+				context: {
+					id: "ctx",
+					events: [
+						{
+							id: "user-request",
+							type: "message",
+							message: { role: "user", content: intent },
+						},
+					],
+				},
+				tools: [{ name: "CALENDAR", description: "Manage calendar events." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 3, maxTerminalOnlyContinuations: 0 },
+				executeToolCall,
+				evaluate,
+			});
+
+			expect(executeToolCall).toHaveBeenCalledExactlyOnceWith(
+				{
+					id: "calendar-1",
+					name: "CALENDAR",
+					params: { action: "create", intent },
+				},
+				expect.objectContaining({ iteration: 2 }),
+			);
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			expect(result.status).toBe("finished");
+			expect(result.finalMessage).toBe(clarification);
+			expect(
+				result.trajectory.steps.filter((step) => step.toolCall),
+			).toHaveLength(1);
+		},
+	);
 
 	it("still runs the tool-then-reply flow: a post-tool clarifying REPLY delivers without re-planning misses", async () => {
 		// Legit multi-pass: pass 1 calls the required tool, the evaluator asks

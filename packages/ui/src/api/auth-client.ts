@@ -557,6 +557,12 @@ export async function authMe(): Promise<AuthMeResult> {
             : "server_error",
       access: body.access,
     };
+    if (
+      result.reason === "remote_auth_required" &&
+      result.access?.mode === "remote"
+    ) {
+      return (await resolvePairingFallback(authBase())) ?? result;
+    }
     if (result.reason !== "server_error" || result.access) return result;
 
     // Some standalone deployments enforce auth in outer middleware before the

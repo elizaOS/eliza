@@ -229,7 +229,13 @@ function AgentTrajectorySidebarItem({
       }
       tokenLabel={`${formatTrajectoryTokenCount(
         trajectory.totalPromptTokens + trajectory.totalCompletionTokens,
-        { emptyLabel: "0" },
+        {
+          emptyLabel:
+            trajectory.totalPromptTokens === 0 &&
+            trajectory.totalCompletionTokens === 0
+              ? "0"
+              : "—",
+        },
       )} tokens`}
       durationLabel={formatTrajectoryDuration(trajectory.durationMs)}
     />

@@ -89,6 +89,16 @@ export class RuntimePipelineHooks {
 			try {
 				await entry.handler(this.runtime, ctx);
 			} catch (error) {
+				// error-policy:J4 Local text admission rejects before dispatch; other
+				// hook failures retain the ordinary isolated diagnostic behavior.
+				if (
+					ctx.phase === "pre_model" &&
+					ctx.provider === "eliza-local-inference" &&
+					TEXT_GENERATION_MODEL_KEYS.includes(ctx.resolvedModelKey) &&
+					isUnavailableLocalModel(error)
+				) {
+					throw error;
+				}
 				// error-policy:J4 Hooks are isolated so one plugin cannot suppress
 				// later hooks; the failure is surfaced to the agent explicitly.
 				errorMessage = error instanceof Error ? error.message : String(error);
@@ -456,3 +466,8 @@ export class RuntimePipelineHooks {
 		}
 	}
 }
+
+import {
+	isUnavailableLocalModel,
+	TEXT_GENERATION_MODEL_KEYS,
+} from "./model-dispatch/policy.js";

@@ -22,6 +22,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { embeddingTable, memoryTable } from "../../schema";
+import { MemoryStore } from "../../stores/memory.store";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 import {
@@ -130,6 +131,91 @@ describe("Memory Integration Tests", () => {
     if (!retrieved) throw new Error("Memory should exist");
     if (!retrieved.embedding) throw new Error("Embedding should exist");
     expect(retrieved.embedding.length).toEqual(384);
+  });
+
+  it.each(["adapter", "store"])(
+    "%s persists model output containing NULs without corrupting ordinary escapes",
+    async (path) => {
+      const writer =
+        path === "adapter"
+          ? {
+              create: adapter.createMemory.bind(adapter),
+              update: adapter.updateMemory.bind(adapter),
+            }
+          : new MemoryStore({
+              getDb: () => adapter.getDatabase() as DrizzleDatabase,
+              withRetry: (operation) => operation(),
+              withIsolationContext: (entityId, operation) =>
+                adapter.withEntityContext(entityId, operation),
+              agentId: testAgentId,
+              getEmbeddingDimension: () => "dim384",
+            });
+      const text = String.raw`C:\notes\version-3.5 https://example.org \u0000`;
+      const memory = createTestMemory({
+        text,
+        thought: "Moved to 11:00\u0000-11:15 AM",
+      });
+      memory.metadata = { ...memory.metadata, diagnostic: { label: "a\u0000b" } };
+
+      const id = await writer.create(memory, "messages");
+      const created = await adapter.getMemoryById(id);
+      expect(created?.content).toEqual({ text, thought: "Moved to 11:00-11:15 AM" });
+      expect(created?.metadata).toMatchObject({ diagnostic: { label: "ab" } });
+      expect(memory.content.thought).toContain("\u0000");
+
+      await writer.update({
+        id,
+        content: { text, thought: "Finished\u0000." },
+        metadata: { ...memory.metadata, diagnostic: { label: "c\u0000d" } },
+      });
+      expect((await adapter.getMemoryById(id))?.content).toEqual({
+        text,
+        thought: "Finished.",
+      });
+      expect((await adapter.getMemoryById(id))?.metadata).toMatchObject({
+        diagnostic: { label: "cd" },
+      });
+
+      await writer.update({
+        id,
+        metadata: { ...memory.metadata, diagnostic: { label: "e\u0000f" } },
+      });
+      expect((await adapter.getMemoryById(id))?.metadata).toMatchObject({
+        diagnostic: { label: "ef" },
+      });
+
+      // Older callers can supply pre-encoded JSON; actual NUL and the literal
+      // six-character escape must still be distinguished after decoding.
+      const encoded = {
+        ...createTestMemory({ text }),
+        content: JSON.stringify({ text, thought: "Encoded\u0000." }) as unknown as Content,
+        metadata: JSON.stringify(memory.metadata) as unknown as MemoryMetadata,
+      };
+      const encodedId = await writer.create(encoded, "messages");
+      expect((await adapter.getMemoryById(encodedId))?.content).toEqual({
+        text,
+        thought: "Encoded.",
+      });
+      await writer.update({
+        id: encodedId,
+        content: JSON.stringify({ text, thought: "Updated\u0000." }) as unknown as Content,
+      });
+      expect((await adapter.getMemoryById(encodedId))?.content).toEqual({
+        text,
+        thought: "Updated.",
+      });
+    }
+  );
+
+  it("preserves repeated shared values in atomic memory batches", async () => {
+    const shared = { text: "Release 3.5\u0000" };
+    const memory = createTestMemory({ text: "Shared", first: shared, second: shared });
+    await adapter.createMemories([{ memory, tableName: "messages", unique: false }]);
+    expect((await adapter.getMemoryById(memory.id as UUID))?.content).toEqual({
+      text: "Shared",
+      first: { text: "Release 3.5" },
+      second: { text: "Release 3.5" },
+    });
   });
 
   it.each([0, 1, 2])(

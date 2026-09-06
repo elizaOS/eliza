@@ -469,10 +469,17 @@ export function privacyDenialReplyForReasons(
 
 export function messageHandlerStageOneReplyContexts(
 	messageHandler: MessageHandlerResult,
-): { stageOneContexts: readonly string[]; stageOneReplyText: string } {
+): {
+	stageOneContexts: readonly string[];
+	stageOneReplyText: string;
+	stageOneReplyEffectStatus: MessageHandlerResult["plan"]["replyEffectStatus"];
+	stageOneIntents: readonly string[];
+} {
 	return {
 		stageOneContexts: messageHandler.plan.contexts ?? [],
 		stageOneReplyText: String(messageHandler.plan.reply ?? ""),
+		stageOneReplyEffectStatus: messageHandler.plan.replyEffectStatus,
+		stageOneIntents: messageHandler.plan.intents ?? [],
 	};
 }
 
@@ -671,10 +678,14 @@ export function buildV5PlannerActionSurface(params: {
 			return authorizedActionIdentities.has(childName.trim());
 		}),
 	}));
-	const catalog = getCachedActionCatalog(
-		authorizedCatalogActions,
-		params.localizedExamples,
-	);
+	const catalogStartedAt = performance.now();
+	const catalog = buildActionCatalog(authorizedCatalogActions, {
+		localizedExamples: params.localizedExamples,
+	});
+	recordInferenceSpan("actions:catalog", performance.now() - catalogStartedAt, {
+		actions: authorizedCatalogActions.length,
+		parents: catalog.parents.length,
+	});
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const messageText = getUserMessageText(params.message);
 	if (typeof messageText !== "string") {
@@ -688,6 +699,7 @@ export function buildV5PlannerActionSurface(params: {
 	}
 	const retrievalMessageText =
 		typeof messageText === "string" ? messageText : "";
+	const retrievalStartedAt = performance.now();
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: retrievalMessageText,
@@ -700,6 +712,11 @@ export function buildV5PlannerActionSurface(params: {
 		parentActionHints,
 		measurementMode,
 	});
+	recordInferenceSpan(
+		"actions:retrieval",
+		performance.now() - retrievalStartedAt,
+	);
+	const tieringStartedAt = performance.now();
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
@@ -707,6 +724,7 @@ export function buildV5PlannerActionSurface(params: {
 		// Kept for source compatibility; child availability is complete.
 		queryTokens: retrieval.query.tokens,
 	});
+	recordInferenceSpan("actions:tiering", performance.now() - tieringStartedAt);
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = authorizedActionNames;
 	const tierAChildrenByParent = Object.fromEntries(
@@ -805,3 +823,5 @@ export function buildV5PlannerActionSurface(params: {
 		},
 	};
 }
+
+import { recordInferenceSpan } from "../../inference-timing";

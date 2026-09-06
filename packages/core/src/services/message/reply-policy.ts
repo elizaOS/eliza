@@ -251,16 +251,10 @@ export function answerlessToolTurnReport(args: {
 		)
 		.filter((name) => name.length > 0);
 	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
-		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
+		return args.stageOneAck;
 	}
-	// An accepted structured effect IS the turn's result — the effect receipt
-	// proves the work happened, so report it instead of apologizing for a
-	// missing result. Genuinely empty successes still fall through below.
-	const effectConfirmation = structuredEffectConfirmation(
-		args.settledToolResults,
-	);
-	if (effectConfirmation) return effectConfirmation;
-	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
+	// Missing prose belongs to model-backed reply recovery, not an effect-to-text template.
+	return "";
 }
 
 /** Where the zero-delivery recovery sourced its terminal reply from. */
@@ -316,24 +310,7 @@ export function resolveZeroDeliveryRecovery(args: {
 			.filter((ownedText) => ownedText.length > 0)
 			.at(-1) ?? "";
 	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
-	const ranAnySteps = args.actionResults.length > 0;
-	// Effect honesty: the failure-flavored fallbacks may only describe steps
-	// that actually ran. A toolless turn (planner ended with no tool calls —
-	// e.g. a deliberate IGNORE on an addressed turn the delivery floor still
-	// answers) must not fabricate "I ran the steps … they failed".
-	const fallbackRecoveryText =
-		actionSuccessCount > 0 && actionFailureCount > 0
-			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
-			: actionSuccessCount > 0
-				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
-				: ranAnySteps
-					? "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry."
-					: "I don't have a useful answer to that right now — ask again and I will retry.";
-	const text =
-		args.plannedText ||
-		lastActionUserFacingText ||
-		ackRecoveryText ||
-		fallbackRecoveryText;
+	const text = args.plannedText || lastActionUserFacingText || ackRecoveryText;
 	const source: ZeroDeliveryRecoverySource = args.plannedText
 		? "plannedText"
 		: lastActionUserFacingText

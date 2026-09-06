@@ -32,6 +32,14 @@ const sessionSpies = vi.hoisted(() => ({
   sync: vi.fn(),
 }));
 
+// Import only the button primitive this page uses. The broad primitives barrel
+// also evaluates unrelated controls, which would make this focused callback
+// test depend on every optional UI peer being installed.
+vi.mock("../../../../components/primitives", async () => {
+  const { Button } = await import("../../../../components/ui/button");
+  return { Button };
+});
+
 // Stub StewardAuthProvider with a marker that ALSO supplies the Steward context
 // — what the real provider does once its runtime mounts. This lets the test
 // assert both halves: (a) the callback renders INSIDE the self-mounted
@@ -110,6 +118,7 @@ beforeEach(() => {
   sessionSpies.sync.mockResolvedValue(undefined);
   window.sessionStorage.clear();
   window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 afterEach(() => {
@@ -119,6 +128,39 @@ afterEach(() => {
 });
 
 describe("EmailCallbackPage", () => {
+  it("removes the one-time token and email from the address bar before verification finishes", async () => {
+    callbackState.verifyEmailCallback.mockImplementation(
+      () => new Promise(() => {}),
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "/auth/callback/email?token=url-secret-token&email=url-person%40example.com&utm_source=inbox#continue",
+    );
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=url-secret-token&email=url-person%40example.com&utm_source=inbox#continue",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
+        "url-secret-token",
+        "url-person@example.com",
+      ),
+    );
+    const visibleParams = new URLSearchParams(window.location.search);
+    expect(visibleParams.get("token")).toBeNull();
+    expect(visibleParams.get("email")).toBeNull();
+    expect(visibleParams.get("utm_source")).toBe("inbox");
+    expect(window.location.hash).toBe("#continue");
+  });
+
   it("mounts the callback inside StewardAuthProvider so the magic-link verify runs (not the 'unavailable' dead-end)", async () => {
     callbackState.verifyEmailCallback.mockImplementation(
       () => new Promise(() => {}),

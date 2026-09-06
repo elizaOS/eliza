@@ -15,7 +15,6 @@ import type { UseCalendarWeekResult } from "../../hooks/useCalendarWeek.js";
 
 const fixtures = vi.hoisted(() => ({
   calendar: vi.fn(),
-  sourceManager: vi.fn(),
   viewEvents: new Map<string, () => void>(),
 }));
 
@@ -33,33 +32,6 @@ vi.mock("@elizaos/ui/events", () => ({
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-}));
-
-vi.mock("../CalendarSourceManager.js", () => ({
-  CalendarSourceManager: ({
-    sourceHealth,
-    onSelectionChanged,
-    sourceNotice,
-  }: {
-    sourceHealth: readonly LifeOpsCalendarSourceHealth[];
-    onSelectionChanged?: () => void;
-    sourceNotice?: {
-      label: string;
-      tone: "warning" | "danger";
-    };
-  }) => {
-    fixtures.sourceManager({ sourceHealth, onSelectionChanged, sourceNotice });
-    return (
-      <section data-testid="calendar-source-manager">
-        {sourceNotice ? (
-          <span role="status" aria-label={sourceNotice.label} />
-        ) : null}
-        <button type="button" onClick={onSelectionChanged}>
-          Manage calendar sources
-        </button>
-      </section>
-    );
-  },
 }));
 
 import { SimpleCalendarView } from "./SimpleCalendarView.js";
@@ -129,7 +101,6 @@ function calendarState(
 
 beforeEach(() => {
   fixtures.calendar.mockReset();
-  fixtures.sourceManager.mockReset();
   fixtures.viewEvents.clear();
   window.history.replaceState(null, "", "/calendar");
 });
@@ -140,17 +111,19 @@ afterEach(() => {
 });
 
 describe("SimpleCalendarView", () => {
-  it("can render the shared route header when used standalone", () => {
+  it("keeps standalone calendar content free of redundant route chrome", () => {
     fixtures.calendar.mockReturnValue(calendarState());
     render(<SimpleCalendarView standalone />);
 
-    const headings = screen.getAllByRole("heading", {
-      level: 1,
-      name: "Calendar",
-    });
-    expect(headings).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
-    expect(window.location.pathname).toBe("/views");
+    expect(
+      screen.getByRole("main", { name: "Calendar. 0 events" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
+    expect(screen.queryByTestId("view-actions")).toBeNull();
+    expect(window.location.pathname).toBe("/calendar");
   });
 
   it("defaults to shell-owned route chrome", () => {
@@ -192,7 +165,6 @@ describe("SimpleCalendarView", () => {
     expect(
       screen.queryByRole("button", { name: "Manage calendar sources" }),
     ).toBeNull();
-    expect(fixtures.sourceManager).not.toHaveBeenCalled();
   });
 
   it("renders canonical events with month navigation and selectable days", () => {
@@ -452,25 +424,15 @@ describe("SimpleCalendarView", () => {
     const notice = screen.getByRole("status", {
       name: "Some calendars are delayed",
     });
-    const managerSlot = screen.getByTestId("simple-calendar-source-manager");
     const content = screen.getByTestId("simple-calendar-content");
-    expect(managerSlot.dataset.placement).toBe("promoted");
     expect(
-      managerSlot.compareDocumentPosition(content) &
+      notice.compareDocumentPosition(content) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(
-      notice.closest("[data-testid='calendar-source-manager']"),
-    ).toBeTruthy();
-    expect(fixtures.sourceManager).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceNotice: {
-          label: "Some calendars are delayed",
-          tone: "warning",
-        },
-      }),
-    );
-    expect(document.querySelector(".eliza-calendar-status")).toBeNull();
+      screen.queryByRole("button", { name: "Manage calendar sources" }),
+    ).toBeNull();
+    expect(document.querySelectorAll(".eliza-calendar-status")).toHaveLength(1);
     expect(screen.queryByText("Some calendars may be out of date")).toBeNull();
     expect(screen.getByText("Available calendars only")).toBeTruthy();
     expect(screen.getByText("No events in available calendars.")).toBeTruthy();

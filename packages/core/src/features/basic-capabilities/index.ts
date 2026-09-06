@@ -165,7 +165,11 @@ import {
 import { providersProvider } from "./providers/providers.ts";
 import { recentMessagesProvider } from "./providers/recentMessages.ts";
 
-export { recentMessagesProvider } from "./providers/recentMessages.ts";
+export {
+	dedupeHygienicDialogueMessages,
+	isHygienicDialogueMessage,
+	recentMessagesProvider,
+} from "./providers/recentMessages.ts";
 
 import { replyContextProvider } from "./providers/replyContext.ts";
 import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts";

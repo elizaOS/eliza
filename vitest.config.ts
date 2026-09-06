@@ -95,6 +95,23 @@ export default defineConfig({
         replacement: path.join(root, "packages/core/src/index.node.ts"),
       },
       {
+        // "./edge" is likewise an exports-map subpath (→ index.edge.ts).
+        // plugin-scheduling imports it; without this pin the generic src/$1
+        // rewrite pointed at a nonexistent src/edge and every suite whose
+        // graph loads plugin-scheduling (the whole plugin-calendar family)
+        // failed at collection with "Cannot find package '@elizaos/core/edge'".
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(root, "packages/core/src/index.edge.ts"),
+      },
+      {
+        // plugin-scheduling's build ships dist files whose own imports
+        // (@elizaos/core/edge) only resolve under runtime conditions vite
+        // ignores; pin the barrel to source like app-control above so test
+        // graphs load the same code the eliza-source runtime executes.
+        find: /^@elizaos\/plugin-scheduling$/,
+        replacement: path.join(root, "plugins/plugin-scheduling/src/index.ts"),
+      },
+      {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(root, "packages/core/src/$1"),
       },

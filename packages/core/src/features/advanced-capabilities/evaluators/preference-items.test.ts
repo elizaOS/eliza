@@ -519,6 +519,177 @@ describe("applyPreferenceOps preference facts", () => {
 		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
 	});
 
+	it("promotes the same-message Stage-1 observation to the durable preference instead of adding a twin", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const stageFact: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c1" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "prefers morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				kind: "current",
+				category: "uncategorized",
+				confidence: 0.6,
+				keywords: ["prefers", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [stageFact]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "the user prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+						confidence: 0.85,
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(1);
+		expect(rows[0].id).toBe(stageFact.id);
+		expect(rows[0].content.text).toBe("prefers morning check-ins");
+		expect(rows[0].metadata).toMatchObject({
+			kind: "durable",
+			category: "preference",
+			promotedBy: "preference_extractor",
+			confidence: 0.85,
+		});
+		expect((rows[0].metadata as { keywords?: string[] }).keywords).toEqual(
+			expect.arrayContaining(["morning", "check", "ins"]),
+		);
+		expect(result?.data).toMatchObject({ factsAdded: 0, factsStrengthened: 1 });
+	});
+
+	it("never promotes a same-message row whose subject the room could not resolve", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const unresolved: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c4" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "prefers morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				subject: "Carol",
+				subjectResolved: false,
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["prefers", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [unresolved]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].metadata).toMatchObject({
+			kind: "current",
+			subject: "Carol",
+			subjectResolved: false,
+		});
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
+
+	it("never promotes or strengthens a row with the opposite polarity", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const negated: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c3" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "dislikes morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["dislikes", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [negated]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].content.text).toBe("dislikes morning check-ins");
+		expect(rows[0].metadata).toMatchObject({ kind: "current" });
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
+
+	it("leaves a Stage-1 observation from another message alone and stores the preference separately", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const olderStageFact: Memory = {
+			id: "00000000-0000-4000-8000-0000000000c2" as UUID,
+			entityId: USER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "prefers morning check-ins", type: "fact" },
+			metadata: {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				messageId: "00000000-0000-4000-8000-0000000000ff",
+				kind: "current",
+				category: "uncategorized",
+				keywords: ["prefers", "morning", "check", "ins"],
+			},
+			createdAt: Date.now() - 1_000,
+		};
+		fake.memories.set("facts", [olderStageFact]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "add_preference_fact",
+						claim: "prefers morning check-ins",
+						keywords: ["morning", "check-ins"],
+					},
+				],
+			}),
+			{ knownPreferenceFacts: [] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows).toHaveLength(2);
+		expect(rows[0].metadata).toMatchObject({ kind: "current" });
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
+
 	it("dedupes against a preference row the fact evaluator inserted in the same turn (post-prepare)", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		const insertedAfterPrepare = preferenceFact(

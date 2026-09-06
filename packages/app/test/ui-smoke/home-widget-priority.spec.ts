@@ -308,7 +308,8 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
 
   // Local-inference shell-level GETs — the booted zero-key stack answers 501,
   // which the diagnostics guard treats as a failure. A fresh agent has no local
-  // model, so an idle/unsupported snapshot matches real zero-state.
+  // model, so an idle snapshot with valid OS-fallback hardware matches the
+  // real zero-state.
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

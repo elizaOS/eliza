@@ -134,8 +134,8 @@ describe("native /chat/completions reasoning_effort gate", () => {
     }
   );
 
-  it("omits reasoning_effort when thinking is not suppressed", async () => {
-    const body = await captureBody(DEFAULT_CEREBRAS_TEXT_MODEL, {
+  it("preserves Gemma's omitted effort when thinking is not suppressed", async () => {
+    const body = await captureBody("gemma-4-31b", {
       providerOptions: {},
     });
     expect(body?.reasoning_effort).toBeUndefined();

@@ -22,11 +22,15 @@ import { isPlainObject } from "../../utils/type-guards";
  * hint instead of a generic parse-failure template. See issue elizaOS/eliza#7203.
  */
 export class NoModelProviderConfiguredError extends Error {
+	readonly reason: "no-provider" | "capability-disabled";
+
 	constructor(
 		message: string = "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).",
+		reason: "no-provider" | "capability-disabled" = "no-provider",
 	) {
 		super(message);
 		this.name = "NoModelProviderConfiguredError";
+		this.reason = reason;
 	}
 }
 
@@ -152,4 +156,16 @@ export interface ResolvedModelRegistration {
 	metadata?: ModelRegistrationMetadata;
 	modelKey: string;
 	provider: string;
+}
+
+export function isUnavailableLocalModel(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
+		"reason" in error &&
+		(error.reason === "backend_unavailable" ||
+			error.reason === "capability_unavailable")
+	);
 }

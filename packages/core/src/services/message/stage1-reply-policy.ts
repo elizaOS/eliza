@@ -343,8 +343,21 @@ export function shouldSuppressInferredCandidateEscalation(args: {
 	stageOneContexts: readonly string[];
 	stageOneReplyText: string;
 	stageOneCandidateActions: readonly string[];
+	stageOneReplyEffectStatus: MessageHandlerResult["plan"]["replyEffectStatus"];
+	stageOneIntents: readonly string[];
 }): boolean {
-	if (args.inference.kind !== "view-capability") return false;
+	if (
+		args.inference.kind !== "view-capability" &&
+		!(
+			(args.inference.kind === "view-surface" ||
+				args.inference.kind === "owner-goals" ||
+				args.inference.kind === "owner-scheduled-admin") &&
+			args.stageOneReplyEffectStatus === "none" &&
+			args.stageOneIntents.length === 0
+		)
+	) {
+		return false;
+	}
 	if (args.stageOneCandidateActions.length > 0) return false;
 	if (args.stageOneReplyText.trim().length === 0) return false;
 	// An ack-shaped reply ("On it.", "Let me pull that up.") is a delegation

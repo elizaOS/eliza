@@ -60,6 +60,10 @@ function viewRegistryKey(id: string, viewType: ViewType): string {
 
 /** Module-level registry storage. Keyed by view type + view id. */
 const registry = new Map<string, ViewRegistryEntry>();
+const pluginFallbacks = new Map<
+  string,
+  { views: Set<ViewDeclaration>; runtime?: IAgentRuntime }
+>();
 
 // Directory-loaded plugins are real module objects but are not installed npm
 // packages, so name-based resolution cannot recover their bundle root. Binding
@@ -349,7 +353,18 @@ export async function registerPluginViews(
       );
       const key = viewRegistryKey(entry.id, entry.viewType);
       const existing = registry.get(key);
-      if (existing && existing.pluginName !== plugin.name) {
+      const fallback = BUILTIN_VIEWS.find(
+        (candidate) =>
+          candidate.fallbackFor === (plugin.packageName ?? plugin.name) &&
+          candidate.id === entry.id &&
+          candidate.path === entry.path &&
+          getViewModalities(candidate).includes(entry.viewType),
+      );
+      if (
+        existing &&
+        existing.pluginName !== plugin.name &&
+        !(existing.builtin && fallback)
+      ) {
         logger.warn(
           {
             src: "ViewRegistry",
@@ -363,6 +378,14 @@ export async function registerPluginViews(
         continue;
       }
       registry.set(key, entry);
+      if (fallback) {
+        const fallbacks = pluginFallbacks.get(plugin.name) ?? {
+          views: new Set<ViewDeclaration>(),
+          runtime,
+        };
+        fallbacks.views.add(fallback);
+        pluginFallbacks.set(plugin.name, fallbacks);
+      }
       registered.push(entry);
       logger.debug(
         {
@@ -405,6 +428,11 @@ export function unregisterPluginViews(pluginName: string): void {
       );
     }
   }
+  const fallbacks = pluginFallbacks.get(pluginName);
+  if (fallbacks) {
+    pluginFallbacks.delete(pluginName);
+    registerBuiltinViewDeclarations([...fallbacks.views], fallbacks.runtime);
+  }
 }
 
 /**
@@ -412,9 +440,9 @@ export function unregisterPluginViews(pluginName: string): void {
  *
  * These views are declared in `builtin-views.ts` and live in the main shell
  * bundle — no separate bundle file is required. Called once at server startup
- * before any plugin views are registered, so plugin views can override them
- * by registering the same id only when a conflict is logged (built-in wins
- * under the existing conflict resolution rule).
+ * before any plugin views are registered. A built-in fallback yields only to
+ * its declared package at the same id, path, and modality. Other conflicts
+ * keep the existing entry. Unloading the package restores its fallback.
  *
  * Safe to call multiple times — subsequent calls have no additional effect
  * because the conflict guard in `registerPluginViews` keeps the first
@@ -424,10 +452,17 @@ export function unregisterPluginViews(pluginName: string): void {
  *   built-in views are queued in the background search index.
  */
 export function registerBuiltinViews(runtime?: IAgentRuntime): void {
+  registerBuiltinViewDeclarations(BUILTIN_VIEWS, runtime);
+}
+
+function registerBuiltinViewDeclarations(
+  views: readonly ViewDeclaration[],
+  runtime?: IAgentRuntime,
+): void {
   const loadedAt = Date.now();
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
-  for (const sourceView of BUILTIN_VIEWS) {
+  for (const sourceView of views) {
     for (const viewType of getViewModalities(sourceView)) {
       const view = { ...sourceView, viewType };
       const key = viewRegistryKey(view.id, viewType);

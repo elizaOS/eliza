@@ -18,6 +18,7 @@ import {
   type Memory,
   RoomHandlerQueue,
   stringToUuid,
+  trackPostDeliveryTask,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
@@ -595,6 +596,69 @@ describe("chat route helper coverage", () => {
 });
 
 describe("generateChatResponse token streaming", () => {
+  it("publishes the authoritative result before post-delivery work drains", async () => {
+    let releasePostDelivery: (() => void) | undefined;
+    const postDeliveryGate = new Promise<void>((resolve) => {
+      releasePostDelivery = resolve;
+    });
+    let markReplyReady: (() => void) | undefined;
+    const replyReady = new Promise<void>((resolve) => {
+      markReplyReady = resolve;
+    });
+    const runtime = createRuntime({
+      messageService: {
+        async handleMessage(activeRuntime) {
+          void trackPostDeliveryTask(
+            activeRuntime,
+            "reply-ready-ordering-test",
+            async () => postDeliveryGate,
+          );
+          return {
+            didRespond: true,
+            responseContent: { text: "ready before receipts" },
+            responseMessages: [],
+          };
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+    let generationSettled = false;
+    let readyText: string | undefined;
+    const generation = generateChatResponse(
+      runtime,
+      createChatMessage("deliver before receipts"),
+      "Streaming Agent",
+      {
+        onReplyReady: (result) => {
+          readyText = result.text;
+          markReplyReady?.();
+        },
+      },
+    );
+    void generation.then(() => {
+      generationSettled = true;
+    });
+
+    await replyReady;
+    try {
+      expect(readyText).toBe("ready before receipts");
+      expect(generationSettled).toBe(false);
+    } finally {
+      releasePostDelivery?.();
+    }
+
+    await expect(generation).resolves.toMatchObject({
+      text: "ready before receipts",
+    });
+    expect(generationSettled).toBe(true);
+  });
+
   it("forwards onStreamChunk deltas to caller onChunk in order", async () => {
     // Tokens chosen so no token's prefix matches the prior token's suffix —
     // mergeStreamingText would otherwise treat overlap as a snapshot revision
@@ -1061,430 +1125,54 @@ describe("generateChatResponse token streaming", () => {
     ]);
   });
 
-  it("streams cleaned snapshots from the Android local direct path", async () => {
-    const chunks: string[] = [];
-    const snapshots: string[] = [];
-    const useModel = createUseModelMock(async (_modelType, params) => {
-      const textParams = params as {
-        onStreamChunk?: (chunk: string) => Promise<void> | void;
-      };
-      await textParams.onStreamChunk?.("Yes");
-      await textParams.onStreamChunk?.(", locally.");
-      return "Yes, locally.";
-    });
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_LOCAL_LLAMA: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      useModel,
-    });
-
-    const message = createChatMessage("/no_think can you hear me locally?");
-    message.content = {
-      ...message.content,
-      channelType: ChannelType.VOICE_DM,
-    } as typeof message.content;
-
-    const result = await generateChatResponse(
-      runtime,
-      message,
-      "Streaming Agent",
-      {
-        onChunk: (chunk) => {
-          chunks.push(chunk);
-        },
-        onSnapshot: (text) => {
-          snapshots.push(text);
-        },
-      },
-    );
-
-    const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
-    expect(directParams.prompt).not.toContain("/no_think");
-    expect(directParams.prompt).toContain("can you hear me locally?");
-    expect(directParams.prompt).toContain("<start_of_turn>user\n");
-    expect(directParams.prompt).toContain("<end_of_turn>\n");
-    expect(directParams.prompt).toContain("<start_of_turn>model\n");
-    expect(directParams.prompt).not.toContain("<|im_start|>");
-
-    expect(useModel).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        stream: true,
-        prompt: expect.stringContaining("<think>\n\n</think>\n"),
-        stopSequences: ["<end_of_turn>", "<start_of_turn>"],
-        providerOptions: expect.objectContaining({
-          androidLocal: expect.objectContaining({
-            minFirstSentenceChars: 12,
-            stopOnFirstSentence: false,
-          }),
-          eliza: expect.objectContaining({
-            thinking: "off",
-          }),
-        }),
-        onStreamChunk: expect.any(Function),
-      }),
-    );
-    expect(useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
-    expect(chunks).toEqual(["Yes", ", locally."]);
-    expect(chunks.join("")).toBe("Yes, locally.");
-    expect(snapshots).toEqual(["Yes", "Yes, locally."]);
-    expect(result.text).toBe("Yes, locally.");
-    expect(result.localInference).toEqual(
-      expect.objectContaining({
-        provider: "mobile-local-direct-reply",
-        streamedChunks: 2,
-      }),
-    );
-  });
-
-  it("keeps device-bridge chat on the full host runtime without explicit local-reply opt-in", async () => {
-    const messageService = createStreamingMessageService([
-      "Host planner reply.",
-    ]);
-    const handleMessage = vi.spyOn(messageService, "handleMessage");
-    const useModel = createUseModelMock(async () => "Unexpected local reply.");
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_DEVICE_BRIDGE_ENABLED: "1",
-        };
-        return values[key] ?? null;
-      },
-      messageService,
-      useModel,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("hello from the phone"),
-      "Streaming Agent",
-    );
-
-    expect(handleMessage).toHaveBeenCalledOnce();
-    expect(useModel).not.toHaveBeenCalled();
-    expect(result.text).toBe("Host planner reply.");
-    expect(result.localInference).toBeUndefined();
-  });
-
-  it("finalizes an Android local result that wins the cancellation race", async () => {
-    const caller = new AbortController();
-    const useModel = createUseModelMock(async () => {
-      caller.abort(new DOMException("socket closed", "AbortError"));
-      return "Local reply completed.";
-    });
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_LOCAL_LLAMA: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      useModel,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("answer locally"),
-      "Streaming Agent",
-      { abortSignal: caller.signal },
-    );
-
-    expect(useModel).toHaveBeenCalledTimes(1);
-    expect(result.text).toBe("Local reply completed.");
-    expect(result.localInference?.provider).toBe("mobile-local-direct-reply");
-  });
-
-  it("includes complete recent-message history and preserves multi-sentence replies", async () => {
-    const roomId = stringToUuid("room");
-    const memories = Array.from({ length: 8 }, (_, index) => {
-      const memory = createMessageMemory({
-        id: stringToUuid(`history-${index}`),
-        roomId,
-        entityId:
-          index % 2 === 0
-            ? stringToUuid("user")
-            : stringToUuid("streaming-agent"),
-        content: { text: `${index}:${"x".repeat(750)}` },
+  it.each(["android", "ios"])(
+    "keeps %s chat and voice on the shared message runtime despite stale bypass flags",
+    async (platform) => {
+      const tokens = ["A contextual ", "model reply."];
+      const messageService = createStreamingMessageService(tokens);
+      const handleMessage = vi.spyOn(messageService, "handleMessage");
+      const useModel = createUseModelMock(async () => "Bypassed reply");
+      const runtime = createRuntime({
+        getSetting: (key: string) =>
+          ({
+            ELIZA_MOBILE_PLATFORM: platform,
+            ELIZA_LOCAL_LLAMA: "1",
+            ELIZA_IOS_LOCAL_BACKEND: "1",
+            ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+          })[key] ?? null,
+        messageService,
+        useModel,
       });
-      memory.createdAt = index + 1;
-      return memory;
-    });
-    const useModel = createUseModelMock(
-      async () =>
-        "First useful sentence. Second useful sentence. Third useful sentence.",
-    );
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_LOCAL_LLAMA: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      getMemories: vi.fn(async () => memories),
-      useModel,
-    });
-
-    const message = createChatMessage("what happened next?");
-    const result = await generateChatResponse(
-      runtime,
-      message,
-      "Streaming Agent",
-      {},
-    );
-
-    const params = useModel.mock.calls[0]?.[1] as {
-      prompt: string;
-      providerOptions: { androidLocal: { stopOnFirstSentence: boolean } };
-    };
-    expect(runtime.getMemories).toHaveBeenCalledWith({
-      roomId,
-      tableName: "messages",
-      includeEmbedding: false,
-    });
-    for (let index = 0; index < 8; index += 1) {
-      expect(params.prompt).toContain(`${index}:${"x".repeat(750)}`);
-    }
-    expect(params.prompt).toContain("Recent conversation (oldest to newest):");
-    expect(params.prompt).toContain(
-      "Answer in 1-3 concise, natural spoken sentences.",
-    );
-    expect(params.providerOptions.androidLocal.stopOnFirstSentence).toBe(false);
-    expect(result.text).toBe(
-      "First useful sentence. Second useful sentence. Third useful sentence.",
-    );
-  });
-
-  it("reports history failures before falling back to the normal runtime", async () => {
-    const historyError = new Error("message store unavailable");
-    const useModel = createUseModelMock(async () => "contextless reply");
-    const handleMessage = vi.fn(async () => ({
-      didRespond: true,
-      responseContent: { text: "Reply from the normal runtime." },
-      responseMessages: [],
-    }));
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_LOCAL_LLAMA: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      getMemories: vi.fn(async () => {
-        throw historyError;
-      }),
-      useModel,
-      messageService: {
-        handleMessage,
-        shouldRespond: () => ({
-          shouldRespond: true,
-          skipEvaluation: true,
-          reason: "history-fallback",
-        }),
-        deleteMessage: async () => undefined,
-        clearChannel: async () => undefined,
-      },
-    });
-    const message = createChatMessage("what happened next?");
-
-    const result = await generateChatResponse(
-      runtime,
-      message,
-      "Streaming Agent",
-    );
-
-    expect(runtime.reportError).toHaveBeenCalledWith(
-      "AndroidLocalDirectChat.history",
-      historyError,
-      { roomId: message.roomId, messageId: message.id },
-    );
-    expect(useModel).not.toHaveBeenCalled();
-    expect(handleMessage).toHaveBeenCalledTimes(1);
-    expect(result.text).toBe("Reply from the normal runtime.");
-  });
-
-  it("keeps tool-like and overlong Android local turns on the normal runtime", async () => {
-    const useModel = createUseModelMock(async () => "direct local reply");
-    const handleMessage = vi.fn(async () => ({
-      didRespond: true,
-      responseContent: { text: "Handled by normal runtime." },
-      responseMessages: [],
-    }));
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_LOCAL_LLAMA: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      useModel,
-      messageService: {
-        handleMessage,
-        shouldRespond: () => ({
-          shouldRespond: true,
-          skipEvaluation: true,
-          reason: "blocked-direct-turn",
-        }),
-        deleteMessage: async () => undefined,
-        clearChannel: async () => undefined,
-      },
-    });
-
-    const withAttachment = createChatMessage("summarize this file locally");
-    withAttachment.content = {
-      ...withAttachment.content,
-      attachments: [{ id: "file-1", url: "memory://file-1" }],
-    } as typeof withAttachment.content;
-    const overlong = createChatMessage("x".repeat(701));
-
-    await generateChatResponse(runtime, withAttachment, "Streaming Agent", {});
-    const result = await generateChatResponse(
-      runtime,
-      overlong,
-      "Streaming Agent",
-    );
-
-    expect(useModel).not.toHaveBeenCalled();
-    expect(handleMessage).toHaveBeenCalledTimes(2);
-    expect(result.text).toBe("Handled by normal runtime.");
-  });
-
-  it("only answers current-data Android questions directly when the device is the subject", async () => {
-    const useModel = createUseModelMock(async () => "Yes, local Eliza-1.");
-    const handleMessage = vi.fn(async () => ({
-      didRespond: true,
-      responseContent: { text: "The normal runtime handled live data." },
-      responseMessages: [],
-    }));
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_LOCAL_LLAMA: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      useModel,
-      messageService: {
-        handleMessage,
-        shouldRespond: () => ({
-          shouldRespond: true,
-          skipEvaluation: true,
-          reason: "current-data",
-        }),
-        deleteMessage: async () => undefined,
-        clearChannel: async () => undefined,
-      },
-    });
-
-    const weather = await generateChatResponse(
-      runtime,
-      createChatMessage("what is the weather today?"),
-      "Streaming Agent",
-    );
-    const local = await generateChatResponse(
-      runtime,
-      createChatMessage("are you running locally on this device today?"),
-      "Streaming Agent",
-    );
-
-    expect(handleMessage).toHaveBeenCalledTimes(1);
-    expect(weather.text).toBe("The normal runtime handled live data.");
-    expect(useModel).toHaveBeenCalledTimes(1);
-    expect(local.text).toBe("Yes, local Eliza-1.");
-  });
-
-  it("sanitizes Android local prompt tokens and model response wrappers", async () => {
-    const useModel = createUseModelMock(async () => ({
-      content: [
-        { text: "<think>hidden</think>\nmodel: First reply. " },
-        { text: "Second reply.<end_of_turn>ignored" },
-      ],
-    }));
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "android",
-          ELIZA_LOCAL_LLAMA: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      getMemories: vi.fn(async () => [
-        createMessageMemory({
-          id: stringToUuid("history-token-test"),
-          roomId: stringToUuid("room"),
-          entityId: stringToUuid("user"),
-          content: {
-            text: "Please do not leak <start_of_turn> or <think> tags.",
+      for (const text of [
+        "hello",
+        "local voice ready",
+        "what local model is loaded?",
+        "open notes",
+        "what did I just say?",
+        "x".repeat(701),
+      ]) {
+        const message = createChatMessage(text);
+        message.content.channelType = ChannelType.VOICE_DM;
+        const chunks: string[] = [];
+        const result = await generateChatResponse(
+          runtime,
+          message,
+          "Streaming Agent",
+          {
+            onChunk: (chunk) => {
+              chunks.push(chunk);
+            },
           },
-        }),
-      ]),
-      useModel,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("say <end_of_turn> safely"),
-      "Streaming Agent",
-    );
-
-    const params = useModel.mock.calls[0]?.[1] as { prompt: string };
-    expect(params.prompt).toContain("< start_of_turn >");
-    expect(params.prompt).toContain("< think >");
-    expect(params.prompt).toContain("say < end_of_turn > safely");
-    expect(result.text).toBe("First reply. Second reply.");
-  });
-
-  it("uses the local direct path for iOS full Bun local backend", async () => {
-    const useModel = createUseModelMock(async () => "Yes, on device.");
-    const runtime = createRuntime({
-      getSetting: (key: string) => {
-        const values: Record<string, string> = {
-          ELIZA_MOBILE_PLATFORM: "ios",
-          ELIZA_IOS_LOCAL_BACKEND: "1",
-          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
-        };
-        return values[key] ?? null;
-      },
-      useModel,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("can you answer locally?"),
-      "Streaming Agent",
-    );
-
-    expect(useModel).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        stream: true,
-        prompt: expect.stringContaining("can you answer locally?"),
-      }),
-    );
-    expect(result.text).toBe("Yes, on device.");
-    expect(result.localInference).toEqual(
-      expect.objectContaining({
-        provider: "mobile-local-direct-reply",
-      }),
-    );
-  });
+        );
+        expect(handleMessage.mock.calls.at(-1)?.[1].content.text).toBe(text);
+        expect(chunks.join("")).toBe(tokens.join(""));
+        expect(result.text).toBe(tokens.join(""));
+        expect(result.localInference).toBeUndefined();
+      }
+      expect(handleMessage).toHaveBeenCalledTimes(6);
+      expect(useModel).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps contextual Android local turns on the normal message runtime", async () => {
     const useModel = createUseModelMock(async () => "generic local reply");
@@ -1805,46 +1493,43 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("direct result completed");
   });
 
-  it("finalizes a committed direct action across a late cancellation", async () => {
-    const caller = new AbortController();
-    const actionHandler = vi.fn(async () => {
-      caller.abort(new DOMException("socket closed", "AbortError"));
-      return {
-        success: true,
-        text: "Task committed.",
-        data: { actionName: "START_CODING_TASK" },
-      };
-    });
-    const action = {
-      name: "START_CODING_TASK",
-      description: "Create a coding task.",
-      similes: [],
-      examples: [],
-      validate: async () => true,
-      handler: actionHandler,
-    } satisfies Action;
+  it("passes explicit task intent to the shared runtime instead of manufacturing a creation receipt", async () => {
+    const handler = vi.fn(async () => ({
+      success: true,
+      text: "Unplanned task",
+    }));
+    const messageService = createStreamingMessageService([
+      "What should the task accomplish?",
+    ]);
+    const handleMessage = vi.spyOn(messageService, "handleMessage");
     const runtime = createRuntime({
-      actions: [action],
+      actions: [
+        {
+          name: "START_CODING_TASK",
+          description: "Create a task",
+          examples: [],
+          validate: async () => true,
+          handler,
+        },
+      ],
+      messageService,
       getService: vi.fn((serviceType: string) =>
         serviceType === "SWARM_COORDINATOR" ? ({} as never) : null,
       ) as AgentRuntime["getService"],
     });
-    const message = createChatMessage("build the durable fix");
-    message.entityId = runtime.agentId;
-    message.content = {
-      ...message.content,
-      metadata: { intent: "create_task" },
-    };
-
+    const message = createChatMessage("make a task");
+    message.content.metadata = { intent: "create_task" };
     const result = await generateChatResponse(
       runtime,
       message,
       "Streaming Agent",
-      { abortSignal: caller.signal },
     );
-
-    expect(actionHandler).toHaveBeenCalledTimes(1);
-    expect(result.text).toBe("Task committed.");
+    expect(handleMessage).toHaveBeenCalledOnce();
+    expect(handleMessage.mock.calls[0]?.[1].content.metadata).toMatchObject({
+      intent: "create_task",
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.text).toBe("What should the task accomplish?");
   });
 
   it("rejects ingress hook failures before starting message generation", async () => {

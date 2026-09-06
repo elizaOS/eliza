@@ -24,10 +24,10 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(scriptDir, "..", "..", "..");
 
 export const FUSED_EMBEDDING_ARTIFACT = Object.freeze({
-  filename: "gte-small_fp16.gguf",
-  repo: "ChristianAzinn/gte-small-gguf",
-  revision: "208c4701ee35ad296b92918e02c03aebfaa6be6f",
-  sha256: "6c3d85a9af8ef795854d28cd25fa14bbf1638243d6c094d6f4c673b50b69271d",
+  filename: "bge-small-en-v1.5-f16.gguf",
+  repo: "CompendiumLabs/bge-small-en-v1.5-gguf",
+  revision: "d32f8c040ea3b516330eeb75b72bcc2d3a780ab7",
+  sha256: "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999",
   size: 67_308_128,
 });
 
