@@ -65,6 +65,21 @@ it("does not turn a failed read into creation or disclose native error text", ()
   }
 });
 
+it("does not replace an existing empty keychain entry", () => {
+  const { directory, binding } = fixture(`
+    import { readFileSync, writeFileSync } from "node:fs";
+    const file = new URL("./saved-key", import.meta.url);
+    export class Entry {
+      getPassword() { return readFileSync(file, "utf8"); }
+      setPassword(value) { writeFileSync(file, value); }
+    }
+  `);
+  const savedKey = join(directory, "saved-key");
+  writeFileSync(savedKey, "");
+  expect(() => readKeychainKeySync("test", "empty", { binding })).toThrow();
+  expect(readFileSync(savedKey, "utf8")).toBe("");
+});
+
 it("rejects corrupt stored keys and unsuccessful read-back", () => {
   for (const implementation of [
     'getPassword() { return "corrupt"; } setPassword() { throw new Error("overwrite"); }',
