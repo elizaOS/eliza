@@ -251,6 +251,60 @@ function validateKeyAndIv(key: Uint8Array, iv: Uint8Array): void {
 }
 
 /**
+ * Stateful output encoder mirroring how `node:crypto` streams cipher and
+ * decipher output: node pipes every emitted chunk through ONE decoder for the
+ * chosen output encoding, so per-chunk encoding is only correct when the
+ * encoding is stateless. `hex` is stateless (2 chars/byte). `base64` must hold
+ * back bytes until they form complete 3-byte groups — encoding each chunk
+ * independently emits `=` padding mid-stream, producing a concatenation that
+ * is not the base64 of the whole output and cannot be decoded as one string.
+ * `utf8` must hold back a trailing incomplete multibyte sequence until it
+ * completes; `TextDecoder`'s own streaming mode provides exactly node's
+ * semantics (including the `0xF8`–`0xFF` lead-byte rejection node enforces,
+ * which a hand-rolled lead-byte table would have to replicate).
+ */
+interface StreamingOutputEncoder {
+	encode(chunk: Uint8Array): string;
+	flush(finalChunk: Uint8Array): string;
+}
+
+function createStreamingOutputEncoder(
+	encoding: BufferEncodingName,
+): StreamingOutputEncoder {
+	if (encoding === "base64") {
+		let carry = new Uint8Array(0);
+		return {
+			encode(chunk: Uint8Array) {
+				const combined = concatBytes(carry, chunk);
+				const encodableLength = combined.length - (combined.length % 3);
+				carry = sliceBytes(combined, encodableLength);
+				return encodableLength === 0
+					? ""
+					: toEncodedString(sliceBytes(combined, 0, encodableLength), "base64");
+			},
+			flush(finalChunk: Uint8Array) {
+				const combined = concatBytes(carry, finalChunk);
+				carry = new Uint8Array(0);
+				return toEncodedString(combined, "base64");
+			},
+		};
+	}
+	if (encoding === "utf8") {
+		// ignoreBOM keeps a leading U+FEFF in the output exactly like
+		// node:crypto's StringDecoder, which preserves it.
+		const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
+		return {
+			encode: (chunk: Uint8Array) => decoder.decode(chunk, { stream: true }),
+			flush: (finalChunk: Uint8Array) => decoder.decode(finalChunk),
+		};
+	}
+	return {
+		encode: (chunk: Uint8Array) => toEncodedString(chunk, "hex"),
+		flush: (finalChunk: Uint8Array) => toEncodedString(finalChunk, "hex"),
+	};
+}
+
+/**
  * Validate key and IV lengths for AES-256-GCM
  *
  * GCM requires a 32-byte key. The recommended nonce/IV length is 12 bytes.
@@ -339,8 +393,29 @@ export function createCipheriv(
 	const normalizedKey = Uint8Array.from(key);
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
+	let outputEncoder: StreamingOutputEncoder | undefined;
+	let outputEncoding: BufferEncodingName | undefined;
+	let finalized = false;
+	const lockOutputEncoding = (encoding: string): StreamingOutputEncoder => {
+		const normalized = normalizeEncoding(encoding);
+		if (outputEncoding === undefined) {
+			outputEncoding = normalized;
+			outputEncoder = createStreamingOutputEncoder(normalized);
+		} else if (outputEncoding !== normalized) {
+			// node:crypto rejects mid-stream output-encoding changes on the
+			// cipher exactly like the decipher.
+			throw new Error("Cannot change encoding");
+		}
+		return outputEncoder as StreamingOutputEncoder;
+	};
 	return {
-		update(data, inputEncoding, outputEncoding) {
+		update(data, inputEncoding, outEncArg) {
+			if (finalized) {
+				// node:crypto throws "Trying to add data in unsupported state"
+				// when update() is called after final().
+				throw new Error("Trying to add data in unsupported state");
+			}
+			const encoder = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const fullBlockLength =
@@ -357,16 +432,24 @@ export function createCipheriv(
 				encryptedChunk,
 				encryptedChunk.length - AES_BLOCK_SIZE,
 			);
-			return toEncodedString(encryptedChunk, normalizeEncoding(outputEncoding));
+			return encoder.encode(encryptedChunk);
 		},
 		final(encoding) {
+			if (finalized) {
+				throw new Error("Unsupported state");
+			}
+			// Consume the state once finalization begins — before encoding
+			// validation — so even a failed final() (encoding-change throw)
+			// leaves the cipher unusable, exactly like node:crypto.
+			finalized = true;
+			const encoder = lockOutputEncoding(encoding);
 			const encryptedTail = Uint8Array.from(
 				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
 					applyPkcs7Padding(pending),
 				),
 			);
 			pending = new Uint8Array(0);
-			return toEncodedString(encryptedTail, normalizeEncoding(encoding));
+			return encoder.flush(encryptedTail);
 		},
 	};
 }
@@ -389,8 +472,29 @@ export function createDecipheriv(
 	const normalizedKey = Uint8Array.from(key);
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
+	let outputEncoder: StreamingOutputEncoder | undefined;
+	let outputEncoding: BufferEncodingName | undefined;
+	let finalized = false;
+	const lockOutputEncoding = (encoding: string): StreamingOutputEncoder => {
+		const normalized = normalizeEncoding(encoding);
+		if (outputEncoding === undefined) {
+			outputEncoding = normalized;
+			outputEncoder = createStreamingOutputEncoder(normalized);
+		} else if (outputEncoding !== normalized) {
+			// node:crypto rejects mid-stream output-encoding changes; honoring
+			// them instead would silently drop the held-back bytes.
+			throw new Error("Cannot change encoding");
+		}
+		return outputEncoder as StreamingOutputEncoder;
+	};
 	return {
-		update(data, inputEncoding, outputEncoding) {
+		update(data, inputEncoding, outEncArg) {
+			if (finalized) {
+				// node:crypto throws "Trying to add data in unsupported state"
+				// when update() is called after final().
+				throw new Error("Trying to add data in unsupported state");
+			}
+			const encoder = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const decryptableLength =
@@ -411,9 +515,20 @@ export function createDecipheriv(
 				ciphertextChunk,
 				ciphertextChunk.length - AES_BLOCK_SIZE,
 			);
-			return toEncodedString(plaintextChunk, normalizeEncoding(outputEncoding));
+			// Stream the chunk through the one stateful output encoder — this
+			// holds back trailing incomplete UTF-8 sequences and partial base64
+			// 3-byte groups exactly like node:crypto's own decoder.
+			return encoder.encode(plaintextChunk);
 		},
 		final(encoding) {
+			if (finalized) {
+				throw new Error("Unsupported state");
+			}
+			// Consume the state once finalization begins: node:crypto rejects
+			// update() and repeated final() even when the finalization itself
+			// fails (truncated ciphertext, invalid padding).
+			finalized = true;
+			const encoder = lockOutputEncoding(encoding);
 			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
 				throw new Error("Invalid ciphertext length for AES-CBC payload.");
 			}
@@ -423,10 +538,8 @@ export function createDecipheriv(
 				),
 			);
 			pending = new Uint8Array(0);
-			return toEncodedString(
-				removePkcs7Padding(decryptedTail),
-				normalizeEncoding(encoding),
-			);
+			const unpadded = removePkcs7Padding(decryptedTail);
+			return encoder.flush(unpadded);
 		},
 	};
 }
