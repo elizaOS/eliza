@@ -805,6 +805,62 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(params.messages?.[1]?.content).not.toContain("room_entities:");
 	});
 
+	it("stores a redaction-placeholder subject as the speaker and drops a placeholder object", async () => {
+		// Live 2026-09-06 05:38: the model echoed the prompt's redacted owner id
+		// back as the subject and "[REDACTED:ELIZA_ADMIN_ENTITY_ID] has_dog
+		// Biscuit" was persisted verbatim.
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{
+						subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+						predicate: "has_dog",
+						object: "Biscuit",
+					},
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+					},
+				],
+				thought: "two rels",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				relationships: [
+					{
+						subject: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+						predicate: "has_dog",
+						object: "Biscuit",
+					},
+					{
+						subject: "user",
+						predicate: "works_with",
+						object: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+					},
+				],
+			},
+		});
+		expect(result.written.relationships).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({
+					type: "relationship",
+					text: "User has_dog Biscuit",
+					subject: "User",
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+
 	it("persists relationships under the facts table and upserts resolved entity edges when kept", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({
