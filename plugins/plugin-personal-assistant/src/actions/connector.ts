@@ -1184,7 +1184,7 @@ async function dispatchWeChat(
         return registryStatus;
       }
       const base =
-        "Set up WeChat below — paste your WeChat proxy API key and proxy URL to route messages through @elizaos/plugin-wechat.";
+        "Set up WeChat below — choose a direct mode (official-account or wecom) and provide that mode's credentials to connect through @elizaos/plugin-wechat.";
       return {
         success: false,
         text: withConfigCard(base, connectorConfigPluginId("wechat")),
@@ -1203,7 +1203,7 @@ async function dispatchWeChat(
       }
       return {
         success: true,
-        text: "WeChat is not connected. Configure @elizaos/plugin-wechat (WECHAT_API_KEY + WECHAT_PROXY_URL) to enable it.",
+        text: "WeChat is not connected. Configure @elizaos/plugin-wechat with a direct mode block (official-account or wecom under connectors.wechat) to enable it.",
         data: {
           actionName: ACTION_NAME,
           connector: "wechat",
