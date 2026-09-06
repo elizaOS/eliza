@@ -4,8 +4,9 @@
  * Exercises character voice resolution through the shared hook with mocked
  * configuration transport and real provider-default selection boundaries.
  */
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { VOICE_CONFIG_UPDATED_EVENT } from "../events";
 import { useVoiceConfig } from "./useVoiceConfig";
 
 const JIN_VOICE_ID = "6IwYbsNENZgAB1dtBZDp";
@@ -15,6 +16,7 @@ const hoisted = vi.hoisted(() => ({
   updateConfig: vi.fn(),
   resolvedTtsDefault: vi.fn(),
   appState: {
+    setActionNotice: vi.fn(),
     elizaCloudConnected: false,
     elizaCloudVoiceProxyAvailable: false,
   },
@@ -48,6 +50,7 @@ vi.mock("../state", () => ({
 }));
 
 beforeEach(() => {
+  hoisted.appState.setActionNotice.mockReset();
   hoisted.getConfig.mockReset();
   hoisted.updateConfig.mockReset();
   hoisted.updateConfig.mockResolvedValue({});
@@ -147,4 +150,107 @@ describe("useVoiceConfig character preset resolution", () => {
     expect(result.current.voiceConfig.provider).toBe("elevenlabs");
     expect(hoisted.updateConfig).not.toHaveBeenCalled();
   });
+});
+
+describe("voice preferences after detached Settings", () => {
+  it("loads the saved provider when chat regains focus and removes its listener", async () => {
+    hoisted.getConfig.mockResolvedValue({
+      messages: { tts: { provider: "local-inference" } },
+    });
+    const { result, unmount } = renderHook(() => useVoiceConfig("en"));
+    await waitFor(() =>
+      expect(result.current.voiceConfig.provider).toBe("local-inference"),
+    );
+    hoisted.getConfig.mockResolvedValue({
+      messages: {
+        tts: { provider: "edge", edge: { voice: "en-US-AriaNeural" } },
+      },
+    });
+    act(() => window.dispatchEvent(new Event("focus")));
+    await waitFor(() =>
+      expect(result.current.voiceConfig.provider).toBe("edge"),
+    );
+    expect(result.current.voiceConfig.edge?.voice).toBe("en-US-AriaNeural");
+    unmount();
+    hoisted.getConfig.mockClear();
+    window.dispatchEvent(new Event("focus"));
+    expect(hoisted.getConfig).not.toHaveBeenCalled();
+  });
+});
+
+it("does not let an earlier refresh overwrite a newer same-window save", async () => {
+  let resolveRead!: (config: object) => void;
+  hoisted.getConfig.mockReturnValue(
+    new Promise((resolve) => {
+      resolveRead = resolve;
+    }),
+  );
+  const { result } = renderHook(() => useVoiceConfig("en"));
+  act(() =>
+    window.dispatchEvent(
+      new CustomEvent(VOICE_CONFIG_UPDATED_EVENT, {
+        detail: { provider: "edge", edge: { voice: "en-US-AriaNeural" } },
+      }),
+    ),
+  );
+  await act(async () =>
+    resolveRead({ messages: { tts: { provider: "local-inference" } } }),
+  );
+  expect(result.current.voiceConfig.provider).toBe("edge");
+  expect(result.current.voiceBootstrapTick).toBe(1);
+});
+
+it("refreshes a visible voice surface and ignores a hidden transition", async () => {
+  hoisted.getConfig.mockResolvedValue({
+    messages: { tts: { provider: "edge" } },
+  });
+  const { result, unmount } = renderHook(() => useVoiceConfig("en"));
+  await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+  const visibility = vi.spyOn(document, "visibilityState", "get");
+  try {
+    visibility.mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(hoisted.getConfig).toHaveBeenCalledTimes(1);
+    hoisted.getConfig.mockResolvedValue({
+      messages: { tts: { provider: "elevenlabs" } },
+    });
+    visibility.mockReturnValue("visible");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() =>
+      expect(result.current.voiceConfig.provider).toBe("elevenlabs"),
+    );
+    unmount();
+    hoisted.getConfig.mockClear();
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(hoisted.getConfig).not.toHaveBeenCalled();
+  } finally {
+    visibility.mockRestore();
+  }
+});
+
+it("keeps the loaded voice and reports a failed focus refresh", async () => {
+  hoisted.getConfig.mockResolvedValue({
+    messages: {
+      tts: { provider: "edge", edge: { voice: "en-US-AriaNeural" } },
+    },
+  });
+  const { result } = renderHook(() => useVoiceConfig("en"));
+  await waitFor(() => expect(result.current.voiceConfig.provider).toBe("edge"));
+  hoisted.getConfig.mockRejectedValue(new Error("temporary transport failure"));
+  act(() => window.dispatchEvent(new Event("focus")));
+  await waitFor(() =>
+    expect(hoisted.appState.setActionNotice).toHaveBeenCalledWith(
+      expect.any(String),
+      "error",
+    ),
+  );
+  expect(result.current.voiceConfig.provider).toBe("edge");
+  expect(result.current.voiceConfig.edge?.voice).toBe("en-US-AriaNeural");
+  hoisted.getConfig.mockResolvedValue({
+    messages: { tts: { provider: "local-inference" } },
+  });
+  act(() => window.dispatchEvent(new Event("focus")));
+  await waitFor(() =>
+    expect(result.current.voiceConfig.provider).toBe("local-inference"),
+  );
 });
