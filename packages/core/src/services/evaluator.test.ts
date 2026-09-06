@@ -978,28 +978,35 @@ it("retains direct evaluator objects whose fields resemble an envelope payload",
 	expect(processed).toEqual(["complete direct field"]);
 });
 
-it("rejects a stable/dynamic annotation that splits an intact Unicode code point", async () => {
-	const runtime = makeRuntime();
-	const model = vi.fn();
-	runtime.useModel = model as AgentRuntime["useModel"];
-	runtime.registerEvaluator({
-		name: "unicode",
-		description: "lossless boundary",
-		schema: schema(),
-		shouldRun: async () => true,
-		prompt: () => "instruction 🐈 complete tail",
-		promptSegments: () => [
-			{ content: "instruction \uD83D", stable: true },
-			{ content: "\uDC08 complete tail", stable: false },
-		],
-	});
-	await expect(
-		new EvaluatorService(runtime).run(makeMessage()),
-	).rejects.toMatchObject({
-		code: "EVALUATOR_PROMPT_SEGMENT_BOUNDARY_INVALID",
-	});
-	expect(model).not.toHaveBeenCalled();
-});
+it.each([0, 1, 3])(
+	"rejects split Unicode code points across %s empty annotation segments",
+	async (emptySegments) => {
+		const runtime = makeRuntime();
+		const model = vi.fn();
+		runtime.useModel = model as AgentRuntime["useModel"];
+		runtime.registerEvaluator({
+			name: "unicode",
+			description: "lossless boundary",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "instruction 🐈 complete tail",
+			promptSegments: () => [
+				{ content: "instruction \uD83D", stable: true },
+				...Array.from({ length: emptySegments }, () => ({
+					content: "",
+					stable: true,
+				})),
+				{ content: "\uDC08 complete tail", stable: false },
+			],
+		});
+		await expect(
+			new EvaluatorService(runtime).run(makeMessage()),
+		).rejects.toMatchObject({
+			code: "EVALUATOR_PROMPT_SEGMENT_BOUNDARY_INVALID",
+		});
+		expect(model).not.toHaveBeenCalled();
+	},
+);
 
 it("rejects interleaved instructions instead of relocating context-sensitive fragments", async () => {
 	const runtime = makeRuntime();
@@ -1022,3 +1029,53 @@ it("rejects interleaved instructions instead of relocating context-sensitive fra
 	).rejects.toMatchObject({ code: "EVALUATOR_PROMPT_SEGMENT_ORDER_INVALID" });
 	expect(model).not.toHaveBeenCalled();
 });
+
+it.each([
+	"stop",
+	"STOP",
+	"length",
+	"MAX_TOKENS",
+	"content_filter",
+	"SAFETY",
+	"unknown",
+	undefined,
+])(
+	"processes native evaluator envelopes only for supported complete finish reasons: %s",
+	async (finishReason) => {
+		const runtime = makeRuntime();
+		const processed: string[] = [];
+		runtime.registerEvaluator({
+			name: "result",
+			description: "completion fence",
+			schema: { type: "string" },
+			shouldRun: async () => true,
+			prompt: () => "Extract complete result",
+			processors: [
+				{
+					process: async ({ output }) => {
+						processed.push(String(output));
+						return { success: true };
+					},
+				},
+			],
+		});
+		runtime.useModel = vi.fn(async () => ({
+			text: JSON.stringify({ result: "complete tail" }),
+			toolCalls: [],
+			finishReason,
+			usage: {},
+		})) as AgentRuntime["useModel"];
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+		if (finishReason === "stop" || finishReason === "STOP") {
+			expect(processed).toEqual(["complete tail"]);
+			expect(result.errors).toEqual([]);
+		} else {
+			expect(processed).toEqual([]);
+			expect(result.errors).toEqual([
+				expect.objectContaining({
+					error: expect.stringContaining("did not complete normally"),
+				}),
+			]);
+		}
+	},
+);

@@ -68,7 +68,10 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
 	) {
 		// Native text handlers return a transport envelope, not evaluator fields.
 		// A partial/tool-call completion must never commit extraction side effects.
-		if (raw.finishReason !== "stop" || raw.toolCalls.length > 0) {
+		// Google GenAI's native result retains its documented uppercase STOP.
+		const completed =
+			raw.finishReason === "stop" || raw.finishReason === "STOP";
+		if (!completed || raw.toolCalls.length > 0) {
 			throw new ElizaError(
 				"Evaluator model did not complete normally; no effects were applied",
 				{
@@ -245,13 +248,11 @@ function buildPrompt(params: {
 				);
 			}
 		}
-		for (let index = 1; index < segments.length; index += 1) {
-			const previous = segments[index - 1];
-			const current = segments[index];
+		let previousContent = "";
+		for (const [index, current] of segments.entries()) {
+			if (current.content.length === 0) continue;
 			if (
-				previous &&
-				current &&
-				/[\uD800-\uDBFF]$/.test(previous.content) &&
+				/[\uD800-\uDBFF]$/.test(previousContent) &&
 				/^[\uDC00-\uDFFF]/.test(current.content)
 			) {
 				throw new ElizaError(
@@ -262,6 +263,7 @@ function buildPrompt(params: {
 					},
 				);
 			}
+			previousContent = current.content;
 		}
 		stable.push({
 			content: `### ${evaluator.name}\n${evaluator.description}\n\n${segments
