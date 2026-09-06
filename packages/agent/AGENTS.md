@@ -149,7 +149,11 @@ scenario processes are deny-by-default — only declared capabilities may start.
   and the boot fails with `SYNTHETIC_ADMISSION_DENIED`.
 - `ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST` — comma-separated exact package names the
   composition declares; malformed entries fail the boot rather than narrowing
-  or widening the list.
+  or widening the list. Matching is exact against the collected name after
+  alias resolution only: short ids are not expanded, so a `plugins.installs`
+  key or a drop-in directory named `imessage` is collected as `imessage`, and
+  `@elizaos/plugin-imessage` would not admit it. Declare the name exactly as
+  the denial ledger's entry records it.
 
 Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
   sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on

@@ -151,7 +151,7 @@ describe("applySyntheticAdmission", () => {
     expect(result.overflowDenialCount).toBe(0);
   });
 
-  it("keeps the always-admitted set minimal and boot-required only", () => {
+  it("does not let the always-admitted set grow without review", () => {
     expect(SYNTHETIC_ALWAYS_ADMITTED_PACKAGES).toEqual(["@elizaos/plugin-sql"]);
   });
 
