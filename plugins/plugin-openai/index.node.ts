@@ -5,7 +5,7 @@
  * bundle (#18702).
  */
 import pluginDefault from "./index";
-import { installNodeTranscriptionUrlFetcher } from "./models/transcription-url.node";
+import { installNodeTranscriptionUrlFetcher } from "./models/transcription-url.node.ts";
 
 installNodeTranscriptionUrlFetcher();
 
