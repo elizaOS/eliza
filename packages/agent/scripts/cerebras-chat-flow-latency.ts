@@ -289,7 +289,7 @@ function redactEvidenceValue(value: unknown, seen: WeakSet<object>): unknown {
   return redacted;
 }
 
-function jsonEvidence(value: unknown): unknown {
+export function jsonEvidence(value: unknown): unknown {
   return JSON.parse(
     JSON.stringify(redactEvidenceValue(value, new WeakSet<object>())),
   );
@@ -591,7 +591,7 @@ function stageHistograms(
   );
 }
 
-function configuredModelEnvironment(model: string): void {
+export function configuredModelEnvironment(model: string): void {
   process.env.ELIZA_PROVIDER = "cerebras";
   process.env.CEREBRAS_BASE_URL =
     process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
