@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
+import { settlementDigest } from "./settlement-digest";
 
 const postgresUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
 const schema = `app_customer_closure_${randomUUID().replaceAll("-", "_")}`;
@@ -123,6 +124,10 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0438_app_billing_customer_terminal_obligations",
       "0439_app_billing_customer_command_shape",
       "0440_app_billing_terminal_buyer_commands",
+      "0441_app_billing_customer_command_identity",
+      "0442_app_billing_customer_execution_lease",
+      "0443_app_billing_customer_completion_guard",
+      "0444_app_billing_customer_command_guard",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -243,7 +248,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       await import("../../db/repositories/app-billing-customer-closures")
     ).closeAppBillingCustomer({ customerBindingId, authority });
   }
-  test("settled buyer checkout expiration permits closure but unsettled usage still blocks it", async () => {
+  async function settledCustomer() {
     const source = await buyer();
     const checkout = await runtime.checkout(source.identity, {
       idempotencyKey: randomUUID(),
@@ -274,6 +279,10 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
     const auth = await deletion(source.identity.actorUserId);
     await decide(source.scopeId, auth);
     await freeze(binding.id, auth);
+    return { source, checkout, expired, binding, auth };
+  }
+  test("settled buyer checkout expiration permits closure but unsettled usage still blocks it", async () => {
+    const { source, checkout, expired, binding, auth } = await settledCustomer();
     const preflight = () =>
       db.query("SELECT require_app_billing_customer_terminal_obligations($1,$2,$3,$4,$5,$6)", [
         binding.id,
@@ -309,6 +318,148 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
         (row) => row.status === "SUCCEEDED" && row.provider_result.kind === "expired_checkout",
       ),
     ).toBe(true);
+  });
+  test("only the exact leased deletion command may exclude itself from terminal obligations", async () => {
+    const { source, binding, auth } = await settledCustomer();
+    const closure = (
+      await db.query("SELECT * FROM app_billing_customer_closures WHERE customer_binding_id=$1", [
+        binding.id,
+      ])
+    ).rows[0];
+    const payload = {
+      version: 1,
+      domain: "account_deletion",
+      action: "delete_customer",
+      customerBindingId: binding.id,
+      requestId: auth.requestId,
+      requestDigest: auth.requestDigest,
+      lifecycleRevision: auth.lifecycleRevision,
+      phaseReceiptId: auth.phaseReceiptId,
+      initiatingPhaseGeneration: auth.phaseGeneration,
+      closureRequestId: closure.initiating_request_id,
+      closureRequestDigest: closure.request_digest,
+      billingAccountId: source.identity.billingAccountId,
+      customerId: closure.stripe_customer_id,
+      providerAccountId: closure.stripe_account_id,
+    };
+    const commandId = randomUUID();
+    const insert = (intent: typeof payload) =>
+      db.query(
+        "INSERT INTO billing_subscription_commands(id,app_id,livemode,merchant_id,organization_id,billing_scope_id,merchant_key,requested_by_user_id,kind,idempotency_key,provider_idempotency_key,request_digest,request_payload) VALUES($1,$2,false,$3,$4,$5,'acct_runtime',$6,'delete_customer',$7,$8,$9,$10)",
+        [
+          commandId,
+          source.identity.appId,
+          merchant,
+          org,
+          source.scopeId,
+          source.identity.actorUserId,
+          `deletion-customer:${binding.id}`,
+          `app-deletion-customer:${binding.id}`,
+          settlementDigest(intent),
+          JSON.stringify(intent),
+        ],
+      );
+    await expect(insert({ ...payload, customerId: "cus_foreign" })).rejects.toThrow(
+      "immutable original closure intent",
+    );
+    await insert(payload);
+    const args = [
+      binding.id,
+      auth.requestId,
+      auth.requestDigest,
+      auth.lifecycleRevision,
+      auth.phaseReceiptId,
+      auth.phaseGeneration,
+    ];
+    const preflight = (id: string, token: string, generation = 1, revision = 2) =>
+      db.query(
+        "SELECT require_app_billing_customer_terminal_obligations($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [...args, id, token, generation, revision],
+      );
+    const token = randomUUID();
+    await expect(preflight(commandId, token)).rejects.toThrow("exact current execution lease");
+    await db.query(
+      "UPDATE billing_subscription_commands SET status='OUTCOME_UNKNOWN',execution_generation=1,state_revision=2,provider_started_at=now(),lease_token=$2,lease_expires_at=now()+interval '1 minute' WHERE id=$1",
+      [commandId, token],
+    );
+    await expect(
+      db.query("SELECT require_app_billing_customer_terminal_obligations($1,$2,$3,$4,$5,$6)", args),
+    ).rejects.toThrow("unresolved provider commands");
+    await expect(preflight(commandId, randomUUID())).rejects.toThrow(
+      "exact current execution lease",
+    );
+    await expect(preflight(commandId, token, 2)).rejects.toThrow("exact current execution lease");
+    await expect(preflight(commandId, token, 1, 3)).rejects.toThrow(
+      "exact current execution lease",
+    );
+    await preflight(commandId, token);
+    const value = { customerId: payload.customerId, status: "deleted" as const };
+    const receipt = {
+      kind: "deleted_customer",
+      customerBindingId: binding.id,
+      observation: {
+        value,
+        digest: settlementDigest(value),
+        inputDigest: "d".repeat(64),
+        apiVersion: "2024-11-20.acacia",
+        merchantId: merchant,
+        providerAccountId: payload.providerAccountId,
+        livemode: false,
+        observedAt: new Date().toISOString(),
+      },
+      completionAuthority: {
+        requestId: auth.requestId,
+        requestDigest: auth.requestDigest,
+        lifecycleRevision: auth.lifecycleRevision,
+        phaseReceiptId: auth.phaseReceiptId,
+        phaseGeneration: auth.phaseGeneration,
+      },
+    };
+    // Submit deterministic receipt proposals through the real migration guard; provider observation is tested separately.
+    const complete = (result: typeof receipt) =>
+      db.query(
+        "UPDATE billing_subscription_commands SET status='SUCCEEDED',provider_result=$2,provider_response_digest=$3,completed_at=now(),state_revision=3,lease_token=NULL,lease_expires_at=NULL WHERE id=$1",
+        [commandId, JSON.stringify(result), receipt.observation.digest],
+      );
+    await expect(
+      complete({
+        ...receipt,
+        observation: { ...receipt.observation, value: { ...value, customerId: "cus_foreign" } },
+      }),
+    ).rejects.toThrow("exact retained tombstone evidence");
+    await db.query("UPDATE account_deletion_phase_receipts SET lease_generation=2 WHERE id=$1", [
+      auth.phaseReceiptId,
+    ]);
+    await expect(preflight(commandId, token)).rejects.toThrow("current canonical deletion phase");
+    await expect(complete(receipt)).rejects.toThrow("current canonical deletion phase");
+    const accepted = {
+      ...receipt,
+      completionAuthority: { ...receipt.completionAuthority, phaseGeneration: 2 },
+    };
+    await complete(accepted);
+    await db.query("SELECT require_app_billing_customer_terminal_obligations($1,$2,$3,$4,$5,$6)", [
+      ...args.slice(0, 5),
+      2,
+    ]);
+    expect(
+      (
+        await db.query("SELECT provider_result FROM billing_subscription_commands WHERE id=$1", [
+          commandId,
+        ])
+      ).rows[0].provider_result,
+    ).toEqual(accepted);
+    await expect(
+      db.query("UPDATE billing_subscription_commands SET completed_at=now() WHERE id=$1", [
+        commandId,
+      ]),
+    ).rejects.toThrow("completion is immutable");
+    expect(
+      (
+        await db.query("SELECT request_payload FROM billing_subscription_commands WHERE id=$1", [
+          commandId,
+        ])
+      ).rows[0].request_payload,
+    ).toEqual(payload);
   });
   test("closure intent cannot authorize customer deletion while a trial still runs", async () => {
     const source = await fixtureCustomer();

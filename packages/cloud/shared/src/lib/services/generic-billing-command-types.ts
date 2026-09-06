@@ -176,7 +176,24 @@ export type OperatorBillingCommandResult = {
   subscriptionId: string | null;
   trialClaimId: string | null;
 };
+/** Retains exact provider tombstone evidence and the canonical phase that accepted it. */
+export interface DeletionCustomerCommandResult {
+  kind: "deleted_customer";
+  customerBindingId: string;
+  observation: import("./generic-billing-provider-types").BillingProviderObservation<{
+    customerId: string;
+    status: "deleted";
+  }>;
+  completionAuthority: {
+    requestId: string;
+    requestDigest: string;
+    lifecycleRevision: number;
+    phaseReceiptId: string;
+    phaseGeneration: number;
+  };
+}
 export type GenericBillingCommandResult =
   | BuyerBillingCommandResult
   | AdminBillingCommandResult
-  | OperatorBillingCommandResult;
+  | OperatorBillingCommandResult
+  | DeletionCustomerCommandResult;

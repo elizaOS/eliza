@@ -2892,6 +2892,34 @@
       "when": 1796083200056,
       "tag": "0440_app_billing_terminal_buyer_commands",
       "breakpoints": true
+    },
+    {
+      "idx": 413,
+      "version": "7",
+      "when": 1796083200057,
+      "tag": "0441_app_billing_customer_command_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 414,
+      "version": "7",
+      "when": 1796083200058,
+      "tag": "0442_app_billing_customer_execution_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 415,
+      "version": "7",
+      "when": 1796083200059,
+      "tag": "0443_app_billing_customer_completion_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 416,
+      "version": "7",
+      "when": 1796083200060,
+      "tag": "0444_app_billing_customer_command_guard",
+      "breakpoints": true
     }
   ]
 }
