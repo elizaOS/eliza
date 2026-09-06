@@ -17,7 +17,9 @@
 
 import { describe, expect, test, vi } from "vitest";
 import {
+	assertValidSnapshot,
 	CorpusPseudonymMap,
+	type PseudonymClusterRecord,
 	PseudonymMapIntegrityError,
 	type PseudonymMapSnapshot,
 } from "./pii-pseudonym-map.js";
@@ -576,5 +578,183 @@ describe("snapshot validation is fail-closed", () => {
 		} finally {
 			vi.unstubAllGlobals();
 		}
+	});
+});
+
+/**
+ * `assertValidSnapshot` is the fail-closed gate on the SECRET artifact. It runs
+ * on two inputs that are not the map's own output: `fromSnapshot` (a caller-
+ * supplied snapshot) and `PseudonymMapStore.load`, whose own comment calls the
+ * decrypted bytes "untrusted persisted input".
+ *
+ * The block above covers the snapshot-level clauses and the three headline
+ * cluster invariants (duplicate cluster, shared pseudonym, shared identity).
+ * These pin the per-field clauses beside them, each by its own message so that
+ * one clause standing in for another is a failure rather than a pass, plus the
+ * two type-coercion edges the shape allows.
+ *
+ * The consequence of a missing clause is not a lenient parse: `fromSnapshot`
+ * immediately does `[...record.aliases]`, `record.identities.map(...)` and
+ * `[...record.evidence]`, so a shape that slips past the gate becomes a raw
+ * TypeError from the constructor instead of the structured
+ * `PseudonymMapIntegrityError` both callers are written against.
+ */
+describe("assertValidSnapshot pins every per-cluster clause", () => {
+	function cluster(
+		over: Partial<Record<keyof PseudonymClusterRecord, unknown>> = {},
+	): PseudonymClusterRecord {
+		return {
+			clusterId: "entity:p1",
+			kind: "person",
+			pseudonym: "Alice Adams",
+			aliases: ["John Smith"],
+			identities: [{ platform: "discord", handle: "jsmith" }],
+			evidence: ["same discord handle"],
+			firstSeen: 1_750_000_000_000,
+			rulesetVersion: RULESET,
+			supersededPseudonyms: [],
+			...over,
+		} as PseudonymClusterRecord;
+	}
+
+	function snapshot(...clusters: readonly PseudonymClusterRecord[]): unknown {
+		return { version: 1, salt: SALT, clusters };
+	}
+
+	test("accepts the fixture the negative cases are built from", () => {
+		expect(() => assertValidSnapshot(snapshot(cluster()))).not.toThrow();
+	});
+
+	test.each([
+		["cluster is not an object", null],
+		["cluster is not an object", "entity:p1"],
+	] as const)("rejects a non-object cluster (%s)", (message, value) => {
+		expect(() =>
+			assertValidSnapshot({
+				version: 1,
+				salt: SALT,
+				clusters: [value],
+			}),
+		).toThrow(message);
+	});
+
+	test.each([
+		["clusterId", { clusterId: 7 }, /has no clusterId/],
+		["clusterId empty", { clusterId: "" }, /has no clusterId/],
+		["kind", { kind: 7 }, /has no kind/],
+		["kind empty", { kind: "" }, /has no kind/],
+		["pseudonym", { pseudonym: 7 }, /has no pseudonym/],
+		["firstSeen", { firstSeen: "1750000000000" }, /has no firstSeen/],
+		["firstSeen null", { firstSeen: null }, /has no firstSeen/],
+		["rulesetVersion", { rulesetVersion: 7 }, /has no rulesetVersion/],
+	] as const)(
+		"rejects a bad %s by its own message",
+		(_label, over, expected) => {
+			expect(() => assertValidSnapshot(snapshot(cluster(over)))).toThrow(
+				expected,
+			);
+		},
+	);
+
+	// Each list field is checked twice: "not an array at all" and "an array
+	// holding one wrong-typed element". Dropping the element-level `.some(...)`
+	// half leaves the first case passing, so only the pair pins the clause.
+	test.each([
+		["aliases", "aliases", /malformed aliases/],
+		["evidence", "evidence", /malformed evidence/],
+		[
+			"supersededPseudonyms",
+			"supersededPseudonyms",
+			/malformed supersededPseudonyms/,
+		],
+	] as const)(
+		"rejects %s that is not a list of strings",
+		(_l, key, expected) => {
+			expect(() =>
+				assertValidSnapshot(snapshot(cluster({ [key]: "John Smith" }))),
+			).toThrow(expected);
+			expect(() =>
+				assertValidSnapshot(snapshot(cluster({ [key]: ["ok", 7] }))),
+			).toThrow(expected);
+		},
+	);
+
+	test.each([
+		["not a list", { identities: {} }],
+		["a null entry", { identities: [null] }],
+		["a non-string platform", { identities: [{ platform: 7, handle: "a" }] }],
+		["a missing handle", { identities: [{ platform: "discord" }] }],
+	] as const)("rejects identities with %s", (_label, over) => {
+		expect(() => assertValidSnapshot(snapshot(cluster(over)))).toThrow(
+			/malformed identities/,
+		);
+	});
+
+	// The bijectivity check folds case before comparing, and it has to: the
+	// reverse index built by `fromSnapshot` is keyed on
+	// `pseudonym.toLowerCase()`, so "Alice Adams" and "alice adams" in one
+	// snapshot would silently collapse to a single reverse-lookup entry and two
+	// real people would share one surrogate. Comparing raw strings here would
+	// admit exactly that snapshot.
+	test("treats two pseudonyms differing only in case as the same pseudonym", () => {
+		expect(() =>
+			assertValidSnapshot(
+				snapshot(
+					cluster(),
+					cluster({
+						clusterId: "entity:p2",
+						pseudonym: "alice adams",
+						identities: [],
+					}),
+				),
+			),
+		).toThrow(/no longer bijective/);
+	});
+
+	test("still admits two genuinely different pseudonyms", () => {
+		expect(() =>
+			assertValidSnapshot(
+				snapshot(
+					cluster(),
+					cluster({
+						clusterId: "entity:p2",
+						pseudonym: "Bob Brown",
+						identities: [{ platform: "discord", handle: "bbrown" }],
+					}),
+				),
+			),
+		).not.toThrow();
+	});
+
+	// The version gate is `!== 1`, not a numeric comparison. A JSON artifact
+	// hand-edited (or written by another tool) with a quoted version is a
+	// different encoding of the contract and must not be read as v1.
+	test.each([["1"], [1.0000001], [true], [null], [undefined]] as const)(
+		"rejects version %s",
+		(version) => {
+			expect(() =>
+				assertValidSnapshot({ version, salt: SALT, clusters: [] }),
+			).toThrow(/unsupported snapshot version/);
+		},
+	);
+
+	// `salt` is checked for type before length. A non-string salt has no
+	// `.length`, so a length-only guard would wave it through and the map would
+	// mint from a non-string seed.
+	test.each([[7], [null], [{}], [["s"]]] as const)(
+		"rejects a non-string salt (%s)",
+		(salt) => {
+			expect(() =>
+				assertValidSnapshot({ version: 1, salt, clusters: [] }),
+			).toThrow(/missing its mint salt/);
+		},
+	);
+
+	test("reports the first offending cluster, not the last", () => {
+		expect(() =>
+			assertValidSnapshot(
+				snapshot(cluster({ clusterId: "entity:bad", kind: "" }), cluster()),
+			),
+		).toThrow(/"entity:bad" has no kind/);
 	});
 });
