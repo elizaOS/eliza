@@ -1,25 +1,7 @@
 /**
- * Unit tests for the provider usage probes in `account-usage.ts`.
- *
- * Gap (D): `account-usage.ts` shipped with no unit coverage. The probes parse
- * provider responses in two distinct shapes (legacy flat vs. new nested) and
- * funnel them through two internal normalizers — `utilizationToPct` (legacy
- * flat fractions or current nested percentage points, clamped to 0..100) and
- * `normalizeResetTimestamp` (epoch seconds vs.
- * milliseconds vs. ISO string). Those normalizers are NOT exported, so we
- * exercise them through the only public surface that touches them:
- * `pollAnthropicUsage` and `pollCodexUsage`. Both probes default their
- * `fetchImpl` argument to the global `fetch`, so we mock the network with
- * `vi.stubGlobal("fetch", ...)` — no live calls, fully deterministic.
- *
- * What these tests would catch as a regression:
- *  - dropping support for either the flat or nested Anthropic shape;
- *  - treating current nested `1.0` as a fraction instead of one percent;
- *  - failing to clamp utilization into [0, 100];
- *  - mishandling NaN / non-number / missing utilization;
- *  - treating epoch-seconds reset timestamps as already-milliseconds (or vice
- *    versa) and not parsing ISO-string resets;
- *  - not throwing (with the HTTP status) on a non-ok response.
+ * Exercises provider usage parsing with injected responses and daily counters
+ * with real temporary files. Legacy fractional and current percentage fields
+ * retain their distinct units; failed probes must not become healthy snapshots.
  */
 
 import {
@@ -578,7 +560,7 @@ describe("pollCodexUsage", () => {
     expect(typeof snap.refreshedAt).toBe("number");
   });
 
-  it("omits sessionPct when used_percent is NaN/non-numeric but still parses resets", async () => {
+  it("propagates malformed Codex usage as a failed refresh", async () => {
     stubFetch(
       jsonResponse({
         rate_limit: {
@@ -590,10 +572,9 @@ describe("pollCodexUsage", () => {
       }),
     );
 
-    const snap = await pollCodexUsage("t", "a");
-
-    expect(snap.sessionPct).toBeUndefined();
-    expect(snap.resetsAt).toBe(Date.parse("2026-06-22T00:00:00.000Z"));
+    await expect(pollCodexUsage("t", "a")).rejects.toMatchObject({
+      code: "codex_usage.invalid_shape",
+    });
   });
 
   it("throws with the HTTP status when the response is not ok", async () => {
