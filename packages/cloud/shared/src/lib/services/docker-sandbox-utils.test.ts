@@ -433,6 +433,7 @@ describe("secret container environment transport (#22060)", () => {
     "nested-host-mount",
     "host-mount-source",
     "mount-inventory-failure",
+    "unresolved-foreign-create",
     "unmounted",
   ] as const)("staging directory cleanup respects mounted ownership (%s)", async (scenario) => {
     const { spawn } = await import("node:child_process");
@@ -457,6 +458,11 @@ describe("secret container environment transport (#22060)", () => {
     fs.mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(attemptDirectory, "cancelled"), "cancelled\n", { mode: 0o600 });
     fs.writeFileSync(sentinel, "durable-data", { mode: 0o600 });
+    if (scenario === "unresolved-foreign-create") {
+      const otherAttempt = path.join(attempts, "44444444-4444-4444-8444-444444444444");
+      fs.mkdirSync(otherAttempt, { mode: 0o700 });
+      fs.writeFileSync(path.join(otherAttempt, "active"), "", { mode: 0o600 });
+    }
     fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
     fs.writeFileSync(
       path.join(bin, "stat"),
@@ -520,8 +526,30 @@ describe("secret container environment transport (#22060)", () => {
       const removable = scenario === "unmounted";
       expect(await run(environment)).toBe(removable ? 0 : 76);
       expect(fs.existsSync(rmMarker)).toBe(removable);
-      if (removable) expect(fs.existsSync(volume)).toBe(false);
-      else expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
+      if (removable) {
+        expect(fs.existsSync(volume)).toBe(false);
+        const otherAttemptId = "55555555-5555-4555-8555-555555555555";
+        const latePreparation = buildVolumeVaultPassphraseCommand(
+          productionVolume,
+          0,
+          otherAttemptId,
+          [`mkdir -p '${productionVolume}'`],
+        )
+          .replaceAll("/var/lib/eliza/replacement-attempts", attempts)
+          .replaceAll("/data", relocatedData)
+          .replaceAll("chmod 700 --", "chmod 700")
+          .replaceAll("chmod 600 --", "chmod 600");
+        const lateStatus = await new Promise<number | null>((resolve) => {
+          const child = spawn("/bin/sh", ["-c", latePreparation], {
+            env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+            stdio: ["ignore", "ignore", "ignore"],
+          });
+          child.on("close", resolve);
+        });
+        expect(lateStatus).toBe(75);
+        expect(fs.existsSync(volume)).toBe(false);
+        expect(await run(environment)).toBe(0);
+      } else expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

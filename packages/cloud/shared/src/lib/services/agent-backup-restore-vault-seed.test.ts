@@ -364,6 +364,7 @@ describe("seedRestoreVolumeVaultPassphraseBytes", () => {
           // exact production command while this local filesystem test stubs it.
           .replace("command -v flock >/dev/null 2>&1", ":")
           .replace("flock -w 30 9", ":")
+          .replace("flock -s -w 30 6", ":")
           .replaceAll("chmod 700 --", "chmod 700")
           .replaceAll("chmod 600 --", "chmod 600"),
         stdin,

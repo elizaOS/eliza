@@ -927,7 +927,10 @@ function getReplacementVolumePath(containerName: string): string {
   return getVolumePath(agentId);
 }
 
-function replacementAttemptControlPrelude(replacementAttemptId: string): string[] {
+function replacementAttemptControlPrelude(
+  replacementAttemptId: string,
+  volumeAccess: "shared" | "exclusive" = "shared",
+): string[] {
   assertCanonicalReplacementPathAttemptId(replacementAttemptId);
   const attemptDirectory = getReplacementAttemptControlDirectory(replacementAttemptId);
   return [
@@ -949,11 +952,31 @@ function replacementAttemptControlPrelude(replacementAttemptId: string): string[
     "control_parent=${attempt_root%/*}",
     'secure_prepare_control_parent "$control_parent"',
     'secure_prepare_private_directory "$attempt_root"',
+    'volume_lifecycle_lock="$attempt_root/volume-lifecycle-lock"',
+    'secure_existing_control_file "$volume_lifecycle_lock"',
+    'exec 6>>"$volume_lifecycle_lock"',
+    `flock -${volumeAccess === "exclusive" ? "x" : "s"} -w ${REPLACEMENT_ATTEMPT_LOCK_TIMEOUT_SECONDS} 6`,
     'secure_prepare_private_directory "$attempt_dir"',
     'secure_existing_control_file "$attempt_lock"',
     'exec 9>>"$attempt_lock"',
     `flock -w ${REPLACEMENT_ATTEMPT_LOCK_TIMEOUT_SECONDS} 9`,
   ];
+}
+
+/** A restore UUID is never reusable after its staging volume is retired. */
+function restoreVolumeRetirementMarker(volumePath: string): string | null {
+  const match = /^\/data\/agents\/\.restore\/([0-9a-f-]{36})\/([0-9a-f-]{36})$/.exec(volumePath);
+  if (!match) return null;
+  assertCanonicalReplacementPathAttemptId(match[1]!);
+  assertCanonicalReplacementPathAttemptId(match[2]!);
+  return `${REPLACEMENT_ATTEMPT_CONTROL_ROOT}/retired-volume-${match[1]}-${match[2]}`;
+}
+
+function restoreVolumeAdmissionCommands(volumePath: string): string[] {
+  const marker = restoreVolumeRetirementMarker(volumePath);
+  return marker
+    ? [`test ! -e ${shellQuote(marker)} && test ! -L ${shellQuote(marker)} || exit 75`]
+    : [];
 }
 
 /** Exact non-secret receipt expected after fenced remote artifact cleanup. */
@@ -1075,6 +1098,12 @@ export function buildVolumeVaultPassphraseCommand(
     throw new Error("Vault passphrase override byte length must be a non-negative integer.");
   }
   const keyPath = getVolumeVaultPassphrasePath(volumePath);
+  if (restoreVolumeRetirementMarker(volumePath) && replacementAttemptId === undefined) {
+    throw new ElizaError("Restore volume preparation requires a tracked replacement attempt.", {
+      code: "SANDBOX_RESTORE_VOLUME_ATTEMPT_REQUIRED",
+      severity: "fatal",
+    });
+  }
   if (replacementAttemptId !== undefined) {
     assertCanonicalReplacementPathAttemptId(replacementAttemptId);
   }
@@ -1261,6 +1290,7 @@ export function buildVolumeVaultPassphraseCommand(
           ...replacementAttemptControlPrelude(replacementAttemptId),
           'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
           'chmod 600 -- "$attempt_lock"',
+          ...restoreVolumeAdmissionCommands(volumePath),
           ...fencedPreparationCommands,
         ]
       : secureFileShellPrelude("$(id -u)")),
@@ -1573,8 +1603,12 @@ export function buildExactRestoreStagingVolumeCleanupCommand(
     "command -v docker >/dev/null 2>&1",
     "command -v stat >/dev/null 2>&1",
     "command -v findmnt >/dev/null 2>&1",
-    ...replacementAttemptControlPrelude(replacementAttemptId),
+    ...replacementAttemptControlPrelude(replacementAttemptId, "exclusive"),
     'secure_private_regular_file_proof "$attempt_cancelled" 75',
+    // A lost SSH channel releases flock before dockerd necessarily settles.
+    // Every submitted create must have an exact recorded ID before inventory
+    // can prove that no late daemon commit will attach the retired volume.
+    'for control_directory in "$attempt_root"/*; do if test -d "$control_directory"; then secure_private_directory_proof "$control_directory"; if test -e "$control_directory/active" || test -L "$control_directory/active"; then secure_private_regular_file_proof "$control_directory/active" 76; secure_private_regular_file_proof "$control_directory/candidate-id" 76; observed_id=$(cat -- "$control_directory/candidate-id"); case "$observed_id" in ""|*[!0-9a-f]*) exit 76 ;; esac; test "${#observed_id}" = 64 || exit 76; fi; fi; done',
     'if test -e "$attempt_active" || test -L "$attempt_active"; then secure_private_regular_file_proof "$attempt_active" 76; secure_private_regular_file_proof "$attempt_candidate_id" 76; fi',
     'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then secure_private_regular_file_proof "$attempt_candidate_id" 76; candidate_id=$(cat -- "$attempt_candidate_id"); case "$candidate_id" in ""|*[!0-9a-f]*) exit 76 ;; esac; test "${#candidate_id}" = 64 || exit 76; candidate_matches=$(docker container ls -aq --no-trunc --filter "id=$candidate_id"); test -z "$candidate_matches" || exit 76; fi',
     `name_matches=$(docker container ls -aq --no-trunc --filter ${shellQuote(`name=^/${containerName}$`)}); test -z "$name_matches" || exit 76`,
@@ -1584,7 +1618,8 @@ export function buildExactRestoreStagingVolumeCleanupCommand(
     safeDirectoryProof(restoreRoot, false),
     safeDirectoryProof(agentRoot, true),
     `if test -L ${volume}; then exit 76; fi`,
-    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; rm -rf --one-file-system -- ${volume}; fi`,
+    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; secure_existing_control_file ${shellQuote(restoreVolumeRetirementMarker(exactVolumePath)!)}; rm -rf --one-file-system -- ${volume}; fi`,
+    `secure_existing_control_file ${shellQuote(restoreVolumeRetirementMarker(exactVolumePath)!)}`,
     `if test -e ${volume} || test -L ${volume}; then exit 76; fi`,
     `if test -e ${shellQuote(agentRoot)} && test ! -L ${shellQuote(agentRoot)}; then rmdir -- ${shellQuote(agentRoot)} 2>/dev/null || :; fi`,
     'secure_private_regular_file_proof "$attempt_cancelled" 75',
@@ -1774,6 +1809,10 @@ export function buildDockerCreateWithSecretEnvCommand(options: {
           ...replacementAttemptControlPrelude(replacementAttemptId),
           'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
           'chmod 600 -- "$attempt_lock"',
+          ...restoreVolumeAdmissionCommands(
+            options.exactReplacement!.volumePath ??
+              getReplacementVolumePath(options.exactReplacement!.containerName),
+          ),
         ]
       : secureFileShellPrelude("$(id -u)")),
     cleanupFunction,
