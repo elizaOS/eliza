@@ -119,11 +119,19 @@ jobs:
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies
 
       - name: Validate operator contracts
-        run: >-
-          bun test
-          packages/cloud/scripts/admin/preflight-database-identity.test.ts
-          packages/cloud/scripts/admin/personal-dedicated-rereview-staging.test.ts
-          packages/cloud/scripts/admin/personal-dedicated-rereview-staging-workflow.test.ts
+        run: |
+          # Bun's coverage reporter can exit during writes to a nonblocking pipe.
+          # Retain the complete report in a regular file and preserve test failure.
+          contract_log=$(mktemp)
+          trap 'rm -f "$contract_log"' EXIT
+          contract_status=0
+          bun test \
+            packages/cloud/scripts/admin/preflight-database-identity.test.ts \
+            packages/cloud/scripts/admin/personal-dedicated-rereview-staging.test.ts \
+            packages/cloud/scripts/admin/personal-dedicated-rereview-staging-workflow.test.ts \
+            >"$contract_log" 2>&1 || contract_status=$?
+          cat "$contract_log"
+          exit "$contract_status"
 
       - name: Verify protected staging database identity
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts
