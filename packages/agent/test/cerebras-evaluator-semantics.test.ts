@@ -58,8 +58,7 @@ it("persists both owned semantic fixtures and rejects incomplete replay without 
                 {
                   sourceEntityId: fixture.entityId,
                   targetEntityId: fixture.colleagueId,
-                  tags: ["colleague"],
-                  metadata: { relationshipType: "colleague" },
+                  relationshipType: "colleague",
                 },
               ]
             : [],
