@@ -1,0 +1,80 @@
+name: Tenant PostgreSQL admission proof
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install PostgreSQL 16
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-16
+      - name: Prove real systemd admission and retained data
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/tenant-proof.sh" <<'TENANT_PROOF_SCRIPT'
+          #!/usr/bin/env bash
+          # Exercises the rendered PostgreSQL admission unit on an isolated Ubuntu runner.
+          set -euo pipefail
+          root=$(mktemp -d /tmp/tenant-unit-proof.XXXXXX)
+          correct=
+          wrong=
+          cleanup() {
+            systemctl stop postgresql@16-main.service || true
+            mountpoint -q /mnt/tenant-pgdata && umount /mnt/tenant-pgdata || true
+            [ -z "$correct" ] || losetup -d "$correct"
+            [ -z "$wrong" ] || losetup -d "$wrong"
+            rm -rf "$root"
+          }
+          trap cleanup EXIT
+          systemctl stop postgresql@16-main.service
+          for name in correct wrong; do
+            truncate -s 256M "$root/$name.img"
+            loop=$(losetup --find --show "$root/$name.img")
+            mkfs.ext4 -q "$loop"
+            if [ "$name" = correct ]; then correct=$loop; else wrong=$loop; fi
+          done
+          python3 - "$correct" <<'PY'
+          import pathlib,sys
+          source=pathlib.Path('packages/cloud/infra/cloud/terraform/hetzner/apps-shared/cloud-init/tenant-db.yaml.tftpl').read_text()
+          for target in ['/usr/local/bin/tenant-db-admit-start.sh','/etc/systemd/system/postgresql@16-main.service.d/tenant-volume.conf']:
+           section=source.split('  - path: '+target+'\n',1)[1].split('\n  - path:',1)[0]
+           body=section.split('    content: |\n',1)[1]
+           content='\n'.join(line[6:] if line.startswith('      ') else line for line in body.splitlines()).strip()+'\n'
+           content=content.replace('${tenant_db_volume_device}',sys.argv[1])
+           path=pathlib.Path(target);path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content);path.chmod(0o755 if target.endswith('.sh') else 0o644)
+          PY
+          systemctl daemon-reload
+          mkdir -p /mnt/tenant-pgdata
+          # A valid local default cluster must not start before assigned-volume admission.
+          if systemctl start postgresql@16-main.service; then echo 'Unexpected default cluster start' >&2; exit 1; fi
+          mount "$correct" /mnt/tenant-pgdata
+          mkdir -p /mnt/tenant-pgdata/16/main
+          chown -R postgres:postgres /mnt/tenant-pgdata/16
+          runuser -u postgres -- /usr/lib/postgresql/16/bin/initdb -D /mnt/tenant-pgdata/16/main --auth-local=peer --auth-host=scram-sha-256 > "$root/init.log"
+          pg_conftool 16 main set data_directory /mnt/tenant-pgdata/16/main
+          systemctl reset-failed postgresql@16-main.service
+          systemctl start postgresql@16-main.service
+          runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c 'CREATE TABLE admission_marker(value text); INSERT INTO admission_marker VALUES ('"'preserved'"');'
+          systemctl stop postgresql@16-main.service
+          mkdir "$root/wrong-mount"
+          mount "$wrong" "$root/wrong-mount"
+          cp -a /mnt/tenant-pgdata/16 "$root/wrong-mount/"
+          umount "$root/wrong-mount"
+          umount /mnt/tenant-pgdata
+          mount "$wrong" /mnt/tenant-pgdata
+          if systemctl start postgresql@16-main.service; then echo 'Unexpected wrong-volume start' >&2; exit 1; fi
+          if systemctl is-active --quiet postgresql@16-main.service; then exit 1; fi
+          if runuser -u postgres -- pg_isready -q; then echo 'PostgreSQL listened after wrong-volume refusal' >&2; exit 1; fi
+          umount /mnt/tenant-pgdata
+          mount "$correct" /mnt/tenant-pgdata
+          systemctl reset-failed postgresql@16-main.service
+          systemctl start postgresql@16-main.service
+          [ "$(runuser -u postgres -- psql -At -c 'SELECT value FROM admission_marker')" = preserved ]
+          systemctl restart postgresql@16-main.service
+          [ "$(runuser -u postgres -- psql -At -c 'SELECT value FROM admission_marker')" = preserved ]
+          echo 'REAL_SYSTEMD_POSTGRES_ADMISSION_PASSED'
+          TENANT_PROOF_SCRIPT
+          sudo bash "$RUNNER_TEMP/tenant-proof.sh"
