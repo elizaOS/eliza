@@ -4,6 +4,7 @@
  * back control must remain reachable and return to the launcher.
  */
 import { expect, test } from "@playwright/test";
+import { findRemoteBundleDeclaration } from "./aesthetic-audit-rules";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -24,7 +25,44 @@ for (const viewport of [
       await page.setViewportSize(viewport);
       await seedAppStorage(page);
       await installDefaultAppRoutes(page);
-      await openAppPath(page, view.path);
+      let routePath = view.path;
+      if (view.path === "/cloud") {
+        // /cloud belongs to the separate account control plane. Mount the
+        // registered plugin bundle through the same isolated route used by
+        // the visual audit, preserving its production surface metadata.
+        const response = await page.request.get("/api/views");
+        expect(response.ok()).toBe(true);
+        const payload: unknown = await response.json();
+        const registered = findRemoteBundleDeclaration(payload, "cloud", "gui");
+        if (
+          !registered ||
+          !payload ||
+          typeof payload !== "object" ||
+          !("views" in payload) ||
+          !Array.isArray(payload.views)
+        )
+          throw new Error("Missing registered Cloud renderer");
+        routePath = "/__audit/plugin-view/cloud";
+        const registry = {
+          ...payload,
+          views: payload.views.map((entry: unknown) =>
+            entry &&
+            typeof entry === "object" &&
+            "id" in entry &&
+            entry.id === registered.id
+              ? { ...entry, path: routePath }
+              : entry,
+          ),
+        };
+        await page.route("**/api/views", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify(registry),
+          }),
+        );
+      }
+      await openAppPath(page, routePath);
       await expect(page.getByTestId(view.root)).toBeVisible({
         timeout: 60_000,
       });
