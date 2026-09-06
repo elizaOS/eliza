@@ -370,13 +370,15 @@ export function TaskEmptyState({
       <div
         className="flex flex-col items-center justify-center gap-3 text-center"
         style={{
-          minHeight: "min(16rem, 35dvh)",
+          minHeight: "min(16rem, max(0px, calc(100dvh - 300px)))",
           paddingBlock: "min(2.5rem, 4dvh)",
+          rowGap: "min(0.75rem, 1.5dvh)",
         }}
         data-testid="task-empty-state"
       >
         <CircleDashed
           className="size-10 text-accent/40"
+          style={{ maxHeight: "clamp(0px, calc(100dvh - 500px), 2.5rem)" }}
           strokeWidth={1.5}
           aria-hidden
         />
