@@ -35,13 +35,12 @@ function section(start: string, end: string): string {
     .map((line) => line.replace(/^ {6}/, ""))
     .join("\n");
 }
+// biome-ignore lint/suspicious/noTemplateCurlyInString: The harness renders this literal Terraform placeholder.
+const volumePlaceholder = "${tenant_db_volume_device}";
 const volumeGate = section(
   "      # Bind initialization",
   "      # 4. Postgres version detection",
-).replace(
-  "${tenant_db_volume_device}",
-  "/dev/disk/by-id/scsi-0HC_Volume_12345",
-);
+).replace(volumePlaceholder, "/dev/disk/by-id/scsi-0HC_Volume_12345");
 const clusterGate = section(
   "      # Existing clusters must match",
   "      # 6. postgresql.conf",
@@ -276,7 +275,7 @@ test("rejects redirected data directories and mounts beneath the volume", () => 
 const startAdmission = section(
   "      # Every cluster start verifies",
   "  - path: /etc/systemd/system/postgresql@16-main.service.d/tenant-volume.conf",
-).replace("${tenant_db_volume_device}", volume);
+).replace(volumePlaceholder, volume);
 
 test("cluster start admission rejects wrong mounts and effective data directories before PostgreSQL starts", () => {
   const cases: Array<[Record<string, string>, boolean]> = [
@@ -294,24 +293,31 @@ test("cluster start admission rejects wrong mounts and effective data directorie
     mkdirSync(clusterPath, { recursive: true });
     writeFileSync(join(clusterPath, "PG_VERSION"), "16\n");
     const source = startAdmission.replaceAll("/mnt/tenant-pgdata", f.data);
-    const result = spawnSync("bash", ["-c", `${volumePrelude}
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `${volumePrelude}
 findmnt() { if [ "$5" = '--target' ]; then echo "$DATA_DEVICE"; else echo "$OBSERVED_DEVICE"; fi; }
 runuser() { echo "$CONFIGURED_DATA"; }
 ${source}
 echo POSTGRES_START_ALLOWED
-`], {
-      encoding: "utf8",
-      env: {
-        PATH: process.env.PATH,
-        BLOCK_PRESENT: "1",
-        EXPECTED_DEVICE: "8:16",
-        ALREADY_MOUNTED: "1",
-        OBSERVED_DEVICE: "8:16",
-        DATA_DEVICE: "8:16",
-        CONFIGURED_DATA: clusterPath,
-        ...overrides,
+`,
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH,
+          BLOCK_PRESENT: "1",
+          EXPECTED_DEVICE: "8:16",
+          ALREADY_MOUNTED: "1",
+          OBSERVED_DEVICE: "8:16",
+          DATA_DEVICE: "8:16",
+          CONFIGURED_DATA: clusterPath,
+          ...overrides,
+        },
       },
-    });
+    );
     expect(result.status === 0).toBe(allowed);
     expect(result.stdout.includes("POSTGRES_START_ALLOWED")).toBe(allowed);
   }
