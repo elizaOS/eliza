@@ -59,4 +59,21 @@ describe("checkRateLimit", () => {
     // Still only 6 minutes into hourly-op's 1-hour window: must stay blocked.
     expect(checkRateLimit("hourly-op", hourly).allowed).toBe(false);
   });
+
+  it("rejects immediately and continuously when maxRequests is 0 or negative", () => {
+    const zeroConfig = { maxRequests: 0, windowMs: MINUTE };
+    const first = checkRateLimit("zero-op", zeroConfig);
+    expect(first.allowed).toBe(false);
+    expect(first.retryAfterMs).toBe(MINUTE);
+
+    const second = checkRateLimit("zero-op", zeroConfig);
+    expect(second.allowed).toBe(false);
+    expect(second.retryAfterMs).toBe(MINUTE);
+
+    const negativeConfig = { maxRequests: -5, windowMs: MINUTE };
+    expect(checkRateLimit("neg-op", negativeConfig).allowed).toBe(false);
+
+    const nanConfig = { maxRequests: Number.NaN, windowMs: MINUTE };
+    expect(checkRateLimit("nan-op", nanConfig).allowed).toBe(false);
+  });
 });
