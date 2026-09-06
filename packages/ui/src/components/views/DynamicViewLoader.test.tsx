@@ -1400,7 +1400,9 @@ describe("DynamicViewLoader", () => {
       <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.cleanup.view" />,
     );
     expect(
-      screen.getByText("Loading view…").closest('[data-view-status="loading"]'),
+      screen
+        .getByText("Loading view…")
+        .closest('[role="status"][aria-busy="true"]'),
     ).toBeTruthy();
 
     rendered.unmount();

@@ -1598,6 +1598,25 @@ describe("App navigate-view event wiring", () => {
     );
   });
 
+  it("keeps an unavailable registered route in its loader for retry instead of the view manager", async () => {
+    mockAvailableViews.push({
+      ...remoteLedgerView,
+      id: "unavailable-ledger",
+      path: "/unavailable-ledger",
+      available: false,
+    });
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/unavailable-ledger");
+    render(<App />);
+    await waitFor(() => {
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({ viewId: "unavailable-ledger" }),
+        undefined,
+      );
+    });
+    expect(window.location.pathname).toBe("/unavailable-ledger");
+  });
+
   it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/chat");

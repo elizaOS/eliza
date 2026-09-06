@@ -1142,7 +1142,11 @@ function findRemoteViewForRoute(
   // affinity such as Wallet. This lets web/desktop mount the agent-served
   // bundle while native shells still fall back to their in-process page.
   const exactMatch = views.find(
-    (view) => remoteViewAvailable(view) && view.path === normalizedPath,
+    // A registered route still owns its loading/error state when its bundle
+    // is unavailable. Let the loader offer recovery instead of falling
+    // through to the unrelated Views manager.
+    (view) =>
+      Boolean(view.bundleUrl || view.frameUrl) && view.path === normalizedPath,
   );
   if (exactMatch) return exactMatch;
   if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
