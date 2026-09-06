@@ -656,6 +656,15 @@ export async function createVoiceSessionPlayback(
     },
     beginHandoff(crossfadeMs: number) {
       if (stopped) return;
+      // All old-response samples must enter the handoff queue before new
+      // response audio, including samples held for autoplay or startup reserve.
+      // Suspended contexts accept queued samples without making them audible.
+      drainPreUnlock();
+      while (startQueue.length > 0) {
+        const samples = startQueue.shift();
+        if (samples) pushSamples(samples);
+      }
+      startQueueSamples = 0;
       const boundedMs = Math.min(250, Math.max(20, crossfadeMs));
       if (backend === "audioworklet" && workletNode) {
         workletNode.port.postMessage({

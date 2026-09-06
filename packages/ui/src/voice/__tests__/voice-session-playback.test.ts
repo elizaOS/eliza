@@ -399,4 +399,29 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     expect(completed).toHaveBeenCalledTimes(1);
     await pb.stop();
   });
+  it.each(["autoplay", "startup reserve"])(
+    "hands off audio held by %s without replaying the obsolete response",
+    async (heldBy) => {
+      const ctx = new FakePlaybackAudioContext(1_000);
+      const completed = vi.fn();
+      const pb = await createVoiceSessionPlayback({
+        createAudioContext: () => ctx,
+        preRollMs: heldBy === "startup reserve" ? 100 : 0,
+        onHandoffComplete: completed,
+      });
+      if (heldBy === "startup reserve") await pb.unlock();
+      pb.beginInput();
+      pb.enqueue(pcmFrame(0.8, 32));
+      pb.beginHandoff(20);
+      pb.enqueue(pcmFrame(-0.8, 32));
+      await pb.unlock();
+      pb.finishInput();
+      const transition = scriptNodeOf(ctx).render(22);
+      expect(transition[0]).toBeCloseTo(0.8, 2);
+      expect(transition[10]).toBeCloseTo(0, 1);
+      expect(transition[20]).toBeCloseTo(-0.8, 2);
+      expect(completed).toHaveBeenCalledTimes(1);
+      await pb.stop();
+    },
+  );
 });
