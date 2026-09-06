@@ -620,6 +620,7 @@ function customSandbox(): AgentSandbox {
     environment_vars: { ELIZA_API_TOKEN: "agent-token" },
     environment_revision: 0,
     lifecycle_revision: 0,
+    serving_placement: null,
     node_id: "node-1",
     container_name: "agent-e06bb509",
     bridge_port: 18923,

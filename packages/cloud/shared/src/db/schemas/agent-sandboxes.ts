@@ -79,6 +79,45 @@ export const agentBackupCatalogAuthorities = pgTable(
   }),
 );
 
+/** Captured provider placement used by replacement and serving-resource cleanup. */
+export interface AgentSandboxPlacementLocator {
+  sandboxId: string;
+  nodeId: string;
+  containerName: string;
+  /** Immutable docker_nodes primary key for exact-placement recovery. */
+  nodeRecordId?: string | null;
+  /** Immutable Linux-boot occurrence bound to the reserved restore target. */
+  nodeIncarnation?: string | null;
+  /** Trigger-owned history row for that exact node occurrence. */
+  nodeHistoryId?: string | null;
+  /** SSH authority frozen with nodeRecordId before candidate effects. */
+  nodeHostname?: string | null;
+  nodeSshPort?: number | null;
+  nodeSshUser?: string | null;
+  nodeHostKeyFingerprint?: string | null;
+  /** Attempt-scoped remote secret cleanup protocol understood by this locator. */
+  replacementSecretCleanupVersion?: 1 | null;
+  replacementAttemptId?: string | null;
+  /** Restore generation that derived an attempt-scoped quarantine container. */
+  restoreAttemptId?: string | null;
+  containerId?: string | null;
+  vpnNodeId?: string | null;
+  vpnNodeName?: string | null;
+  previousVpnNodeId?: string | null;
+  vpnRegistrationStartedAt?: string | null;
+  allocationCounted?: boolean | null;
+}
+
+/**
+ * Published placement identity retained separately from the temporary replacement
+ * fence. This receipt does not itself authorize deletion or capacity release.
+ */
+export interface AgentServingPlacement {
+  version: 1;
+  volumePath: string | null;
+  locator: AgentSandboxPlacementLocator;
+}
+
 /** Durable protection for the only local state copy during payment suspension. */
 export interface AgentLocalStateRetention {
   version: 1;
@@ -382,6 +421,8 @@ export const agentSandboxes = pgTable(
     container_name: text("container_name"),
     /** Retains exact local state independently of canonical status or placement. */
     local_state_retention: jsonb("local_state_retention").$type<AgentLocalStateRetention>(),
+    /** Null identifies legacy rows whose serving placement has not been captured. */
+    serving_placement: jsonb("serving_placement").$type<AgentServingPlacement>(),
     bridge_port: integer("bridge_port"),
     web_ui_port: integer("web_ui_port"),
     headscale_ip: text("headscale_ip"),
