@@ -223,7 +223,11 @@ import {
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
 import { containsExternalEnvelopeMaterial } from "../security/external-content";
-import { unwrapUserMessageText } from "../security/incoming-message-security";
+import { userRequestFromAugmentedText } from "../security/augmented-request";
+import {
+	unwrapUserMessageText,
+	unwrapUserMessageTextForDetection,
+} from "../security/incoming-message-security";
 import {
 	createOutboundEnvelopeStreamLatch,
 	guardOutboundEnvelopeAttachments,
@@ -1459,7 +1463,23 @@ function stage1EagerHistoryRelevant(
 		);
 		const keywords = provider?.relevanceKeywords;
 		if (!Array.isArray(keywords) || keywords.length === 0) return true;
-		if (validateActionKeywords(message, [], keywords)) return true;
+		// Score the user's request, not the wrapper it arrives in: by now
+		// content.text may be the external-content envelope or the document-
+		// augmentation preamble, both of which contain "conversation" and
+		// matched a recall keyword on every wrapped turn (live 2026-09-06).
+		const request = userRequestFromAugmentedText(
+			unwrapUserMessageTextForDetection(message) ||
+				(message.content.text ?? ""),
+		);
+		if (
+			validateActionKeywords(
+				{ ...message, content: { ...message.content, text: request } },
+				[],
+				keywords,
+			)
+		) {
+			return true;
+		}
 	}
 	return false;
 }
