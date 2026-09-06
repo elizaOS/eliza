@@ -362,7 +362,7 @@ describe("importAppRouteModule", () => {
     await expect(loaded?.handleAppRoutes?.({} as never)).resolves.toBe(true);
   });
 
-  it("falls through to src/routes.js when src/app.js exists but fails to import", async () => {
+  it("rejects a syntax error instead of selecting src/routes.js", async () => {
     const root = await makeWorkspace();
     await writePackage(
       root,
@@ -376,7 +376,7 @@ describe("importAppRouteModule", () => {
 
     await expect(
       importAppRouteModule("@elizaos/plugin-apm-cov-fallback"),
-    ).resolves.toMatchObject({ marker: "from-routes-js" });
+    ).rejects.toMatchObject({ code: "APP_MODULE_LOAD_FAILED" });
   });
 
   it("imports a package.json bridgeExport path that starts with ./", async () => {
@@ -438,6 +438,67 @@ describe("importAppRouteModule", () => {
     ).__ELIZA_MOBILE_BUNDLE__ = true;
 
     await expect(importAppRouteModule("@elizaos/agent")).resolves.toBeNull();
+  });
+});
+
+describe("app module evaluation failures", () => {
+  it.each([
+    "throw new Error('broken-route-initialization');",
+    "import './missing-transitive-dependency.js';",
+  ])(
+    "does not replace a broken workspace route with a fallback: %s",
+    async (source) => {
+      const root = await makeWorkspace();
+      await writePackage(
+        root,
+        "plugins/plugin-apm-cov-broken",
+        "@elizaos/plugin-apm-cov-broken",
+        {
+          "src/app.js": source,
+          "src/routes.js": "export const marker = 'incorrect-fallback';",
+        },
+      );
+      await expect(
+        importAppRouteModule("@elizaos/plugin-apm-cov-broken"),
+      ).rejects.toMatchObject({ code: "APP_MODULE_LOAD_FAILED" });
+    },
+  );
+
+  it("rejects a declared export whose target is missing", async () => {
+    await makeWorkspace();
+    const packageName = `@elizaos/apm-missing-${Date.now()}`;
+    const packageDir = await writePackage(
+      process.cwd(),
+      `node_modules/${packageName}`,
+      packageName,
+      {
+        "index.js": "export default { name: 'incorrect-fallback' };",
+      },
+      {
+        type: "module",
+        exports: { "./plugin": "./missing.js", ".": "./index.js" },
+      },
+    );
+    temporaryRoots.push(packageDir);
+    await expect(importAppPlugin(packageName)).rejects.toMatchObject({
+      code: "APP_MODULE_LOAD_FAILED",
+    });
+  });
+
+  it("does not replace a broken workspace plugin with its barrel", async () => {
+    const root = await makeWorkspace();
+    await writePackage(
+      root,
+      "plugins/plugin-apm-cov-broken-plugin",
+      "@elizaos/plugin-apm-cov-broken-plugin",
+      {
+        "src/plugin.js": "throw new Error('broken-plugin-initialization');",
+        "src/index.js": "export default { name: 'incorrect-fallback' };",
+      },
+    );
+    await expect(
+      importAppPlugin("@elizaos/plugin-apm-cov-broken-plugin"),
+    ).rejects.toMatchObject({ code: "APP_MODULE_LOAD_FAILED" });
   });
 });
 
