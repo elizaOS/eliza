@@ -23,9 +23,11 @@ import {
   lockPaymentResumeProviderAuthorityInTransaction,
 } from "../../db/repositories/agent-compute-stop-intents";
 import {
-  admitPaymentLocalRetentionInTransaction,
+  admitLocalRetentionInTransaction,
   assertRetainedNodePublicationAuthorityInTransaction,
-  type PaymentLocalRetentionAuthority,
+  type LocalRetentionStopAuthority,
+  lockManualRetainedResumeInTransaction,
+  type ManualLocalResumeAuthority,
 } from "../../db/repositories/agent-local-state-retention";
 import {
   type AgentBackupSnapshotType,
@@ -9837,12 +9839,12 @@ export class ElizaSandboxService {
    * Replaces the Worker-callable `shutdown()` path which cannot reach SSH.
    */
   private async reconcileFundedRetainedStop(
-    authority: PaymentLocalRetentionAuthority,
+    authority: LocalRetentionStopAuthority,
     captured: AgentLocalStateRetention,
   ): Promise<AgentSuspendExecutionResult> {
     const provider = await this.getProvider();
     const started = await dbWrite.transaction(async (tx) => {
-      const funding = await admitPaymentLocalRetentionInTransaction(tx, authority, captured);
+      const funding = await admitLocalRetentionInTransaction(tx, authority, captured);
       if (funding.kind !== "funded")
         throw new ElizaError("Payment changed while retained recovery was admitted", {
           code: "AGENT_LOCAL_RETENTION_REFILL_CHANGED",
@@ -9899,7 +9901,7 @@ export class ElizaSandboxService {
         });
     }
     return dbWrite.transaction(async (tx) => {
-      const funding = await admitPaymentLocalRetentionInTransaction(tx, authority, captured);
+      const funding = await admitLocalRetentionInTransaction(tx, authority, captured);
       if (funding.kind !== "funded") {
         // Stop under the same still-live authority; preserve the original
         // pending record so another attempt can reconcile uncertain outcomes.
@@ -9952,8 +9954,9 @@ export class ElizaSandboxService {
     });
   }
 
-  private async executeRetainedBillingSuspend(
-    authority: PaymentLocalRetentionAuthority,
+  private async executeRetainedSuspend(
+    authority: LocalRetentionStopAuthority,
+    authorization: "billing_request" | "user_request" = "billing_request",
   ): Promise<AgentSuspendExecutionResult> {
     const rec = await this.getAgentForWrite(authority.agentId, authority.organizationId);
     if (!rec) return { success: false, containerStopped: false, error: "Agent not found" };
@@ -9964,7 +9967,7 @@ export class ElizaSandboxService {
       });
     }
     let captured = rec.local_state_retention;
-    if (captured?.state === "resumed") {
+    if (captured && (captured.state === "resumed" || authorization === "user_request")) {
       const [intent] = await dbWrite
         .select({ id: agentComputeStopIntents.id })
         .from(agentComputeStopIntents)
@@ -10025,16 +10028,17 @@ export class ElizaSandboxService {
       };
     }
     const retained = await dbWrite.transaction((tx) =>
-      admitPaymentLocalRetentionInTransaction(tx, authority, captured),
+      admitLocalRetentionInTransaction(tx, authority, captured, authorization),
     );
     if (retained.kind === "funded") return this.reconcileFundedRetainedStop(authority, captured);
     // Retention is committed before effects. If this transaction aborts after
     // stop, the pending exact locator still protects the container and host.
     const result = await dbWrite.transaction(async (tx) => {
-      const dispatch = await admitPaymentLocalRetentionInTransaction(
+      const dispatch = await admitLocalRetentionInTransaction(
         tx,
         authority,
         retained.retention,
+        authorization,
       );
       if (dispatch.kind === "funded") return { refill: true } as const;
       const receipt = await provider.stopRetainingState!(dispatch.retention);
@@ -10048,7 +10052,7 @@ export class ElizaSandboxService {
         });
       }
       // Recheck the renewable execution lease after the external operation.
-      await admitPaymentLocalRetentionInTransaction(tx, authority, retained.retention);
+      await admitLocalRetentionInTransaction(tx, authority, retained.retention, authorization);
       await tx
         .update(agentSandboxes)
         .set({
@@ -10178,13 +10182,16 @@ export class ElizaSandboxService {
     if (snapshotSource.deletion_attempt_id || this.isAwaitingDeletion(snapshotSource.status)) {
       return { success: false, containerStopped: false, error: "Agent not found" };
     }
-    if (snapshotSource.local_state_retention && authorization === "billing_request" && execution) {
-      return this.executeRetainedBillingSuspend({
-        agentId,
-        organizationId: orgId,
-        jobId,
-        ...execution,
-      });
+    if (snapshotSource.local_state_retention && execution) {
+      return this.executeRetainedSuspend(
+        {
+          agentId,
+          organizationId: orgId,
+          jobId,
+          ...execution,
+        },
+        authorization,
+      );
     }
     if (snapshotSource.local_state_retention) {
       return {
@@ -10212,7 +10219,7 @@ export class ElizaSandboxService {
       const gateResult = await this.prepareSuspendBackupGate(snapshotSource);
       if (gateResult.outcome === "refuse") {
         if (authorization === "billing_request" && execution) {
-          return this.executeRetainedBillingSuspend({
+          return this.executeRetainedSuspend({
             agentId,
             organizationId: orgId,
             jobId,
@@ -10538,31 +10545,25 @@ export class ElizaSandboxService {
     return status === "deletion_pending" || status === "deletion_failed";
   }
 
-  /**
-   * Daemon-side handler for the `agent_resume` job. Delegates to
-   * `provision()` which restores `bridge_url` / `health_url` from the
-   * provider's sandbox handle and reuses the existing shared DB
-   * (`sandbox_id` is retained across suspend). `provision()` acquires
-   * its own advisory lock, so two concurrent resume jobs serialize.
-   *
-   * A future fast path will `docker start` the existing container (~5s)
-   * when the provider exposes a standalone `start()` method that
-   * returns a fresh handle — today the only way to get `bridgeUrl` /
-   * `healthUrl` back is via the create-or-restart flow inside
-   * `provision()`, so we always pay that path.
-   */
-  private async resumeRetainedPaymentContainer(authority: AgentPaymentResumeExecutionAuthority) {
+  /** Restarts the retained physical container and publishes it only under current execution authority. */
+  private async resumeRetainedContainer(
+    authority: AgentPaymentResumeExecutionAuthority | ManualLocalResumeAuthority,
+  ) {
+    const lockAuthority = (tx: DbTransaction, purpose: "provider" | "cleanup") =>
+      "intentId" in authority
+        ? lockPaymentResumeProviderAuthorityInTransaction(tx, authority, purpose)
+        : lockManualRetainedResumeInTransaction(tx, authority, purpose);
     const provider = await this.getProvider();
     if (!provider.resumeRetainedContainer || !provider.stopRetainingState)
       throw new ElizaError("Provider cannot resume retained state", {
         code: "AGENT_LOCAL_RETENTION_RESUME_UNSUPPORTED",
       });
     const admitted = await dbWrite.transaction(async (tx) => {
-      const rec = await lockPaymentResumeProviderAuthorityInTransaction(tx, authority, "provider");
+      const rec = await lockAuthority(tx, "provider");
       const retention = rec.local_state_retention;
       if (
         !retention ||
-        retention.stopIntentId !== authority.intentId ||
+        ("intentId" in authority && retention.stopIntentId !== authority.intentId) ||
         !retention.bridgeUrl ||
         !retention.healthUrl ||
         !rec.sandbox_id
@@ -10602,17 +10603,13 @@ export class ElizaSandboxService {
           code: "AGENT_LOCAL_RETENTION_RESUME_NOT_READY",
         });
       await dbWrite.transaction(async (tx) => {
-        const current = await lockPaymentResumeProviderAuthorityInTransaction(
-          tx,
-          authority,
-          "provider",
-        );
+        const current = await lockAuthority(tx, "provider");
         const retained = current.local_state_retention;
         if (
           !retained ||
           retained.containerId !== admitted.retention.containerId ||
           retained.nodeRecordId !== admitted.retention.nodeRecordId ||
-          retained.stopIntentId !== authority.intentId
+          retained.stopIntentId !== admitted.retention.stopIntentId
         )
           throw new ElizaError("Retained publication authority changed", {
             code: "AGENT_LOCAL_RETENTION_PUBLICATION_CHANGED",
@@ -10645,11 +10642,7 @@ export class ElizaSandboxService {
       if (admitted.rec.status !== "running") {
         try {
           await dbWrite.transaction(async (tx) => {
-            const current = await lockPaymentResumeProviderAuthorityInTransaction(
-              tx,
-              authority,
-              "cleanup",
-            );
+            const current = await lockAuthority(tx, "cleanup");
             if (current.local_state_retention?.containerId !== admitted.retention.containerId)
               throw new ElizaError("Retained cleanup identity changed", {
                 code: "AGENT_LOCAL_RETENTION_CLEANUP_CHANGED",
@@ -10664,7 +10657,7 @@ export class ElizaSandboxService {
           });
         }
       }
-      throw new ElizaError("Retained payment recovery failed", {
+      throw new ElizaError("Retained container recovery failed", {
         code: "AGENT_LOCAL_RETENTION_RESUME_FAILED",
         cause: error,
       });
@@ -10675,13 +10668,15 @@ export class ElizaSandboxService {
   async executeResume(
     agentId: string,
     orgId: string,
-    paymentResume?: AgentPaymentResumeExecutionAuthority,
+    resumeAuthority?: AgentPaymentResumeExecutionAuthority | ManualLocalResumeAuthority,
   ): Promise<{
     success: boolean;
     containerStarted: boolean;
     reprovisioned: boolean;
     error?: string;
   }> {
+    const paymentResume =
+      resumeAuthority && "intentId" in resumeAuthority ? resumeAuthority : undefined;
     if (paymentResume) {
       if (paymentResume.agentId !== agentId || paymentResume.organizationId !== orgId) {
         throw new ElizaError("Payment resume tenant authority does not match its request", {
@@ -10690,8 +10685,7 @@ export class ElizaSandboxService {
         });
       }
       const retained = await this.getAgentForWrite(agentId, orgId);
-      if (retained?.local_state_retention)
-        return this.resumeRetainedPaymentContainer(paymentResume);
+      if (retained?.local_state_retention) return this.resumeRetainedContainer(paymentResume);
       const result = await this.provision(agentId, orgId, undefined, paymentResume);
       return result.success
         ? { success: true, containerStarted: true, reprovisioned: result.reusedExisting !== true }
@@ -10717,6 +10711,19 @@ export class ElizaSandboxService {
         reprovisioned: false,
         error: tierRejection.error,
       };
+    }
+
+    if (rec.local_state_retention) {
+      if (
+        !resumeAuthority ||
+        resumeAuthority.agentId !== agentId ||
+        resumeAuthority.organizationId !== orgId
+      ) {
+        throw new ElizaError("Manual retained resume requires its live job authority", {
+          code: "AGENT_LOCAL_RETENTION_MANUAL_AUTHORITY_REQUIRED",
+        });
+      }
+      return this.resumeRetainedContainer(resumeAuthority);
     }
 
     if (rec.status === "running")
