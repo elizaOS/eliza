@@ -42,6 +42,7 @@ import {
   prepareAgentBackupInsertData,
   reconstructStoredAgentSandboxBackupChain,
 } from "../../db/repositories/agent-sandboxes";
+import { servingDeletionAuthority } from "../../db/repositories/agent-serving-placement";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
@@ -3344,6 +3345,15 @@ export class ElizaSandboxService {
           sshUser: retained.sshUser,
           hostKeyFingerprint: retained.hostKeyFingerprint,
         };
+      } else if (rec.serving_placement) {
+        const authority = servingDeletionAuthority(rec.serving_placement, {
+          agentId: rec.id,
+          nodeId: rec.node_id,
+          sandboxId: rec.sandbox_id,
+          containerName: rec.container_name,
+        });
+        await assertRetainedNodePublicationAuthorityInTransaction(tx, authority);
+        deletionLocator = authority;
       } else if (rec.sandbox_id && rec.node_id && rec.container_name) {
         const nodeAuthority = await tx.execute<{
           hostname: string;
