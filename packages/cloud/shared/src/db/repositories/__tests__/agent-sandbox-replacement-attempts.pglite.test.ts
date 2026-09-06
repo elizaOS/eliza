@@ -23,7 +23,6 @@ import { agentBackupRestoreLeases } from "../../schemas/agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import {
-  type AgentLocalStateRetention,
   agentBackupCatalogAuthorities,
   agentSandboxBackups,
   agentSandboxes,
@@ -39,7 +38,6 @@ import {
   type CommitAgentSandboxReplacementLifecycleAdoptionInput,
   commitAgentSandboxReplacementLifecycleAdoptionInTransaction,
   getAgentSandboxReplacementAttempt,
-  getCommittedRetainedPlacementInTransaction,
   recordAgentSandboxReplacementCleanupProvenInTransaction,
   recordAgentSandboxReplacementCreated,
   recordAgentSandboxReplacementIntentInTransaction,
@@ -1185,52 +1183,6 @@ describe("agent sandbox replacement attempts", () => {
     });
     expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(2);
   });
-
-  test.each(["exact", "other-tenant", "other-container", "other-host", "uncommitted"] as const)(
-    "retained cleanup resolves only its committed physical placement (%s)",
-    async (scenario) => {
-      await startAgentSandboxReplacementAttempt(startInput());
-      await persistSuccessfulProviderAttemptAfterExistingStart(ATTEMPT_ID);
-      if (scenario !== "uncommitted")
-        await recordAgentSandboxReplacementLifecycleCommitted(adoptionInput());
-      const retained: AgentLocalStateRetention = {
-        version: 1,
-        stopIntentId: THIRD_ATTEMPT_ID,
-        agentId: AGENT_ID,
-        nodeId: "robot-node-a",
-        nodeRecordId: NODE_RECORD_ID,
-        containerId: scenario === "other-container" ? "e".repeat(64) : CONTAINER_ID,
-        containerName: CONTAINER_NAME,
-        hostname: scenario === "other-host" ? "replacement.internal" : "robot-node-a.internal",
-        sshPort: 22,
-        sshUser: "root",
-        hostKeyFingerprint: "SHA256:test-only-pinned-host-key",
-        capturedAt: "2026-09-06T00:00:00.000Z",
-        bridgeUrl: null,
-        healthUrl: null,
-        state: "stopped",
-      };
-      const read = dbWrite.transaction((tx) =>
-        getCommittedRetainedPlacementInTransaction(
-          tx,
-          scenario === "other-tenant" ? OTHER_ORGANIZATION_ID : ORGANIZATION_ID,
-          retained,
-        ),
-      );
-      if (scenario === "exact") {
-        const placement = await read;
-        expect(placement.id).toBe(ATTEMPT_ID);
-        expect(placement.locator_vpn_node_id).toBe("42");
-        expect(placement.state).toBe("lifecycle_committed");
-      } else
-        await expect(read).rejects.toMatchObject({
-          code: "AGENT_RETAINED_CLEANUP_PLACEMENT_UNRESOLVED",
-        });
-      expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
-        scenario === "uncommitted" ? "provider_succeeded" : "lifecycle_committed",
-      );
-    },
-  );
 
   test("keeps a committed generation fenced while allowing a rotated generation", async () => {
     await startAgentSandboxReplacementAttempt(startInput());

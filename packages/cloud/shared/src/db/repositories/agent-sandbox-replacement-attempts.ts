@@ -18,7 +18,7 @@ import {
   type AgentSandboxReplacementOperationKind,
   agentSandboxReplacementAttempts,
 } from "../schemas/agent-sandbox-replacement-attempts";
-import { type AgentLocalStateRetention, agentSandboxes } from "../schemas/agent-sandboxes";
+import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { dockerNodes } from "../schemas/docker-nodes";
 import { organizations } from "../schemas/organizations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
@@ -1751,54 +1751,4 @@ export async function getAgentSandboxReplacementAttempt(
     )
     .limit(1);
   return attempt ? Object.freeze(attempt) : null;
-}
-
-/** Reads one committed source of cleanup identity; callers retain deletion/lease authority separately. */
-export async function getCommittedRetainedPlacementInTransaction(
-  tx: DbTransaction,
-  organizationId: string,
-  retention: AgentLocalStateRetention,
-): Promise<Readonly<AgentSandboxReplacementAttempt>> {
-  requireCanonicalUuid(organizationId, "organizationId");
-  requireCanonicalUuid(retention.agentId, "agentId");
-  requireCanonicalUuid(retention.nodeRecordId, "nodeRecordId");
-  requireSha256(retention.containerId, "containerId");
-  const attempts = await tx
-    .select()
-    .from(agentSandboxReplacementAttempts)
-    .where(
-      and(
-        eq(agentSandboxReplacementAttempts.organization_id, organizationId),
-        eq(agentSandboxReplacementAttempts.agent_id, retention.agentId),
-        eq(agentSandboxReplacementAttempts.state, "lifecycle_committed"),
-        eq(agentSandboxReplacementAttempts.locator_container_id, retention.containerId),
-        eq(agentSandboxReplacementAttempts.locator_container_name, retention.containerName),
-        eq(agentSandboxReplacementAttempts.locator_sandbox_id, retention.containerName),
-        eq(agentSandboxReplacementAttempts.locator_node_id, retention.nodeId),
-        eq(agentSandboxReplacementAttempts.locator_node_record_id, retention.nodeRecordId),
-        eq(agentSandboxReplacementAttempts.locator_node_hostname, retention.hostname),
-        eq(agentSandboxReplacementAttempts.locator_node_ssh_port, retention.sshPort),
-        eq(agentSandboxReplacementAttempts.locator_node_ssh_user, retention.sshUser),
-        eq(
-          agentSandboxReplacementAttempts.locator_node_host_key_fingerprint,
-          retention.hostKeyFingerprint,
-        ),
-        isNotNull(agentSandboxReplacementAttempts.provider_receipt_digest),
-        isNotNull(agentSandboxReplacementAttempts.lifecycle_receipt_digest),
-      ),
-    )
-    .for("share")
-    .limit(2);
-  if (attempts.length !== 1) {
-    throw new ElizaError("Retained cleanup requires one exact committed placement", {
-      code: "AGENT_RETAINED_CLEANUP_PLACEMENT_UNRESOLVED",
-      context: {
-        organizationId,
-        agentId: retention.agentId,
-        containerId: retention.containerId,
-        matchCount: attempts.length,
-      },
-    });
-  }
-  return Object.freeze(attempts[0]!);
 }
