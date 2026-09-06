@@ -368,7 +368,11 @@ export function TaskEmptyState({
     <>
       <Separator tone="subtle40" />
       <div
-        className="flex min-h-64 flex-col items-center justify-center gap-3 py-10 text-center [@media(max-height:500px)]:min-h-0 [@media(max-height:500px)]:py-4"
+        className="flex flex-col items-center justify-center gap-3 text-center"
+        style={{
+          minHeight: "min(16rem, 35dvh)",
+          paddingBlock: "min(2.5rem, 4dvh)",
+        }}
         data-testid="task-empty-state"
       >
         <CircleDashed
