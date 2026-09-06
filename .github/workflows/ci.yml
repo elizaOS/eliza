@@ -282,7 +282,9 @@ jobs:
     name: Smoke lanes
     needs: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # The full Cloud suite now starts a fresh Linux process per file to avoid
+    # Bun's isolate stdio leak, then this job runs the unshardable UI gates.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
