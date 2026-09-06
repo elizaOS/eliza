@@ -1,7 +1,13 @@
 /** Proves the published package exposes a loadable Worker-safe Todo runtime. */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
@@ -32,8 +38,9 @@ afterEach(() => {
 
 describe("Todo edge package export", () => {
   test("loads the packed edge entry under the worker condition", () => {
-    run("bun", ["run", "build:js"], pluginRoot);
-    run("bun", ["run", "build:types"], pluginRoot);
+    // Pack the complete distributable. A JS-only build clears dist, including
+    // the dashboard bundle, and used to leave the local view unavailable.
+    run("bun", ["run", "build"], pluginRoot);
 
     const temporaryDirectory = mkdtempSync(
       join(repositoryRoot, ".tmp-plugin-todos-pack-"),
@@ -76,6 +83,10 @@ describe("Todo edge package export", () => {
         "--strip-components=1",
       ],
       temporaryDirectory,
+    );
+
+    expect(existsSync(join(packageDirectory, "dist/views/bundle.js"))).toBe(
+      true,
     );
 
     const output = run(

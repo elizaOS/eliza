@@ -188,6 +188,27 @@ async function runCase(
 }
 
 describe("VIEWS show/home with Notes foreground (#17299)", () => {
+	it("does not claim navigation to a registered but unavailable view", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const callback = vi.fn();
+		const result = await runViewsShow({
+			client: {
+				listViews: vi.fn(async () => [{ ...notesView(), available: false }]),
+			} as unknown as ViewsClient,
+			message: message("Open Notes") as never,
+			options: { view: "notes" },
+			callback,
+		});
+		expect(result).toMatchObject({
+			success: false,
+			modelReplyRequired: true,
+			data: { navigationAttempted: false },
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	const fullRegistry = () => [chatView(), notesView(), calendarView()];
 	const noHomeRegistry = () => [notesView(), calendarView()];
 
@@ -349,7 +370,7 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
 		});
-		expect(result).not.toHaveProperty("turnComplete");
+		expect(result.turnComplete).toBe(false);
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(result).not.toHaveProperty("verifiedUserFacing");
 		expect(JSON.parse(result?.text ?? "{}")).toMatchObject({

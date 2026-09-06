@@ -502,6 +502,15 @@ export async function runViewsShow({
 	}
 
 	const view = resolution.view;
+	if (view.available === false) {
+		return {
+			success: false,
+			text: `The ${view.label} view is currently unavailable. Navigation was not attempted.`,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			data: { view, navigationAttempted: false },
+		};
+	}
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
 	const navigationLabel =
