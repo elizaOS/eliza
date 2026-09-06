@@ -59,7 +59,16 @@ function stringifyForPrompt(value: unknown): string {
 }
 
 function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
-	if (isRecord(raw)) return raw;
+	if (isRecord(raw)) {
+		// Native text results carry the evaluator envelope in `text`; the
+		// transport metadata is not a decoded evaluator section map.
+		if (
+			typeof raw.text !== "string" ||
+			!(Array.isArray(raw.toolCalls) || typeof raw.finishReason === "string")
+		)
+			return raw;
+		raw = raw.text;
+	}
 	if (typeof raw !== "string") return null;
 	try {
 		const parsed = JSON.parse(raw);
