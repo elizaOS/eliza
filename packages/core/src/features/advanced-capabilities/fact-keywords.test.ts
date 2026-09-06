@@ -49,6 +49,47 @@ describe("factClaimsEquivalent", () => {
 	});
 });
 
+describe("factClaimsEquivalent: possessive and first-person subject references", () => {
+	it('treats "the user\'s", "user\'s", and "my" as the row\'s own subject', () => {
+		// Live 2026-09-06: the MEMORY action stored "The user's favorite tea is
+		// hojicha", Stage-1 kept "favorite tea is hojicha"; both rows persisted
+		// and the next "forget my favorite tea" was ambiguous.
+		expect(
+			factClaimsEquivalent(
+				"The user's favorite tea is hojicha",
+				"favorite tea is hojicha",
+			),
+		).toBe(true);
+		expect(
+			factClaimsEquivalent(
+				"user's favorite tea is genmaicha",
+				"The user's favorite tea is genmaicha.",
+			),
+		).toBe(true);
+		expect(
+			factClaimsEquivalent("my sister is Dana", "user's sister is Dana"),
+		).toBe(true);
+	});
+
+	it("does not strip those words when they are not the leading subject", () => {
+		expect(factClaimsEquivalent("sister is Dana", "Dana is my sister")).toBe(
+			false,
+		);
+		expect(
+			factClaimsEquivalent(
+				"favorite tea is hojicha",
+				"favorite tea is not hojicha",
+			),
+		).toBe(false);
+		expect(
+			factClaimsEquivalent(
+				"the user's favorite tea is hojicha",
+				"the user's favorite tea is genmaicha",
+			),
+		).toBe(false);
+	});
+});
+
 describe("factPolarityDiffers", () => {
 	it.each([
 		["likes oat milk", "does not like oat milk"],

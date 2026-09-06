@@ -216,7 +216,11 @@ export function factPolarityDiffers(left: string, right: string): boolean {
 	);
 }
 
-const LEADING_SUBJECT_PATTERN = /^(?:the )?user\s+/;
+// "user", "the user", the possessive "user's"/"the user's", and first-person
+// "my" all name the row's own subject (live 2026-09-06: the MEMORY action stored
+// "The user's favorite tea is hojicha" while Stage-1 kept "favorite tea is
+// hojicha"; the guard compared them unequal and both rows persisted).
+const LEADING_SUBJECT_PATTERN = /^(?:(?:the )?user(?:'s)?|my)\s+/;
 
 /**
  * Cosmetic normalization only: case (Unicode-aware), curly quotes, whitespace,
