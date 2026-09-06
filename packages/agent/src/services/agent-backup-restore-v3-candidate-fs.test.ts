@@ -140,6 +140,156 @@ afterEach(async () => {
 });
 
 describe("restore-v3 candidate filesystem", () => {
+  it("inventories empty directories and copies bounded bytes without linking the source", async () => {
+    const source = await fixture();
+    const target = await fixture();
+    const control = operationControl();
+    const sourceLock = await source.candidate.acquireLock(
+      ".copy.lock",
+      control,
+    );
+    const targetLock = await target.candidate.acquireLock(
+      ".copy.lock",
+      control,
+    );
+    try {
+      await source.candidate.ensureFileTreeDirectory(
+        "input/empty",
+        control,
+        sourceLock,
+      );
+      const payload = new Uint8Array(300_001).fill(91);
+      const writer = await source.candidate.createFileTreeFile(
+        "input",
+        {
+          path: "large.bin",
+          sizeBytes: payload.length,
+          mode: 0o644,
+          mtimeMs: 0,
+        },
+        undefined,
+        control,
+        sourceLock,
+      );
+      await writer.write(payload.subarray(0, 256 * 1024), control);
+      await writer.write(payload.subarray(256 * 1024), control);
+      await writer.finalize(control);
+      const inventory = await source.candidate.inspectFileTree(
+        "input",
+        control,
+        sourceLock,
+      );
+      expect(inventory.directoryPaths).toEqual(["empty"]);
+      expect(inventory.bytes).toBe(payload.length);
+      const proof = inventory.entries[0];
+      if (!proof) throw new Error("Missing inventoried source");
+      const copied = await source.candidate.copyFileTreeFileTo(
+        target.candidate,
+        "input",
+        proof,
+        "output",
+        "nested/file.bin",
+        control,
+        sourceLock,
+        targetLock,
+      );
+      expect(copied.sha256).toBe(
+        createHash("sha256").update(payload).digest("hex"),
+      );
+      expect(copied.inode).not.toBe(proof.inode);
+      expect(
+        await fs.readFile(
+          path.join(target.attemptRoot, "output/nested/file.bin"),
+        ),
+      ).toEqual(Buffer.from(payload));
+      expect(
+        await source.candidate.copyFileTreeFileTo(
+          target.candidate,
+          "input",
+          proof,
+          "output",
+          "nested/file.bin",
+          control,
+          sourceLock,
+          targetLock,
+        ),
+      ).toEqual(copied);
+      // Inspection may observe an empty directory; a manifest proof must still reject an unmanifested one.
+      await expect(
+        source.candidate.proveFileTree(
+          "input",
+          inventory.entries,
+          undefined,
+          control,
+          sourceLock,
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await targetLock.release(operationControl());
+      await sourceLock.release(operationControl());
+    }
+  });
+
+  it.each(["symlink", "hardlink", "bytes"] as const)(
+    "rejects %s source changes after inventory without publishing a copied file",
+    async (mutation) => {
+      const source = await fixture();
+      const target = await fixture();
+      const control = operationControl();
+      const sourceLock = await source.candidate.acquireLock(
+        ".copy.lock",
+        control,
+      );
+      const targetLock = await target.candidate.acquireLock(
+        ".copy.lock",
+        control,
+      );
+      try {
+        const writer = await source.candidate.createFileTreeFile(
+          "input",
+          { path: "file", sizeBytes: 3, mode: 0o600, mtimeMs: 0 },
+          undefined,
+          control,
+          sourceLock,
+        );
+        await writer.write(new TextEncoder().encode("old"), control);
+        await writer.finalize(control);
+        const proof = (
+          await source.candidate.inspectFileTree("input", control, sourceLock)
+        ).entries[0];
+        if (!proof) throw new Error("Missing inventoried source");
+        const file = path.join(source.attemptRoot, "input/file");
+        if (mutation === "symlink") {
+          await fs.rename(file, `${file}.old`);
+          await fs.symlink(`${file}.old`, file);
+        } else if (mutation === "hardlink")
+          await fs.link(file, `${file}.other`);
+        else {
+          await fs.writeFile(file, "new");
+          await fs.utimes(file, 0, 0);
+        }
+        await expect(
+          source.candidate.copyFileTreeFileTo(
+            target.candidate,
+            "input",
+            proof,
+            "output",
+            "file",
+            control,
+            sourceLock,
+            targetLock,
+          ),
+        ).rejects.toThrow();
+        await expect(
+          fs.stat(path.join(target.attemptRoot, "output/file")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+      } finally {
+        await targetLock.release(operationControl());
+        await sourceLock.release(operationControl());
+      }
+    },
+  );
+
   it("retains the inode lock until its inherited-descriptor consumer settles", async () => {
     const { candidate } = await fixture();
     const control = operationControl();

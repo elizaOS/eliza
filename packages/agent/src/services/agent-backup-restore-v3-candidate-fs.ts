@@ -8,17 +8,21 @@ import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
 import {
   type AgentBackupRestoreV3CandidateFileTreeFileProof,
   type AgentBackupRestoreV3CandidateFileTreeFileSpec,
+  type AgentBackupRestoreV3CandidateFileTreeInventory,
   type AgentBackupRestoreV3CandidateFileTreeLimits,
   type AgentBackupRestoreV3CandidateFileTreeProof,
   type AgentBackupRestoreV3CandidateFileTreeWriter,
+  copyCandidateFsFileTreeFile,
   createCandidateFsFileTreeFile,
   ensureCandidateFsFileTreeDirectory,
+  inspectCandidateFsFileTree,
   proveCandidateFsFileTree,
 } from "./agent-backup-restore-v3-candidate-file-tree";
 import {
   AgentBackupRestoreV3CandidateFsControl,
   type AgentBackupRestoreV3CandidateFsIdentity,
   type AgentBackupRestoreV3CandidateFsLock,
+  candidateFsError,
   type OpenAgentBackupRestoreV3CandidateFsInput,
   snapshotOperationControl,
 } from "./agent-backup-restore-v3-candidate-fs-control";
@@ -61,6 +65,7 @@ const WEAK_SET_HAS = WeakSet.prototype.has;
 export type {
   AgentBackupRestoreV3CandidateFileTreeFileProof,
   AgentBackupRestoreV3CandidateFileTreeFileSpec,
+  AgentBackupRestoreV3CandidateFileTreeInventory,
   AgentBackupRestoreV3CandidateFileTreeLimits,
   AgentBackupRestoreV3CandidateFileTreeProof,
 } from "./agent-backup-restore-v3-candidate-file-tree";
@@ -353,6 +358,53 @@ export class AgentBackupRestoreV3CandidateFs {
       limitsValue,
       snapshotOperationControl(control),
       heldLock,
+    );
+  }
+
+  /** Inventory is observed filesystem state, not an authenticated stream or commit receipt. */
+  async inspectFileTree(
+    relativeDirectory: string,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    heldLock: AgentBackupRestoreV3CandidateFsLock,
+  ): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeInventory>> {
+    return inspectCandidateFsFileTree(
+      this.#control,
+      relativeDirectory,
+      snapshotOperationControl(control),
+      heldLock,
+    );
+  }
+
+  async copyFileTreeFileTo(
+    target: AgentBackupRestoreV3CandidateFs,
+    sourceDirectory: string,
+    expected: Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>,
+    targetDirectory: string,
+    targetPath: string,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    sourceLock: AgentBackupRestoreV3CandidateFsLock,
+    targetLock: AgentBackupRestoreV3CandidateFsLock,
+  ): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>> {
+    if (
+      !isAgentBackupRestoreV3CandidateFs(target) ||
+      (target.attemptRootIdentity.device === this.attemptRootIdentity.device &&
+        target.attemptRootIdentity.inode === this.attemptRootIdentity.inode)
+    ) {
+      candidateFsError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
+        "Copy requires distinct quarantine authorities",
+      );
+    }
+    return copyCandidateFsFileTreeFile(
+      this.#control,
+      target.#control,
+      sourceDirectory,
+      expected,
+      targetDirectory,
+      targetPath,
+      snapshotOperationControl(control),
+      sourceLock,
+      targetLock,
     );
   }
 }

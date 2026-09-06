@@ -26,6 +26,7 @@ import {
   openAgentBackupRestoreV3CandidateFs,
 } from "./agent-backup-restore-v3-candidate-fs";
 import { stageAgentBackupRestoreV3CandidateRecord } from "./agent-backup-restore-v3-candidate-records";
+import { prepareAgentBackupRestoreV3Generation } from "./agent-backup-restore-v3-generation";
 import { createAgentBackupRestoreV3ProcessMaterializer } from "./agent-backup-restore-v3-materializer-process";
 
 const roots = new Set<string>();
@@ -50,7 +51,11 @@ const platformOptions = () =>
     ? {}
     : { testOnlyAllowNonLinuxFdEmulation: true as const };
 
-async function fixture(realDatabase = false, processTransport = false) {
+async function fixture(
+  realDatabase = false,
+  processTransport = false,
+  statePath = "plugin/state.json",
+) {
   const root = await fs.mkdtemp(
     path.join(await fs.realpath(os.tmpdir()), "restore-v3-assembly-"),
   );
@@ -96,7 +101,7 @@ async function fixture(realDatabase = false, processTransport = false) {
     await fs.rm(sourcePath, { recursive: true });
   }
   const contents = [CHARACTER, databaseBytes, MEDIA, STATE, VAULT];
-  const paths = [null, null, "photo.bin", "plugin/state.json", "vault.json"];
+  const paths = [null, null, "photo.bin", statePath, "vault.json"];
   const components: AgentBackupRestoreV3ComponentReceipt[] = [];
   try {
     for (const [
@@ -201,6 +206,124 @@ afterEach(async () => {
   candidates.clear();
   for (const root of roots) await fs.rm(root, { recursive: true, force: true });
   roots.clear();
+});
+
+async function generationTarget(root: string) {
+  const attemptRoot = path.join(root, "destination");
+  await fs.mkdir(attemptRoot, { mode: 0o700 });
+  const candidate = await openAgentBackupRestoreV3CandidateFs({
+    trustedRoot: root,
+    attemptRoot,
+    control: control(),
+    ...platformOptions(),
+  });
+  candidates.add(candidate);
+  return candidate;
+}
+
+describe("private runtime-generation preparation", () => {
+  it("copies the five-component runtime layout, preserves source bytes, and replays without rewriting", async () => {
+    const { root, attemptRoot, input } = await fixture(true);
+    const generationFs = await generationTarget(root);
+    const result = await prepareAgentBackupRestoreV3Generation({
+      ...input,
+      generationFs,
+      control: control(),
+    });
+    const output = path.join(generationFs.attemptRoot, "generation");
+    expect(
+      await fs.readFile(path.join(output, "character/character.json")),
+    ).toEqual(Buffer.from(CHARACTER));
+    expect(
+      await fs.readFile(path.join(output, "state/media/photo.bin")),
+    ).toEqual(Buffer.from(MEDIA));
+    expect(
+      await fs.readFile(path.join(output, "state/plugin/state.json")),
+    ).toEqual(Buffer.from(STATE));
+    expect(await fs.readFile(path.join(output, "state/vault.json"))).toEqual(
+      Buffer.from(VAULT),
+    );
+    const sourceFile = path.join(attemptRoot, "components/vault/vault.json");
+    const targetFile = path.join(output, "state/vault.json");
+    const before = await fs.stat(targetFile, { bigint: true });
+    expect(before.ino).not.toBe(
+      (await fs.stat(sourceFile, { bigint: true })).ino,
+    );
+    expect(before.nlink).toBe(1n);
+    expect(Number(before.mode) & 0o777).toBe(0o400);
+    expect(
+      await prepareAgentBackupRestoreV3Generation({
+        ...input,
+        generationFs,
+        control: control(),
+      }),
+    ).toEqual(result);
+    expect((await fs.stat(targetFile, { bigint: true })).mtimeNs).toBe(
+      before.mtimeNs,
+    );
+    expect((await fs.stat(targetFile, { bigint: true })).ino).toBe(before.ino);
+    const probe = path.join(root, "generation-probe");
+    await fs.cp(path.join(output, "database"), probe, { recursive: true });
+    const db = new PGlite(probe);
+    databases.add(db);
+    expect((await db.query("SELECT fact FROM assembly_fact")).rows).toEqual([
+      { fact: FACT },
+    ]);
+    await db.close();
+    databases.delete(db);
+    expect(await fs.readFile(sourceFile)).toEqual(Buffer.from(VAULT));
+    await fs.writeFile(
+      path.join(output, "state/unexpected"),
+      "stale generation",
+      { mode: 0o600 },
+    );
+    await expect(
+      prepareAgentBackupRestoreV3Generation({
+        ...input,
+        generationFs,
+        control: control(),
+      }),
+    ).rejects.toThrow();
+    expect(await fs.readFile(targetFile)).toEqual(Buffer.from(VAULT));
+  }, 120_000);
+
+  it("rejects a state-file component claiming media authority before writing the destination", async () => {
+    const { root, input } = await fixture(true, false, "media/photo.bin");
+    const generationFs = await generationTarget(root);
+    await expect(
+      prepareAgentBackupRestoreV3Generation({
+        ...input,
+        generationFs,
+        control: control(),
+      }),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_GENERATION_COMPONENT_COLLISION",
+    });
+    expect(await fs.readdir(generationFs.attemptRoot)).toEqual([]);
+  }, 120_000);
+
+  it("rejects source/destination aliasing and cancellation without a prepared generation", async () => {
+    const { root, input } = await fixture();
+    await expect(
+      prepareAgentBackupRestoreV3Generation({
+        ...input,
+        generationFs: input.candidateFs,
+      }),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_GENERATION_ROOT_OVERLAP",
+    });
+    const generationFs = await generationTarget(root);
+    const abort = new AbortController();
+    abort.abort();
+    await expect(
+      prepareAgentBackupRestoreV3Generation({
+        ...input,
+        generationFs,
+        control: { ...control(), signal: abort.signal },
+      }),
+    ).rejects.toThrow();
+    expect(await fs.readdir(generationFs.attemptRoot)).toEqual([]);
+  });
 });
 
 describe("five-component candidate assembly", () => {

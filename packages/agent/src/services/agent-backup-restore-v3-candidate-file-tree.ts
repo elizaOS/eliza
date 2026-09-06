@@ -214,6 +214,12 @@ export interface AgentBackupRestoreV3CandidateFileTreeProof
   readonly entries: readonly Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>[];
 }
 
+/** Observed bytes and empty directories; authenticity remains the caller's responsibility. */
+export interface AgentBackupRestoreV3CandidateFileTreeInventory
+  extends AgentBackupRestoreV3CandidateFileTreeProof {
+  readonly directoryPaths: readonly string[];
+}
+
 interface StableFileTreeDirectory {
   readonly relativePath: string;
   readonly targetPath: string;
@@ -1633,14 +1639,15 @@ function treeDigest(
     .digest("hex");
 }
 
-export async function proveCandidateFsFileTree(
+async function walkCandidateFsFileTree(
   authority: AgentBackupRestoreV3CandidateFsControl,
   relativeDirectory: string,
   expectedValue: readonly Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>[],
   limitsValue: Partial<AgentBackupRestoreV3CandidateFileTreeLimits> | undefined,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
   heldLock?: AgentBackupRestoreV3CandidateFsLock,
-): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeProof>> {
+  inspectOnly = false,
+): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeInventory>> {
   const exactControl = snapshotOperationControl(control);
   const limits = resolveLimits(limitsValue);
   if (
@@ -1804,7 +1811,7 @@ export async function proveCandidateFsFileTree(
           );
         }
         if (visible.directory) {
-          if (!expectedDirectories.has(childRelative)) {
+          if (!inspectOnly && !expectedDirectories.has(childRelative)) {
             fileTreeError(
               "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
               "Candidate file-tree contains an unmanifested directory",
@@ -1869,7 +1876,7 @@ export async function proveCandidateFsFileTree(
         );
         const expectation = expectedByPath.get(childRelative);
         if (
-          !expectation ||
+          (!inspectOnly && !expectation) ||
           observed.some((entry) => entry.path === childRelative)
         ) {
           fileTreeError(
@@ -1877,16 +1884,35 @@ export async function proveCandidateFsFileTree(
             "Candidate file-tree contains an unexpected or unordered file",
           );
         }
+        if (
+          observed.length >= limits.maximumFiles ||
+          visible.size > limits.maximumBytes - bytes
+        ) {
+          fileTreeError(
+            "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMIT",
+            "Candidate file exceeds the remaining inventory bound",
+          );
+        }
         const proven = await proveFinalPath(
           childPath,
-          expectation,
+          expectation ??
+            parseFileSpec(
+              {
+                path: childRelative,
+                sizeBytes: visible.size,
+                mode: visible.mode & 0o7777,
+                mtimeMs: exactMtimeMs(visible),
+              },
+              limits,
+            ),
           exactControl,
         );
         const proof = proven.proof;
         if (
-          proof.sha256 !== expectation.sha256 ||
-          proof.device !== expectation.device ||
-          proof.inode !== expectation.inode
+          expectation &&
+          (proof.sha256 !== expectation.sha256 ||
+            proof.device !== expectation.device ||
+            proof.inode !== expectation.inode)
         ) {
           fileTreeError(
             "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
@@ -1964,9 +1990,10 @@ export async function proveCandidateFsFileTree(
       compareAgentBackupCaptureV2FilePaths(left.path, right.path),
     );
     if (
-      observed.length !== expected.length ||
-      bytes !== expectedBytes ||
-      directories !== expectedDirectories.size
+      !inspectOnly &&
+      (observed.length !== expected.length ||
+        bytes !== expectedBytes ||
+        directories !== expectedDirectories.size)
     ) {
       fileTreeError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
@@ -1974,7 +2001,7 @@ export async function proveCandidateFsFileTree(
       );
     }
     for (const [index, proof] of observed.entries()) {
-      if (proof.path !== expected[index]?.path) {
+      if (!inspectOnly && proof.path !== expected[index]?.path) {
         fileTreeError(
           "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
           "Candidate file-tree differs from canonical full-path UTF-8 order",
@@ -2062,6 +2089,11 @@ export async function proveCandidateFsFileTree(
         files: observed.length,
         directories,
         entries: Object.freeze(observed.map((entry) => Object.freeze(entry))),
+        directoryPaths: Object.freeze(
+          stableDirectories
+            .filter((entry) => entry.relativePath !== ".")
+            .map((entry) => entry.relativePath),
+        ),
       });
     } finally {
       await boundedInternalCleanup(() => reboundRoot.handle.close());
@@ -2084,5 +2116,190 @@ export async function proveCandidateFsFileTree(
       );
     }
     await runAllBoundedInternalCleanup(cleanupOperations);
+  }
+}
+
+export async function proveCandidateFsFileTree(
+  authority: AgentBackupRestoreV3CandidateFsControl,
+  relativeDirectory: string,
+  expected: readonly Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>[],
+  limits: Partial<AgentBackupRestoreV3CandidateFileTreeLimits> | undefined,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
+): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeProof>> {
+  const { directoryPaths: _directories, ...proof } =
+    await walkCandidateFsFileTree(
+      authority,
+      relativeDirectory,
+      expected,
+      limits,
+      control,
+      heldLock,
+    );
+  return Object.freeze(proof);
+}
+
+export async function inspectCandidateFsFileTree(
+  authority: AgentBackupRestoreV3CandidateFsControl,
+  relativeDirectory: string,
+  control: Readonly<AgentBackupRestoreV3OperationControl>,
+  heldLock: AgentBackupRestoreV3CandidateFsLock,
+): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeInventory>> {
+  return walkCandidateFsFileTree(
+    authority,
+    relativeDirectory,
+    [],
+    undefined,
+    control,
+    heldLock,
+    true,
+  );
+}
+
+/** Copies an inventoried file through two held quarantine authorities, never a pathname-only read. */
+export async function copyCandidateFsFileTreeFile(
+  source: AgentBackupRestoreV3CandidateFsControl,
+  target: AgentBackupRestoreV3CandidateFsControl,
+  sourceDirectory: string,
+  expectedValue: Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>,
+  targetDirectory: string,
+  targetPath: string,
+  controlValue: Readonly<AgentBackupRestoreV3OperationControl>,
+  sourceLock: AgentBackupRestoreV3CandidateFsLock,
+  targetLock: AgentBackupRestoreV3CandidateFsLock,
+): Promise<Readonly<AgentBackupRestoreV3CandidateFileTreeFileProof>> {
+  const control = snapshotOperationControl(controlValue);
+  const limits = resolveLimits(undefined);
+  const expected = parseExpectedProof(expectedValue, limits);
+  const spec = parseFileSpec(
+    {
+      path: targetPath,
+      sizeBytes: expected.sizeBytes,
+      mode: expected.mode,
+      mtimeMs: expected.mtimeMs,
+    },
+    limits,
+  );
+  const rootSegments = requireRelativePath(
+    sourceDirectory,
+    "copy source",
+  ).split(path.sep);
+  const segments = requireCanonicalFilePath(expected.path, limits);
+  const releaseSource = source.beginLockUse(sourceLock);
+  let releaseTarget: (() => void) | undefined;
+  let parent: FileHandle | undefined;
+  let handle: FileHandle | undefined;
+  let writer: AgentBackupRestoreV3CandidateFileTreeWriter | undefined;
+  const bytes = new INTRINSIC_UINT8_ARRAY(CANDIDATE_FS_IO_CHUNK_BYTES);
+  const ioBytes = candidateFsNativeIoView(bytes);
+  try {
+    releaseTarget = target.beginLockUse(targetLock);
+    await source.assertLockHeld(sourceLock, control);
+    await target.assertLockHeld(targetLock, control);
+    const directory = await source.openDirectorySegments(
+      [...rootSegments, ...segments.slice(0, -1)],
+      control,
+    );
+    parent = directory.handle;
+    const name = segments[segments.length - 1];
+    if (!name)
+      fileTreeError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_PATH_FORBIDDEN",
+        "Copy source has no filename",
+      );
+    const sourcePath = path.join(directory.anchor, name);
+    const opened = await openBoundRegularFile(
+      sourcePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      control,
+    );
+    handle = opened.handle;
+    requireRegularSingleLink(
+      opened.stats,
+      "Copy source is not a single regular file",
+    );
+    if (
+      opened.stats.device.toString() !== expected.device ||
+      opened.stats.inode.toString() !== expected.inode ||
+      opened.stats.size !== expected.sizeBytes ||
+      (opened.stats.mode & 0o7777) !== expected.mode ||
+      exactMtimeMs(opened.stats) !== expected.mtimeMs
+    ) {
+      fileTreeError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
+        "Copy source differs from the inventoried file",
+      );
+    }
+    writer = await createCandidateFsFileTreeFile(
+      target,
+      targetDirectory,
+      spec,
+      undefined,
+      control,
+      targetLock,
+    );
+    const hash = createHash("sha256");
+    let position = 0;
+    while (position < expected.sizeBytes) {
+      const read = await controlled(
+        () =>
+          opened.handle.read(
+            ioBytes,
+            0,
+            Math.min(bytes.length, expected.sizeBytes - position),
+            position,
+          ),
+        control,
+      );
+      if (read.bytesRead === 0)
+        fileTreeError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_TRUNCATED",
+          "Copy source ended before its proven size",
+        );
+      const chunk = candidateFsByteView(bytes, 0, read.bytesRead);
+      hash.update(candidateFsNativeIoView(chunk));
+      if (!writer.replayed) await writer.write(chunk, control);
+      zeroBytes(chunk);
+      position += read.bytesRead;
+    }
+    const [visible, after] = await controlled(
+      () => Promise.all([lstatExact(sourcePath), fileStatExact(opened.handle)]),
+      control,
+    );
+    if (
+      !sameStableFile(opened.stats, after) ||
+      !sameStableFile(after, visible) ||
+      hash.digest("hex") !== expected.sha256
+    ) {
+      fileTreeError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
+        "Copy source changed while transferring bytes",
+      );
+    }
+    await source.assertLockHeld(sourceLock, control);
+    const copied = await writer.finalize(control);
+    if (copied.sha256 !== expected.sha256)
+      fileTreeError(
+        "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_CONFLICT",
+        "Copied bytes differ from their source",
+      );
+    return copied;
+  } finally {
+    zeroBytes(bytes);
+    await runAllBoundedInternalCleanup([
+      async () => {
+        if (writer) await writer.close();
+      },
+      async () => {
+        if (handle) await handle.close();
+      },
+      async () => {
+        if (parent) await parent.close();
+      },
+      async () => {
+        if (releaseTarget) releaseTarget();
+      },
+      async () => releaseSource(),
+    ]);
   }
 }
