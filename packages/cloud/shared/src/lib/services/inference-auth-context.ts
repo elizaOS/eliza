@@ -32,7 +32,6 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
-import { contentModerationService } from "./content-moderation";
 import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
 import { loadInferenceAppKeyScope } from "./inference-app-key-scope";
@@ -1001,12 +1000,6 @@ export async function resolveInferenceAuthContext(
 
     trace.authoritative = "error";
     trace.result = "error";
-    const bypassAuthoritativeCaches =
-      options.forceAuthoritative === true ||
-      trace.controlledProbe === "on" ||
-      trace.cacheRead === "invalid" ||
-      trace.cacheRead === "unavailable" ||
-      trace.cacheRead === "error";
     const { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
       timing: {
         keyLookup: (durationMs) => {
@@ -1025,11 +1018,10 @@ export async function resolveInferenceAuthContext(
     });
 
     const moderationStartedAt = performance.now();
-    // Cache failure recovery cannot authorize from another process-local memo;
-    // the normal healthy-miss path retains the bounded moderation memo.
-    const suspended = bypassAuthoritativeCaches
-      ? await adminService.shouldBlockUser(user.id)
-      : await contentModerationService.shouldBlockUser(user.id);
+    // Every IAC miss is an authorization refresh, so it must read moderation
+    // from the primary rather than re-projecting an isolate-local memo or a
+    // lagging replica after an unban invalidated the shared denial.
+    const suspended = await adminService.shouldBlockUserConsistent(user.id);
     trace.timings.moderationMs = durationSince(moderationStartedAt);
     if (suspended) {
       trace.authoritative = "suspended";
@@ -1083,6 +1075,20 @@ export async function resolveInferenceAuthContext(
     }
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
+    const hydrationOnly =
+      (
+        options as ResolveInferenceAuthOptions & {
+          [SKIP_CACHE_PROJECTION_WRITE]?: true;
+        }
+      )[SKIP_CACHE_PROJECTION_WRITE] === true;
+    // Internal hydration is not a consumed authorization. Its caller records
+    // usage only if it consumes the result; direct requests own their update here.
+    if (!hydrationOnly) {
+      observeInferenceApiKeyUsage(
+        { kind: "authorized", ctx, source: "origin" },
+        options.executionCtx,
+      );
+    }
     const cacheWriteStartedAt = performance.now();
     if (!authCacheEnabled) {
       return {
@@ -1100,13 +1106,7 @@ export async function resolveInferenceAuthContext(
           : {}),
       };
     }
-    if (
-      (
-        options as ResolveInferenceAuthOptions & {
-          [SKIP_CACHE_PROJECTION_WRITE]?: true;
-        }
-      )[SKIP_CACHE_PROJECTION_WRITE]
-    ) {
+    if (hydrationOnly) {
       trace.cacheWrite = "deferred";
       return {
         kind: "authorized",
