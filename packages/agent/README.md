@@ -155,8 +155,9 @@ confirming account support**. This flag records the operator's attestation; it
 is not an account-capability probe. These overrides belong only to the
 benchmark and do not change production defaults or another provider's policy.
 Successful runs verify the effective SDK wire: automatic mode must contain no
-optional cache key, and conversation mode must retain the experiment key format.
-This check detects overwritten or omitted hints, not upstream cache residency.
+optional cache key, and conversation mode must retain the exact expected key
+from its model invocation. Async context joins the invocation and actual SDK
+request. This detects crossed or overwritten hints, not upstream cache residency.
 
 Set `ELIZA_CEREBRAS_CHAT_PATH=direct` or `gateway`. For gateway runs, configure
 `CEREBRAS_BASE_URL` to the authorized compatible endpoint and set

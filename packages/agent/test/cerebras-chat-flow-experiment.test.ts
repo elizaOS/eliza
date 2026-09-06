@@ -4,6 +4,7 @@
  * changing cancellation, or silently measuring synthetic embedding fallback.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -15,6 +16,7 @@ import {
 } from "../scripts/cerebras-cache-wire-replay";
 import {
   applyCacheExperiment,
+  expectedConversationCacheKey,
   measuredProviderFetch,
   type ProviderWireEvidence,
   requireRealEmbeddingConfig,
@@ -172,17 +174,53 @@ describe("real chat cache experiment", () => {
     });
   });
 
-  it("rejects a transport-success replay whose complete stream is failed or unfinished", () => {
-    const complete = `data: ${JSON.stringify({ choices: [{ delta: { content: "complete answer" }, finish_reason: "stop" }], usage: { prompt_tokens: 12, completion_tokens: 2 } })}\n\ndata: [DONE]\n\n`;
-    expect(validateReplayStream(complete).usage.prompt_tokens).toBe(12);
-    expect(() =>
-      validateReplayStream(complete.replace("data: [DONE]", "")),
-    ).toThrow("without DONE");
-    expect(() =>
-      validateReplayStream(
-        `data: ${JSON.stringify({ error: { message: "provider failed" } })}\n\ndata: [DONE]\n`,
-      ),
-    ).toThrow("stream error");
+  it("rejects HTTP-success SSE with truncated, filtered, errored or unfinished output", async () => {
+    const server = createServer((request, response) => {
+      const reason = request.url?.substring(1);
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      const event =
+        reason === "error"
+          ? { error: { message: "provider failed" } }
+          : {
+              choices: [
+                {
+                  delta: { content: "response prefix" },
+                  finish_reason: reason === "unfinished" ? "stop" : reason,
+                },
+              ],
+              usage: { prompt_tokens: 12, completion_tokens: 2 },
+            };
+      response.write(`data: ${JSON.stringify(event)}\n\n`);
+      response.end(reason === "unfinished" ? "" : "data: [DONE]\n\n");
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing SSE server address");
+    try {
+      for (const reason of [
+        "stop",
+        "length",
+        "content_filter",
+        "error",
+        "unfinished",
+      ]) {
+        const response = await fetch(
+          `http://127.0.0.1:${address.port}/${reason}`,
+        );
+        expect(response.status).toBe(200);
+        const raw = await response.text();
+        if (reason === "stop")
+          expect(validateReplayStream(raw).usage.prompt_tokens).toBe(12);
+        else expect(() => validateReplayStream(raw)).toThrow();
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeAllConnections();
+      });
+    }
   });
 
   it("sends the selected affinity through the actual OpenAI SDK serializer", async () => {
@@ -216,13 +254,16 @@ describe("real chat cache experiment", () => {
       throw new Error("Missing server address");
     const base = `http://127.0.0.1:${address.port}/v1`;
     const evidence: ProviderWireEvidence[] = [];
+    const context = new AsyncLocalStorage<
+      NonNullable<ProviderWireEvidence["context"]>
+    >();
     const client = createOpenAI({
       apiKey: "local-test-only",
       baseURL: base,
       fetch: measuredProviderFetch(
         fetch,
         { text: base, embedding: base },
-        () => null,
+        () => context.getStore() ?? null,
         (item) => evidence.push(item),
       ),
     });
@@ -235,10 +276,20 @@ describe("real chat cache experiment", () => {
     };
     try {
       const scoped = applyCacheExperiment(input, experiment);
-      const reply = await generateText({
-        model: client.chat("test-model"),
-        ...scoped,
-      });
+      const expectedKey = expectedConversationCacheKey(scoped);
+      const reply = await context.run(
+        {
+          phase: "sample",
+          proof: "room-A",
+          modelInvocationId: "invocation-A",
+          expectedCacheKey: expectedKey,
+        },
+        () =>
+          generateText({
+            model: client.chat("test-model"),
+            ...scoped,
+          }),
+      );
       expect(reply.text).toBe("complete reply");
       expect(requests[0]?.prompt_cache_key).toBe(
         scoped.providerOptions.openai.promptCacheKey,
@@ -268,7 +319,25 @@ describe("real chat cache experiment", () => {
       ).toThrow("overwritten");
       expect(() =>
         verifyCacheExperimentWire([automaticWire], "conversation"),
-      ).toThrow("omitted");
+      ).toThrow("expectation");
+      const otherRoom = applyCacheExperiment(input, {
+        ...experiment,
+        conversationId: "room-B",
+      });
+      await context.run(
+        {
+          phase: "sample",
+          proof: "room-A",
+          modelInvocationId: "crossed-invocation",
+          expectedCacheKey: expectedKey,
+        },
+        () => generateText({ model: client.chat("test-model"), ...otherRoom }),
+      );
+      const crossedWire = evidence.at(-1);
+      if (!crossedWire) throw new Error("Missing crossed SDK request");
+      expect(() =>
+        verifyCacheExperimentWire([crossedWire], "conversation"),
+      ).toThrow("mismatched");
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

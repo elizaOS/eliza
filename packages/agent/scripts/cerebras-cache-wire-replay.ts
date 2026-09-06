@@ -53,11 +53,23 @@ export function validateReplayStream(raw: string): {
     .map((line) => object(JSON.parse(line)));
   if (events.some((event) => event.error !== undefined))
     throw new Error("Provider replay returned a stream error");
-  const finished = events.some(
-    (event) =>
-      Array.isArray(event.choices) &&
-      event.choices.some((choice) => object(choice).finish_reason != null),
+  const finishReasons = events.flatMap((event) =>
+    Array.isArray(event.choices)
+      ? event.choices
+          .map((choice) => object(choice).finish_reason)
+          .filter((reason) => reason != null)
+      : [],
   );
+  if (
+    finishReasons.some(
+      (reason) =>
+        !["stop", "tool_calls", "function_call"].includes(String(reason)),
+    )
+  )
+    throw new Error(
+      `Provider replay did not complete its output: ${finishReasons.join(", ")}`,
+    );
+  const finished = finishReasons.length > 0;
   const usageEvent = events.findLast((event) => event.usage != null);
   if (!finished || !usageEvent)
     throw new Error("Provider replay lacks completion or usage evidence");
@@ -107,104 +119,113 @@ async function main(): Promise<void> {
   const runId = randomUUID();
   const rows: Array<Record<string, unknown>> = [];
   const modes = ["automatic", "shared-prefix", "conversation"] as const;
-  // Thirty complete calls are the explicitly requested experiment sample;
-  // no message, prompt, tool definition, output or context is shortened.
-  for (let index = 0; index < 30; index++) {
-    const wire = selected[index];
-    if (!wire) throw new Error("Missing selected request");
-    const original = object(wire.request);
-    if (
-      original.model !== "qwen-3.8-27b" ||
-      original.stream !== true ||
-      !Array.isArray(original.messages)
-    )
-      throw new Error("Replay requires complete streaming qwen requests");
-    if (
-      typeof original.prompt_cache_key !== "string" ||
-      original.prompt_cache_key.includes("REDACTED")
-    )
-      throw new Error(
-        "Existing-affinity source must retain the actual non-secret cache key",
-      );
-    const context = object(wire.context);
-    const conversation = String(context.roomId);
-    if (!conversation || conversation === "undefined")
-      throw new Error("Missing original conversation identity");
-    for (let offset = 0; offset < modes.length; offset++) {
-      const mode = modes[(index + offset) % modes.length];
-      if (!mode) throw new Error("Missing experiment mode");
-      const request = replayRequest(original, mode, runId, conversation);
-      let attempt = 0;
-      while (true) {
-        attempt++;
-        const startedAt = performance.now();
-        const response = await fetch(
-          "https://api.cerebras.ai/v1/chat/completions",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(request),
-          },
-        );
-        const headersMs = performance.now() - startedAt;
-        const rawResponse = await response.text();
-        const totalMs = performance.now() - startedAt;
-        rows.push({
-          index,
-          order: offset,
-          mode,
-          attempt,
-          originalContext: context,
-          request,
-          status: response.status,
-          headersMs,
-          totalMs,
-          rawResponse,
-        });
-        await writeFile(
-          output,
-          `${JSON.stringify({ experiment: "matched-complete-wire-provider-replay", status: "running", sourceRevision, sourceReportSha256: createHash("sha256").update(inputBytes).digest("hex"), runId, limitations: "Provider replay only. Shared and conversation keys are run-scoped. Automatic-prefix cache may already be warm. Mode order rotates; independent cache isolation and eviction are not guaranteed.", rows }, null, 2)}\n`,
-          { mode: 0o600 },
-        );
-        if (response.status === 429 && attempt < 3) {
-          const rawRetry = response.headers.get("retry-after");
-          const seconds = rawRetry === null ? NaN : Number(rawRetry);
-          const dateMs = rawRetry === null ? NaN : Date.parse(rawRetry);
-          const waitMs = Number.isFinite(seconds)
-            ? seconds * 1000
-            : Number.isFinite(dateMs)
-              ? Math.max(0, dateMs - Date.now())
-              : 60_000;
-          if (waitMs > 60_000)
-            throw new Error(
-              "Provider Retry-After exceeds bounded retry budget; resume later",
-            );
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.max(3000, waitMs)),
-          );
-          continue;
-        }
-        if (!response.ok)
-          throw new Error(
-            `Provider replay HTTP ${response.status}; complete failure body retained in report`,
-          );
-        validateReplayStream(rawResponse);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        break;
-      }
-    }
-    process.stderr.write(
-      `[wire-replay] completed ${index + 1}/30 matched requests\n`,
+  const persist = async (
+    status: "running" | "failed" | "complete",
+    error?: unknown,
+  ) => {
+    await writeFile(
+      output,
+      `${JSON.stringify({ experiment: "matched-complete-wire-provider-replay", status, sourceRevision, sourceReportSha256: createHash("sha256").update(inputBytes).digest("hex"), runId, limitations: "Provider replay only. Shared and conversation keys are run-scoped. Automatic-prefix cache may already be warm. Mode order rotates; independent cache isolation and eviction are not guaranteed.", rows, ...(error === undefined ? {} : { error: error instanceof Error ? error.message : String(error) }) }, null, 2)}\n`,
+      { mode: 0o600 },
     );
+  };
+  await persist("running");
+  try {
+    // Thirty complete calls are the explicitly requested experiment sample;
+    // no message, prompt, tool definition, output or context is shortened.
+    for (let index = 0; index < 30; index++) {
+      const wire = selected[index];
+      if (!wire) throw new Error("Missing selected request");
+      const original = object(wire.request);
+      if (
+        original.model !== "qwen-3.8-27b" ||
+        original.stream !== true ||
+        !Array.isArray(original.messages)
+      )
+        throw new Error("Replay requires complete streaming qwen requests");
+      if (
+        typeof original.prompt_cache_key !== "string" ||
+        original.prompt_cache_key.includes("REDACTED")
+      )
+        throw new Error(
+          "Existing-affinity source must retain the actual non-secret cache key",
+        );
+      const context = object(wire.context);
+      const conversation = String(context.roomId);
+      if (!conversation || conversation === "undefined")
+        throw new Error("Missing original conversation identity");
+      for (let offset = 0; offset < modes.length; offset++) {
+        const mode = modes[(index + offset) % modes.length];
+        if (!mode) throw new Error("Missing experiment mode");
+        const request = replayRequest(original, mode, runId, conversation);
+        let attempt = 0;
+        while (true) {
+          attempt++;
+          const startedAt = performance.now();
+          const response = await fetch(
+            "https://api.cerebras.ai/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(request),
+            },
+          );
+          const headersMs = performance.now() - startedAt;
+          const rawResponse = await response.text();
+          const totalMs = performance.now() - startedAt;
+          rows.push({
+            index,
+            order: offset,
+            mode,
+            attempt,
+            originalContext: context,
+            request,
+            status: response.status,
+            headersMs,
+            totalMs,
+            rawResponse,
+          });
+          await persist("running");
+          if (response.status === 429 && attempt < 3) {
+            const rawRetry = response.headers.get("retry-after");
+            const seconds = rawRetry === null ? NaN : Number(rawRetry);
+            const dateMs = rawRetry === null ? NaN : Date.parse(rawRetry);
+            const waitMs = Number.isFinite(seconds)
+              ? seconds * 1000
+              : Number.isFinite(dateMs)
+                ? Math.max(0, dateMs - Date.now())
+                : 60_000;
+            if (waitMs > 60_000)
+              throw new Error(
+                "Provider Retry-After exceeds bounded retry budget; resume later",
+              );
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.max(3000, waitMs)),
+            );
+            continue;
+          }
+          if (!response.ok)
+            throw new Error(
+              `Provider replay HTTP ${response.status}; complete failure body retained in report`,
+            );
+          validateReplayStream(rawResponse);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          break;
+        }
+      }
+      process.stderr.write(
+        `[wire-replay] completed ${index + 1}/30 matched requests\n`,
+      );
+    }
+    await persist("complete");
+  } catch (error) {
+    // error-policy:J1 A failed CLI experiment retains every completed attempt and its terminal status.
+    await persist("failed", error);
+    throw error;
   }
-  const final = object(JSON.parse(await readFile(output, "utf8")));
-  final.status = "complete";
-  await writeFile(output, `${JSON.stringify(final, null, 2)}\n`, {
-    mode: 0o600,
-  });
 }
 
 // error-policy:J1 CLI failure remains nonzero and prior complete observations stay on disk.

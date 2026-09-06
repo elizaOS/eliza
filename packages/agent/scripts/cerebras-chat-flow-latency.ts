@@ -38,6 +38,7 @@ import { generateChatResponse } from "../src/api/chat-routes.ts";
 import {
   applyCacheExperiment,
   type CacheExperimentMode,
+  expectedConversationCacheKey,
   measuredProviderFetch,
   type ProviderWireEvidence,
   requireRealEmbeddingConfig,
@@ -130,6 +131,8 @@ export interface ModelInputContext {
   index?: number;
   proof: string;
   roomId?: string;
+  modelInvocationId?: string;
+  expectedCacheKey?: string | null;
 }
 
 export interface ModelInputEvidence {
@@ -680,7 +683,11 @@ async function main(): Promise<void> {
       const activeModelInputContext = modelContext.getStore() ?? null;
       const isTextModel = isTextGenerationModelType(modelType);
       const context = activeModelInputContext
-        ? { ...activeModelInputContext }
+        ? {
+            ...activeModelInputContext,
+            modelInvocationId: randomUUID(),
+            expectedCacheKey: null as string | null,
+          }
         : null;
       const startedAt = performance.now();
       let outcome: "success" | "error" = "error";
@@ -697,25 +704,28 @@ async function main(): Promise<void> {
               model,
               stage: String(modelType),
             });
+            if (context && cacheMode === "conversation")
+              context.expectedCacheKey =
+                expectedConversationCacheKey(measuredParams);
             experimentOutcome = "applied";
           } finally {
             modelInputs.push({
-              ...captureModelInput(
-                modelType,
-                measuredParams,
-                activeModelInputContext,
-              ),
+              ...captureModelInput(modelType, measuredParams, context),
               experimentOutcome,
             });
           }
         }
-        const result = await measuredUseModel(
-          modelType,
-          measuredParams,
-          nativeEmbedding && modelType === ModelType.TEXT_EMBEDDING
-            ? "eliza-local-inference"
-            : provider,
-        );
+        const invoke = () =>
+          measuredUseModel(
+            modelType,
+            measuredParams,
+            nativeEmbedding && modelType === ModelType.TEXT_EMBEDDING
+              ? "eliza-local-inference"
+              : provider,
+          );
+        const result = await (context
+          ? modelContext.run(context, invoke)
+          : invoke());
         if (nativeEmbedding && modelType === ModelType.TEXT_EMBEDDING) {
           if (
             !Array.isArray(result) ||
