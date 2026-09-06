@@ -363,7 +363,12 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       "server name"
     );
     if (serverName === null) return true;
-    if (ctx.isBlockedObjectKey(serverName)) {
+    const normalizedServerName = serverName.trim();
+    if (!normalizedServerName) {
+      error(res, "Server name is required", 400);
+      return true;
+    }
+    if (ctx.isBlockedObjectKey(normalizedServerName)) {
       error(
         res,
         'Invalid server name: "__proto__", "constructor", and "prototype" are reserved',
@@ -372,8 +377,8 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       return true;
     }
 
-    if (state.config.mcp?.servers?.[serverName]) {
-      delete state.config.mcp.servers[serverName];
+    if (state.config.mcp?.servers?.[normalizedServerName]) {
+      delete state.config.mcp.servers[normalizedServerName];
       // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
       try {
         ctx.saveElizaConfig(state.config);

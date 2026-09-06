@@ -362,6 +362,24 @@ describe("handleMcpRoutes", () => {
     expect(ctx.saveElizaConfig).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["empty string", "/api/mcp/config/server/"],
+    ["whitespace string", "/api/mcp/config/server/%20%20"],
+  ])("rejects %s on DELETE /api/mcp/config/server/:name with 400", async (_desc, path) => {
+    const config = { mcp: { servers: { remote: { type: "http", url: "https://example.com" } } } };
+    const ctx = makeCtx("DELETE", path, { config });
+
+    await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
+
+    expect(ctx.response.status).toBe(400);
+    expect(ctx.response.body).toEqual({
+      ok: false,
+      error: "Server name is required",
+    });
+    expect(config.mcp.servers.remote).toBeDefined();
+    expect(ctx.saveElizaConfig).not.toHaveBeenCalled();
+  });
+
   it("returns empty status when the MCP service lookup fails", async () => {
     const ctx = makeCtx("GET", "/api/mcp/status", {
       runtime: {
