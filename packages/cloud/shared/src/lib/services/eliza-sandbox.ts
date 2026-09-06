@@ -13047,6 +13047,20 @@ export class ElizaSandboxService {
         ) {
           throw new Error("Docker replacement has no durable cleanup ownership");
         }
+        const servingLocator = servingPlacement?.locator;
+        if (
+          servingLocator &&
+          (servingLocator.sandboxId !== handle.sandboxId ||
+            servingLocator.nodeId !== dockerMeta.nodeId ||
+            servingLocator.containerName !== dockerMeta.containerName ||
+            (dockerMeta.containerId !== undefined &&
+              servingLocator.containerId !== dockerMeta.containerId))
+        ) {
+          throw new ElizaError("Preserved handle conflicts with its serving placement receipt", {
+            code: "AGENT_SERVING_PLACEMENT_RETRY_MISMATCH",
+            context: { agentId, organizationId: orgId },
+          });
+        }
       }
 
       const [adopted] = await tx
