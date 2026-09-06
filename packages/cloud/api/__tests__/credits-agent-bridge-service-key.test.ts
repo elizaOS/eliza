@@ -86,7 +86,16 @@ const dbRead = {
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
-mock.module("@/db/helpers", () => ({ dbRead }));
+// The mocked namespace replaces the real module's full re-export surface
+// (db/dbWrite/writeTransaction/getDbConnectionInfo); sibling modules still
+// request those names, so they must exist on the mock.
+mock.module("@/db/helpers", () => ({
+  dbRead,
+  db: {},
+  dbWrite: {},
+  writeTransaction: async () => undefined,
+  getDbConnectionInfo: () => ({}),
+}));
 mock.module("@/lib/services/credit-balance-response", () => ({
   getCreditBalanceResponse,
 }));
@@ -95,6 +104,14 @@ mock.module("@/lib/services/users", () => ({
 }));
 mock.module("@/lib/services/organizations", () => ({
   organizationsService: { update: updateOrganization },
+}));
+// The durable customer-authority seam postdates this harness; without it the
+// route's stripeCustomerAuthorityService.ensure() call reaches the real
+// service (and its DB dependency) and the positive path 500s.
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: {
+    ensure: mock(async () => "cus_authority"),
+  },
 }));
 mock.module("@/lib/services/stripe-checkout-orders", () => ({
   stripeCheckoutOrdersService: {

@@ -5,6 +5,10 @@
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
+import {
+  checkoutAmountUsdToCents,
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
+} from "@elizaos/cloud-shared/billing";
 import { findBySku, HARDWARE_SKUS } from "@elizaos/shared/hardware-catalog";
 import { Hono } from "hono";
 import type Stripe from "stripe";
@@ -22,7 +26,12 @@ import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
+// Canonical checkout bounds come from the shared organization-credit contract;
+// this route must not restate the range locally (#22963).
+const CUSTOM_AMOUNT_LIMITS = {
+  MIN_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+  MAX_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
+} as const;
 const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
 const checkoutRequestSchema = z
@@ -225,8 +234,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       if (stripeCurrency !== "usd") {
         return c.json({ error: "Credit purchases require USD billing" }, 503);
       }
-      const amountCents = amount * 100;
-      if (!Number.isSafeInteger(amountCents)) {
+      const amountCents = checkoutAmountUsdToCents(amount);
+      if (amountCents === null) {
         return c.json({ error: "Amount must use exact whole cents" }, 400);
       }
       lineItems = [
