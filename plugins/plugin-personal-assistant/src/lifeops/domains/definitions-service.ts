@@ -9,6 +9,7 @@ import { ElizaError } from "@elizaos/core";
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
+  LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
@@ -26,6 +27,7 @@ import {
   LIFEOPS_DEFINITION_STATUSES,
 } from "../../contracts/index.js";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
+import { definitionCreationIdentity } from "../definition-creation-identity.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -166,7 +168,7 @@ export class DefinitionsDomain {
 
   async createDefinition(
     request: CreateLifeOpsDefinitionRequest,
-  ): Promise<LifeOpsDefinitionRecord> {
+  ): Promise<LifeOpsDefinitionCreationResult> {
     const agentId = this.ctx.agentId();
     const ownership = this.ctx.normalizeOwnership(request.ownership);
     const kind = normalizeEnumValue(
@@ -235,7 +237,36 @@ export class DefinitionsDomain {
           : undefined,
       ),
     });
-    await this.ctx.repository.createDefinition(definition);
+    const operationKey = definitionCreationIdentity({
+      agentId,
+      actorId: this.ctx.ownerEntityId(),
+      ownership,
+      key: request.idempotencyKey,
+    });
+    if (operationKey !== null) {
+      const {
+        id: _id,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        ...creationRequest
+      } = definition;
+      const claim = await this.ctx.repository.claimDefinitionCreation(
+        definition,
+        operationKey,
+        JSON.stringify({
+          definition: creationRequest,
+          reminderPlan: reminderPlanDraft,
+        }),
+      );
+      if (claim.replayed)
+        return {
+          ...(await this.deps.getDefinitionRecord(claim.definition.id)),
+          idempotency: { key: operationKey, replayed: true },
+        };
+      definition = claim.definition;
+    } else {
+      await this.ctx.repository.createDefinition(definition);
+    }
     const reminderPlan = await this.deps.syncReminderPlan(
       definition,
       reminderPlanDraft,
@@ -275,7 +306,13 @@ export class DefinitionsDomain {
       this.ctx.agentId(),
       definition.id,
     );
+    if (operationKey !== null)
+      await this.ctx.repository.completeDefinitionCreation(
+        definition,
+        operationKey,
+      );
     return {
+      idempotency: { key: operationKey, replayed: false },
       definition,
       reminderPlan,
       performance: computeDefinitionPerformance(

@@ -38,6 +38,22 @@ isolated port (41873 by default):
 bun run --cwd plugins/plugin-personal-assistant test:connections:e2e
 ```
 
+## Definition creation retries
+
+Owner definition creation accepts an optional `idempotencyKey` (1–256 non-NUL
+characters). Keep the same key and complete request for retries of one authorized
+operation; use distinct keys for deliberately separate identical items. Tool-call
+IDs are transport identities and must not replace this operation identity.
+Unkeyed owner actions retain their existing content-based confirmation behavior.
+
+The key is scoped to the runtime agent, acting owner, target ownership, and create
+operation. The existing audit table atomically claims it with the definition
+insert and records completion after creation effects succeed. Completed replays
+return the existing scoped record and a replay receipt. Conflicting request reuse,
+deleted or inaccessible records, and interrupted effects return typed errors;
+an uncertain operation never silently dispatches another creation. Audit identity
+survives runtime restart and definition deletion. Legacy audit rows remain unkeyed.
+
 ## Scheduled items, not generic tasks
 
 Every reminder, check-in, follow-up, watcher, recap, approval surface, and

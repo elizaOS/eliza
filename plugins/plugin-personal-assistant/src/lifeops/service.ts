@@ -130,6 +130,7 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
@@ -1703,7 +1704,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
-  ): Promise<LifeOpsDefinitionRecord> {
+  ): Promise<LifeOpsDefinitionCreationResult> {
     return this.definitionsDomain.createDefinition(request);
   }
 

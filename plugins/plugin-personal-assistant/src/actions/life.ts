@@ -8,6 +8,7 @@
  * resolves one-off due dates against the owner timezone. Multi-turn create
  * flows preview a draft and save on a follow-up confirmation turn.
  */
+
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
@@ -64,6 +65,10 @@ import {
   resolveDefaultTimeZone,
   resolveDefaultWindowPolicy,
 } from "../lifeops/defaults.js";
+import {
+  DEFINITION_CREATION_OPERATION,
+  definitionCreationIdentity,
+} from "../lifeops/definition-creation-identity.js";
 import {
   dayRange,
   detailArray,
@@ -161,6 +166,7 @@ type ResolvedLifeOperationPlan = {
 };
 
 type LifeParams = {
+  idempotencyKey?: string;
   action?: string;
   subaction?: LifeOperation;
   kind?: LifeKind;
@@ -1148,6 +1154,13 @@ async function resolveDefinitionForMutation(
     };
   }
   if (explicitlyNamed.length > 1) {
+    // A prior owner operation can return an exact ID for one of several
+    // authorized, identically named items. Keep exclusions and scope checks,
+    // then honor that identity before attempting prose disambiguation.
+    const exactTarget = explicitlyNamed.find(
+      (entry) => entry.definition.id === target,
+    );
+    if (exactTarget) return { match: exactTarget, ambiguousCandidates: [] };
     const byTimeHint = resolveDuplicateByTimeHint(explicitlyNamed, ownerText);
     if (byTimeHint) {
       return { match: byTimeHint, ambiguousCandidates: [] };
@@ -3569,8 +3582,12 @@ function lifeEffectString(value: unknown, field: string): string | null {
     : null;
 }
 
-function lifeEffectPreview(message: Memory, operation: string): EffectReceipt {
-  const id = lifeEffectRequestId(message);
+function lifeEffectPreview(
+  message: Memory,
+  operation: string,
+  key: string | null = null,
+): EffectReceipt {
+  const id = key ?? lifeEffectRequestId(message);
   return normalizeEffectReceipt({
     receiptId: lifeEffectReceiptId(message, operation, id),
     operation,
@@ -3579,7 +3596,7 @@ function lifeEffectPreview(message: Memory, operation: string): EffectReceipt {
       id,
     },
     artifacts: [],
-    idempotency: { key: null, replayed: false },
+    idempotency: { key, replayed: false },
     observedAt: lifeEffectObservedAt(message),
     outcome: "preview",
   });
@@ -3653,6 +3670,34 @@ async function lifeEffectReceiptForResult(args: {
     data?.saved === false ||
     data?.requiresConfirmation === true
   ) {
+    const draft = lifeEffectRecord(data.lifeDraft);
+    const draftRequest = lifeEffectRecord(draft?.request);
+    if (
+      draft?.operation === "create_definition" &&
+      typeof draftRequest?.idempotencyKey === "string"
+    ) {
+      const service = new LifeOpsService(args.runtime, {
+        ownerEntityId: args.message.entityId,
+      });
+      const parameters = lifeEffectRecord(args.options?.parameters);
+      const details = lifeEffectRecord(parameters?.details);
+      const ownership = service.normalizeOwnership(
+        requestedOwnership(
+          details?.domain === "agent_ops" ? "agent_ops" : undefined,
+        ),
+      );
+      const key = definitionCreationIdentity({
+        agentId: args.runtime.agentId,
+        actorId: service.ownerEntityId(),
+        ownership,
+        key: draftRequest.idempotencyKey,
+      });
+      return lifeEffectPreview(
+        args.message,
+        DEFINITION_CREATION_OPERATION,
+        key,
+      );
+    }
     return lifeEffectPreview(args.message, `${operation}.preview`);
   }
 
@@ -3750,19 +3795,29 @@ async function lifeEffectReceiptForResult(args: {
     lifeEffectRecord(lifeEffectRecord(data?.updated)?.definition);
   const definitionId = lifeEffectString(definition, "id");
   const definitionUpdatedAt = lifeEffectString(definition, "updatedAt");
-  if (definitionId && data?.deduplicated === true) {
+  const definitionIdempotency = lifeEffectRecord(data?.idempotency);
+  const definitionOperationKey = lifeEffectString(definitionIdempotency, "key");
+  if (
+    definitionId &&
+    (data?.deduplicated === true || definitionIdempotency?.replayed === true)
+  ) {
     return lifeOpsNoopEffect({
       receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
-      operation: "lifeops.definition.create",
+      operation: DEFINITION_CREATION_OPERATION,
       resource: {
         kind: "lifeops.definition",
         id: definitionId,
         ...(definitionUpdatedAt ? { version: definitionUpdatedAt } : {}),
       },
       artifacts: [],
-      idempotency: { key: definitionId, replayed: true },
+      idempotency: {
+        key: definitionOperationKey ?? definitionId,
+        replayed: true,
+      },
       observedAt: new Date().toISOString(),
-      reason: "An equivalent active definition already exists.",
+      reason: definitionOperationKey
+        ? "This creation operation already completed."
+        : "An equivalent active definition already exists.",
     });
   }
   if (definitionId && definitionUpdatedAt) {
@@ -3776,7 +3831,7 @@ async function lifeEffectReceiptForResult(args: {
       receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
       operation:
         audit.eventType === "definition_created"
-          ? "lifeops.definition.create"
+          ? DEFINITION_CREATION_OPERATION
           : "lifeops.definition.update",
       resource: {
         kind: "lifeops.definition",
@@ -3786,7 +3841,7 @@ async function lifeEffectReceiptForResult(args: {
       artifacts: [],
       idempotency:
         audit.eventType === "definition_created"
-          ? { key: definitionId, replayed: false }
+          ? { key: definitionOperationKey ?? definitionId, replayed: false }
           : { key: null, replayed: false },
       observedAt: audit.createdAt,
       commit: {
@@ -4769,6 +4824,10 @@ async function runLifeOperationHandlerInner(
                 sourceMessageId:
                   typeof message.id === "string" ? message.id : undefined,
                 request: {
+                  idempotencyKey:
+                    params.idempotencyKey !== undefined
+                      ? params.idempotencyKey
+                      : deferredDefinitionDraft?.request.idempotencyKey,
                   kind: "task",
                   metadata: definitionMetadata,
                   title,
@@ -4881,6 +4940,10 @@ async function runLifeOperationHandlerInner(
           deferredDefinitionDraft?.sourceMessageId ??
           (currentMessageId !== "" ? currentMessageId : undefined),
         request: {
+          idempotencyKey:
+            params.idempotencyKey !== undefined
+              ? params.idempotencyKey
+              : deferredDefinitionDraft?.request.idempotencyKey,
           cadence: leadShaped.cadence,
           description:
             explicitDescription ??
@@ -5011,23 +5074,24 @@ async function runLifeOperationHandlerInner(
         ? await resolveGoal(service, definitionDraft.request.goalRef, domain)
         : null;
 
-      // Content-level duplicate guard, mirroring the scheduled-task one: a
-      // confirm turn that re-describes an already-saved item mints a fresh
-      // create (observed live, #16941: "yes lock it in! and can it bug me
-      // before friday too" after the plan had saved stacked a second
-      // identical "Book report…" definition). An ACTIVE definition with the
-      // same normalized title and structurally identical cadence IS the same
-      // item — report it as already saved instead of stacking a twin.
-      const duplicateOf = (await listCallerDefinitions(service)).find(
-        (record) =>
-          record.definition.status === "active" &&
-          normalizeLifeInputText(record.definition.title).toLowerCase() ===
-            normalizeLifeInputText(
-              definitionDraft.request.title,
-            ).toLowerCase() &&
-          stableCadenceKey(record.definition.cadence) ===
-            stableCadenceKey(definitionDraft.request.cadence),
-      );
+      // Preserve legacy content-based confirmation replay when the caller has no
+      // operation identity. Explicit keys distinguish intentional copies from
+      // retries; the repository elects their single creator durably.
+      const duplicateOf =
+        definitionDraft.request.idempotencyKey === undefined
+          ? (await listCallerDefinitions(service)).find(
+              (record) =>
+                record.definition.status === "active" &&
+                normalizeLifeInputText(
+                  record.definition.title,
+                ).toLowerCase() ===
+                  normalizeLifeInputText(
+                    definitionDraft.request.title,
+                  ).toLowerCase() &&
+                stableCadenceKey(record.definition.cadence) ===
+                  stableCadenceKey(definitionDraft.request.cadence),
+            )
+          : undefined;
       if (duplicateOf) {
         await clearDeferredLifeDraftCache(runtime, message);
         const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence)} — nothing new was created.`;
@@ -5045,6 +5109,7 @@ async function runLifeOperationHandlerInner(
       }
 
       const created = await service.createDefinition({
+        idempotencyKey: definitionDraft.request.idempotencyKey,
         ownership,
         kind: definitionDraft.request.kind,
         title: definitionDraft.request.title,
@@ -5065,6 +5130,19 @@ async function runLifeOperationHandlerInner(
         source: "chat",
       });
       await clearDeferredLifeDraftCache(runtime, message);
+      if (
+        definitionDraft.request.idempotencyKey !== undefined &&
+        created.idempotency.replayed
+      ) {
+        const alreadyText = `"${created.definition.title}" was already saved by this operation; nothing new was created.`;
+        return {
+          success: true as const,
+          text: alreadyText,
+          userFacingText: alreadyText,
+          verifiedUserFacing: true,
+          data: toActionData(created),
+        };
+      }
       // The un-previewed fast path leaves no draft to cancel, so park an undo
       // handle: a next-turn retraction deletes this row deterministically.
       await writeRecentLifeSaveCache(runtime, message, {
@@ -6428,14 +6506,24 @@ export async function runLifeOperationHandler(
     state,
     options,
   );
+  const receipt = await lifeEffectReceiptForResult({
+    runtime,
+    message,
+    options,
+    result,
+  });
+  // A rejected lookup leaves no write to reconcile. Preserve its failure and
+  // diagnostics while allowing the planner's existing observation recovery.
+  const observationFailure =
+    result.success === false &&
+    lifeRequestedOperation(options) === "review" &&
+    receipt.outcome === "failed" &&
+    receipt.failure.acceptance === "rejected";
   return completeLifeOpsEffect(
     callback,
-    result,
-    await lifeEffectReceiptForResult({
-      runtime,
-      message,
-      options,
-      result,
-    }),
+    observationFailure
+      ? { ...result, data: { ...result.data, readOnlyOperation: true } }
+      : result,
+    receipt,
   );
 }

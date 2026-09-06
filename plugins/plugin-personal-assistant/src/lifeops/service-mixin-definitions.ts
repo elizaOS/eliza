@@ -6,6 +6,7 @@
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
+  LifeOpsDefinitionCreationResult,
   LifeOpsDefinitionRecord,
   LifeOpsOccurrenceView,
   RecordLifeOpsProgressRequest,
@@ -19,7 +20,7 @@ export interface LifeOpsDefinitionService {
   getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
-  ): Promise<LifeOpsDefinitionRecord>;
+  ): Promise<LifeOpsDefinitionCreationResult>;
   updateDefinition(
     definitionId: string,
     request: UpdateLifeOpsDefinitionRequest,

@@ -205,7 +205,7 @@ function makeOwnerLifeAction(args: {
       {
         name: "target",
         description:
-          "Existing item id/title for update/delete/complete/skip/snooze/review.",
+          "Existing item id/title for update/delete/complete/skip/snooze or a single-item review. For review of all items, omit target or use an empty string; do not send the literal string null.",
         required: false,
         aliases: ["query", "item", "task", "reminder", "id", "which"],
         schema: { type: "string" as const },
@@ -216,6 +216,13 @@ function makeOwnerLifeAction(args: {
         required: false,
         aliases: ["snoozeMinutes", "durationMinutes"],
         schema: { type: "number" as const },
+      },
+      {
+        name: "idempotencyKey",
+        description:
+          "Create-definition operation identity: reuse the same key and request when retrying; use distinct keys only for intentionally separate items, even if their content is identical.",
+        required: false,
+        schema: { type: "string" as const, minLength: 1, maxLength: 256 },
       },
       {
         name: "confirmed",

@@ -3333,6 +3333,8 @@ export interface LifeOpsXPostResponse {
 }
 
 export interface CreateLifeOpsDefinitionRequest {
+  /** Stable caller operation identity. Reuse for retries; use distinct keys for intentional copies. */
+  idempotencyKey?: string;
   ownership?: LifeOpsOwnershipInput;
   kind: LifeOpsDefinitionKind;
   title: string;
@@ -3405,6 +3407,12 @@ export interface LifeOpsDefinitionRecord {
   definition: LifeOpsTaskDefinition;
   reminderPlan: LifeOpsReminderPlan | null;
   performance: LifeOpsDefinitionPerformance;
+}
+
+/** Creation result distinguishes a new commit from a durable replay. */
+export interface LifeOpsDefinitionCreationResult
+  extends LifeOpsDefinitionRecord {
+  idempotency: { key: string | null; replayed: boolean };
 }
 
 export interface LifeOpsGoalRecord {
