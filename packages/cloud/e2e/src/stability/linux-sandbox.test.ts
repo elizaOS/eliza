@@ -18,6 +18,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -640,6 +641,9 @@ console.log(JSON.stringify({
       );
       expect(missingBwrap.status).not.toBe(0);
       expect(missingBwrap.stderr).toContain("missing required command: bwrap");
+      // Ubuntu alternatives make iptables a symlink; mask its actual inode
+      // so bubblewrap reaches the launcher instead of failing to bind the link.
+      const iptablesExecutable = await realpath("/usr/sbin/iptables");
       const missingIptables = spawnSync(
         "sudo",
         [
@@ -654,7 +658,7 @@ console.log(JSON.stringify({
           "/proc",
           "--ro-bind",
           "/dev/null",
-          "/usr/sbin/iptables",
+          iptablesExecutable,
           "/bin/bash",
           setupPath,
           "setup",
