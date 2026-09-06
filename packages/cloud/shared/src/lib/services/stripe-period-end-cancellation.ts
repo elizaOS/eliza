@@ -74,6 +74,7 @@ export function validatePeriodEndCancellationObservation(input: {
   raw: unknown;
   observedAt: Date;
   requireScheduled: boolean;
+  allowRetainedCanceledAt?: Date | null;
 }) {
   const { source } = input;
   if (
@@ -121,7 +122,9 @@ export function validatePeriodEndCancellationObservation(input: {
     (observed.cancel_at_period_end &&
       (observed.canceled_at === null || observed.canceled_at > observed.current_period_end)) ||
     (!observed.cancel_at_period_end &&
-      (observed.canceled_at !== null || observed.cancel_at !== null)) ||
+      ((observed.canceled_at !== null &&
+        observed.canceled_at * 1000 !== input.allowRetainedCanceledAt?.getTime()) ||
+        observed.cancel_at !== null)) ||
     (input.requireScheduled && !observed.cancel_at_period_end)
   )
     cancellationReobserve("cancellation_schedule_not_confirmed");

@@ -49,6 +49,13 @@ class TestInsufficientCreditsError extends Error {
 }
 
 // Terminal authority has independent real-DB consumer coverage; these fixtures own purchased-credit dispatch.
+mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
+  reconcileStripeScheduledCancellationLifecycle: async () => {
+    throw new Error(
+      "Subscription schedule lifecycle unavailable in legacy fixture",
+    );
+  },
+}));
 mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
   reconcileStripeTerminalLifecycle: async () => {
     throw new Error("Subscription lifecycle unavailable in legacy fixture");

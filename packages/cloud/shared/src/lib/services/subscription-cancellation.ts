@@ -25,7 +25,7 @@ import {
 
 function toDto(command: BillingSubscriptionCommand): OrganizationSubscriptionCancellationDto {
   if (
-    command.kind !== "cancel" ||
+    (command.kind !== "cancel" && command.kind !== "resume") ||
     command.subscription_id === null ||
     command.expected_subscription_revision === null ||
     command.status === "SUCCEEDED"
@@ -49,6 +49,8 @@ async function executeClaim(
   claim: CancellationClaim,
   revalidateSession: (() => Promise<void>) | null,
 ) {
+  const kind = claim.command.kind === "resume" ? "resume" : "cancel";
+  const targetScheduled = kind === "cancel";
   let sessionFailure = false;
   async function verifySession() {
     if (revalidateSession === null) return;
@@ -82,8 +84,9 @@ async function executeClaim(
       raw,
       observedAt: new Date(),
       requireScheduled: false,
+      allowRetainedCanceledAt: claim.source.canceled_at,
     });
-    if (!initial.scheduled && claim.canDispatch && revalidateSession !== null) {
+    if (initial.scheduled !== targetScheduled && claim.canDispatch && revalidateSession !== null) {
       await verifyCustomer();
       await verifySession();
       await assertCancellationClaimCurrent(input, claim, true);
@@ -91,13 +94,13 @@ async function executeClaim(
       // is detected by the final retrieval and prevents local publication, even after an accepted mutation.
       await stripe.subscriptions.update(
         claim.source.stripe_subscription_id,
-        { cancel_at_period_end: true },
+        { cancel_at_period_end: targetScheduled },
         { idempotencyKey: claim.command.provider_idempotency_key },
       );
       raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
-    } else if (!initial.scheduled) {
+    } else if (initial.scheduled !== targetScheduled) {
       await releaseCancellation(input, claim);
-      return toDto(await readCancellation({ ...input, commandId: claim.command.id }));
+      return toDto(await readCancellation({ ...input, commandId: claim.command.id }, kind));
     }
     await verifyCustomer();
     await verifySession();
@@ -111,7 +114,7 @@ async function executeClaim(
     });
     await releaseCancellation(input, claim);
     if (sessionFailure) throw error;
-    return toDto(await readCancellation({ ...input, commandId: claim.command.id }));
+    return toDto(await readCancellation({ ...input, commandId: claim.command.id }, kind));
   }
 }
 export async function submitOrganizationSubscriptionCancellation(
@@ -142,7 +145,10 @@ export async function recoverOrganizationSubscriptionCancellations(
       actorId: command.requested_by_user_id,
     };
     try {
-      const claim = await claimCancellation({ ...identity, commandId: command.id });
+      const claim = await claimCancellation(
+        { ...identity, commandId: command.id },
+        command.kind === "resume" ? "resume" : "cancel",
+      );
       if (!claim) {
         result.pending++;
         continue;
@@ -161,4 +167,21 @@ export async function recoverOrganizationSubscriptionCancellations(
     }
   }
   return result;
+}
+
+export async function submitOrganizationSubscriptionCancellationUndo(
+  input: PrepareCancellationInput,
+  revalidateSession: () => Promise<void>,
+): Promise<OrganizationSubscriptionCancellationDto> {
+  await revalidateSession();
+  const command = await prepareCancellation(input, "resume");
+  if (command.status !== "PREPARED" && command.status !== "OUTCOME_UNKNOWN") return toDto(command);
+  const claim = await claimCancellation({ ...input, commandId: command.id }, "resume");
+  if (!claim) return toDto(await readCancellation({ ...input, commandId: command.id }, "resume"));
+  return executeClaim(input, claim, revalidateSession);
+}
+export async function readOrganizationSubscriptionCancellationUndo(
+  input: CancellationIdentity & { commandId: string },
+): Promise<OrganizationSubscriptionCancellationDto> {
+  return toDto(await readCancellation(input, "resume"));
 }

@@ -1,8 +1,8 @@
-/** Retrieves canonical Stripe authority to reconcile a previously applied cancellation command; unrelated active lifecycle remains retryable. */
+/** Retrieves canonical Stripe authority to reconcile a previously applied cancellation or undo command; unrelated active lifecycle remains retryable. */
 
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { dbWrite } from "../../db/helpers";
@@ -115,12 +115,14 @@ export async function reconcileStripeScheduledCancellationLifecycle(
         and(
           eq(billingSubscriptionCommands.organization_id, source.organization_id),
           eq(billingSubscriptionCommands.subscription_id, source.id),
-          eq(billingSubscriptionCommands.kind, "cancel"),
+          inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
           eq(billingSubscriptionCommands.status, "APPLIED"),
         ),
       )
-      .limit(2);
-    if (commands.length !== 1) reject("ambiguous_applied_command");
+      .orderBy(desc(billingSubscriptionCommands.result_subscription_revision))
+      .limit(1);
+    // This is only a lookup hint; the finalizer proves complete latest-command lineage under the organization lock.
+    if (commands.length !== 1) reject("applied_command_unavailable");
     const command = commands[0]!;
     if (
       !command ||
@@ -147,7 +149,8 @@ export async function reconcileStripeScheduledCancellationLifecycle(
       environment,
       raw,
       observedAt: new Date(),
-      requireScheduled: true,
+      requireScheduled: command.kind === "cancel",
+      allowRetainedCanceledAt: source.canceled_at,
     });
     await operations.finalizeCancellationEvent({
       ...lease,

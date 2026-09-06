@@ -185,3 +185,10 @@ without repeating a provider mutation. `OUTCOME_UNKNOWN` is unresolved;
 provider outcome without sending an unattended mutation. Current billing state remains
 available from the existing billing snapshot. Developer API keys cannot authorize
 these methods, and no provider identifiers or credentials are returned.
+
+To undo a scheduled cancellation before its period ends, call
+`submitOrganizationSubscriptionCancellationUndo` with the current subscription
+revision and a stable idempotency key. Poll with
+`readOrganizationSubscriptionCancellationUndo`; the original cancellation poll
+endpoint continues to read only cancellation commands. Undo uses the same
+session-manager authorization and explicit uncertain-outcome contract.

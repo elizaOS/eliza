@@ -20,6 +20,7 @@ import { users } from "../schemas/users";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
+import { readLatestSubscriptionScheduleCommand } from "./subscription-schedule-lineage";
 
 export interface CancellationIdentity {
   organizationId: string;
@@ -129,7 +130,11 @@ async function currentSource(
     reject("source_changed_or_unsupported");
   return source;
 }
-function intentDigest(input: PrepareCancellationInput): string {
+function intentDigest(
+  input: PrepareCancellationInput,
+  kind: "cancel" | "resume",
+  predecessorCommandId: string | null = null,
+): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -137,17 +142,18 @@ function intentDigest(input: PrepareCancellationInput): string {
         actorId: input.actorId,
         subscriptionId: input.subscriptionId,
         expectedSubscriptionRevision: input.expectedSubscriptionRevision,
-        kind: "cancel_at_period_end",
+        kind: kind === "cancel" ? "cancel_at_period_end" : "undo_cancel_at_period_end",
+        ...(predecessorCommandId === null ? {} : { predecessorCommandId }),
       }),
     )
     .digest("hex");
 }
 export async function prepareCancellation(
   input: PrepareCancellationInput,
+  kind: "cancel" | "resume" = "cancel",
 ): Promise<BillingSubscriptionCommand> {
   return writeTransaction(async (tx) => {
     const locked = await lockActor(tx, input);
-    const digest = intentDigest(input);
     const [existing] = await tx
       .select()
       .from(billingSubscriptionCommands)
@@ -159,12 +165,22 @@ export async function prepareCancellation(
       )
       .for("update");
     if (existing) {
-      if (existing.kind !== "cancel" || existing.request_digest !== digest)
+      if (
+        existing.kind !== kind ||
+        existing.request_digest !==
+          intentDigest(input, kind, existing.schedule_predecessor_command_id)
+      )
         reject("idempotency_intent_changed");
       return existing;
     }
     const source = await currentSource(tx, input, locked);
-    if (source.cancel_at_period_end) reject("already_scheduled_without_this_command");
+    const predecessor = await readLatestSubscriptionScheduleCommand(tx, source);
+    if (
+      kind === "resume"
+        ? !source.cancel_at_period_end || predecessor?.kind !== "cancel"
+        : source.cancel_at_period_end || (predecessor !== null && predecessor.kind !== "resume")
+    )
+      reject("schedule_transition_unavailable");
     const [live] = await tx
       .select({ id: billingSubscriptionCommands.id })
       .from(billingSubscriptionCommands)
@@ -184,12 +200,13 @@ export async function prepareCancellation(
         organization_id: input.organizationId,
         requested_by_user_id: input.actorId,
         subscription_id: input.subscriptionId,
-        kind: "cancel",
+        kind,
+        schedule_predecessor_command_id: predecessor?.id ?? null,
         cancellation_dispatch_state: "ready",
         expected_subscription_revision: input.expectedSubscriptionRevision,
         idempotency_key: input.idempotencyKey,
         provider_idempotency_key: `organization-cancellation:${id}`,
-        request_digest: digest,
+        request_digest: intentDigest(input, kind, predecessor?.id ?? null),
         created_at: locked.now,
         updated_at: locked.now,
       })
@@ -198,7 +215,10 @@ export async function prepareCancellation(
     return command;
   });
 }
-export async function readCancellation(input: CancellationIdentity & { commandId: string }) {
+export async function readCancellation(
+  input: CancellationIdentity & { commandId: string },
+  kind: "cancel" | "resume" = "cancel",
+) {
   return writeTransaction(async (tx) => {
     await lockActor(tx, input);
     const [command] = await tx
@@ -208,14 +228,17 @@ export async function readCancellation(input: CancellationIdentity & { commandId
         and(
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, input.commandId),
-          eq(billingSubscriptionCommands.kind, "cancel"),
+          eq(billingSubscriptionCommands.kind, kind),
         ),
       );
     if (!command) reject("command_unavailable");
     return command;
   });
 }
-export async function claimCancellation(input: CancellationIdentity & { commandId: string }) {
+export async function claimCancellation(
+  input: CancellationIdentity & { commandId: string },
+  kind: "cancel" | "resume" = "cancel",
+) {
   return writeTransaction(async (tx) => {
     const locked = await lockActor(tx, input);
     const [command] = await tx
@@ -230,7 +253,7 @@ export async function claimCancellation(input: CancellationIdentity & { commandI
       .for("update");
     if (
       !command ||
-      command.kind !== "cancel" ||
+      command.kind !== kind ||
       command.requested_by_user_id !== input.actorId ||
       command.subscription_id === null ||
       command.expected_subscription_revision === null
@@ -249,6 +272,7 @@ export async function claimCancellation(input: CancellationIdentity & { commandI
       },
       locked,
     );
+    await validatePredecessor(tx, source, command);
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
@@ -320,7 +344,11 @@ export async function finalizeCancellation(
         ),
       )
       .for("update");
-    if (!command || command.kind !== "cancel" || command.requested_by_user_id !== input.actorId)
+    if (
+      !command ||
+      (command.kind !== "cancel" && command.kind !== "resume") ||
+      command.requested_by_user_id !== input.actorId
+    )
       reject("command_unavailable");
     if (command.status === "APPLIED") return command;
     const now = await readPostLockDatabaseNow(tx);
@@ -342,14 +370,17 @@ export async function finalizeCancellation(
       },
       locked,
     );
+    await validatePredecessor(tx, source, command);
     const observed = validatePeriodEndCancellationObservation({
       source,
       organizationCustomerId: locked.organization.customer,
       environment: getCloudAwareEnv(),
       raw,
       observedAt: now,
-      requireScheduled: true,
+      requireScheduled: command.kind === "cancel",
+      allowRetainedCanceledAt: source.canceled_at,
     });
+    if (observed.scheduled !== (command.kind === "cancel")) reject("schedule_effect_unconfirmed");
     const values = {
       provider: source.provider,
       provider_environment: source.provider_environment,
@@ -376,7 +407,7 @@ export async function finalizeCancellation(
       observation: "authoritative_provider_retrieval",
       values: {
         ...values,
-        cancel_at_period_end: true,
+        cancel_at_period_end: command.kind === "cancel",
         canceled_at: observed.canceledAt,
         provider_object_digest: observed.providerObjectDigest,
       },
@@ -422,7 +453,7 @@ export async function listCancellationRecovery(limit: number) {
     .from(billingSubscriptionCommands)
     .where(
       and(
-        eq(billingSubscriptionCommands.kind, "cancel"),
+        inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
         eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
         sql`(${billingSubscriptionCommands.lease_expires_at} IS NULL OR ${billingSubscriptionCommands.lease_expires_at} <= clock_timestamp())`,
       ),
@@ -459,7 +490,7 @@ export async function assertCancellationClaimCurrent(
       command.lease_expires_at <= now
     )
       reject("command_lease_lost");
-    await currentSource(
+    const source = await currentSource(
       tx,
       {
         ...input,
@@ -469,6 +500,7 @@ export async function assertCancellationClaimCurrent(
       },
       locked,
     );
+    await validatePredecessor(tx, source, command);
     if (markDispatch) {
       if (command.cancellation_dispatch_state !== "ready")
         reject("dispatch_already_started_or_unknown");
@@ -517,9 +549,24 @@ export async function rotateCancellationRecovery(command: BillingSubscriptionCom
         and(
           eq(billingSubscriptionCommands.id, command.id),
           eq(billingSubscriptionCommands.organization_id, command.organization_id),
-          eq(billingSubscriptionCommands.kind, "cancel"),
+          inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
           eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
         ),
       );
   });
+}
+
+async function validatePredecessor(
+  tx: DbTransaction,
+  source: import("../schemas/billing-subscriptions").BillingSubscription,
+  command: BillingSubscriptionCommand,
+) {
+  const latest = await readLatestSubscriptionScheduleCommand(tx, source);
+  if (
+    (latest?.id ?? null) !== command.schedule_predecessor_command_id ||
+    (command.kind === "resume"
+      ? !source.cancel_at_period_end || latest?.kind !== "cancel"
+      : source.cancel_at_period_end || (latest !== null && latest.kind !== "resume"))
+  )
+    reject("schedule_predecessor_changed");
 }

@@ -2570,6 +2570,13 @@
       "when": 1796083200010,
       "tag": "0383_subscription_cancellation_result",
       "breakpoints": true
+    },
+    {
+      "idx": 367,
+      "version": "7",
+      "when": 1796083200011,
+      "tag": "0384_subscription_cancellation_undo",
+      "breakpoints": true
     }
   ]
 }

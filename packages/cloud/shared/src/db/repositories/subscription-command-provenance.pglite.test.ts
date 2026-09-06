@@ -18,12 +18,14 @@ beforeAll(async () => {
     "CREATE TABLE organizations(id uuid PRIMARY KEY); CREATE TABLE users(id uuid PRIMARY KEY);",
   );
   await installOrganizationPolicyTestSchema((query) => db.exec(query));
-  const migration = await readFile(
-    new URL("../migrations/0383_subscription_cancellation_result.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of migration.split("--> statement-breakpoint"))
-    if (statement.trim()) await db.exec(statement);
+  for (const name of [
+    "0383_subscription_cancellation_result.sql",
+    "0384_subscription_cancellation_undo.sql",
+  ]) {
+    const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
+    for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim()) await db.exec(statement);
+  }
   ({ subscriptionAuthorityRepository: authority } = await import("./subscription-authority"));
   ({ subscriptionBillingOperationsRepository: operations } = await import(
     "./subscription-billing-operations"

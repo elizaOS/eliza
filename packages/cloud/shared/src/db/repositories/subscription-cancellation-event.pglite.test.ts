@@ -1,5 +1,6 @@
 /** Exercises authenticated-command domain publication through the actual Stripe queue and migrated primary finalizer with only provider transport controlled. */
 import { afterAll, beforeAll, expect, mock, setDefaultTimeout, test } from "bun:test";
+import { z } from "zod";
 import {
   installCancellationTestSchema,
   seedCancellationTestAccount,
@@ -41,11 +42,15 @@ mock.module("../../lib/stripe", () => ({
         }
         return value;
       },
-      update: async () => {
+      update: async (_id: string, params: unknown) => {
         updates++;
-        fixture.provider.cancel_at_period_end = true;
-        fixture.provider.cancel_at = fixture.provider.current_period_end;
-        fixture.provider.canceled_at = Math.floor(Date.now() / 1000);
+        const change = z.object({ cancel_at_period_end: z.boolean() }).strict().parse(params);
+        fixture.provider.cancel_at_period_end = change.cancel_at_period_end;
+        fixture.provider.cancel_at = change.cancel_at_period_end
+          ? fixture.provider.current_period_end
+          : null;
+        if (change.cancel_at_period_end)
+          fixture.provider.canceled_at = Math.floor(Date.now() / 1000);
         return structuredClone(fixture.provider);
       },
     },
@@ -281,4 +286,57 @@ test("receipt lease lost after lifecycle write rolls back the entire publication
         "DROP TRIGGER expire_cancel_event_lease ON billing_subscription_revisions; DROP FUNCTION expire_cancel_event_lease();",
       );
   }
+});
+
+test("cancel undo cancel cycle reconciles delayed opposite payloads through latest immutable command lineage", async () => {
+  await seed();
+  const epoch = Math.floor(Date.now() / 1000);
+  const first = delivery("evt_cyclecancel", epoch);
+  expect(await queue.processStripeEvent(first)).toBe("ack");
+  const undo = await service.submitOrganizationSubscriptionCancellationUndo(
+    { ...fixture.input, expectedSubscriptionRevision: 3, idempotencyKey: crypto.randomUUID() },
+    async () => {},
+  );
+  expect(undo.status).toBe("APPLIED");
+  expect(undo.resultSubscriptionRevision).toBe("4");
+  const delayedScheduled = delivery("evt_cycleundo", epoch + 1);
+  expect(await queue.processStripeEvent(delayedScheduled)).toBe("ack");
+  expect((await state())[0]).toMatchObject({
+    cancel_at_period_end: false,
+    lifecycle_revision: 5,
+    status: "active",
+    notices: 0,
+  });
+  const recancel = await service.submitOrganizationSubscriptionCancellation(
+    { ...fixture.input, expectedSubscriptionRevision: 5, idempotencyKey: crypto.randomUUID() },
+    async () => {},
+  );
+  expect(recancel.status).toBe("APPLIED");
+  expect(recancel.resultSubscriptionRevision).toBe("6");
+  const delayedUnscheduled = delivery("evt_cyclerecancel", epoch + 2);
+  delayedUnscheduled.body.event.data.object.cancel_at_period_end = false;
+  expect(await queue.processStripeEvent(delayedUnscheduled)).toBe("ack");
+  const current = await state();
+  expect(current[0]).toMatchObject({
+    cancel_at_period_end: true,
+    lifecycle_revision: 7,
+    status: "active",
+    notices: 0,
+  });
+  const calls = reads;
+  expect(await queue.processStripeEvent(first)).toBe("ack");
+  expect(await queue.processStripeEvent(delayedScheduled)).toBe("ack");
+  expect(await queue.processStripeEvent(delayedUnscheduled)).toBe("ack");
+  expect(reads).toBe(calls);
+  expect(await state()).toEqual(current);
+  expect(updates).toBe(3);
+});
+test("unowned unscheduled active event remains retained", async () => {
+  await seed(false);
+  const before = await state();
+  const event = delivery("evt_unknownunscheduled");
+  event.body.event.data.object.cancel_at_period_end = false;
+  expect(await queue.processStripeEvent(event)).toBe("retry");
+  expect(await state()).toEqual(before);
+  expect(updates).toBe(0);
 });

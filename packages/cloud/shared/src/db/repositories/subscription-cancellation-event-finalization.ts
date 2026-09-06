@@ -1,4 +1,4 @@
-/** Reconciles only an immutable applied cancellation result with a fresh scheduled provider observation, publishing source, projection and receipt atomically. */
+/** Reconciles only the latest immutable applied cancellation or undo result with a fresh scheduled provider observation, publishing source, projection and receipt atomically. */
 import { and, eq } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import {
@@ -8,7 +8,6 @@ import {
 } from "../../lib/services/stripe-period-end-cancellation";
 import { writeTransaction } from "../helpers";
 import {
-  billingSubscriptionRevisions,
   billingSubscriptions,
   organizationSubscriptionAuthorities,
 } from "../schemas/billing-subscriptions";
@@ -30,25 +29,11 @@ import {
   SUBSCRIPTION_LIFECYCLE_REOBSERVE,
   SUBSCRIPTION_LIFECYCLE_UNSUPPORTED,
 } from "./subscription-lifecycle-finalization";
+import {
+  readLatestSubscriptionScheduleCommand,
+  subscriptionScheduleFields as scheduledFields,
+} from "./subscription-schedule-lineage";
 export const SCHEDULED_CANCELLATION_DISPOSITION = "scheduled_cancellation_finalized";
-const scheduledFields = [
-  "provider",
-  "provider_environment",
-  "stripe_customer_id",
-  "stripe_subscription_id",
-  "stripe_subscription_item_id",
-  "catalog_version",
-  "plan_key",
-  "status",
-  "current_period_start",
-  "current_period_end",
-  "cancel_at_period_end",
-  "canceled_at",
-  "ended_at",
-  "dunning_started_at",
-  "grace_expires_at",
-  "pending_plan_key",
-] as const;
 function rejectConflict(message: string, context: Record<string, unknown>): never {
   return lifecycleFailure(SUBSCRIPTION_LIFECYCLE_REOBSERVE, message, context);
 }
@@ -199,28 +184,9 @@ export async function finalizeCancellationEvent(
       receipt.livemode !== (current.provider_environment === "live")
     )
       cancellationReobserve("receipt_source_mismatch");
-    if (
-      !command ||
-      command.kind !== "cancel" ||
-      command.status !== "APPLIED" ||
-      command.subscription_id !== current.id ||
-      command.result_subscription_id !== current.id ||
-      command.result_subscription_revision === null ||
-      command.result_subscription_revision > current.lifecycle_revision
-    )
-      cancellationReobserve("applied_command_required");
-    const [result] = await tx
-      .select()
-      .from(billingSubscriptionRevisions)
-      .where(
-        and(
-          eq(billingSubscriptionRevisions.organization_id, input.organizationId),
-          eq(billingSubscriptionRevisions.subscription_id, current.id),
-          eq(billingSubscriptionRevisions.revision, command.result_subscription_revision),
-        ),
-      );
-    if (!result || result.provider_object_digest !== command.provider_response_digest)
-      cancellationReobserve("command_result_unavailable");
+    const latest = await readLatestSubscriptionScheduleCommand(tx, current);
+    if (!command || !latest || latest.id !== command.id)
+      cancellationReobserve("latest_schedule_command_required");
     if (
       current.last_provider_event_created_at !== null &&
       input.eventCreatedAt < current.last_provider_event_created_at
@@ -232,22 +198,18 @@ export async function finalizeCancellationEvent(
       organizationCustomerId: organization.stripe_customer_id,
       environment: getCloudAwareEnv(),
     });
-    for (const field of scheduledFields) {
-      const a = current[field],
-        b = result[field];
-      if (a instanceof Date && b instanceof Date ? a.getTime() !== b.getTime() : a !== b)
-        cancellationReobserve("command_result_source_mismatch");
-    }
     const observed = validatePeriodEndCancellationObservation({
       source: current,
       organizationCustomerId: organization.stripe_customer_id,
       environment: getCloudAwareEnv(),
       raw: input.raw,
       observedAt: databaseNow,
-      requireScheduled: true,
+      requireScheduled: latest.kind === "cancel",
+      allowRetainedCanceledAt: current.canceled_at,
     });
     if (
-      current.cancel_at_period_end !== true ||
+      observed.scheduled !== (latest.kind === "cancel") ||
+      current.cancel_at_period_end !== observed.scheduled ||
       current.canceled_at?.getTime() !== observed.canceledAt?.getTime()
     )
       cancellationReobserve("command_schedule_mismatch");

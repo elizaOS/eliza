@@ -215,8 +215,7 @@ export async function processStripeEvent(
     ) {
       if (
         event.type === "customer.subscription.updated" &&
-        event.data.object.status === "active" &&
-        event.data.object.cancel_at_period_end === true
+        event.data.object.status === "active"
       ) {
         await reconcileStripeScheduledCancellationLifecycle(delivery.body);
       } else {

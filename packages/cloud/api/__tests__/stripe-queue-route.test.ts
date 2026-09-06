@@ -41,6 +41,13 @@ mock.module("@/lib/services/subscription-notices", () => ({
 
 // The migrated Stripe consumer suite owns terminal reconciliation; these credit/queue
 // contracts exercise retry behavior when that separate collaborator is unavailable.
+mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
+  reconcileStripeScheduledCancellationLifecycle: async () => {
+    throw new Error(
+      "Subscription schedule lifecycle unavailable in legacy fixture",
+    );
+  },
+}));
 mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
   reconcileStripeTerminalLifecycle: async () => {
     throw new Error(

@@ -698,3 +698,50 @@ it("submits a stable cancellation request and polls its result without repeating
     ),
   ).toBe(true);
 });
+
+it("submits a stable undo-cancellation request and polls its result without repeating POST", async () => {
+  const command = {
+    commandId: "30000000-0000-4000-8000-000000000001",
+    subscriptionId: "20000000-0000-4000-8000-000000000001",
+    status: "OUTCOME_UNKNOWN",
+    expectedSubscriptionRevision: "1",
+    resultSubscriptionRevision: null,
+  };
+  const { client, requests } = createClientRecorder({
+    success: true,
+    data: command,
+  });
+  client.setBearerToken("interactive-session");
+  const input = {
+    subscriptionId: command.subscriptionId,
+    expectedSubscriptionRevision: 1,
+    idempotencyKey: "same-request",
+  };
+  expect(
+    await client.submitOrganizationSubscriptionCancellationUndo(input),
+  ).toEqual({ success: true, data: command });
+  expect(
+    await client.readOrganizationSubscriptionCancellationUndo(
+      command.commandId,
+    ),
+  ).toEqual({ success: true, data: command });
+  expect(
+    requests.map((r) => ({ method: r.method, url: r.url, body: r.body })),
+  ).toEqual([
+    {
+      method: "POST",
+      url: "https://cloud.test/api/v1/subscriptions/cancel/undo",
+      body: input,
+    },
+    {
+      method: "GET",
+      url: `https://cloud.test/api/v1/subscriptions/cancel/undo/${command.commandId}`,
+      body: undefined,
+    },
+  ]);
+  expect(
+    requests.every(
+      (r) => r.headers.authorization === "Bearer interactive-session",
+    ),
+  ).toBe(true);
+});

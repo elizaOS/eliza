@@ -49,6 +49,7 @@ beforeAll(async () => {
     "0380_organization_policy_authority.sql",
     "0382_subscription_notice_intents.sql",
     "0383_subscription_cancellation_result.sql",
+    "0384_subscription_cancellation_undo.sql",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${name}`, import.meta.url),
@@ -91,14 +92,18 @@ beforeAll(async () => {
     INSERT INTO organizations(id) VALUES ('${ORGANIZATION_ID}');
     INSERT INTO users(id) VALUES ('${USER_ID}');
     INSERT INTO billing_subscriptions (id, organization_id, provider_environment, stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start, current_period_end, lifecycle_revision, provider_object_digest)
-    VALUES ('${SUBSCRIPTION_ID}', '${ORGANIZATION_ID}', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'canceled', '2026-08-01Z', '2026-09-01Z', 3, '${"a".repeat(64)}');
+    VALUES ('${SUBSCRIPTION_ID}', '${ORGANIZATION_ID}', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'canceled', '2026-08-01Z', '2026-09-01Z', 5, '${"a".repeat(64)}');
     INSERT INTO billing_subscription_revisions (organization_id, subscription_id, revision, source, provider_environment, stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start, current_period_end, cancel_at_period_end, provider_object_digest)
-    VALUES ('${ORGANIZATION_ID}', '${SUBSCRIPTION_ID}', 3, 'webhook', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'canceled', '2026-08-01Z', '2026-09-01Z', false, '${"a".repeat(64)}');
+    VALUES ('${ORGANIZATION_ID}', '${SUBSCRIPTION_ID}', 5, 'webhook', 'test', 'cus_erasure', 'sub_erasure', 'si_erasure', 'plus_monthly', 'v1', 'canceled', '2026-08-01Z', '2026-09-01Z', false, '${"a".repeat(64)}');
     INSERT INTO billing_subscription_revisions (organization_id, subscription_id, revision, source, provider_environment, stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start, current_period_end, cancel_at_period_end, provider_object_digest)
-    SELECT organization_id,id,revision,'reconciliation',provider_environment,stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,plan_key,catalog_version,'active',current_period_start,current_period_end,revision=2,provider_object_digest FROM billing_subscriptions CROSS JOIN (VALUES (1::bigint),(2::bigint)) prior(revision) WHERE id='${SUBSCRIPTION_ID}';
+    SELECT organization_id,id,revision,'reconciliation',provider_environment,stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,plan_key,catalog_version,'active',current_period_start,current_period_end,revision IN (2,4),provider_object_digest FROM billing_subscriptions CROSS JOIN (VALUES (1::bigint),(2::bigint),(3::bigint),(4::bigint)) prior(revision) WHERE id='${SUBSCRIPTION_ID}';
     INSERT INTO billing_subscription_commands(organization_id,subscription_id,requested_by_user_id,kind,expected_subscription_revision,idempotency_key,provider_idempotency_key,request_digest,status,execution_generation,provider_started_at,provider_response_digest,completed_at,result_subscription_id,result_subscription_revision,applied_at)
     VALUES ('${ORGANIZATION_ID}','${SUBSCRIPTION_ID}','${USER_ID}','cancel',1,'erased-cancel','erased-provider-cancel','${"c".repeat(64)}','APPLIED',1,now(),'${"d".repeat(64)}',now(),'${SUBSCRIPTION_ID}',2,now());
-    INSERT INTO subscription_notice_intents(id,organization_id,subscription_id,source_revision) VALUES ('60000000-0000-4000-8000-000000000001','${ORGANIZATION_ID}','${SUBSCRIPTION_ID}',3);
+    INSERT INTO billing_subscription_commands(organization_id,subscription_id,requested_by_user_id,kind,expected_subscription_revision,idempotency_key,provider_idempotency_key,request_digest,status,execution_generation,provider_started_at,provider_response_digest,completed_at,result_subscription_id,result_subscription_revision,applied_at,schedule_predecessor_command_id)
+    SELECT organization_id,subscription_id,requested_by_user_id,'resume',2,'erased-undo','erased-provider-undo',request_digest,'APPLIED',1,now(),provider_response_digest,now(),result_subscription_id,3,now(),id FROM billing_subscription_commands WHERE idempotency_key='erased-cancel';
+    INSERT INTO billing_subscription_commands(organization_id,subscription_id,requested_by_user_id,kind,expected_subscription_revision,idempotency_key,provider_idempotency_key,request_digest,status,execution_generation,provider_started_at,provider_response_digest,completed_at,result_subscription_id,result_subscription_revision,applied_at,schedule_predecessor_command_id)
+    SELECT organization_id,subscription_id,requested_by_user_id,'cancel',3,'erased-recancel','erased-provider-recancel',request_digest,'APPLIED',1,now(),provider_response_digest,now(),result_subscription_id,4,now(),id FROM billing_subscription_commands WHERE idempotency_key='erased-undo';
+    INSERT INTO subscription_notice_intents(id,organization_id,subscription_id,source_revision) VALUES ('60000000-0000-4000-8000-000000000001','${ORGANIZATION_ID}','${SUBSCRIPTION_ID}',5);
     INSERT INTO subscription_notice_attempts(notice_id,organization_id,policy_digest,expires_at) VALUES ('60000000-0000-4000-8000-000000000001','${ORGANIZATION_ID}','${"b".repeat(64)}',now()+interval '1 minute');
     UPDATE organization_subscription_authorities SET state='current', subscription_id='${SUBSCRIPTION_ID}' WHERE organization_id='${ORGANIZATION_ID}';
   `);
@@ -126,10 +131,24 @@ describe("account deletion restrictive-grant terminal absence", () => {
       "SELECT * FROM subscription_notice_attempts",
     );
     const commandsBefore = await getPgliteClientForTests().query(
-      "SELECT * FROM billing_subscription_commands",
+      "SELECT * FROM billing_subscription_commands ORDER BY result_subscription_revision",
     );
     expect(commandsBefore.rows).toEqual([
-      expect.objectContaining({ status: "APPLIED", result_subscription_revision: 2 }),
+      expect.objectContaining({
+        kind: "cancel",
+        status: "APPLIED",
+        result_subscription_revision: 2,
+      }),
+      expect.objectContaining({
+        kind: "resume",
+        status: "APPLIED",
+        result_subscription_revision: 3,
+      }),
+      expect.objectContaining({
+        kind: "cancel",
+        status: "APPLIED",
+        result_subscription_revision: 4,
+      }),
     ]);
     const sourceBefore = await getPgliteClientForTests().query(
       "SELECT * FROM billing_subscriptions",
@@ -157,7 +176,11 @@ describe("account deletion restrictive-grant terminal absence", () => {
       (await getPgliteClientForTests().query("SELECT * FROM billing_subscription_revisions")).rows,
     ).toEqual(revisionsBefore.rows);
     expect(
-      (await getPgliteClientForTests().query("SELECT * FROM billing_subscription_commands")).rows,
+      (
+        await getPgliteClientForTests().query(
+          "SELECT * FROM billing_subscription_commands ORDER BY result_subscription_revision",
+        )
+      ).rows,
     ).toEqual(commandsBefore.rows);
     expect(
       (await getPgliteClientForTests().query("SELECT * FROM organization_subscription_authorities"))

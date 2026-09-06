@@ -536,7 +536,7 @@ export class SubscriptionAuthorityRepository {
       const commandNow = await readPostLockDatabaseNow(tx);
       if (
         !command ||
-        command.kind !== "cancel" ||
+        (command.kind !== "cancel" && command.kind !== "resume") ||
         command.status !== "OUTCOME_UNKNOWN" ||
         command.subscription_id !== input.subscriptionId ||
         command.expected_subscription_revision !== input.expectedRevision ||

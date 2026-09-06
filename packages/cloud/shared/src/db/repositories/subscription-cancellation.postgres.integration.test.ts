@@ -288,4 +288,61 @@ async function waitForPublicationLock() {
       await holder.end();
     }
   });
+  test("tenant-set erasure removes a real cancel undo cancel predecessor chain and retention failure rolls back", async () => {
+    const f = await seed();
+    let revision = 1;
+    let preceding: string | null = null;
+    for (const kind of ["cancel", "resume", "cancel"] as const) {
+      const input = {
+        ...f.input,
+        expectedSubscriptionRevision: revision,
+        idempotencyKey: randomUUID(),
+      };
+      const command = await repo.prepareCancellation(input, kind);
+      expect(command.schedule_predecessor_command_id).toBe(preceding);
+      const claim = await repo.claimCancellation({ ...input, commandId: command.id }, kind);
+      await repo.finalizeCancellation(input, claim!, {
+        ...f.provider,
+        cancel_at_period_end: kind === "cancel",
+        cancel_at: kind === "cancel" ? f.provider.current_period_end : null,
+        canceled_at: kind === "cancel" ? Math.floor(Date.now() / 1000) : null,
+      });
+      revision++;
+      preceding = command.id;
+    }
+    const before = (
+      await setup.query(
+        "SELECT * FROM billing_subscription_commands WHERE organization_id=$1 ORDER BY result_subscription_revision",
+        [f.input.organizationId],
+      )
+    ).rows;
+    await setup.query(
+      "CREATE TABLE cancellation_command_retention(command_id uuid REFERENCES billing_subscription_commands(id) ON DELETE RESTRICT)",
+    );
+    await setup.query("INSERT INTO cancellation_command_retention VALUES($1)", [preceding]);
+    await expect(
+      setup.query("DELETE FROM billing_subscription_commands WHERE organization_id=$1", [
+        f.input.organizationId,
+      ]),
+    ).rejects.toThrow();
+    expect(
+      (
+        await setup.query(
+          "SELECT * FROM billing_subscription_commands WHERE organization_id=$1 ORDER BY result_subscription_revision",
+          [f.input.organizationId],
+        )
+      ).rows,
+    ).toEqual(before);
+    await setup.query("DROP TABLE cancellation_command_retention");
+    await setup.query("DELETE FROM billing_subscription_commands WHERE organization_id=$1", [
+      f.input.organizationId,
+    ]);
+    expect(
+      (
+        await setup.query("SELECT id FROM billing_subscription_commands WHERE organization_id=$1", [
+          f.input.organizationId,
+        ])
+      ).rows,
+    ).toEqual([]);
+  });
 });

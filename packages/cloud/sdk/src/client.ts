@@ -549,6 +549,25 @@ export class ElizaCloudClient {
     );
   }
 
+  /** Requires a current organization owner/admin session; undoes a scheduled cancellation before period end. */
+  submitOrganizationSubscriptionCancellationUndo(
+    input: OrganizationSubscriptionCancellationRequest,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/cancel/undo", {
+      json: input,
+    });
+  }
+
+  /** Reads the durable command outcome without repeating a provider mutation. */
+  readOrganizationSubscriptionCancellationUndo(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/cancel/undo/${encodeURIComponent(commandId)}`,
+    );
+  }
+
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {
     return this.v1.requestData<SubscriptionPlansResponse>(
       "GET",

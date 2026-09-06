@@ -512,3 +512,110 @@ test("provider request outliving its lease cannot publish or trigger a second mu
   expect((await service.recoverOrganizationSubscriptionCancellations(5)).applied).toBe(1);
   expect(f.effects).toHaveLength(1);
 });
+
+for (const retained of [false, true]) {
+  test(`cancel undo cancel cycle preserves source lineage with ${retained ? "retained" : "cleared"} canceled_at`, async () => {
+    const f = await fixture();
+    const cancel = await service.submitOrganizationSubscriptionCancellation(
+      f.input,
+      async () => {},
+    );
+    expect(cancel.status).toBe("APPLIED");
+    const scheduledTime = f.provider.canceled_at;
+    update = async (id, params, options) => {
+      f.effects.push({ id, params, options });
+      expect(params).toEqual({ cancel_at_period_end: false });
+      f.provider.cancel_at_period_end = false;
+      f.provider.cancel_at = null;
+      if (!retained) f.provider.canceled_at = null;
+      return structuredClone(f.provider);
+    };
+    const undoInput = {
+      ...f.input,
+      expectedSubscriptionRevision: 2,
+      idempotencyKey: crypto.randomUUID(),
+    };
+    const undo = await service.submitOrganizationSubscriptionCancellationUndo(
+      undoInput,
+      async () => {},
+    );
+    expect(undo.status).toBe("APPLIED");
+    expect(undo.resultSubscriptionRevision).toBe("3");
+    expect(
+      (await repository.readCancellation({ ...f.input, commandId: undo.commandId }, "resume"))
+        .schedule_predecessor_command_id,
+    ).toBe(cancel.commandId);
+    const beforeReplay = await readback(f);
+    expect(
+      await service.submitOrganizationSubscriptionCancellationUndo(undoInput, async () => {}),
+    ).toEqual(undo);
+    expect(await readback(f)).toEqual(beforeReplay);
+    expect(f.provider.canceled_at).toBe(retained ? scheduledTime : null);
+    update = async (id, params, options) => {
+      f.effects.push({ id, params, options });
+      expect(params).toEqual({ cancel_at_period_end: true });
+      f.provider.cancel_at_period_end = true;
+      f.provider.cancel_at = f.provider.current_period_end;
+      f.provider.canceled_at = Math.floor(Date.now() / 1000);
+      return structuredClone(f.provider);
+    };
+    const recancel = await service.submitOrganizationSubscriptionCancellation(
+      { ...f.input, expectedSubscriptionRevision: 3, idempotencyKey: crypto.randomUUID() },
+      async () => {},
+    );
+    expect(recancel.status).toBe("APPLIED");
+    expect(recancel.resultSubscriptionRevision).toBe("4");
+    expect(f.effects).toHaveLength(3);
+    expect(
+      (await repository.readCancellation({ ...f.input, commandId: recancel.commandId }))
+        .schedule_predecessor_command_id,
+    ).toBe(undo.commandId);
+    const latest = await readback(f);
+    expect(
+      await service.submitOrganizationSubscriptionCancellation(f.input, async () => {}),
+    ).toEqual(cancel);
+    expect(await readback(f)).toEqual(latest);
+  });
+}
+test("undo refuses an unrelated provider cancellation timestamp without publishing", async () => {
+  const f = await fixture();
+  await service.submitOrganizationSubscriptionCancellation(f.input, async () => {});
+  const before = await readback(f);
+  update = async (id, params, options) => {
+    f.effects.push({ id, params, options });
+    f.provider.cancel_at_period_end = false;
+    f.provider.cancel_at = null;
+    f.provider.canceled_at = f.provider.canceled_at! - 1;
+    return structuredClone(f.provider);
+  };
+  expect(
+    (
+      await service.submitOrganizationSubscriptionCancellationUndo(
+        { ...f.input, expectedSubscriptionRevision: 2, idempotencyKey: crypto.randomUUID() },
+        async () => {},
+      )
+    ).status,
+  ).toBe("OUTCOME_UNKNOWN");
+  expect(await readback(f)).toEqual(before);
+});
+test("undo cannot activate an unscheduled or expired subscription", async () => {
+  const f = await fixture();
+  await expect(
+    service.submitOrganizationSubscriptionCancellationUndo(f.input, async () => {}),
+  ).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELLATION_CONFLICT" });
+  expect(f.effects).toHaveLength(0);
+  await service.submitOrganizationSubscriptionCancellation(f.input, async () => {});
+  await client
+    .getPgliteClientForTests()
+    .query(
+      "UPDATE billing_subscriptions SET current_period_end=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [f.input.subscriptionId],
+    );
+  await expect(
+    service.submitOrganizationSubscriptionCancellationUndo(
+      { ...f.input, expectedSubscriptionRevision: 2, idempotencyKey: crypto.randomUUID() },
+      async () => {},
+    ),
+  ).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELLATION_CONFLICT" });
+  expect(f.effects).toHaveLength(1);
+});

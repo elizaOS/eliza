@@ -292,7 +292,9 @@ export class SubscriptionBillingOperationsRepository {
               "OUTCOME_UNKNOWN",
               "SUCCEEDED",
             ]),
-            input.kind === "cancel" ? sql`true` : eq(billingSubscriptionCommands.kind, "cancel"),
+            ["cancel", "resume"].includes(input.kind)
+              ? sql`true`
+              : inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
           ),
         )
         .limit(1);
@@ -377,7 +379,7 @@ export class SubscriptionBillingOperationsRepository {
   }): Promise<BillingSubscriptionCommand | null> {
     return writeTransaction(async (tx) => {
       const existing = await this.lockCommand(tx, input.organizationId, input.commandId);
-      if (!existing || existing.kind === "cancel") return null;
+      if (!existing || existing.kind === "cancel" || existing.kind === "resume") return null;
       if (
         existing.status === "OUTCOME_UNKNOWN" &&
         existing.state_revision === input.expectedStateRevision + 1 &&
@@ -430,7 +432,7 @@ export class SubscriptionBillingOperationsRepository {
       invalid("Failed resolution requires an error code", "errorCode");
     return writeTransaction(async (tx) => {
       const existing = await this.lockCommand(tx, input.organizationId, input.commandId);
-      if (!existing || existing.kind === "cancel") return null;
+      if (!existing || existing.kind === "cancel" || existing.kind === "resume") return null;
       if (
         existing.status === input.outcome &&
         existing.state_revision === input.expectedStateRevision + 1 &&

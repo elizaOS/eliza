@@ -10,6 +10,7 @@ export async function installCancellationTestSchema(execute: (query: string) => 
   for (const name of [
     "0382_subscription_notice_intents.sql",
     "0383_subscription_cancellation_result.sql",
+    "0384_subscription_cancellation_undo.sql",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     for (const statement of migration.split("--> statement-breakpoint"))
