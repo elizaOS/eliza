@@ -9,8 +9,9 @@
  * React-free `./plugin` subpath so UI imports never reach the Node agent.
  */
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
 import { readJsonFile } from "@elizaos/core/atomic-json";
@@ -238,21 +239,94 @@ async function importModule<T>(specifier: string): Promise<T> {
   }
 }
 
+function isOptionalEntrypointAbsent(specifier: string): boolean {
+  const parts = specifier.split("/");
+  const packageName = parts
+    .slice(0, specifier.startsWith("@") ? 2 : 1)
+    .join("/");
+  const subpath = `.${specifier.slice(packageName.length)}`;
+  const searchPaths = createRequire(import.meta.url).resolve.paths(packageName);
+  if (!searchPaths) return false;
+  for (const searchPath of searchPaths) {
+    let manifest: { exports?: unknown };
+    try {
+      manifest = JSON.parse(
+        fs.readFileSync(
+          path.join(searchPath, packageName, "package.json"),
+          "utf8",
+        ),
+      );
+    } catch (error) {
+      // error-policy:J3 Only a missing manifest permits searching the next package location.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      )
+        continue;
+      throw new ElizaError("Failed to inspect app package metadata", {
+        code: "APP_MODULE_RESOLUTION_FAILED",
+        context: {
+          specifier,
+          manifestPath: path.join(searchPath, packageName, "package.json"),
+        },
+        cause: error,
+      });
+    }
+    if (subpath === ".") return false;
+    const exports = manifest.exports;
+    if (exports === undefined || exports === null) return true;
+    if (typeof exports !== "object" || Array.isArray(exports)) return true;
+    if (Object.hasOwn(exports, subpath))
+      return Reflect.get(exports, subpath) === null;
+    const pattern = Object.keys(exports)
+      .filter((key) => {
+        const star = key.indexOf("*");
+        return (
+          star !== -1 &&
+          subpath.startsWith(key.slice(0, star)) &&
+          subpath.endsWith(key.slice(star + 1)) &&
+          subpath.length >= key.length - 1
+        );
+      })
+      .sort(
+        (left, right) =>
+          right.indexOf("*") - left.indexOf("*") || right.length - left.length,
+      )[0];
+    return pattern === undefined || Reflect.get(exports, pattern) === null;
+  }
+  return true;
+}
+
 async function importOptionalModule<T>(specifier: string): Promise<T | null> {
   try {
-    import.meta.resolve(specifier);
+    const resolved = import.meta.resolve(specifier);
+    // Node resolves legacy subpaths to URLs even when their files do not exist.
+    if (
+      resolved.startsWith("file:") &&
+      fs.statSync(fileURLToPath(resolved), { throwIfNoEntry: false }) ===
+        undefined &&
+      isOptionalEntrypointAbsent(specifier)
+    )
+      return null;
   } catch (cause) {
     // error-policy:J3 only resolution absence makes an optional entrypoint unavailable.
     if (
-      cause instanceof Error &&
+      typeof cause === "object" &&
+      cause !== null &&
       "code" in cause &&
       [
         "ERR_MODULE_NOT_FOUND",
         "MODULE_NOT_FOUND",
         "ERR_PACKAGE_PATH_NOT_EXPORTED",
       ].includes(String(cause.code))
-    )
-      return null;
+    ) {
+      // Bun reports missing export targets and absent optional subpaths alike.
+      // A declared entrypoint must load or fail, never select another implementation.
+      if (isOptionalEntrypointAbsent(specifier)) return null;
+      return importModule<T>(specifier);
+    }
     throw new ElizaError("Failed to resolve an app package module", {
       code: "APP_MODULE_RESOLUTION_FAILED",
       context: { specifier },
