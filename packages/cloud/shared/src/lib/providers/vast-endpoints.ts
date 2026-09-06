@@ -5,6 +5,7 @@
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { getVastApiModelId, isVastNativeModel, VAST_NATIVE_MODELS } from "../models";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { getProviderKey } from "./provider-env";
 
 export interface VastEndpointConfig {
@@ -16,6 +17,15 @@ export interface VastEndpointConfig {
 }
 
 type EnvReader = (name: string) => string | null;
+
+function readVastConfiguration(name: string): string | null {
+  // JSON maps contain model names and URLs, not just credentials. Filtering
+  // their whole value as a provider key can hide invalid configured maps.
+  if (name === "VAST_ENDPOINTS_JSON" || name === "VAST_FALLBACK_MODEL_MAP_JSON") {
+    return getCloudAwareEnv()[name]?.trim() || null;
+  }
+  return getProviderKey(name);
+}
 
 const EndpointEntrySchema = z.union([
   z.string().min(1),
@@ -110,7 +120,7 @@ function readJsonEndpoint(
 
 export function resolveVastEndpointConfig(
   model: string,
-  reader: EnvReader = getProviderKey,
+  reader: EnvReader = readVastConfiguration,
 ): VastEndpointConfig | null {
   if (!isVastNativeModel(model)) return null;
 
@@ -156,13 +166,13 @@ export function resolveVastEndpointConfig(
   };
 }
 
-export function hasAnyVastProviderConfigured(reader: EnvReader = getProviderKey): boolean {
+export function hasAnyVastProviderConfigured(reader: EnvReader = readVastConfiguration): boolean {
   return VAST_NATIVE_MODELS.some((model) => resolveVastEndpointConfig(model.id, reader));
 }
 
 export function hasDedicatedVastEndpointConfigured(
   model: string,
-  reader: EnvReader = getProviderKey,
+  reader: EnvReader = readVastConfiguration,
 ): boolean {
   const config = resolveVastEndpointConfig(model, reader);
   return Boolean(config && config.source !== "global");
@@ -170,7 +180,7 @@ export function hasDedicatedVastEndpointConfigured(
 
 export function resolveVastFallbackModel(
   model: string,
-  reader: EnvReader = getProviderKey,
+  reader: EnvReader = readVastConfiguration,
 ): string | null {
   if (!isVastNativeModel(model)) return null;
   const rawMap = parseConfiguredMap(
