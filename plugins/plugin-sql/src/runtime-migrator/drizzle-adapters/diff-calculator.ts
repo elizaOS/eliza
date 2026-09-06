@@ -15,55 +15,7 @@ import type {
   SchemaSnapshot,
   SchemaUniqueConstraint,
 } from "../types";
-
-/**
- * Normalize SQL types for comparison
- * Handles equivalent type variations between introspected DB and schema definitions
- */
-function normalizeType(type: string | undefined): string {
-  if (!type) return "";
-
-  const normalized = type.toLowerCase().trim();
-
-  // Handle timestamp variations
-  if (normalized === "timestamp without time zone" || normalized === "timestamp with time zone") {
-    return "timestamp";
-  }
-
-  // Handle serial vs integer with identity
-  // serial is essentially integer with auto-increment
-  if (normalized === "serial") {
-    return "integer";
-  }
-  if (normalized === "bigserial") {
-    return "bigint";
-  }
-  if (normalized === "smallserial") {
-    return "smallint";
-  }
-
-  // Handle numeric/decimal equivalence
-  if (normalized.startsWith("numeric") || normalized.startsWith("decimal")) {
-    // Extract precision and scale if present
-    const match = normalized.match(/\((\d+)(?:,\s*(\d+))?\)/);
-    if (match) {
-      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ""})`;
-    }
-    return "numeric";
-  }
-
-  // Handle varchar/character varying
-  if (normalized.startsWith("character varying")) {
-    return normalized.replace("character varying", "varchar");
-  }
-
-  // Handle text array variations
-  if (normalized === "text[]" || normalized === "_text") {
-    return "text[]";
-  }
-
-  return normalized;
-}
+import { normalizeType } from "./type-normalization";
 
 /**
  * Helper function to compare two index definitions
