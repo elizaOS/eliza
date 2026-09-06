@@ -6,6 +6,7 @@ import {
   type BillingProviderPlan,
   type BillingProviderScope,
   createGenericBillingProvider,
+  type DurableCustomerDeletionIntent,
   type DurableProviderIntent,
 } from "./generic-billing-provider";
 
@@ -87,6 +88,15 @@ function fixture(binding = merchant) {
     customerFailure: false,
     customerMissing: false,
     deletedCustomer: false,
+    wrongAccountId: false,
+    customerDeleteResponse: "normal" as
+      | "normal"
+      | "lost"
+      | "present"
+      | "missing"
+      | "wrong_id"
+      | "readback_present"
+      | "readback_missing",
     contradictoryTombstone: false,
     credentialLivemode: false,
     wrongCustomerId: false,
@@ -245,7 +255,7 @@ function fixture(binding = merchant) {
         result = { object: "balance", livemode: state.credentialLivemode };
       else if (url.pathname === "/v1/accounts/acct_one")
         result = {
-          id: "acct_one",
+          id: state.wrongAccountId ? "acct_other" : "acct_one",
           charges_enabled: true,
           payouts_enabled: true,
           details_submitted: true,
@@ -287,6 +297,21 @@ function fixture(binding = merchant) {
             { error: { type: "api_error", message: "controlled unavailability" } },
             { status: 503 },
           );
+        if (method === "DELETE") {
+          if (state.customerDeleteResponse === "present")
+            return Response.json({ id: "cus_one", object: "customer", deleted: false });
+          if (state.customerDeleteResponse === "missing") return Response.json(null);
+          if (state.customerDeleteResponse === "wrong_id")
+            return Response.json({ id: "cus_other", object: "customer", deleted: true });
+          if (state.customerDeleteResponse !== "readback_present") state.deletedCustomer = true;
+          if (state.customerDeleteResponse === "readback_missing") state.customerMissing = true;
+          if (state.customerDeleteResponse === "lost")
+            return Response.json(
+              { error: { type: "api_error", message: "Customer deleted but response lost" } },
+              { status: 503 },
+            );
+          return Response.json({ id: "cus_one", object: "customer", deleted: true });
+        }
         result = state.deletedCustomer
           ? {
               id: state.wrongCustomerId ? "cus_other" : "cus_one",
@@ -1656,4 +1681,162 @@ test("ambiguous resume replay keeps its original endpoint, body and idempotency 
   f.state.livemode = true;
   await expect(f.provider.replayPausedSubscriptionResume(scope, input, intent)).rejects.toThrow();
   expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(3);
+});
+
+describe("bound customer deletion", () => {
+  function setup() {
+    const f = fixture();
+    const provider = createGenericBillingProvider(f.stripe, merchant, {
+      async resolveBinding(input) {
+        return input.objectType === "customer" &&
+          input.objectId === "cus_one" &&
+          input.merchantId === merchant.merchantId &&
+          input.providerAccountId === merchant.stripeAccountId &&
+          !input.livemode
+          ? { appId: scope.appId, billingAccountId: scope.billingAccountId, scopeId: null }
+          : null;
+      },
+    });
+    const deletion: DurableCustomerDeletionIntent = {
+      ...intent,
+      kind: "account_deletion_customer",
+      closure: {
+        customerBindingId: "00000000-0000-4000-8000-000000000001",
+        initiatingRequestId: "00000000-0000-4000-8000-000000000002",
+        deletionRequestDigest: "b".repeat(64),
+        appId: scope.appId,
+        billingAccountId: scope.billingAccountId,
+        merchantId: merchant.merchantId,
+        stripeAccountId: merchant.stripeAccountId,
+        livemode: false,
+        stripeCustomerId: "cus_one",
+      },
+    };
+    return { ...f, provider, deletion };
+  }
+  const deletes = (f: ReturnType<typeof setup>) =>
+    f.requests.filter((request) => request.method === "DELETE");
+  test("requires exact DELETE tombstone and readback under the original durable intent", async () => {
+    const f = setup();
+    const original = structuredClone(f.deletion);
+    let checked = false;
+    const result = await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {
+      expect(f.requests.at(-1)?.path).toBe("/v1/customers/cus_one");
+      expect(deletes(f)).toHaveLength(0);
+      checked = true;
+    });
+    expect(checked).toBe(true);
+    expect(result.value).toEqual({ customerId: "cus_one", status: "deleted" });
+    expect(result.inputDigest).toBe(original.requestDigest);
+    expect(result.providerAccountId).toBe(original.closure.stripeAccountId);
+    expect(f.deletion).toEqual(original);
+    expect(deletes(f)).toHaveLength(1);
+    expect(deletes(f)[0]?.headers.get("idempotency-key")).toBe(original.idempotencyKey);
+    expect(deletes(f)[0]?.headers.get("stripe-account")).toBe(original.closure.stripeAccountId);
+    expect(f.requests.at(-1)?.method).toBe("GET");
+    expect(f.requests.at(-1)?.path).toBe("/v1/customers/cus_one");
+    expect(f.requests.some((request) => request.path === "/v1/customers")).toBe(false);
+  });
+  test("already-deleted customer yields read-only evidence and does not invoke mutation authority", async () => {
+    const f = setup();
+    f.state.deletedCustomer = true;
+    expect(
+      (
+        await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {
+          throw new Error("Mutation callback must not run");
+        })
+      ).value.status,
+    ).toBe("deleted");
+    expect(deletes(f)).toHaveLength(0);
+    expect(f.requests.every((request) => request.method === "GET")).toBe(true);
+  });
+  test("lost response remains ambiguous and retry recovers by read without a second DELETE", async () => {
+    const f = setup();
+    f.state.customerDeleteResponse = "lost";
+    let callbacks = 0;
+    const authorize = async () => {
+      callbacks++;
+    };
+    await expect(
+      f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, authorize),
+    ).rejects.toThrow("response lost");
+    expect(deletes(f)).toHaveLength(1);
+    expect(
+      (await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, authorize)).value.status,
+    ).toBe("deleted");
+    expect(deletes(f)).toHaveLength(1);
+    expect(callbacks).toBe(1);
+  });
+  test("revoked or missing execution authority cannot dispatch DELETE", async () => {
+    const f = setup();
+    await expect(
+      f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {
+        throw new Error("Deletion phase lease revoked");
+      }),
+    ).rejects.toThrow("lease revoked");
+    await expect(
+      f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, undefined as never),
+    ).rejects.toMatchObject({ code: "BILLING_PROVIDER_AUTHORITY" });
+    expect(deletes(f)).toHaveLength(0);
+  });
+  test("foreign closure tuple and provider customer or account identity cannot dispatch", async () => {
+    for (const change of [
+      { stripeCustomerId: "cus_other" },
+      { stripeAccountId: "acct_other" },
+      { livemode: true },
+      { appId: "other-app" },
+      { billingAccountId: "other-account" },
+      { merchantId: "other-merchant" },
+    ]) {
+      const f = setup();
+      f.deletion.closure = { ...f.deletion.closure, ...change };
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toMatchObject({ code: "BILLING_PROVIDER_CLOSURE" });
+      expect(f.requests).toHaveLength(0);
+    }
+    for (const field of ["wrongCustomerId", "wrongAccountId", "foreign", "livemode"] as const) {
+      const f = setup();
+      f.state[field] = true;
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow();
+      expect(deletes(f)).toHaveLength(0);
+    }
+  });
+  test("refreshes credential mode even after this provider cached a prior valid read", async () => {
+    const f = setup();
+    await f.provider.inspectBoundCustomer(scope, "cus_one");
+    f.state.credentialLivemode = true;
+    f.state.deletedCustomer = true;
+    await expect(
+      f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+    ).rejects.toMatchObject({ code: "BILLING_PROVIDER_MODE" });
+    expect(deletes(f)).toHaveLength(0);
+  });
+  test("non-tombstone, missing, foreign deletion responses and unconfirmed readbacks fail", async () => {
+    for (const response of [
+      "present",
+      "missing",
+      "wrong_id",
+      "readback_present",
+      "readback_missing",
+    ] as const) {
+      const f = setup();
+      f.state.customerDeleteResponse = response;
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow();
+      expect(deletes(f)).toHaveLength(1);
+    }
+    for (const field of ["customerMissing", "customerFailure", "contradictoryTombstone"] as const) {
+      const f = setup();
+      f.state[field] = true;
+      if (field === "contradictoryTombstone") f.state.deletedCustomer = true;
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow();
+      expect(deletes(f)).toHaveLength(0);
+    }
+  });
 });

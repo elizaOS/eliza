@@ -22,6 +22,22 @@ export interface DurableProviderIntent {
   requestDigest: string;
 }
 
+/** Server-owned journal intent for one original customer closure; neither this tuple nor provider evidence grants phase authority. */
+export interface DurableCustomerDeletionIntent extends DurableProviderIntent {
+  kind: "account_deletion_customer";
+  closure: {
+    customerBindingId: string;
+    initiatingRequestId: string;
+    deletionRequestDigest: string;
+    appId: string;
+    billingAccountId: string;
+    merchantId: string;
+    stripeAccountId: string;
+    livemode: boolean;
+    stripeCustomerId: string;
+  };
+}
+
 export interface BillingProviderPlan {
   planRevisionId: string;
   priceId: string;

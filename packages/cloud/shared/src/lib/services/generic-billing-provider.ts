@@ -26,6 +26,7 @@ import {
   type BillingProviderTrialClaim,
   type BillingProviderUpdatePreview,
   type BillingProviderUpdateRequest,
+  type DurableCustomerDeletionIntent,
   type DurableProviderIntent,
   GENERIC_BILLING_STRIPE_API_VERSION,
 } from "./generic-billing-provider-types";
@@ -282,19 +283,19 @@ export function createGenericBillingProvider(
       ...(intent ? { idempotencyKey: intent.idempotencyKey } : {}),
     };
   };
+  const validateCredentialMode = async () => {
+    const balance = parse(
+      z.object({ livemode: z.boolean() }),
+      await stripe.balance.retrieve({}, options()),
+    );
+    requireValue(
+      balance.livemode === merchant.livemode,
+      "MODE",
+      "Stripe credential does not match the stored merchant environment",
+    );
+  };
   let credentialMode: Promise<void> | undefined;
-  const ensureCredentialMode = () =>
-    (credentialMode ??= (async () => {
-      const balance = parse(
-        z.object({ livemode: z.boolean() }),
-        await stripe.balance.retrieve({}, options()),
-      );
-      requireValue(
-        balance.livemode === merchant.livemode,
-        "MODE",
-        "Stripe credential does not match the stored merchant environment",
-      );
-    })());
+  const ensureCredentialMode = () => (credentialMode ??= validateCredentialMode());
   const tags = (scope: BillingProviderScope) => {
     parse(z.object({ scopeId: id, appId: id, billingAccountId: id }), scope);
     return {
@@ -890,6 +891,79 @@ export function createGenericBillingProvider(
         { customerId, status: "present" as const },
         { operation: "inspectBoundCustomer", scope, customerId },
       );
+    },
+    /** Deletes only the retained customer named by an internal closure intent. Ambiguous responses require a later read-only retry; every new DELETE requires fresh server authority. */
+    async deleteBoundCustomer(
+      scope: BillingProviderScope,
+      customerId: string,
+      intent: DurableCustomerDeletionIntent,
+      beforeMutation: () => Promise<void>,
+    ): Promise<BillingProviderObservation<{ customerId: string; status: "deleted" }>> {
+      const boundScope = parse(
+        z.strictObject({ scopeId: id, appId: id, billingAccountId: id }),
+        scope,
+      );
+      const retained = parse(
+        z.strictObject({
+          kind: z.literal("account_deletion_customer"),
+          commandId: id,
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,255}$/),
+          requestDigest: z.string().regex(/^[a-f0-9]{64}$/),
+          closure: z.strictObject({
+            customerBindingId: z.uuid(),
+            initiatingRequestId: z.uuid(),
+            deletionRequestDigest: z.string().regex(/^[a-f0-9]{64}$/),
+            appId: id,
+            billingAccountId: id,
+            merchantId: id,
+            stripeAccountId: z.string().regex(/^acct_[A-Za-z0-9]+$/),
+            livemode: z.boolean(),
+            stripeCustomerId: z.string().regex(/^cus_[A-Za-z0-9]+$/),
+          }),
+        }),
+        intent,
+      );
+      const closure = retained.closure;
+      requireValue(
+        closure.appId === boundScope.appId &&
+          closure.billingAccountId === boundScope.billingAccountId &&
+          closure.merchantId === merchant.merchantId &&
+          closure.stripeAccountId === merchant.stripeAccountId &&
+          closure.livemode === merchant.livemode &&
+          closure.stripeCustomerId === customerId,
+        "CLOSURE",
+        "Customer deletion differs from its original closure identity",
+      );
+      requireValue(
+        typeof beforeMutation === "function",
+        "AUTHORITY",
+        "Customer deletion requires server execution authority",
+      );
+      // Credential mode is deliberately refreshed even when this provider previously cached a valid mode.
+      await validateCredentialMode();
+      await this.verifyMerchant();
+      const before = await this.inspectBoundCustomer(boundScope, customerId);
+      if (before.value.status === "deleted")
+        return observation({ customerId, status: "deleted" }, closure, retained);
+      const requestOptions = options(retained);
+      await beforeMutation();
+      const raw = await stripe.customers.del(customerId, {}, requestOptions);
+      const tombstone = parse(
+        z.strictObject({ id, object: z.literal("customer"), deleted: z.literal(true) }),
+        raw,
+      );
+      requireValue(
+        tombstone.id === customerId,
+        "SCOPE",
+        "Customer deletion returned a different customer",
+      );
+      const after = await this.inspectBoundCustomer(boundScope, customerId);
+      requireValue(
+        after.value.status === "deleted",
+        "CUSTOMER_DELETION",
+        "Customer deletion requires explicit provider readback",
+      );
+      return observation({ customerId, status: "deleted" }, closure, retained);
     },
     async retrieveCustomer(scope: BillingProviderScope, customerId: string) {
       const value = await customer(scope, customerId);
