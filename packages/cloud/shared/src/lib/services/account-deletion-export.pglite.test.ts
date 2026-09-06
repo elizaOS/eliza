@@ -1,6 +1,7 @@
 /** Executes every explicit portable-export join against isolated real PGlite tables. */
 
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
@@ -8,6 +9,15 @@ process.env.NODE_ENV = "test";
 mock.module("../../db/account-deletion-foreign-key-policy", () => ({
   ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256: "f".repeat(64),
   listAccountDeletionForeignKeys: () => [
+    ...["organization_policy_audit", "organization_subscription_authorities"].map(
+      (sourceTable) => ({
+        sourceTable,
+        sourceColumns: "organization_id",
+        targetTable: "organizations",
+        targetColumns: "id",
+        onDelete: "cascade",
+      }),
+    ),
     {
       sourceTable: "apps",
       sourceColumns: "organization_id",
@@ -79,6 +89,9 @@ beforeAll(async () => {
   ]) {
     await dbWrite.execute(statement);
   }
+  await installOrganizationPolicyTestSchema((statement) =>
+    getPgliteClientForTests().exec(statement),
+  );
   for (const statement of [
     `INSERT INTO organizations VALUES
       ('${ORGANIZATION_ID}', 'Owned'),
@@ -107,6 +120,10 @@ beforeAll(async () => {
   const migration = await Bun.file(
     new URL("../../db/migrations/0381_app_billing_registration.sql", import.meta.url),
   ).text();
+  await dbWrite.execute(`UPDATE organization_subscription_authorities SET policy_generation=3`);
+  await dbWrite.execute(`INSERT INTO organization_policy_audit(organization_id,generation,reason,actor,change)
+    VALUES ('${ORGANIZATION_ID}',3,'manual_override','${USER_ID}','{"completionsRpm":7}'),
+      ('${FOREIGN_ORGANIZATION_ID}',3,'foreign_override','${FOREIGN_USER_ID}','{"completionsRpm":99}')`);
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
   }
@@ -159,6 +176,21 @@ test("exports transitive owned rows and excludes cross-tenant rows through real 
     expect.objectContaining({
       owner_organization_id: ORGANIZATION_ID,
       registered_by_user_id: USER_ID,
+    }),
+  ]);
+  expect(table("organization_policy_audit")?.rows).toEqual([
+    expect.objectContaining({
+      organization_id: ORGANIZATION_ID,
+      reason: "manual_override",
+      actor: USER_ID,
+      change: { completionsRpm: 7 },
+    }),
+  ]);
+  expect(table("organization_subscription_authorities")?.rows).toEqual([
+    expect.objectContaining({
+      organization_id: ORGANIZATION_ID,
+      state: "none",
+      subscription_id: null,
     }),
   ]);
   const accounts = table("app_subscriber_accounts")?.rows;

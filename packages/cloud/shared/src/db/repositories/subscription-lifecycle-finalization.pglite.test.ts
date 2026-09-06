@@ -9,12 +9,15 @@ import {
   setDefaultTimeout,
   test,
 } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 setDefaultTimeout(120_000);
+const fixtureNow = new Date();
+const PERIOD_START = new Date(Date.UTC(fixtureNow.getUTCFullYear(), fixtureNow.getUTCMonth(), 1));
+const PERIOD_END = new Date(Date.UTC(fixtureNow.getUTCFullYear(), fixtureNow.getUTCMonth() + 1, 1));
 const ORG_A = "51000000-0000-4000-8000-000000000001";
 const ORG_B = "51000000-0000-4000-8000-000000000002";
 const USER = "52000000-0000-4000-8000-000000000001";
@@ -45,27 +48,7 @@ beforeAll(async () => {
     CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
-  const migration = await readFile(
-    new URL("../migrations/0373_subscription_authority.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
-  const eraseMigration = await readFile(
-    new URL("../migrations/0374_subscription_funding_transaction_uniqueness.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of eraseMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
-  const identityMigration = await readFile(
-    new URL("../migrations/0379_subscription_account_authority.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of identityMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
+  await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
 });
 beforeEach(async () => {
   await getPgliteClientForTests().exec(`
@@ -83,9 +66,9 @@ beforeEach(async () => {
       lifecycle_revision, provider_object_digest
     ) VALUES
       ('${SUB_A}', '${ORG_A}', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa', 'plus_monthly', 'v1', 'active',
-       '2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z', 1, '${DIGEST_A}'),
+       '${PERIOD_START.toISOString()}', '${PERIOD_END.toISOString()}', 1, '${DIGEST_A}'),
       ('${SUB_B}', '${ORG_B}', 'test', 'cus_repob', 'sub_repob', 'si_repob', 'plus_monthly', 'v1', 'active',
-       '2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z', 1, '${DIGEST_A}');
+       '${PERIOD_START.toISOString()}', '${PERIOD_END.toISOString()}', 1, '${DIGEST_A}');
     INSERT INTO billing_subscription_revisions (
       organization_id, subscription_id, revision, source, provider_environment,
       stripe_customer_id, stripe_subscription_id,
@@ -93,8 +76,8 @@ beforeEach(async () => {
       current_period_start, current_period_end, cancel_at_period_end,
       provider_object_digest
     ) VALUES ('${ORG_A}', '${SUB_A}', 1, 'webhook', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa',
-      'plus_monthly', 'v1', 'active', '2026-08-01T00:00:00Z',
-      '2026-09-01T00:00:00Z', false, '${DIGEST_A}');
+      'plus_monthly', 'v1', 'active', '${PERIOD_START.toISOString()}',
+      '${PERIOD_END.toISOString()}', false, '${DIGEST_A}');
     UPDATE organization_subscription_authorities SET subscription_id = '${SUB_A}', state = 'current' WHERE organization_id = '${ORG_A}';
     UPDATE organization_subscription_authorities SET subscription_id = '${SUB_B}', state = 'current' WHERE organization_id = '${ORG_B}';
   `);
@@ -112,7 +95,7 @@ const request = {
 
 const RECEIPT = "54000000-0000-4000-8000-000000000001";
 const LEASE = "55000000-0000-4000-8000-000000000001";
-const EVENT_TIME = new Date("2026-08-25T00:00:00Z");
+const EVENT_TIME = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000);
 
 async function observeTerminal() {
   const current = await authority.findById(ORG_A, SUB_A);
@@ -140,8 +123,20 @@ async function observeTerminal() {
   };
 }
 
+async function policyHistory() {
+  const generation = await getPgliteClientForTests().query<{ value: string }>(
+    `SELECT policy_generation::text value FROM organization_subscription_authorities WHERE organization_id='${ORG_A}'`,
+  );
+  const audit = await getPgliteClientForTests().query(
+    `SELECT * FROM organization_policy_audit WHERE organization_id='${ORG_A}' ORDER BY generation`,
+  );
+  return { generation: generation.rows[0].value, audit: audit.rows };
+}
+let preparedPolicy: Awaited<ReturnType<typeof policyHistory>>;
+
 async function prepare(kind: "subscription" | "invoice" = "subscription") {
   await entitlements.rebuild(request);
+  preparedPolicy = await policyHistory();
   await operations.recordEvent({
     id: RECEIPT,
     organizationId: ORG_A,
@@ -173,6 +168,7 @@ async function prepare(kind: "subscription" | "invoice" = "subscription") {
 }
 
 async function expectUnapplied() {
+  expect(await policyHistory()).toEqual(preparedPolicy);
   expect((await authority.findById(ORG_A, SUB_A))?.lifecycle_revision).toBe(1);
   expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(1);
   expect((await entitlements.find(ORG_A))?.plan_key).toBe("plus_monthly");
@@ -183,6 +179,7 @@ afterEach(async () => {
   await getPgliteClientForTests().exec(`
     DROP TRIGGER IF EXISTS fail_projection ON organization_entitlements;
     DROP TRIGGER IF EXISTS fail_receipt ON billing_subscription_event_receipts;
+    DROP TRIGGER IF EXISTS fail_policy_audit ON organization_policy_audit;
   `);
 });
 
@@ -192,6 +189,24 @@ describe("atomic terminal subscription finalization", () => {
     expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(true);
     const result = await operations.finalizeLifecycleEvent(input);
     expect(result.outcome).toBe("applied");
+    const published = await policyHistory();
+    expect(BigInt(published.generation)).toBe(BigInt(preparedPolicy.generation) + 1n);
+    expect(published.audit).toHaveLength(preparedPolicy.audit.length + 1);
+    expect(published.audit.at(-1)).toMatchObject({
+      reason: "entitlement",
+      actor: "system:subscription",
+      change: { projectionRevision: 2, sourceRevision: 2 },
+    });
+    const { readOrganizationQuotaPolicy } = await import(
+      "../../lib/services/organization-quota-policy"
+    );
+    expect((await readOrganizationQuotaPolicy(ORG_A)).authority).toMatchObject({
+      generation: published.generation,
+      sourceRevision: "2",
+      projectionRevision: "2",
+    });
+    await operations.finalizeLifecycleEvent(input);
+    expect(await policyHistory()).toEqual(published);
     const lifecycle = await authority.findById(ORG_A, SUB_A);
     const projection = await entitlements.find(ORG_A);
     const receipt = await operations.findEventReceipt(ORG_A, RECEIPT);
@@ -232,6 +247,15 @@ describe("atomic terminal subscription finalization", () => {
       CREATE TRIGGER fail_receipt BEFORE UPDATE ON billing_subscription_event_receipts
       FOR EACH ROW EXECUTE FUNCTION reject_receipt();
     `);
+    await expect(operations.finalizeLifecycleEvent(input)).rejects.toThrow();
+    await expectUnapplied();
+  });
+
+  test("audit insertion failure rolls back lifecycle, projection, generation and receipt", async () => {
+    const input = await prepare();
+    await getPgliteClientForTests().exec(
+      `CREATE FUNCTION reject_policy_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected policy audit failure'; END $$; CREATE TRIGGER fail_policy_audit BEFORE INSERT ON organization_policy_audit FOR EACH ROW EXECUTE FUNCTION reject_policy_audit();`,
+    );
     await expect(operations.finalizeLifecycleEvent(input)).rejects.toThrow();
     await expectUnapplied();
   });
@@ -308,12 +332,13 @@ describe("atomic terminal subscription finalization", () => {
             ? { status: "active" as const, canceled_at: null, ended_at: null }
             : mismatch === "digest"
               ? { provider_object_digest: "d".repeat(64) }
-              : { ended_at: new Date("2026-08-24T00:00:00Z") }),
+              : { ended_at: new Date(EVENT_TIME.getTime() - 1000) }),
         },
       });
       const sourceBefore = await authority.findById(ORG_A, SUB_A);
       const projectionBefore = await entitlements.find(ORG_A);
       const receiptBefore = await operations.findEventReceipt(ORG_A, RECEIPT);
+      const policyBefore = await policyHistory();
       await expect(
         operations.finalizeLifecycleEvent({ ...input, expectedSubscriptionRevision: 2 }),
       ).rejects.toMatchObject({ code: "SUBSCRIPTION_LIFECYCLE_REOBSERVE" });
@@ -321,8 +346,11 @@ describe("atomic terminal subscription finalization", () => {
       expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);
       expect(await entitlements.find(ORG_A)).toEqual(projectionBefore);
       expect(await operations.findEventReceipt(ORG_A, RECEIPT)).toEqual(receiptBefore);
+      expect(await policyHistory()).toEqual(policyBefore);
       if (mismatch === "active") {
-        expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(true);
+        await expect(isSubscriptionFundedOrganization(ORG_A)).rejects.toMatchObject({
+          code: "ORGANIZATION_POLICY_UNAVAILABLE",
+        });
       }
     });
   }
@@ -345,6 +373,34 @@ describe("atomic terminal subscription finalization", () => {
     expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);
     expect((await operations.findEventReceipt(ORG_A, RECEIPT))?.status).toBe("applied");
     expect((await entitlements.find(ORG_A))?.plan_key).toBe("free");
+    expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(false);
+  });
+
+  test("finishing an already published terminal observation preserves generation and audit", async () => {
+    const input = await prepare();
+    await authority.advance({
+      organizationId: ORG_A,
+      subscriptionId: SUB_A,
+      expectedRevision: 1,
+      source: "webhook",
+      observation: "authoritative_provider_retrieval",
+      values: input.observation,
+    });
+    await entitlements.rebuild({
+      ...request,
+      sourceSubscriptionRevision: 2,
+      expectedProjectionRevision: 1,
+    });
+    const published = await policyHistory();
+    const result = await operations.finalizeLifecycleEvent({
+      ...input,
+      expectedSubscriptionRevision: 2,
+      expectedProjectionRevision: 2,
+    });
+    expect(result.outcome).toBe("applied");
+    expect(await policyHistory()).toEqual(published);
+    expect((await operations.findEventReceipt(ORG_A, RECEIPT))?.status).toBe("applied");
+    expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);
     expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(false);
   });
 
@@ -378,8 +434,10 @@ describe("atomic terminal subscription finalization", () => {
       sourceSubscriptionRevision: 1,
       expectedProjectionRevision: 2,
     });
+    const replacementPolicy = await policyHistory();
     const replay = await operations.finalizeLifecycleEvent(input);
     expect(replay.outcome).toBe("already_applied");
+    expect(await policyHistory()).toEqual(replacementPolicy);
     expect(await entitlements.find(ORG_A)).toEqual(replacement.entitlement);
     expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(true);
     expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);
@@ -404,7 +462,7 @@ describe("atomic terminal subscription finalization", () => {
     { stripe_customer_id: "cus_other" },
     { stripe_subscription_item_id: "si_other" },
     { plan_key: "pro_monthly" },
-    { current_period_end: new Date("2026-10-01Z") },
+    { current_period_end: new Date(PERIOD_END.getTime() + 86_400_000) },
     { current_period_start: new Date("invalid") },
   ])("mismatched provider/plan/period observation fails closed: %j", async (changes) => {
     const input = await prepare();

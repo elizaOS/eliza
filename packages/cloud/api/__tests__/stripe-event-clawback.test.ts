@@ -97,6 +97,12 @@ mock.module("@/lib/services/ai-billing", () => ({
   createOnFinishHandler: mock(() => () => undefined),
 }));
 
+mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
+mock.module("@/lib/services/provisioning-jobs", () => ({
+  provisioningJobService: {},
+  CONTAINER_BACKED_TARGET_REJECTION_REASON:
+    "agent_job_target_not_container_backed",
+}));
 mock.module("@/lib/services/credits", () => ({
   creditsService: {
     getTransactionByStripePaymentIntent,

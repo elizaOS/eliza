@@ -17,6 +17,8 @@ import {
   appUsers,
   userDatabaseStatusEnum,
 } from "../schemas/apps";
+import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";
+import { organizationPolicyAudit } from "../schemas/organization-policy-audit";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import {
   personalSharedGroupBindings,
@@ -25,6 +27,7 @@ import {
 } from "../schemas/personal-shared-groups";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
+import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 import { usersRepository } from "./users";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -184,6 +187,9 @@ beforeAll(async () => {
         dbWrite as never,
       );
       await apply();
+      await installOrganizationPolicyTestSchema((statement) =>
+        getPgliteClientForTests().exec(statement),
+      );
       const migration = await Bun.file(
         new URL("../migrations/0381_app_billing_registration.sql", import.meta.url),
       ).text();
@@ -252,6 +258,28 @@ describe("UsersRepository.deletePersonalOrganizationAtomically", () => {
   test("erases owned registrations and buyer accounts atomically without deleting another app's registration", async () => {
     const ownApp = "55555555-5555-4555-8555-555555555501";
     const otherApp = "55555555-5555-4555-8555-555555555502";
+    await dbWrite
+      .update(organizationSubscriptionAuthorities)
+      .set({ policy_generation: 7n })
+      .where(eq(organizationSubscriptionAuthorities.organization_id, ORGANIZATION_ID));
+    await dbWrite.insert(organizationPolicyAudit).values({
+      organization_id: ORGANIZATION_ID,
+      generation: 7n,
+      reason: "manual_override",
+      actor: USER_ID,
+      change: { completionsRpm: 7 },
+    });
+    const authorityBefore = await dbWrite
+      .select()
+      .from(organizationSubscriptionAuthorities)
+      .where(eq(organizationSubscriptionAuthorities.organization_id, ORGANIZATION_ID));
+    const auditBefore = await dbWrite
+      .select()
+      .from(organizationPolicyAudit)
+      .where(eq(organizationPolicyAudit.organization_id, ORGANIZATION_ID));
+    expect(authorityBefore).toEqual([
+      expect.objectContaining({ policy_generation: 7n, state: "none", subscription_id: null }),
+    ]);
     await dbWrite.insert(apps).values([
       {
         id: ownApp,
@@ -290,6 +318,18 @@ describe("UsersRepository.deletePersonalOrganizationAtomically", () => {
     expect(
       await dbWrite
         .select()
+        .from(organizationSubscriptionAuthorities)
+        .where(eq(organizationSubscriptionAuthorities.organization_id, ORGANIZATION_ID)),
+    ).toEqual(authorityBefore);
+    expect(
+      await dbWrite
+        .select()
+        .from(organizationPolicyAudit)
+        .where(eq(organizationPolicyAudit.organization_id, ORGANIZATION_ID)),
+    ).toEqual(auditBefore);
+    expect(
+      await dbWrite
+        .select()
         .from(appBillingRegistrations)
         .where(inArray(appBillingRegistrations.app_id, [ownApp, otherApp])),
     ).toHaveLength(2);
@@ -303,6 +343,26 @@ describe("UsersRepository.deletePersonalOrganizationAtomically", () => {
       sql`DELETE FROM account_deletion_restrict_probe WHERE organization_id=${ORGANIZATION_ID}`,
     );
     await usersRepository.deletePersonalOrganizationAtomically(USER_ID, ORGANIZATION_ID);
+    expect(
+      await dbWrite
+        .select()
+        .from(organizationSubscriptionAuthorities)
+        .where(eq(organizationSubscriptionAuthorities.organization_id, ORGANIZATION_ID)),
+    ).toEqual([]);
+    expect(
+      await dbWrite
+        .select()
+        .from(organizationPolicyAudit)
+        .where(eq(organizationPolicyAudit.organization_id, ORGANIZATION_ID)),
+    ).toEqual([]);
+    expect(
+      await dbWrite
+        .select()
+        .from(organizationSubscriptionAuthorities)
+        .where(
+          eq(organizationSubscriptionAuthorities.organization_id, GROUP_OWNER_ORGANIZATION_ID),
+        ),
+    ).toEqual([expect.objectContaining({ state: "none", policy_generation: 0n })]);
     expect(
       await dbWrite
         .select()

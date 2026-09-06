@@ -5,10 +5,10 @@
  * POSTGRES_HOST_AUTH_METHOD=trust -p 55432:5432 postgres:16-alpine`, then run:
  * `SUBSCRIPTION_AUTHORITY_POSTGRES_URL=postgresql://postgres@127.0.0.1:55432/postgres bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts`.
  */
-import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 const databaseUrl = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schemaName = `subscription_authority_${randomUUID().replaceAll("-", "_")}`;
@@ -77,6 +77,8 @@ const copyLifecycleRevision = `INSERT INTO billing_subscription_revisions (
   dunning_started_at, grace_expires_at FROM billing_subscriptions WHERE id=$1`;
 
 async function seedFinalizerSubscription() {
+  const periodStart = new Date(Date.now() - 86_400_000);
+  const periodEnd = new Date(Date.now() + 86_400_000);
   const organizationId = randomUUID();
   const subscriptionId = randomUUID();
   const customerId = `cus_${randomUUID().replaceAll("-", "")}`;
@@ -91,8 +93,17 @@ async function seedFinalizerSubscription() {
       stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key,
       catalog_version, status, current_period_start, current_period_end,
       lifecycle_revision, provider_object_digest)
-     VALUES ($1,$2,'test',$3,$4,$5,'plus_monthly','v1','active','2026-08-01Z','2026-09-01Z',1,$6)`,
-    [subscriptionId, organizationId, customerId, providerSubscriptionId, itemId, DIGEST],
+     VALUES ($1,$2,'test',$3,$4,$5,'plus_monthly','v1','active',$7,$8,1,$6)`,
+    [
+      subscriptionId,
+      organizationId,
+      customerId,
+      providerSubscriptionId,
+      itemId,
+      DIGEST,
+      periodStart,
+      periodEnd,
+    ],
   );
   await setupClient!.query(copyLifecycleRevision, [subscriptionId]);
   await setupClient!.query(
@@ -105,7 +116,15 @@ async function seedFinalizerSubscription() {
     sourceSubscriptionRevision: 1,
     expectedProjectionRevision: 0,
   });
-  return { organizationId, subscriptionId, customerId, providerSubscriptionId, itemId };
+  return {
+    organizationId,
+    subscriptionId,
+    customerId,
+    providerSubscriptionId,
+    itemId,
+    periodStart,
+    periodEnd,
+  };
 }
 
 async function captureTerminalObservation(
@@ -153,11 +172,11 @@ async function captureTerminalObservation(
       catalog_version: "v1",
       plan_key: "plus_monthly" as const,
       status: "canceled" as const,
-      current_period_start: new Date("2026-08-01Z"),
-      current_period_end: new Date("2026-09-01Z"),
+      current_period_start: source.periodStart,
+      current_period_end: source.periodEnd,
       cancel_at_period_end: false,
-      canceled_at: new Date("2026-08-25Z"),
-      ended_at: new Date("2026-08-25Z"),
+      canceled_at: eventTime,
+      ended_at: eventTime,
       dunning_started_at: null,
       grace_expires_at: null,
       pending_plan_key: null,
@@ -166,6 +185,18 @@ async function captureTerminalObservation(
       provider_object_digest: digest,
     },
   };
+}
+
+async function policyHistory(organizationId: string) {
+  const generation = await setupClient!.query<{ value: string }>(
+    "SELECT policy_generation::text value FROM organization_subscription_authorities WHERE organization_id=$1",
+    [organizationId],
+  );
+  const audit = await setupClient!.query(
+    "SELECT * FROM organization_policy_audit WHERE organization_id=$1 ORDER BY generation",
+    [organizationId],
+  );
+  return { generation: generation.rows[0].value, audit: audit.rows };
 }
 
 function finalizationOutcome(input: Parameters<typeof operations.finalizeLifecycleEvent>[0]) {
@@ -185,7 +216,6 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await setupClient.query(`
       CREATE TABLE organizations (id uuid PRIMARY KEY, stripe_customer_id text, account_lifecycle_state text NOT NULL DEFAULT 'active', paid_work_fenced_at timestamptz);
       CREATE TABLE users (id uuid PRIMARY KEY);
-    CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
       CREATE TABLE credit_transactions (
         id uuid PRIMARY KEY,
@@ -193,19 +223,9 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id)
       );
     `);
-    const migrations = await Promise.all(
-      [
-        "../migrations/0373_subscription_authority.sql",
-        "../migrations/0374_subscription_funding_transaction_uniqueness.sql",
-        "../migrations/0379_subscription_account_authority.sql",
-        "../migrations/0380_organization_policy_authority.sql",
-      ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
-    );
-    for (const migration of migrations) {
-      for (const statement of migration.split("--> statement-breakpoint")) {
-        if (statement.trim()) await setupClient.query(statement);
-      }
-    }
+    await installOrganizationPolicyTestSchema(async (query) => {
+      await setupClient!.query(query);
+    });
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [LIVE_ORG]);
@@ -778,14 +798,15 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
   });
   test("two independently blocked finalizers reject the older observation completing second", async () => {
     const source = await seedFinalizerSubscription();
+    const initialPolicy = await policyHistory(source.organizationId);
     const older = await captureTerminalObservation(
       source,
-      new Date("2026-08-25T01:00:00Z"),
+      new Date(Date.now() - 60_000),
       "b".repeat(64),
     );
     const newer = await captureTerminalObservation(
       source,
-      new Date("2026-08-25T02:00:00Z"),
+      new Date(Date.now() - 30_000),
       "c".repeat(64),
     );
     const locker = await connect();
@@ -828,6 +849,9 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         source_subscription_revision: 2,
       });
       expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(false);
+      const committedPolicy = await policyHistory(source.organizationId);
+      expect(BigInt(committedPolicy.generation)).toBe(BigInt(initialPolicy.generation) + 1n);
+      expect(committedPolicy.audit).toHaveLength(initialPolicy.audit.length + 1);
     } finally {
       await locker.query("ROLLBACK");
       await Promise.all(pending);
@@ -835,9 +859,97 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     }
   }, 30_000);
 
+  test("terminal finalization waits behind an old cache writer and rejects its stale admission", async () => {
+    const source = await seedFinalizerSubscription();
+    const input = await captureTerminalObservation(
+      source,
+      new Date(Date.now() - 1000),
+      "f".repeat(64),
+    );
+    const { cache } = await import("../../lib/cache/client");
+    const { isInferenceAdmissionSnapshot } = await import(
+      "../../lib/services/inference-auth-cache"
+    );
+    const { warmInferenceAdmissionSnapshot } = await import(
+      "../../lib/services/inference-admission-snapshot"
+    );
+    const { withOrganizationPolicyAdmission } = await import(
+      "../../lib/services/organization-policy-admission"
+    );
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const snapshots: import("../../lib/services/inference-auth-cache").InferenceAdmissionSnapshot[] =
+      [];
+    const transport = spyOn(cache, "setWithOutcome").mockImplementation(async (_key, value) => {
+      if (!isInferenceAdmissionSnapshot(value))
+        throw new Error("Invalid production snapshot payload");
+      if (snapshots.length === 0) {
+        enter();
+        await released;
+      }
+      snapshots.push(value);
+      return { kind: "written", backend: "redis_native" };
+    });
+    const oldWriter = warmInferenceAdmissionSnapshot(source.organizationId);
+    let finalizer: ReturnType<typeof finalizationOutcome> | undefined;
+    try {
+      await Promise.race([
+        entered,
+        oldWriter.then(() => {
+          throw new Error("Expected paused publication");
+        }),
+      ]);
+      finalizer = finalizationOutcome(input);
+      await waitForFinalizerWaiters(1);
+      expect((await authority.findById(source.organizationId, source.subscriptionId))?.status).toBe(
+        "active",
+      );
+      release();
+      await oldWriter;
+      expect(await finalizer).toMatchObject({ result: { outcome: "applied" } });
+      let admitted = false;
+      await expect(
+        withOrganizationPolicyAdmission(source.organizationId, snapshots[0].authority, async () => {
+          admitted = true;
+        }),
+      ).rejects.toMatchObject({ code: "ORGANIZATION_POLICY_STALE" });
+      expect(admitted).toBe(false);
+      await warmInferenceAdmissionSnapshot(source.organizationId);
+      expect(snapshots).toHaveLength(2);
+      expect(BigInt(snapshots[1].authority.generation)).toBe(
+        BigInt(snapshots[0].authority.generation) + 1n,
+      );
+      await withOrganizationPolicyAdmission(
+        source.organizationId,
+        snapshots[1].authority,
+        async (policy) => {
+          expect(policy.subscriptionFunded).toBe(false);
+          admitted = true;
+        },
+      );
+      expect(admitted).toBe(true);
+    } finally {
+      release();
+      await oldWriter;
+      await finalizer;
+      transport.mockRestore();
+    }
+  }, 30_000);
+
   test("a receipt lease expiring while its worker waits on the organization lock cannot commit", async () => {
     const source = await seedFinalizerSubscription();
-    const input = await captureTerminalObservation(source, new Date("2026-08-25Z"), "d".repeat(64));
+    const initialPolicy = await policyHistory(source.organizationId);
+    const input = await captureTerminalObservation(
+      source,
+      new Date(Date.now() - 60_000),
+      "d".repeat(64),
+    );
     const locker = await connect();
     const pending: Array<ReturnType<typeof finalizationOutcome>> = [];
     try {
@@ -880,6 +992,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         await operations.findEventReceipt(source.organizationId, input.receiptId),
       ).toMatchObject({ status: "processing", applied_subscription_revision: null });
       expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
+      expect(await policyHistory(source.organizationId)).toEqual(initialPolicy);
     } finally {
       await locker.query("ROLLBACK");
       await Promise.all(pending);
@@ -889,7 +1002,12 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
 
   test("stale projection CAS and independently delayed historical replay cannot replace current admission", async () => {
     const source = await seedFinalizerSubscription();
-    const input = await captureTerminalObservation(source, new Date("2026-08-25Z"), "e".repeat(64));
+    const initialPolicy = await policyHistory(source.organizationId);
+    const input = await captureTerminalObservation(
+      source,
+      new Date(Date.now() - 60_000),
+      "e".repeat(64),
+    );
     await expect(
       operations.finalizeLifecycleEvent({ ...input, expectedProjectionRevision: 0 }),
     ).rejects.toMatchObject({ code: "SUBSCRIPTION_ENTITLEMENT_CONFLICT" });
@@ -901,6 +1019,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       { status: "processing" },
     );
     expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
+    expect(await policyHistory(source.organizationId)).toEqual(initialPolicy);
     await operations.finalizeLifecycleEvent(input);
     expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(false);
 
@@ -927,6 +1046,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       sourceSubscriptionRevision: 1,
       expectedProjectionRevision: 2,
     });
+    const replacementPolicy = await policyHistory(source.organizationId);
     const locker = await connect();
     const pending: Array<ReturnType<typeof finalizationOutcome>> = [];
     try {
@@ -943,6 +1063,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         result: { outcome: "already_applied", receipt: { applied_subscription_revision: 2 } },
       });
       expect(await entitlements.find(source.organizationId)).toEqual(replacement.entitlement);
+      expect(await policyHistory(source.organizationId)).toEqual(replacementPolicy);
       expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
       expect(
         await authority.listRevisions(source.organizationId, source.subscriptionId),

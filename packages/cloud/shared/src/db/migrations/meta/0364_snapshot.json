@@ -11971,6 +11971,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "quota_admission_scope": {
+          "name": "quota_admission_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unclassified'"
+        },
         "sandbox_id": {
           "name": "sandbox_id",
           "type": "text",
@@ -34349,6 +34356,13 @@
           "primaryKey": true,
           "notNull": true
         },
+        "limit_override_authorized": {
+          "name": "limit_override_authorized",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "bytes_used": {
           "name": "bytes_used",
           "type": "bigint",
@@ -35642,10 +35656,110 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.organization_policy_audit": {
+      "name": "organization_policy_audit",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "change": {
+          "name": "change",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "organization_policy_audit_generation_idx": {
+          "name": "organization_policy_audit_generation_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "organization_policy_audit_organization_id_organizations_id_fk": {
+          "name": "organization_policy_audit_organization_id_organizations_id_fk",
+          "tableFrom": "organization_policy_audit",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.organization_subscription_authorities": {
       "name": "organization_subscription_authorities",
       "schema": "",
       "columns": {
+        "policy_generation": {
+          "name": "policy_generation",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
         "organization_id": {
           "name": "organization_id",
           "type": "uuid",
@@ -56340,6 +56454,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "1abc57cb-de59-44e4-a767-479b9230334d",
+  "id": "c1c285c5-93d0-48e0-975c-6d1cfd881802",
   "prevId": "3436df5f-98af-49b8-9218-f5bd6d34b0a1"
 }

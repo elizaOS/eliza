@@ -1,9 +1,11 @@
 /** Exercises real registration, consent, primary credential fences and HTTP/SDK readback on PGlite; the HTTP harness supplies a previously authenticated session, not a live Steward login. */
+
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import type { AppEnv } from "../../types/cloud-worker-env";
+import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -61,12 +63,7 @@ beforeAll(async () => {
     CREATE TABLE api_keys(id uuid PRIMARY KEY, name text NOT NULL DEFAULT 'test', description text, key_hash text NOT NULL UNIQUE, key_prefix text NOT NULL DEFAULT 'eliza_mobile_', key_ciphertext text, key_nonce text, key_auth_tag text, key_kms_key_id text, key_kms_key_version integer, organization_id uuid NOT NULL, user_id uuid NOT NULL, source_app_id uuid, rate_limit integer DEFAULT 1000, is_active boolean NOT NULL DEFAULT true, usage_count integer DEFAULT 0, expires_at timestamp, last_used_at timestamp, created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now(), deleted_at timestamp);
     CREATE TABLE credit_transactions(id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), amount numeric, CONSTRAINT credit_transactions_id_org_idx UNIQUE(id,organization_id));
   `);
-  for (const name of [
-    "0373_subscription_authority.sql",
-    "0374_subscription_funding_transaction_uniqueness.sql",
-    "0379_subscription_account_authority.sql",
-  ])
-    await migrate(name);
+  await installOrganizationPolicyTestSchema((query) => pg().exec(query));
   await pg().query("INSERT INTO organizations(id,credit_balance) VALUES ($1,37.5)", [
     historicalOrg,
   ]);

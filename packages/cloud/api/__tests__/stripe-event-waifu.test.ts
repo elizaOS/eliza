@@ -60,6 +60,15 @@ const dbRead = {
   ),
 };
 
+// The migrated Stripe consumer suite owns terminal reconciliation; these credit/queue
+// contracts exercise retry behavior when that separate collaborator is unavailable.
+mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
+  reconcileStripeTerminalLifecycle: async () => {
+    throw new Error(
+      "Terminal reconciliation unavailable in this credit/queue fixture",
+    );
+  },
+}));
 mock.module("@/db/helpers", () => ({ dbRead }));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {

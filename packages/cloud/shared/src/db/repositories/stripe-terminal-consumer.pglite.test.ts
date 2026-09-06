@@ -1,11 +1,15 @@
 /** Exercises the actual Stripe queue consumer and primary lifecycle finalizer on PGlite with only Stripe retrieval controlled at the external boundary. */
 import { afterAll, beforeAll, beforeEach, expect, mock, setDefaultTimeout, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 setDefaultTimeout(120_000);
+const fixtureNow = new Date();
+const EVENT_SECONDS = Math.floor(Date.now() / 1000) - 60;
+const PERIOD_START = new Date(Date.UTC(fixtureNow.getUTCFullYear(), fixtureNow.getUTCMonth(), 1));
+const PERIOD_END = new Date(Date.UTC(fixtureNow.getUTCFullYear(), fixtureNow.getUTCMonth() + 1, 1));
 const ORG_A = "51000000-0000-4000-8000-000000000001";
 const ORG_B = "51000000-0000-4000-8000-000000000002";
 const USER = "52000000-0000-4000-8000-000000000001";
@@ -47,27 +51,7 @@ beforeAll(async () => {
     CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
-  const migration = await readFile(
-    new URL("../migrations/0373_subscription_authority.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
-  const eraseMigration = await readFile(
-    new URL("../migrations/0374_subscription_funding_transaction_uniqueness.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of eraseMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
-  const identityMigration = await readFile(
-    new URL("../migrations/0379_subscription_account_authority.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of identityMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await getPgliteClientForTests().exec(statement);
-  }
+  await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
 });
 beforeEach(async () => {
   retrieve = async () => providerSubscription();
@@ -86,9 +70,9 @@ beforeEach(async () => {
       lifecycle_revision, provider_object_digest
     ) VALUES
       ('${SUB_A}', '${ORG_A}', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa', 'plus_monthly', 'v1', 'active',
-       '2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z', 1, '${DIGEST_A}'),
+       '${PERIOD_START.toISOString()}', '${PERIOD_END.toISOString()}', 1, '${DIGEST_A}'),
       ('${SUB_B}', '${ORG_B}', 'test', 'cus_repob', 'sub_repob', 'si_repob', 'plus_monthly', 'v1', 'active',
-       '2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z', 1, '${DIGEST_A}');
+       '${PERIOD_START.toISOString()}', '${PERIOD_END.toISOString()}', 1, '${DIGEST_A}');
     INSERT INTO billing_subscription_revisions (
       organization_id, subscription_id, revision, source, provider_environment,
       stripe_customer_id, stripe_subscription_id,
@@ -96,8 +80,8 @@ beforeEach(async () => {
       current_period_start, current_period_end, cancel_at_period_end,
       provider_object_digest
     ) VALUES ('${ORG_A}', '${SUB_A}', 1, 'webhook', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa',
-      'plus_monthly', 'v1', 'active', '2026-08-01T00:00:00Z',
-      '2026-09-01T00:00:00Z', false, '${DIGEST_A}');
+      'plus_monthly', 'v1', 'active', '${PERIOD_START.toISOString()}',
+      '${PERIOD_END.toISOString()}', false, '${DIGEST_A}');
     UPDATE organization_subscription_authorities SET subscription_id = '${SUB_A}', state = 'current' WHERE organization_id = '${ORG_A}';
     UPDATE organization_subscription_authorities SET subscription_id = '${SUB_B}', state = 'current' WHERE organization_id = '${ORG_B}';
   `);
@@ -114,11 +98,11 @@ function providerSubscription() {
     livemode: false,
     customer: "cus_repoa",
     status: "canceled",
-    current_period_start: Date.parse("2026-08-01Z") / 1000,
-    current_period_end: Date.parse("2026-09-01Z") / 1000,
+    current_period_start: PERIOD_START.getTime() / 1000,
+    current_period_end: PERIOD_END.getTime() / 1000,
     cancel_at_period_end: false,
-    canceled_at: Date.parse("2026-08-25Z") / 1000,
-    ended_at: Date.parse("2026-08-25Z") / 1000,
+    canceled_at: EVENT_SECONDS,
+    ended_at: EVENT_SECONDS,
     on_behalf_of: null,
     transfer_data: null,
     application_fee_percent: null,
@@ -153,7 +137,7 @@ function providerSubscription() {
     },
   };
 }
-function delivery(id = "evt_terminal", created = Date.parse("2026-08-25Z") / 1000) {
+function delivery(id = "evt_terminal", created = EVENT_SECONDS) {
   const event: import("stripe").default.CustomerSubscriptionUpdatedEvent = JSON.parse(
     JSON.stringify({
       id,
@@ -205,7 +189,7 @@ test("actual consumer ignores stale payload fields and atomically publishes retr
 });
 test("historical applied replay acknowledges its exact receipt without retrieving or changing current authority", async () => {
   const first = delivery("evt_first");
-  const newer = delivery("evt_second", Date.parse("2026-08-26Z") / 1000);
+  const newer = delivery("evt_second", EVENT_SECONDS + 1);
   expect(await processStripeEvent(first)).toBe("ack");
   expect(await processStripeEvent(newer)).toBe("ack");
   const current = await authority.findById(ORG_A, SUB_A);
@@ -217,6 +201,8 @@ test("historical applied replay acknowledges its exact receipt without retrievin
   });
   expect(projection).toMatchObject({ plan_key: "free", source_subscription_revision: 3 });
   const revisions = await authority.listRevisions(ORG_A, SUB_A);
+  const policyAudit = await rows("organization_policy_audit");
+  const association = await rows("organization_subscription_authorities");
   let requests = 0;
   retrieve = async () => {
     requests += 1;
@@ -227,6 +213,8 @@ test("historical applied replay acknowledges its exact receipt without retrievin
   expect(await authority.findById(ORG_A, SUB_A)).toEqual(current);
   expect(await entitlements.find(ORG_A)).toEqual(projection);
   expect(await authority.listRevisions(ORG_A, SUB_A)).toEqual(revisions);
+  expect(await rows("organization_policy_audit")).toEqual(policyAudit);
+  expect(await rows("organization_subscription_authorities")).toEqual(association);
   expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(false);
   const altered = delivery("evt_first");
   altered.body.event.data.object.metadata = { credits: "123" };
@@ -277,7 +265,7 @@ test("unsupported provider observations, merchant context and identity drift nev
     { ...providerSubscription(), status: "active" },
     { ...providerSubscription(), livemode: true },
     { ...providerSubscription(), on_behalf_of: "acct_other" },
-    { ...providerSubscription(), current_period_end: Date.parse("2026-10-01Z") / 1000 },
+    { ...providerSubscription(), current_period_end: (PERIOD_END.getTime() + 86_400_000) / 1000 },
     { ...providerSubscription(), items: { has_more: true, data: [] } },
   ];
   for (const [index, value] of variants.entries()) {
@@ -351,9 +339,7 @@ test("reverse retrieval completion rejects the stale CAS then re-observes withou
   const older = processStripeEvent(delivery("evt_older"));
   await waiting;
   retrieve = async () => providerSubscription();
-  expect(await processStripeEvent(delivery("evt_newer", Date.parse("2026-08-26Z") / 1000))).toBe(
-    "ack",
-  );
+  expect(await processStripeEvent(delivery("evt_newer", EVENT_SECONDS + 1))).toBe("ack");
   unblock(providerSubscription());
   expect(await older).toBe("retry");
   expect(await entitlements.find(ORG_A)).toMatchObject({

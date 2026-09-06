@@ -1,8 +1,10 @@
 /** Proves registration/consent serialization and deletion fences using independent PostgreSQL sessions; requires the hosted subscription PostgreSQL DSN. */
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 const databaseUrl = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schemaName = `app_billing_${randomUUID().replaceAll("-", "")}`;
@@ -63,6 +65,7 @@ describe.skipIf(!databaseUrl)("app billing PostgreSQL concurrency", () => {
       CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),is_active boolean DEFAULT true);
       CREATE TABLE apps(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),created_by_user_id uuid NOT NULL REFERENCES users(id),is_active boolean DEFAULT true,is_approved boolean DEFAULT true,total_users integer DEFAULT 0);
       CREATE TABLE app_users(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,user_id uuid NOT NULL REFERENCES users(id),signup_source text,referral_code_used text,ip_address text,user_agent text,total_requests integer DEFAULT 0,total_credits_used numeric DEFAULT 0,metadata jsonb DEFAULT '{}',first_seen_at timestamp DEFAULT now(),last_seen_at timestamp DEFAULT now(),UNIQUE(app_id,user_id));`);
+    await installOrganizationPolicyTestSchema((query) => setup.query(query));
     const migration = await readFile(
       new URL("../migrations/0381_app_billing_registration.sql", import.meta.url),
       "utf8",
