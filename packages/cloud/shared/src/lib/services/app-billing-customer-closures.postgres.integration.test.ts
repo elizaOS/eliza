@@ -567,6 +567,45 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       ).rows[0].count,
     ).toBe(1);
   });
+  test("closed provider cleanup cancels the real trial before deleting its customer and leaves infrastructure untouched", async () => {
+    const source = await fixtureCustomer();
+    const auth = await deletion(source.identity.actorUserId);
+    await decide(source.scopeId, auth);
+    await decide(source.siblingId, auth);
+    const { reconcileClosedAppBillingProviders } = await import(
+      "./app-billing-deletion-provider-cleanup"
+    );
+    const at = fixture.requests.length;
+    expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("pending");
+    expect(
+      fixture.requests
+        .slice(at)
+        .some(
+          (request) => request.method === "DELETE" && request.path.startsWith("/v1/customers/"),
+        ),
+    ).toBe(false);
+    fixture.loseCustomerDeleteResponse();
+    expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("pending");
+    expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("complete");
+    const writes = fixture.requests.slice(at).filter((request) => request.method === "DELETE");
+    expect(writes).toHaveLength(2);
+    expect(writes[0]?.path.startsWith("/v1/subscriptions/")).toBe(true);
+    expect(writes[1]?.path).toBe(`/v1/customers/${source.binding.stripe_customer_id}`);
+    expect(
+      (
+        await db.query("SELECT status FROM billing_subscriptions WHERE billing_scope_id=$1", [
+          source.scopeId,
+        ])
+      ).rows[0].status,
+    ).toBe("canceled");
+    expect(
+      (await db.query("SELECT stripe_customer_id FROM organizations WHERE id=$1", [org])).rows[0]
+        .stripe_customer_id,
+    ).toBe("cus_infrastructure");
+    const after = fixture.requests.length;
+    expect(await reconcileClosedAppBillingProviders(auth, resolveProvider)).toBe("complete");
+    expect(fixture.requests.length).toBe(after);
+  });
   test("closure intent cannot authorize customer deletion while a trial still runs", async () => {
     const source = await fixtureCustomer();
     const auth = await deletion(source.identity.actorUserId);

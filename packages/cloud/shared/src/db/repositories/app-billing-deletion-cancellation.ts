@@ -186,11 +186,16 @@ function unresolved(command: typeof billingSubscriptionCommands.$inferSelect) {
     command.status === "SUPERSEDED"
   )
     return false;
-  // Portal creation and explicit Checkout expiration have no subscription projection.
+  // Portal, Checkout expiry and customer deletion complete without another subscription projection.
   const payload = command.request_payload;
   return !(
     command.status === "SUCCEEDED" &&
     ((payload?.domain === "account_deletion" && payload.action === "expire_checkout") ||
+      (payload?.domain === "account_deletion" &&
+        payload.action === "delete_customer" &&
+        command.kind === "delete_customer" &&
+        command.provider_result?.kind === "deleted_customer" &&
+        command.provider_result.customerBindingId === payload.customerBindingId) ||
       (payload?.domain === "buyer" &&
         ((command.kind === "portal" &&
           payload.action === "portal" &&
@@ -259,6 +264,22 @@ export const appBillingDeletionCancellationRepository = {
           row.request_payload.requestId === authority.requestId &&
           unresolved(row),
       );
+      // A customer deletion can remain ambiguous after every subscription is canceled.
+      // Let the customer journal reconcile that outcome; it must not block its own retry here.
+      if (
+        candidates.length === 0 &&
+        locked.commands.every(
+          (row) =>
+            !unresolved(row) ||
+            (row.kind === "delete_customer" &&
+              (row.status === "PREPARED" || row.status === "OUTCOME_UNKNOWN") &&
+              row.request_payload?.domain === "account_deletion" &&
+              row.request_payload.action === "delete_customer" &&
+              row.request_payload.billingAccountId === locked.scope.billingAccountId &&
+              row.request_payload.customerId === locked.scope.stripeCustomerId),
+        )
+      )
+        return { kind: "complete" };
       if (locked.commands.some((row) => row.id !== existing?.id && unresolved(row)))
         return { kind: "pending" };
       const subscription = existing
