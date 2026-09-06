@@ -16,7 +16,7 @@ on:
         required: true
         default: staging
         type: choice
-        options: [staging, production]
+        options: [development, staging, production]
       operation:
         description: Terraform operation
         required: true
@@ -69,8 +69,19 @@ jobs:
         env:
           SOURCE_REF: ${{ github.ref }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          TARGET_COMPONENT: ${{ inputs.component }}
         run: |
           set -euo pipefail
+          case "$TARGET_ENVIRONMENT" in
+            development|staging|production) ;;
+            *) echo "::error::Unknown infrastructure environment"; exit 1 ;;
+          esac
+          if [ "$TARGET_ENVIRONMENT" = "development" ]; then
+            case "$TARGET_COMPONENT" in
+              control-plane|apps-shared|apps-data-plane) ;;
+              *) echo "::error::Development support for this component is not configured"; exit 1 ;;
+            esac
+          fi
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             expected_ref="refs/heads/main"
           else
@@ -90,14 +101,12 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TF_IN_AUTOMATION: "true"
-      HCLOUD_TOKEN: ${{ (inputs.component == 'control-plane' || inputs.component == 'prod-ops') && secrets.HCLOUD_TOKEN || secrets.HCLOUD_APPS_TOKEN }}
-      # Pages-domain plans need DNS, Pages, and SSL Certificates access. Prefer
-      # the environment-scoped credential for that root while preserving the
-      # shared credential contract for every other component and as a rollout
-      # fallback where the dedicated secret has not yet been provisioned.
-      CLOUDFLARE_API_TOKEN: ${{ inputs.component == 'pages-domains' && secrets.CLOUDFLARE_PAGES_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      HCLOUD_TOKEN: ${{ secrets[(inputs.component == 'control-plane' || inputs.component == 'prod-ops') && (inputs.environment == 'development' && 'DEVELOPMENT_HCLOUD_TOKEN' || 'HCLOUD_TOKEN') || (inputs.environment == 'development' && 'DEVELOPMENT_HCLOUD_APPS_TOKEN' || 'HCLOUD_APPS_TOKEN')] }}
+      # Select the credential name before lookup: missing tier/root credentials
+      # must not fall back to another tier's token.
+      CLOUDFLARE_API_TOKEN: ${{ secrets[inputs.environment == 'development' && 'DEVELOPMENT_CLOUDFLARE_API_TOKEN' || (inputs.component == 'pages-domains' && 'CLOUDFLARE_PAGES_API_TOKEN' || 'CLOUDFLARE_API_TOKEN')] }}
+      AWS_ACCESS_KEY_ID: ${{ secrets[inputs.environment == 'development' && 'DEVELOPMENT_R2_STATE_ACCESS_KEY_ID' || 'R2_STATE_ACCESS_KEY_ID'] }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets[inputs.environment == 'development' && 'DEVELOPMENT_R2_STATE_SECRET_ACCESS_KEY' || 'R2_STATE_SECRET_ACCESS_KEY'] }}
       TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY: ${{ vars.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY }}
       TERRAFORM_PLAN_SCOPE: ${{ inputs.plan_scope }}
       TF_VAR_environment: ${{ inputs.environment }}
@@ -107,11 +116,11 @@ jobs:
       TF_VAR_elizacloud_ai_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_ssh_public_keys: ${{ inputs.component == 'prod-ops' && format('["{0}"]', vars.PROD_OPS_OPERATOR_SSH_KEY) || inputs.component == 'apps-shared' && format('["{0}"]', vars.APPS_SHARED_OPERATOR_SSH_KEY) || format('["{0}"]', vars.APPS_OPERATOR_SSH_KEY) }}
       TF_VAR_operator_ingress_cidrs: ${{ inputs.component == 'apps-shared' && vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS || vars.OPERATOR_INGRESS_CIDRS }}
-      TF_VAR_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.eliza.app' || 'apps-staging.eliza.app' }}
-      TF_VAR_legacy_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.elizacloud.ai' || 'apps-staging.elizacloud.ai' }}
-      TF_VAR_cloud_api_origin: ${{ inputs.environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
-      TF_VAR_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.elizacloud.ai' || 'headscale-staging.elizacloud.ai' }}
-      TF_VAR_canonical_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.eliza.app' || 'headscale-staging.eliza.app' }}
+      TF_VAR_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.eliza.app' || format('apps-{0}.eliza.app', inputs.environment) }}
+      TF_VAR_legacy_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.elizacloud.ai' || format('apps-{0}.elizacloud.ai', inputs.environment) }}
+      TF_VAR_cloud_api_origin: ${{ inputs.environment == 'production' && 'https://api.eliza.app' || format('https://api-{0}.eliza.app', inputs.environment) }}
+      TF_VAR_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.elizacloud.ai' || format('headscale-{0}.elizacloud.ai', inputs.environment) }}
+      TF_VAR_canonical_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.eliza.app' || format('headscale-{0}.eliza.app', inputs.environment) }}
       # Branch selection is part of the environment contract, not mutable
       # operator inventory. Derive it here so a stale or missing GitHub variable
       # can never bootstrap production from develop (or staging from main).
@@ -281,11 +290,7 @@ jobs:
             prod-ops) directory="packages/cloud/infra/cloud/terraform/hetzner/prod-ops" ;;
             *) echo "::error::Unsupported component: $COMPONENT"; exit 1 ;;
           esac
-          if [ "$COMPONENT" = "apps-shared" ]; then
-            backend="backend.hcl"
-          else
-            backend="backend-${ENVIRONMENT}.hcl"
-          fi
+          backend="backend-${ENVIRONMENT}.hcl"
           echo "directory=$directory" >> "$GITHUB_OUTPUT"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
 
@@ -382,9 +387,9 @@ jobs:
             require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale.eliza.app"
           else
             require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "develop"
-            require_exact TF_VAR_apps_base_domain "$TF_VAR_apps_base_domain" "apps-staging.eliza.app"
-            require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api-staging.eliza.app"
-            require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale-staging.eliza.app"
+            require_exact TF_VAR_apps_base_domain "$TF_VAR_apps_base_domain" "apps-${TARGET_ENVIRONMENT}.eliza.app"
+            require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api-${TARGET_ENVIRONMENT}.eliza.app"
+            require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale-${TARGET_ENVIRONMENT}.eliza.app"
           fi
 
       - name: Format and initialize
@@ -393,6 +398,7 @@ jobs:
           terraform fmt -check -recursive
           terraform init -input=false -lockfile=readonly -backend-config="${{ steps.root.outputs.backend }}"
           terraform validate -no-color
+          if [ -d tests ]; then terraform test -no-color; fi
 
       - name: Plan
         if: inputs.operation == 'plan'

@@ -1,9 +1,9 @@
 variable "environment" {
-  description = "Deployment environment (staging, production)"
+  description = "Deployment environment (development, staging, production)"
   type        = string
   validation {
-    condition     = contains(["staging", "production"], var.environment)
-    error_message = "Environment must be 'staging' or 'production'"
+    condition     = contains(["development", "staging", "production"], var.environment)
+    error_message = "Environment must be 'development', 'staging', or 'production'"
   }
 }
 
@@ -99,8 +99,8 @@ variable "headscale_hostname" {
   description = "Legacy headscale FQDN retained during migration (prod: headscale.elizacloud.ai, staging: headscale-staging.elizacloud.ai)."
   type        = string
   validation {
-    condition     = endswith(var.headscale_hostname, ".elizacloud.ai")
-    error_message = "headscale_hostname must be a subdomain of elizacloud.ai (the zone this module manages)"
+    condition     = var.headscale_hostname == (var.environment == "production" ? "headscale.elizacloud.ai" : "headscale-${var.environment}.elizacloud.ai")
+    error_message = "headscale_hostname must match the selected environment; cross-tier Headscale DNS is forbidden"
   }
 }
 
@@ -108,8 +108,8 @@ variable "canonical_headscale_hostname" {
   description = "Canonical public FQDN for headscale (prod: headscale.eliza.app, staging: headscale-staging.eliza.app). Must match HEADSCALE_PUBLIC_URL."
   type        = string
   validation {
-    condition     = endswith(var.canonical_headscale_hostname, ".eliza.app")
-    error_message = "canonical_headscale_hostname must be a subdomain of eliza.app"
+    condition     = var.canonical_headscale_hostname == (var.environment == "production" ? "headscale.eliza.app" : "headscale-${var.environment}.eliza.app")
+    error_message = "canonical_headscale_hostname must match the selected environment; cross-tier Headscale DNS is forbidden"
   }
 }
 
@@ -117,6 +117,10 @@ variable "deploy_branch" {
   description = "Git branch the host's auto-deploy workflow follows. Staging defaults to 'develop'; production MUST be 'main' (enforced by the validation below) so a staging fix doesn't accidentally land in prod via the wrong branch pin."
   type        = string
   default     = "develop"
+  validation {
+    condition     = var.environment != "development" || var.deploy_branch == "develop"
+    error_message = "Development control planes must follow develop"
+  }
   validation {
     condition     = var.environment != "production" || var.deploy_branch == "main"
     error_message = "deploy_branch must be 'main' when environment='production' — set it explicitly via the workflow to prevent prod tracking develop"
