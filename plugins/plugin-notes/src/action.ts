@@ -124,6 +124,7 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
   return {
     success: true,
     text,
+    transcriptVisibility: "internal",
     modelReplyRequired: true,
     ...(effectReceipts
       ? {

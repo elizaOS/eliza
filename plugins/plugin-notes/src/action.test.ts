@@ -149,6 +149,105 @@ describe("promoted Notes execution", () => {
     });
     expect(deleted.success).toBe(true);
     expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+
+    for (const result of [created, listed, updated, deleted]) {
+      expect(result).toMatchObject({
+        success: true,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+      });
+      expect(result).not.toHaveProperty("userFacingText");
+      expect(result).not.toHaveProperty("verifiedUserFacing");
+      expect(result).not.toHaveProperty("turnComplete");
+    }
+    expect(listed.effectReceipts).toBeUndefined();
+    for (const result of [created, updated, deleted]) {
+      expect(result.effectReceipts).toEqual([
+        expect.objectContaining({
+          outcome: "applied",
+          resource: { kind: "notes.note", id: created.data?.noteId },
+          commit: expect.objectContaining({ kind: "durable" }),
+        }),
+      ]);
+    }
+  });
+
+  it("advances a committed Notes step to queued navigation but still evaluates the final reply", async () => {
+    const runtime = await executorHarness();
+    const useModel = vi.fn().mockResolvedValue({
+      toolCalls: [
+        {
+          id: "create-note",
+          name: "NOTES_CREATE",
+          arguments: {
+            content: "Queue contract QA\nBring the notebook.",
+            eliza_turn_scope: "final",
+          },
+        },
+        {
+          id: "open-notes",
+          name: "VIEWS",
+          arguments: {
+            action: "show",
+            view: "notes",
+            eliza_turn_scope: "final",
+          },
+        },
+      ],
+    });
+    const executeToolCall = vi.fn(async (call: PlannerToolCall) =>
+      call.name === "VIEWS"
+        ? {
+            success: true,
+            text: "Navigation accepted: notes.",
+            transcriptVisibility: "internal" as const,
+            modelReplyRequired: true,
+            turnComplete: false,
+          }
+        : execute(runtime, call),
+    );
+    const evaluate = vi.fn<
+      NonNullable<Parameters<typeof runPlannerLoop>[0]["evaluate"]>
+    >(async ({ trajectory }) =>
+      trajectory.steps.at(-1)?.toolCall?.name === "VIEWS"
+        ? {
+            success: true,
+            decision: "FINISH",
+            thought: "The note is saved and navigation completed.",
+            messageToUser: "Your notebook note is saved, and Notes is open.",
+            effectReceiptIds: trajectory.steps.flatMap((step) =>
+              (step.result?.effectReceipts ?? []).map(
+                (receipt) => receipt.receiptId,
+              ),
+            ),
+          }
+        : {
+            success: false,
+            decision: "NEXT_RECOMMENDED",
+            thought: "Opening Notes remains queued.",
+            recommendedToolCallId: "open-notes",
+          },
+    );
+
+    const result = await runPlannerLoop({
+      runtime: { useModel },
+      context: { id: "notes-navigation", events: [] },
+      executeToolCall,
+      evaluate,
+    });
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+      "NOTES_CREATE",
+      "VIEWS",
+    ]);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(result.finalMessage).toBe(
+      "Your notebook note is saved, and Notes is open.",
+    );
+    expect((await run(runtime, { action: "list" })).data?.notes).toMatchObject([
+      { title: "Queue contract QA", body: "Bring the notebook." },
+    ]);
   });
 
   it.each([
@@ -171,6 +270,9 @@ describe("promoted Notes execution", () => {
       const before = (await run(runtime, { action: "list" })).data?.notes;
       const rejected = await execute(runtime, { name, params });
       expect(rejected.success).toBe(false);
+      expect(rejected.effectReceipts).toBeUndefined();
+      expect(rejected.verifiedUserFacing).not.toBe(true);
+      expect(rejected.turnComplete).not.toBe(true);
       expect(rejected.data?.parameterErrors).toEqual(
         expect.arrayContaining([expect.stringContaining(missing)]),
       );
@@ -191,6 +293,7 @@ describe("promoted Notes execution", () => {
       ["USER"],
     );
     expect(rejected.success).toBe(false);
+    expect(rejected.effectReceipts).toBeUndefined();
     expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
   });
 
@@ -344,6 +447,7 @@ describe("NOTES operation parsing", () => {
     expect(result).toMatchObject({
       success: true,
       text: "You have 1 note.",
+      transcriptVisibility: "internal",
       modelReplyRequired: true,
       data: {
         count: 1,
