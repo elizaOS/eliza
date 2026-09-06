@@ -6866,26 +6866,32 @@ function hasInFlightActionClaim(candidate: string): boolean {
 	// These spans are only classification inputs; the delivered answer remains
 	// complete. Each promise must own its condition, rather than borrowing a
 	// condition from an unrelated sentence or a later promise in the same clause.
-	return (candidate.match(/[^.!?;\n]+/g) ?? []).some((clause) => {
-		const promises = [...clause.matchAll(future)];
-		return promises.some((promise, index) => {
-			const before = index === 0 ? clause.substring(0, promise.index) : "";
-			const after = clause.substring(
-				promise.index + promise[0].length,
-				promises[index + 1]?.index ?? clause.length,
-			);
-			const precedingRequest =
-				/\b(?:if|when|once|after)\s+you\b/i.test(before) &&
-				/\b(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
-					before,
+	return (candidate.match(/(?:"(?:\\.|[^"\\])*"|[^.!?;\n])+/g) ?? []).some(
+		(clause) => {
+			const promises = [...clause.matchAll(future)];
+			return promises.some((promise, index) => {
+				const before = index === 0 ? clause.substring(0, promise.index) : "";
+				const after = clause.substring(
+					promise.index + promise[0].length,
+					promises[index + 1]?.index ?? clause.length,
 				);
-			const followingRequest =
-				/\b(?:if|when|once|after)\s+you\s+(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
-					after,
-				);
-			return !precedingRequest && !followingRequest;
-		});
-	});
+				const precedingRequest =
+					/^\s*(?:if|when|once|after)\s+you\b/i.test(before) &&
+					/\b(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+						before,
+					);
+				const followingRequest =
+					/\b(?:if|when|once|after)\s+you\s+(?:tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b/i.test(
+						after,
+					);
+				const requestedInput =
+					/^\s*(?:(?:just|please)\s+)?(?:say|tell|send|share|provide|give|choose|pick|select|confirm|specify|enter)\b[\s\S]*\band\s*$/i.test(
+						before,
+					);
+				return !precedingRequest && !followingRequest && !requestedInput;
+			});
+		},
+	);
 }
 
 // Gate for surfacing native planner free-text as a forced-tool-exhaustion
