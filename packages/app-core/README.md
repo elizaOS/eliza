@@ -61,6 +61,28 @@ unowned records, supervisor/laptop failure, Bun watch mode and native hosts are 
 this recovery scope. Postgres and in-memory databases retain their normal
 behavior.
 
+## Local development voice
+
+For the full checkout, provide `CARTESIA_API_KEY` securely in the launch
+environment, then run `bun packages/app-core/scripts/dev-ui.mjs --cloud-target=offline`
+from the repository root. The supervisor starts the Cartesia realtime gateway
+after API readiness, configures Vite's same-origin voice proxy and realtime UI
+eligibility, and stops the gateway with the other children. Microphone consent
+and gateway health are still required. No separate voice flags are needed for
+this local development path. Existing explicit flag overrides remain respected.
+
+The default gateway port is `31338`; override it with
+`ELIZA_LOCAL_VOICE_GATEWAY_PORT` when running concurrent checkouts. Check
+`/api/v1/voice/session/health` on the UI origin before testing. Without a Cartesia
+key, the supervisor does not start this gateway. Do not put the key in `VITE_*`
+variables or commit it. This is a loopback development gateway, not a production
+deployment recipe; remote and device voice require separate verification.
+
+For the shared demo branch, use `nubsstableDONOTDELETE` and the same commit as
+the other developer. Configure the local agent's Cerebras credential and Qwen
+small/large text models separately; the voice gateway forwards turns to that
+existing runtime and does not create a second agent or change its text model.
+
 ## Native inference setup
 
 A normal root `bun install` initializes the pinned fused inference submodule,
