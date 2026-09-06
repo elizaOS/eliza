@@ -122,6 +122,12 @@ export function describeCronSchedule(expression: string): string | null {
   if (everyN && hourPart === "*" && domPart === "*" && dowPart === "*") {
     const n = Number.parseInt(everyN[1], 10);
     if (n <= 0) return null;
+    // A minute-field step restarts at the top of every hour, so `*/n` only
+    // produces a uniform n-minute cadence when n divides 60. `*/7` runs
+    // 7,7,7,7,7,7,7,4; `*/45` alternates 15,45; `*/59` and `*/90` both just
+    // fire hourly. Describing those literally would state a cadence the
+    // schedule does not have, so fall back to the neutral phrase instead.
+    if (60 % n !== 0) return null;
     return n === 1 ? "every minute" : `every ${n} minutes`;
   }
   if (
