@@ -1349,6 +1349,113 @@ describe("grounded receipt gate (single declared intent, one verified internal a
 				},
 			),
 		).toBe(true);
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", title: "Piano lesson" },
+				},
+				{ success: false, text: "Unexpected argument 'title'." },
+				{
+					name: "CALENDAR",
+					params: {
+						action: "delete_event",
+						details: { title: "Dentist" },
+						confirm: true,
+					},
+				},
+			),
+		).toBe(false);
+		// Identifiers match as whole tokens only: evt-1 is not carried by evt-12.
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", eventId: "evt-1" },
+				},
+				{ success: false, text: "confirm is required." },
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", query: "evt-12", confirm: true },
+				},
+			),
+		).toBe(false);
+		expect(
+			malformedCallSupersededBy(
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", eventId: "evt-1" },
+				},
+				{ success: false, text: "confirm is required." },
+				{
+					name: "CALENDAR",
+					params: { action: "delete_event", query: "evt-1", confirm: true },
+				},
+			),
+		).toBe(true);
+	});
+
+	it("a refused delete of one event keeps failure authority when a different event id is deleted afterwards", async () => {
+		// Review 2026-09-06: evt-1 refused (confirm required), evt-12 deleted
+		// with confirm — the evaluator's "Deleted." may not ship for evt-1.
+		const h = harness({
+			userMessage: "delete events evt-1 and evt-12",
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "cal-1",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete_event",
+								eventId: "evt-1",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR", "final"),
+							id: "cal-2",
+							arguments: {
+								eliza_turn_scope: "final",
+								action: "delete_event",
+								query: "evt-12",
+								confirm: true,
+							},
+						},
+					],
+				},
+				"I deleted evt-12, but evt-1 needed confirmation and was not removed.",
+			],
+			evaluations: [
+				continueWork("Confirm and retry."),
+				finish("Deleted both events."),
+				"I deleted evt-12, but evt-1 needed confirmation and was not removed.",
+			],
+			results: [
+				{
+					success: false,
+					text: "confirm is required to delete an event.",
+					data: { error: "CONFIRMATION_REQUIRED" },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					text: "Deleted event evt-12.",
+					data: { actionName: "CALENDAR", op: "delete_event" },
+				},
+			],
+			intents: ["delete evt-1", "delete evt-12"],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["CALENDAR", "CALENDAR"]);
+		expect(result.finalMessage).not.toBe("Deleted both events.");
+		expect(result.finalMessage).toContain("evt-1 needed confirmation");
 	});
 
 	it("never delivers protocol-shaped JSON or a turn-scope marker as user text, but keeps JSON the user asked for", () => {
