@@ -249,13 +249,19 @@ export async function resolveAddressedTargets(
 		const byName = new Map<string, UUID>();
 		const agentName = runtime.character.name;
 		if (agentName) {
-			byName.set(normalize(agentName), runtime.agentId);
+			const normAgent = normalize(agentName.replace(/^@/, ""));
+			if (normAgent) {
+				byName.set(normAgent, runtime.agentId);
+			}
 		}
 		for (const entity of participants) {
 			const id = entity.id as UUID | undefined;
 			if (!id) continue;
 			for (const name of entityNames(entity)) {
-				byName.set(normalize(name), id);
+				const norm = normalize(name.replace(/^@/, ""));
+				if (norm) {
+					byName.set(norm, id);
+				}
 			}
 		}
 		for (const name of names) {
