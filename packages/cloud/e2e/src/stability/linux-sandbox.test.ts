@@ -260,7 +260,7 @@ test.skipIf(!hostedLinux)(
       await writeFile(
         probe,
         `
-import { readFileSync } from "node:fs";
+import { fstatSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { connect } from "node:net";
 import { createSocket } from "node:dgram";
@@ -324,7 +324,9 @@ const syscallResult = syscallProbe.status === 0
 let procReadable = false;
 try { readFileSync("/proc/" + process.env.PROBE_PARENT_PID + "/environ"); procReadable = true; } catch {}
 let fdSecretReadable = false;
-try { fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret"); } catch {}
+// The runtime may reuse the closed inherited descriptor for an internal pipe.
+// Read only a regular file so testing descriptor closure cannot block the probe.
+try { if (fstatSync(3).isFile()) fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret"); } catch {}
 let hostTmpReadable = false;
 try { hostTmpReadable = readFileSync(process.env.PROBE_HOST_TMP_PATH, "utf8") === "must-be-masked"; } catch {}
 const rawProbeAvailable = spawnSync("python3", ["--version"]).status === 0;
