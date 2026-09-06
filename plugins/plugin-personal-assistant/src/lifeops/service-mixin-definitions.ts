@@ -3,6 +3,7 @@
  * surface and the `withDefinitions` mixin that composes the definitions domain's
  * CRUD, completion, and snooze methods onto the LifeOpsService base.
  */
+
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
@@ -14,12 +15,14 @@ import type {
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
 } from "../contracts/index.js";
+import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 
 export interface LifeOpsDefinitionService {
   listDefinitions(): Promise<LifeOpsDefinitionRecord[]>;
   getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
+    context?: DefinitionCreationContext,
   ): Promise<LifeOpsDefinitionCreationResult>;
   updateDefinition(
     definitionId: string,

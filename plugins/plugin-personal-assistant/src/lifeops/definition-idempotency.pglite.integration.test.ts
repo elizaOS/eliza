@@ -567,4 +567,176 @@ describe("durable owner definition creation identity", () => {
       expect(await service.listDefinitions()).toEqual(before);
     },
   );
+  it("a foreign exact ID cannot retarget the only same-title local item", async () => {
+    const mine = await service.createDefinition(
+      request("Review unique target", "review-mine"),
+    );
+    const other = new LifeOpsService(host.runtime, {
+      ownerEntityId: "33333333-3333-4333-8333-333333333333",
+    });
+    const theirs = await other.createDefinition(
+      request("Review unique target", "review-theirs"),
+    );
+    const result = await ownerTodosAction.handler(
+      host.runtime,
+      {
+        id: crypto.randomUUID() as UUID,
+        agentId: host.runtime.agentId,
+        entityId: host.runtime.agentId,
+        roomId: crypto.randomUUID() as UUID,
+        content: {
+          source: "dashboard",
+          text: "Update Review unique target description.",
+        },
+      },
+      undefined,
+      {
+        parameters: {
+          action: "update",
+          kind: "definition",
+          target: theirs.definition.id,
+          details: { description: "WRONG TARGET WRITE" },
+        },
+      },
+    );
+    expect(
+      (await service.getDefinition(mine.definition.id)).definition.description,
+    ).toBe(mine.definition.description);
+    expect(result).toMatchObject({ success: false });
+  });
+  it("identical keyed action retry survives changed wrapper message", async () => {
+    const base = {
+      agentId: host.runtime.agentId,
+      entityId: host.runtime.agentId,
+      roomId: crypto.randomUUID() as UUID,
+    };
+    const args = {
+      parameters: {
+        action: "create",
+        kind: "definition",
+        title: "Review wrapper retry",
+        idempotencyKey: "review-wrapper",
+        details: {
+          kind: "task",
+          cadence: { kind: "unscheduled" },
+          timeZone: "UTC",
+        },
+      },
+    };
+    const first = await ownerTodosAction.handler(
+      host.runtime,
+      {
+        ...base,
+        id: crypto.randomUUID() as UUID,
+        content: {
+          source: "dashboard",
+          text: "Create Review wrapper retry with no deadline.",
+        },
+      },
+      undefined,
+      args,
+    );
+    const second = await ownerTodosAction.handler(
+      host.runtime,
+      {
+        ...base,
+        id: crypto.randomUUID() as UUID,
+        content: {
+          source: "dashboard",
+          text: "Retry the same creation of Review wrapper retry with no deadline.",
+        },
+      },
+      undefined,
+      args,
+    );
+    expect(first).toMatchObject({ success: true });
+    expect(second).toMatchObject({
+      success: true,
+      effectReceipts: [{ outcome: "noop", idempotency: { replayed: true } }],
+    });
+    const persisted = (await service.listDefinitions()).find(
+      (row) => row.definition.title === "Review wrapper retry",
+    );
+    expect(persisted?.definition.originalIntent).toBe(
+      "Create Review wrapper retry with no deadline.",
+    );
+  });
+
+  it("an explicit keep cue prevents mutation through scored fallback", async () => {
+    const mine = await service.createDefinition(
+      request("Review protected single", "review-protected"),
+    );
+    const result = await ownerTodosAction.handler(
+      host.runtime,
+      {
+        id: crypto.randomUUID() as UUID,
+        agentId: host.runtime.agentId,
+        entityId: host.runtime.agentId,
+        roomId: crypto.randomUUID() as UUID,
+        content: {
+          source: "dashboard",
+          text: "Keep Review protected single unchanged.",
+        },
+      },
+      undefined,
+      {
+        parameters: {
+          action: "update",
+          kind: "definition",
+          target: mine.definition.id,
+          details: { description: "KEEP CUE VIOLATED" },
+        },
+      },
+    );
+    expect(
+      (await service.getDefinition(mine.definition.id)).definition.description,
+    ).toBe(mine.definition.description);
+    expect(result).toMatchObject({ success: false });
+  });
+  it("rejects a changed explicit intent while retaining the original complete provenance", async () => {
+    const message: Memory = {
+      id: crypto.randomUUID() as UUID,
+      agentId: host.runtime.agentId,
+      entityId: host.runtime.agentId,
+      roomId: crypto.randomUUID() as UUID,
+      content: {
+        source: "dashboard",
+        text: "Create an undated todo and keep this complete original request as provenance.",
+      },
+    };
+    const parameters = {
+      action: "create",
+      kind: "definition",
+      title: "Explicit intent",
+      idempotencyKey: "explicit-intent",
+      intent: "Prepare the first authorized item with no deadline",
+      details: {
+        kind: "task",
+        cadence: { kind: "unscheduled" },
+        timeZone: "UTC",
+      },
+    };
+    await ownerTodosAction.handler(host.runtime, message, undefined, {
+      parameters,
+    });
+    await expect(
+      ownerTodosAction.handler(
+        host.runtime,
+        { ...message, id: crypto.randomUUID() as UUID },
+        undefined,
+        {
+          parameters: {
+            ...parameters,
+            intent: "Prepare a different authorized item with no deadline",
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "LIFEOPS_DEFINITION_IDEMPOTENCY_CONFLICT",
+    });
+    const persisted = (await service.listDefinitions()).find(
+      (row) => row.definition.title === "Explicit intent",
+    );
+    expect(persisted?.definition.originalIntent).toBe(parameters.intent);
+  });
 });

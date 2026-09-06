@@ -27,7 +27,10 @@ import {
   LIFEOPS_DEFINITION_STATUSES,
 } from "../../contracts/index.js";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
-import { definitionCreationIdentity } from "../definition-creation-identity.js";
+import {
+  type DefinitionCreationContext,
+  definitionCreationIdentity,
+} from "../definition-creation-identity.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -168,6 +171,7 @@ export class DefinitionsDomain {
 
   async createDefinition(
     request: CreateLifeOpsDefinitionRequest,
+    context?: DefinitionCreationContext,
   ): Promise<LifeOpsDefinitionCreationResult> {
     const agentId = this.ctx.agentId();
     const ownership = this.ctx.normalizeOwnership(request.ownership);
@@ -237,12 +241,15 @@ export class DefinitionsDomain {
           : undefined,
       ),
     });
-    const operationKey = definitionCreationIdentity({
-      agentId,
-      actorId: this.ctx.ownerEntityId(),
-      ownership,
-      key: request.idempotencyKey,
-    });
+    const operationKey =
+      request.idempotencyKey === undefined
+        ? null
+        : definitionCreationIdentity({
+            agentId,
+            actorId: this.ctx.ownerEntityId(),
+            ownership,
+            key: request.idempotencyKey,
+          });
     if (operationKey !== null) {
       const {
         id: _id,
@@ -254,7 +261,13 @@ export class DefinitionsDomain {
         definition,
         operationKey,
         JSON.stringify({
-          definition: creationRequest,
+          definition: {
+            ...creationRequest,
+            originalIntent:
+              context?.originalIntentSource === "message"
+                ? { source: "message" }
+                : { source: "argument", value: creationRequest.originalIntent },
+          },
           reminderPlan: reminderPlanDraft,
         }),
       );

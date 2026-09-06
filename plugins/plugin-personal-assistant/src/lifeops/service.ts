@@ -186,6 +186,7 @@ import type {
 } from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
 import { DefinitionsDomain } from "./domains/definitions-service.js";
@@ -1704,8 +1705,9 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   createDefinition(
     request: CreateLifeOpsDefinitionRequest,
+    context?: DefinitionCreationContext,
   ): Promise<LifeOpsDefinitionCreationResult> {
-    return this.definitionsDomain.createDefinition(request);
+    return this.definitionsDomain.createDefinition(request, context);
   }
 
   updateDefinition(

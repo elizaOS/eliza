@@ -31,6 +31,7 @@ import {
   normalizeEffectReceipt,
   resolveActionArgs,
   type SubactionsMap,
+  validateUuid,
 } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
@@ -1132,21 +1133,39 @@ async function resolveDefinitionForMutation(
   domain?: LifeOpsDomain,
   destructive = false,
 ): Promise<DefinitionResult> {
-  const defs = await listCallerDefinitions(service, domain);
+  const allDefinitions = await listCallerDefinitions(service, domain);
   const normalizedOwnerText = normalizeTitle(ownerText);
+  // Exclusions apply to every matching path, including exact IDs and fuzzy
+  // fallbacks. A later heuristic must not reintroduce a protected item.
+  const defs = allDefinitions.filter((entry) => {
+    const title = normalizeTitle(entry.definition.title);
+    if (!title) return true;
+    let index = normalizedOwnerText.indexOf(title);
+    while (index >= 0) {
+      if (
+        ENUMERATED_DELETE_KEEP_CUE_RE.test(normalizedOwnerText.slice(0, index))
+      )
+        return false;
+      index = normalizedOwnerText.indexOf(title, index + title.length);
+    }
+    return true;
+  });
   const explicitlyNamed = defs.filter((entry) => {
     const title = normalizeTitle(entry.definition.title);
-    if (title.length === 0) return false;
-    const index = normalizedOwnerText.indexOf(title);
-    if (index < 0) return false;
-    // A title named inside a keep-style clause ("keep buy sandpaper",
-    // "don't delete X") is an exclusion, not a target — without this, the
-    // keep clause itself made the kept item an "explicitly named" candidate
-    // and forced a bogus disambiguation ask (or worse, on non-destructive
-    // ops, a wrong-target resolution).
-    const prefix = normalizedOwnerText.slice(Math.max(0, index - 32), index);
-    return !ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix);
+    return title.length > 0 && normalizedOwnerText.includes(title);
   });
+  // An explicit durable ID is an identity constraint, never a hint that can
+  // fall back to another owner's or another explicitly named item's title.
+  if (validateUuid(target)) {
+    const exactTarget = defs.find((entry) => entry.definition.id === target);
+    if (
+      !exactTarget ||
+      (explicitlyNamed.length > 0 && !explicitlyNamed.includes(exactTarget))
+    ) {
+      return { match: null, ambiguousCandidates: [] };
+    }
+    return { match: exactTarget, ambiguousCandidates: [] };
+  }
   if (explicitlyNamed.length === 1) {
     return {
       match: explicitlyNamed.at(0) ?? null,
@@ -1154,13 +1173,6 @@ async function resolveDefinitionForMutation(
     };
   }
   if (explicitlyNamed.length > 1) {
-    // A prior owner operation can return an exact ID for one of several
-    // authorized, identically named items. Keep exclusions and scope checks,
-    // then honor that identity before attempting prose disambiguation.
-    const exactTarget = explicitlyNamed.find(
-      (entry) => entry.definition.id === target,
-    );
-    if (exactTarget) return { match: exactTarget, ambiguousCandidates: [] };
     const byTimeHint = resolveDuplicateByTimeHint(explicitlyNamed, ownerText);
     if (byTimeHint) {
       return { match: byTimeHint, ambiguousCandidates: [] };
@@ -1204,7 +1216,9 @@ async function resolveDefinitionForMutation(
       ambiguousCandidates: bestMatches.map(definitionDisambiguationLabel),
     };
   }
-  return resolveDefinition(service, target, domain, destructive);
+  return target
+    ? resolveDefinitionInRecords(defs, target, destructive)
+    : { match: null, ambiguousCandidates: [] };
 }
 
 function tokenizeTitle(value: string): string[] {
@@ -5108,27 +5122,36 @@ async function runLifeOperationHandlerInner(
         };
       }
 
-      const created = await service.createDefinition({
-        idempotencyKey: definitionDraft.request.idempotencyKey,
-        ownership,
-        kind: definitionDraft.request.kind,
-        title: definitionDraft.request.title,
-        description: definitionDraft.request.description,
-        originalIntent: definitionDraft.intent || definitionDraft.request.title,
-        cadence: leadShaped.cadence,
-        timezone:
-          normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
-          definitionDraft.request.timezone,
-        priority: definitionDraft.request.priority,
-        windowPolicy: definitionDraft.request.windowPolicy,
-        progressionRule: definitionDraft.request.progressionRule,
-        checkInPolicy: definitionDraft.request.checkInPolicy,
-        reminderPlan: definitionDraft.request.reminderPlan,
-        metadata: definitionDraft.request.metadata,
-        websiteAccess: definitionDraft.request.websiteAccess,
-        goalId: resolvedGoal?.goal.id ?? null,
-        source: "chat",
-      });
+      const created = await service.createDefinition(
+        {
+          idempotencyKey: definitionDraft.request.idempotencyKey,
+          ownership,
+          kind: definitionDraft.request.kind,
+          title: definitionDraft.request.title,
+          description: definitionDraft.request.description,
+          originalIntent:
+            definitionDraft.intent || definitionDraft.request.title,
+          cadence: leadShaped.cadence,
+          timezone:
+            normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
+            definitionDraft.request.timezone,
+          priority: definitionDraft.request.priority,
+          windowPolicy: definitionDraft.request.windowPolicy,
+          progressionRule: definitionDraft.request.progressionRule,
+          checkInPolicy: definitionDraft.request.checkInPolicy,
+          reminderPlan: definitionDraft.request.reminderPlan,
+          metadata: definitionDraft.request.metadata,
+          websiteAccess: definitionDraft.request.websiteAccess,
+          goalId: resolvedGoal?.goal.id ?? null,
+          source: "chat",
+        },
+        {
+          originalIntentSource:
+            typeof params.intent === "string" && params.intent.trim().length > 0
+              ? "argument"
+              : "message",
+        },
+      );
       await clearDeferredLifeDraftCache(runtime, message);
       if (
         definitionDraft.request.idempotencyKey !== undefined &&

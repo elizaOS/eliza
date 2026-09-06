@@ -4,6 +4,11 @@ import type { LifeOpsOwnership } from "../contracts/index.js";
 
 export const DEFINITION_CREATION_OPERATION = "lifeops.definition.create";
 
+/** Full wrapper messages remain provenance; explicit intent remains an operative argument. */
+export interface DefinitionCreationContext {
+  originalIntentSource: "argument" | "message";
+}
+
 export function definitionCreationIdentity(args: {
   agentId: string;
   actorId: string;

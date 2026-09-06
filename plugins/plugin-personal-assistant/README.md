@@ -45,6 +45,10 @@ characters). Keep the same key and complete request for retries of one authorize
 operation; use distinct keys for deliberately separate identical items. Tool-call
 IDs are transport identities and must not replace this operation identity.
 Unkeyed owner actions retain their existing content-based confirmation behavior.
+When an owner call has no explicit `intent` argument, its full initial message
+remains stored as provenance; different retry wording does not change the
+operation identity. Explicit intent and all other semantic arguments still
+participate in conflicting-key checks.
 
 The key is scoped to the runtime agent, acting owner, target ownership, and create
 operation. The existing audit table atomically claims it with the definition
