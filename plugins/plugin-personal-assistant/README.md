@@ -45,6 +45,11 @@ characters). Keep the same key and complete request for retries of one authorize
 operation; use distinct keys for deliberately separate identical items. Tool-call
 IDs are transport identities and must not replace this operation identity.
 Unkeyed owner actions retain their existing content-based confirmation behavior.
+The canonical model-tool boundary treats an empty or whitespace-only optional
+key as omission, using the shared `modelOmissionSentinels` contract. This lets
+strict providers represent an unused field on reads and mutations that do not
+create definitions. Direct domain calls still reject an explicitly empty key;
+nonempty tool keys retain the normal length and content validation.
 When an owner call has no explicit `intent` argument, its full initial message
 remains stored as provenance; different retry wording does not change the
 operation identity. Explicit intent and all other semantic arguments still

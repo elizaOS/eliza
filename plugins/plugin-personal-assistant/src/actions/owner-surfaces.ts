@@ -220,8 +220,9 @@ function makeOwnerLifeAction(args: {
       {
         name: "idempotencyKey",
         description:
-          "Create-definition operation identity: reuse the same key and request when retrying; use distinct keys only for intentionally separate items, even if their content is identical.",
+          "Create-definition operation identity: reuse the same key and request when retrying; use distinct keys only for intentionally separate items, even if their content is identical. For other operations or unkeyed creation, omit this field or send an empty string. Whitespace-only tool values also mean omission.",
         required: false,
+        modelOmissionSentinels: [""],
         schema: { type: "string" as const, minLength: 1, maxLength: 256 },
       },
       {
