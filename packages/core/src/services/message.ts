@@ -6616,7 +6616,10 @@ export function messageHandlerFromFieldResult(
 					)
 				: routedContexts;
 	const replyText =
-		unservedDeclaredIntent || pendingDeclaredWork ? "" : replyTextRaw;
+		unservedDeclaredIntent ||
+		(pendingDeclaredWork && replyEffectStatus === "pending")
+			? ""
+			: replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		intents: declaredIntents,
