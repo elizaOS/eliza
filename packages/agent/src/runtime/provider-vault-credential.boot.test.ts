@@ -15,6 +15,14 @@ import {
   setAgentHostBridge,
 } from "./host-bridge.ts";
 
+const integrityKeyName = "system.optimized-prompt.hmac-key";
+const integrityKey = Buffer.alloc(32, 1).toString("base64");
+
+async function getBootIntegrityKey(key: string): Promise<string> {
+  if (key !== integrityKeyName) throw new Error(`Unexpected Vault get: ${key}`);
+  return integrityKey;
+}
+
 const savedStateDir = process.env.ELIZA_STATE_DIR;
 const savedProfileResolver = process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER;
 const savedCerebrasKey = process.env.CEREBRAS_API_KEY;
@@ -45,13 +53,15 @@ describe("selected provider credential boot readiness", () => {
     delete process.env.CEREBRAS_API_KEY;
 
     const has = vi.fn(
-      async (key: string) => key === "providers.cerebras.api-key",
+      async (key: string) =>
+        key === integrityKeyName || key === "providers.cerebras.api-key",
     );
     const reveal = vi.fn(async () => "vault-only-cerebras-key");
     setAgentHostBridge({
       ...defaultAgentHostBridge,
       sharedVault: () => ({
         ...defaultAgentHostBridge.sharedVault(),
+        get: getBootIntegrityKey,
         has,
         reveal,
       }),
@@ -108,9 +118,10 @@ describe("selected provider credential boot readiness", () => {
       ...defaultAgentHostBridge,
       sharedVault: () => ({
         ...defaultAgentHostBridge.sharedVault(),
+        get: getBootIntegrityKey,
         has: vi.fn(async (key: string) => {
           if (key === "providers.cerebras.api-key") throw cause;
-          return false;
+          return key === integrityKeyName;
         }),
       }),
     });
