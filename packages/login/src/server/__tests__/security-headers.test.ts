@@ -21,7 +21,9 @@ test.each([
     const app = new Hono();
     app.use(securityHeaders);
     app.get("/", (c) => c.text("healthy"));
-    const response = await app.request(url, { headers: { Host: new URL(url).host } });
+    const response = await app.request(url, {
+      headers: { Host: new URL(url).host },
+    });
     expect(await response.text()).toBe("healthy");
     expect(response.headers.has("Strict-Transport-Security")).toBe(enabled);
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
