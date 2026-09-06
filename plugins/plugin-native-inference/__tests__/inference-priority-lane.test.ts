@@ -35,6 +35,8 @@ function makeFakeLane(): {
   lifecycle: {
     ensureChatLoaded(): Promise<void>;
     ensureEmbeddingLoaded(): Promise<void>;
+    withChat<T>(use: () => Promise<T>): Promise<T>;
+    withEmbedding<T>(use: () => Promise<T>): Promise<T>;
     markEvicted(): void;
   };
   calls: RecordedGenerate[];
@@ -62,9 +64,17 @@ function makeFakeLane(): {
     },
     embed: async () => ({ embedding: [0], tokens: 1 }),
   };
+  // The fused lifecycle now runs each role's load-swap AND the native call it
+  // guards inside one serial transaction (`withChat`/`withEmbedding`), so
+  // `generateOnPriorityLane` invokes the loader through `withChat` rather than a
+  // bare `ensureChatLoaded`. The double's wrappers just run the call — the fake
+  // loader is single-context and never swaps — so the lane's priority ordering
+  // is what these tests still exercise.
   const lifecycle = {
     ensureChatLoaded: async () => {},
     ensureEmbeddingLoaded: async () => {},
+    withChat: <T>(use: () => Promise<T>) => use(),
+    withEmbedding: <T>(use: () => Promise<T>) => use(),
     markEvicted: () => {},
   };
   return {
