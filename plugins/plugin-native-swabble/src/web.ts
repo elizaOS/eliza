@@ -90,14 +90,46 @@ const CONTINUOUS_SCRIPTS =
   "\\p{sc=Han}\\p{sc=Hiragana}\\p{sc=Katakana}\\p{sc=Thai}\\p{sc=Lao}\\p{sc=Khmer}\\p{sc=Myanmar}";
 
 /**
- * Build a word-boundary matcher for the trigger's original spelling,
- * case-insensitive (`iu`) so it runs against the original (un-lowercased)
- * transcript and its match index lines up with the string that is later sliced
- * for the command. The trigger must keep its original spelling here: lowercasing
- * an expanding case-fold such as Turkish "\u0130" (U+0130) produces two code
- * points ("i" + U+0307) that `/iu/` does not equate back to the original
- * "\u0130", so a matcher built from the lowercased form would never fire on a
- * verbatim "\u0130pek ..." transcript.
+ * Case-fold a string with `toLowerCase()` while recording, for every code unit
+ * of the folded result, the index in the original string it came from. The
+ * returned `map` has one entry per folded code unit plus a trailing sentinel
+ * (`map[folded.length] === value.length`), so a match offset measured in the
+ * folded string can be translated back to a slice offset in the original
+ * string even when folding changes length. This is what keeps the command
+ * slice correct for an expanding case fold such as Turkish "\u0130" (U+0130),
+ * whose lowercase form is the two code points "i" + U+0307.
+ *
+ * `toLowerCase()` is context-free (unlike locale-aware `toLocaleLowerCase()`),
+ * so folding per code point here matches folding the whole string at once,
+ * which is why the folded trigger and the folded transcript stay comparable.
+ */
+function foldForMatch(value: string): { folded: string; map: number[] } {
+  let folded = "";
+  const map: number[] = [];
+  let originalIndex = 0;
+  for (const codePoint of value) {
+    const lowered = codePoint.toLowerCase();
+    for (let i = 0; i < lowered.length; i++) {
+      map.push(originalIndex);
+    }
+    folded += lowered;
+    originalIndex += codePoint.length;
+  }
+  map.push(value.length);
+  return { folded, map };
+}
+
+/**
+ * Build a word-boundary matcher for the case-folded trigger, to run against a
+ * case-folded transcript (see `foldForMatch`). Folding both sides with the same
+ * `toLowerCase()` — rather than an `/i/` regex against an un-folded transcript —
+ * is what makes an expanding case fold matchable no matter how the caller
+ * spelled the trigger: the settings UI lowercases a manual entry before it
+ * reaches this plugin, so Turkish "\u0130pek" arrives as "i" + U+0307 + "pek",
+ * which `/iu/` does not equate back to the single-code-point "\u0130" in the
+ * transcript. Folding the transcript the same way reduces both to "i" + U+0307,
+ * so the gate opens regardless of whether the trigger kept its original
+ * spelling.
  *
  * In space-delimited scripts the trigger must be a standalone token: a letter,
  * number, or combining mark on either side rejects the match, so "elizabeth"
@@ -115,13 +147,10 @@ const CONTINUOUS_SCRIPTS =
  * alone cannot segment those words, so this is not a regression.
  */
 function buildTriggerMatcher(trigger: string): RegExp {
-  // Build from the trigger's original spelling; the `iu` flag below supplies
-  // case-insensitivity via Unicode simple case folding, which (unlike a
-  // pre-lowercased trigger) keeps an expanding case-fold like U+0130 matchable.
-
   const before = `(?:(?<![\\p{L}\\p{N}\\p{M}])|(?<=[${CONTINUOUS_SCRIPTS}]))`;
   const after = `(?:(?![\\p{L}\\p{N}\\p{M}])|(?=[${CONTINUOUS_SCRIPTS}]))`;
-  return new RegExp(`${before}${escapeRegExp(trigger)}${after}`, "iu");
+  const { folded } = foldForMatch(trigger);
+  return new RegExp(`${before}${escapeRegExp(folded)}${after}`, "u");
 }
 
 const getSpeechRecognition = (): SpeechRecognitionCtor | null =>
@@ -183,9 +212,10 @@ class WakeWordGate {
   // Each matcher pairs a trigger label with its word-boundary regex so a
   // trigger only fires as a standalone token, never as a bare substring of a
   // larger word ("elizabeth" must not fire the trigger "eliza"). The regex is
-  // built from the trigger's original spelling and is case-insensitive (so an
-  // expanding case-fold like U+0130 still matches); `trigger` is the lowercased
-  // label reported as the fired wake word.
+  // built from the case-folded trigger and is matched against a case-folded
+  // transcript (see `foldForMatch`), so a caller-lowercased or original-spelling
+  // trigger both match, including an expanding case-fold like U+0130; `trigger`
+  // is the lowercased label reported as the fired wake word.
   private matchers: Array<{ trigger: string; regex: RegExp }>;
   private minCommandLength: number;
 
@@ -224,9 +254,10 @@ class WakeWordGate {
    * (a trigger awaiting its command) versus safe to discard.
    */
   hasTrigger(transcript: string): boolean {
-    // Matchers are case-insensitive, so they run against the original
-    // transcript directly (no separate lowercasing that could shift offsets).
-    return this.matchers.some(({ regex }) => regex.test(transcript));
+    // Matchers are built from the case-folded trigger, so they run against the
+    // case-folded transcript; presence detection needs no offset mapping.
+    const { folded } = foldForMatch(transcript);
+    return this.matchers.some(({ regex }) => regex.test(folded));
   }
 
   /**
@@ -236,19 +267,21 @@ class WakeWordGate {
   match(
     transcript: string,
   ): { wakeWord: string; command: string; postGap: number } | null {
+    // Fold the transcript once and match against the folded form, then map the
+    // folded match-end offset back into the original transcript so the command
+    // is sliced from the untouched text (case folding may change length, e.g.
+    // U+0130, so a folded offset must not index the original directly).
+    const { folded, map } = foldForMatch(transcript);
     for (const { trigger, regex } of this.matchers) {
-      // The matcher is case-insensitive and runs against the original
-      // transcript, so its index and matched length are measured in the same
-      // string that is sliced below. Lowercasing first could change length
-      // (e.g. U+0130) and skew the offset.
-      const found = regex.exec(transcript);
+      const found = regex.exec(folded);
       if (!found) continue;
 
-      // Extract command after the standalone trigger token. Using the match
-      // index and matched length (not raw indexOf) keeps the boundary contract:
-      // only a boundary-delimited trigger reaches this point, so "elizabeth"
-      // never yields a command.
-      const commandStart = found.index + found[0].length;
+      // Extract command after the standalone trigger token. Using the
+      // boundary-delimited match end (mapped back to the original transcript),
+      // not a raw indexOf, keeps the boundary contract: only a boundary-
+      // delimited trigger reaches this point, so "elizabeth" never yields a
+      // command.
+      const commandStart = map[found.index + found[0].length];
       const command = transcript.slice(commandStart).trim();
 
       if (command.length < this.minCommandLength) continue;

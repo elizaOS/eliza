@@ -558,6 +558,68 @@ describe("SwabbleWeb fallback", () => {
     );
   });
 
+  // The settings UI lowercases a manually entered trigger before forwarding it
+  // to Swabble (VoiceConfigView `addTrigger`: raw.trim().toLowerCase()...), so
+  // the plugin never receives the original spelling for a case such as Turkish
+  // "\u0130pek". `settingsNormalizedTrigger` reproduces that exact caller
+  // transform, and the transcript keeps the spoken original spelling.
+  const settingsNormalizedTrigger = "\u0130pek".trim().toLowerCase();
+
+  it("fires a settings-normalized case-fold-expanding trigger from the real caller value (construction)", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+
+    // The caller already lowercased "\u0130pek" to "i" + U+0307 + "pek". A matcher
+    // that required the original spelling (or ran an /iu/ regex against the raw
+    // transcript) would never equate that two-code-point sequence with the
+    // single "\u0130" in the transcript, so the gate would stay shut for the
+    // shipped product path. Folding both sides re-opens it.
+    expect([...settingsNormalizedTrigger].map((c) => c.codePointAt(0))).toEqual(
+      [0x69, 0x307, 0x70, 0x65, 0x6b],
+    );
+    await plugin.start({
+      config: { triggers: [settingsNormalizedTrigger], locale: "tr-TR" },
+    });
+    FakeRecognition.latest?.onresult?.(speechEvent("\u0130pek open calendar"));
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "open calendar", postGap: -1 }),
+    );
+  });
+
+  it("fires a settings-normalized case-fold-expanding trigger applied through updateConfig", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    // The runtime rebuild path must also fold the caller-normalized trigger,
+    // otherwise changing the wake word from the settings UI silently disables it.
+    await plugin.updateConfig({
+      config: { triggers: [settingsNormalizedTrigger] },
+    });
+    FakeRecognition.latest?.onresult?.(speechEvent("\u0130pek open calendar"));
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "open calendar", postGap: -1 }),
+    );
+  });
+
   it("does not fire the wake word when the trigger is only a substring of a larger word", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });
     setNavigator({
