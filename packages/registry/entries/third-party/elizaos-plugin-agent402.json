@@ -1,0 +1,18 @@
+{
+  "package": "elizaos-plugin-agent402",
+  "repository": "github:MikeyPetrillo/Agent402",
+  "directory": "adapters/eliza",
+  "kind": "plugin",
+  "description": "Find and call 500+ deterministic pay-per-call web tools (search, browser render, PDFs, OCR, market and crypto data, SEC filings, DNS/TLS, memory) from Agent402, paid by prepaid card credits or USDC over x402; free tier via proof-of-work.",
+  "homepage": "https://agent402.tools/guides/agent-hosts",
+  "version": "0.1.0",
+  "tags": [
+    "tools",
+    "x402",
+    "mpp",
+    "usdc",
+    "payments",
+    "web-search",
+    "data"
+  ]
+}
