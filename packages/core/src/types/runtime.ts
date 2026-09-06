@@ -1440,6 +1440,28 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	getCache<T>(key: string): Promise<T | undefined>;
 	setCache<T>(key: string, value: T): Promise<boolean>;
 	deleteCache(key: string): Promise<boolean>;
+	/**
+	 * Durably replace `key`'s stored value with `replacement` only if the
+	 * stored value currently deep-equals `expected`. Atomic at the shared
+	 * backing store (SQL conditional statement — never a getCache/setCache
+	 * read-modify-write), so two processes sharing the durable cache cannot
+	 * lose updates between them.
+	 *
+	 * Semantics:
+	 * - `expected === undefined` means insert only if the key is absent.
+	 * - Resolves `true` when the conditional write landed; `false` ONLY for a
+	 *   conflict (stored value differs, or the row is absent while an
+	 *   `expected` value was supplied) — the caller reloads and retries.
+	 * - Storage failures throw a typed error; they never resolve `false`.
+	 * - `expected: null` is rejected (typed throw): `undefined` is the absent
+	 *   sentinel and the SQL column is NOT NULL, so a null expectation is a
+	 *   contract misuse that could silently diverge across adapters.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean>;
 
 	updateEntity(entity: Entity): Promise<void>;
 

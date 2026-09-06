@@ -138,15 +138,18 @@ export async function createTestDatabase(
  */
 export async function createIsolatedTestDatabase(
   testName: string,
-  testPlugins: Plugin[] = []
+  testPlugins: Plugin[] = [],
+  options?: { exposeManager?: boolean }
 ): Promise<{
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   runtime: AgentRuntime;
   cleanup: () => Promise<void>;
   testAgentId: UUID;
+  manager?: PGliteClientManager;
 }> {
   const testAgentId = v4() as UUID;
   const testId = testName.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+  const wantsManager = options?.exposeManager === true;
 
   if (process.env.POSTGRES_URL) {
     // Superuser credentials give tests full permissions to create/drop tables.
@@ -250,7 +253,13 @@ export async function createIsolatedTestDatabase(
       }
     };
 
-    return { adapter, runtime, cleanup, testAgentId };
+    return {
+      adapter,
+      runtime,
+      cleanup,
+      testAgentId,
+      ...(wantsManager ? { manager: connectionManager } : {}),
+    };
   }
 }
 

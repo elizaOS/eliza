@@ -94,6 +94,11 @@ import { DEFAULT_UUID } from "../types/primitives";
 import { createHash } from "../utils/crypto-compat";
 import { isPlainObject } from "../utils/type-guards";
 import {
+	assertCasValue,
+	CACHE_CAS_FAILED_CODE,
+	jsonValueEquals,
+} from "./cas-values";
+import {
 	cloneConnectorJsonObject,
 	redactConnectorJsonAudit,
 } from "./connector-json";
@@ -2216,6 +2221,44 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const entry of entries) {
 			this.cache.set(entry.key, JSON.stringify(entry.value));
 		}
+		return true;
+	}
+
+	/**
+	 * Atomic conditional write backed by the synchronous in-memory map. There
+	 * are no awaits between the comparison and the write, so the JS event loop
+	 * makes the compare-and-set atomic within this process by construction.
+	 * Equality is order-insensitive deep equality on parsed values, matching
+	 * the SQL adapters' jsonb-to-jsonb comparison. A corrupt stored row
+	 * (undecodable JSON) is a storage failure: it throws the typed CAS error
+	 * rather than resolving `false` (`false` is reserved for conflicts).
+	 */
+	async compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean> {
+		assertCasValue(expected, "expected");
+		assertCasValue(replacement, "replacement");
+		let stored: unknown;
+		try {
+			const raw = this.cache.get(key);
+			stored = raw === undefined ? undefined : (JSON.parse(raw) as unknown);
+		} catch (error) {
+			// error-policy:J2 context-adding rethrow — an undecodable row is a
+			// storage failure, never a conflict `false`.
+			throw new ElizaError("compareAndSetCache failed", {
+				code: CACHE_CAS_FAILED_CODE,
+				cause: error,
+				context: { adapter: "InMemoryDatabaseAdapter", key },
+			});
+		}
+		const matches =
+			expected === undefined
+				? stored === undefined
+				: stored !== undefined && jsonValueEquals(stored, expected);
+		if (!matches) return false;
+		this.cache.set(key, JSON.stringify(replacement));
 		return true;
 	}
 
