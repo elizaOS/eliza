@@ -825,3 +825,82 @@ test(
   },
   PGLITE_TIMEOUT,
 );
+
+for (const denial of ["stale_generation", "deletion_owner"] as const)
+  test(
+    `warm claim preserves target and pool on ${denial}`,
+    async () => {
+      const pool = await seedPoolEntry();
+      const id = await seedUserAgent();
+      const captured = await persistedAgent(id);
+      if (denial === "stale_generation")
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ lifecycle_revision: captured.lifecycle_revision + 1 })
+          .where(eq(agentSandboxes.id, id));
+      else
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ deletion_attempt_id: crypto.randomUUID(), deletion_started_at: new Date() })
+          .where(eq(agentSandboxes.id, id));
+      const beforeTarget = await persistedAgent(id);
+      const beforePool = await persistedAgent(pool.id);
+      expect(
+        await repository.claimWarmContainer({
+          userAgentId: id,
+          organizationId: USER_ORG_ID,
+          image: IMAGE,
+          agentName: "rejected",
+          expectedLifecycleRevision:
+            denial === "stale_generation"
+              ? captured.lifecycle_revision
+              : beforeTarget.lifecycle_revision,
+        }),
+      ).toBeNull();
+      expect(await persistedAgent(id)).toEqual(beforeTarget);
+      expect(await persistedAgent(pool.id)).toEqual(beforePool);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+test(
+  "warm claim persists boot credential provenance and preserves user environment",
+  async () => {
+    const pool = await seedPoolEntry({
+      environment_vars: {
+        ELIZA_API_TOKEN: "fixture-pool-token",
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    });
+    const id = await seedUserAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        environment_vars: {
+          ELIZA_API_TOKEN: "fixture-stale-user-token",
+          ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+          USER_SETTING: "preserved",
+        },
+      })
+      .where(eq(agentSandboxes.id, id));
+    const captured = await persistedAgent(id);
+    const result = await repository.claimWarmContainer({
+      userAgentId: id,
+      organizationId: USER_ORG_ID,
+      image: IMAGE,
+      agentName: "credential-transfer",
+      expectedLifecycleRevision: captured.lifecycle_revision,
+    });
+    expect(result?.warm_pool_row_id).toBe(pool.id);
+    const claimed = await persistedAgent(id);
+    expect(claimed.warm_claim_source_pool_id).toBe(pool.id);
+    expect(claimed.warm_claim_credential_state).toBe("pending");
+    expect(claimed.environment_vars).toMatchObject({
+      ELIZA_API_TOKEN: "fixture-pool-token",
+      ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+      USER_SETTING: "preserved",
+    });
+    expect(await repository.findById(pool.id)).toBeUndefined();
+  },
+  PGLITE_TIMEOUT,
+);
