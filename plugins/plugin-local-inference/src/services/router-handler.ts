@@ -64,13 +64,19 @@
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import {
 	type GenerateTextParams,
+	isModelProviderFallbackError,
 	logger,
 	MODEL_PROVIDER_ATTEMPTS,
 	type ModelProviderAttempt,
 	ModelType,
 	NoModelProviderConfiguredError,
+	type StreamChunkCallback,
 	timeInferenceSpan,
 } from "@elizaos/core";
+import {
+	isLocalInferenceUnavailableError,
+	LocalInferenceUnavailableError,
+} from "../provider";
 import { readEffectiveAssignments } from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
@@ -174,6 +180,15 @@ function slotToModelType(slot: AgentModelSlot): string | undefined {
 }
 
 function modelTypeToSlot(modelType: string): AgentModelSlot | null {
+	// Boot registers these semantic text handlers with makeHandler(TEXT_SMALL).
+	// Admission must consult that same assignment and routing-policy slot.
+	if (
+		modelType === ModelType.RESPONSE_HANDLER ||
+		modelType === ModelType.ACTION_PLANNER ||
+		modelType === ModelType.TEXT_COMPLETION
+	) {
+		return "TEXT_SMALL";
+	}
 	for (const slot of AGENT_MODEL_SLOTS) {
 		if (slotToModelType(slot) === modelType) return slot;
 	}
@@ -357,6 +372,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		// local/model-specific failure while cloud providers are available.
 		// Candidates (with live handlers) come straight from the runtime's model
 		// registry, excluding the router itself.
+		const registeredCandidates = getRuntimeModelCandidates(runtime, modelType);
 		const candidates = await timeInferenceSpan(
 			"router:availability",
 			() =>
@@ -364,7 +380,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 					slot,
 					policy,
 					preferred,
-					getRuntimeModelCandidates(runtime, modelType),
+					registeredCandidates,
 				),
 			{ slot },
 		);
@@ -456,6 +472,19 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				if (lastError) {
 					throw lastError;
 				}
+				if (
+					(slot === "TEXT_SMALL" || slot === "TEXT_LARGE") &&
+					candidates.length === 0 &&
+					registeredCandidates.some(
+						(candidate) => candidate.provider === "eliza-local-inference",
+					)
+				) {
+					throw new LocalInferenceUnavailableError(
+						modelType,
+						"backend_unavailable",
+						"No local text model is assigned or loaded.",
+					);
+				}
 				throw new NoModelProviderConfiguredError(
 					`[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
 				);
@@ -463,6 +492,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 
 			policyEngine.recordPick(pick.provider, modelType);
 			const start = Date.now();
+			let providerStartedOutput = false;
 			const providerAttempt: ModelProviderAttempt = {
 				modelType,
 				provider: pick.provider,
@@ -478,13 +508,30 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 					typeof params === "object" &&
 					params !== null &&
 					"onStreamChunk" in params;
-				const providerParams =
+				let providerParams =
 					pick.metadata?.streamable === true || !hasOuterStreamOwner
 						? params
 						: (() => {
 								const { onStreamChunk: _outerStreamOwner, ...rest } = params;
 								return rest;
 							})();
+				if (
+					typeof providerParams === "object" &&
+					providerParams !== null &&
+					typeof providerParams.onStreamChunk === "function"
+				) {
+					const onStreamChunk =
+						providerParams.onStreamChunk as StreamChunkCallback;
+					providerParams = {
+						...providerParams,
+						onStreamChunk: (chunk: string) => {
+							// The router must stop its own failover before the outer
+							// runtime regains control; visible output cannot be replaced.
+							if (chunk.length > 0) providerStartedOutput = true;
+							return onStreamChunk(chunk);
+						},
+					};
+				}
 				// Record dispatch, not just rejection: a returned lazy stream may fail
 				// later in the runtime's existing stream owner, outside this catch.
 				providerAttempts.push(providerAttempt);
@@ -522,7 +569,23 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				// configured via `manual` policy. Non-TTS slots keep transient failover.
 				const ttsFailsClosed = slot === "TEXT_TO_SPEECH" && policy !== "manual";
 
-				if (manualPreferred || !hasAlternative || ttsFailsClosed) {
+				const isTextSlot = slot === "TEXT_SMALL" || slot === "TEXT_LARGE";
+				const terminalTextFailure =
+					isTextSlot && !isModelProviderFallbackError(err, modelType);
+				const unavailableLocalText =
+					isTextSlot &&
+					isLocalInferenceUnavailableError(err) &&
+					(err.reason === "backend_unavailable" ||
+						err.reason === "capability_unavailable");
+				if (!unavailableLocalText || lastError === null) lastError = err;
+
+				if (
+					providerStartedOutput ||
+					manualPreferred ||
+					!hasAlternative ||
+					ttsFailsClosed ||
+					terminalTextFailure
+				) {
 					if (ttsFailsClosed && hasAlternative) {
 						const rawCode =
 							err instanceof Error
@@ -540,10 +603,16 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 							`[LocalInferenceRouter] ${pick.provider} failed for TEXT_TO_SPEECH; failing closed — refusing to swap to another voice engine`,
 						);
 					}
-					throw err;
+					// Preserve a prior dispatched error if the last automatic text
+					// fallback only became unavailable; explicit/terminal errors win.
+					throw providerStartedOutput ||
+						manualPreferred ||
+						ttsFailsClosed ||
+						terminalTextFailure
+						? err
+						: lastError;
 				}
 
-				lastError = err;
 				logger.info(
 					`[router] Provider ${pick.provider} failed for ${slot}; trying fallback provider (${err instanceof Error ? err.message : String(err)})`,
 				);
@@ -580,6 +649,53 @@ export function installRouterHandler(
 	if (typeof rt.registerModel !== "function") return;
 
 	const skippedSlots = new Set(options.skipSlots ?? []);
+	if (typeof runtime.registerPipelineHook === "function") {
+		runtime.registerPipelineHook({
+			id: "local-inference:text-readiness",
+			phase: "pre_model",
+			mutatesPrimary: false,
+			handler: async (activeRuntime, context) => {
+				if (
+					context.phase !== "pre_model" ||
+					context.provider !== "eliza-local-inference"
+				)
+					return;
+				const slot = modelTypeToSlot(context.resolvedModelKey);
+				if (
+					(slot !== "TEXT_SMALL" && slot !== "TEXT_LARGE") ||
+					skippedSlots.has(slot)
+				)
+					return;
+
+				// The outer runtime can reach a direct local registration after
+				// the router exhausts its candidates. Reuse the same live admission
+				// policy so that fallback cannot dispatch a handler we just excluded.
+				const prefs = await readRoutingPreferences();
+				const policy =
+					prefs.policy[slot] ??
+					(readBooleanEnv("ELIZA_LOCAL_ONLY")
+						? "local-only"
+						: DEFAULT_ROUTING_POLICY);
+				const candidates = await filterUnavailableLocalInference(
+					slot,
+					policy,
+					prefs.preferredProvider[slot] ?? null,
+					getRuntimeModelCandidates(activeRuntime, context.resolvedModelKey),
+				);
+				if (
+					!candidates.some(
+						(candidate) => candidate.provider === "eliza-local-inference",
+					)
+				) {
+					throw new LocalInferenceUnavailableError(
+						context.resolvedModelKey,
+						"backend_unavailable",
+						"No local text model is assigned or loaded.",
+					);
+				}
+			},
+		});
+	}
 	for (const slot of AGENT_MODEL_SLOTS) {
 		if (skippedSlots.has(slot)) continue;
 		const modelType = slotToModelType(slot);

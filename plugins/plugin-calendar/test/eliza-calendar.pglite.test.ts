@@ -6,11 +6,20 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
 import type { LifeOpsReminderPlan } from "@elizaos/shared";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { createCalendarActionRunner } from "../src/actions/calendar-handler.js";
 import { __testing } from "../src/apple-calendar.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
@@ -31,6 +40,7 @@ const WINDOW = {
 
 let pg: PGlite;
 let service: CalendarService;
+let runtime: IAgentRuntime;
 const reminderPlans: LifeOpsReminderPlan[] = [];
 
 function gate(): CalendarHostGate {
@@ -112,7 +122,7 @@ beforeAll(async () => {
     "@elizaos/plugin-calendar",
     calendarSchema,
   );
-  const runtime = {
+  runtime = {
     agentId: AGENT_ID,
     adapter: { db },
     db,
@@ -143,6 +153,193 @@ afterAll(async () => {
 });
 
 describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
+  async function runUpdate(
+    text: string,
+    details: Record<string, unknown>,
+    extractedUpdate: Record<string, unknown>,
+    expectedSuccess = true,
+  ) {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_update_event"
+          ? {
+              rawResponse: JSON.stringify(extractedUpdate),
+              parsed: extractedUpdate,
+            }
+          : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000101",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        content: { text },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          query: "Willow Harbor QA",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "UTC",
+            ...WINDOW,
+            ...details,
+          },
+        },
+      },
+    );
+    expect(result?.success).toBe(expectedSuccess);
+    const feed = await service.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(feed.state).toBe("complete");
+    expect(feed.events).toHaveLength(1);
+    return feed.events[0];
+  }
+
+  const originalEvent = {
+    title: "Willow Harbor QA",
+    description: "Bring the revised agenda and preserve these notes.",
+    location: "Meeting room 3",
+    startAt: "2026-08-09T10:00:00.000Z",
+    endAt: "2026-08-09T10:15:00.000Z",
+    timeZone: "UTC",
+    idempotencyKey: "calendar-update-field-preservation",
+  };
+
+  it.each([
+    ["omitted", {}],
+    [
+      "blank",
+      {
+        title: "",
+        description: "",
+        location: "",
+        recurrence: "",
+        timeZone: "",
+      },
+    ],
+    [
+      "null",
+      {
+        title: null,
+        description: null,
+        location: null,
+        recurrence: null,
+        timeZone: null,
+      },
+    ],
+  ])(
+    "preserves saved metadata when a move extractor returns %s unchanged fields",
+    async (_label, extracted) => {
+      const created = await service.createCalendarEventMutation(
+        INTERNAL_URL,
+        originalEvent,
+      );
+      const moved = await runUpdate(
+        "Move Willow Harbor QA to 11 AM and keep its 15-minute duration and notes.",
+        {
+          startAt: "2026-08-09T11:00:00.000Z",
+          endAt: "2026-08-09T11:15:00.000Z",
+        },
+        extracted,
+      );
+      expect(moved).toMatchObject({
+        id: created.event?.id,
+        title: originalEvent.title,
+        description: originalEvent.description,
+        location: originalEvent.location,
+        startAt: "2026-08-09T11:00:00.000Z",
+        endAt: "2026-08-09T11:15:00.000Z",
+        recurrence: null,
+        timezone: "UTC",
+      });
+    },
+  );
+
+  it.each(["description", "location"] as const)(
+    "clears only an explicitly selected %s field and preserves timing",
+    async (field) => {
+      await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+      const updated = await runUpdate(
+        `Clear the ${field} from Willow Harbor QA and keep everything else.`,
+        { clearFields: [field] },
+        {
+          title: "",
+          description: "",
+          location: "",
+          startAt: "",
+          endAt: "",
+          timeZone: "",
+          recurrence: "",
+        },
+      );
+      expect(updated).toMatchObject({
+        title: originalEvent.title,
+        description: field === "description" ? "" : originalEvent.description,
+        location: field === "location" ? "" : originalEvent.location,
+        startAt: originalEvent.startAt,
+        endAt: originalEvent.endAt,
+        timezone: "UTC",
+      });
+    },
+  );
+
+  it("applies an explicit clear extracted from the request without clearing other fields", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+    const updated = await runUpdate(
+      "Remove the notes from Willow Harbor QA.",
+      {},
+      { clearFields: ["description"] },
+    );
+    expect(updated).toMatchObject({
+      title: originalEvent.title,
+      description: "",
+      location: originalEvent.location,
+      startAt: originalEvent.startAt,
+      endAt: originalEvent.endAt,
+    });
+  });
+
+  it("preserves explicit replacements when extraction proposes a conflicting clear", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+    const updated = await runUpdate(
+      "Set Willow Harbor QA's notes to Bring the slides and move it to Meeting room 4.",
+      { description: "Bring the slides", location: "Meeting room 4" },
+      { clearFields: ["description", "location"] },
+    );
+    expect(updated).toMatchObject({
+      title: originalEvent.title,
+      description: "Bring the slides",
+      location: "Meeting room 4",
+      startAt: originalEvent.startAt,
+      endAt: originalEvent.endAt,
+    });
+  });
+
+  it("does not mutate an event when the same update both replaces and clears a field", async () => {
+    const created = await service.createCalendarEventMutation(
+      INTERNAL_URL,
+      originalEvent,
+    );
+    const unchanged = await runUpdate(
+      "Update Willow Harbor QA's notes.",
+      { description: "Bring the slides", clearFields: ["description"] },
+      {},
+      false,
+    );
+    expect(unchanged).toMatchObject({
+      title: originalEvent.title,
+      description: originalEvent.description,
+      location: originalEvent.location,
+      metadata: { etag: created.event?.metadata.etag },
+    });
+  });
+
   it("is the fresh writable default when no external account is connected", async () => {
     const calendars = await service.listCalendars(INTERNAL_URL);
     expect(calendars[0]).toMatchObject({

@@ -888,6 +888,19 @@ function isTextStreamResult(
 	);
 }
 
+/** Capability absence is recoverable; malformed input/output is not absence. */
+function isUnavailableLocalModel(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
+		"reason" in error &&
+		(error.reason === "backend_unavailable" ||
+			error.reason === "capability_unavailable")
+	);
+}
+
 async function assertRuntimeModelOutputComplete(args: {
 	result: unknown;
 	provider: string;
@@ -2007,6 +2020,16 @@ export class AgentRuntime implements IAgentRuntime {
 			try {
 				await entry.handler(this, ctx);
 			} catch (error) {
+				// error-policy:J4 Local text admission rejects before dispatch; other
+				// hook failures retain the ordinary isolated diagnostic behavior.
+				if (
+					ctx.phase === "pre_model" &&
+					ctx.provider === "eliza-local-inference" &&
+					TEXT_GENERATION_MODEL_KEYS.includes(ctx.resolvedModelKey) &&
+					isUnavailableLocalModel(error)
+				) {
+					throw error;
+				}
 				// error-policy:J4 Hooks are isolated so one plugin cannot suppress
 				// later hooks; the failure is surfaced to the agent explicitly.
 				errorMessage = error instanceof Error ? error.message : String(error);
@@ -7097,6 +7120,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		let lastModelError: unknown;
+		let lastFailedModel: ResolvedModelRegistration | undefined;
 		let providerAttemptStartedOutput = false;
 		const providersWithExhaustedWarmingBudget = new Set<string>();
 		const providerAttempts: ModelProviderAttempt[] = [];
@@ -8230,13 +8254,19 @@ export class AgentRuntime implements IAgentRuntime {
 				) {
 					throw streamCallbackResult.error;
 				}
-				if (attemptPreparationFailed) {
+				const unavailableLocalText =
+					TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey) &&
+					isUnavailableLocalModel(error);
+				const rejectedLocalAdmission =
+					handlerStartedAt === null && unavailableLocalText;
+				if (attemptPreparationFailed || rejectedLocalAdmission) {
 					recordInferenceSpan(
 						`model-preprocess:${String(modelType)}`,
 						Date.now() - preprocessingStartedAt,
 						{ ...attemptMeta, outcome: "error" },
 					);
 					if (
+						!rejectedLocalAdmission &&
 						!(
 							error instanceof ElizaError &&
 							error.code === "EVALUATOR_INPUT_OVER_BUDGET"
@@ -8252,9 +8282,18 @@ export class AgentRuntime implements IAgentRuntime {
 					// so a later registration may still fit — advance the chain and
 					// rethrow the typed error only when the caller pinned a provider
 					// or no candidate remains.
-					lastModelError = error;
+					// An absent fallback cannot explain away an earlier dispatched
+					// provider's actionable failure (for example its quota error).
+					if (!rejectedLocalAdmission || lastModelError === undefined) {
+						lastModelError = error;
+						lastFailedModel = resolvedModel;
+					}
 					const nextAfterPreparation = resolvedModels[resolvedIndex + 1];
-					if (requestedProvider !== undefined || !nextAfterPreparation) {
+					if (requestedProvider !== undefined) throw error;
+					if (!nextAfterPreparation) {
+						if (rejectedLocalAdmission) {
+							this.rethrowModelFailoverError(lastModelError, lastFailedModel);
+						}
 						throw error;
 					}
 					this.logModelProviderFailover({
@@ -8304,7 +8343,18 @@ export class AgentRuntime implements IAgentRuntime {
 								: Date.now() - handlerStartedAt,
 					});
 				}
-				lastModelError = error;
+				// A model can unload between admission and dispatch. Record that
+				// real attempt, but retain the previous provider failure if absence
+				// is the only fallback outcome. Output/request errors stay decisive.
+				if (
+					!unavailableLocalText ||
+					lastModelError === undefined ||
+					providerAttemptStartedOutput ||
+					requestedProvider !== undefined
+				) {
+					lastModelError = error;
+					lastFailedModel = resolvedModel;
+				}
 				if (providerAttempt) providerAttempt.error = error;
 				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
 					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
@@ -8323,10 +8373,7 @@ export class AgentRuntime implements IAgentRuntime {
 					providerAttemptStartedOutput ||
 					!this.shouldFailOverModelProvider(error, requestedModelKey)
 				) {
-					this.rethrowModelFailoverError(error, {
-						modelKey: resolvedModelKey,
-						provider: resolvedModel.provider,
-					});
+					this.rethrowModelFailoverError(lastModelError, lastFailedModel);
 				}
 				this.logModelProviderFailover({
 					requestedModelKey,
@@ -8343,6 +8390,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.rethrowModelFailoverError(
 			lastModelError ??
 				new Error(`No handler found for delegate type: ${requestedModelKey}`),
+			lastFailedModel,
 		);
 	}
 

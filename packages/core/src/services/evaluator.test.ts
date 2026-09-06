@@ -533,6 +533,48 @@ describe("EvaluatorService", () => {
 		);
 	});
 
+	it("records post-turn rate limits without retrying reflection or escalating owner work", async () => {
+		const runtime = makeRuntime();
+		const process = vi.fn(async () => ({ success: true }));
+		runtime.registerEvaluator({
+			name: "reflection",
+			description: "Optional post-turn reflection",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Reflect on the completed turn.",
+			parse: (output) => output as never,
+			processors: [{ name: "saveReflection", process }],
+		});
+		const error = Object.assign(
+			new Error("Cerebras tokens per minute exceeded"),
+			{
+				status: 429,
+			},
+		);
+		const useModel = vi.fn().mockRejectedValue(error);
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+		const reportError = vi.spyOn(runtime, "reportError");
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(process).not.toHaveBeenCalled();
+		expect(result.processedEvaluators).toEqual([]);
+		expect(result.results).toEqual([]);
+		expect(result.errors).toEqual([
+			{ evaluatorName: "post_turn", error: error.message },
+		]);
+		expect(reportError).toHaveBeenCalledWith(
+			"EvaluatorService.evaluate",
+			error,
+			expect.objectContaining({ diagnosticOnly: true }),
+		);
+		expect(runtime.emitEvent).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ completed: false, error }),
+		);
+	});
+
 	const registerOkEvaluator = (runtime: AgentRuntime): void => {
 		runtime.registerEvaluator({
 			name: "ok",

@@ -12,6 +12,7 @@ import {
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import en from "../../i18n/locales/en.json";
 import {
   ProviderSwitcher,
   reconcileProviderEntriesWithServingAxes,
@@ -87,7 +88,7 @@ vi.mock("../../state", () => ({
   ) =>
     selector({
       t: (key: string, vars?: Record<string, unknown>) =>
-        String(vars?.defaultValue ?? key),
+        String(en[key as keyof typeof en] ?? vars?.defaultValue ?? key),
       plugins: [],
       setActionNotice: vi.fn(),
       // The serving-axes summary reads the runtime axis from these; the real
@@ -230,6 +231,7 @@ describe("ProviderSwitcher", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     selection.visibleProviderPanelId = "__local__";
     selection.cloudRuntimeLocked = false;
     bootstrapState.routingConfigResolved = true;
@@ -273,24 +275,48 @@ describe("ProviderSwitcher", () => {
     );
   });
 
-  it("shows Cartesia as configured when the realtime QA build flag is on", async () => {
-    render(<ProviderSwitcher realtimeVoiceConfigured />);
+  it.each(["VITE_VOICE_REALTIME_FORCE", "VITE_VOICE_REALTIME_SELF_HOSTED"])(
+    "does not claim a verified Cartesia connection from %s",
+    async (flag) => {
+      vi.stubEnv(flag, "1");
+      render(<ProviderSwitcher />);
+      await waitFor(() => {
+        expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+          "This device",
+        );
+      });
+      const voiceGroup = screen
+        .getByRole("heading", { name: "Voice" })
+        .closest("section");
+      expect(voiceGroup).not.toBeNull();
+      expect(voiceGroup?.textContent).toContain("Cartesia (realtime)");
+      expect(voiceGroup?.textContent).toContain("Enabled");
+      expect(voiceGroup?.textContent).toContain("Connection not verified.");
+      expect(voiceGroup?.textContent).not.toMatch(
+        /Configured|Connected|Ready|Active/,
+      );
+      expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
+    },
+  );
+
+  it("preserves the default voice row when realtime is disabled", async () => {
+    vi.stubEnv("VITE_VOICE_REALTIME_FORCE", "0");
+    vi.stubEnv("VITE_VOICE_REALTIME_SELF_HOSTED", "0");
+    render(<ProviderSwitcher />);
     await waitFor(() => {
       expect(screen.getByTestId("serving-inference-value").textContent).toBe(
         "This device",
       );
     });
-    expect(screen.getByText("Cartesia (realtime)")).toBeTruthy();
-    expect(
-      screen.getByText(/when the configured voice gateway is available/),
-    ).toBeTruthy();
-    expect(screen.getByText("Configured")).toBeTruthy();
-    expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
+    expect(screen.getByText("Kokoro (on-device)")).toBeTruthy();
+    expect(screen.queryByText("Cartesia (realtime)")).toBeNull();
+    expect(screen.queryByText(/Connection not verified/)).toBeNull();
   });
 
   it("keeps local-model and Cartesia copy relative to a selected remote host", async () => {
     persistedRuntime.kind = "remote";
-    render(<ProviderSwitcher realtimeVoiceConfigured />);
+    vi.stubEnv("VITE_VOICE_REALTIME_SELF_HOSTED", "1");
+    render(<ProviderSwitcher />);
     await waitFor(() => {
       expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
         "Remote host",
@@ -420,6 +446,7 @@ describe("ProviderSwitcher", () => {
 
   it("does not advertise local inference or model controls in a Cloud-only build", async () => {
     selection.cloudRuntimeLocked = true;
+    vi.stubEnv("VITE_VOICE_REALTIME_FORCE", "1");
     render(<ProviderSwitcher elizaCloudConnected />);
 
     await waitFor(() => {
@@ -440,5 +467,7 @@ describe("ProviderSwitcher", () => {
     expect(screen.queryByText("model config")).toBeNull();
     expect(getModelsConfig).not.toHaveBeenCalled();
     expect(screen.getByText("Eliza Cloud voice")).toBeTruthy();
+    expect(screen.queryByText("Cartesia (realtime)")).toBeNull();
+    expect(screen.queryByText(/Connection not verified/)).toBeNull();
   });
 });

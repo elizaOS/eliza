@@ -25,7 +25,6 @@ import {
 } from "@elizaos/core";
 
 import { getNotesService } from "./service.js";
-import type { StickyNote } from "./types.js";
 import { parseNoteContent } from "./validation.js";
 
 const NOTES_OPS = ["create", "list", "update", "delete"] as const;
@@ -64,12 +63,6 @@ function readOp(params: Record<string, unknown>): NotesOpParse | undefined {
     : { recognized: false, requested: raw };
 }
 
-/** One-line rendering; the body is the user's own text, already user-safe. */
-function describe(note: StickyNote): string {
-  const body = note.body.trim();
-  return body.length > 0 ? `${note.title} — ${body}` : note.title;
-}
-
 function failure(
   text: string,
   code: string,
@@ -94,10 +87,11 @@ function failure(
 }
 
 /**
- * Notes return settled facts to the planner, then require one model-authored
- * closing reply. Durable receipts remain available if reply generation fails.
+ * Notes return structured facts, not prose that could be mistaken for the
+ * model-authored closing reply. Durable receipts remain available if reply
+ * generation fails.
  */
-function committed(text: string, data: Record<string, unknown>): ActionResult {
+function committed(data: Record<string, unknown>): ActionResult {
   // Bind the mutation to an applied effect receipt so the reply-egress
   // grounding contract (completed_side_effect claims require a committed
   // receipt from this turn) can verify the claim instead of failing closed to
@@ -123,7 +117,7 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
     : undefined;
   return {
     success: true,
-    text,
+    transcriptVisibility: "internal",
     modelReplyRequired: true,
     ...(effectReceipts
       ? {
@@ -202,14 +196,7 @@ export const notesAction: Action = {
               .includes(normalizedTopic),
           )
         : notes;
-      const fallback = topic
-        ? matches.length === 0
-          ? "I couldn't find a matching note."
-          : `I found ${matches.length} matching ${matches.length === 1 ? "note" : "notes"}.`
-        : notes.length === 0
-          ? "You don't have any notes yet."
-          : `You have ${notes.length} ${notes.length === 1 ? "note" : "notes"}.`;
-      return committed(fallback, {
+      return committed({
         op,
         count: matches.length,
         total: notes.length,
@@ -252,10 +239,7 @@ export const notesAction: Action = {
       }
       const created = await service.createNoteWithCommit(noteContent);
       const note = created.value;
-      const text = created.replayed
-        ? `that note was already saved: ${describe(note)}`
-        : `saved a note: ${describe(note)}`;
-      return committed(text, {
+      return committed({
         op,
         noteId: note.id,
         note,
@@ -268,13 +252,10 @@ export const notesAction: Action = {
         "query",
         content,
       );
-      const text =
-        removed.removedCount > 1
-          ? `deleted the note: ${describe(removed.value)} (removed ${removed.removedCount} identical copies)`
-          : `deleted the note: ${describe(removed.value)}`;
-      return committed(text, {
+      return committed({
         op,
         noteId: removed.value.id,
+        note: removed.value,
         removedCount: removed.removedCount,
       });
     }
@@ -292,11 +273,7 @@ export const notesAction: Action = {
       content,
       parseNoteContent(replacement),
     );
-    const text =
-      updated.consolidatedCount > 0
-        ? `updated the note: ${describe(updated.value)} (consolidated ${updated.consolidatedCount + 1} identical copies)`
-        : `updated the note: ${describe(updated.value)}`;
-    return committed(text, {
+    return committed({
       op,
       noteId: updated.value.id,
       note: updated.value,

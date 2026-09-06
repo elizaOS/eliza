@@ -51,6 +51,7 @@ export function createParentExitGuard({
 export function createApiHealthWatchdog({
   check,
   restart,
+  onProbe = () => {},
   isShuttingDown = () => false,
   intervalMs = 5_000,
   failureThreshold = 3,
@@ -81,11 +82,30 @@ export function createApiHealthWatchdog({
       return;
     }
     inFlightGenerations.add(probeGeneration);
-    let healthy = false;
+    const startedAt = now();
+    let result;
     try {
-      healthy = (await check()) === true;
+      const value = await check();
+      // Keep the boolean check contract for existing supervisor consumers;
+      // HTTP probes also retain their bounded, credential-free diagnostics.
+      result =
+        value !== null && typeof value === "object"
+          ? value
+          : {
+              healthy: value === true,
+              reason: value === true ? "ready" : "not_ready",
+              status: null,
+              elapsedMs: Math.max(0, now() - startedAt),
+            };
     } catch {
-      healthy = false;
+      // error-policy:J4 a failed probe is unhealthy, with a closed reason code
+      // instead of potentially sensitive exception text in supervisor logs.
+      result = {
+        healthy: false,
+        reason: "check_error",
+        status: null,
+        elapsedMs: Math.max(0, now() - startedAt),
+      };
     } finally {
       inFlightGenerations.delete(probeGeneration);
     }
@@ -93,14 +113,39 @@ export function createApiHealthWatchdog({
     // not clear boot grace, add a failure, or restart after that child was
     // replaced or the supervisor began shutting down.
     if (stopped || isShuttingDown() || probeGeneration !== generation) return;
+    const healthy = result.healthy === true;
     if (healthy) {
+      const recovered = failures > 0;
       failures = 0;
       recoveringUntil = 0;
+      onProbe({
+        ...result,
+        generation: probeGeneration,
+        failureCount: 0,
+        decision: "healthy",
+        recovered,
+      });
       return;
     }
-    if (recoveringUntil > 0 && now() < recoveringUntil) return;
+    if (recoveringUntil > 0 && now() < recoveringUntil) {
+      onProbe({
+        ...result,
+        generation: probeGeneration,
+        failureCount: failures,
+        decision: "boot_grace",
+        recovered: false,
+      });
+      return;
+    }
     recoveringUntil = 0;
     failures += 1;
+    onProbe({
+      ...result,
+      generation: probeGeneration,
+      failureCount: failures,
+      decision: failures < failureThreshold ? "retry" : "restart",
+      recovered: false,
+    });
     if (failures < failureThreshold) return;
     failures = 0;
     recoveringUntil = now() + recoveryGraceMs;

@@ -148,7 +148,108 @@ describe("promoted Notes execution", () => {
       params: { content: "Conversation context QA" },
     });
     expect(deleted.success).toBe(true);
+    expect(deleted.data?.note).toEqual(updated.data?.note);
     expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
+
+    for (const result of [created, listed, updated, deleted]) {
+      expect(result).toMatchObject({
+        success: true,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+      });
+      expect(result).not.toHaveProperty("userFacingText");
+      expect(result).not.toHaveProperty("text");
+      expect(result).not.toHaveProperty("verifiedUserFacing");
+      expect(result).not.toHaveProperty("turnComplete");
+    }
+    expect(listed.effectReceipts).toBeUndefined();
+    for (const result of [created, updated, deleted]) {
+      expect(result.effectReceipts).toEqual([
+        expect.objectContaining({
+          outcome: "applied",
+          resource: { kind: "notes.note", id: created.data?.noteId },
+          commit: expect.objectContaining({ kind: "durable" }),
+        }),
+      ]);
+    }
+  });
+
+  it("advances a committed Notes step to queued navigation but still evaluates the final reply", async () => {
+    const runtime = await executorHarness();
+    const useModel = vi.fn().mockResolvedValue({
+      toolCalls: [
+        {
+          id: "create-note",
+          name: "NOTES_CREATE",
+          arguments: {
+            content: "Queue contract QA\nBring the notebook.",
+            eliza_turn_scope: "final",
+          },
+        },
+        {
+          id: "open-notes",
+          name: "VIEWS",
+          arguments: {
+            action: "show",
+            view: "notes",
+            eliza_turn_scope: "final",
+          },
+        },
+      ],
+    });
+    const executeToolCall = vi.fn(async (call: PlannerToolCall) =>
+      call.name === "VIEWS"
+        ? {
+            success: true,
+            text: "Navigation accepted: notes.",
+            transcriptVisibility: "internal" as const,
+            modelReplyRequired: true,
+            turnComplete: false,
+          }
+        : execute(runtime, call),
+    );
+    const evaluate = vi.fn<
+      NonNullable<Parameters<typeof runPlannerLoop>[0]["evaluate"]>
+    >(async ({ trajectory }) =>
+      trajectory.steps.at(-1)?.toolCall?.name === "VIEWS"
+        ? {
+            success: true,
+            decision: "FINISH",
+            thought: "The note is saved and navigation completed.",
+            messageToUser: "Your notebook note is saved, and Notes is open.",
+            effectReceiptIds: trajectory.steps.flatMap((step) =>
+              (step.result?.effectReceipts ?? []).map(
+                (receipt) => receipt.receiptId,
+              ),
+            ),
+          }
+        : {
+            success: false,
+            decision: "NEXT_RECOMMENDED",
+            thought: "Opening Notes remains queued.",
+            recommendedToolCallId: "open-notes",
+          },
+    );
+
+    const result = await runPlannerLoop({
+      runtime: { useModel },
+      context: { id: "notes-navigation", events: [] },
+      executeToolCall,
+      evaluate,
+    });
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+      "NOTES_CREATE",
+      "VIEWS",
+    ]);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(result.finalMessage).toBe(
+      "Your notebook note is saved, and Notes is open.",
+    );
+    expect((await run(runtime, { action: "list" })).data?.notes).toMatchObject([
+      { title: "Queue contract QA", body: "Bring the notebook." },
+    ]);
   });
 
   it.each([
@@ -171,6 +272,9 @@ describe("promoted Notes execution", () => {
       const before = (await run(runtime, { action: "list" })).data?.notes;
       const rejected = await execute(runtime, { name, params });
       expect(rejected.success).toBe(false);
+      expect(rejected.effectReceipts).toBeUndefined();
+      expect(rejected.verifiedUserFacing).not.toBe(true);
+      expect(rejected.turnComplete).not.toBe(true);
       expect(rejected.data?.parameterErrors).toEqual(
         expect.arrayContaining([expect.stringContaining(missing)]),
       );
@@ -191,6 +295,7 @@ describe("promoted Notes execution", () => {
       ["USER"],
     );
     expect(rejected.success).toBe(false);
+    expect(rejected.effectReceipts).toBeUndefined();
     expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
   });
 
@@ -327,7 +432,7 @@ describe("NOTES operation parsing", () => {
     const result = await run(runtime, {});
 
     expect(result.success).toBe(true);
-    expect(result.text).toBe("You have 1 note.");
+    expect(result.data).toMatchObject({ count: 1, total: 1 });
     expect(result.data?.notes).toMatchObject([
       { title: "wifi is on the fridge", body: "", color: "yellow" },
     ]);
@@ -343,7 +448,7 @@ describe("NOTES operation parsing", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       success: true,
-      text: "You have 1 note.",
+      transcriptVisibility: "internal",
       modelReplyRequired: true,
       data: {
         count: 1,
@@ -352,6 +457,7 @@ describe("NOTES operation parsing", () => {
       },
     });
     expect(result).not.toHaveProperty("userFacingText");
+    expect(result).not.toHaveProperty("text");
     expect(result).not.toHaveProperty("modelReplyFallback");
     expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(result).not.toHaveProperty("turnComplete");
@@ -394,7 +500,6 @@ describe("NOTES operation parsing", () => {
 
     expect(result).toMatchObject({
       success: true,
-      text: "You have 2 notes.",
       data: {
         count: 2,
         total: 2,
@@ -445,7 +550,6 @@ describe("NOTES operation parsing", () => {
     });
 
     const match = await run(runtime, { action: "list", content: "PLUMBER" });
-    expect(match.text).toBe("I found 1 matching note.");
     expect(match.data?.notes).toMatchObject([
       {
         title: "the plumber comes thursday morning",
@@ -460,7 +564,6 @@ describe("NOTES operation parsing", () => {
     });
 
     const absent = await run(runtime, { action: "list", query: "dentist" });
-    expect(absent.text).toBe("I couldn't find a matching note.");
     expect(absent.data?.notes).toEqual([]);
     expect(absent.data).toMatchObject({
       count: 0,
@@ -478,7 +581,10 @@ describe("NOTES operation parsing", () => {
       content: "Demo Checklist: mic, charger, water",
     });
     expect(created.success).toBe(true);
-    expect(created.text).toContain("Demo Checklist — mic, charger, water");
+    expect(created.data?.note).toMatchObject({
+      title: "Demo Checklist",
+      body: "mic, charger, water",
+    });
   });
 
   it.each(["Stable Local Notes QA", "QA: afternoon"])(
@@ -492,9 +598,10 @@ describe("NOTES operation parsing", () => {
       });
 
       expect(created.success).toBe(true);
-      expect(created.text).toContain(
-        `${title} — Cerebras local note persistence`,
-      );
+      expect(created.data?.note).toMatchObject({
+        title,
+        body: "Cerebras local note persistence",
+      });
       const listed = await run(runtime, { action: "list" });
       expect(listed.data?.notes).toMatchObject([
         {
@@ -570,7 +677,7 @@ describe("NOTES operation parsing", () => {
       content: "bins go out tuesday",
     });
     expect(created.success).toBe(true);
-    expect(created.text).toContain("saved a note");
+    expect(created.data?.note).toMatchObject({ title: "bins go out tuesday" });
 
     const listed = await run(runtime, { action: "list" });
     expect(listed.success).toBe(true);
@@ -584,17 +691,19 @@ describe("NOTES operation parsing", () => {
       body: "bins go out wednesday",
     });
     expect(updated.success).toBe(true);
-    expect(updated.text).toContain("bins go out wednesday");
+    expect(updated.data?.note).toMatchObject({
+      title: "bins go out wednesday",
+    });
 
     const deleted = await run(runtime, {
       action: "delete",
       content: "wednesday",
     });
     expect(deleted.success).toBe(true);
-    expect(deleted.text).toContain("deleted the note");
+    expect(deleted.data?.note).toEqual(updated.data?.note);
 
     const after = await run(runtime, { action: "list" });
-    expect(after.text).toBe("You don't have any notes yet.");
+    expect(after.data).toMatchObject({ count: 0, total: 0, notes: [] });
   });
 });
 
@@ -643,7 +752,10 @@ describe("identical-duplicate notes", () => {
 
     const result = await run(runtime, { action: "delete", content: "milk" });
     expect(result.success).toBe(true);
-    expect(result.text).toContain("removed 4 identical copies");
+    expect(result.data).toMatchObject({
+      removedCount: 4,
+      note: { title: "i need to buy milk", body: "" },
+    });
 
     const after = await run(runtime, { action: "list" });
     expect(after.data?.notes).toMatchObject([
@@ -671,7 +783,6 @@ describe("identical-duplicate notes", () => {
       body: "i already bought milk",
     });
 
-    expect(result.text).toContain("consolidated 4 identical copies");
     expect(result.data).toMatchObject({ consolidatedCount: 3 });
     const after = await run(runtime, { action: "list" });
     expect(after.data).toMatchObject({ count: 1, total: 1 });
