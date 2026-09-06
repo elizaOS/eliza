@@ -704,6 +704,16 @@ export function createRuntimeStripeFixture() {
               });
             }
           }
+          if (
+            ["/v1/invoices", "/v1/invoiceitems", "/v1/payment_intents"].includes(url.pathname) &&
+            method === "GET"
+          ) {
+            if ([...subscriptions.values()].some((row) => row.invoiceId !== null))
+              throw new Error(
+                "Customer inventory fixture requires explicit invoice/payment rows for invoiced subscriptions",
+              );
+            return Response.json({ object: "list", has_more: false, url: url.pathname, data: [] });
+          }
           if (url.pathname.startsWith("/v1/payment_intents/")) {
             const id = url.pathname.split("/")[3]!;
             const row = [...subscriptions.values()].find(

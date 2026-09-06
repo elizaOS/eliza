@@ -80,12 +80,20 @@ function fixture(binding = merchant) {
     invoiceUrl: "https://invoice.stripe.com/i/fixture",
     invoiceCustomer: "cus_one",
     invoiceLivemode: false,
-    invoiceStatus: "paid" as "paid" | "open" | "void",
+    invoiceStatus: "paid" as "draft" | "paid" | "open" | "void" | "uncollectible",
     invoiceReason: "subscription_cycle",
     pendingPrice: "price_two",
     pendingQuantity: 4,
     invoiceSubscription: "sub_one",
     page: false,
+    emptySubscriptions: false,
+    activeSecondSubscriptionPage: false,
+    deletionSubscriptionBinding: "own" as "own" | "unbound" | "other_app",
+    includeDeletionInvoice: false,
+    invoiceAmountRemaining: 0,
+    pendingInvoiceItem: false,
+    deletionPaymentStatus: null as string | null,
+
     customerFailure: false,
     customerMissing: false,
     deletedCustomer: false,
@@ -153,7 +161,9 @@ function fixture(binding = merchant) {
           eliza_plan_revision_id: plan.planRevisionId,
         },
     status:
-      state.subscriptionStatus ??
+      (state.activeSecondSubscriptionPage && subscriptionId === "sub_two"
+        ? "active"
+        : state.subscriptionStatus) ??
       (state.canceled ? "canceled" : state.paused ? "paused" : state.trial ? "trialing" : "active"),
     ...(state.basil ? {} : { current_period_start: 1700000000, current_period_end: 1702592000 }),
     trial_start: state.trial ? (state.delayedTrialStart ? 1700000030 : 1700000000) : null,
@@ -342,7 +352,9 @@ function fixture(binding = merchant) {
           object: "list",
           has_more: state.page && !url.searchParams.has("starting_after"),
           url: "/v1/subscriptions",
-          data: [subscription(url.searchParams.has("starting_after") ? "sub_two" : "sub_one")],
+          data: state.emptySubscriptions
+            ? []
+            : [subscription(url.searchParams.has("starting_after") ? "sub_two" : "sub_one")],
         };
       else if (url.pathname === "/v1/subscriptions/sub_one/resume") result = subscription();
       else if (url.pathname === "/v1/subscriptions/sub_one") {
@@ -493,7 +505,52 @@ function fixture(binding = merchant) {
         state.resumePending = false;
         if (state.payTimeoutAfterSuccess) throw new Error("controlled lost successful response");
         result = { id: "in_one", object: "invoice" };
-      } else if (url.pathname === "/v1/invoices/in_one")
+      } else if (url.pathname === "/v1/invoices")
+        result = {
+          object: "list",
+          has_more: false,
+          url: url.pathname,
+          data: state.includeDeletionInvoice
+            ? [
+                {
+                  id: "in_one",
+                  object: "invoice",
+                  customer: state.invoiceCustomer,
+                  livemode: state.invoiceLivemode,
+                  status: state.invoiceStatus,
+                  paid: state.invoiceStatus === "paid",
+                  amount_remaining: state.invoiceAmountRemaining,
+                },
+              ]
+            : [],
+        };
+      else if (url.pathname === "/v1/invoiceitems")
+        result = {
+          object: "list",
+          has_more: false,
+          url: url.pathname,
+          data: state.pendingInvoiceItem
+            ? [{ id: "ii_one", object: "invoiceitem", customer: "cus_one", livemode: false }]
+            : [],
+        };
+      else if (url.pathname === "/v1/payment_intents")
+        result = {
+          object: "list",
+          has_more: false,
+          url: url.pathname,
+          data: state.deletionPaymentStatus
+            ? [
+                {
+                  id: "pi_one",
+                  object: "payment_intent",
+                  customer: "cus_one",
+                  livemode: false,
+                  status: state.deletionPaymentStatus,
+                },
+              ]
+            : [],
+        };
+      else if (url.pathname === "/v1/invoices/in_one")
         result = {
           id: "in_one",
           object: "invoice",
@@ -1687,8 +1744,17 @@ test("ambiguous resume replay keeps its original endpoint, body and idempotency 
 describe("bound customer deletion", () => {
   function setup() {
     const f = fixture();
+    f.state.emptySubscriptions = true;
     const provider = createGenericBillingProvider(f.stripe, merchant, {
       async resolveBinding(input) {
+        if (input.objectType === "subscription") {
+          if (f.state.deletionSubscriptionBinding === "unbound") return null;
+          return {
+            appId: f.state.deletionSubscriptionBinding === "other_app" ? "other-app" : scope.appId,
+            billingAccountId: scope.billingAccountId,
+            scopeId: "sibling-product-family",
+          };
+        }
         return input.objectType === "customer" &&
           input.objectId === "cus_one" &&
           input.merchantId === merchant.merchantId &&
@@ -1723,7 +1789,7 @@ describe("bound customer deletion", () => {
     const present = await f.provider.inspectBoundCustomer(scope, "cus_one");
     let checked = false;
     const result = await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {
-      expect(f.requests.at(-1)?.path).toBe("/v1/customers/cus_one");
+      expect(f.requests.at(-1)?.path).toBe("/v1/payment_intents");
       expect(deletes(f)).toHaveLength(0);
       checked = true;
     });
@@ -1743,6 +1809,79 @@ describe("bound customer deletion", () => {
     expect(f.requests.at(-1)?.method).toBe("GET");
     expect(f.requests.at(-1)?.path).toBe("/v1/customers/cus_one");
     expect(f.requests.some((request) => request.path === "/v1/customers")).toBe(false);
+  });
+  test("unresolved or unbound subscriptions stop customer DELETE across product families", async () => {
+    for (const binding of ["own", "unbound", "other_app"] as const) {
+      const f = setup();
+      f.state.emptySubscriptions = false;
+      f.state.canceled = binding !== "own";
+      f.state.deletionSubscriptionBinding = binding;
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow();
+      expect(deletes(f)).toHaveLength(0);
+    }
+    const f = setup();
+    f.state.emptySubscriptions = false;
+    f.state.canceled = true;
+    f.state.page = true;
+    expect(
+      (await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {})).value
+        .status,
+    ).toBe("deleted");
+    expect(f.requests.some((request) => request.query.get("starting_after") === "sub_one")).toBe(
+      true,
+    );
+    const later = setup();
+    later.state.emptySubscriptions = false;
+    later.state.canceled = true;
+    later.state.page = true;
+    later.state.activeSecondSubscriptionPage = true;
+    await expect(
+      later.provider.deleteBoundCustomer(scope, "cus_one", later.deletion, async () => {}),
+    ).rejects.toThrow("unresolved provider subscription");
+    expect(deletes(later)).toHaveLength(0);
+  });
+  test("open invoices, uninvoiced items and pending payments prevent customer deletion", async () => {
+    for (const status of ["draft", "open", "uncollectible"] as const) {
+      const f = setup();
+      f.state.includeDeletionInvoice = true;
+      f.state.invoiceStatus = status;
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow("settlement or explicit voiding");
+      expect(deletes(f)).toHaveLength(0);
+    }
+    const item = setup();
+    item.state.pendingInvoiceItem = true;
+    await expect(
+      item.provider.deleteBoundCustomer(scope, "cus_one", item.deletion, async () => {}),
+    ).rejects.toThrow("uninvoiced");
+    expect(deletes(item)).toHaveLength(0);
+    for (const status of ["processing", "requires_capture", "requires_action"]) {
+      const f = setup();
+      f.state.deletionPaymentStatus = status;
+      await expect(
+        f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {}),
+      ).rejects.toThrow("unresolved provider payment");
+      expect(deletes(f)).toHaveLength(0);
+    }
+  });
+  test("settled invoices and payments permit deletion but foreign invoice ownership does not", async () => {
+    const f = setup();
+    f.state.includeDeletionInvoice = true;
+    f.state.deletionPaymentStatus = "succeeded";
+    expect(
+      (await f.provider.deleteBoundCustomer(scope, "cus_one", f.deletion, async () => {})).value
+        .status,
+    ).toBe("deleted");
+    const foreign = setup();
+    foreign.state.includeDeletionInvoice = true;
+    foreign.state.invoiceCustomer = "cus_other";
+    await expect(
+      foreign.provider.deleteBoundCustomer(scope, "cus_one", foreign.deletion, async () => {}),
+    ).rejects.toThrow("another customer");
+    expect(deletes(foreign)).toHaveLength(0);
   });
   test("already-deleted customer yields read-only evidence and does not invoke mutation authority", async () => {
     const f = setup();

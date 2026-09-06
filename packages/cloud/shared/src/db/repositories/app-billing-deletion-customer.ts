@@ -116,7 +116,7 @@ export const appBillingDeletionCustomerRepository = {
           .select({ userId: accountDeletionRequests.user_id })
           .from(accountDeletionRequests)
           .where(eq(accountDeletionRequests.id, authority.requestId));
-        if (!request) appBillingConflict("Customer deletion request is unavailable");
+        if (!request?.userId) appBillingConflict("Customer deletion request has no canonical user");
         const payload: DeletionCustomerCommandPayload = {
           version: 1,
           domain: "account_deletion",

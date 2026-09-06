@@ -943,6 +943,117 @@ export function createGenericBillingProvider(
       await validateCredentialMode();
       await this.verifyMerchant();
       const before = await this.inspectBoundCustomer(boundScope, customerId);
+      if (!bindings) fail("BINDING", "Customer deletion requires retained provider bindings");
+      // A customer DELETE would otherwise cancel subscriptions that never reached the local journal.
+      for await (const raw of stripe.subscriptions.list(
+        { customer: customerId, status: "all", limit: 100 },
+        options(),
+      )) {
+        const subscription = parse(
+          z.object({
+            id,
+            object: z.literal("subscription"),
+            customer: expandableId,
+            livemode: z.boolean(),
+            status: z.string(),
+            pending_update: z.object({}).passthrough().nullable(),
+          }),
+          raw,
+        );
+        requireValue(
+          subscription.customer === customerId && subscription.livemode === merchant.livemode,
+          "BINDING",
+          "Customer deletion inventory returned another customer or billing mode",
+        );
+        const binding = await bindings.resolveBinding({
+          objectType: "subscription",
+          objectId: subscription.id,
+          merchantId: merchant.merchantId,
+          providerAccountId: merchant.stripeAccountId,
+          livemode: merchant.livemode,
+        });
+        requireValue(
+          binding !== null &&
+            binding.appId === boundScope.appId &&
+            binding.billingAccountId === boundScope.billingAccountId &&
+            binding.scopeId !== null,
+          "UNBOUND_SUBSCRIPTION",
+          "Customer deletion requires original-command reconciliation for every provider subscription",
+        );
+        requireValue(
+          subscription.status === "canceled" && subscription.pending_update === null,
+          "CUSTOMER_OBLIGATIONS",
+          "Customer deletion has an unresolved provider subscription",
+        );
+      }
+      for await (const raw of stripe.invoices.list(
+        { customer: customerId, limit: 100 },
+        options(),
+      )) {
+        const invoice = parse(
+          z.object({
+            id,
+            object: z.literal("invoice"),
+            customer: expandableId,
+            livemode: z.boolean(),
+            status: z.enum(["draft", "open", "paid", "uncollectible", "void"]).nullable(),
+            paid: z.boolean(),
+            amount_remaining: money.nonnegative(),
+          }),
+          raw,
+        );
+        requireValue(
+          invoice.customer === customerId && invoice.livemode === merchant.livemode,
+          "BINDING",
+          "Customer deletion invoice belongs to another customer or billing mode",
+        );
+        requireValue(
+          invoice.status === "void" ||
+            (invoice.status === "paid" && invoice.paid && invoice.amount_remaining === 0),
+          "CUSTOMER_OBLIGATIONS",
+          "Customer deletion requires settlement or explicit voiding of every invoice",
+        );
+      }
+      for await (const raw of stripe.invoiceItems.list(
+        { customer: customerId, pending: true, limit: 100 },
+        options(),
+      )) {
+        parse(
+          z.object({
+            id,
+            object: z.literal("invoiceitem"),
+            customer: expandableId,
+            livemode: z.boolean(),
+          }),
+          raw,
+        );
+        fail("CUSTOMER_OBLIGATIONS", "Customer deletion has uninvoiced provider items");
+      }
+      for await (const raw of stripe.paymentIntents.list(
+        { customer: customerId, limit: 100 },
+        options(),
+      )) {
+        const payment = parse(
+          z.object({
+            id,
+            object: z.literal("payment_intent"),
+            customer: expandableId,
+            livemode: z.boolean(),
+            status: z.string(),
+          }),
+          raw,
+        );
+        requireValue(
+          payment.customer === customerId && payment.livemode === merchant.livemode,
+          "BINDING",
+          "Customer deletion payment belongs to another customer or billing mode",
+        );
+        requireValue(
+          payment.status === "succeeded" || payment.status === "canceled",
+          "CUSTOMER_OBLIGATIONS",
+          "Customer deletion has an unresolved provider payment",
+        );
+      }
       if (before.value.status === "deleted")
         return { ...before, value: { customerId, status: "deleted" } };
       const requestOptions = options(retained);
