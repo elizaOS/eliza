@@ -241,3 +241,40 @@ inputs (including rejected experiment preflights), model outcomes, returned chat
 responses and wire attempts. A delivered reply cannot make a run successful if
 its post-delivery model work failed. Provider account tier and invoice cost are
 not measured by this command; comparisons must disclose those limits.
+
+### Builtin evaluator semantic evidence
+
+`packages/agent/scripts/cerebras-evaluator-semantics.ts` is a separate semantic
+check, not a latency workload. It persists two controlled conversations in a
+new isolated PGlite directory and runs the actual fact, relationship, identity,
+and task-completion evaluators through the provider. The negative conversation
+contains a deliberately failed booking action-result fixture; no booking or
+external identity API is called. Acceptance requires actual owned fact and
+identity rows, a supported colleague relationship, and matching completion
+memory/cache values. It awaits the production RelationshipsService before use.
+
+Use the normal root environment file, independently verified
+`ELIZA_CEREBRAS_CHAT_MODEL=qwen-3.8-27b`, and the native384 settings described
+above. From the repository root:
+
+```bash
+bun --env-file=.env.local --conditions=eliza-source packages/agent/scripts/cerebras-evaluator-semantics.ts --output=/tmp/evaluator-live.json --pglite-dir=/tmp/evaluator-live-db
+```
+
+Both output and database paths must be new. The report contains full model and
+wire output, fixture definitions, before/after domain records, final isolation
+readbacks, and explicit failures. The database is retained after canonical
+runtime shutdown; this command does not certify restart durability. It makes
+nominally two merged evaluator calls, with every actual attempt recorded.
+Inspect and scan artifacts before publishing.
+
+Replay a successful report through the actual SDK and the current evaluator
+consumer on a loopback server using `--replay=/tmp/evaluator-live.json` and new
+output/database paths. `--finish=original` preserves the saved response body;
+`--finish=length`, `content_filter`, or `malformed` requires explicit evaluator
+failure with no persisted effects. Replay blocks remote network calls and
+records the source artifact hash. These controls are deterministic transport
+replays, not additional live-model trials. Comparing an older consumer requires
+an independently pinned compatible harness; this command does not emulate old
+production behavior. Semantic success and cache/latency improvement remain
+separate claims.
