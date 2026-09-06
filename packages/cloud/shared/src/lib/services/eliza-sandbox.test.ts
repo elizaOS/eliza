@@ -6745,6 +6745,59 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     }
   });
 
+  test.each(["SSH credential not found", "control endpoint returned 404"])(
+    "retained deletion does not mistake transport failure for exact absence (%s)",
+    async (message) => {
+      const svc = await makeSvc();
+      const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+        ok: true,
+        sandboxId: SANDBOX_ID,
+        status: "stopped",
+        sourcePoolId: null,
+        nodeId: "retained-node",
+        deletionLocator: {
+          sandboxId: SANDBOX_ID,
+          agentId: AGENT,
+          nodeId: "retained-node",
+          containerName: SANDBOX_ID,
+          containerId: "a".repeat(64),
+          hostname: "192.0.2.20",
+          sshPort: 22,
+          sshUser: "operator",
+          hostKeyFingerprint: "SHA256:captured",
+        },
+      });
+      const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+        kind: "stop-failed",
+        error: new Error(message),
+      });
+      const release = spyOn(
+        agentSandboxesRepository,
+        "tryReleaseDeletionAllocationForCommit",
+      ).mockResolvedValue({ outcome: "not-owned", lifecycleRevision: null });
+      const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
+        success: false,
+        error: "unsafe commit was reached",
+      });
+      const revoke = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+      try {
+        await expect(svc.deleteAgent(AGENT, ORG)).resolves.toEqual({
+          success: false,
+          error: "Failed to delete sandbox",
+        });
+        expect(release).not.toHaveBeenCalled();
+        expect(commit).not.toHaveBeenCalled();
+        expect(revoke).not.toHaveBeenCalled();
+      } finally {
+        prepare.mockRestore();
+        stop.mockRestore();
+        release.mockRestore();
+        commit.mockRestore();
+        revoke.mockRestore();
+      }
+    },
+  );
+
   test("the bounded teardown runs OUTSIDE the row-delete phase (sequenced, not nested)", async () => {
     const svc = await makeSvc();
     const order: string[] = [];

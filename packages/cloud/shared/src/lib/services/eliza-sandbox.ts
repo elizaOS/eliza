@@ -2883,7 +2883,12 @@ export class ElizaSandboxService {
       } else if (stop.kind === "stop-failed") {
         const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
         const stopFailureKind = classifySandboxDeleteStopFailure(stop.error);
-        if (this.isIgnorableSandboxStopError(stop.error)) {
+        // Retained deletion has exact-ID readback; transport error prose must
+        // never replace that proof or discard its durable cleanup authority.
+        if (
+          !precheck.deletionLocator?.containerId &&
+          this.isIgnorableSandboxStopError(stop.error)
+        ) {
           logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
             sandboxId,
             status: precheck.status,
