@@ -7,9 +7,12 @@ import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
+  type BillingSubscription,
   billingSubscriptionRevisions,
   billingSubscriptions,
+  organizationSubscriptionAuthorities,
 } from "../schemas/billing-subscriptions";
+import type { OrganizationEntitlement } from "../schemas/organization-entitlements";
 import { organizations } from "../schemas/organizations";
 import {
   type BillingSubscriptionCommand,
@@ -26,9 +29,43 @@ import {
   subscriptionBillingFences,
 } from "../schemas/subscription-billing-operations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
+import { subscriptionAuthorityRepository } from "./subscription-authority";
+import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
+import {
+  lifecycleFailure,
+  parseTerminalLifecycleObservation,
+  SUBSCRIPTION_LIFECYCLE_LEASE_LOST,
+  SUBSCRIPTION_LIFECYCLE_REOBSERVE,
+  SUBSCRIPTION_LIFECYCLE_UNSUPPORTED,
+  TERMINAL_LIFECYCLE_DISPOSITION,
+  validateTerminalReceipt,
+  validateTerminalSource,
+} from "./subscription-lifecycle-finalization";
 
 export const SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT = "SUBSCRIPTION_BILLING_OPERATIONS_CONFLICT";
 export const SUBSCRIPTION_BILLING_OPERATIONS_INVALID = "SUBSCRIPTION_BILLING_OPERATIONS_INVALID";
+
+export interface FinalizeSubscriptionLifecycleEventInput {
+  organizationId: string;
+  subscriptionId: string;
+  receiptId: string;
+  leaseToken: string;
+  /** Capture before provider retrieval; conflicts require new retrieval, never refreshed CAS alone. */
+  expectedSubscriptionRevision: number;
+  expectedProjectionRevision: number | null;
+  /** Complete mapped provider observation, validated here rather than by a caller's brand. */
+  observation: unknown;
+}
+
+export type FinalizeSubscriptionLifecycleEventResult =
+  | {
+      outcome: "applied";
+      receipt: BillingSubscriptionEventReceipt;
+      subscription: BillingSubscription;
+      entitlement: OrganizationEntitlement;
+    }
+  // Historical application has no implied current source or projection.
+  | { outcome: "already_applied"; receipt: BillingSubscriptionEventReceipt };
 
 export interface RepositoryMutation<T> {
   value: T;
@@ -48,6 +85,14 @@ export interface EnqueueSubscriptionCommandInput {
   requestDigest: string;
   now: Date;
 }
+
+export type ApplySubscriptionEventInput = {
+  organizationId: string;
+  receiptId: string;
+  leaseToken: string;
+  subscriptionRevision: number;
+  disposition: string;
+};
 
 export interface RecordSubscriptionEventInput {
   id?: string;
@@ -658,15 +703,186 @@ export class SubscriptionBillingOperationsRepository {
     return replayed ?? null;
   }
 
-  async applyEvent(input: {
-    organizationId: string;
-    receiptId: string;
-    leaseToken: string;
-    subscriptionRevision: number;
-    disposition: string;
-  }): Promise<BillingSubscriptionEventReceipt | null> {
+  /**
+   * Atomically publishes an existing organization's terminal lifecycle and receipt.
+   * The caller retrieves current provider objects before dispatch and authenticates
+   * merchant/customer authority. This boundary validates the complete mapped observation
+   * against locked local and receipt authority. Invoice/trial/allowance/dunning and
+   * app-subscriber policy require their own completed contracts and remain unsupported.
+   * Lock order: organization, account identity, receipt, subscription, projection.
+   */
+  async finalizeLifecycleEvent(
+    input: FinalizeSubscriptionLifecycleEventInput,
+  ): Promise<FinalizeSubscriptionLifecycleEventResult> {
+    const values = parseTerminalLifecycleObservation(input.observation);
+    if (
+      !Number.isSafeInteger(input.expectedSubscriptionRevision) ||
+      input.expectedSubscriptionRevision < 1 ||
+      (input.expectedProjectionRevision !== null &&
+        (!Number.isSafeInteger(input.expectedProjectionRevision) ||
+          input.expectedProjectionRevision < 0))
+    ) {
+      invalid(
+        "Lifecycle and projection revisions must be explicit nonnegative integers",
+        "expectedRevision",
+      );
+    }
+    return writeTransaction(async (tx) => {
+      const organization = await this.lockLifecycleOrganization(tx, input.organizationId);
+      if (!organization)
+        conflict("Lifecycle organization does not exist", { organizationId: input.organizationId });
+      if (
+        organization.account_lifecycle_state !== "active" ||
+        organization.paid_work_fenced_at !== null
+      ) {
+        lifecycleFailure(
+          SUBSCRIPTION_LIFECYCLE_UNSUPPORTED,
+          "Account deletion must use its dedicated reconciliation owner",
+          { organizationId: input.organizationId },
+        );
+      }
+      const [accountAuthority] = await tx
+        .select()
+        .from(organizationSubscriptionAuthorities)
+        .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
+        .limit(1)
+        .for("update");
+      const [receipt] = await tx
+        .select()
+        .from(billingSubscriptionEventReceipts)
+        .where(
+          and(
+            eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+            eq(billingSubscriptionEventReceipts.id, input.receiptId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!receipt || receipt.subscription_id !== input.subscriptionId) {
+        conflict("Lifecycle receipt does not belong to the requested subscription", {
+          receiptId: input.receiptId,
+        });
+      }
+      validateTerminalReceipt(receipt, values);
+      if (receipt.status === "applied" && receipt.disposition === TERMINAL_LIFECYCLE_DISPOSITION) {
+        return { outcome: "already_applied", receipt };
+      }
+      const databaseNow = await readPostLockDatabaseNow(tx);
+      if (
+        receipt.status !== "processing" ||
+        receipt.lease_token !== input.leaseToken ||
+        receipt.lease_expires_at === null ||
+        receipt.lease_expires_at <= databaseNow
+      ) {
+        lifecycleFailure(
+          SUBSCRIPTION_LIFECYCLE_LEASE_LOST,
+          "Acquire a live receipt lease before lifecycle finalization",
+          { receiptId: receipt.id },
+        );
+      }
+      if (
+        !accountAuthority ||
+        accountAuthority.state !== "current" ||
+        accountAuthority.subscription_id !== input.subscriptionId
+      ) {
+        lifecycleFailure(
+          SUBSCRIPTION_LIFECYCLE_REOBSERVE,
+          "Account authority changed; reconcile from a new provider observation",
+          { subscriptionId: input.subscriptionId },
+        );
+      }
+      const [current] = await tx
+        .select()
+        .from(billingSubscriptions)
+        .where(
+          and(
+            eq(billingSubscriptions.organization_id, input.organizationId),
+            eq(billingSubscriptions.id, input.subscriptionId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!current || current.lifecycle_revision !== input.expectedSubscriptionRevision) {
+        lifecycleFailure(
+          SUBSCRIPTION_LIFECYCLE_REOBSERVE,
+          "Subscription source changed; retrieve current provider state before retrying",
+          { subscriptionId: input.subscriptionId },
+        );
+      }
+      validateTerminalSource(current, organization.stripe_customer_id, values);
+      const lifecycle = await subscriptionAuthorityRepository.advanceInTransaction(tx, {
+        organizationId: input.organizationId,
+        subscriptionId: input.subscriptionId,
+        expectedRevision: input.expectedSubscriptionRevision,
+        source: "webhook",
+        observation: "authoritative_provider_retrieval",
+        values,
+      });
+      if (lifecycle.revision.revision !== lifecycle.subscription.lifecycle_revision) {
+        lifecycleFailure(
+          SUBSCRIPTION_LIFECYCLE_REOBSERVE,
+          "Historical provider-event replay cannot publish current entitlement",
+          { receiptId: receipt.id },
+        );
+      }
+      const projection = await subscriptionEntitlementsRepository.rebuildInTransaction(tx, {
+        organizationId: input.organizationId,
+        sourceSubscriptionId: input.subscriptionId,
+        sourceSubscriptionRevision: lifecycle.subscription.lifecycle_revision,
+        expectedProjectionRevision: input.expectedProjectionRevision,
+      });
+      const applied = await this.applyEventInTransaction(tx, {
+        organizationId: input.organizationId,
+        receiptId: receipt.id,
+        leaseToken: input.leaseToken,
+        subscriptionRevision: lifecycle.subscription.lifecycle_revision,
+        disposition: TERMINAL_LIFECYCLE_DISPOSITION,
+      });
+      if (!applied) {
+        lifecycleFailure(
+          SUBSCRIPTION_LIFECYCLE_LEASE_LOST,
+          "Receipt lease expired before commit; lifecycle and projection were rolled back",
+          { receiptId: receipt.id },
+        );
+      }
+      return {
+        outcome: "applied",
+        receipt: applied,
+        subscription: lifecycle.subscription,
+        entitlement: projection.entitlement,
+      };
+    });
+  }
+
+  private async lockLifecycleOrganization(tx: DbTransaction, organizationId: string) {
+    const [organization] = await tx
+      .select({
+        id: organizations.id,
+        stripe_customer_id: organizations.stripe_customer_id,
+        account_lifecycle_state: organizations.account_lifecycle_state,
+        paid_work_fenced_at: organizations.paid_work_fenced_at,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1)
+      .for("update");
+    return organization;
+  }
+
+  async applyEvent(
+    input: ApplySubscriptionEventInput,
+  ): Promise<BillingSubscriptionEventReceipt | null> {
+    return writeTransaction((tx) => this.applyEventInTransaction(tx, input));
+  }
+
+  /** Lease finalization stays on the caller's transaction and locks organization before receipt. */
+  async applyEventInTransaction(
+    tx: DbTransaction,
+    input: ApplySubscriptionEventInput,
+  ): Promise<BillingSubscriptionEventReceipt | null> {
+    if (!(await this.lockLifecycleOrganization(tx, input.organizationId))) return null;
     const databaseNow = sql`clock_timestamp()`;
-    const [updated] = await dbWrite
+    const [updated] = await tx
       .update(billingSubscriptionEventReceipts)
       .set({
         status: "applied",
@@ -688,7 +904,16 @@ export class SubscriptionBillingOperationsRepository {
       )
       .returning();
     if (updated) return updated;
-    const existing = await this.findEventReceipt(input.organizationId, input.receiptId);
+    const [existing] = await tx
+      .select()
+      .from(billingSubscriptionEventReceipts)
+      .where(
+        and(
+          eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          eq(billingSubscriptionEventReceipts.id, input.receiptId),
+        ),
+      )
+      .limit(1);
     return existing?.status === "applied" &&
       existing.applied_subscription_revision === input.subscriptionRevision &&
       existing.disposition === input.disposition
