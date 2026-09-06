@@ -1219,7 +1219,7 @@ async function doDelete(
     return {
       success: true,
       transcriptVisibility: "internal",
-      text: `Forgot memory ${memoryId}.`,
+      text: `Forgot memory ${memoryId}: ${toWellFormedUnicode(existing.content.text ?? "")}`,
       values: { memoryId },
       effectReceipts: [
         memoryMutationReceipt({
@@ -1503,7 +1503,7 @@ export const memoryAction: Action = {
     {
       name: "type",
       description:
-        "search: optional table filter. Omit to search all record types. Conversation history is messages; memories is only explicitly saved memory records, not the whole store.",
+        "search: optional table filter. Use facts for saved facts and preferences (the usual target of remember/forget); memories is only explicitly saved memory records; messages is conversation history and is large. Omit to search all record types.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_TYPES] },
     },
@@ -1530,7 +1530,7 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search: filter text. update/delete: the wording of the memory to change or forget (a few distinctive words are enough) when memoryId is not given; one of query or memoryId is required.",
+        'search: filter text. update/delete: the memory to change or forget, quoted in the user\'s own words from this message (never paraphrase: "like my coffee with oat milk", not "prefer oat milk") when memoryId is not given; one of query or memoryId is required.',
       required: false,
       schema: { type: "string" as const },
     },
