@@ -266,6 +266,40 @@ function main() {
     assertPathExists(path.join(projectDir, ".elizaos", "template.json"));
     assertPathExists(path.join(projectDir, "apps", "app", "package.json"));
     assertPathMissing(path.join(projectDir, "eliza"));
+    if (process.platform !== "win32") {
+      const wrapperDir = path.join(
+        projectDir,
+        "apps",
+        "app",
+        "electrobun",
+        "scripts",
+        "bin",
+      );
+      const controlledCodesign = path.join(smokeDir, "controlled-codesign");
+      fs.writeFileSync(
+        controlledCodesign,
+        '#!/bin/sh\nprintf "packaged-wrapper-dispatched\\n"\n',
+        { mode: 0o755 },
+      );
+      for (const stage of ["created", "upgraded"]) {
+        if (stage === "upgraded") {
+          // Repair projects produced by a CLI that dropped the executable bit,
+          // even though their managed content hashes are already current.
+          fs.chmodSync(path.join(wrapperDir, "codesign"), 0o644);
+          runCli(smokeDir, projectDir, ["upgrade", "--skip-upstream"]);
+        }
+        const output = execFileSync("/bin/sh", ["-c", "codesign --version"], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${wrapperDir}:${process.env.PATH}`,
+            ELIZA_REAL_CODESIGN: controlledCodesign,
+          },
+        });
+        if (output.trim() !== "packaged-wrapper-dispatched")
+          throw new Error(`${stage} project bypassed its codesign wrapper`);
+      }
+    }
     const packageModeOutput = run(
       "node",
       ["scripts/eliza-source-mode.mjs", "packages"],
