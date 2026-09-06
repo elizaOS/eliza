@@ -1649,17 +1649,16 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     };
   }
 
-  // Create sealed Adze instance with configuration
   const sealed = sealAdze(base);
   const levelStr =
     typeof level === "number" ? "info" : level || effectiveLogLevel;
   const currentLevel = levelStr.toLowerCase();
+  let warnedSinkFailure = false;
 
   /**
    * Invoke Adze method with error capture
    */
   const invoke = (method: string, ...args: unknown[]): void => {
-    // Check if this log level should be output
     if (!shouldLog(method, currentLevel)) {
       return;
     }
@@ -1676,7 +1675,6 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
         .join(" ");
     }
 
-    // Include namespace in the message if present
     if (base.namespace) {
       msg = `#${base.namespace}  ${msg}`;
     }
@@ -1691,37 +1689,40 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     globalInMemoryDestination.write(entry);
     writeLogEntryToFile(entry);
 
-    // Map Eliza methods to correct Adze invocations
     let adzeMethod = method;
     let adzeArgs = args;
 
-    // Normalize special cases - map our custom levels to Adze levels
     if (method === "fatal") {
       // Adze uses 'alert' for fatal-level logging
       adzeMethod = "alert";
     } else if (method === "progress") {
-      // Map progress to info level with a prefix
       adzeMethod = "info";
       adzeArgs = ["[PROGRESS]", ...args];
     } else if (method === "success") {
-      // Map success to info level with a prefix
       adzeMethod = "info";
       adzeArgs = ["[SUCCESS]", ...args];
     } else if (method === "trace") {
-      // Map trace to verbose
       adzeMethod = "verbose";
     }
 
-    // Invoke the sealed logger method
     try {
-      // The sealed logger implements AdzeLogMethods
       const loggerWithMethods = sealed as Log & AdzeLogMethods;
       const logMethod = loggerWithMethods[adzeMethod as keyof AdzeLogMethods];
       if (typeof logMethod === "function") {
         logMethod.call(loggerWithMethods, ...adzeArgs);
       }
     } catch {
-      // Adze internals failed — drop the log entry rather than breaking the runtime
+      // error-policy:J7 report without re-entering Adze or exposing the failed entry.
+      if (!warnedSinkFailure) {
+        warnedSinkFailure = true;
+        try {
+          console.error(
+            "[logger] formatted output sink failed; buffered logs remain available",
+          );
+        } catch {
+          // error-policy:J7 a failed diagnostic console sink cannot be reported through itself.
+        }
+      }
     }
   };
 
