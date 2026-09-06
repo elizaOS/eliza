@@ -79,7 +79,10 @@ function normalizeApiKey(value: unknown): string | undefined {
 
 function validateSearchQuery(query: unknown): string {
     if (typeof query !== "string" || !query.trim()) {
-        throw new Error("search query is required");
+        throw new ElizaError("search query is required", {
+            code: "WEB_SEARCH_QUERY_INVALID",
+            context: { query },
+        });
     }
     return query.trim();
 }
@@ -92,7 +95,10 @@ function assertOptionalPositiveInteger(value: unknown, name: string): void {
             !Number.isInteger(value) ||
             value < 1)
     ) {
-        throw new Error(`${name} must be a positive finite integer`);
+        throw new ElizaError(`${name} must be a positive finite integer`, {
+            code: "WEB_SEARCH_OPTION_INVALID",
+            context: { name, value },
+        });
     }
 }
 
@@ -104,14 +110,20 @@ function assertOptionalNonNegativeInteger(value: unknown, name: string): void {
             !Number.isInteger(value) ||
             value < 0)
     ) {
-        throw new Error(`${name} must be a non-negative finite integer`);
+        throw new ElizaError(`${name} must be a non-negative finite integer`, {
+            code: "WEB_SEARCH_OPTION_INVALID",
+            context: { name, value },
+        });
     }
 }
 
 function validateSearchOptions(options?: SearchOptions): void {
     if (options === undefined) return;
     if (!isRecord(options)) {
-        throw new Error("search options must be an object");
+        throw new ElizaError("search options must be an object", {
+            code: "WEB_SEARCH_OPTIONS_INVALID",
+            context: { options },
+        });
     }
     const requestedLimit: unknown = options.limit;
     assertOptionalPositiveInteger(requestedLimit, "limit");
@@ -130,23 +142,38 @@ function validateSearchOptions(options?: SearchOptions): void {
     }
     assertOptionalNonNegativeInteger(options.days, "days");
     if (options.topic !== undefined && options.topic !== "general" && options.topic !== "news") {
-        throw new Error("topic must be general or news");
+        throw new ElizaError("topic must be general or news", {
+            code: "WEB_SEARCH_OPTION_INVALID",
+            context: { topic: options.topic },
+        });
     }
     if (options.type !== undefined && options.type !== "general" && options.type !== "news") {
-        throw new Error("type must be general or news");
+        throw new ElizaError("type must be general or news", {
+            code: "WEB_SEARCH_OPTION_INVALID",
+            context: { type: options.type },
+        });
     }
     if (
         options.searchDepth !== undefined &&
         options.searchDepth !== "basic" &&
         options.searchDepth !== "advanced"
     ) {
-        throw new Error("searchDepth must be basic or advanced");
+        throw new ElizaError("searchDepth must be basic or advanced", {
+            code: "WEB_SEARCH_OPTION_INVALID",
+            context: { searchDepth: options.searchDepth },
+        });
     }
     if (options.includeAnswer !== undefined && typeof options.includeAnswer !== "boolean") {
-        throw new Error("includeAnswer must be a boolean");
+        throw new ElizaError("includeAnswer must be a boolean", {
+            code: "WEB_SEARCH_OPTION_INVALID",
+            context: { includeAnswer: options.includeAnswer },
+        });
     }
     if (options.includeImages !== undefined && typeof options.includeImages !== "boolean") {
-        throw new Error("includeImages must be a boolean");
+        throw new ElizaError("includeImages must be a boolean", {
+            code: "WEB_SEARCH_OPTION_INVALID",
+            context: { includeImages: options.includeImages },
+        });
     }
 }
 

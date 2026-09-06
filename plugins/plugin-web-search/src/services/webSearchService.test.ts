@@ -129,37 +129,49 @@ describe("WebSearchService", () => {
     it("rejects malformed search queries and options before Tavily calls", async () => {
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
-        await expect(service.search(" \n\t ")).rejects.toThrow("search query is required");
-        await expect(service.search(42 as unknown as string)).rejects.toThrow(
-            "search query is required"
-        );
+        await expect(service.search(" \n\t ")).rejects.toMatchObject({
+            code: "WEB_SEARCH_QUERY_INVALID",
+        });
+        await expect(service.search(42 as unknown as string)).rejects.toMatchObject({
+            code: "WEB_SEARCH_QUERY_INVALID",
+        });
         await expect(
             service.search("eliza", "limit=3" as unknown as SearchOptions)
-        ).rejects.toThrow("search options must be an object");
-        await expect(service.search("eliza", { limit: 0 })).rejects.toThrow(
-            "limit must be a positive finite integer"
-        );
-        await expect(service.search("eliza", { limit: 1.5 })).rejects.toThrow(
-            "limit must be a positive finite integer"
-        );
+        ).rejects.toMatchObject({
+            code: "WEB_SEARCH_OPTIONS_INVALID",
+        });
+        await expect(service.search("eliza", { limit: 0 })).rejects.toMatchObject({
+            code: "WEB_SEARCH_OPTION_INVALID",
+        });
+        await expect(service.search("eliza", { limit: 1.5 })).rejects.toMatchObject({
+            code: "WEB_SEARCH_OPTION_INVALID",
+        });
         await expect(service.search("eliza", { limit: 21 })).rejects.toMatchObject({
             code: "WEB_SEARCH_PROVIDER_LIMIT_EXCEEDED",
         });
         await expect(service.search("eliza", { offset: 1 })).rejects.toMatchObject({
             code: "WEB_SEARCH_PAGINATION_UNSUPPORTED",
         });
-        await expect(service.search("eliza", { days: Number.POSITIVE_INFINITY })).rejects.toThrow(
-            "days must be a non-negative finite integer"
-        );
+        await expect(
+            service.search("eliza", { days: Number.POSITIVE_INFINITY })
+        ).rejects.toMatchObject({
+            code: "WEB_SEARCH_OPTION_INVALID",
+        });
         await expect(
             service.search("eliza", { topic: "javascript:alert(1)" } as unknown as SearchOptions)
-        ).rejects.toThrow("topic must be general or news");
+        ).rejects.toMatchObject({
+            code: "WEB_SEARCH_OPTION_INVALID",
+        });
         await expect(
             service.search("eliza", { searchDepth: "deep" } as unknown as SearchOptions)
-        ).rejects.toThrow("searchDepth must be basic or advanced");
+        ).rejects.toMatchObject({
+            code: "WEB_SEARCH_OPTION_INVALID",
+        });
         await expect(
             service.search("eliza", { includeImages: "true" } as unknown as SearchOptions)
-        ).rejects.toThrow("includeImages must be a boolean");
+        ).rejects.toMatchObject({
+            code: "WEB_SEARCH_OPTION_INVALID",
+        });
         expect(searchMock).not.toHaveBeenCalled();
     });
 
