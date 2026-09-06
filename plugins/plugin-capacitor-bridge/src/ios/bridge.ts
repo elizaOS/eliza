@@ -68,13 +68,17 @@ import {
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
 import { createModelDownloadDeadline } from "../shared/model-download-deadline.ts";
-import { createNativeModelRequestGuard } from "../shared/native-model-request.ts";
 import {
 	type StdioBridgeRequestFrame as BridgeRequest,
 	type StdioBridgeResponseFrame as BridgeResponse,
 	createStdioBridge,
 } from "../shared/stdio-bridge.ts";
 import { runModelGrind } from "./model-grind.ts";
+import {
+	cleanIosNativeConversationReply,
+	dispatchIosNativeGeneration,
+	stripReasoningBlocks,
+} from "./native-generation.ts";
 
 interface HostCallFrame {
 	type: "host_call";
@@ -2885,30 +2889,6 @@ function renderGemmaPrompt(
 	return blocks.join("\n");
 }
 
-function stripReasoningBlocks(raw: string): string {
-	return raw
-		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
-		.replace(/^[\s\S]*?<\/think>/i, "")
-		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
-		.replace(/\/?\bno_think\b/gi, "")
-		.trim();
-}
-
-function cleanIosNativeConversationReply(raw: string): string {
-	const withoutTokens = stripReasoningBlocks(raw)
-		.split("<end_of_turn>")[0]
-		.split("<start_of_turn>")[0]
-		.split("<|im_end|>")[0]
-		.split("<|im_start|>")[0]
-		.replace(/^\s*model\s*:\s*/i, "")
-		.replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
-		.trim();
-	const compact = withoutTokens.replace(/\s+/g, " ").trim();
-	if (!compact) return "";
-	const firstSentence = compact.match(/^(.{12,280}?[.!?])(?:\s|$)/u)?.[1];
-	return (firstSentence ?? compact).trim();
-}
-
 async function maybeGenerateIosNativeConversationReply(
 	runtime: IAgentRuntime,
 	prompt: string,
@@ -2930,7 +2910,6 @@ async function maybeGenerateIosNativeConversationReply(
 				},
 				{ role: "user", content: prompt },
 			],
-			maxTokens: 32,
 			temperature: 0,
 			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
 			// When the caller is streaming, forward incremental model tokens so the
@@ -2982,12 +2961,9 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 		}
 		const prompt = flattenChatParamsForPrompt(params);
 		const structuredSlot = isStructuredGenerationSlot(slot);
-		const requestedMaxTokens = positiveInteger(params.maxTokens) ?? 256;
-		const maxTokens = Math.min(requestedMaxTokens, structuredSlot ? 256 : 128);
 		const nativeRequest = {
 			context_id: state.contextId,
 			prompt,
-			max_tokens: maxTokens,
 			temperature:
 				typeof params.temperature === "number"
 					? params.temperature
@@ -2998,30 +2974,17 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 			top_k: positiveInteger(params.topK) ?? 40,
 			stop: mergeStopSequences(params.stopSequences),
 		};
-		const preparedRequest = createNativeModelRequestGuard({
+		const text = await dispatchIosNativeGeneration({
 			provider: IOS_NATIVE_LLAMA_PROVIDER,
 			model:
 				state.modelId ??
 				(state.modelPath ? path.basename(state.modelPath) : "ios-native-llama"),
 			contextWindowTokens: nativeLlamaContextSize(),
-			outputReserveTokens: maxTokens,
-			projectRequest: () => ({
-				...nativeRequest,
-				stop: [...nativeRequest.stop],
-			}),
+			requestedMaxTokens: params.maxTokens,
+			request: nativeRequest,
+			invoke: (request, timeoutMs) =>
+				callIosHost("llama_generate", request, timeoutMs),
 		});
-		preparedRequest.assertBeforeAttempt();
-		const result = await callIosHost(
-			"llama_generate",
-			nativeRequest,
-			Math.max(120_000, maxTokens * 2_000),
-		);
-		const record =
-			result && typeof result === "object" && !Array.isArray(result)
-				? (result as Record<string, unknown>)
-				: {};
-		const text =
-			typeof record.text === "string" ? record.text : String(result ?? "");
 		const cleanedText = stripReasoningBlocks(text);
 		if (params.onStreamChunk && cleanedText) {
 			await params.onStreamChunk(cleanedText, crypto.randomUUID(), cleanedText);
