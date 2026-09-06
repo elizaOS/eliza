@@ -277,7 +277,10 @@ describe("loadSkills and loadSkillEntries", () => {
         ].join("\n"),
       );
       const env = { ...process.env };
-      delete env.ELIZAOS_BUNDLED_SKILLS_DIR;
+      env.ELIZAOS_BUNDLED_SKILLS_DIR = join(
+        fixtureRoot,
+        "unused-missing-bundle",
+      );
       const output = execFileSync(process.execPath, [runner], {
         env,
         encoding: "utf8",
@@ -458,6 +461,8 @@ describe("state skill namespace selection", () => {
     writeSkill(managed, "managed-skill");
     writeSkill(active, "active-skill");
     writeSkill(proposed, "draft-skill");
+    symlinkSync(active, join(managed, "active-alias"), "dir");
+    symlinkSync(proposed, join(managed, "draft-alias"), "dir");
     try {
       const options = { agentDir: root, cwd: empty, bundledSkillsDir: empty };
       const result = loadSkills(options);
