@@ -260,7 +260,7 @@ test.skipIf(!hostedLinux)(
       await writeFile(
         probe,
         `
-import { fstatSync, readFileSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync, unlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { connect } from "node:net";
 import { createSocket } from "node:dgram";
@@ -293,6 +293,21 @@ const udp = (family, host, port) => new Promise((resolve) => {
     });
   });
 });
+// Keep subprocess output on regular files so the syscall probe does not
+// depend on pipe implementations that can require forbidden socket channels.
+let pythonProbeIndex = 0;
+const runPython = (args) => {
+  const prefix = process.argv[1] + ".python-" + pythonProbeIndex++;
+  const out = openSync(prefix + ".out", "wx", 0o600);
+  const err = openSync(prefix + ".err", "wx", 0o600);
+  try {
+    const result = spawnSync("/usr/bin/python3", args, { stdio: ["ignore", out, err] });
+    return { ...result, stdout: readFileSync(prefix + ".out", "utf8"), stderr: readFileSync(prefix + ".err", "utf8") };
+  } finally {
+    closeSync(out); closeSync(err);
+    unlinkSync(prefix + ".out"); unlinkSync(prefix + ".err");
+  }
+};
 const syscallPython = [
   "import ctypes, json, os, socket",
   "libc = ctypes.CDLL(None, use_errno=True)",
@@ -317,7 +332,7 @@ const syscallPython = [
   "    return {'result': result, 'errno': ctypes.get_errno()}",
   "print(json.dumps({'socketpairResult': socketpair_result, 'socketpairErrno': socketpair_errno, 'socketpairReconnect': socketpair_reconnect, 'x32Socketpair': denied(0x40000000 | 53, socket.AF_UNIX, socket.SOCK_DGRAM, 0, fds), 'ioUringSetup': denied(425, 1, 0), 'ioUringEnter': denied(426, -1, 0, 0, 0, 0, 0), 'ioUringRegister': denied(427, -1, 0, 0, 0)}))",
 ].join("\\n");
-const syscallProbe = spawnSync("python3", ["-c", syscallPython], { encoding: "utf8" });
+const syscallProbe = runPython(["-c", syscallPython]);
 const syscallResult = syscallProbe.status === 0
   ? JSON.parse(syscallProbe.stdout)
   : { probeError: { status: syscallProbe.status, signal: syscallProbe.signal, stderr: syscallProbe.stderr, error: syscallProbe.error?.message, code: syscallProbe.error?.code } };
@@ -329,7 +344,7 @@ let fdSecretReadable = false;
 try { if (fstatSync(3).isFile()) fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret"); } catch {}
 let hostTmpReadable = false;
 try { hostTmpReadable = readFileSync(process.env.PROBE_HOST_TMP_PATH, "utf8") === "must-be-masked"; } catch {}
-const rawProbeAvailable = spawnSync("python3", ["--version"]).status === 0;
+const rawProbeAvailable = runPython(["--version"]).status === 0;
 console.log(JSON.stringify({
   secretPresent: process.env.PROBE_PARENT_CREDENTIAL !== undefined,
   procReadable,
@@ -345,8 +360,8 @@ console.log(JSON.stringify({
   dnsUdp: await udp("udp4", "8.8.8.8", 53),
   ipv6Udp: await udp("udp6", "::1", Number(process.env.PROBE_BLOCKED_IPV6_PORT)),
   rawProbeAvailable,
-  rawIpv4: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
-  rawIpv6: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
+  rawIpv4: runPython(["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
+  rawIpv6: runPython(["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
   filesystemUnix: await unix(process.env.PROBE_FILESYSTEM_UNIX),
   abstractUnix: await unix("\\0" + process.env.PROBE_ABSTRACT_UNIX_NAME),
   syscallResult,
