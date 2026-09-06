@@ -16,11 +16,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { buildPlugin } from "../../../plugins/plugin-build.ts";
 import { buildLocalInferencePlugin } from "../../../plugins/plugin-local-inference/build.ts";
 import {
-  buildPluginSql,
   listDeclarationFiles,
   normalizeDeclarationSpecifiers,
   resolveDeclarationSpecifier,
@@ -410,9 +410,19 @@ describe("changed build entrypoints", () => {
   });
 
   test("plugin-sql build writes public shims with injected compilers", async () => {
-    const dist = path.join(repoRoot, "plugins/plugin-sql/src/dist");
-    rmSync(dist, { recursive: true, force: true });
+    const root = mkdtempSync(path.join(tmpdir(), "plugin-sql-build-"));
+    const dist = path.join(root, "dist");
     try {
+      // The builder locates output beside its module. Isolate that module so
+      // this fixture cannot delete artifacts used by concurrent consumers.
+      const entry = path.join(root, "build.ts");
+      writeFileSync(
+        entry,
+        readFileSync(path.join(repoRoot, "plugins/plugin-sql/src/build.ts")),
+      );
+      const { buildPluginSql } = (await import(
+        pathToFileURL(entry).href
+      )) as typeof import("../../../plugins/plugin-sql/src/build.ts");
       await buildPluginSql({
         build: async () =>
           ({ success: true, logs: [], outputs: [{ size: 1 }] }) as never,
@@ -427,7 +437,7 @@ describe("changed build entrypoints", () => {
         readFileSync(path.join(dist, "schema", "index.js"), "utf8"),
       ).toContain("../node/index.node.js");
     } finally {
-      rmSync(dist, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
