@@ -22,7 +22,7 @@ jobs:
               os.environ['PATH']=str(p)+os.pathsep+os.environ['PATH']
           print(run(['ffmpeg','-version']).decode().splitlines()[0])
           video=str(p/'sparse.mp4')
-          run(['ffmpeg','-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=red:s=64x64:r=10:d=0.1','-f','lavfi','-i','color=c=lime:s=64x64:r=10:d=0.1','-filter_complex','[0:v][1:v]concat=n=2:v=1,setpts=N*5/TB[v]','-map','[v]','-fps_mode','vfr','-pix_fmt','yuv420p','-enc_time_base','1:10',video])
+          run(['ffmpeg','-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=red:s=64x64:r=10:d=0.1','-f','lavfi','-i','color=c=lime:s=64x64:r=10:d=0.1','-filter_complex','[0:v][1:v]concat=n=2:v=1,setpts=N*5/TB[v]','-map','[v]','-fps_mode','vfr','-pix_fmt','yuv420p','-r','10','-enc_time_base','1:10',video])
           info=subprocess.run(['ffmpeg','-hide_banner','-i',video,'-vf','showinfo','-f','null','-'],capture_output=True,text=True,check=True)
           print(info.stderr)
           def pixels(args):
