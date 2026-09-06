@@ -9,7 +9,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { ATOMS, buildInventory } from "./find-duplicate-components.mjs";
+import {
+  ATOMS,
+  buildInventory,
+  isHiddenSourceArtifactDirectory,
+} from "./find-duplicate-components.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
@@ -428,6 +432,7 @@ export function isGovernedSource(file) {
   const rel = relative(file);
   return (
     /^(packages|plugins)\//.test(rel) &&
+    !path.posix.dirname(rel).split("/").some(isHiddenSourceArtifactDirectory) &&
     /\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
@@ -444,6 +449,7 @@ function* walk(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (
+      (entry.isDirectory() && isHiddenSourceArtifactDirectory(entry.name)) ||
       [
         "node_modules",
         "dist",
@@ -495,6 +501,7 @@ function* walkStylesheets(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (
+      (entry.isDirectory() && isHiddenSourceArtifactDirectory(entry.name)) ||
       [
         "node_modules",
         "dist",

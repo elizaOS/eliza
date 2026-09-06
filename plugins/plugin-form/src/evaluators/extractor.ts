@@ -288,11 +288,7 @@ export const formEvaluator: Evaluator<
     const text = message.content?.text;
     if (!text?.trim()) return false;
 
-    const session = await formService.getActiveSession(entityId, roomId);
-    if (session) return true;
-
-    const stashed = await formService.getStashedSessions(entityId);
-    return stashed.length > 0;
+    return (await formService.getActiveSession(entityId, roomId)) !== null;
   },
 
   async prepare({ runtime, message }) {
@@ -305,9 +301,8 @@ export const formEvaluator: Evaluator<
 
     const session = await formService.getActiveSession(entityId, roomId);
     if (!session) {
-      // shouldRun gates this — only stashed-only state reaches here, in which
-      // case the evaluator section will produce an `other` intent and no
-      // extractions will be applied because there's no active session.
+      // The session can leave the active state between admission and prepare.
+      // FORM action=restore owns the stashed-only path.
       throw new Error(
         "Form evaluator prepared without an active session; FORM action=restore owns the stashed-only path",
       );

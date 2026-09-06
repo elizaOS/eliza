@@ -3,6 +3,7 @@
  * speech text extraction, and mouth animation helpers.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { sanitizeSpeechText } from "@elizaos/shared";
 import { MOUTH_OPEN_STEP, type SpeechSegmentKind } from "./voice-chat-types";
 
@@ -127,7 +128,7 @@ export function isRealSentenceEnd(value: string, matchIndex: number): boolean {
     matchIndex + 1 < value.length ? value[matchIndex + 1] : undefined;
 
   if (previousChar !== undefined && /\d/.test(previousChar)) {
-    if (nextChar !== undefined && /\d/.test(nextChar)) {
+    if (nextChar === undefined || /\d/.test(nextChar)) {
       return false;
     }
   }
@@ -182,6 +183,21 @@ export function splitFirstSentence(text: string): {
   return { complete: false, firstSentence: value, remainder: "" };
 }
 
+/** Committed words may gain punctuation, but must never turn into a longer word. */
+export function isCommittedSpeechPrefix(
+  fullText: string,
+  prefix: string,
+): boolean {
+  const full = collapseWhitespace(fullText);
+  const committed = collapseWhitespace(prefix);
+  return (
+    !committed ||
+    full === committed ||
+    (full.startsWith(committed) &&
+      /^[\s.,!?;:…]/u.test(full.slice(committed.length)))
+  );
+}
+
 export function remainderAfter(
   fullText: string,
   firstSentence: string,
@@ -189,20 +205,26 @@ export function remainderAfter(
   const full = collapseWhitespace(fullText);
   const first = collapseWhitespace(firstSentence);
   if (!full || !first) return full;
-  if (full.startsWith(first)) return full.slice(first.length).trim();
-
-  const lowerFull = full.toLowerCase();
-  const lowerFirst = first.toLowerCase();
-  if (lowerFull.startsWith(lowerFirst)) {
+  if (isCommittedSpeechPrefix(full, first))
     return full.slice(first.length).trim();
-  }
 
-  const idx = lowerFull.indexOf(lowerFirst);
-  if (idx >= 0) {
-    return full.slice(idx + first.length).trim();
-  }
+  throw new ElizaError(
+    "The reply changed after speech was queued. Play the completed reply again.",
+    {
+      code: "VOICE_SPEECH_REVISION_UNSUPPORTED",
+      context: {
+        queuedCharacters: first.length,
+        receivedCharacters: full.length,
+      },
+    },
+  );
+}
 
-  return "";
+/** Keep the unfinished final lexical unit for a later frame or the final flush. */
+export function stableSpeechPrefix(text: string): string {
+  const value = collapseWhitespace(text);
+  const boundary = value.lastIndexOf(" ");
+  return boundary < 0 ? "" : value.slice(0, boundary);
 }
 
 export function queueableSpeechPrefix(text: string, isFinal: boolean): string {

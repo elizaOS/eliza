@@ -24,6 +24,7 @@ import type {
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import {
+  requiresAdditionalRuntimeProvider,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
@@ -212,20 +213,24 @@ export function ProviderAccountRow({
   );
   const isActiveSubscription =
     subscriptionSelection?.id === activeSubscriptionId;
+  const subscriptionIncludesChat = Boolean(
+    subscriptionSelection &&
+      !requiresAdditionalRuntimeProvider(subscriptionSelection.id),
+  );
   const isDirectChatProvider = option.category === "chat";
   const isActiveChatProvider = option.id === activeChatProviderId;
 
   return (
     <div
       className={cn(
-        "rounded-lg border transition-colors",
+        "min-w-0 rounded-lg border transition-colors",
         connected
           ? "border-border/50 bg-card/40"
           : "border-dashed border-border/40 bg-transparent",
       )}
     >
       {/* ── Header row: the single calm summary line ── */}
-      <div className="flex items-center gap-3 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
         <Button
           variant="transparent"
           size="content"
@@ -234,7 +239,7 @@ export function ProviderAccountRow({
           onClick={onToggle}
           disabled={!connected}
           aria-expanded={connected ? expanded : undefined}
-          className={cn("min-w-0 flex-1")}
+          className={cn("min-w-0 flex-1 basis-72 whitespace-normal")}
         >
           {connected ? (
             <ChevronRight
@@ -262,7 +267,7 @@ export function ProviderAccountRow({
             />
           </span>
           <span className="flex min-w-0 flex-col">
-            <span className="flex items-center gap-2">
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="truncate text-sm font-medium text-txt-strong">
                 {option.name}
               </span>
@@ -274,7 +279,7 @@ export function ProviderAccountRow({
                         defaultValue: "Needs attention",
                       })
                     : t("accounts.row.healthy", {
-                        defaultValue: `${healthy}/${sorted.length} healthy`,
+                        defaultValue: "{{healthy}}/{{total}} healthy",
                         healthy,
                         total: sorted.length,
                       })}
@@ -304,14 +309,12 @@ export function ProviderAccountRow({
                   })}
                 >
                   {t("accounts.row.activeReason", {
-                    defaultValue: `active · ${
-                      SELECTION_REASON_LABEL[selection.reason]
-                    }`,
+                    defaultValue: "active · {{reason}}",
                     reason: SELECTION_REASON_LABEL[selection.reason],
                   })}
                   {activeResetIn
                     ? t("accounts.row.activeResetIn", {
-                        defaultValue: ` · resets in ${activeResetIn}`,
+                        defaultValue: " · resets in {{resetIn}}",
                         resetIn: activeResetIn,
                       })
                     : ""}
@@ -322,7 +325,7 @@ export function ProviderAccountRow({
         </Button>
 
         {/* Right-aligned inline actions — no separate modal world. */}
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
           {connected && isDirectChatProvider ? (
             <Button
               type="button"
@@ -353,15 +356,31 @@ export function ProviderAccountRow({
               onClick={() =>
                 void onSelectSubscription?.(subscriptionSelection.id)
               }
-              title={t("accounts.row.useForCoding.tooltip", {
-                defaultValue: "Route coding agents through this subscription",
-              })}
+              title={
+                subscriptionIncludesChat
+                  ? t("accounts.row.useForChatAndCoding.tooltip", {
+                      defaultValue:
+                        "Use this subscription for chat and coding agents",
+                    })
+                  : t("accounts.row.useForCoding.tooltip", {
+                      defaultValue:
+                        "Route coding agents through this subscription",
+                    })
+              }
             >
               {isActiveSubscription && !cloudCallsDisabled
-                ? t("accounts.row.codingActive", { defaultValue: "Coding" })
-                : t("accounts.row.useForCoding", {
-                    defaultValue: "Use for coding",
-                  })}
+                ? subscriptionIncludesChat
+                  ? t("accounts.row.chatAndCodingActive", {
+                      defaultValue: "Chat & coding",
+                    })
+                  : t("accounts.row.codingActive", { defaultValue: "Coding" })
+                : subscriptionIncludesChat
+                  ? t("accounts.row.useForChatAndCoding", {
+                      defaultValue: "Use for chat & coding",
+                    })
+                  : t("accounts.row.useForCoding", {
+                      defaultValue: "Use for coding",
+                    })}
             </Button>
           ) : null}
           <Button

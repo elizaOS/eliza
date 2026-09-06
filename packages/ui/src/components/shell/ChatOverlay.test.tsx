@@ -5364,6 +5364,23 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     ).toBeNull();
   });
 
+  it("keeps a failed speech attempt visible and clears it when playback recovers", () => {
+    const controller = makeController({
+      ttsError: {
+        engine: "speech-sequence",
+        message:
+          "The reply changed after speech was queued. Play the completed reply again.",
+        atMs: 1,
+      },
+    });
+    const { rerender } = render(<ChatOverlay controller={controller} />);
+    expect(screen.getByTestId("chat-voice-tts-error").textContent).toContain(
+      "reply changed",
+    );
+    rerender(<ChatOverlay controller={{ ...controller, ttsError: null }} />);
+    expect(screen.queryByText(/reply changed after speech/)).toBeNull();
+  });
+
   it("Play speaks the assistant message via the controller", () => {
     const speak = vi.fn();
     openThreadWith({

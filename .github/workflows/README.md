@@ -429,6 +429,22 @@ per environment; `cloud-cf-deploy.yml` publishes it to the Worker and
 `deploy-tunnel-proxy.yml` publishes the same value to Railway. Neither workflow
 reads a value back from a provider.
 
+## Staging provisioning diagnostics
+
+The provisioning-worker workflow also accepts `mode=diagnose`, dispatched from
+`develop` with `environment=staging` and the exact `expected_worker_sha` currently
+installed on the host. This mode skips deployment and rejects deployment SHA or
+reconciler inputs. It takes a shared read lease on the existing deployment lock,
+checks source and process identity before and after collection, and reports only
+the official running-process image digest plus fixed worker-journal categories.
+It does not restart services, write host files, or change database state.
+
+The journal receipt covers at most the last 10,000 records from 24 hours. Counts
+are worker-wide, may include other provisioning attempts, and do not establish
+an individual agent's failure cause. Raw logs, process environment, hostnames,
+agent identifiers, and private image references are never emitted. A failed or
+unstable read fails the diagnostic instead of certifying a partial observation.
+
 ## Maintenance and assistance
 
 `weekly-maintenance.yml` provides on-demand dependency/security maintenance.

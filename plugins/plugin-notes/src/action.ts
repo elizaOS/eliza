@@ -130,6 +130,13 @@ function committed(data: Record<string, unknown>): ActionResult {
 
 export const notesAction: Action = {
   name: "NOTES",
+  tags: [
+    "resource:tracked-work",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+  ],
   contexts: ["notes", "general"],
   similes: [
     "NOTE",
@@ -198,6 +205,7 @@ export const notesAction: Action = {
         : notes;
       return committed({
         op,
+        readOnlyOperation: true,
         count: matches.length,
         total: notes.length,
         filterApplied: topic !== undefined,

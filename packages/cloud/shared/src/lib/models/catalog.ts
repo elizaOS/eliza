@@ -1,4 +1,4 @@
-// Defines cloud shared catalog behavior for backend service consumers.
+/** Defines model identities and capability metadata consumed by cloud routing and selectors. */
 import { normalizeProviderKey } from "../providers/model-id-translation";
 
 export interface CatalogModel {
@@ -73,7 +73,6 @@ const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([CEREBRAS_DEFAULT_TEXT_M
 // - Groq docs: https://console.groq.com/docs/models
 // - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
 const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
-  // Paid-tier limits verified against the Cerebras Qwen model docs on 2026-09-04.
   {
     id: CEREBRAS_DEFAULT_TEXT_MODEL,
     object: "model",
@@ -82,9 +81,10 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     name: "Qwen 3.8 27B",
     description: "Default TEXT_SMALL and TEXT_LARGE model on Cerebras for fast cloud inference",
     type: "language",
-    context_window: 131072,
-    max_tokens: 40960,
-    tags: ["recommended", "cerebras"],
+    // Public Cerebras catalog limits; account-specific capabilities may differ.
+    context_window: 65536,
+    max_tokens: 32768,
+    tags: ["recommended", "reasoning", "tool-use", "cerebras"],
     supported_parameters: ["reasoning_effort"],
     recommended: true,
   },
@@ -161,8 +161,8 @@ const CEREBRAS_TEXT_CATALOG_MODELS: CatalogModel[] = [
     name: "Qwen 3.8 27B",
     description: "Cerebras-hosted Qwen model",
     type: "language",
-    context_window: 131072,
-    max_tokens: 40960,
+    context_window: 65536,
+    max_tokens: 32768,
     supported_parameters: ["reasoning_effort"],
     tags: ["byok"],
   },
