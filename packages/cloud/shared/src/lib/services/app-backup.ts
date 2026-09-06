@@ -4,7 +4,8 @@
  * Exports a portable, secret-free snapshot of an app's configuration so a
  * user/agent can back it up and recreate the app later (the "backing up" part of
  * the app lifecycle). Restore creates a NEW app from the snapshot (new slug + new
- * API key) and reapplies config + monetization pricing — monetization itself is
+ * API key) and reapplies config + monetization pricing. Outbound automation stays
+ * disabled until the restored app is reviewed and explicitly enabled; monetization is
  * always restored DISABLED because the new app starts at review_status=draft and
  * must pass review before it can collect money. Frontend deployments are
  * immutable R2 artifacts referenced by content hash — the snapshot records the
@@ -109,6 +110,21 @@ export class AppBackupService {
       throw new Error(`Unsupported backup version: ${backup.version}`);
     }
     const warnings: string[] = [];
+    const automation = backup.automation;
+    const restoredAutomation = {
+      discord: automation?.discord ? { ...automation.discord, enabled: false } : null,
+      telegram: automation?.telegram ? { ...automation.telegram, enabled: false } : null,
+      twitter: automation?.twitter ? { ...automation.twitter, enabled: false } : null,
+    };
+    if (
+      [automation?.discord, automation?.telegram, automation?.twitter].some(
+        (config) => config?.enabled === true,
+      )
+    ) {
+      warnings.push(
+        "Outbound automation was disabled on restore. Review destinations and explicitly re-enable automation after validating the restored app.",
+      );
+    }
     const created = await appsService.create({
       name: overrideName?.trim() || `${backup.app.name} (restored)`,
       description: backup.app.description ?? undefined,
@@ -123,9 +139,9 @@ export class AppBackupService {
 
     await appsService.update(created.app.id, {
       linked_character_ids: backup.app.linked_character_ids ?? [],
-      discord_automation: backup.automation?.discord ?? null,
-      telegram_automation: backup.automation?.telegram ?? null,
-      twitter_automation: backup.automation?.twitter ?? null,
+      discord_automation: restoredAutomation.discord,
+      telegram_automation: restoredAutomation.telegram,
+      twitter_automation: restoredAutomation.twitter,
       promotional_assets: backup.promotional_assets ?? null,
     });
 
