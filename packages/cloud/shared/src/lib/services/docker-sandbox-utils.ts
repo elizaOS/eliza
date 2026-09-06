@@ -30,6 +30,14 @@ export function buildExactRestoreDockerBootFencedCommand(
   expectedNodeIncarnation: string,
   exactDockerCommand: string,
 ): string {
+  return buildExactRestoreBootFencedCommand(
+    expectedNodeIncarnation,
+    buildLocalDockerDaemonCommand(exactDockerCommand),
+  );
+}
+
+/** Pin an SSH-host operation to its local Docker daemon and a private client configuration. */
+export function buildLocalDockerDaemonCommand(exactDockerCommand: string): string {
   const configTemplate = "/tmp/eliza-exact-docker.XXXXXXXXXX";
   const cleanup =
     "cleanup_exact_docker_config() { cleanup_status=$?; trap - EXIT; " +
@@ -55,7 +63,7 @@ export function buildExactRestoreDockerBootFencedCommand(
     'docker() { command docker --host unix:///var/run/docker.sock --config "$exact_docker_config" "$@"; }',
     `(${exactDockerCommand})`,
   ].join("; ");
-  return buildExactRestoreBootFencedCommand(expectedNodeIncarnation, isolatedCommand);
+  return isolatedCommand;
 }
 
 // ---------------------------------------------------------------------------

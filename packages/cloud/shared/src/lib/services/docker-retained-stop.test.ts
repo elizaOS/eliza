@@ -39,7 +39,7 @@ function dockerFixture(
     state,
     read: () => ({ running, restart, removed, mutations }),
     execute: async (command: string) => {
-      if (command.startsWith("sh -lc ")) {
+      if (command.startsWith("sh -c ")) {
         if (options.absenceUnknown) return "unknown";
         if (removed) return "absent";
         return `present|${ID}|${options.wrongOwner ? "22222222-2222-4222-8222-222222222222" : AGENT}`;
