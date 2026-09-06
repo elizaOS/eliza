@@ -223,10 +223,29 @@ export const recentConversationsProvider: Provider = {
       markOwnerExclusiveDisclosureUsed(message);
 
       const manifestText = manifestLines.join("\n");
+      const relevanceKeywords =
+        recentConversationsProvider.relevanceKeywords ?? [];
       const eagerRelevant = validateActionKeywords(
         message,
         [],
-        recentConversationsProvider.relevanceKeywords ?? [],
+        relevanceKeywords,
+      );
+      runtime.logger.debug(
+        {
+          src: "provider:recent-conversations",
+          eagerRelevant,
+          keywordCount: relevanceKeywords.length,
+          matchedKeyword: eagerRelevant
+            ? relevanceKeywords.find((keyword) =>
+                (message.content.text ?? "")
+                  .toLowerCase()
+                  .includes(keyword.toLowerCase()),
+              )
+            : undefined,
+          messageTextChars: (message.content.text ?? "").length,
+          storedMessages: sorted.length,
+        },
+        "recent-conversations representation chosen",
       );
       return {
         text: eagerRelevant ? eagerLines.join("\n") : manifestText,
