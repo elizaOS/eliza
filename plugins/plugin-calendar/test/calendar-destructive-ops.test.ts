@@ -271,7 +271,7 @@ describe("CALENDAR delete_event disambiguation", () => {
       },
     });
     expect(result.success).toBe(false);
-    expect(result.data).toMatchObject({ error: "MISSING_CALENDAR_TARGET" });
+    expect(result.data).toMatchObject({ error: "CALENDAR_TARGET_UNRESOLVED" });
     expect(service.getCalendarFeed).not.toHaveBeenCalled();
     expect(service.modifyApproval).not.toHaveBeenCalled();
   });
@@ -286,7 +286,7 @@ describe("CALENDAR delete_event disambiguation", () => {
       },
     });
     expect(result.success).toBe(false);
-    expect(result.data).toMatchObject({ error: "MISSING_CALENDAR_TARGET" });
+    expect(result.data).toMatchObject({ error: "CALENDAR_TARGET_UNRESOLVED" });
     expect(service.getCalendarFeed).not.toHaveBeenCalled();
     expect(service.modifyApproval).not.toHaveBeenCalled();
     expect(result.effectReceipts?.[0]).toMatchObject({ outcome: "noop" });

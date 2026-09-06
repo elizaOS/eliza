@@ -4943,6 +4943,8 @@ const calendarAction: CalendarHandlerAction = {
                 "Tell me which calendar event you want to change by title, person, place, or date.",
                 {
                   missing: ["target event"],
+                  targetGuidance:
+                    "Identify the existing event with query, details.oldTitle, or details.eventId. title and details.newTitle describe the replacement name, not the update target.",
                 },
               ),
               effectReceipt: calendarRequestNoopReceipt({
@@ -4952,14 +4954,7 @@ const calendarAction: CalendarHandlerAction = {
                   "The update request did not identify a target, so no approval or calendar event was changed.",
               }),
               data: {
-                error: "MISSING_CALENDAR_TARGET",
-                parameterErrors: [
-                  {
-                    name: "query",
-                    message:
-                      "Identify the existing event with query, details.oldTitle, or details.eventId. title and details.newTitle describe the replacement name, not the update target.",
-                  },
-                ],
+                error: "CALENDAR_TARGET_UNRESOLVED",
               },
             });
           }

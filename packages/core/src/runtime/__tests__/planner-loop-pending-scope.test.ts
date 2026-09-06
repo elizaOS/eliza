@@ -1424,150 +1424,159 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toBe("Got it. No sugar in the tea.");
 	});
 
-	it("does not clear a missing-target failure when an added event ID overrides the preserved title", async () => {
-		const firstArguments = {
-			details: { start: "2026-09-10T18:00:00" },
-			intent: "move piano lesson to thursday at 6pm",
-			title: "piano lesson",
-		};
-		const targetEvent = {
-			id: "calendar-event-qa",
-			externalId: "calendar-external-qa",
-			title: "piano lesson",
-		};
-		const wrongEvent = {
-			id: "dentist-event-qa",
-			externalId: "dentist-external-qa",
-			title: "dentist",
-		};
-		const honestReply =
-			"The piano lesson was not moved; a different event was changed.";
-		const observedAt = "2026-09-06T15:00:00.000Z";
-		const h = harness({
-			userMessage: "move piano lesson to thursday at 6pm",
-			plans: [
-				{
-					text: "",
-					toolCalls: [
-						{
-							...call("CALENDAR_UPDATE_EVENT"),
-							id: "update-missing-target",
-							arguments: firstArguments,
-						},
-					],
-				},
-				{
-					text: "",
-					toolCalls: [
-						{
-							...call("CALENDAR"),
-							id: "resolve-target",
-							arguments: { action: "search_events", query: "piano lesson" },
-						},
-					],
-				},
-				{
-					text: "",
-					toolCalls: [
-						{
-							...call("CALENDAR_UPDATE_EVENT"),
-							id: "update-resolved-target",
-							arguments: {
-								...firstArguments,
-								details: {
-									...firstArguments.details,
-									eventId: wrongEvent.externalId,
+	it.each(["query", "details.eventId"])(
+		"does not clear an unresolved-target failure when an added %s selects a different event",
+		async (selector) => {
+			const firstArguments = {
+				details: { start: "2026-09-10T18:00:00" },
+				intent: "move piano lesson to thursday at 6pm",
+				title: "piano lesson",
+			};
+			const targetEvent = {
+				id: "calendar-event-qa",
+				externalId: "calendar-external-qa",
+				title: "piano lesson",
+			};
+			const wrongEvent = {
+				id: "dentist-event-qa",
+				externalId: "dentist-external-qa",
+				title: "dentist",
+			};
+			const honestReply =
+				"The piano lesson was not moved; a different event was changed.";
+			const observedAt = "2026-09-06T15:00:00.000Z";
+			const h = harness({
+				userMessage: "move piano lesson to thursday at 6pm",
+				plans: [
+					{
+						text: "",
+						toolCalls: [
+							{
+								...call("CALENDAR_UPDATE_EVENT"),
+								id: "update-missing-target",
+								arguments: firstArguments,
+							},
+						],
+					},
+					{
+						text: "",
+						toolCalls: [
+							{
+								...call("CALENDAR"),
+								id: "resolve-target",
+								arguments: { action: "search_events", query: "piano lesson" },
+							},
+						],
+					},
+					{
+						text: "",
+						toolCalls: [
+							{
+								...call("CALENDAR_UPDATE_EVENT"),
+								id: "update-resolved-target",
+								arguments: {
+									...firstArguments,
+									...(selector === "query"
+										? { query: wrongEvent.title }
+										: {
+												details: {
+													...firstArguments.details,
+													eventId: wrongEvent.externalId,
+												},
+											}),
 								},
 							},
-						},
-					],
-				},
-				honestReply,
-			],
-			evaluations: [
-				continueWork("Look up the event before retrying the update."),
-				continueWork("The unique event is resolved; retry with its ID."),
-				finish("Moved piano lesson to Thursday at 6 PM."),
-			],
-			results: [
-				{
-					success: false,
-					transcriptVisibility: "internal",
-					turnComplete: false,
-					effectReceipts: [
-						{
-							receiptId: "calendar-missing-target",
-							operation: "calendar.event.update",
-							resource: {
-								kind: "calendar.request",
-								id: "calendar-request-qa",
-							},
-							artifacts: [],
-							idempotency: { key: null, replayed: false },
-							observedAt,
-							outcome: "noop",
-							reason:
-								"The update request did not identify a target, so no approval or calendar event was changed.",
-						},
-					],
-					data: {
-						error: "MISSING_CALENDAR_TARGET",
-						retryable: false,
-						replyContext: {
-							domain: "calendar",
-							scenario: "clarify_update_event_target",
-							context: { missing: ["target event"] },
-						},
+						],
 					},
-				},
-				{
-					success: true,
-					transcriptVisibility: "internal",
-					data: { events: [targetEvent] },
-				},
-				{
-					success: true,
-					transcriptVisibility: "internal",
-					effectReceipts: [
-						{
-							receiptId: "calendar-update-applied",
-							operation: "calendar.event.update",
-							resource: { kind: "calendar.event", id: wrongEvent.id },
-							artifacts: [],
-							idempotency: { key: "calendar-update-qa", replayed: false },
-							observedAt,
-							outcome: "applied",
-							commit: {
-								kind: "durable",
-								id: wrongEvent.id,
-								committedAt: observedAt,
+					honestReply,
+				],
+				evaluations: [
+					continueWork("Look up the event before retrying the update."),
+					continueWork("The unique event is resolved; retry with its ID."),
+					finish("Moved piano lesson to Thursday at 6 PM."),
+				],
+				results: [
+					{
+						success: false,
+						transcriptVisibility: "internal",
+						turnComplete: false,
+						effectReceipts: [
+							{
+								receiptId: "calendar-missing-target",
+								operation: "calendar.event.update",
+								resource: {
+									kind: "calendar.request",
+									id: "calendar-request-qa",
+								},
+								artifacts: [],
+								idempotency: { key: null, replayed: false },
+								observedAt,
+								outcome: "noop",
+								reason:
+									"The update request did not identify a target, so no approval or calendar event was changed.",
+							},
+						],
+						data: {
+							error: "CALENDAR_TARGET_UNRESOLVED",
+							retryable: false,
+							replyContext: {
+								domain: "calendar",
+								scenario: "clarify_update_event_target",
+								context: { missing: ["target event"] },
 							},
 						},
-					],
-					data: {
-						targetEvent: wrongEvent,
-						event: { ...wrongEvent, startAt: "2026-09-10T18:00:00-04:00" },
 					},
-				},
-			],
-			intents: ["move piano lesson to Thursday at 6 PM"],
-		});
-		const result = await h.run();
-		expect(h.executed).toEqual([
-			"CALENDAR_UPDATE_EVENT",
-			"CALENDAR",
-			"CALENDAR_UPDATE_EVENT",
-		]);
-		expect(result.finalMessage).toBe(honestReply);
-		expect(result.finalMessage).not.toBe(
-			"Moved piano lesson to Thursday at 6 PM.",
-		);
-		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(4);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(3);
-		expect(
-			result.trajectory.steps.filter((step) => step.result?.success === false),
-		).toHaveLength(1);
-	});
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						data: { events: [targetEvent] },
+					},
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						effectReceipts: [
+							{
+								receiptId: "calendar-update-applied",
+								operation: "calendar.event.update",
+								resource: { kind: "calendar.event", id: wrongEvent.id },
+								artifacts: [],
+								idempotency: { key: "calendar-update-qa", replayed: false },
+								observedAt,
+								outcome: "applied",
+								commit: {
+									kind: "durable",
+									id: wrongEvent.id,
+									committedAt: observedAt,
+								},
+							},
+						],
+						data: {
+							targetEvent: wrongEvent,
+							event: { ...wrongEvent, startAt: "2026-09-10T18:00:00-04:00" },
+						},
+					},
+				],
+				intents: ["move piano lesson to Thursday at 6 PM"],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual([
+				"CALENDAR_UPDATE_EVENT",
+				"CALENDAR",
+				"CALENDAR_UPDATE_EVENT",
+			]);
+			expect(result.finalMessage).toBe(honestReply);
+			expect(result.finalMessage).not.toBe(
+				"Moved piano lesson to Thursday at 6 PM.",
+			);
+			expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(4);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(3);
+			expect(
+				result.trajectory.steps.filter(
+					(step) => step.result?.success === false,
+				),
+			).toHaveLength(1);
+		},
+	);
 
 	it("a malformed update is superseded by a correlated create of the same content: no synthesis pass, the evaluator's message ships", async () => {
 		// Live 2026-09-06 01:29: MEMORY update {query, confirm} failed "text is
