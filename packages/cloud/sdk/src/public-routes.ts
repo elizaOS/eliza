@@ -2380,6 +2380,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/subscriptions/cancel/undo/[commandId]/route.ts",
   },
+  "GET /api/v1/subscriptions/commands": {
+    method: "GET",
+    path: "/api/v1/subscriptions/commands",
+    methodName: "getApiV1SubscriptionsCommands",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/subscriptions/commands/route.ts",
+  },
   "GET /api/v1/subscriptions/plans": {
     method: "GET",
     path: "/api/v1/subscriptions/plans",
@@ -5668,6 +5677,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": {
     commandId: string | number;
   };
+  "GET /api/v1/subscriptions/commands": Record<never, never>;
   "GET /api/v1/subscriptions/plans": Record<never, never>;
   "GET /api/v1/telegram/chats": Record<never, never>;
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
@@ -6376,6 +6386,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/steward/tenants/credentials": never;
   "GET /api/v1/subscriptions/cancel/{commandId}": never;
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": never;
+  "GET /api/v1/subscriptions/commands": never;
   "GET /api/v1/subscriptions/plans": never;
   "GET /api/v1/telegram/chats": never;
   "GET /api/v1/telegram/scan-chats": never;
@@ -9254,6 +9265,15 @@ export class ElizaCloudPublicRoutesClient {
       "GET /api/v1/subscriptions/cancel/undo/{commandId}",
       TResponse
     >("GET /api/v1/subscriptions/cancel/undo/{commandId}", options);
+  }
+
+  getApiV1SubscriptionsCommands<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/commands"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/commands", TResponse>(
+      "GET /api/v1/subscriptions/commands",
+      options,
+    );
   }
 
   getApiV1SubscriptionsPlans<TResponse = unknown>(
@@ -13883,6 +13903,12 @@ export class ElizaCloudPublicRoutesClient {
       "GET /api/v1/subscriptions/cancel/undo/{commandId}",
       options,
     );
+  }
+
+  getApiV1SubscriptionsCommandsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/commands"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/subscriptions/commands", options);
   }
 
   getApiV1SubscriptionsPlansRaw(

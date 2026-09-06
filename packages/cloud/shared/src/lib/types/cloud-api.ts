@@ -848,3 +848,24 @@ export interface SessionStatsDto {
   requests_made: number;
   tokens_consumed: number;
 }
+
+/** A page reflects one primary observation; following a cursor does not freeze command state across requests. */
+export interface PendingSubscriptionCommandsDto {
+  observedAt: string;
+  items: Array<{
+    commandId: string;
+    subscriptionId: string;
+    kind: "cancel" | "resume";
+    status: "PREPARED" | "OUTCOME_UNKNOWN";
+    expectedSubscriptionRevision: string;
+    createdAt: string;
+    lease: "not_started" | "unleased" | "active" | "expired";
+    source: {
+      state: "current" | "changed" | "unavailable";
+      currentSubscriptionRevision: string | null;
+    };
+  }>;
+  nextCursor: string | null;
+}
+export type PendingSubscriptionCommandsResponse =
+  ApiSuccessEnvelope<PendingSubscriptionCommandsDto>;

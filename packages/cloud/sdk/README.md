@@ -192,3 +192,11 @@ revision and a stable idempotency key. Poll with
 `readOrganizationSubscriptionCancellationUndo`; the original cancellation poll
 endpoint continues to read only cancellation commands. Undo uses the same
 session-manager authorization and explicit uncertain-outcome contract.
+
+Returning billing managers can discover outstanding cancel/undo commands with
+`listPendingOrganizationSubscriptionCommands({ limit: 20 })`. Pass a returned
+`nextCursor` explicitly to request another page. Each page observes current
+primary state; the cursor does not preserve a snapshot across requests, and a
+command completed between pages can disappear. Lease expiry describes the
+stored worker lease, not whether Stripe accepted an operation. The report makes
+no provider request and does not retry a command.

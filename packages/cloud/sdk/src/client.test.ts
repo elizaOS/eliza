@@ -745,3 +745,31 @@ it("submits a stable undo-cancellation request and polls its result without repe
     ),
   ).toBe(true);
 });
+
+it("requests an explicit pending-command page and preserves its opaque continuation", async () => {
+  const response = {
+    success: true,
+    data: {
+      observedAt: "2026-09-06T01:02:03.123456Z",
+      items: [],
+      nextCursor: "next-page",
+    },
+  };
+  const { client, requests } = createClientRecorder(response);
+  expect(
+    await client.listPendingOrganizationSubscriptionCommands({
+      limit: 7,
+      cursor: "opaque+/=cursor",
+    }),
+  ).toEqual(response);
+  const request = requests[0];
+  if (!request)
+    throw new Error("Expected the recorded pending-command request");
+  expect(request.method).toBe("GET");
+  const url = new URL(request.url);
+  expect(url.pathname).toBe("/api/v1/subscriptions/commands");
+  expect([...url.searchParams.entries()]).toEqual([
+    ["limit", "7"],
+    ["cursor", "opaque+/=cursor"],
+  ]);
+});

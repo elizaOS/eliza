@@ -134,6 +134,7 @@ import {
   type OrganizationSubscriptionCancellationRequest,
   type OrganizationSubscriptionCancellationResponse,
   type PairingTokenResponse,
+  type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
   type RegenerateAppApiKeyResponse,
@@ -566,6 +567,16 @@ export class ElizaCloudClient {
       "GET",
       `/subscriptions/cancel/undo/${encodeURIComponent(commandId)}`,
     );
+  }
+
+  /** Reads one pending-command page; command state may change before a following page is requested. */
+  listPendingOrganizationSubscriptionCommands(input: {
+    limit: number;
+    cursor?: string;
+  }): Promise<PendingSubscriptionCommandsResponse> {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set("cursor", input.cursor);
+    return this.v1.requestData("GET", `/subscriptions/commands?${query}`);
   }
 
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {
