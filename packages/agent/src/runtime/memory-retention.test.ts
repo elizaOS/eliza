@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  MAX_RETENTION_INTERVAL_MINUTES,
   planRetention,
   policyIsActive,
   type RetainableRow,
@@ -143,6 +144,44 @@ describe("planRetention — pure planner", () => {
     const plan = planRetention(rows, { retentionDays: 7 }, NOW);
     expect(plan.deleteIds).toEqual(["old"]);
     expect(plan.deleteIds).not.toContain("noTs");
+  });
+});
+
+describe("resolveRetentionConfig — sweep cadence bound", () => {
+  const INT32_MAX_MS = 2 ** 31 - 1;
+
+  it("bounds a cadence the timer cannot represent so setInterval never overflows", () => {
+    // "Once a month" is the value an operator reaches for, and it is past the
+    // 32-bit timer range: unbounded, Node/Bun clamp the delay to 1 ms.
+    const cfg = resolveRetentionConfig(
+      (k) => ({ ELIZA_MEMORY_RETENTION_INTERVAL_MINUTES: "43200" })[k],
+    );
+    expect(cfg.intervalMinutes).toBe(MAX_RETENTION_INTERVAL_MINUTES);
+    expect((cfg.intervalMinutes ?? 0) * 60 * 1000).toBeLessThanOrEqual(
+      INT32_MAX_MS,
+    );
+  });
+
+  it("leaves a representable cadence untouched, including the exact bound", () => {
+    const at = resolveRetentionConfig(
+      (k) =>
+        ({
+          ELIZA_MEMORY_RETENTION_INTERVAL_MINUTES: String(
+            MAX_RETENTION_INTERVAL_MINUTES,
+          ),
+        })[k],
+    );
+    expect(at.intervalMinutes).toBe(MAX_RETENTION_INTERVAL_MINUTES);
+    const under = resolveRetentionConfig(
+      (k) => ({ ELIZA_MEMORY_RETENTION_INTERVAL_MINUTES: "1440" })[k],
+    );
+    expect(under.intervalMinutes).toBe(1440);
+    expect(MAX_RETENTION_INTERVAL_MINUTES * 60 * 1000).toBeLessThanOrEqual(
+      INT32_MAX_MS,
+    );
+    expect((MAX_RETENTION_INTERVAL_MINUTES + 1) * 60 * 1000).toBeGreaterThan(
+      INT32_MAX_MS,
+    );
   });
 });
 
