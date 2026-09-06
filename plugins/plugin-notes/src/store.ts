@@ -3,10 +3,12 @@
  * document beneath the configured elizaOS state directory; duplicate service
  * instances share one in-process cache and write barrier for that file. Missing
  * agent-scoped documents start empty and are installed without replacing data.
+ * Filesystems that deny hard links use a nonempty directory publication; later
+ * mutations replace the document inside that directory and retain the same API.
  */
 
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { promises as fs, type Stats } from "node:fs";
 import path from "node:path";
 import {
   ElizaError,
@@ -47,6 +49,7 @@ export function notesStateFilePath(
 }
 
 interface SharedStoreState {
+  storagePath: string;
   phase: NotesStorePhase;
   document: NotesDocument | undefined;
   failure: ElizaError | undefined;
@@ -64,6 +67,7 @@ function acquireSharedState(filePath: string): SharedStoreState {
     return existing;
   }
   const created: SharedStoreState = {
+    storagePath: filePath,
     phase: "idle",
     document: undefined,
     failure: undefined,
@@ -235,7 +239,7 @@ export class NotesStore {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     let document: NotesDocument;
     try {
-      document = await this.readDocument(this.filePath);
+      document = await this.readStoredDocument();
     } catch (error) {
       // error-policy:J3 ENOENT is the explicit first-boot signal; every other
       // filesystem or validation failure remains fatal.
@@ -244,6 +248,41 @@ export class NotesStore {
     }
     this.shared.document = document;
     this.shared.phase = "ready";
+  }
+
+  private async readStoredDocument(): Promise<NotesDocument> {
+    try {
+      return await this.readDocument(this.filePath);
+    } catch (error) {
+      // error-policy:J3 only a missing flat document permits the directory format.
+      if (!isNodeErrorWithCode(error, "ENOENT")) throw error;
+      const directory = `${this.filePath}.store`;
+      let stat: Stats;
+      try {
+        stat = await fs.lstat(directory);
+      } catch (directoryError) {
+        // error-policy:J3 absence of both formats is an uninitialized store.
+        if (isNodeErrorWithCode(directoryError, "ENOENT")) throw error;
+        throw directoryError;
+      }
+      if (!stat.isDirectory()) {
+        throw new ElizaError("Notes publication is not a directory.", {
+          code: "NOTES_STORE_INVALID_PUBLICATION",
+          context: { directory },
+        });
+      }
+      this.shared.storagePath = path.join(directory, NOTES_STATE_FILENAME);
+      try {
+        return await this.readDocument(this.shared.storagePath);
+      } catch (publicationError) {
+        // error-policy:J2 an existing publication must contain a complete valid document.
+        throw new ElizaError("Published Notes state could not be read.", {
+          code: "NOTES_STORE_INVALID_PUBLICATION",
+          context: { directory },
+          cause: publicationError,
+        });
+      }
+    }
   }
 
   private async readDocument(filePath: string): Promise<NotesDocument> {
@@ -274,7 +313,7 @@ export class NotesStore {
     };
 
     const installed = await this.writeAtomicIfAbsent(candidate);
-    return installed ? candidate : this.readDocument(this.filePath);
+    return installed ? candidate : this.readStoredDocument();
   }
 
   private requireReadyDocument(): NotesDocument {
@@ -322,7 +361,7 @@ export class NotesStore {
     const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await this.writeTemporaryDocument(temporaryPath, document);
-      await fs.rename(temporaryPath, this.filePath);
+      await fs.rename(temporaryPath, this.shared.storagePath);
     } catch (error) {
       // error-policy:J2 preserve the atomic-write cause and add the store path.
       await this.removeTemporaryFile(temporaryPath);
@@ -341,8 +380,15 @@ export class NotesStore {
         return true;
       } catch (error) {
         // error-policy:J3 EEXIST is an explicit concurrent-writer result; other
-        // link failures must abort initialization.
+        // other link failures retain their cause or use atomic directory publication.
         if (isNodeErrorWithCode(error, "EEXIST")) return false;
+        if (
+          ["EACCES", "EPERM", "ENOTSUP", "EOPNOTSUPP"].some((code) =>
+            isNodeErrorWithCode(error, code),
+          )
+        ) {
+          return await this.publishDirectory(temporaryPath);
+        }
         throw error;
       }
     } catch (error) {
@@ -350,6 +396,58 @@ export class NotesStore {
       throw this.writeFailure(error);
     } finally {
       await this.removeTemporaryFile(temporaryPath);
+    }
+  }
+
+  private async publishDirectory(temporaryPath: string): Promise<boolean> {
+    const directory = `${this.filePath}.store`;
+    const candidate = `${directory}.${randomUUID()}.tmp`;
+    await fs.mkdir(candidate, { mode: 0o700 });
+    let published = false;
+    try {
+      await fs.rename(
+        temporaryPath,
+        path.join(candidate, NOTES_STATE_FILENAME),
+      );
+      const handle = await fs.open(candidate, "r");
+      try {
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      try {
+        // Android forbids hard links. A complete nonempty directory can be
+        // renamed atomically but cannot replace another complete publication.
+        await fs.rename(candidate, directory);
+        published = true;
+      } catch (error) {
+        // error-policy:J3 a competing publication is read and validated by the caller.
+        if (
+          !isNodeErrorWithCode(error, "EEXIST") &&
+          !isNodeErrorWithCode(error, "ENOTEMPTY")
+        )
+          throw error;
+      }
+      const parent = await fs.open(path.dirname(directory), "r");
+      try {
+        await parent.sync();
+      } finally {
+        await parent.close();
+      }
+      this.shared.storagePath = path.join(directory, NOTES_STATE_FILENAME);
+      return published;
+    } finally {
+      if (!published) {
+        try {
+          await fs.rm(candidate, { recursive: true, force: true });
+        } catch (cleanupError) {
+          // error-policy:J6 candidate teardown must not hide a publication failure.
+          logger.warn(
+            { candidate, cleanupError },
+            "[NotesStore] Failed to remove a publication candidate",
+          );
+        }
+      }
     }
   }
 

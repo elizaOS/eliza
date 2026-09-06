@@ -50,3 +50,14 @@ views or event state to this package.
 - `clear-notes` validates `expectedRevision` inside the store write barrier, so
   a note committed between confirmation and commit aborts the clear instead of
   being wiped. The dispatch-time snapshot check is only a fast path.
+
+## Filesystem publication
+
+Existing flat `state.json` documents remain authoritative. On filesystems that
+deny hard links, including Android app storage, first initialization publishes
+a complete `state.json.store/state.json` using an atomic nonempty-directory
+rename. Competing initializers read the winner. Subsequent writes atomically
+replace the inner document; restart resolves the same format. An existing
+publication with missing or malformed content fails explicitly. Interrupted
+unpublished candidates are never read as state. Backups must retain the
+`state.json.store` directory when that format is present.

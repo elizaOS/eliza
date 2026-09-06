@@ -31,3 +31,14 @@ Microsoft, Apple, and ICS calendar data from its own services.
 bun run --cwd plugins/plugin-notes typecheck
 bun run --cwd plugins/plugin-notes test
 ```
+
+## Filesystem publication
+
+Existing flat `state.json` documents remain authoritative. On filesystems that
+deny hard links, including Android app storage, first initialization publishes
+a complete `state.json.store/state.json` using an atomic nonempty-directory
+rename. Competing initializers read the winner. Subsequent writes atomically
+replace the inner document; restart resolves the same format. An existing
+publication with missing or malformed content fails explicitly. Interrupted
+unpublished candidates are never read as state. Backups must retain the
+`state.json.store` directory when that format is present.
