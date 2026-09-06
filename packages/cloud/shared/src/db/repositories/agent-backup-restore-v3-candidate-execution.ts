@@ -49,6 +49,10 @@ import {
   snapshotAgentBackupRestoreV3OperationControl,
   throwIfAgentBackupRestoreV3DatabaseDeadline,
 } from "./agent-backup-restore-v3-candidate-database-control";
+import {
+  type AgentBackupRestoreV3CandidateAssembler,
+  assembleAndSealAgentBackupRestoreV3Candidate,
+} from "./agent-backup-restore-v3-candidate-seal-authority";
 
 type CandidateBeginRequest = Parameters<AgentBackupRestoreV3IsolatedCandidateStaging["begin"]>[0];
 type CandidateRecordReceipt = Awaited<
@@ -72,7 +76,7 @@ export type AgentBackupRestoreV3CandidateExecution = Pick<
 export type AgentBackupRestoreV3CandidateMaterializer = Pick<
   AgentBackupRestoreV3IsolatedCandidateStaging,
   "stageRecord" | "finishComponent"
->;
+> & { readonly assembleCandidate: AgentBackupRestoreV3CandidateAssembler };
 
 function materializationError(message: string): never {
   throw new ElizaError(message, {
@@ -1020,20 +1024,31 @@ export function createAgentBackupRestoreV3CandidateExecution(
 export function createAgentBackupRestoreV3MaterializingCandidateExecution(
   sourceAuthority: Readonly<AgentBackupRestoreV3SourceAuthority>,
   materializer: AgentBackupRestoreV3CandidateMaterializer,
-): AgentBackupRestoreV3CandidateExecution {
+): AgentBackupRestoreV3IsolatedCandidateStaging {
   if (
     !materializer ||
     typeof materializer.stageRecord !== "function" ||
-    typeof materializer.finishComponent !== "function"
+    typeof materializer.finishComponent !== "function" ||
+    typeof materializer.assembleCandidate !== "function"
   )
     materializationError("Restore candidate requires an explicit Agent materializer");
-  return createCandidateExecution(
-    sourceAuthority,
-    Object.freeze({
-      stageRecord: materializer.stageRecord.bind(materializer),
-      finishComponent: materializer.finishComponent.bind(materializer),
-    }),
-  );
+  const effects = Object.freeze({
+    stageRecord: materializer.stageRecord.bind(materializer),
+    finishComponent: materializer.finishComponent.bind(materializer),
+    assembleCandidate: materializer.assembleCandidate.bind(materializer),
+  });
+  const staging: AgentBackupRestoreV3IsolatedCandidateStaging = {
+    ...createCandidateExecution(sourceAuthority, effects),
+    seal: (session, receipt, authorization, control) =>
+      assembleAndSealAgentBackupRestoreV3Candidate(
+        session,
+        receipt,
+        authorization,
+        control,
+        effects.assembleCandidate,
+      ),
+  };
+  return Object.freeze(staging);
 }
 
 function createCandidateExecution(

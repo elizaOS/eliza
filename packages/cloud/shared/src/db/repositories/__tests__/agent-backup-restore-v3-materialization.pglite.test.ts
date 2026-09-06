@@ -90,6 +90,7 @@ test("requires real Agent acknowledgements, replays partial effects and prevents
   const execution = createAgentBackupRestoreV3MaterializingCandidateExecution(
     fixture.sourceAuthority,
     {
+      assembleCandidate: agent.assembleCandidate,
       async stageRecord(session, record, effectControl) {
         recordCalls++;
         borrowedCopies.push(record.payload);
