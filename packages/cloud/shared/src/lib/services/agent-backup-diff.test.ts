@@ -4,15 +4,19 @@ import type { AgentBackupStateData } from "../../db/schemas/agent-sandboxes";
 import {
   applyBackupDelta,
   type BackupChainNode,
+  type BackupDelta,
   computeStateHash,
   diffBackupState,
   emptyBackupState,
   estimateDeltaBytes,
   estimateStateBytes,
   incrementalChainDepth,
+  isBackupDelta,
   isEmptyDelta,
   planIncrementalBackup,
   reconstructFromChain,
+  requireBackupDelta,
+  requireBackupStateData,
   resolveBackupChain,
   resolveBackupChainBytes,
   selectPrunableBackupIds,
@@ -324,5 +328,72 @@ describe("resolveBackupChainBytes (#17172 retained-implies-restorable)", () => {
       sized("other", "full", null, 999_999),
     ];
     expect(resolveBackupChainBytes(nodes, "b")).toBe(120);
+  });
+});
+
+describe("isBackupDelta clause isolation", () => {
+  const completeDelta: BackupDelta = {
+    filesChanged: { "a.txt": "1" },
+    filesRemoved: ["b.txt"],
+    configChanged: { k: 1 },
+    configRemoved: ["j"],
+    memoriesBaseCount: 1,
+    memoriesAppended: [mem("appended", 2)],
+  };
+
+  const DELTA_KEYS = [
+    "filesChanged",
+    "filesRemoved",
+    "configChanged",
+    "configRemoved",
+    "memoriesBaseCount",
+    "memoriesAppended",
+  ] as const;
+
+  test("recognizes a complete delta and refuses to read it as full state", () => {
+    expect(isBackupDelta(completeDelta)).toBe(true);
+    expect(requireBackupDelta(completeDelta, "bk_delta")).toBe(completeDelta);
+    expect(() => requireBackupStateData(completeDelta, "bk_delta")).toThrow(
+      /bk_delta did not contain a full-state payload/,
+    );
+  });
+
+  test("recognizes a full state and refuses to read it as a delta", () => {
+    const full = state({ memories: [mem("only", 1)] });
+    expect(isBackupDelta(full)).toBe(false);
+    expect(requireBackupStateData(full, "bk_full")).toBe(full);
+    expect(() => requireBackupDelta(full, "bk_full")).toThrow(
+      /bk_full did not contain a delta payload/,
+    );
+  });
+
+  // Every clause carries its own weight: a payload missing any single delta
+  // field must fail closed rather than reach applyBackupDelta, which reads all
+  // six unguarded. Four of the six then throw, but a missing `memoriesBaseCount`
+  // silently carries the parent's entire memory list and a missing
+  // `memoriesAppended` silently appends a null entry — corruption of a restored
+  // agent's history, not a crash. Asserted per clause so dropping any one of
+  // them from the guard fails here.
+  test.each(DELTA_KEYS)("rejects a delta payload missing %s", (missing) => {
+    const { [missing]: _dropped, ...partial } = completeDelta;
+    const payload = partial as unknown as BackupDelta;
+
+    expect(isBackupDelta(payload)).toBe(false);
+    expect(() => requireBackupDelta(payload, "bk_partial")).toThrow(
+      /bk_partial did not contain a delta payload/,
+    );
+    // The other branch accepts it, so the guard is the only thing standing
+    // between a truncated delta and a state-data read.
+    expect(requireBackupStateData(payload, "bk_partial")).toBe(payload);
+  });
+
+  test("an explicitly undefined delta field still satisfies its clause", () => {
+    // `in` tests key presence, not definedness — pinned so a future switch to a
+    // truthiness check is a deliberate change rather than an accident.
+    const withUndefined = {
+      ...completeDelta,
+      memoriesAppended: undefined,
+    } as unknown as BackupDelta;
+    expect(isBackupDelta(withUndefined)).toBe(true);
   });
 });
