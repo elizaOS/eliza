@@ -1440,6 +1440,7 @@ export function ChatOverlay({
   const {
     handleChatEdit,
     elizaCloudLoginFallbackUrl,
+    cloudLoginHasError,
     handleSelectConversation,
     loadConversationMessagesAround,
   } = useAppSelectorShallow((s) => ({
@@ -1447,6 +1448,7 @@ export function ChatOverlay({
     // sending the corrected text as a fresh turn leaves the typo in history.
     handleChatEdit: s.handleChatEdit,
     elizaCloudLoginFallbackUrl: s.elizaCloudLoginFallbackUrl,
+    cloudLoginHasError: Boolean(s.elizaCloudLoginError),
     // Search-jump (#14279): select the hit's conversation, then (if the hit is
     // older than the loaded recent window) load a window centered on it before
     // scrolling. Inert no-ops in stories/tests with no AppContext.
@@ -1635,6 +1637,7 @@ export function ChatOverlay({
   const cloudLoginWaiting = React.useMemo(() => {
     if (
       !firstRunOpen ||
+      cloudLoginHasError ||
       typeof elizaCloudLoginFallbackUrl !== "string" ||
       !elizaCloudLoginFallbackUrl
     )
@@ -1648,7 +1651,7 @@ export function ChatOverlay({
       (activeMessage.content.startsWith("Preparing Cloud sign-in") ||
         activeMessage.content.startsWith("Waiting for sign-in in the browser"))
     );
-  }, [firstRunOpen, messages, elizaCloudLoginFallbackUrl]);
+  }, [firstRunOpen, messages, elizaCloudLoginFallbackUrl, cloudLoginHasError]);
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
