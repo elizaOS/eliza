@@ -168,6 +168,23 @@ export class AgentBackupRestoreV3CandidateFs {
     );
   }
 
+  /**
+   * Trusted subprocess consumers may inherit, never close, this descriptor.
+   * The callback must reap every child before settling; lock release waits for
+   * it, and the kernel lock survives parent death until inherited FDs close.
+   */
+  withInheritedLockDescriptor<T>(
+    lock: AgentBackupRestoreV3CandidateFsLock,
+    operation: (descriptor: number) => Promise<T>,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+  ): Promise<T> {
+    return this.#control.withInheritedLockDescriptor(
+      lock,
+      operation,
+      snapshotOperationControl(control),
+    );
+  }
+
   async acquireLock(
     name: string,
     control: Readonly<AgentBackupRestoreV3OperationControl>,

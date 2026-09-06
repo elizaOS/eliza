@@ -832,7 +832,8 @@ function snapshotRecordControl(
   return snapshot;
 }
 
-function snapshotRecord(
+/** Caller owns the intrinsic payload copy and must zero it after its effect settles. */
+export function snapshotAgentBackupRestoreV3CandidateRecord(
   input: Readonly<AgentBackupRestoreV3StagedRecord>,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
 ): CopiedRecord {
@@ -1844,7 +1845,7 @@ export function stageAgentBackupRestoreV3CandidateRecord(
   const session = snapshotSession(
     exactInput.session as Readonly<AgentBackupRestoreV3StagingSession>,
   );
-  const copied = snapshotRecord(
+  const copied = snapshotAgentBackupRestoreV3CandidateRecord(
     exactInput.record as Readonly<AgentBackupRestoreV3StagedRecord>,
     control,
   );
