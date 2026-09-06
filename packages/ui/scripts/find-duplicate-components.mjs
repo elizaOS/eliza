@@ -123,11 +123,17 @@ export function isHiddenSourceArtifactDirectory(name) {
   );
 }
 
+function isGeneratedAndroidAgentOutput(relativePath) {
+  const root = "packages/app-core/platforms/android/app/src/main/assets/agent";
+  return relativePath === root || relativePath.startsWith(`${root}/`);
+}
+
 export function isMaintainedSource(file) {
   const rel = relative(file);
   const maintained =
     /^(packages|plugins)\//.test(rel) &&
     /\.[jt]sx?$/.test(rel) &&
+    !isGeneratedAndroidAgentOutput(rel) &&
     !path.posix.dirname(rel).split("/").some(isHiddenSourceArtifactDirectory) &&
     !/(^|\/)(node_modules|dist|build|coverage|generated|dist-mobile(?:-[^/]+)?)(\/|$)/.test(
       rel,
@@ -171,7 +177,10 @@ function* walk(directory) {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       const rel = relative(full);
-      if (/^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel)) {
+      if (
+        /^packages\/app\/(android|ios|electrobun)(\/|$)/.test(rel) ||
+        isGeneratedAndroidAgentOutput(rel)
+      ) {
         continue;
       }
       yield* walk(full);

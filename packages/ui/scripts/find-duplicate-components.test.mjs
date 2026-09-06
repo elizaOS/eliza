@@ -95,28 +95,31 @@ test("generated mobile platform bundles and staging roots are outside maintained
   );
 });
 
-test("Android build output does not duplicate maintained React source", () => {
-  const source = fileURLToPath(
-    new URL("../src/components/ui/button.tsx", import.meta.url),
-  );
-  const outputRoot = fileURLToPath(
-    new URL("../../agent/dist-mobile/", import.meta.url),
-  );
-  fs.mkdirSync(outputRoot, { recursive: true });
-  const output = fs.mkdtempSync(path.join(outputRoot, "inventory-probe-"));
-  try {
-    const bundledSource = path.join(output, "button.tsx");
-    fs.copyFileSync(source, bundledSource);
-    const files = listMaintainedSourceFiles();
-    assert.ok(
-      files.includes(source),
-      "the maintained source must remain visible",
+for (const generatedRoot of [
+  "../../agent/dist-mobile/",
+  "../../app-core/platforms/android/app/src/main/assets/agent/",
+]) {
+  test(`Android build output ${generatedRoot} does not duplicate maintained React source`, () => {
+    const source = fileURLToPath(
+      new URL("../src/components/ui/button.tsx", import.meta.url),
     );
-    assert.equal(files.includes(bundledSource), false);
-  } finally {
-    fs.rmSync(output, { recursive: true, force: true });
-  }
-});
+    const outputRoot = fileURLToPath(new URL(generatedRoot, import.meta.url));
+    fs.mkdirSync(outputRoot, { recursive: true });
+    const output = fs.mkdtempSync(path.join(outputRoot, "inventory-probe-"));
+    try {
+      const bundledSource = path.join(output, "button.tsx");
+      fs.copyFileSync(source, bundledSource);
+      const files = listMaintainedSourceFiles();
+      assert.ok(
+        files.includes(source),
+        "the maintained source must remain visible",
+      );
+      assert.equal(files.includes(bundledSource), false);
+    } finally {
+      fs.rmSync(output, { recursive: true, force: true });
+    }
+  });
+}
 
 test("the atomic inventory is deterministic and repository-wide", () => {
   const first = buildInventory();
