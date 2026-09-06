@@ -9,7 +9,7 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger, tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -670,8 +670,9 @@ export function validatePrivateKey(key: string): KeyValidationResult {
 
 /** Mask a secret string for safe display (e.g. logs, UI). */
 export function maskSecret(value: string): string {
-  if (!value || value.length <= 8) return "****";
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(value ?? "");
+  if (!wellFormed || wellFormed.length <= 8) return "****";
+  return `${truncateWellFormed(wellFormed, 4)}...${tailWellFormed(wellFormed, 4)}`;
 }
 
 // ── Key generation ────────────────────────────────────────────────────
@@ -1102,8 +1103,9 @@ interface SolanaDexMeta {
 }
 
 function shortenMint(mint: string): string {
-  if (mint.length <= 10) return mint;
-  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(mint ?? "");
+  if (wellFormed.length <= 10) return wellFormed;
+  return `${truncateWellFormed(wellFormed, 4)}...${tailWellFormed(wellFormed, 4)}`;
 }
 
 async function fetchSolanaDexMeta(
