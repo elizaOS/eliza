@@ -138,7 +138,7 @@ import {
 	invalidateTurnMemoPrefix,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
-import type { SendHandlerFunction } from "./types";
+import type { Content, SendHandlerFunction } from "./types";
 import {
 	type AccessContext,
 	type Action,
@@ -228,6 +228,7 @@ import type {
 } from "./types/chat-pre-handler";
 import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
+import { afterMemoryPersistedPipelineHookContext } from "./types/pipeline-hooks";
 import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
 import type {
 	ExecutionTrace,
