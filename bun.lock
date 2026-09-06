@@ -3173,6 +3173,20 @@
         "vitest": "^4.1.10",
       },
     },
+    "plugins/plugin-technocore": {
+      "name": "@elizaos/plugin-technocore",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.2.22",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
+      },
+    },
     "plugins/plugin-telegram": {
       "name": "@elizaos/plugin-telegram",
       "version": "2.0.3-beta.7",
@@ -4287,6 +4301,8 @@
     "@elizaos/plugin-task-coordinator": ["@elizaos/plugin-task-coordinator@workspace:plugins/plugin-task-coordinator"],
 
     "@elizaos/plugin-taskmarket": ["@elizaos/plugin-taskmarket@workspace:plugins/plugin-taskmarket"],
+
+    "@elizaos/plugin-technocore": ["@elizaos/plugin-technocore@workspace:plugins/plugin-technocore"],
 
     "@elizaos/plugin-telegram": ["@elizaos/plugin-telegram@workspace:plugins/plugin-telegram"],
 

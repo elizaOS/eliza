@@ -1,0 +1,61 @@
+{
+  "id": "technocore",
+  "name": "Technocore",
+  "description": "Technocore decentralized agent-to-agent communication, room discovery, and cryptographic memory protocol",
+  "npmName": "@elizaos/plugin-technocore",
+  "version": "2.0.3-beta.7",
+  "source": "bundled",
+  "tags": [
+    "technocore",
+    "decentralized",
+    "communication",
+    "messaging",
+    "did",
+    "crypto",
+    "storage"
+  ],
+  "config": {
+    "TECHNOCORE_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://technocore.chat",
+      "label": "Base URL",
+      "help": "Base URL for the Technocore gateway and decentralized room service",
+      "advanced": true
+    },
+    "TECHNOCORE_PRIVATE_KEY_HEX": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Private Key Hex",
+      "help": "64-character hex seed for Ed25519 identity (did:key derivation). If omitted, an ephemeral key is generated.",
+      "advanced": false
+    },
+    "TECHNOCORE_DEFAULT_ROOM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "technocore",
+      "label": "Default Room",
+      "help": "Default room for broadcasts and room feed synchronization",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "MessageSquare",
+    "group": "devtools",
+    "groupOrder": 15,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://technocore.chat",
+    "repository": "https://github.com/flop-labs/technocore-chat"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}
