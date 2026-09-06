@@ -42,6 +42,7 @@ const TTS_ERROR_ENGINE_LABEL: Record<VoiceTtsError["engine"], string> = {
   "local-inference": "on-device voice",
   elevenlabs: "ElevenLabs voice",
   "native-talkmode": "voice",
+  "speech-sequence": "Speech playback",
 };
 
 export interface ChatVoiceStatusBarProps {

@@ -252,7 +252,12 @@ export interface QueueAssistantSpeechOptions {
  */
 export interface VoiceTtsError {
   /** Which configured engine failed. */
-  engine: "eliza-cloud" | "local-inference" | "elevenlabs" | "native-talkmode";
+  engine:
+    | "eliza-cloud"
+    | "local-inference"
+    | "elevenlabs"
+    | "native-talkmode"
+    | "speech-sequence";
   /** Human-readable failure message for a toast/banner. */
   message: string;
   /** UI monotonic timestamp (performance.now) when the failure surfaced. */
@@ -372,6 +377,8 @@ export interface AssistantSpeechState {
   /** Latest speakable from the stream (debounce flush reads this). */
   latestSpeakable: string;
   finalQueued: boolean;
+  /** A non-prefix revision cannot retract speech already submitted for playback. */
+  revisionRejected?: boolean;
   replacePlaybackOnFirstClip: boolean;
   telemetry?: VoiceAssistantSpeechTelemetry;
 }
