@@ -78,6 +78,36 @@ describe("hash router", () => {
     expect(capturedInit?.signal).toBe(timeoutSignal);
   });
 
+  test("keeps same-named services in different namespaces on independent rings", async () => {
+    spyOn(common, "readServiceAccountToken").mockReturnValue("test-token");
+    spyOn(common, "readServiceAccountCaCert").mockReturnValue(null);
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/namespaces/ns-a/")) {
+          return endpointSliceResponse(["10.1.0.1"]);
+        }
+        if (url.includes("/namespaces/ns-b/")) {
+          return endpointSliceResponse(["10.2.0.1"]);
+        }
+        throw new Error(`Unexpected EndpointSlice URL: ${url}`);
+      },
+    );
+    const serviceA = "http://collide-server.ns-a.svc.cluster.local:3000";
+    const serviceB = "http://collide-server.ns-b.svc.cluster.local:3000";
+
+    await expect(getHashTargets(serviceA, "user-1", 1)).resolves.toEqual([
+      "10.1.0.1:3000",
+    ]);
+    await expect(getHashTargets(serviceB, "user-1", 1)).resolves.toEqual([
+      "10.2.0.1:3000",
+    ]);
+    await expect(getHashTargets(serviceA, "user-1", 1)).resolves.toEqual([
+      "10.1.0.1:3000",
+    ]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   test("handles an aborted EndpointSlice fetch without throwing", async () => {
     spyOn(common, "readServiceAccountToken").mockReturnValue("test-token");
     spyOn(common, "readServiceAccountCaCert").mockReturnValue(null);
