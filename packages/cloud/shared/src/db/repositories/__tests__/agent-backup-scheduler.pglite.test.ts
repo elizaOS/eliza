@@ -1,4 +1,4 @@
-/** Real-PGlite proofs for fair, DB-clock periodic backup admission. */
+/** Real-PGlite proofs for backup admission and lifecycle ownership with substituted provider transport. */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -10,14 +10,19 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import { getReplacementSecretArtifactsCleanupReceipt } from "../../../lib/services/docker-sandbox-utils";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
   agentBackupNodeAdmissionCursors,
   agentBackupOrganizationAdmissionCursors,
 } from "../../schemas/agent-backup-admission";
-import { agentBackupCatalogAuthorities } from "../../schemas/agent-backup-catalog";
+import {
+  agentBackupCatalogAuthorities,
+  agentBackupRestoreLeases,
+} from "../../schemas/agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
+import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
@@ -32,6 +37,7 @@ import {
   reconcileAgentBackupSchedules,
   reserveClaimedAgentBackupSchedule,
 } from "../agent-backup-scheduler";
+import { deletionResourceAuthorityHash } from "../agent-deletion-resource-manifest";
 
 const TIMEOUT = 60_000;
 const ORG_A = "00000000-0000-4000-8000-00000000d001";
@@ -162,16 +168,23 @@ beforeAll(async () => {
         agentSandboxes,
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
+        agentBackupRestoreLeases,
+        agentSandboxReplacementAttempts,
       } as never,
       dbWrite as never,
     );
     await apply();
+    await dbWrite.execute(sql`CREATE TABLE IF NOT EXISTS jobs (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, agent_id text,
+      status text NOT NULL, type text NOT NULL
+    )`);
     await installAgentNodeOccurrenceTriggerForTests((statement) =>
       dbWrite.execute(sql.raw(statement)),
     );
     for (const migration of [
       "../../migrations/0189_agent_sandbox_lifecycle_revision_scope.sql",
       "../../migrations/0235_agent_backup_rpo_scheduler.sql",
+      "../../migrations/0383_agent_replacement_cleanup_resources.sql",
     ]) {
       const source = readFileSync(new URL(migration, import.meta.url), "utf8");
       for (const statement of source.split("--> statement-breakpoint")) {
@@ -185,6 +198,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
+  await dbWrite.delete(agentSandboxReplacementAttempts);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentBackupNodeAdmissionCursors);
   await dbWrite.delete(agentBackupOrganizationAdmissionCursors);
@@ -391,6 +405,331 @@ describe("agent backup RPO scheduler", () => {
       .where(sql`${agentSandboxBackups.id} = ${receipt.backupId}`);
     expect(await countOverdueAgentBackupSchedules()).toBe(1);
   });
+
+  for (const clearSource of [false, true]) {
+    test(`preserves replacement callbacks across source authority changes (cleared=${clearSource})`, async () => {
+      const { ElizaSandboxService } = await import("../../../lib/services/eliza-sandbox");
+      const service = new ElizaSandboxService();
+      const [target] = await dbWrite
+        .update(dockerNodes)
+        .set({ status: "healthy" })
+        .where(sql`${dockerNodes.id} = ${NODE_B}`)
+        .returning();
+      if (!target.current_node_history_id) throw new Error("Target node history missing");
+      const [source] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(sql`${agentSandboxes.id} = ${AGENT_A}`);
+      let attemptId = crypto.randomUUID();
+      const vpnServer = {
+        apiUrl: "https://vpn.fixture.invalid",
+        enrollmentUser: "staging",
+        publicKey: "mkey:" + "1".repeat(64),
+      };
+      const vpnNode = {
+        id: "42",
+        machineKey: "mkey:" + "2".repeat(64),
+        createdAt: new Date().toISOString(),
+      };
+      const handle = {
+        sandboxId: `agent-${AGENT_A}`,
+        bridgeUrl: "https://replacement-candidate.invalid",
+        healthUrl: "https://replacement-candidate.invalid/api/health",
+        metadata: {
+          provider: "docker",
+          nodeId: target.node_id,
+          hostname: target.hostname,
+          containerName: `agent-${AGENT_A}`,
+          bridgePort: 21080,
+          webUiPort: 23950,
+          agentId: AGENT_A,
+          volumePath: `/data/agents/${AGENT_A}`,
+          dockerImage: `image@${IMAGE_DIGEST}`,
+          imageDigest: IMAGE_DIGEST,
+          replacementAttemptId: attemptId,
+          allocationCounted: true,
+          vpnNodeName: "candidate-vpn",
+          vpnRegistrationStartedAt: new Date().toISOString(),
+          nodeRecordId: target.id,
+          nodeIncarnation: target.node_incarnation,
+          nodeHistoryId: target.current_node_history_id,
+          nodeSshPort: target.ssh_port,
+          nodeSshUser: target.ssh_user,
+          nodeHostKeyFingerprint: target.host_key_fingerprint,
+          replacementSecretCleanupVersion: 1,
+          vpnAuthority: { server: vpnServer, node: null },
+        },
+      };
+      const expected = {
+        operationKind: "upgrade" as const,
+        sourceAuthority: source,
+        status: "running" as const,
+        environmentRevision: source.environment_revision,
+        sandboxId: source.sandbox_id,
+        nodeId: source.node_id,
+        containerName: source.container_name,
+      };
+      const callbacks = service["replacementCleanupCallbacks"](AGENT_A, ORG_A, expected);
+      if (
+        !callbacks.replacementAttemptId ||
+        !callbacks.onReplacementCreateAttemptStarted ||
+        !callbacks.onReplacementCreateSettled
+      )
+        throw new Error("Active source did not receive exact provider callbacks");
+      attemptId = callbacks.replacementAttemptId;
+      handle.metadata.replacementAttemptId = attemptId;
+      const settlement = { replacementAttemptId: attemptId, outcome: "succeeded" as const };
+      await expect(callbacks.onReplacementCreateSettled(settlement)).rejects.toMatchObject({
+        code: "AGENT_ACTIVE_REPLACEMENT_CALLBACK_MISMATCH",
+      });
+      for (const staleAuthority of [
+        { ...source, activation_generation: crypto.randomUUID() },
+        { ...source, lifecycle_revision: source.lifecycle_revision + 1 },
+        { ...source, lifecycle_job_id: crypto.randomUUID() },
+        { ...source, lifecycle_execution_generation: crypto.randomUUID() },
+      ]) {
+        await expect(
+          service["persistReplacementCleanupStage"](
+            AGENT_A,
+            ORG_A,
+            handle,
+            { ...expected, sourceAuthority: staleAuthority },
+            "intent",
+          ),
+        ).rejects.toMatchObject({ code: "AGENT_ACTIVE_REPLACEMENT_SOURCE_CHANGED" });
+        expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toEqual([]);
+        const [unreserved] = await dbWrite
+          .select()
+          .from(dockerNodes)
+          .where(sql`${dockerNodes.id} = ${NODE_B}`);
+        expect(unreserved.allocated_count).toBe(target.allocated_count);
+      }
+      await callbacks.onReplacementCreateAttemptStarted({ replacementAttemptId: attemptId });
+      await expect(
+        callbacks.onReplacementCreateAttemptStarted({ replacementAttemptId: attemptId }),
+      ).rejects.toMatchObject({
+        code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+      });
+      const [started] = await dbWrite.select().from(agentSandboxReplacementAttempts);
+      expect(started.locator_recorded_at).toBeNull();
+      const [beforeIntent] = await dbWrite
+        .select()
+        .from(dockerNodes)
+        .where(sql`${dockerNodes.id} = ${NODE_B}`);
+      expect(beforeIntent.allocated_count).toBe(target.allocated_count);
+      await callbacks.onReplacementCreateIntent(handle);
+      await service["persistReplacementCleanupStage"](AGENT_A, ORG_A, handle, expected, "intent");
+      if (clearSource) {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({
+            activation_generation: null,
+            activation_lifecycle_revision: null,
+            activation_phase: null,
+            activation_receipt_hash: null,
+            activation_container_id: null,
+            activation_node_id: null,
+            activation_image_digest: null,
+            activation_boot_id: null,
+            activation_authority_published_at: null,
+            activation_dispatched_at: null,
+            activation_completed_at: null,
+          })
+          .where(sql`${agentSandboxes.id} = ${AGENT_A}`);
+        await expect(callbacks.onReplacementCreateIntent(handle)).rejects.toMatchObject({
+          code: "AGENT_ACTIVE_REPLACEMENT_SOURCE_CHANGED",
+        });
+      }
+      const [sourceBeforeEnrichment] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(sql`${agentSandboxes.id} = ${AGENT_A}`);
+      if (!clearSource) expect(sourceBeforeEnrichment).toEqual(source);
+      await callbacks.onReplacementCreated({
+        ...handle,
+        metadata: { ...handle.metadata, containerId: CONTAINER_D },
+      });
+      await callbacks.onReplacementVpnRegistered({
+        ...handle,
+        metadata: {
+          ...handle.metadata,
+          containerId: CONTAINER_D,
+          vpnNodeId: "42",
+          vpnAuthority: { server: vpnServer, node: vpnNode },
+        },
+      });
+      await callbacks.onReplacementCreateSettled(settlement);
+      await callbacks.onReplacementCreateSettled(settlement);
+      await expect(
+        service["persistReplacementCleanupStage"](
+          AGENT_A,
+          ORG_A,
+          {
+            ...handle,
+            metadata: { ...handle.metadata, replacementAttemptId: crypto.randomUUID() },
+          },
+          expected,
+          "intent",
+        ),
+      ).rejects.toMatchObject({
+        code: clearSource
+          ? "AGENT_ACTIVE_REPLACEMENT_SOURCE_CHANGED"
+          : "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+      });
+      const [admitted] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(sql`${agentSandboxes.id} = ${AGENT_A}`);
+      expect(admitted).toEqual(sourceBeforeEnrichment);
+      const [attempt] = await dbWrite
+        .select()
+        .from(agentSandboxReplacementAttempts)
+        .where(sql`${agentSandboxReplacementAttempts.id} = ${attemptId}`);
+      expect(attempt).toMatchObject({
+        state: "provider_succeeded",
+        locator_sandbox_id: `agent-${AGENT_A}`,
+        locator_container_id: CONTAINER_D,
+        locator_vpn_authority: { server: vpnServer, node: vpnNode },
+        locator_node_record_id: target.id,
+        activation_generation: source.activation_generation,
+        lifecycle_revision: BigInt(source.lifecycle_revision),
+      });
+      const [reserved] = await dbWrite
+        .select()
+        .from(dockerNodes)
+        .where(sql`${dockerNodes.id} = ${NODE_B}`);
+      expect(reserved.allocated_count).toBe(target.allocated_count + 1);
+      await expect(service["retirePersistedReplacementCleanup"](AGENT_A, ORG_A)).rejects.toThrow(
+        "ledger still owns candidate cleanup",
+      );
+      const finalHandle = {
+        ...handle,
+        metadata: {
+          ...handle.metadata,
+          containerId: CONTAINER_D,
+          vpnNodeId: "42",
+          vpnAuthority: { server: vpnServer, node: vpnNode },
+        },
+      };
+      const { DockerSandboxProvider } = await import(
+        "../../../lib/services/docker-sandbox-provider"
+      );
+      const provider = new DockerSandboxProvider();
+      const effects: string[] = [];
+      provider.captureDeletionVolume = async (manifest) => {
+        effects.push("capture");
+        return {
+          state: "captured",
+          authorityHash: deletionResourceAuthorityHash(manifest),
+          observedAt: new Date().toISOString(),
+          path: `/data/agents/${AGENT_A}`,
+          nodeBootId: INCARNATION_B,
+          rootDevice: "2049",
+          rootInode: "701",
+          stateDevice: "2049",
+          stateInode: "702",
+        };
+      };
+      provider.stopForDeletion = async (_sandboxId, authority) => {
+        if (!authority) throw new Error("Candidate stop requires exact deletion authority");
+        const [owned] = await dbWrite
+          .select()
+          .from(agentSandboxReplacementAttempts)
+          .where(sql`${agentSandboxReplacementAttempts.id} = ${attemptId}`);
+        expect(owned.state).toBe("cleanup_in_progress");
+        expect(owned.cleanup_resource_manifest?.resources.volume.state).toBe("captured");
+        expect(authority.containerId).toBe(CONTAINER_D);
+        effects.push("stop");
+        return { kind: "not-running-proven" };
+      };
+      provider.cleanupDeletionSecretArtifacts = async (manifest) => {
+        effects.push("secrets");
+        return {
+          state: "absent",
+          authorityHash: deletionResourceAuthorityHash(manifest),
+          observedAt: new Date().toISOString(),
+          providerReceipt: getReplacementSecretArtifactsCleanupReceipt(attemptId),
+        };
+      };
+      let vpnUnavailable = true;
+      provider.cleanupDeletionVpn = async (manifest) => {
+        effects.push("vpn");
+        if (vpnUnavailable) throw new Error("VPN inventory unavailable");
+        return {
+          state: "absent",
+          authorityHash: deletionResourceAuthorityHash(manifest),
+          observedAt: new Date().toISOString(),
+          providerReceipt: "HEADSCALE_NODE_ABSENT_V1",
+          authority: { server: vpnServer, node: vpnNode },
+        };
+      };
+      service["_provider"] = provider;
+      await expect(
+        service["retireLedgerCandidateResources"](
+          {
+            agentId: AGENT_A,
+            organizationId: ORG_A,
+            attemptId,
+          },
+          null,
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED" });
+      expect(effects).toEqual([]);
+      await expect(
+        service["retireFailedImageCandidate"](
+          AGENT_A,
+          ORG_A,
+          {
+            ...finalHandle,
+            metadata: { ...finalHandle.metadata, containerId: CONTAINER_A },
+          },
+          true,
+        ),
+      ).rejects.toThrow();
+      expect(effects).toEqual([]);
+      await expect(
+        service["retireFailedImageCandidate"](AGENT_A, ORG_A, finalHandle, true),
+      ).rejects.toThrow("VPN inventory unavailable");
+      expect(effects).toEqual(["capture", "stop", "secrets", "vpn"]);
+      const [partial] = await dbWrite
+        .select()
+        .from(agentSandboxReplacementAttempts)
+        .where(sql`${agentSandboxReplacementAttempts.id} = ${attemptId}`);
+      expect(partial.cleanup_resource_manifest?.resources.secrets.state).toBe("absent");
+      expect(partial.cleanup_resource_manifest?.resources.vpn.state).toBe("unknown");
+      vpnUnavailable = false;
+      const restartedService = new ElizaSandboxService(provider);
+      expect(await restartedService.reconcileReplacementCleanupFences()).toEqual({
+        total: 1,
+        retired: 0,
+        retained: 1,
+        failed: 0,
+      });
+      expect(await restartedService.reconcileReplacementCleanupFences()).toEqual({
+        total: 0,
+        retired: 0,
+        retained: 0,
+        failed: 0,
+      });
+      expect(effects).toEqual(["capture", "stop", "secrets", "vpn", "stop", "vpn"]);
+      const [retained] = await dbWrite
+        .select()
+        .from(agentSandboxReplacementAttempts)
+        .where(sql`${agentSandboxReplacementAttempts.id} = ${attemptId}`);
+      expect(retained.state).toBe("cleanup_in_progress");
+      expect(retained.cleanup_resource_manifest?.resources.volume.state).toBe("captured");
+      expect(retained.cleanup_resource_manifest?.resources.vpn.state).toBe("absent");
+      expect(
+        (
+          await dbWrite.select().from(agentSandboxes).where(sql`${agentSandboxes.id} = ${AGENT_A}`)
+        )[0],
+      ).toEqual(sourceBeforeEnrichment);
+      expect(
+        (await dbWrite.select().from(dockerNodes).where(sql`${dockerNodes.id} = ${NODE_B}`))[0]
+          .allocated_count,
+      ).toBe(target.allocated_count + 1);
+    });
+  }
 
   test("counts a running dedicated sandbox with missing activation authority", async () => {
     await dbWrite.update(agentSandboxes).set({

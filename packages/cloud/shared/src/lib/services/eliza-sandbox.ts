@@ -38,6 +38,22 @@ import {
   type ManualLocalResumeAuthority,
 } from "../../db/repositories/agent-local-state-retention";
 import {
+  type AgentSandboxReplacementAttemptReference,
+  type AgentSandboxReplacementLocatorInput,
+  beginAgentSandboxReplacementCleanupInTransaction,
+  recordAgentSandboxReplacementCreatedInTransaction,
+  recordAgentSandboxReplacementIntentAndReserveCapacityInTransaction,
+  recordAgentSandboxReplacementProviderSucceeded,
+  recordAgentSandboxReplacementVpnRegisteredInTransaction,
+  startAgentSandboxReplacementAttemptInTransaction,
+} from "../../db/repositories/agent-sandbox-replacement-attempts";
+import {
+  admitAgentSandboxReplacementResourcesInTransaction,
+  recordAgentSandboxReplacementResourceAbsenceInTransaction,
+  recordAgentSandboxReplacementVolumeCaptureInTransaction,
+  scheduleAgentSandboxReplacementResourceCleanupInTransaction,
+} from "../../db/repositories/agent-sandbox-replacement-resources";
+import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
   type AgentSandboxBackup,
@@ -55,6 +71,7 @@ import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
+import { agentSandboxReplacementAttempts } from "../../db/schemas/agent-sandbox-replacement-attempts";
 import type {
   AgentDeletionResourceManifest,
   AgentDeletionResourceReceipt,
@@ -77,6 +94,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
+import { organizations } from "../../db/schemas/organizations";
 import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
 import { imageRepo, repinImageDigest } from "../../db/utils/docker-image-ref";
@@ -1460,6 +1478,15 @@ type ReplacementCleanupLocator = {
 };
 
 type ReplacementCleanupExpectation = {
+  sourceAuthority?: Pick<
+    AgentSandbox,
+    | "activation_phase"
+    | "activation_generation"
+    | "lifecycle_revision"
+    | "lifecycle_job_id"
+    | "lifecycle_execution_generation"
+  >;
+  operationKind?: "upgrade" | "downgrade";
   status: AgentSandboxStatus;
   environmentRevision: number;
   sandboxId: string | null;
@@ -11877,6 +11904,14 @@ export class ElizaSandboxService {
       // by id below only after the atomic swap succeeds.
       reclaimStaleVpnNode: false,
       ...this.replacementCleanupCallbacks(agentId, orgId, {
+        operationKind: "upgrade",
+        sourceAuthority: {
+          activation_phase: agent.activation_phase,
+          activation_generation: agent.activation_generation,
+          lifecycle_revision: agent.lifecycle_revision,
+          lifecycle_job_id: agent.lifecycle_job_id,
+          lifecycle_execution_generation: agent.lifecycle_execution_generation,
+        },
         status: "running",
         environmentRevision: sourceEnvironmentRevision,
         sandboxId: oldSandboxId,
@@ -11903,7 +11938,12 @@ export class ElizaSandboxService {
     }
     const failBeforeUpgradeCutover = async (error: string): Promise<ImageSwapResult> => {
       try {
-        await this.retirePersistedReplacementCleanup(agentId, orgId);
+        await this.retireFailedImageCandidate(
+          agentId,
+          orgId,
+          blueHandle,
+          agent.activation_phase === "active",
+        );
       } catch (cleanupError) {
         // error-policy:J1 pre-cutover boundary translation — unresolved retirement
         // is reported with cleanupPending while traffic remains on the old placement.
@@ -12393,6 +12433,14 @@ export class ElizaSandboxService {
       // by id below only after the atomic swap succeeds.
       reclaimStaleVpnNode: false,
       ...this.replacementCleanupCallbacks(agentId, orgId, {
+        operationKind: "downgrade",
+        sourceAuthority: {
+          activation_phase: agent.activation_phase,
+          activation_generation: agent.activation_generation,
+          lifecycle_revision: agent.lifecycle_revision,
+          lifecycle_job_id: agent.lifecycle_job_id,
+          lifecycle_execution_generation: agent.lifecycle_execution_generation,
+        },
         status: "running",
         environmentRevision: sourceEnvironmentRevision,
         sandboxId: oldSandboxId,
@@ -12418,7 +12466,12 @@ export class ElizaSandboxService {
     }
     const failBeforeRollbackCutover = async (error: string): Promise<ImageSwapResult> => {
       try {
-        await this.retirePersistedReplacementCleanup(agentId, orgId);
+        await this.retireFailedImageCandidate(
+          agentId,
+          orgId,
+          blueHandle,
+          agent.activation_phase === "active",
+        );
       } catch (cleanupError) {
         // error-policy:J1 pre-cutover boundary translation — unresolved retirement
         // is returned with cleanupPending while the current placement stays live.
@@ -12807,38 +12860,154 @@ export class ElizaSandboxService {
     expected: ReplacementCleanupExpectation,
     paymentResume?: AgentPaymentResumeExecutionAuthority,
   ) {
-    return {
-      onReplacementCreateIntent: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(
-          agentId,
-          orgId,
-          handle,
-          expected,
-          "intent",
-          paymentResume,
-        );
-      },
-      onReplacementCreated: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(
-          agentId,
-          orgId,
-          handle,
-          expected,
-          "created",
-          paymentResume,
-        );
-      },
-      onReplacementVpnRegistered: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(
-          agentId,
-          orgId,
-          handle,
-          expected,
-          "vpn",
-          paymentResume,
-        );
-      },
+    const exact = expected.sourceAuthority?.activation_phase === "active";
+    const replacementAttemptId = exact ? crypto.randomUUID() : null;
+    let recordedLocator: AgentSandboxReplacementLocatorInput | null = null;
+    const recordStage = async (handle: SandboxHandle, stage: "intent" | "created" | "vpn") => {
+      if (
+        replacementAttemptId &&
+        (!handle.metadata || handle.metadata.replacementAttemptId !== replacementAttemptId)
+      )
+        throw new ElizaError("Replacement callback changed its invocation identity", {
+          code: "AGENT_ACTIVE_REPLACEMENT_CALLBACK_MISMATCH",
+          context: { agentId },
+        });
+      await this.persistReplacementCleanupStage(
+        agentId,
+        orgId,
+        handle,
+        expected,
+        stage,
+        paymentResume,
+      );
+      if (replacementAttemptId) recordedLocator = this.replacementLedgerLocatorFromHandle(handle);
     };
+    return {
+      ...(replacementAttemptId
+        ? {
+            replacementAttemptId,
+            onReplacementCreateAttemptStarted: async (attempt: {
+              replacementAttemptId: string;
+            }) => {
+              if (attempt.replacementAttemptId !== replacementAttemptId)
+                throw new ElizaError("Replacement start changed its invocation identity", {
+                  code: "AGENT_ACTIVE_REPLACEMENT_CALLBACK_MISMATCH",
+                  context: { agentId },
+                });
+              await this.startActiveReplacementAttempt(
+                agentId,
+                orgId,
+                replacementAttemptId,
+                expected,
+              );
+            },
+            onReplacementCreateSettled: async (settlement: {
+              replacementAttemptId: string;
+              outcome: "succeeded";
+            }) => {
+              if (
+                settlement.replacementAttemptId !== replacementAttemptId ||
+                settlement.outcome !== "succeeded" ||
+                !recordedLocator?.containerId
+              )
+                throw new ElizaError("Replacement settlement lacks its recorded candidate", {
+                  code: "AGENT_ACTIVE_REPLACEMENT_CALLBACK_MISMATCH",
+                  context: { agentId },
+                });
+              const receiptDigest = crypto
+                .createHash("sha256")
+                .update(
+                  JSON.stringify({
+                    kind: "agent-ordinary-replacement-provider-success-v1",
+                    agentId,
+                    organizationId: orgId,
+                    replacementAttemptId,
+                    locator: recordedLocator,
+                  }),
+                )
+                .digest("hex");
+              await recordAgentSandboxReplacementProviderSucceeded(
+                { attemptId: replacementAttemptId, agentId, organizationId: orgId },
+                recordedLocator,
+                receiptDigest,
+              );
+            },
+          }
+        : {}),
+      onReplacementCreateIntent: async (handle: SandboxHandle) => recordStage(handle, "intent"),
+      onReplacementCreated: async (handle: SandboxHandle) => recordStage(handle, "created"),
+      onReplacementVpnRegistered: async (handle: SandboxHandle) => recordStage(handle, "vpn"),
+    };
+  }
+
+  private assertReplacementSource(
+    current: AgentSandbox,
+    expected: ReplacementCleanupExpectation,
+  ): void {
+    const source = expected.sourceAuthority;
+    if (
+      (source &&
+        (current.activation_phase !== source.activation_phase ||
+          current.activation_generation !== source.activation_generation ||
+          current.lifecycle_revision !== source.lifecycle_revision ||
+          current.lifecycle_job_id !== source.lifecycle_job_id ||
+          current.lifecycle_execution_generation !== source.lifecycle_execution_generation)) ||
+      current.status !== expected.status ||
+      current.environment_revision !== expected.environmentRevision ||
+      current.sandbox_id !== expected.sandboxId ||
+      current.node_id !== expected.nodeId ||
+      current.container_name !== expected.containerName
+    )
+      throw new ElizaError("Replacement source authority changed before admission", {
+        code: "AGENT_ACTIVE_REPLACEMENT_SOURCE_CHANGED",
+        context: { agentId: current.id },
+      });
+  }
+
+  private async startActiveReplacementAttempt(
+    agentId: string,
+    orgId: string,
+    attemptId: string,
+    expected: ReplacementCleanupExpectation,
+  ): Promise<void> {
+    const source = expected.sourceAuthority;
+    if (
+      source?.activation_phase !== "active" ||
+      !source.activation_generation ||
+      !expected.operationKind
+    )
+      throw new ElizaError("Active replacement requires its captured source authority", {
+        code: "AGENT_ACTIVE_REPLACEMENT_AUTHORITY_INCOMPLETE",
+        context: { agentId },
+      });
+    await dbWrite.transaction(async (tx) => {
+      await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .for("key share");
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current || current.deletion_attempt_id !== null)
+        throw new ElizaError("Replacement source is absent or owned by deletion", {
+          code: "AGENT_ACTIVE_REPLACEMENT_SOURCE_CHANGED",
+          context: { agentId },
+        });
+      this.assertReplacementSource(current, expected);
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
+      await startAgentSandboxReplacementAttemptInTransaction(tx, {
+        attemptId,
+        agentId,
+        organizationId: orgId,
+        operationKind: expected.operationKind!,
+        lifecycleRevision: String(source.lifecycle_revision),
+        activationGeneration: source.activation_generation!,
+        lifecycleJobId: source.lifecycle_job_id,
+        lifecycleExecutionGeneration: source.lifecycle_execution_generation,
+        restoreAuthority: null,
+      });
+    });
   }
 
   private getReplacementCleanupLocator(
@@ -13125,6 +13294,45 @@ export class ElizaSandboxService {
     };
   }
 
+  private replacementLedgerLocatorFromHandle(
+    handle: SandboxHandle,
+  ): AgentSandboxReplacementLocatorInput {
+    const incoming = this.replacementLocatorFromHandle(handle);
+    const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : null;
+    if (
+      !metadata ||
+      !metadata.nodeRecordId ||
+      !metadata.nodeIncarnation ||
+      !metadata.nodeHistoryId ||
+      !metadata.hostname ||
+      !metadata.nodeSshPort ||
+      !metadata.nodeSshUser ||
+      !metadata.nodeHostKeyFingerprint ||
+      metadata.replacementSecretCleanupVersion !== 1 ||
+      !incoming.replacementAttemptId ||
+      !incoming.allocationCounted
+    ) {
+      throw new ElizaError("Active replacement requires complete captured node authority", {
+        code: "AGENT_ACTIVE_REPLACEMENT_LOCATOR_INCOMPLETE",
+        context: { sandboxId: handle.sandboxId },
+      });
+    }
+    return {
+      ...incoming,
+      replacementAttemptId: incoming.replacementAttemptId,
+      nodeRecordId: metadata.nodeRecordId,
+      nodeIncarnation: metadata.nodeIncarnation,
+      nodeHistoryId: metadata.nodeHistoryId,
+      nodeHostname: metadata.hostname,
+      nodeSshPort: metadata.nodeSshPort,
+      nodeSshUser: metadata.nodeSshUser,
+      nodeHostKeyFingerprint: metadata.nodeHostKeyFingerprint,
+      replacementSecretCleanupVersion: 1,
+      allocationCounted: true,
+      vpnRegistrationStartedAt: incoming.vpnRegistrationStartedAt?.toISOString() ?? null,
+    };
+  }
+
   private replacementLocatorFromCleanupError(
     cleanupError: SandboxReplacementCleanupUnresolvedError,
   ): Omit<ReplacementCleanupLocator, "createdAt"> {
@@ -13254,20 +13462,62 @@ export class ElizaSandboxService {
       throw new Error("Blue/green replacement requires durable node capacity ownership");
     }
     await dbWrite.transaction(async (tx) => {
+      await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .for("key share");
       await this.lockLifecycle(tx, agentId, orgId);
       if (paymentResume && stage === "intent") {
         await lockPaymentResumeProviderAuthorityInTransaction(tx, paymentResume, "provider");
       }
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement ownership");
-      const tierRejection = containerBackedServiceRejection(current, "replacement");
-      if (tierRejection) throw new Error(tierRejection);
-      if (
-        current.deletion_attempt_id !== null ||
-        current.status === "deletion_pending" ||
-        current.status === "deletion_failed"
-      ) {
-        throw new Error("Agent deletion owns the lifecycle before replacement ownership");
+      const [attempt] =
+        current.activation_generation || expected.sourceAuthority?.activation_generation
+          ? await tx
+              .select()
+              .from(agentSandboxReplacementAttempts)
+              .where(
+                and(
+                  eq(agentSandboxReplacementAttempts.id, incoming.replacementAttemptId!),
+                  eq(agentSandboxReplacementAttempts.organization_id, orgId),
+                  eq(agentSandboxReplacementAttempts.agent_id, agentId),
+                ),
+              )
+              .limit(1)
+          : [];
+      // A post-effect receipt remains useful to cleanup after source rotation
+      // or deletion admission. Only a new intent can authorize remote work.
+      if (!attempt || stage === "intent") {
+        const tierRejection = containerBackedServiceRejection(current, "replacement");
+        if (tierRejection) throw new Error(tierRejection);
+        if (
+          current.deletion_attempt_id !== null ||
+          current.status === "deletion_pending" ||
+          current.status === "deletion_failed"
+        )
+          throw new Error("Agent deletion owns the lifecycle before replacement ownership");
+      }
+      if (attempt) {
+        if (attempt.restore_attempt_id !== null)
+          throw new ElizaError("Restore attempts require their restore authority callback", {
+            code: "AGENT_ACTIVE_REPLACEMENT_RESTORE_AUTHORITY_REQUIRED",
+            context: { agentId },
+          });
+        const reference = { attemptId: attempt.id, agentId, organizationId: orgId };
+        const locator = this.replacementLedgerLocatorFromHandle(handle);
+        if (stage === "intent") {
+          this.assertReplacementSource(current, expected);
+          await recordAgentSandboxReplacementIntentAndReserveCapacityInTransaction(
+            tx,
+            reference,
+            locator,
+          );
+        } else if (stage === "created")
+          await recordAgentSandboxReplacementCreatedInTransaction(tx, reference, locator);
+        else await recordAgentSandboxReplacementVpnRegisteredInTransaction(tx, reference, locator);
+        return;
       }
       const existing = this.getReplacementCleanupLocator(current);
       // Post-effect callbacks may preserve the exact existing receipt after
@@ -13319,14 +13569,35 @@ export class ElizaSandboxService {
       if (stage !== "intent") {
         throw new Error("Replacement enrichment arrived before durable intent ownership");
       }
-      if (
-        current.status !== expected.status ||
-        current.environment_revision !== expected.environmentRevision ||
-        current.sandbox_id !== expected.sandboxId ||
-        current.node_id !== expected.nodeId ||
-        current.container_name !== expected.containerName
-      ) {
-        throw new Error("Agent generation changed before replacement ownership");
+      this.assertReplacementSource(current, expected);
+      const sourceAuthority = expected.sourceAuthority;
+      if (current.activation_phase === "active") {
+        if (!current.activation_generation || !expected.operationKind || !sourceAuthority)
+          throw new ElizaError("Active replacement requires its operation and source generation", {
+            code: "AGENT_ACTIVE_REPLACEMENT_AUTHORITY_INCOMPLETE",
+            context: { agentId },
+          });
+        const locator = this.replacementLedgerLocatorFromHandle(handle);
+        const reference = {
+          attemptId: locator.replacementAttemptId,
+          agentId,
+          organizationId: orgId,
+        };
+        await startAgentSandboxReplacementAttemptInTransaction(tx, {
+          ...reference,
+          operationKind: expected.operationKind,
+          lifecycleRevision: String(current.lifecycle_revision),
+          activationGeneration: current.activation_generation,
+          lifecycleJobId: current.lifecycle_job_id,
+          lifecycleExecutionGeneration: current.lifecycle_execution_generation,
+          restoreAuthority: null,
+        });
+        await recordAgentSandboxReplacementIntentAndReserveCapacityInTransaction(
+          tx,
+          reference,
+          locator,
+        );
+        return;
       }
       if (incoming.allocationCounted) {
         const reserved = await tx.execute<{ node_id: string }>(sql`
@@ -13598,6 +13869,104 @@ export class ElizaSandboxService {
     }
   }
 
+  /** A failed image swap may retire only the candidate returned to that exact invocation. */
+  private async retireFailedImageCandidate(
+    agentId: string,
+    orgId: string,
+    handle: SandboxHandle,
+    sourceWasActive: boolean,
+  ): Promise<void> {
+    if (!sourceWasActive) {
+      await this.retirePersistedReplacementCleanup(agentId, orgId);
+      return;
+    }
+    const locator = this.replacementLedgerLocatorFromHandle(handle);
+    const reference = {
+      agentId,
+      organizationId: orgId,
+      attemptId: locator.replacementAttemptId,
+    };
+    await this.retireLedgerCandidateResources(reference, locator);
+    throw new ElizaError("Candidate compute retired; its volume remains owned pending recovery", {
+      code: "AGENT_RETIRING_VOLUME_RECOVERY_PENDING",
+      context: reference,
+    });
+  }
+
+  /** A null invocation locator permits resuming only an already-admitted cleanup manifest. */
+  private async retireLedgerCandidateResources(
+    reference: AgentSandboxReplacementAttemptReference,
+    invocationLocator: AgentSandboxReplacementLocatorInput | null,
+  ): Promise<AgentDeletionResourceManifest> {
+    const { agentId, organizationId: orgId } = reference;
+    const admit = async (tx: DbTransaction) => {
+      await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .for("key share");
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current || current.deletion_attempt_id !== null)
+        throw new ElizaError("Candidate cleanup owner is absent or owned by deletion", {
+          code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED",
+          context: { ...reference },
+        });
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
+      if (invocationLocator) {
+        await beginAgentSandboxReplacementCleanupInTransaction(tx, reference, invocationLocator);
+      } else {
+        const [attempt] = await tx
+          .select({
+            state: agentSandboxReplacementAttempts.state,
+            manifest: agentSandboxReplacementAttempts.cleanup_resource_manifest,
+          })
+          .from(agentSandboxReplacementAttempts)
+          .where(
+            and(
+              eq(agentSandboxReplacementAttempts.id, reference.attemptId),
+              eq(agentSandboxReplacementAttempts.agent_id, agentId),
+              eq(agentSandboxReplacementAttempts.organization_id, orgId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!attempt || attempt.state !== "cleanup_in_progress" || !attempt.manifest)
+          throw new ElizaError("Background cleanup has no admitted candidate resource owner", {
+            code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED",
+            context: { ...reference },
+          });
+      }
+      return await admitAgentSandboxReplacementResourcesInTransaction(tx, reference);
+    };
+    const manifest = await dbWrite.transaction(admit);
+    return await retireServingPlacementResources({
+      manifest,
+      provider: await this.getProvider(),
+      assertCurrentOwnership: async () => {
+        await dbWrite.transaction(admit);
+      },
+      persistObservation: async (observation) => {
+        await dbWrite.transaction(async (tx) => {
+          await admit(tx);
+          if (observation.kind === "volume")
+            await recordAgentSandboxReplacementVolumeCaptureInTransaction(
+              tx,
+              reference,
+              observation.value,
+            );
+          else
+            await recordAgentSandboxReplacementResourceAbsenceInTransaction(
+              tx,
+              reference,
+              observation,
+            );
+        });
+      },
+    });
+  }
+
   private async retirePersistedReplacementCleanup(
     agentId: string,
     orgId: string,
@@ -13637,6 +14006,26 @@ export class ElizaSandboxService {
       if (!current) return { state: "missing" as const };
       const tierRejection = containerBackedServiceRejection(current, "replacement");
       if (tierRejection) throw new Error(tierRejection);
+      const [attempt] = await tx
+        .select({ id: agentSandboxReplacementAttempts.id })
+        .from(agentSandboxReplacementAttempts)
+        .where(
+          and(
+            eq(agentSandboxReplacementAttempts.agent_id, agentId),
+            eq(agentSandboxReplacementAttempts.organization_id, orgId),
+            inArray(agentSandboxReplacementAttempts.state, [
+              "in_flight_unresolved",
+              "provider_succeeded",
+              "cleanup_in_progress",
+            ]),
+          ),
+        )
+        .limit(1);
+      if (attempt)
+        throw new ElizaError("Replacement ledger still owns candidate cleanup", {
+          code: "AGENT_REPLACEMENT_LEDGER_CLEANUP_PENDING",
+          context: { agentId, attemptId: attempt.id },
+        });
       const locator = this.getReplacementCleanupLocator(current);
       if (paymentResume?.expectedHandle) {
         if (!locator) {
@@ -13853,6 +14242,7 @@ export class ElizaSandboxService {
   async reconcileReplacementCleanupFences(limit = 25): Promise<{
     total: number;
     retired: number;
+    retained: number;
     failed: number;
   }> {
     const pending = await dbWrite.execute<{ id: string; organization_id: string }>(sql`
@@ -13876,7 +14266,11 @@ export class ElizaSandboxService {
       ORDER BY replacement_cleanup_created_at ASC
       LIMIT ${limit}
     `);
+    const candidates = await dbWrite.transaction((tx) =>
+      scheduleAgentSandboxReplacementResourceCleanupInTransaction(tx, limit),
+    );
     let retired = 0;
+    let retained = 0;
     let failed = 0;
     for (const row of pending.rows) {
       try {
@@ -13902,7 +14296,20 @@ export class ElizaSandboxService {
         });
       }
     }
-    return { total: pending.rows.length, retired, failed };
+    for (const reference of candidates) {
+      try {
+        await this.retireLedgerCandidateResources(reference, null);
+        retained += 1;
+      } catch (error) {
+        // error-policy:J7 reconciliation preserves the durable candidate for the next sweep.
+        failed += 1;
+        logger.warn("[agent-sandbox] Candidate resource cleanup remains pending", {
+          ...reference,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return { total: pending.rows.length + candidates.length, retired, retained, failed };
   }
 
   /**

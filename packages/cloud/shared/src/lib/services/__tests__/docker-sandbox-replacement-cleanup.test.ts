@@ -1229,12 +1229,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(failure).toBeInstanceOf(Error);
     expect(failure).not.toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect((failure as Error).message).toContain("Headscale preauth unavailable");
-    expect(events).toEqual([
-      "attempt-started",
-      "steward",
-      "vpn-server-authority",
-      "headscale-prepare",
-    ]);
+    expect(events).toEqual(["attempt-started", "vpn-server-authority", "headscale-prepare"]);
     expect(persistIntent).not.toHaveBeenCalled();
     expect(persistSettlement).not.toHaveBeenCalled();
     expect(increment).not.toHaveBeenCalled();
@@ -1511,7 +1506,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(error).not.toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect(error).toMatchObject({ name: "ReplacementPlacementPersistenceError" });
     expect((error as Error).cause).toBe(intentFailure);
-    expect(commands.some((command) => command.includes("docker network inspect"))).toBe(true);
+    expect(commands).toEqual([]);
     expect(commands.some((command) => command.includes("docker create"))).toBe(false);
     expect(persistSuccess).not.toHaveBeenCalled();
   });
@@ -1753,17 +1748,24 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       isNew: false,
     });
     stubVpnAuthority();
-    spyOn(headscaleIntegration, "prepareContainerVPN").mockResolvedValue({
-      preAuthKey: "preauth-test",
-      envVars: {
-        HEADSCALE_URL: "https://headscale.example.test",
-        TS_AUTHKEY: "preauth-test",
-        TS_HOSTNAME: "replacement-11111111-111",
-        TS_STATE_DIR: "/var/lib/tailscale",
-        TS_EXTRA_ARGS: "--accept-routes",
-      },
-      previousNodeId: PREVIOUS_VPN_NODE_ID,
+    spyOn(headscaleIntegration, "prepareContainerVPN").mockImplementation(async (input) => {
+      await input.beforePrepareEffects?.({
+        hostname: "replacement-11111111-111",
+        previousNodeId: PREVIOUS_VPN_NODE_ID,
+      });
+      return {
+        preAuthKey: "preauth-test",
+        envVars: {
+          HEADSCALE_URL: "https://headscale.example.test",
+          TS_AUTHKEY: "preauth-test",
+          TS_HOSTNAME: "replacement-11111111-111",
+          TS_STATE_DIR: "/var/lib/tailscale",
+          TS_EXTRA_ARGS: "--accept-routes",
+        },
+        previousNodeId: PREVIOUS_VPN_NODE_ID,
+      };
     });
+
     let renameCompletion: unknown = { outcome: "not-needed" };
     spyOn(headscaleIntegration, "waitForVPNRegistration").mockImplementation(
       async () =>
@@ -2218,8 +2220,13 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       return { tenantId: "tenant-test", isNew: false };
     });
     stubVpnAuthority(events);
-    spyOn(headscaleIntegration, "prepareContainerVPN").mockImplementation(async () => {
+    spyOn(headscaleIntegration, "prepareContainerVPN").mockImplementation(async (input) => {
       events.push("headscale-prepare");
+      await input.beforePrepareEffects?.({
+        hostname: "replacement-11111111-111",
+        previousNodeId: PREVIOUS_VPN_NODE_ID,
+      });
+      events.push("headscale-key");
       return {
         preAuthKey: "preauth-test",
         envVars: {
@@ -2334,8 +2341,9 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(callbackHandles[2]?.metadata?.vpnAuthority).toEqual(VPN_NODE_AUTHORITY);
     expect(handle.metadata?.vpnAuthority).toEqual(VPN_NODE_AUTHORITY);
     expect(events.indexOf("headscale-prepare")).toBeLessThan(events.indexOf("persist-intent"));
-    expect(events.indexOf("steward-register")).toBeLessThan(events.indexOf("persist-intent"));
-    expect(events.indexOf("network-ready")).toBeLessThan(events.indexOf("persist-intent"));
+    expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("steward-register"));
+    expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("network-ready"));
+    expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("headscale-key"));
     expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("docker-create"));
     expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("docker-start"));
     expect(events.indexOf("vpn-registration")).toBeLessThan(events.indexOf("tailnet-bound"));

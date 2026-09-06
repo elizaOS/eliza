@@ -8,6 +8,12 @@
  */
 
 export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS "agent_sandbox_replacement_attempts" (
+    "id" uuid PRIMARY KEY,
+    "organization_id" uuid NOT NULL,
+    "agent_id" uuid NOT NULL,
+    "state" text NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS "organizations" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "name" text NOT NULL,

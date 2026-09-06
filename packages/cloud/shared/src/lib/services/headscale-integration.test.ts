@@ -82,6 +82,54 @@ describe("Headscale identity inference", () => {
 });
 
 describe("Headscale container credentials", () => {
+  for (const reclaimStaleNode of [false, true]) {
+    test(`persists preparation authority before effects (reclaim=${reclaimStaleNode})`, async () => {
+      const effects: string[] = [];
+      let permit = false;
+      let observed: { hostname: string; previousNodeId: string | null } | undefined;
+      const fake = {
+        getNodeByNameStrict: async (name: string) => ({
+          id: "70",
+          name,
+          ipAddresses: ["100.64.0.56"],
+        }),
+        deleteNode: async (id: string) => {
+          effects.push(`delete:${id}`);
+        },
+        createPreAuthKey: async () => {
+          effects.push("key");
+          return { key: "fixture-key" };
+        },
+      } as unknown as HeadscaleClient;
+      const input = {
+        agentId: "11111111-1111-4111-8111-111111111111",
+        agentName: "Eliza",
+        reclaimStaleNode,
+        beforePrepareEffects: async (identity: {
+          hostname: string;
+          previousNodeId: string | null;
+        }) => {
+          observed = identity;
+          if (!permit) throw new Error("placement persistence unavailable");
+          effects.push("persisted");
+        },
+      };
+      const integration = new HeadscaleIntegration(fake);
+      await expect(integration.prepareContainerVPN(input)).rejects.toThrow(
+        "placement persistence unavailable",
+      );
+      expect(effects).toEqual([]);
+      expect(observed?.previousNodeId).toBe(reclaimStaleNode ? null : "70");
+      permit = true;
+      const prepared = await integration.prepareContainerVPN(input);
+      expect(prepared.envVars.TS_HOSTNAME).toBe(observed?.hostname);
+      expect(effects).toEqual(
+        reclaimStaleNode ? ["persisted", "delete:70", "key"] : ["persisted", "key"],
+      );
+      expect(prepared.previousNodeId ?? null).toBe(observed?.previousNodeId);
+    });
+  }
+
   test("uses a persistent node with a REUSABLE key so a de-authorizing reboot can re-register", async () => {
     // Reusable (was single-use): a hard reset de-authorizes the persisted node
     // identity, forcing a fresh `tailscale up --authkey`. A single-use key

@@ -25,6 +25,14 @@ const vpnMigrationUrl = new URL(
   "./0381_agent_replacement_attempt_vpn_authority.sql",
   import.meta.url,
 );
+const ordinaryCleanupMigrationUrl = new URL(
+  "./0382_agent_ordinary_replacement_cleanup.sql",
+  import.meta.url,
+);
+const cleanupResourcesMigrationUrl = new URL(
+  "./0383_agent_replacement_cleanup_resources.sql",
+  import.meta.url,
+);
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
 
@@ -240,7 +248,6 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
       AND cleanup_proven_at IS NULL
       AND cleanup_receipt_digest IS NULL
       OR state = 'cleanup_in_progress'::text
-      AND restore_attempt_id IS NOT NULL
       AND locator_recorded_at IS NOT NULL
       AND (provider_succeeded_at IS NULL) = (provider_receipt_digest IS NULL)
       AND (provider_succeeded_at IS NULL
@@ -402,8 +409,11 @@ async function database(migrationCount: number = migrationUrls.length): Promise<
   for (const migrationUrl of migrationUrls.slice(0, migrationCount)) {
     await apply(await Bun.file(migrationUrl).text(), db);
   }
-  if (migrationCount === migrationUrls.length)
+  if (migrationCount === migrationUrls.length) {
     await apply(await Bun.file(vpnMigrationUrl).text(), db);
+    await apply(await Bun.file(ordinaryCleanupMigrationUrl).text(), db);
+    await apply(await Bun.file(cleanupResourcesMigrationUrl).text(), db);
+  }
   return db;
 }
 
@@ -530,6 +540,42 @@ afterEach(async () => {
 });
 
 describe("agent sandbox replacement attempt migrations", () => {
+  test("admits ordinary cleanup while rejecting late provider state and locator writes", async () => {
+    const db = await database();
+    await insertAttempt(db);
+    await expect(
+      db.query(
+        `UPDATE agent_sandbox_replacement_attempts SET state = 'cleanup_in_progress' WHERE id = $1`,
+        [ATTEMPT_ID],
+      ),
+    ).rejects.toThrow();
+    await recordIntentLocator(db, `agent-${AGENT_ID}`);
+    await db.query(
+      `UPDATE agent_sandbox_replacement_attempts SET state = 'cleanup_in_progress', updated_at = clock_timestamp() WHERE id = $1`,
+      [ATTEMPT_ID],
+    );
+    for (const assignment of [
+      "state = 'in_flight_unresolved'",
+      "locator_container_id = '" + DIGEST + "', locator_container_recorded_at = clock_timestamp()",
+    ]) {
+      await expect(
+        db.query(
+          `UPDATE agent_sandbox_replacement_attempts SET ${assignment}, updated_at = clock_timestamp() WHERE id = $1`,
+          [ATTEMPT_ID],
+        ),
+      ).rejects.toThrow();
+    }
+    await apply(await Bun.file(ordinaryCleanupMigrationUrl).text(), db);
+    expect(
+      (
+        await db.query<{ state: string }>(
+          `SELECT state FROM agent_sandbox_replacement_attempts WHERE id = $1`,
+          [ATTEMPT_ID],
+        )
+      ).rows[0]?.state,
+    ).toBe("cleanup_in_progress");
+  });
+
   test("occupies one ordered journal range and matches the merged schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
@@ -542,7 +588,12 @@ describe("agent sandbox replacement attempt migrations", () => {
       idx: 354,
       tag: "0371_agent_vault_key_seed_receipts_per_replacement",
     });
-    const expectedTags = [...migrationUrls, vpnMigrationUrl].map(migrationTag);
+    const expectedTags = [
+      ...migrationUrls,
+      vpnMigrationUrl,
+      ordinaryCleanupMigrationUrl,
+      cleanupResourcesMigrationUrl,
+    ].map(migrationTag);
     const initialRangeTags = expectedTags.slice(0, 8);
     const rangeStart = journal.entries.findIndex(({ tag }) => tag === initialRangeTags[0]);
     expect(rangeStart).toBeGreaterThanOrEqual(0);
@@ -653,6 +704,7 @@ describe("agent sandbox replacement attempt migrations", () => {
       ORDER BY tgname
     `);
     expect(triggers.rows.map(({ tgname }) => tgname)).toEqual([
+      "agent_replacement_cleanup_resources_guard",
       "agent_replacement_vpn_authority_guard",
       "agent_sandbox_replacement_attempts_guard_delete",
       "agent_sandbox_replacement_attempts_guard_identity",

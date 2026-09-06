@@ -27,6 +27,7 @@ import {
 import type { HeadscaleEnrollmentAuthority } from "../../lib/services/headscale-client";
 import { type AgentBackupCopyRole, agentBackupRestoreLeases } from "./agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
+import type { AgentDeletionResourceManifest } from "./agent-sandboxes";
 import { organizations } from "./organizations";
 
 export const AGENT_SANDBOX_REPLACEMENT_OPERATION_KINDS = [
@@ -144,6 +145,10 @@ export const agentSandboxReplacementAttempts = pgTable(
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     /** Captured enrollment server and write-once registration identity. */
     locator_vpn_authority: jsonb("locator_vpn_authority").$type<HeadscaleEnrollmentAuthority>(),
+    /** Candidate resources remain owned while cleanup preserves its durable volume. */
+    cleanup_resource_manifest: jsonb(
+      "cleanup_resource_manifest",
+    ).$type<AgentDeletionResourceManifest>(),
   },
   (table) => ({
     vpn_authority_owner_check: check(
@@ -403,7 +408,6 @@ export const agentSandboxReplacementAttempts = pgTable(
           AND ${table.cleanup_proven_at} IS NULL
           AND ${table.cleanup_receipt_digest} IS NULL)
         OR (${table.state} = 'cleanup_in_progress'
-          AND ${table.restore_attempt_id} IS NOT NULL
           AND ${table.locator_recorded_at} IS NOT NULL
           AND (${table.provider_succeeded_at} IS NULL)
             = (${table.provider_receipt_digest} IS NULL)

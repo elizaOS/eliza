@@ -10,6 +10,7 @@ const REPOSITORY_ROOT = join(import.meta.dir, "../../../../..");
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   ".next",
+  ".wrangler-dry-run",
   "__tests__",
   "build",
   "coverage",
@@ -207,6 +208,7 @@ describe("disabled-first restore API boundary", () => {
         "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
         "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
         "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+        "packages/cloud/shared/src/lib/services/eliza-sandbox.ts",
       ],
       markAgentSandboxExactRestoreProviderStartedForLockedAuthoritiesInTransaction: [
         "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",

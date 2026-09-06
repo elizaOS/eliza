@@ -19,6 +19,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, gt, sql } from "drizzle-orm";
+import { getReplacementSecretArtifactsCleanupReceipt } from "../../../lib/services/docker-sandbox-utils";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { agentBackupRestoreLeases } from "../../schemas/agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
@@ -32,10 +33,12 @@ import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
+import { deletionResourceAuthorityHash } from "../agent-deletion-resource-manifest";
 import {
   type AgentSandboxReplacementAttemptReference,
   type AgentSandboxReplacementLocatorInput,
   type AgentSandboxReplacementRestoreAuthority,
+  beginAgentSandboxReplacementCleanupInTransaction,
   type CommitAgentSandboxReplacementLifecycleAdoptionInput,
   commitAgentSandboxReplacementLifecycleAdoptionInTransaction,
   getAgentSandboxReplacementAttempt,
@@ -44,9 +47,16 @@ import {
   recordAgentSandboxReplacementIntentInTransaction,
   recordAgentSandboxReplacementProviderSucceeded,
   recordAgentSandboxReplacementVpnRegistered,
+  recordAgentSandboxReplacementIntentAndReserveCapacityInTransaction as recordIntentAndReserveCapacityInTransaction,
   type StartAgentSandboxReplacementAttemptInput,
   startAgentSandboxReplacementAttemptInTransaction,
 } from "../agent-sandbox-replacement-attempts";
+import {
+  admitAgentSandboxReplacementResourcesInTransaction,
+  recordAgentSandboxReplacementResourceAbsenceInTransaction,
+  recordAgentSandboxReplacementVolumeCaptureInTransaction,
+  scheduleAgentSandboxReplacementResourceCleanupInTransaction,
+} from "../agent-sandbox-replacement-resources";
 
 const TIMEOUT = 120_000;
 const ORGANIZATION_ID = "00000000-0000-4000-8000-00000000a001";
@@ -317,44 +327,6 @@ function deferredSignal(): { promise: Promise<void>; resolve: () => void } {
     resolvePromise = resolve;
   });
   return { promise, resolve: () => resolvePromise() };
-}
-
-async function recordIntentAndReserveCapacityInTransaction(
-  tx: ReplacementTransaction,
-  attemptReference: AgentSandboxReplacementAttemptReference,
-  replacementLocator: AgentSandboxReplacementLocatorInput,
-) {
-  const recorded = await recordAgentSandboxReplacementIntentInTransaction(
-    tx,
-    attemptReference,
-    replacementLocator,
-  );
-  if (recorded.replayed) return recorded;
-
-  const reserved = await tx
-    .update(dockerNodes)
-    .set({ allocated_count: sql`${dockerNodes.allocated_count} + 1` })
-    .where(
-      and(
-        eq(dockerNodes.id, replacementLocator.nodeRecordId),
-        eq(dockerNodes.node_id, replacementLocator.nodeId),
-        eq(dockerNodes.node_incarnation, replacementLocator.nodeIncarnation),
-        eq(dockerNodes.current_node_history_id, replacementLocator.nodeHistoryId),
-        eq(dockerNodes.hostname, replacementLocator.nodeHostname),
-        eq(dockerNodes.ssh_port, replacementLocator.nodeSshPort),
-        eq(dockerNodes.ssh_user, replacementLocator.nodeSshUser),
-        eq(dockerNodes.host_key_fingerprint, replacementLocator.nodeHostKeyFingerprint),
-        eq(dockerNodes.enabled, true),
-        eq(dockerNodes.placement_state, "open"),
-        eq(dockerNodes.status, "healthy"),
-        sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
-      ),
-    )
-    .returning({ id: dockerNodes.id });
-  if (reserved.length !== 1) {
-    throw callerConflict("Replacement capacity reservation CAS failed", attemptReference);
-  }
-  return recorded;
 }
 
 async function commitLifecyclePlacementInTransaction(
@@ -836,9 +808,10 @@ async function installReplacementAttemptGuards(): Promise<void> {
       IF NOT (
         NEW.state = OLD.state
         OR (OLD.state = 'in_flight_unresolved'
-          AND NEW.state IN ('provider_succeeded', 'cleanup_proven'))
+          AND NEW.state IN ('provider_succeeded', 'cleanup_in_progress', 'cleanup_proven'))
         OR (OLD.state = 'provider_succeeded'
-          AND NEW.state IN ('lifecycle_committed', 'cleanup_proven'))
+          AND NEW.state IN ('lifecycle_committed', 'cleanup_in_progress', 'cleanup_proven'))
+        OR (OLD.state = 'cleanup_in_progress' AND NEW.state = 'cleanup_proven')
       ) THEN
         RAISE EXCEPTION 'replacement attempt state transition is not monotonic';
       END IF;
@@ -922,6 +895,12 @@ beforeAll(async () => {
       if (statement.trim()) await dbWrite.execute(sql.raw(statement));
     }
 
+    for (const statement of readFileSync(
+      new URL("../../migrations/0383_agent_replacement_cleanup_resources.sql", import.meta.url),
+      "utf8",
+    ).split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(sql.raw(statement));
+    }
     await installReplacementAttemptGuards();
     await dbWrite.execute(
       sql.raw(`
@@ -1062,6 +1041,326 @@ afterAll(async () => {
 });
 
 describe("agent sandbox replacement attempts", () => {
+  test("rotates failed cleanup candidates instead of starving later retained attempts", async () => {
+    const secondAgentId = "00000000-0000-4000-8000-00000000b002";
+    const secondAttemptId = "00000000-0000-4000-8000-00000000b003";
+    const secondActivation = "00000000-0000-4000-8000-00000000b004";
+    const [source] = await dbWrite.select().from(agentSandboxes);
+    await dbWrite.insert(agentSandboxes).values({
+      ...source,
+      id: secondAgentId,
+      activation_generation: secondActivation,
+      activation_token_hash: "2".repeat(64),
+    });
+    const refs = [
+      reference(),
+      { ...reference(), agentId: secondAgentId, attemptId: secondAttemptId },
+    ];
+    for (const [index, ref] of refs.entries()) {
+      await startAgentSandboxReplacementAttempt(
+        startInput({
+          ...ref,
+          activationGeneration: index === 0 ? ACTIVATION_GENERATION : secondActivation,
+        }),
+      );
+      const placement = (stage: "intent" | "created" | "vpn" | "final") =>
+        locator(stage, {
+          replacementAttemptId: ref.attemptId,
+          sandboxId: `agent-${ref.agentId}`,
+          containerName: `agent-${ref.agentId}`,
+        });
+      await recordAgentSandboxReplacementIntent(ref, placement("intent"));
+      await recordAgentSandboxReplacementCreated(ref, placement("created"));
+      await recordAgentSandboxReplacementVpnRegistered(ref, placement("vpn"));
+      await recordAgentSandboxReplacementProviderSucceeded(
+        ref,
+        placement("final"),
+        PROVIDER_DIGEST,
+      );
+      await dbWrite.transaction((tx) =>
+        admitAgentSandboxReplacementResourcesInTransaction(tx, ref),
+      );
+    }
+    const schedule = () =>
+      dbWrite.transaction((tx) =>
+        scheduleAgentSandboxReplacementResourceCleanupInTransaction(tx, 1),
+      );
+    expect(await schedule()).toEqual([refs[0]]);
+    // No provider receipt is written: an unavailable candidate must not monopolize the next batch.
+    expect(await schedule()).toEqual([refs[1]]);
+    expect(await schedule()).toEqual([refs[0]]);
+    expect((await getAgentSandboxReplacementAttempt(refs[0]))?.state).toBe("cleanup_in_progress");
+    expect((await getAgentSandboxReplacementAttempt(refs[1]))?.state).toBe("cleanup_in_progress");
+  });
+
+  test("retains candidate volume identity across cleanup retries and refuses premature release", async () => {
+    await startAgentSandboxReplacementAttempt(startInput());
+    await recordAgentSandboxReplacementIntent(reference(), locator("intent"));
+    await expect(
+      dbWrite.transaction((tx) =>
+        admitAgentSandboxReplacementResourcesInTransaction(tx, reference()),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED" });
+    await recordAgentSandboxReplacementCreated(reference(), locator("created"));
+    await recordAgentSandboxReplacementVpnRegistered(reference(), locator("vpn"));
+    await recordAgentSandboxReplacementProviderSucceeded(
+      reference(),
+      locator("final"),
+      PROVIDER_DIGEST,
+    );
+    const [source] = await dbWrite.select().from(agentSandboxes);
+    const [node] = await dbWrite.select().from(dockerNodes);
+    const scheduleCleanup = () =>
+      dbWrite.transaction((tx) =>
+        scheduleAgentSandboxReplacementResourceCleanupInTransaction(tx, 1),
+      );
+    expect(await scheduleCleanup()).toEqual([]);
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        await tx.execute(sql`SAVEPOINT manifest_admission`);
+        const candidate = await admitAgentSandboxReplacementResourcesInTransaction(tx, reference());
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT manifest_admission`);
+        await beginAgentSandboxReplacementCleanupInTransaction(tx, reference(), locator("final"));
+        const fabricated = {
+          ...candidate,
+          resources: { ...candidate.resources, secrets: { state: "absent" } },
+        };
+        await tx.execute(sql`UPDATE agent_sandbox_replacement_attempts
+          SET cleanup_resource_manifest = ${JSON.stringify(fabricated)}::jsonb
+          WHERE id = ${ATTEMPT_ID}`);
+      }),
+    ).rejects.toThrow();
+    const manifest = await dbWrite.transaction((tx) =>
+      admitAgentSandboxReplacementResourcesInTransaction(tx, reference()),
+    );
+    expect(manifest.resources.volume.state).toBe("unknown");
+    const beforeSchedule = await getAgentSandboxReplacementAttempt(reference());
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        expect(await scheduleAgentSandboxReplacementResourceCleanupInTransaction(tx, 1)).toEqual([
+          reference(),
+        ]);
+        throw new Error("cleanup scheduling aborted");
+      }),
+    ).rejects.toThrow("cleanup scheduling aborted");
+    expect(await getAgentSandboxReplacementAttempt(reference())).toEqual(beforeSchedule);
+    expect(await scheduleCleanup()).toEqual([reference()]);
+    const afterSchedule = await getAgentSandboxReplacementAttempt(reference());
+    expect(afterSchedule?.cleanup_resource_manifest).toEqual(manifest);
+    expect(afterSchedule?.state).toBe("cleanup_in_progress");
+    const writeRawManifest = async (value: object) =>
+      dbWrite.execute(sql`UPDATE agent_sandbox_replacement_attempts
+        SET cleanup_resource_manifest = ${JSON.stringify(value)}::jsonb
+        WHERE id = ${ATTEMPT_ID}`);
+    await expect(
+      writeRawManifest({
+        ...manifest,
+        resources: { ...manifest.resources, volume: { state: "absent" } },
+      }),
+    ).rejects.toThrow();
+    const secretReceipt = {
+      state: "absent" as const,
+      authorityHash: deletionResourceAuthorityHash(manifest),
+      observedAt: new Date().toISOString(),
+      providerReceipt: getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),
+    };
+    const recordSecret = (value = secretReceipt) =>
+      dbWrite.transaction((tx) =>
+        recordAgentSandboxReplacementResourceAbsenceInTransaction(tx, reference(), {
+          kind: "secrets",
+          value,
+        }),
+      );
+    await expect(recordSecret()).rejects.toMatchObject({
+      code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED",
+    });
+    const capture = {
+      state: "captured" as const,
+      authorityHash: deletionResourceAuthorityHash(manifest),
+      observedAt: new Date().toISOString(),
+      path: `/data/agents/${AGENT_ID}`,
+      nodeBootId: NODE_INCARNATION,
+      rootDevice: "2049",
+      rootInode: "701",
+      stateDevice: "2049",
+      stateInode: "702",
+    };
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        await recordAgentSandboxReplacementVolumeCaptureInTransaction(tx, reference(), capture);
+        throw new Error("volume capture transaction aborted");
+      }),
+    ).rejects.toThrow("volume capture transaction aborted");
+    expect(
+      (await getAgentSandboxReplacementAttempt(reference()))?.cleanup_resource_manifest?.resources
+        .volume.state,
+    ).toBe("unknown");
+    const retained = await dbWrite.transaction((tx) =>
+      recordAgentSandboxReplacementVolumeCaptureInTransaction(tx, reference(), capture),
+    );
+    expect(retained.resources.volume).toEqual(capture);
+    expect(
+      await dbWrite.transaction((tx) =>
+        admitAgentSandboxReplacementResourcesInTransaction(tx, reference()),
+      ),
+    ).toEqual(retained);
+    expect(
+      await dbWrite.transaction((tx) =>
+        recordAgentSandboxReplacementVolumeCaptureInTransaction(tx, reference(), capture),
+      ),
+    ).toEqual(retained);
+    await expect(
+      dbWrite.transaction((tx) =>
+        recordAgentSandboxReplacementVolumeCaptureInTransaction(tx, reference(), {
+          ...capture,
+          rootInode: "999",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_REPLACEMENT_RESOURCE_AUTHORITY_CHANGED" });
+    await expect(
+      dbWrite.transaction((tx) =>
+        recordAgentSandboxReplacementVolumeCaptureInTransaction(tx, reference(), {
+          ...capture,
+          path: "/data/agents/wrong-owner",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_DELETE_VOLUME_CAPTURE_INVALID" });
+    for (const volume of [
+      { state: "absent" },
+      { state: "absent", capture: { ...capture, stateInode: "999" } },
+    ]) {
+      await expect(
+        writeRawManifest({ ...retained, resources: { ...retained.resources, volume } }),
+      ).rejects.toThrow();
+    }
+    for (const replacement of [
+      null,
+      { ...retained, organizationId: OTHER_ORGANIZATION_ID },
+      { ...retained, resources: { ...retained.resources, volume: { state: "unknown" as const } } },
+    ]) {
+      await expect(
+        dbWrite
+          .update(agentSandboxReplacementAttempts)
+          .set({ cleanup_resource_manifest: replacement })
+          .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID))
+          .execute(),
+      ).rejects.toThrow();
+    }
+    await expect(
+      dbWrite.transaction((tx) =>
+        recordAgentSandboxReplacementCleanupProvenInTransaction(tx, reference(), CLEANUP_DIGEST),
+      ),
+    ).rejects.toThrow();
+    expect(
+      (await getAgentSandboxReplacementAttempt(reference()))?.cleanup_resource_manifest,
+    ).toEqual(retained);
+    expect((await dbWrite.select().from(agentSandboxes))[0]).toEqual(source);
+    expect((await dbWrite.select().from(dockerNodes))[0]).toEqual(node);
+    await expect(
+      recordSecret({ ...secretReceipt, authorityHash: "0".repeat(64) }),
+    ).rejects.toMatchObject({ code: "AGENT_DELETE_SECRET_RECEIPT_INVALID" });
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        await recordAgentSandboxReplacementResourceAbsenceInTransaction(tx, reference(), {
+          kind: "secrets",
+          value: secretReceipt,
+        });
+        throw new Error("receipt transaction aborted");
+      }),
+    ).rejects.toThrow("receipt transaction aborted");
+    expect(
+      (await getAgentSandboxReplacementAttempt(reference()))?.cleanup_resource_manifest,
+    ).toEqual(retained);
+    const retiredSecrets = await recordSecret();
+    expect(retiredSecrets.resources.secrets).toEqual(secretReceipt);
+    expect(retiredSecrets.resources.volume).toEqual(capture);
+    expect(await recordSecret()).toEqual(retiredSecrets);
+    await expect(
+      dbWrite.transaction((tx) =>
+        recordAgentSandboxReplacementCleanupProvenInTransaction(tx, reference(), CLEANUP_DIGEST),
+      ),
+    ).rejects.toThrow();
+  });
+
+  for (const providerSucceeded of [false, true]) {
+    test(`fences ordinary callbacks before cleanup without releasing capacity (succeeded=${providerSucceeded})`, async () => {
+      await startAgentSandboxReplacementAttempt(startInput());
+      await recordAgentSandboxReplacementIntent(reference(), locator("intent"));
+      if (providerSucceeded) {
+        await recordAgentSandboxReplacementCreated(reference(), locator("created"));
+        await recordAgentSandboxReplacementVpnRegistered(reference(), locator("vpn"));
+        await recordAgentSandboxReplacementProviderSucceeded(
+          reference(),
+          locator("final"),
+          PROVIDER_DIGEST,
+        );
+      }
+      const cleanupLocator = locator(providerSucceeded ? "final" : "intent");
+      const [source] = await dbWrite.select().from(agentSandboxes);
+      const [node] = await dbWrite.select().from(dockerNodes);
+      const begin = () =>
+        dbWrite.transaction((tx) =>
+          beginAgentSandboxReplacementCleanupInTransaction(tx, reference(), cleanupLocator),
+        );
+      const beforeBegin = await getAgentSandboxReplacementAttempt(reference());
+      await expect(
+        dbWrite.transaction(async (tx) => {
+          await beginAgentSandboxReplacementCleanupInTransaction(tx, reference(), cleanupLocator);
+          throw new Error("caller rolled back cleanup admission");
+        }),
+      ).rejects.toThrow("caller rolled back cleanup admission");
+      expect(await getAgentSandboxReplacementAttempt(reference())).toEqual(beforeBegin);
+      expect((await begin()).attempt.state).toBe("cleanup_in_progress");
+      expect((await begin()).replayed).toBe(true);
+      const fenced = await getAgentSandboxReplacementAttempt(reference());
+      await expect(
+        recordAgentSandboxReplacementCreated(reference(), locator("created")),
+      ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+      await expect(
+        recordAgentSandboxReplacementProviderSucceeded(
+          reference(),
+          locator("final"),
+          PROVIDER_DIGEST,
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+      await expect(
+        recordAgentSandboxReplacementLifecycleCommitted(adoptionInput()),
+      ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+      await expect(
+        startAgentSandboxReplacementAttempt(startInput({ attemptId: OTHER_ATTEMPT_ID })),
+      ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+      expect(await getAgentSandboxReplacementAttempt(reference())).toEqual(fenced);
+      expect((await dbWrite.select().from(agentSandboxes))[0]).toEqual(source);
+      expect((await dbWrite.select().from(dockerNodes))[0]).toEqual(node);
+    });
+  }
+
+  test("rejects cleanup of the serving candidate or an unresolved placement", async () => {
+    await startAgentSandboxReplacementAttempt(startInput());
+    await expect(
+      dbWrite.transaction((tx) =>
+        beginAgentSandboxReplacementCleanupInTransaction(tx, reference(), locator("intent")),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    await recordAgentSandboxReplacementIntent(reference(), locator("intent"));
+    const captured = locator("intent");
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        node_id: captured.nodeId,
+        container_name: captured.containerName,
+        sandbox_id: captured.sandboxId,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    const before = await getAgentSandboxReplacementAttempt(reference());
+    await expect(
+      dbWrite.transaction((tx) =>
+        beginAgentSandboxReplacementCleanupInTransaction(tx, reference(), captured),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    expect(await getAgentSandboxReplacementAttempt(reference())).toEqual(before);
+  });
+
   test("retains scoped VPN identity across enrichment, replay and raw-write drift", async () => {
     const server = {
       apiUrl: "https://vpn.fixture.invalid",
@@ -1145,6 +1444,69 @@ describe("agent sandbox replacement attempts", () => {
       server,
       node,
     });
+    const manifest = await dbWrite.transaction((tx) =>
+      admitAgentSandboxReplacementResourcesInTransaction(tx, reference()),
+    );
+    const authorityHash = deletionResourceAuthorityHash(manifest);
+    await dbWrite.transaction((tx) =>
+      recordAgentSandboxReplacementVolumeCaptureInTransaction(tx, reference(), {
+        state: "captured",
+        authorityHash,
+        observedAt: new Date().toISOString(),
+        path: `/data/agents/${AGENT_ID}`,
+        nodeBootId: NODE_INCARNATION,
+        rootDevice: "2049",
+        rootInode: "701",
+        stateDevice: "2049",
+        stateInode: "702",
+      }),
+    );
+    const receipt = {
+      state: "absent" as const,
+      authorityHash,
+      observedAt: new Date().toISOString(),
+      providerReceipt: "HEADSCALE_NODE_ABSENT_V1",
+      authority: { server, node },
+    };
+    const recordVpn = (value = receipt) =>
+      dbWrite.transaction((tx) =>
+        recordAgentSandboxReplacementResourceAbsenceInTransaction(tx, reference(), {
+          kind: "vpn",
+          value,
+        }),
+      );
+    await expect(
+      recordVpn({
+        ...receipt,
+        authority: {
+          server: { ...server, enrollmentUser: "production" },
+          node,
+        },
+      }),
+    ).rejects.toThrow();
+    const retiredVpn = await recordVpn();
+    expect(retiredVpn.resources.vpn).toEqual(receipt);
+    expect(retiredVpn.resources.volume.state).toBe("captured");
+    expect(await recordVpn()).toEqual(retiredVpn);
+    await dbWrite.transaction((tx) =>
+      recordAgentSandboxReplacementResourceAbsenceInTransaction(tx, reference(), {
+        kind: "secrets",
+        value: {
+          state: "absent",
+          authorityHash,
+          observedAt: new Date().toISOString(),
+          providerReceipt: getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),
+        },
+      }),
+    );
+    expect(
+      await dbWrite.transaction((tx) =>
+        scheduleAgentSandboxReplacementResourceCleanupInTransaction(tx, 25),
+      ),
+    ).toEqual([]);
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
+      "cleanup_in_progress",
+    );
   });
 
   test("rejects malformed or partial authority and never reuses a caller attempt ID", async () => {
@@ -1431,6 +1793,55 @@ describe("agent sandbox replacement attempts", () => {
     );
     expect((await dbWrite.transaction(reserveAndRecord)).replayed).toBe(true);
     expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
+  });
+
+  test("refuses provider settlement after destination authority changes", async () => {
+    await startAgentSandboxReplacementAttempt(startInput());
+    await recordAgentSandboxReplacementIntent(reference(), locator("intent"));
+    await recordAgentSandboxReplacementCreated(reference(), locator("created"));
+    await recordAgentSandboxReplacementVpnRegistered(reference(), locator("vpn"));
+    const before = await getAgentSandboxReplacementAttempt(reference());
+    const [node] = await dbWrite.select().from(dockerNodes);
+    for (const drift of [
+      { hostname: "reassigned.internal" },
+      { ssh_port: 2222 },
+      { ssh_user: "another-operator" },
+      { host_key_fingerprint: "SHA256:different-server-key" },
+      { node_incarnation: OTHER_NODE_INCARNATION, current_node_history_id: OTHER_NODE_HISTORY_ID },
+      { current_node_history_id: ABA_NODE_HISTORY_ID },
+      { allocated_count: 0 },
+    ]) {
+      await dbWrite.update(dockerNodes).set(drift).where(eq(dockerNodes.id, NODE_RECORD_ID));
+      await expect(
+        recordAgentSandboxReplacementProviderSucceeded(
+          reference(),
+          locator("final"),
+          PROVIDER_DIGEST,
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+      expect(await getAgentSandboxReplacementAttempt(reference())).toEqual(before);
+      await dbWrite
+        .update(dockerNodes)
+        .set({
+          hostname: node.hostname,
+          ssh_port: node.ssh_port,
+          ssh_user: node.ssh_user,
+          host_key_fingerprint: node.host_key_fingerprint,
+          node_incarnation: node.node_incarnation,
+          current_node_history_id: node.current_node_history_id,
+          allocated_count: node.allocated_count,
+        })
+        .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    }
+    expect(
+      (
+        await recordAgentSandboxReplacementProviderSucceeded(
+          reference(),
+          locator("final"),
+          PROVIDER_DIGEST,
+        )
+      ).attempt.state,
+    ).toBe("provider_succeeded");
   });
 
   test("makes exact stage and receipt replays idempotent and rejects conflicting bytes", async () => {

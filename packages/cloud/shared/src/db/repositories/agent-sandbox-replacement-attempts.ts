@@ -535,6 +535,7 @@ function validateLocator(
     (stage === "vpn" && vpnNodeId === null) ||
     (stage === "final" && vpnNodeName !== null && vpnNodeId === null) ||
     (stage === "cleanup" &&
+      restoreAttemptId !== null &&
       (vpnNodeName !== null ||
         vpnRegistrationStartedAt !== null ||
         previousVpnNodeId !== null ||
@@ -751,6 +752,9 @@ interface LockedAgentSandboxAuthority {
   activationGeneration: string | null;
   lifecycleJobId: string | null;
   lifecycleExecutionGeneration: string | null;
+  nodeId: string | null;
+  containerName: string | null;
+  sandboxId: string | null;
 }
 
 async function lockAgentSandboxAuthority(
@@ -765,6 +769,9 @@ async function lockAgentSandboxAuthority(
       activationGeneration: agentSandboxes.activation_generation,
       lifecycleJobId: agentSandboxes.lifecycle_job_id,
       lifecycleExecutionGeneration: agentSandboxes.lifecycle_execution_generation,
+      nodeId: agentSandboxes.node_id,
+      containerName: agentSandboxes.container_name,
+      sandboxId: agentSandboxes.sandbox_id,
     })
     .from(agentSandboxes)
     .where(
@@ -1279,6 +1286,52 @@ export async function recordAgentSandboxReplacementIntentInTransaction(
 }
 
 /**
+ * Records intent and reserves its exact node once, without rewriting serving activation.
+ * The caller owns the validated start/source transaction; any capacity conflict
+ * rolls back its intent, and a replay never consumes another node slot.
+ */
+export async function recordAgentSandboxReplacementIntentAndReserveCapacityInTransaction(
+  tx: DbTransaction,
+  attemptReference: AgentSandboxReplacementAttemptReference,
+  replacementLocator: AgentSandboxReplacementLocatorInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  const recorded = await recordAgentSandboxReplacementIntentInTransaction(
+    tx,
+    attemptReference,
+    replacementLocator,
+  );
+  if (recorded.replayed) return recorded;
+
+  const reserved = await tx
+    .update(dockerNodes)
+    .set({ allocated_count: sql`${dockerNodes.allocated_count} + 1` })
+    .where(
+      and(
+        eq(dockerNodes.id, replacementLocator.nodeRecordId),
+        eq(dockerNodes.node_id, replacementLocator.nodeId),
+        eq(dockerNodes.node_incarnation, replacementLocator.nodeIncarnation),
+        eq(dockerNodes.current_node_history_id, replacementLocator.nodeHistoryId),
+        eq(dockerNodes.hostname, replacementLocator.nodeHostname),
+        eq(dockerNodes.ssh_port, replacementLocator.nodeSshPort),
+        eq(dockerNodes.ssh_user, replacementLocator.nodeSshUser),
+        eq(dockerNodes.host_key_fingerprint, replacementLocator.nodeHostKeyFingerprint),
+        eq(dockerNodes.enabled, true),
+        eq(dockerNodes.placement_state, "open"),
+        eq(dockerNodes.status, "healthy"),
+        sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
+      ),
+    )
+    .returning({ id: dockerNodes.id });
+  if (reserved.length !== 1) {
+    throw conflict(
+      "Replacement capacity reservation CAS failed",
+      validateReference(attemptReference),
+    );
+  }
+  return recorded;
+}
+
+/**
  * Prove that an exact-restore S0 callback is a byte-identical replay. Unlike
  * the legacy intent recorder this verifier never fills an absent locator, so a
  * provider callback cannot become the authority that chooses placement.
@@ -1565,6 +1618,15 @@ export async function recordAgentSandboxReplacementCreated(
   );
 }
 
+/** Records ordinary VPN enrichment inside the caller's lifecycle transaction. */
+export async function recordAgentSandboxReplacementVpnRegisteredInTransaction(
+  tx: DbTransaction,
+  reference: AgentSandboxReplacementAttemptReference,
+  locator: AgentSandboxReplacementLocatorInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  return recordLocatorStageInTransaction(tx, reference, locator, "vpn", "reject");
+}
+
 /** Legacy VPN callback; exact restore never admits this unlocked wrapper. */
 export async function recordAgentSandboxReplacementVpnRegistered(
   reference: AgentSandboxReplacementAttemptReference,
@@ -1615,6 +1677,10 @@ export async function recordAgentSandboxReplacementProviderSucceeded(
     assertLocatorCoreMatches(current, locator, reference);
     assertContainerMatches(current, locator.containerId!, reference);
     assertVpnMatches(current, locator.vpnNodeId, reference);
+    // Provider inspection precedes this transaction. Hold the captured route,
+    // incarnation and capacity authority through the success write so node
+    // reassignment cannot turn that earlier observation into durable success.
+    await lockAndValidateReplacementNodeAuthority(tx, locator, reference);
     const databaseNow = await readPostLockDatabaseNow(tx);
     const [recorded] = await tx
       .update(agentSandboxReplacementAttempts)
@@ -1704,6 +1770,76 @@ export async function commitAgentSandboxReplacementLifecycleAdoptionInTransactio
   if (!recorded) {
     throw conflict("Lifecycle commit lost its state CAS", expected, current.state);
   }
+  return frozenResult(recorded, false);
+}
+
+/**
+ * Fence ordinary candidate callbacks before remote cleanup. The captured
+ * candidate must remain distinct from the current serving placement. This
+ * transaction changes neither primary placement nor node capacity.
+ */
+export async function beginAgentSandboxReplacementCleanupInTransaction(
+  tx: DbTransaction,
+  referenceInput: AgentSandboxReplacementAttemptReference,
+  locatorInput: AgentSandboxReplacementLocatorInput,
+): Promise<AgentSandboxReplacementAttemptWriteResult> {
+  const reference = validateReference(referenceInput);
+  const sandbox = await lockAgentSandboxAuthority(tx, reference);
+  const current = await lockAttempt(tx, reference);
+  if (current.restore_attempt_id !== null)
+    throw conflict(
+      "Exact restore cleanup requires its claim-fenced boundary",
+      reference,
+      current.state,
+    );
+  const locator = validateLocator(locatorInput, reference, "cleanup");
+  assertLocatorCoreMatches(current, locator, reference);
+  assertOptionalContainerMatches(current, locator.containerId, reference);
+  assertVpnMatches(current, locator.vpnNodeId, reference);
+  if (
+    Boolean(current.locator_vpn_authority) !== Boolean(locator.vpnAuthority) ||
+    Boolean(current.locator_vpn_authority?.node) !== Boolean(locator.vpnAuthority?.node)
+  )
+    throw conflict(
+      "Cleanup must retain the complete recorded VPN authority",
+      reference,
+      current.state,
+    );
+  if (
+    sandbox.nodeId === locator.nodeId &&
+    (sandbox.containerName === locator.containerName || sandbox.sandboxId === locator.sandboxId)
+  )
+    throw conflict(
+      "Replacement cleanup candidate is the current serving placement",
+      reference,
+      current.state,
+    );
+  if (current.state === "cleanup_in_progress" || current.state === "cleanup_proven")
+    return frozenResult(current, true);
+  if (current.state !== "in_flight_unresolved" && current.state !== "provider_succeeded")
+    throw conflict(
+      "Replacement cleanup cannot retire an adopted candidate",
+      reference,
+      current.state,
+    );
+  const databaseNow = await readPostLockDatabaseNow(tx);
+  const [recorded] = await tx
+    .update(agentSandboxReplacementAttempts)
+    .set({
+      state: "cleanup_in_progress",
+      updated_at: databaseNow,
+    })
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.id, reference.attemptId),
+        eq(agentSandboxReplacementAttempts.organization_id, reference.organizationId),
+        eq(agentSandboxReplacementAttempts.agent_id, reference.agentId),
+        eq(agentSandboxReplacementAttempts.state, current.state),
+      ),
+    )
+    .returning();
+  if (!recorded)
+    throw conflict("Replacement cleanup begin lost its state CAS", reference, current.state);
   return frozenResult(recorded, false);
 }
 

@@ -3395,18 +3395,42 @@ export class DockerSandboxProvider implements SandboxProvider {
       allocationCounted: Boolean(dbNode),
     });
 
-    // Auto-provision the Steward tenant for this org if it doesn't have one
-    // yet. Without this step, fresh organizations fall through to
-    // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
-    // hasn't been pre-created on the Steward backend, `registerAgentWithSteward`
-    // below fails with "Steward agent registration failed with status 404",
-    // surfacing as "CLOUD CONNECTION NEEDS ATTENTION" in the desktop UI for
-    // every newly-signed-in user. When `STEWARD_PLATFORM_KEYS` is not
-    // configured (non-prod environments) this is a no-op that leaves the
-    // compatibility fallback behavior intact.
-    const stewardTenant: StewardTenantCredentials = organizationId
-      ? await ensureStewardTenant(organizationId)
-      : await resolveStewardTenantCredentials({ organizationId });
+    const persistIntentBeforePreparation = Boolean(config.onReplacementCreateSettled);
+    const persistPlacementIntent = async (): Promise<void> => {
+      const persistReplacementIntent = config.onReplacementCreateIntent;
+      if (!persistReplacementIntent) return;
+      try {
+        await persistReplacementIntent({
+          sandboxId: containerName,
+          bridgeUrl: `http://${hostname}:${bridgePort}`,
+          healthUrl: `http://${hostname}:${webUiPort}/api`,
+          metadata: {
+            provider: "docker",
+            nodeId,
+            hostname,
+            ...replacementPlacementMetadata,
+            containerName,
+            bridgePort,
+            webUiPort,
+            agentId,
+            volumePath,
+            dockerImage: resolvedImage,
+            imageDigest: null,
+            replacementAttemptId,
+            allocationCounted: Boolean(dbNode),
+            vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+            vpnRegistrationStartedAt,
+            previousVpnNodeId,
+          } satisfies DockerSandboxMetadata,
+        });
+        replacementIntentPersisted = true;
+      } catch (cause) {
+        // error-policy:J2 the cleanup-intent transaction may have
+        // committed, but Docker create is still strictly downstream
+        // and is never invoked after this callback rejects.
+        throw new ReplacementPlacementPersistenceError(cause);
+      }
+    };
 
     // 4. Optionally prepare Headscale VPN
     // Collect VPN env vars separately to avoid mutating the caller's environmentVars.
@@ -3425,11 +3449,22 @@ export class DockerSandboxProvider implements SandboxProvider {
           // it is recorded here and deleted by id only after cutover (#16565).
           reclaimStaleNode: config.reclaimStaleVpnNode !== false,
           requireExactNodeRetirement: Boolean(remoteCompletionTracker),
+          ...(persistIntentBeforePreparation
+            ? {
+                beforePrepareEffects: async ({ hostname: vpnHostname, previousNodeId }) => {
+                  vpnEnvVars = { TS_HOSTNAME: vpnHostname };
+                  previousVpnNodeId = previousNodeId ?? undefined;
+                  vpnRegistrationStartedAt = new Date(this.now()).toISOString();
+                  await persistPlacementIntent();
+                },
+              }
+            : {}),
         });
         vpnEnvVars = vpnSetup.envVars;
         previousVpnNodeId = vpnSetup.previousNodeId;
         logger.info(`[docker-sandbox] Headscale VPN enabled for ${agentId}`);
       } catch (err) {
+        if (persistIntentBeforePreparation) throw err;
         if (headscaleRouteRequired) {
           if (dbNode && providerManagesCapacity) {
             await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
@@ -3449,6 +3484,23 @@ export class DockerSandboxProvider implements SandboxProvider {
         // Continue without VPN — not a critical failure
       }
     }
+
+    if (persistIntentBeforePreparation && !replacementIntentPersisted) {
+      await persistPlacementIntent();
+    }
+
+    // Auto-provision the Steward tenant for this org if it doesn't have one
+    // yet. Without this step, fresh organizations fall through to
+    // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
+    // hasn't been pre-created on the Steward backend, `registerAgentWithSteward`
+    // below fails with "Steward agent registration failed with status 404",
+    // surfacing as "CLOUD CONNECTION NEEDS ATTENTION" in the desktop UI for
+    // every newly-signed-in user. When `STEWARD_PLATFORM_KEYS` is not
+    // configured (non-prod environments) this is a no-op that leaves the
+    // compatibility fallback behavior intact.
+    const stewardTenant: StewardTenantCredentials = organizationId
+      ? await ensureStewardTenant(organizationId)
+      : await resolveStewardTenantCredentials({ organizationId });
 
     // 5. Build the base environment (spread to avoid mutating caller's environmentVars)
     const stewardContainerUrl = resolveStewardContainerEnvUrl();
@@ -3772,45 +3824,16 @@ export class DockerSandboxProvider implements SandboxProvider {
       // A VPN candidate cannot register before Docker starts this container.
       // Arm the correlation window beside create, after successful Headscale
       // preparation has identified any preserved node.
-      vpnRegistrationStartedAt = headscaleEnabled ? new Date(this.now()).toISOString() : undefined;
-      const persistReplacementIntent = config.onReplacementCreateIntent;
+      if (!replacementIntentPersisted)
+        vpnRegistrationStartedAt = headscaleEnabled
+          ? new Date(this.now()).toISOString()
+          : undefined;
       const containerId = extractDockerCreateContainerId(
         await createDockerContainerAfterReplacementIntent({
-          persistIntent: persistReplacementIntent
-            ? async () => {
-                try {
-                  await persistReplacementIntent({
-                    sandboxId: containerName,
-                    bridgeUrl: `http://${hostname}:${bridgePort}`,
-                    healthUrl: `http://${hostname}:${webUiPort}/api`,
-                    metadata: {
-                      provider: "docker",
-                      nodeId,
-                      hostname,
-                      ...replacementPlacementMetadata,
-                      containerName,
-                      bridgePort,
-                      webUiPort,
-                      agentId,
-                      volumePath,
-                      dockerImage: resolvedImage,
-                      imageDigest: null,
-                      replacementAttemptId,
-                      allocationCounted: Boolean(dbNode),
-                      vpnNodeName: vpnEnvVars.TS_HOSTNAME,
-                      vpnRegistrationStartedAt,
-                      previousVpnNodeId,
-                    } satisfies DockerSandboxMetadata,
-                  });
-                  replacementIntentPersisted = true;
-                } catch (cause) {
-                  // error-policy:J2 the cleanup-intent transaction may have
-                  // committed, but Docker create is still strictly downstream
-                  // and is never invoked after this callback rejects.
-                  throw new ReplacementPlacementPersistenceError(cause);
-                }
-              }
-            : undefined,
+          persistIntent:
+            config.onReplacementCreateIntent && !replacementIntentPersisted
+              ? persistPlacementIntent
+              : undefined,
           createContainer: async () => {
             // No plaintext temporary file is written until the durable intent
             // callback above has committed. Exact mode coordinates both vault

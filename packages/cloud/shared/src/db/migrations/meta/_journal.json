@@ -2605,6 +2605,20 @@
       "when": 1796083200015,
       "tag": "0381_agent_replacement_attempt_vpn_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 372,
+      "version": "7",
+      "when": 1796083200016,
+      "tag": "0382_agent_ordinary_replacement_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 373,
+      "version": "7",
+      "when": 1796083200017,
+      "tag": "0383_agent_replacement_cleanup_resources",
+      "breakpoints": true
     }
   ]
 }

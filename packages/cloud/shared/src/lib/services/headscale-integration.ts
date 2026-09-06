@@ -96,6 +96,11 @@ export interface PrepareContainerVPNInput {
    * Headscale DELETE must retain its fence across concurrent renames.
    */
   requireExactNodeRetirement?: boolean;
+  /** Persist placement ownership after lookup, before node deletion or key issuance. */
+  beforePrepareEffects?: (identity: {
+    readonly hostname: string;
+    readonly previousNodeId: string | null;
+  }) => Promise<void>;
 }
 
 export type HeadscaleRegistrationRenameCompletion =
@@ -234,8 +239,12 @@ export class HeadscaleIntegration {
       // the LIVE one, so it is recorded for post-cutover deletion instead.
       let previousNodeId: string | undefined;
       const existingNode = await this.client.getNodeByNameStrict(tsHostname);
+      if (existingNode) assertCanonicalHeadscaleNode(existingNode);
+      await input.beforePrepareEffects?.({
+        hostname: tsHostname,
+        previousNodeId: input.reclaimStaleNode === false && existingNode ? existingNode.id : null,
+      });
       if (existingNode) {
-        assertCanonicalHeadscaleNode(existingNode);
         if (input.reclaimStaleNode === false) {
           previousNodeId = existingNode.id;
           logger.info(

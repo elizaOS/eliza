@@ -347,6 +347,15 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await dbWrite.execute(sql`CREATE TABLE IF NOT EXISTS agent_sandbox_replacement_attempts (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL,
+      agent_id uuid NOT NULL,
+      state text NOT NULL,
+      restore_attempt_id uuid,
+      cleanup_resource_manifest jsonb,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )`);
   } catch {
     pgliteReady = false;
   }
@@ -952,6 +961,7 @@ describe("admin agent image rollout on primary PGlite", () => {
 
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 0,
+      retained: 0,
       retired: 0,
       failed: 0,
     });
@@ -1087,12 +1097,14 @@ describe("admin agent image rollout on primary PGlite", () => {
 
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 0,
+      retained: 0,
       retired: 0,
       failed: 0,
     });
     await dbWrite.update(jobs).set({ status: "in_progress" }).where(eq(jobs.id, job!.id));
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 0,
+      retained: 0,
       retired: 0,
       failed: 0,
     });
@@ -1108,6 +1120,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     await dbWrite.update(jobs).set({ status: "completed" }).where(eq(jobs.id, job!.id));
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 1,
+      retained: 0,
       retired: 1,
       failed: 0,
     });
@@ -1146,6 +1159,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       .where(eq(agentSandboxes.id, agentId));
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 0,
+      retained: 0,
       retired: 0,
       failed: 0,
     });
@@ -1169,6 +1183,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     `);
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 1,
+      retained: 0,
       retired: 1,
       failed: 0,
     });
@@ -1213,6 +1228,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     cleanup.mockRejectedValueOnce(new Error("remote cleanup unavailable"));
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 1,
+      retained: 0,
       retired: 0,
       failed: 1,
     });
@@ -1288,6 +1304,7 @@ describe("admin agent image rollout on primary PGlite", () => {
 
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 1,
+      retained: 0,
       retired: 0,
       failed: 0,
     });
@@ -1307,6 +1324,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     await dbWrite.update(jobs).set({ status: "completed" }).where(eq(jobs.id, insertedJobId!));
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 1,
+      retained: 0,
       retired: 1,
       failed: 0,
     });
