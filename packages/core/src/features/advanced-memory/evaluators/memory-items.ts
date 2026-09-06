@@ -8,6 +8,7 @@
 import { logger } from "../../../logger.ts";
 import { renderStoredEnvelopesForPrompt } from "../../../security/external-content";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { recentMessagesSection } from "../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -189,14 +190,18 @@ export const longTermMemoryEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareLongTermMemory(runtime, message);
 	},
-	prompt({ runtime, prepared }) {
+	prompt({ runtime, prepared, shared }) {
+		// The shared context renders the room conversation once; this section
+		// embeds its own copy only when that rendering is unavailable this turn.
+		const recentMessages = shared?.roomTranscriptRendered
+			? recentMessagesSection(shared, prepared.recentMessages)
+			: `Recent messages:\n${formatMessages(runtime, prepared.recentMessages)}`;
 		return `Extract every high-confidence persistent user memory. Categories: episodic, semantic, procedural. Keep only specific, concrete, user-unique info likely useful in 3+ months, confidence >=0.85, not already present. Skip one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, and synthetic historical artifacts.
 
 Existing long-term memories:
 ${prepared.existingMemories}
 
-Recent messages:
-${formatMessages(runtime, prepared.recentMessages)}`;
+${recentMessages}`;
 	},
 	parse: parseLongTermOutput,
 	processors: [
