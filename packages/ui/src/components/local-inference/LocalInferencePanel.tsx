@@ -17,9 +17,10 @@ import type {
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useRole } from "../../hooks/useRole";
-import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
-import { useAppSelectorShallow } from "../../state";
+import {
+  filterSettingsDefaultLocalModels,
+  isPublishedLocalModel,
+} from "../../services/local-inference/catalog-policy";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
@@ -327,7 +328,9 @@ export function LocalInferencePanel() {
     );
   }
 
-  const catalog = filterSettingsDefaultLocalModels(hub.catalog);
+  const catalog = filterSettingsDefaultLocalModels(hub.catalog).filter(
+    isPublishedLocalModel,
+  );
 
   return (
     <div className="flex flex-col gap-3">

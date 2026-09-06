@@ -221,10 +221,6 @@ function isLongContextModel(model: CatalogModel): boolean {
   );
 }
 
-function isPublishedCatalogTier(model: CatalogModel): boolean {
-  return isPublishedLocalModel(model);
-}
-
 function fallbackCandidates(
   slot: TextGenerationSlot,
   hardware: HardwareProbe,
@@ -234,7 +230,7 @@ function fallbackCandidates(
     (model) =>
       DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
       canFit(hardware, model, catalog) &&
-      isPublishedCatalogTier(model),
+      isPublishedLocalModel(model),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {

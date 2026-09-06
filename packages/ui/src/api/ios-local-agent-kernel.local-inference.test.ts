@@ -920,4 +920,32 @@ describe("Eliza-1 manifest download timeout (real route, portable fallback, fake
     expect(job.state).toBe("completed");
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("rejects downloading an unpublished/pending model tier with 404", async () => {
+    const kernel = await loadKernel();
+    const res = await jsonRequest(
+      kernel,
+      "POST",
+      "/api/local-inference/downloads",
+      { modelId: "eliza-1-9b" },
+    );
+    expect(res.status).toBe(404);
+    expect((res.body as { error?: string }).error).toContain(
+      "Unknown model id: eliza-1-9b",
+    );
+  });
+
+  it("only returns published models from GET /api/local-inference/catalog", async () => {
+    const kernel = await loadKernel();
+    const res = await jsonRequest(
+      kernel,
+      "GET",
+      "/api/local-inference/catalog",
+    );
+    expect(res.status).toBe(200);
+    const body = res.body as { models: Array<{ id: string }> };
+    expect(body.models.some((m) => m.id === "eliza-1-9b")).toBe(false);
+    expect(body.models.some((m) => m.id === "eliza-1-2b")).toBe(true);
+    expect(body.models.some((m) => m.id === "eliza-1-4b")).toBe(true);
+  });
 });

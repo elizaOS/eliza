@@ -34,6 +34,7 @@ import {
 } from "../services/local-inference/catalog";
 import {
   filterSettingsDefaultLocalModels,
+  isPublishedLocalModel,
   isSettingsDefaultLocalModel,
 } from "../services/local-inference/catalog-policy";
 import {
@@ -3810,7 +3811,11 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/local-inference/catalog") {
-    return json({ models: filterSettingsDefaultLocalModels(MODEL_CATALOG) });
+    return json({
+      models: filterSettingsDefaultLocalModels(MODEL_CATALOG).filter(
+        isPublishedLocalModel,
+      ),
+    });
   }
 
   if (method === "GET" && pathname === "/api/local-inference/installed") {
@@ -3838,7 +3843,11 @@ export async function handleIosLocalAgentRequest(
     const body = await requestJson(request);
     const modelId = typeof body.modelId === "string" ? body.modelId : "";
     const catalog = findCatalogModel(modelId);
-    if (!catalog || !isSettingsDefaultLocalModel(catalog)) {
+    if (
+      !catalog ||
+      !isSettingsDefaultLocalModel(catalog) ||
+      !isPublishedLocalModel(catalog)
+    ) {
       return json({ error: `Unknown model id: ${modelId}` }, 404);
     }
     const validationError = await validateMobileModelFit(catalog);
