@@ -171,7 +171,7 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
     }
   });
 
-  async function start(retain = false) {
+  async function start(retain = false, withPortal = false) {
     const b = await buyer();
     await runtime.prepare(b.identity, {
       idempotencyKey: randomUUID(),
@@ -186,6 +186,13 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
     });
     const before = await queries.snapshot(b.identity);
     if (before.kind !== "subscription") throw new Error("Trial was not applied");
+    if (withPortal) {
+      const portal = await runtime.portal(b.identity, {
+        idempotencyKey: randomUUID(),
+        expectedSubscriptionRevision: before.subscription.lifecycle_revision,
+      });
+      expect(portal.status).toBe("requires_action");
+    }
     if (retain) {
       const survivor = randomUUID();
       await db.query("INSERT INTO users(id) VALUES($1)", [survivor]);
@@ -262,6 +269,21 @@ describe.skipIf(!postgresUrl)("server-selected closed-scope cancellation", () =>
     const after = fixture.requests.length;
     expect(await cancel(state)).toBe("complete");
     expect(fixture.requests.length).toBe(after);
+  });
+  test("a completed billing portal does not prevent subscription cancellation", async () => {
+    const state = await start(false, true);
+    const at = fixture.requests.length;
+    expect(await cancel(state)).toBe("pending");
+    expect(await cancel(state)).toBe("complete");
+    const row = (
+      await db.query("SELECT status FROM billing_subscriptions WHERE billing_scope_id=$1", [
+        state.scopeId,
+      ])
+    ).rows[0];
+    expect(row.status).toBe("canceled");
+    expect(
+      fixture.requests.slice(at).filter((request) => request.method === "DELETE"),
+    ).toHaveLength(1);
   });
   test("retained shared scope performs zero provider requests", async () => {
     const state = await start(true),

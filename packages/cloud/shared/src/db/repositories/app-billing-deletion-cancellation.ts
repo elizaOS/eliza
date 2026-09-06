@@ -186,11 +186,18 @@ function unresolved(command: typeof billingSubscriptionCommands.$inferSelect) {
     command.status === "SUPERSEDED"
   )
     return false;
-  // Only original Checkout cleanup has a SUCCEEDED terminal that needs no subscription projection.
+  // Portal creation and explicit Checkout expiration have no subscription projection.
+  const payload = command.request_payload;
   return !(
     command.status === "SUCCEEDED" &&
-    command.request_payload?.domain === "account_deletion" &&
-    command.request_payload.action === "expire_checkout"
+    ((payload?.domain === "account_deletion" && payload.action === "expire_checkout") ||
+      (payload?.domain === "buyer" &&
+        ((command.kind === "portal" &&
+          payload.action === "portal" &&
+          command.provider_result?.kind === "portal") ||
+          (command.kind === "expire_checkout" &&
+            payload.action === "expire_checkout" &&
+            command.provider_result?.kind === "expired_checkout"))))
   );
 }
 

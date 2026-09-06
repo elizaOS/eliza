@@ -121,6 +121,8 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0424_app_billing_customer_closures",
       "0425_app_billing_customer_closure_guards",
       "0438_app_billing_customer_terminal_obligations",
+      "0439_app_billing_customer_command_shape",
+      "0440_app_billing_terminal_buyer_commands",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -241,6 +243,73 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       await import("../../db/repositories/app-billing-customer-closures")
     ).closeAppBillingCustomer({ customerBindingId, authority });
   }
+  test("settled buyer checkout expiration permits closure but unsettled usage still blocks it", async () => {
+    const source = await buyer();
+    const checkout = await runtime.checkout(source.identity, {
+      idempotencyKey: randomUUID(),
+      expectedSubscriptionRevision: null,
+      planRevisionId: source.planId,
+      quantity: 1,
+      billingConsent: "accepted",
+    });
+    expect(checkout.status).toBe("requires_action");
+    const expired = await runtime.prepare(source.identity, {
+      idempotencyKey: randomUUID(),
+      expectedSubscriptionRevision: null,
+      payload: {
+        version: 1,
+        domain: "buyer",
+        action: "expire_checkout",
+        checkoutCommandId: checkout.id,
+      },
+    });
+    expect(expired.status).toBe("succeeded");
+    const binding = (
+      await db.query(
+        "SELECT id FROM app_billing_customers WHERE billing_account_id=$1 AND merchant_id=$2",
+        [source.identity.billingAccountId, merchant],
+      )
+    ).rows[0];
+    if (!binding) throw new Error("Checkout did not retain its customer binding");
+    const auth = await deletion(source.identity.actorUserId);
+    await decide(source.scopeId, auth);
+    await freeze(binding.id, auth);
+    const preflight = () =>
+      db.query("SELECT require_app_billing_customer_terminal_obligations($1,$2,$3,$4,$5,$6)", [
+        binding.id,
+        auth.requestId,
+        auth.requestDigest,
+        auth.lifecycleRevision,
+        auth.phaseReceiptId,
+        auth.phaseGeneration,
+      ]);
+    await preflight();
+    const reservationId = randomUUID();
+    await db.query(
+      "INSERT INTO billing_funding_reservations(id,organization_id,billing_scope_id,merchant_key,logical_operation_id,request_digest,funding_class,requested_amount,reserved_amount,expires_at) VALUES($1,$2,$3,'acct_runtime',$4,$5,'allowance_eligible',1,1,now()+interval '1 hour')",
+      [reservationId, org, source.scopeId, randomUUID(), "b".repeat(64)],
+    );
+    await expect(preflight()).rejects.toThrow("unsettled usage reservations");
+    await db.query(
+      "UPDATE billing_funding_reservations SET status='canceled',canceled_at=now(),cancellation_key=$2,cancellation_digest=$3 WHERE id=$1",
+      [reservationId, randomUUID(), "c".repeat(64)],
+    );
+    await preflight();
+    const history = (
+      await db.query(
+        "SELECT status,provider_result FROM billing_subscription_commands WHERE id=ANY($1::uuid[]) ORDER BY id",
+        [[checkout.id, expired.id]],
+      )
+    ).rows;
+    expect(
+      history.some((row) => row.status === "FAILED" && row.provider_result.kind === "checkout"),
+    ).toBe(true);
+    expect(
+      history.some(
+        (row) => row.status === "SUCCEEDED" && row.provider_result.kind === "expired_checkout",
+      ),
+    ).toBe(true);
+  });
   test("closure intent cannot authorize customer deletion while a trial still runs", async () => {
     const source = await fixtureCustomer();
     const auth = await deletion(source.identity.actorUserId);
