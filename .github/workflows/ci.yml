@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           red_status=0
-          bun test --isolate plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts -t 'preserves a terminal result|terminates a worker' > "$RUNNER_TEMP/smithers-red.log" 2>&1 || red_status=$?
+          bun test --isolate plugins/plugin-workflow/__tests__/unit/smithers-worker-lifecycle.test.ts -t 'preserves a terminal result|terminates a worker|oversized inherited stdout' > "$RUNNER_TEMP/smithers-red.log" 2>&1 || red_status=$?
           cat "$RUNNER_TEMP/smithers-red.log"
           echo "ORIGINAL_RUNTIME_EXIT=$red_status"
       - name: Apply reviewed runtime candidate
