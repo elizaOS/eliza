@@ -1921,6 +1921,48 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.finalMessage).toContain("evt-1 needed confirmation");
 	});
 
+	it.each([
+		'{"estimate":42,"error":0.2}',
+		'{"error":null,"value":42}',
+		'{"error":"measurement uncertainty","value":42}',
+		'{"error":0.2}',
+		'{"error":null}',
+		'{"error":false}',
+		'{"error":""}',
+		'{"error":"   "}',
+		'[{"estimate":42,"error":0.2},{"error":null,"value":42}]',
+		'Example response: {"error":"Not found"}',
+		'```json\n{"error":"Not found"}\n```',
+	])("preserves ordinary JSON error data and explicit examples: %s", (text) => {
+		expect(isUnsafeUserVisibleText(text)).toBe(false);
+	});
+
+	it.each([
+		'{"estimate":42,"error":0.2}',
+		'{"error":null,"value":42}',
+		'Example response: {"error":"Not found"}',
+		'```json\n{"error":"Not found"}\n```',
+	])(
+		"delivers requested error data unchanged through the planner loop: %s",
+		async (text) => {
+			const h = harness({
+				userMessage: "Return the measurement data as JSON.",
+				plans: [
+					JSON.stringify({
+						completed: true,
+						toolCalls: [],
+						messageToUser: text,
+					}),
+				],
+				evaluations: [finish(text)],
+				intents: ["return measurement data"],
+			});
+			const result = await h.run();
+			expect(result.finalMessage).toBe(text);
+			expect(h.executed).toEqual([]);
+		},
+	);
+
 	it("never delivers protocol-shaped JSON or a turn-scope marker as user text, but keeps JSON the user asked for", () => {
 		expect(
 			isUnsafeUserVisibleText('{"plannerCompleted":true,"turnScope":"final"}'),

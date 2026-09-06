@@ -7894,11 +7894,15 @@ function isPlannerProtocolJson(value: unknown): boolean {
 	const has = (key: string) => Object.hasOwn(value, key);
 	if (keys.some((key) => PLANNER_PROTOCOL_JSON_KEYS.has(key))) return true;
 	if (has("decision") && has("success")) return true;
-	// A provider/tool error envelope ({"error": "..."} with nothing else to
-	// say) is a failure record, never a reply (live 2026-09-06 06:39: a
-	// synthesis pass returned {"error":"API key not found. Please set the
-	// QURATOR_API_KEY environment variable."} and it was delivered verbatim).
-	if (has("error") && keys.length <= 3) return true;
+	// Only an error-only record with a nonempty diagnostic string is a bare
+	// failure envelope. Other error fields can be ordinary result data.
+	if (
+		keys.every((key) => key === "error") &&
+		"error" in value &&
+		getNonEmptyString(value.error)
+	) {
+		return true;
+	}
 	// A chat transcript envelope ({"messages":[{"role","content"}]} or a bare
 	// {"role","content"} turn) is the wire format, not a reply (live 2026-09-06
 	// 03:03: a forced synthesis returned one and it was delivered verbatim).
