@@ -20,15 +20,22 @@ const CHUNK_RELOAD_AT_KEY = "eliza:chunk-reload-attempted-at";
 const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
 
 export function isChunkLoadError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const message = error.message ?? "";
-  return (
-    error.name === "ChunkLoadError" ||
-    message.includes("Failed to fetch dynamically imported module") ||
-    message.includes("Importing a module script failed") ||
-    message.includes("error loading dynamically imported module") ||
-    /Expected a JavaScript-or-Wasm module script/.test(message)
-  );
+  const seen = new Set<Error>();
+  while (error instanceof Error && !seen.has(error)) {
+    seen.add(error);
+    const message = error.message;
+    if (
+      error.name === "ChunkLoadError" ||
+      message.includes("Failed to fetch dynamically imported module") ||
+      message.includes("Importing a module script failed") ||
+      message.includes("error loading dynamically imported module") ||
+      /Expected a JavaScript-or-Wasm module script/.test(message)
+    ) {
+      return true;
+    }
+    error = error.cause;
+  }
+  return false;
 }
 
 /**

@@ -1,7 +1,8 @@
 /**
  * Loads and shares marketing locale chunks across provider instances. Cache
  * entries are published only after imports succeed, including valid empty
- * dictionaries; failed requests can be retried by a later mount.
+ * dictionaries. Browsers can retain failed imports in their module map, so
+ * retrying a failed chunk requires the host error boundary to reload the page.
  */
 import type { MessageDict, UiLanguage } from "./I18nProvider";
 
