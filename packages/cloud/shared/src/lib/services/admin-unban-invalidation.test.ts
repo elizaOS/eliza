@@ -78,6 +78,14 @@ mock.module("../../db/client", () => ({
   },
 }));
 
+mock.module("../../db/helpers", () => ({
+  dbWrite: {
+    select: () => {
+      throw new Error("Cached outbound standing must not read the database");
+    },
+  },
+}));
+
 mock.module("../../db/repositories", () => ({
   apiKeysRepository: {
     listByUser: async () => [],
@@ -99,14 +107,9 @@ mock.module("./inference-credential-revocation", () => ({
   },
 }));
 
-mock.module("./outbound-message-standing", () => ({
-  invalidateOutboundMessageStanding: async (organizationId: string, userId: string) => {
-    lifecycleEvents.push(`outbound:${organizationId}:${userId}`);
-    return true;
-  },
-}));
-
 const { cache } = await import("../cache/client");
+const { CacheKeys } = await import("../cache/keys");
+const { resolveOutboundMessageStanding } = await import("./outbound-message-standing");
 const {
   INFERENCE_AUTH_CONTEXT_VERSION,
   invalidateInferenceAuthContextByKeyHash,
@@ -168,6 +171,7 @@ beforeEach(async () => {
   subjectFenceError = null;
   await invalidateInferenceAuthContextByKeyHash(KEY_HASH);
   await invalidateInferenceSessionAuthContext(STEWARD_USER_ID);
+  await cache.delConfirmed(CacheKeys.outboundMessageStanding.actor(ORG_ID, USER_ID));
 });
 
 afterEach(() => {
@@ -284,6 +288,40 @@ describe("AdminService moderation cache transitions", () => {
       fenceIndex,
     );
     deleteSpy.mockRestore();
+  });
+
+  test("unban rejects unconfirmed outbound eviction and succeeds when retried", async () => {
+    const standingKey = CacheKeys.outboundMessageStanding.actor(ORG_ID, USER_ID);
+    await cache.setWithOutcome(
+      standingKey,
+      {
+        v: 1,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        cachedAt: Date.now(),
+        decision: "denied",
+        reason: "moderation_blocked",
+      },
+      30,
+      { keyClass: "inference_auth" },
+    );
+    const originalDelete = cache.delConfirmed.bind(cache);
+    const deleteSpy = spyOn(cache, "delConfirmed").mockImplementation(async (key, options) =>
+      key === standingKey ? false : originalDelete(key, options),
+    );
+
+    await expect(adminService.unbanUser(USER_ID, "admin-1")).rejects.toMatchObject({
+      code: "MODERATION_OUTBOUND_INVALIDATION_UNCONFIRMED",
+    });
+    await expect(resolveOutboundMessageStanding(ORG_ID, USER_ID)).resolves.toMatchObject({
+      allowed: false,
+      reason: "moderation_blocked",
+      source: "cache",
+    });
+
+    deleteSpy.mockRestore();
+    await expect(adminService.unbanUser(USER_ID, "admin-1")).resolves.toBeUndefined();
+    await expect(cache.get(standingKey)).resolves.toBeNull();
   });
 
   test("strong-fence failure leaves cached denials intact and skips invalidation", async () => {
