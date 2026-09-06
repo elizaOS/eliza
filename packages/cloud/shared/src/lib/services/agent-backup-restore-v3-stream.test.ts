@@ -1,10 +1,12 @@
 /**
  * Exercises the restore-v3 stream kernel with canonical five-component record
  * streams and real AES-256-GCM objects. Durable authority, KMS, exact storage,
- * and isolated staging remain deterministic contract-faithful adapters.
+ * and isolated staging remain deterministic contract-faithful adapters. Catalogue
+ * composition uses the real exact GET adapter with a simulated native R2 binding
+ * and catalogue loader; it is not a live-provider or database integration proof.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { createCipheriv, createHash, createHmac } from "node:crypto";
 import {
@@ -43,7 +45,13 @@ import {
   serializeAgentBackupRecordStreamV1Magic,
   serializeAgentBackupRecordStreamV1Record,
 } from "@elizaos/shared";
-import { type ExactObjectRead, ObjectLocatorReceipt } from "../storage/object-store";
+import * as catalogue from "../../db/repositories/agent-backup-restore";
+import {
+  createExactRuntimeR2Backend,
+  type ExactObjectRead,
+  ObjectLocatorReceipt,
+} from "../storage/object-store";
+import { streamAgentBackupRestoreV3FromCatalogue } from "./agent-backup-restore-v3-catalogue-stream";
 import {
   type AgentBackupRestoreV3KeyBundleProvider,
   type AgentBackupRestoreV3OperationKeyBundleAuthority,
@@ -71,8 +79,6 @@ const IDS = Object.freeze({
   vaultKey: "d0000000-0000-4000-8000-00000000000d",
 } as const);
 const NOW_EPOCH_MS = 1_800_000_000_000;
-const DEADLINE_EPOCH_MS = NOW_EPOCH_MS + 10_000;
-const LEASE_EXPIRES_AT_EPOCH_MS = NOW_EPOCH_MS + 100_000;
 const ENDPOINT_ALIAS = "restore-primary-fixture";
 const BUCKET = "restore-v3-fixture";
 const REGION = "auto";
@@ -193,6 +199,7 @@ interface EncryptedComponentFixture {
 }
 
 interface FixtureOptions {
+  readonly nowEpochMs?: number;
   readonly deadlineEpochMs?: number;
   readonly loseAuthorityAtFinalRead?: boolean;
   readonly loseSealResponse?: boolean;
@@ -240,7 +247,8 @@ interface RestoreFixture {
 }
 
 async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixture> {
-  const deadlineEpochMs = options.deadlineEpochMs ?? DEADLINE_EPOCH_MS;
+  const nowEpochMs = options.nowEpochMs ?? NOW_EPOCH_MS;
+  const deadlineEpochMs = options.deadlineEpochMs ?? nowEpochMs + 10_000;
   const events: string[] = [];
   const counts = {
     begin: 0,
@@ -464,7 +472,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
     ownerId: "restore-v3-fixture-worker",
     fencingToken: IDS.fencing,
     catalogEpoch: "9",
-    leaseExpiresAtEpochMs: LEASE_EXPIRES_AT_EPOCH_MS,
+    leaseExpiresAtEpochMs: nowEpochMs + 100_000,
   };
   const sourceObjects: AgentBackupRestoreV3SourceAuthorityObject[] = encryptedComponents.map(
     (component) => {
@@ -698,7 +706,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
         authorizationId: IDS.authorization,
         sessionExecutionToken: request.sessionExecutionToken,
         candidate: request.candidate,
-        expiresAtEpochMs: NOW_EPOCH_MS + 5_000,
+        expiresAtEpochMs: nowEpochMs + 5_000,
         proofToken: "fixture-one-shot-seal-proof",
       };
     },
@@ -786,7 +794,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
     signal: abortController.signal,
     deadlineEpochMs,
     reportDetachedFailure: () => undefined,
-    now: () => NOW_EPOCH_MS,
+    now: () => nowEpochMs,
   };
   return {
     input,
@@ -806,6 +814,242 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
     abortExecutionTokens,
   };
 }
+
+function catalogueFixture(fixture: RestoreFixture) {
+  const { leaseExpiresAtEpochMs, ...authority } = fixture.input.source.authority;
+  const loaded: catalogue.AgentBackupRestoreSourceV3 = {
+    manifest: fixture.manifest,
+    canonicalManifestDraft: "not consumed by the projection",
+    operationKeyBundle: fixture.input.source.operationKeyBundle,
+    vaultKeyAuthority: {
+      generationId: fixture.manifest.vaultKeyAuthority.generationId,
+      authorityReceiptDigest: fixture.manifest.vaultKeyAuthority.receiptDigest,
+    },
+    copyRole: authority.copyRole,
+    lease: {
+      id: authority.leaseId,
+      organization_id: authority.organizationId,
+      agent_id: authority.agentId,
+      backup_id: authority.backupId,
+      operation_id: authority.operationId,
+      activation_generation: authority.sourceActivationGeneration,
+      lifecycle_revision: BigInt(authority.sourceLifecycleRevision),
+      expected_manifest_sha256: authority.expectedManifestSha256,
+      copy_role: authority.copyRole,
+      restore_attempt_id: authority.restoreAttemptId,
+      owner_id: authority.ownerId,
+      generation: authority.fencingToken,
+      catalog_epoch: BigInt(authority.catalogEpoch),
+      expires_at: new Date(leaseExpiresAtEpochMs),
+      released_at: null,
+      created_at: new Date(NOW_EPOCH_MS),
+    },
+    objects: fixture.preparedObjects.map(({ authority: object, locator }) => ({
+      id: object.objectId,
+      organization_id: authority.organizationId,
+      backup_id: authority.backupId,
+      component: object.componentName,
+      chunk_index: object.chunkIndex,
+      copy_role: object.copyRole,
+      state: "verified",
+      provider_write_started: true,
+      transport: object.catalog.transport,
+      provider: object.catalog.provider,
+      endpoint_alias: locator.receipt.endpointAlias,
+      endpoint_identity_fingerprint: object.catalog.endpointIdentityFingerprint,
+      bucket: locator.receipt.bucket,
+      region: locator.receipt.region,
+      object_key: locator.key,
+      key_fingerprint: sha256Hex(locator.key),
+      content_hmac_sha256: object.contentHmacSha256,
+      ciphertext_sha256: object.catalog.ciphertextSha256,
+      size_bytes: object.catalog.sizeBytes,
+      provider_version_id: object.catalog.providerVersionId,
+      provider_etag: object.catalog.providerEtag,
+      provider_checksum: object.catalog.providerChecksum,
+      upload_receipt_digest: object.catalog.uploadReceiptDigest,
+      delete_receipt_digest: null,
+      verified_at: new Date(NOW_EPOCH_MS),
+      deleted_at: null,
+      created_at: new Date(NOW_EPOCH_MS),
+      updated_at: new Date(NOW_EPOCH_MS),
+    })),
+  };
+  const read = spyOn(catalogue, "loadAgentBackupRestoreSourceV3").mockImplementation(
+    async (requested, control) => {
+      expect(requested).toEqual(authority);
+      expect(control?.signal.aborted).toBe(false);
+      return loaded;
+    },
+  );
+  const backend = createExactRuntimeR2Backend({
+    locator: {
+      transport: "worker-r2-binding",
+      provider: "r2",
+      endpointAlias: ENDPOINT_ALIAS,
+      backendIdentityFingerprint: BACKEND_FINGERPRINT,
+      bucket: BUCKET,
+      region: REGION,
+    },
+    bucket: {
+      async head() {
+        throw new Error("stream must not rediscover by HEAD");
+      },
+      async put() {
+        throw new Error("unexpected provider write");
+      },
+      async delete() {
+        throw new Error("unexpected provider delete");
+      },
+      async get(key) {
+        const object = fixture.preparedObjects.find((candidate) => candidate.locator.key === key);
+        if (!object) throw new Error("wrong catalogue key");
+        const exact = await fixture.input.openExactObject(object, {
+          signal: fixture.input.signal,
+          deadlineEpochMs: fixture.input.deadlineEpochMs,
+        });
+        return {
+          body: exact.body,
+          size: object.authority.catalog.sizeBytes,
+          version: object.authority.catalog.providerVersionId!,
+          etag: "opaque-provider-etag",
+          checksums: {
+            sha256: Uint8Array.from(Buffer.from(object.authority.catalog.ciphertextSha256, "hex"))
+              .buffer,
+          },
+          async text() {
+            throw new Error("binary stream must not become text");
+          },
+        };
+      },
+    },
+  });
+  return {
+    loaded,
+    read,
+    input: {
+      enabled: true,
+      source: authority,
+      backend,
+      keyBundle: fixture.input.keyBundle,
+      candidateSealAuthority: fixture.input.candidateSealAuthority,
+      isolatedCandidateStaging: fixture.input.isolatedCandidateStaging,
+      signal: fixture.input.signal,
+      deadlineEpochMs: fixture.input.deadlineEpochMs,
+      reportDetachedFailure: fixture.input.reportDetachedFailure,
+    },
+  };
+}
+
+afterEach(() => mock.restore());
+
+describe("catalogue to real stream composition with simulated catalogue and provider boundaries", () => {
+  test("disabled and cancelled calls never load the catalogue or acquire staging", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = catalogueFixture(fixture);
+    await expect(
+      streamAgentBackupRestoreV3FromCatalogue({
+        ...catalog.input,
+        enabled: false,
+        get source(): never {
+          throw new Error("disabled restore must not inspect source authority");
+        },
+      }),
+    ).resolves.toEqual({ status: "disabled" });
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(
+      streamAgentBackupRestoreV3FromCatalogue({ ...catalog.input, signal: cancelled.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    await expect(
+      streamAgentBackupRestoreV3FromCatalogue({
+        ...catalog.input,
+        deadlineEpochMs: Date.now() - 1,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(catalog.read).not.toHaveBeenCalled();
+    expect(fixture.counts.begin).toBe(0);
+    expect(fixture.counts.unwrap).toBe(0);
+    expect(fixture.counts.open).toBe(0);
+  });
+
+  test("loads private catalogue locators and streams all five encrypted components through the real exact GET adapter", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = catalogueFixture(fixture);
+    const result = await streamAgentBackupRestoreV3FromCatalogue(catalog.input);
+    expect(result).toMatchObject({ sealed: true });
+    expect(fixture.stagedPayloadCopies).toEqual(fixture.sourcePayloads);
+    expect(catalog.read).toHaveBeenCalledTimes(3);
+    expect(fixture.counts.open).toBe(5);
+    expect(fixture.counts.seal).toBe(1);
+    expect(fixture.keyViews.released()).toBe(true);
+    expect(allZero(fixture.keyViews.dek)).toBe(true);
+  });
+
+  test("rejects a different configured backend before any provider GET or seal", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = catalogueFixture(fixture);
+    catalog.input.backend.locator = {
+      ...catalog.input.backend.locator,
+      bucket: "wrong-backend-bucket",
+    };
+    await expect(streamAgentBackupRestoreV3FromCatalogue(catalog.input)).rejects.toThrow();
+    expect(fixture.counts.open).toBe(0);
+    expect(fixture.counts.seal).toBe(0);
+    expect(fixture.counts.abort).toBe(1);
+    expect(fixture.keyViews.released()).toBe(true);
+  });
+
+  test("rejects provider-generation drift on the final catalogue read before sealing", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = catalogueFixture(fixture);
+    let reads = 0;
+    catalog.read.mockImplementation(async () => {
+      reads += 1;
+      return reads === 3
+        ? {
+            ...catalog.loaded,
+            objects: catalog.loaded.objects.map((object, index) =>
+              index === 0 ? { ...object, provider_version_id: "changed-generation" } : object,
+            ),
+          }
+        : catalog.loaded;
+    });
+    await expect(streamAgentBackupRestoreV3FromCatalogue(catalog.input)).rejects.toThrow();
+    expect(fixture.counts.open).toBe(5);
+    expect(fixture.counts.seal).toBe(0);
+    expect(fixture.counts.abort).toBe(1);
+    expect(fixture.keyViews.released()).toBe(true);
+  });
+
+  test("recovers a lost seal response without re-reading objects or creating a second candidate", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now(), loseSealResponse: true });
+    const catalog = catalogueFixture(fixture);
+    const result = await streamAgentBackupRestoreV3FromCatalogue(catalog.input);
+    expect(result).toEqual({ sealed: true, receipt: fixture.sealedReceipt() });
+    expect(fixture.counts.begin).toBe(1);
+    expect(fixture.counts.open).toBe(5);
+    expect(fixture.counts.seal).toBe(2);
+    expect(fixture.stagedPayloadCopies).toEqual(fixture.sourcePayloads);
+    expect(fixture.keyViews.released()).toBe(true);
+  });
+
+  test("does not begin staging after the catalogue read outlives cancellation", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = catalogueFixture(fixture);
+    const cancelled = new AbortController();
+    catalog.read.mockImplementation(async () => {
+      cancelled.abort();
+      return catalog.loaded;
+    });
+    await expect(
+      streamAgentBackupRestoreV3FromCatalogue({ ...catalog.input, signal: cancelled.signal }),
+    ).rejects.toThrow();
+    expect(fixture.counts.begin).toBe(0);
+    expect(fixture.counts.unwrap).toBe(0);
+    expect(fixture.counts.open).toBe(0);
+  });
+});
 
 async function captureFailure(operation: PromiseLike<unknown>): Promise<unknown> {
   try {

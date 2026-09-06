@@ -1168,6 +1168,26 @@ describe("strict restore catalogue authority", () => {
     expect(Object.isFrozen(source.manifest.components)).toBe(true);
     expect(Object.isFrozen(source.objects[0])).toBe(true);
 
+    await expect(
+      loadAgentBackupRestoreSourceV3(canonicalSourceAuthority, {
+        signal: new AbortController().signal,
+        deadlineEpochMs: Date.now() - 1,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(
+      loadAgentBackupRestoreSourceV3(canonicalSourceAuthority, {
+        signal: cancelled.signal,
+        deadlineEpochMs: Date.now() + 10_000,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    const boundedSource = await loadAgentBackupRestoreSourceV3(canonicalSourceAuthority, {
+      signal: new AbortController().signal,
+      deadlineEpochMs: Date.now() + 10_000,
+    });
+    expect(boundedSource).toEqual(source);
+
     const replay = await acquireAgentBackupRestoreLease(acquireInput);
     expect(replay.status).toBe("active");
     await expect(

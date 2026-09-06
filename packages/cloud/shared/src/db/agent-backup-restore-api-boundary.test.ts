@@ -56,6 +56,7 @@ describe("disabled-first restore API boundary", () => {
         "/db/repositories/agent-backup-restore.ts",
         "/db/repositories/agent-vault-key-authority.ts",
         "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+        "/lib/services/agent-backup-restore-v3-catalogue-stream.ts",
       ],
       createOrRotateAgentVaultKeyGeneration: ["/db/repositories/agent-vault-key-authority.ts"],
       loadCurrentAgentVaultKeyAuthority: [
@@ -71,10 +72,12 @@ describe("disabled-first restore API boundary", () => {
       claimAgentBackupRestoreOperation: [
         "/db/repositories/agent-backup-restore-operations.ts",
         "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+        "/lib/services/agent-backup-restore-quarantine-preparation.ts",
       ],
       releaseAgentBackupRestoreOperationClaim: [
         "/db/repositories/agent-backup-restore-operations.ts",
         "/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
+        "/lib/services/agent-backup-restore-quarantine-preparation.ts",
       ],
       reserveAgentBackupRestoreTargetAndStartReplacementIntent: [
         "/db/repositories/agent-backup-restore-operations.ts",
@@ -190,8 +193,11 @@ describe("disabled-first restore API boundary", () => {
         symbol === "loadCurrentAgentVaultKeyAuthority"
           ? 3
           : symbol === "loadAgentBackupRestoreSourceV3"
-            ? 2
-            : 1;
+            ? 4
+            : symbol === "claimAgentBackupRestoreOperation" ||
+                symbol === "releaseAgentBackupRestoreOperationClaim"
+              ? 2
+              : 1;
       expect(
         invocationLikeOccurrences ?? [],
         `${symbol} gained a production call site`,
@@ -280,9 +286,15 @@ describe("disabled-first restore API boundary", () => {
         .flatMap(({ path, source }) => (source.includes(entrypoint) ? [path] : []))
         .map((path) => path.slice(REPOSITORY_ROOT.length))
         .sort();
-      expect(paths, `${entrypoint} must remain definition-only`).toEqual([
+      const approvedPaths = [
         "/packages/cloud/shared/src/lib/services/agent-backup-restore-quarantined-create-runtime.ts",
-      ]);
+      ];
+      if (entrypoint === "runAgentBackupRestoreQuarantinedCreate") {
+        approvedPaths.push(
+          "/packages/cloud/shared/src/lib/services/agent-backup-restore-quarantine-preparation.ts",
+        );
+      }
+      expect(paths, `${entrypoint} gained an unapproved caller`).toEqual(approvedPaths.sort());
     }
     const runtimeAst = ts.createSourceFile(
       "agent-backup-restore-quarantined-create-runtime.ts",

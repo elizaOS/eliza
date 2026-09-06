@@ -95,6 +95,29 @@ and Docker socket for the local machine; it is not a real SSH, remote boot-fence
 PostgreSQL concurrency or restored-runtime proof. Test-owned containers and
 temporary files are removed after each test; no image is pulled implicitly.
 
+## Catalogue-backed restore streaming
+
+`streamAgentBackupRestoreV3FromCatalogue` loads the selected manifest-v3 copy
+and its private object locators from PRIMARY, then invokes the existing exact
+GET and authenticated five-component stream. It requires explicit enablement,
+an absolute deadline and trusted storage/KMS/isolated-staging capabilities.
+Callers do not supply an object inventory or override authority revalidation.
+The source loader also accepts optional operation control, setting transaction-
+local statement/lock timeouts and rejecting cancellation before returning data.
+
+Before reading payloads and again before sealing, the stream reloads the source
+and compares the complete canonical object authority, including provider
+generations. The kernel additionally checks the exact lease fence. A changed
+catalogue or wrong configured backend rejects; neither triggers discovery,
+another copy selection, an empty restore, activation or route publication.
+
+Composition tests execute the real AES-GCM stream and exact GET adapter against
+a simulated catalogue and native R2 binding; separate PGlite tests exercise the
+real source loader and its operation control. These are not live R2/Hetzner,
+remote Agent materialization or booted-runtime evidence. The production
+dispatcher and durable Agent transport still need to supply and invoke this
+path together with quarantine preparation.
+
 ## More
 
 See [CLAUDE.md](./CLAUDE.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.
