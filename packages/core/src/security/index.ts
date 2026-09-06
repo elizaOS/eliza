@@ -1,5 +1,6 @@
 /** Public surface for redaction, untrusted-content handling, and runtime security primitives. */
 
+export { userRequestFromAugmentedText } from "./augmented-request.js";
 export { mnemonicValid } from "./bip39-wordlist.js";
 export {
 	applyCapabilityManifest,
