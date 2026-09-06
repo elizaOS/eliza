@@ -11,7 +11,17 @@ import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { ownerTodosAction } from "../actions/owner-surfaces.js";
 import { LifeOpsService } from "./service.js";
 
-it.each(["owned", "title", "missing", "foreign", "bulk"])(
+it.each([
+  "owned",
+  "title",
+  "missing",
+  "foreign",
+  "bulk",
+  "protected",
+  "missing-title",
+  "empty-target",
+  "alias",
+])(
   "constrains a multi-step delete to its durable target: %s",
   async (mode) => {
     const host = await createLifeOpsTestRuntime();
@@ -78,6 +88,16 @@ it.each(["owned", "title", "missing", "foreign", "bulk"])(
       expect(second.success).toBe(true);
       const secondId = second.effectReceipts?.[0].resource.id;
       let targetId = mode === "title" ? "Guardian chain first" : id;
+      if (mode === "protected" || mode === "empty-target")
+        targetId = "Guardian chain first";
+      if (mode === "missing-title") targetId = "Nonexistent exact target";
+      if (mode === "alias") targetId = "chain first";
+      if (mode === "protected")
+        message.content.text =
+          "Keep Guardian chain first. Read Guardian chain second. Do not change the second.";
+      if (mode === "missing-title")
+        message.content.text =
+          "Read Guardian chain second. Delete Nonexistent exact target.";
       let foreignService: LifeOpsService | undefined;
       if (mode === "missing") targetId = crypto.randomUUID();
       if (mode === "foreign") {
@@ -105,7 +125,7 @@ it.each(["owned", "title", "missing", "foreign", "bulk"])(
             }
           : {
               action: "delete",
-              target: targetId,
+              target: mode === "empty-target" ? "" : targetId,
               title: "Guardian chain first",
               intent: "Delete the first todo by its returned ID.",
             },
@@ -114,7 +134,12 @@ it.each(["owned", "title", "missing", "foreign", "bulk"])(
       if (mode === "bulk") {
         expect(deleted.success).toBe(true);
         expect(rows).toEqual([]);
-      } else if (mode === "owned" || mode === "title") {
+      } else if (
+        mode === "owned" ||
+        mode === "title" ||
+        mode === "empty-target" ||
+        mode === "alias"
+      ) {
         expect(deleted.success).toBe(true);
         expect(rows.map((row) => row.definition.id)).toEqual([secondId]);
         expect(

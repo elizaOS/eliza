@@ -1200,6 +1200,11 @@ async function resolveDefinitionForMutation(
           ),
         };
   }
+  // A destructive target that failed exact matching must not be replaced by
+  // a different title elsewhere in the request. Retain the existing narrow
+  // target alias/substring contract, including its refusal to guess by tokens.
+  if (destructive && target?.trim())
+    return resolveDefinitionInRecords(defs, target, true);
   if (explicitlyNamed.length === 1) {
     return {
       match: explicitlyNamed.at(0) ?? null,
@@ -4596,11 +4601,14 @@ async function runLifeOperationHandlerInner(
   // Params extracted by the routing pass (resolveActionArgs) fill gaps the
   // planner left open — snooze minutes/preset and the target especially.
   const routedParams = operationPlan.params;
-  const targetName =
-    params.target ??
-    params.title ??
-    routedParams?.target ??
-    routedParams?.title;
+  const targetName = [
+    params.target,
+    params.title,
+    routedParams?.target,
+    routedParams?.title,
+  ].find(
+    (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
+  );
   // Consent must come from the owner's current text. A pending draft proves
   // only that a preview exists; neither a planner `confirmed:true` field nor a
   // Stage-1 applied-effect claim can authorize the consequential write.
