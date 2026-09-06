@@ -45,9 +45,30 @@ including database-validator cancellation and exact retry. Build this package
 first and preload `node:24.15.0-alpine`, then run the suite with
 `AGENT_RESTORE_V3_DOCKER_TESTS=1`. When using a named Docker context, explicitly
 set `DOCKER_CONFIG` to its configuration directory: Vitest isolates the home
-directory. The harness creates only test-owned containers and tmpfs data and
-removes them after each test; it never pulls an image implicitly. Its idle
-container is a test fixture, not the production quarantine bootstrap.
+directory. The harness creates only test-owned containers and scratch storage and
+removes them after each test; it never pulls an image implicitly. Its PID 1 is
+the compiled quarantine host used by the exact provider, not the image's normal
+entrypoint. The restart case uses a test-owned persistent volume; other cases
+use tmpfs. The Node fixture image is not the production Agent image.
+
+Exact restore creation overrides both the image entrypoint and command with
+`env -i /usr/local/bin/node .../agent-backup-restore-v3-quarantine-host.js`.
+The dependency-free host requires Linux PID 1, an empty environment and no extra
+arguments. It creates no state, initializes no database, imports no runtime and
+opens no listener. Private materializers still run through owned `docker exec`
+sessions. A container restart returns to quarantine even with retained candidate
+files or an ordinary startup command in the container configuration. Older
+images without this compiled host fail to start instead of falling back.
+The provider reads back the exact entrypoint and argument vector from Docker
+before accepting create settlement. Existing containers are not rewritten;
+future start/replay callers must verify this contract rather than trusting the
+quarantine label alone.
+
+This host is only a quarantine execution environment, not the production
+coordinator's authorized start effect or a runtime supervisor. The current
+quarantined-create turn still leaves the container stopped. Generation selection,
+controller/workload isolation, boot grants and post-boot publication still need
+the explicit coordinator integration; there is no boot command in this host.
 
 `prepareAgentBackupRestoreV3Generation` copies an assembled candidate into a
 second, non-overlapping private quarantine. It preserves the character and

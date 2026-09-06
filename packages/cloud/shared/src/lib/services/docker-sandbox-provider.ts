@@ -322,6 +322,13 @@ function exactRestoreVolumePathFromCleanupLocator(
   return exactRestoreVolumePath(agentId, restoreAttemptId);
 }
 
+const EXACT_RESTORE_QUARANTINE_ENTRYPOINT = "/usr/bin/env";
+const EXACT_RESTORE_QUARANTINE_COMMAND = [
+  "-i",
+  "/usr/local/bin/node",
+  "/app/packages/agent/dist/services/agent-backup-restore-v3-quarantine-host.js",
+] as const;
+
 function freezeExactRestoreTarget(target: SandboxExactRestoreTarget): SandboxExactRestoreTarget {
   if (
     !target ||
@@ -2933,6 +2940,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--restart no",
         "--network none",
         "--no-healthcheck",
+        // Never inherit the image's ordinary startup command, VPN bootstrap or
+        // Node preload environment if this quarantined container is started.
+        `--entrypoint ${shellQuote(EXACT_RESTORE_QUARANTINE_ENTRYPOINT)}`,
         ...buildAgentContainerMemoryFlags(containerMemoryMb),
         ...buildAgentContainerCpuFlags(
           config.container?.cpu !== undefined
@@ -2946,6 +2956,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         ...envTransport.commandFlags,
         `--env-file ${shellQuote(secretEnvPath)}`,
         shellQuote(platformImageReference),
+        ...EXACT_RESTORE_QUARANTINE_COMMAND.map(shellQuote),
       ].join(" ");
       const createWithSecretEnvironment = buildDockerCreateWithSecretEnvCommand({
         dockerCreateCommand,
@@ -2987,7 +2998,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       const inspectFormat =
-        "{{.Id}}|{{.Name}}|{{.State.Running}}|{{.State.Status}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.RestartPolicy.Name}}|{{json .HostConfig.PortBindings}}|{{.Config.Image}}|{{.Image}}|{{.Platform}}|{{.ImageManifestDescriptor.Digest}}|{{.ImageManifestDescriptor.Platform.OS}}/{{.ImageManifestDescriptor.Platform.Architecture}}";
+        "{{.Id}}|{{.Name}}|{{.State.Running}}|{{.State.Status}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.RestartPolicy.Name}}|{{json .HostConfig.PortBindings}}|{{.Config.Image}}|{{.Image}}|{{.Platform}}|{{.ImageManifestDescriptor.Digest}}|{{.ImageManifestDescriptor.Platform.OS}}/{{.ImageManifestDescriptor.Platform.Architecture}}|{{json .Config.Entrypoint}}|{{json .Config.Cmd}}";
       const proof = await ssh.exec(
         exactDockerRemoteCommand(
           `docker inspect --format ${shellQuote(inspectFormat)} ${shellQuote(containerId)}`,
@@ -3000,7 +3011,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         .filter(Boolean);
       const proofFields = proofLines.length === 1 ? proofLines[0]!.split("|") : [];
       if (
-        proofFields.length !== 12 ||
+        proofFields.length !== 14 ||
         proofFields[0] !== containerId ||
         proofFields[1] !== `/${containerName}` ||
         proofFields[2] !== "false" ||
@@ -3010,7 +3021,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         (proofFields[6] !== "{}" && proofFields[6] !== "null") ||
         proofFields[7] !== platformImageReference ||
         !/^sha256:[0-9a-f]{64}$/.test(proofFields[8] ?? "") ||
-        proofFields[9] !== "linux"
+        proofFields[9] !== "linux" ||
+        proofFields[12] !== JSON.stringify([EXACT_RESTORE_QUARANTINE_ENTRYPOINT]) ||
+        proofFields[13] !== JSON.stringify(EXACT_RESTORE_QUARANTINE_COMMAND)
       ) {
         throw new ElizaError("Exact restore candidate is not pristine and quarantined", {
           code: "SANDBOX_EXACT_RESTORE_QUARANTINE_PROOF_MISMATCH",
