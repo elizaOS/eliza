@@ -15,22 +15,21 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import {
+  CLICK_OBSERVED_ATTRIBUTES,
+  type ControlDetails,
+  type ControlSnapshot,
+  interactionDelta,
+} from "./interaction-observation";
 import { VIEW_ROUTES } from "./view-routes";
 
 /**
- * Generic per-view interaction coverage (#8796).
- *
- * builtin-views-visual.spec only asserts each view *boots*; this spec drives
- * every interactive control in every built-in view — clicking each button /
- * menu item / tab / link and filling each text input — then asserts each
- * interaction has an observable semantic outcome in addition to the page-error
- * guard. It's the automatable form of "every button, input, menu, dropdown
- * works for every view": instead of hand-writing assertions per control, it
- * enumerates the real controls at runtime and exercises them. Run with
- * E2E_RECORD=1 for video.
- *
- * Clicks that navigate away are recovered by re-opening the route, so one
- * navigation doesn't end coverage of the rest of the page.
+ * Bounded interaction activity smoke over the built-in route fixture.
+ * Enumerated controls are sampled, so links, file inputs, gestures and nested
+ * states outside the crawl are not covered. Observed DOM/navigation changes,
+ * including rendered errors, do not establish operation success or persistence.
+ * Acceptance cases must correlate the specific request and backing-state receipt.
+ * Run with E2E_RECORD=1 for video. Navigations are recovered between samples.
  */
 // Bound per-view work so the suite stays under the playwright timeout while
 // still exercising a representative breadth of controls.
@@ -42,46 +41,10 @@ const CLICK_SELECTOR =
 const INPUT_SELECTOR =
   "input:visible:not([type='file']):not([disabled]), textarea:visible:not([disabled])";
 
-type SemanticResult = {
+type ObservationResult = {
   kind: "observed" | "documented-noop" | "failure";
   message: string;
 };
-
-type ControlDetails = {
-  tagName: string;
-  role: string | null;
-  type: string | null;
-  href: string | null;
-  visible: boolean;
-  label: string;
-  text: string;
-  value: string | null;
-  checked: boolean | null;
-  attributes: Record<string, string | null>;
-};
-
-type ControlSnapshot = {
-  url: string;
-  apiRequestCount: number;
-  visibleDismissibleSurfaces: number;
-  pageFingerprint: string;
-  details: ControlDetails | null;
-};
-
-const CLICK_OBSERVED_ATTRIBUTES = [
-  "data-agent-id",
-  "data-chat-open",
-  "aria-expanded",
-  "aria-pressed",
-  "aria-selected",
-  "aria-current",
-  "data-state",
-  "data-open",
-  "data-active",
-  "data-selected",
-  "data-value",
-  "open",
-] as const;
 
 function truncate(value: string, maxLength = 80): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
@@ -102,7 +65,7 @@ async function numericInputValue(input: Locator): Promise<string> {
 async function fillOrToggleInput(
   input: Locator,
   index: number,
-): Promise<SemanticResult> {
+): Promise<ObservationResult> {
   const tagName = ((await input.evaluate((el: Element) => el.tagName)) ?? "")
     .toString()
     .toLowerCase();
@@ -303,7 +266,7 @@ async function visibleDismissibleSurfaceCount(page: Page): Promise<number> {
 
 /**
  * Cheap whole-page content fingerprint (visible text length + djb2 hash).
- * Catches semantic outcomes that land elsewhere in the page than on the
+ * Catches renderer changes that land elsewhere in the page than on the
  * clicked control itself — a dialer display updating, a sidebar collapsing,
  * a pager flipping surfaces — without enumerating product-specific testids.
  */
@@ -321,7 +284,6 @@ async function pageContentFingerprint(page: Page): Promise<string> {
 async function snapshotControl(
   page: Page,
   control: ElementHandle<Element>,
-  apiRequestCount: number,
 ): Promise<ControlSnapshot> {
   const details = await control
     .evaluate((el: Element, observedAttributes: readonly string[]) => {
@@ -356,7 +318,6 @@ async function snapshotControl(
 
   return {
     url: page.url(),
-    apiRequestCount,
     visibleDismissibleSurfaces: await visibleDismissibleSurfaceCount(page),
     pageFingerprint: await pageContentFingerprint(page),
     details,
@@ -375,53 +336,6 @@ function describeControl(details: ControlDetails | null): string {
       .filter(Boolean)
       .join(" "),
   );
-}
-
-function semanticDelta(
-  before: ControlSnapshot,
-  after: ControlSnapshot,
-): string | null {
-  if (after.url !== before.url) {
-    return `URL changed from ${before.url} to ${after.url}`;
-  }
-  if (after.apiRequestCount > before.apiRequestCount) {
-    return `API request count changed ${before.apiRequestCount} -> ${after.apiRequestCount}`;
-  }
-  if (after.visibleDismissibleSurfaces !== before.visibleDismissibleSurfaces) {
-    return `dismissible surface count changed ${before.visibleDismissibleSurfaces} -> ${after.visibleDismissibleSurfaces}`;
-  }
-  if (before.details && !after.details) {
-    return "clicked control detached or was replaced";
-  }
-  if (!before.details || !after.details) {
-    return null;
-  }
-  if (after.details.label !== before.details.label) {
-    return `control label changed from "${before.details.label}" to "${after.details.label}"`;
-  }
-  if (after.details.visible !== before.details.visible) {
-    return `control visibility changed ${String(before.details.visible)} -> ${String(after.details.visible)}`;
-  }
-  if (after.details.text !== before.details.text) {
-    return `control text changed from "${truncate(before.details.text)}" to "${truncate(after.details.text)}"`;
-  }
-  if (after.details.checked !== before.details.checked) {
-    return `checked state changed ${String(before.details.checked)} -> ${String(after.details.checked)}`;
-  }
-  if (after.details.value !== before.details.value) {
-    return `value changed from "${String(before.details.value)}" to "${String(after.details.value)}"`;
-  }
-  for (const attr of CLICK_OBSERVED_ATTRIBUTES) {
-    if (after.details.attributes[attr] !== before.details.attributes[attr]) {
-      return `${attr} changed from "${String(before.details.attributes[attr])}" to "${String(after.details.attributes[attr])}"`;
-    }
-  }
-  // Last-resort DOM-state signal: the outcome landed elsewhere in the page
-  // (dial display, collapsed sidebar, flipped pager surface, toast).
-  if (after.pageFingerprint !== before.pageFingerprint) {
-    return `page content changed (${before.pageFingerprint} -> ${after.pageFingerprint})`;
-  }
-  return null;
 }
 
 function documentedClickNoop(
@@ -492,10 +406,9 @@ async function observeClickOutcome(
   page: Page,
   control: ElementHandle<Element>,
   before: ControlSnapshot,
-  apiRequestCount: () => number,
-): Promise<SemanticResult> {
-  let after = await snapshotControl(page, control, apiRequestCount());
-  let delta = semanticDelta(before, after);
+): Promise<ObservationResult> {
+  let after = await snapshotControl(page, control);
+  let delta = interactionDelta(before, after);
   // The ladder ends well above one second: on a loaded CI runner a state
   // commit + re-render (e.g. sidebar collapse) can land after the first few
   // probes even though the interaction is perfectly healthy.
@@ -507,8 +420,8 @@ async function observeClickOutcome(
       };
     }
     await page.waitForTimeout(delayMs);
-    after = await snapshotControl(page, control, apiRequestCount());
-    delta = semanticDelta(before, after);
+    after = await snapshotControl(page, control);
+    delta = interactionDelta(before, after);
   }
   if (delta) {
     return {
@@ -525,14 +438,14 @@ async function observeClickOutcome(
   }
   return {
     kind: "failure",
-    message: `${describeControl(before.details)} produced no URL, API, DOM state, dialog/menu, value, checked, text, or documented no-op outcome`,
+    message: `${describeControl(before.details)} produced no URL, DOM state, dialog/menu, value, checked, text, or documented no-op outcome`,
   };
 }
 
-async function pressEscapeWithSemanticOutcome(
+async function pressEscapeWithObservation(
   page: Page,
   descriptor: string,
-): Promise<SemanticResult> {
+): Promise<ObservationResult> {
   const beforeCount = await visibleDismissibleSurfaceCount(page);
   const beforeUrl = page.url();
   await page.keyboard.press("Escape");
@@ -795,30 +708,23 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
   });
 }
 
-test.describe("every-view interaction coverage", () => {
+test.describe("bounded built-in interaction activity smoke", () => {
   // Copy-address controls call the async Clipboard API; headless CI Chromium
   // denies clipboard-write by default, which turns each copy click into an
   // unhandled-rejection pageerror instead of a "Copied" outcome.
   test.use({ permissions: ["clipboard-read", "clipboard-write"] });
 
   for (const view of VIEW_ROUTES) {
-    test(`${view.id} — exercise every control with semantic outcomes`, async ({
+    test(`${view.id} — sample controls for renderer activity`, async ({
       page,
     }) => {
       const pageErrors: string[] = [];
       const actionFailures: string[] = [];
       const networkFailures: string[] = [];
-      const semanticFailures: string[] = [];
-      const semanticOutcomes: string[] = [];
+      const observationFailures: string[] = [];
+      const observedChanges: string[] = [];
       const documentedNoops: string[] = [];
-      const apiRequests: string[] = [];
       page.on("pageerror", (e) => pageErrors.push(e.message));
-      page.on("request", (request) => {
-        const pathname = new URL(request.url()).pathname;
-        if (pathname.startsWith("/api/")) {
-          apiRequests.push(`${request.method()} ${pathname}`);
-        }
-      });
       page.on("response", (response) => {
         const status = response.status();
         if (status < 500) return;
@@ -835,7 +741,7 @@ test.describe("every-view interaction coverage", () => {
         networkFailures.push(`requestfailed: ${url} ${failureText}`);
       });
       // The generic ladders cannot see a rejected workflow create: a 4xx
-      // still bumps the API request count and the rendered error state is a
+      // can render an error state, which is a
       // legitimate DOM outcome, so the editor follow-ons silently vanish
       // while the case stays green. Record the whole workflow surface so the
       // automations case can assert the successful sequence explicitly.
@@ -866,7 +772,7 @@ test.describe("every-view interaction coverage", () => {
       await installInteractionAuditRoutes(page);
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });
-      semanticOutcomes.push(
+      observedChanges.push(
         `view ${view.id}: route ${view.path} rendered ${page.url()}`,
       );
 
@@ -878,11 +784,11 @@ test.describe("every-view interaction coverage", () => {
         try {
           const result = await fillOrToggleInput(input, i);
           if (result.kind === "failure") {
-            semanticFailures.push(result.message);
+            observationFailures.push(result.message);
           } else if (result.kind === "documented-noop") {
             documentedNoops.push(result.message);
           } else {
-            semanticOutcomes.push(result.message);
+            observedChanges.push(result.message);
           }
         } catch (error) {
           actionFailures.push(
@@ -911,11 +817,7 @@ test.describe("every-view interaction coverage", () => {
         if (!controlHandle) {
           continue;
         }
-        const before = await snapshotControl(
-          page,
-          controlHandle,
-          apiRequests.length,
-        );
+        const before = await snapshotControl(page, controlHandle);
         try {
           await control.click({ noWaitAfter: true, timeout: 2_000 });
         } catch (error) {
@@ -925,19 +827,14 @@ test.describe("every-view interaction coverage", () => {
           await controlHandle.dispose();
           continue;
         }
-        const result = await observeClickOutcome(
-          page,
-          controlHandle,
-          before,
-          () => apiRequests.length,
-        );
+        const result = await observeClickOutcome(page, controlHandle, before);
         await controlHandle.dispose();
         if (result.kind === "failure") {
-          semanticFailures.push(`click ${i}: ${result.message}`);
+          observationFailures.push(`click ${i}: ${result.message}`);
         } else if (result.kind === "documented-noop") {
           documentedNoops.push(`click ${i}: ${result.message}`);
         } else {
-          semanticOutcomes.push(`click ${i}: ${result.message}`);
+          observedChanges.push(`click ${i}: ${result.message}`);
         }
         // If a click navigated away from the view, return to keep exercising it.
         if (!page.url().includes(view.path) && view.path !== "/") {
@@ -951,16 +848,16 @@ test.describe("every-view interaction coverage", () => {
         }
         // Dismiss any opened overlay/menu so the next control is reachable.
         try {
-          const escapeResult = await pressEscapeWithSemanticOutcome(
+          const escapeResult = await pressEscapeWithObservation(
             page,
             `click ${i}`,
           );
           if (escapeResult.kind === "failure") {
-            semanticFailures.push(escapeResult.message);
+            observationFailures.push(escapeResult.message);
           } else if (escapeResult.kind === "documented-noop") {
             documentedNoops.push(escapeResult.message);
           } else {
-            semanticOutcomes.push(escapeResult.message);
+            observedChanges.push(escapeResult.message);
           }
         } catch (error) {
           actionFailures.push(
@@ -970,15 +867,15 @@ test.describe("every-view interaction coverage", () => {
       }
 
       expect(
-        semanticFailures,
+        observationFailures,
         [
-          `${view.id}: every exercised input/click/Escape interaction needs an observable semantic outcome or an explicit documented no-op`,
-          ...semanticFailures,
+          `${view.id}: every exercised input/click/Escape interaction needs observable renderer activity or an explicit documented no-op`,
+          ...observationFailures,
         ].join("\n"),
       ).toHaveLength(0);
       expect(
-        semanticOutcomes.length + documentedNoops.length,
-        `${view.id}: expected semantic assertions for at least one enumerated interaction`,
+        observedChanges.length + documentedNoops.length,
+        `${view.id}: expected activity observations for at least one enumerated interaction`,
       ).toBeGreaterThan(0);
       // The contract: no interaction in this view caused an uncaught crash.
       expect(
