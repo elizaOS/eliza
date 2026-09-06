@@ -3869,6 +3869,8 @@ export interface BootElizaRuntimeOptions {
 
 export interface BuildInitializedRuntimeOptions {
   config: ElizaConfig;
+  /** Keep replacements on the same controller-owned committed generation. */
+  restoredGeneration?: AgentBackupRestoreV3RuntimeGeneration;
   abortSignal?: AbortSignal;
   localAgentMode?: boolean;
   onBootPhase?: (phase: BootPhaseName) => void;
@@ -3921,6 +3923,7 @@ export async function buildInitializedRuntime(
     const result = await bootEliza({
       headless: true,
       configOverride: options.config,
+      restoredGeneration: options.restoredGeneration,
       abortSignal: options.abortSignal,
       localAgentMode: options.localAgentMode,
       onBootPhase: options.onBootPhase,
@@ -6371,22 +6374,25 @@ export async function startEliza(
       port: apiPort,
       runtime,
       skipListen: skipApiListen,
+      restartRequiresRuntimeDisposal: restoredGeneration !== undefined,
       onRestart: async (restartOptions) => {
         logger.info("[eliza] Hot-reload: building replacement runtime...");
         try {
-          if (restartOptions?.disposeCurrentBeforeBuild) {
+          if (restartOptions?.disposeCurrentBeforeBuild || restoredGeneration) {
             await shutdownRuntime(runtime, "pre-restore runtime disposal", {
               fast: true,
             });
             disposedRuntimeBeforeReplacement = true;
           }
           const replacement = await buildInitializedRuntime({
-            config: loadEffectiveElizaConfig(),
+            config: restoredGeneration ? config : loadEffectiveElizaConfig(),
+            restoredGeneration,
             localAgentMode: opts?.localAgentMode,
           });
           logger.info("[eliza] Hot-reload: replacement runtime is ready");
           return replacement;
         } catch (err) {
+          // error-policy:J1 the API host receives an explicit failed replacement.
           runtime.reportError("eliza.hotReload.buildReplacement", err);
           logger.error(`[eliza] Hot-reload failed: ${formatError(err)}`);
           return null;
@@ -6476,7 +6482,10 @@ export async function startEliza(
     const { buildSandboxRegistryFromEnv } = await import(
       "@elizaos/shared/sandbox-registry"
     );
-    const sandboxRegistry = buildSandboxRegistryFromEnv();
+    // Restore routing belongs exclusively to the coordinator's probe/funding CAS.
+    const sandboxRegistry = restoredGeneration
+      ? null
+      : buildSandboxRegistryFromEnv();
     if (sandboxRegistry) {
       try {
         await sandboxRegistry.register();

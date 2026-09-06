@@ -88,8 +88,9 @@ The explicit `startEliza({ restoredGeneration, configOverride, ... })` path
 consumes `AgentBackupRestoreV3RuntimeGeneration.open(...)`, which verifies an
 already committed receipt without completing an unfinished promotion. Its owner
 must use a dedicated process, select the committed `ELIZA_STATE_DIR`, supply an
-explicit non-interactive host config, and close the authority after startup has
-settled. The journal and runtime parent remain controller-private.
+explicit non-interactive host config, and close the authority only after the host
+and all of its runtime replacements have stopped. The journal and runtime parent
+remain controller-private.
 
 This path rejects missing physical database files, replaced directories,
 conflicting database/state/agent identities and destructive migration settings.
@@ -101,6 +102,16 @@ real runtime and SQL adapter, reads the retained fact, writes another fact and
 restarts without losing either. It deliberately stops before host attachment:
 this does not prove server readiness, a signed probe, provider execution,
 container restart integration or a functional restored reply.
+
+Server-owned runtime replacements retain the committed authority and the explicit
+host config. They stop the previous runtime before opening the same physical
+database; a closed or invalid authority fails instead of selecting ordinary boot.
+The API host marks a failed mandatory-disposal replacement unavailable and drops
+the disposed runtime reference, so a later start cannot revive it by changing
+only its reported status. Real HTTP tests cover rejected and throwing restarts;
+the runtime/server wiring test substitutes the HTTP host boundary explicitly.
+Restored server-only startup never self-registers or starts a routing heartbeat:
+publication remains owned by the coordinator after its probe and funding gates.
 
 ## Research tasks
 
