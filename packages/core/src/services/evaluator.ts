@@ -8,11 +8,17 @@
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../errors.ts";
+import {
+	computePrefixHashes,
+	hashStableJson,
+} from "../runtime/context-hash.ts";
 import {
 	stringifyForDiagnostics,
 	stringifyForModel,
 } from "../runtime/json-output.ts";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
+import { buildProviderCachePlan } from "../runtime/provider-cache-plan.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
@@ -24,6 +30,7 @@ import type {
 	JSONSchema,
 	JsonValue,
 	Memory,
+	PromptSegment,
 	RegisteredEvaluator,
 	Service,
 	State,
@@ -53,6 +60,28 @@ function stringifyForPrompt(value: unknown): string {
 }
 
 function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
+	if (
+		isRecord(raw) &&
+		typeof raw.text === "string" &&
+		Array.isArray(raw.toolCalls) &&
+		("finishReason" in raw || "usage" in raw || "providerMetadata" in raw)
+	) {
+		// Native text handlers return a transport envelope, not evaluator fields.
+		// A partial/tool-call completion must never commit extraction side effects.
+		if (raw.finishReason !== "stop" || raw.toolCalls.length > 0) {
+			throw new ElizaError(
+				"Evaluator model did not complete normally; no effects were applied",
+				{
+					code: "EVALUATOR_INCOMPLETE_OUTPUT",
+					context: {
+						finishReason: raw.finishReason,
+						toolCallCount: raw.toolCalls.length,
+					},
+				},
+			);
+		}
+		raw = raw.text;
+	}
 	if (isRecord(raw)) return raw;
 	if (typeof raw !== "string") return null;
 	try {
@@ -102,10 +131,10 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
 	};
 }
 
-type PromptSection = {
-	name: string;
-	description: string;
-	body: string;
+type RenderedEvaluatorPrompt = {
+	prompt: string;
+	promptSegments: PromptSegment[];
+	providerOptions: ReturnType<typeof buildProviderCachePlan>["providerOptions"];
 };
 
 function renderSharedContext(params: {
@@ -121,12 +150,7 @@ function renderSharedContext(params: {
 		return text || fallback;
 	};
 
-	return `# Task: Post-turn evaluation
-
-Evaluate just-finished turn for ${agentName}.
-
-Return exactly one JSON object. No prose, markdown fences, XML, hidden reasoning.
-One top-level property per active evaluator. Use only provided context. Nothing to record => empty shape.
+	return `Evaluate just-finished turn for ${agentName}.
 
 ## Shared Turn Context
 
@@ -151,37 +175,14 @@ ${part("providerContext")}
 `;
 }
 
-function renderEvaluatorSection(section: PromptSection): string {
-	const content = toWellFormedUnicode(
-		[section.description, "", section.body].join("\n"),
-	);
-	return [
-		`### ${section.name}`,
-		content,
-		"",
-		`Put result under "${section.name}".`,
-	].join("\n");
-}
-
-function renderPrompt(
-	sharedContext: string,
-	evaluatorSections: string,
-): string {
-	return `${sharedContext}
-
-## Active Evaluators
-
-${evaluatorSections}
-`;
-}
-
 function buildPrompt(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
 	active: PreparedEntry[];
 	options: EvaluatorRunOptions;
-}): string {
+	schema: JSONSchema;
+}): RenderedEvaluatorPrompt {
 	const { runtime, message, state, active, options } = params;
 	const agentName = runtime.character.name ?? "Agent";
 	const latestMessage = message.content.text ?? "";
@@ -208,21 +209,75 @@ function buildPrompt(params: {
 		providerContext,
 	};
 
-	const sections: PromptSection[] = active.map(({ evaluator, prepared }) => {
-		const section = evaluator.prompt({
-			runtime,
-			message,
-			state,
-			options,
-			prepared,
+	const stable: PromptSegment[] = [
+		{
+			content:
+				"# Task: Post-turn evaluation\n\nReturn exactly one JSON object. No prose, markdown fences, XML, hidden reasoning.\nOne top-level property per active evaluator. Use only provided context. Nothing to record => empty shape.\n\n## Active Evaluator Instructions\n\n",
+			stable: true,
+		},
+	];
+	const dynamic: PromptSegment[] = [];
+	for (const { evaluator, prepared } of active) {
+		const context = { runtime, message, state, options, prepared };
+		const full = evaluator.prompt(context);
+		const segments = evaluator.promptSegments?.(context) ?? [
+			{ content: full, stable: false },
+		];
+		if (segments.map((segment) => segment.content).join("") !== full) {
+			throw new ElizaError(
+				"Evaluator prompt segments must preserve the complete prompt",
+				{
+					code: "EVALUATOR_PROMPT_SEGMENTS_MISMATCH",
+					context: { evaluator: evaluator.name },
+				},
+			);
+		}
+		let dynamicStarted = false;
+		for (const segment of segments) {
+			if (!segment.stable) dynamicStarted = true;
+			else if (dynamicStarted) {
+				throw new ElizaError(
+					"Evaluator stable instructions must precede dynamic context",
+					{
+						code: "EVALUATOR_PROMPT_SEGMENT_ORDER_INVALID",
+						context: { evaluator: evaluator.name },
+					},
+				);
+			}
+		}
+		for (let index = 1; index < segments.length; index += 1) {
+			const previous = segments[index - 1];
+			const current = segments[index];
+			if (
+				previous &&
+				current &&
+				/[\uD800-\uDBFF]$/.test(previous.content) &&
+				/^[\uDC00-\uDFFF]/.test(current.content)
+			) {
+				throw new ElizaError(
+					"Evaluator prompt segments must not split a Unicode code point",
+					{
+						code: "EVALUATOR_PROMPT_SEGMENT_BOUNDARY_INVALID",
+						context: { evaluator: evaluator.name, segmentIndex: index },
+					},
+				);
+			}
+		}
+		stable.push({
+			content: `### ${evaluator.name}\n${evaluator.description}\n\n${segments
+				.filter((segment) => segment.stable)
+				.map((segment) => segment.content)
+				.join("")}\nPut result under "${evaluator.name}".\n\n`,
+			stable: true,
 		});
-		return {
-			name: evaluator.name,
-			description: evaluator.description,
-			body: section,
-		};
-	});
-
+		dynamic.push({
+			content: `### ${evaluator.name}\n${segments
+				.filter((segment) => !segment.stable)
+				.map((segment) => segment.content)
+				.join("")}\n\n`,
+			stable: false,
+		});
+	}
 	const sharedContext = renderSharedContext({
 		runtime,
 		message,
@@ -230,8 +285,42 @@ function buildPrompt(params: {
 		options,
 		parts: sharedParts,
 	});
-	const evaluatorSections = sections.map(renderEvaluatorSection).join("\n\n");
-	return renderPrompt(sharedContext, evaluatorSections);
+	const promptSegments = [
+		...stable,
+		{
+			content: `${sharedContext}\n\n## Active Evaluators\n\n`,
+			stable: false,
+		},
+		...dynamic,
+	].map((segment) => ({
+		...segment,
+		content: toWellFormedUnicode(segment.content),
+	}));
+	const prefixHashes = computePrefixHashes(
+		promptSegments.filter((segment) => segment.stable),
+	);
+	const prefixHash = hashStableJson({
+		prefix: prefixHashes.at(-1)?.hash,
+		schema: params.schema,
+	});
+	// This identifies content/schema, not the selected provider or model. Model
+	// affinity remains the backend's responsibility; the benchmark scopes its
+	// optional verified routing hint separately to the actual selected model.
+	const plan = buildProviderCachePlan({
+		prefixHash,
+		segmentHashes: computePrefixHashes(promptSegments).map(
+			(entry) => entry.segmentHash,
+		),
+		promptSegments,
+		conversationId: `${runtime.agentId}:${message.roomId}:post_turn`,
+	});
+	return {
+		prompt: promptSegments.map((segment) => segment.content).join(""),
+		promptSegments,
+		// Automatic cloud prefix reuse needs ordered text, not an account-gated
+		// routing hint. Keep canonical local metadata without enabling new hints.
+		providerOptions: { eliza: plan.providerOptions.eliza },
+	};
 }
 
 // Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider
@@ -295,24 +384,28 @@ const SCHEMA_UNSUPPORTED_STREAK_THRESHOLD = 2;
 
 async function generateEvaluationOutput(params: {
 	runtime: IAgentRuntime;
-	prompt: string;
+	rendered: RenderedEvaluatorPrompt;
 	schema: JSONSchema;
 }): Promise<unknown> {
-	const { runtime, prompt, schema } = params;
-	const messages = [{ role: "user" as const, content: prompt }];
+	const { runtime, rendered, schema } = params;
+	const modelInput = {
+		messages: [{ role: "user" as const, content: rendered.prompt }],
+		promptSegments: rendered.promptSegments,
+		providerOptions: rendered.providerOptions,
+	};
 	// Post-turn evaluation runs on the SMALL model: it is a cheap, frequent,
 	// structured extraction/classification pass (all active evaluators share one
 	// merged call), not generation — the large model is wasted cost here,
 	// especially for local-first tiers.
 	const requestJsonObject = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			messages,
+			...modelInput,
 			responseFormat: { type: "json_object" },
 			temperature: 0,
 		});
 	const requestPlain = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			messages,
+			...modelInput,
 			temperature: 0,
 		});
 	const afterJsonObjectRejected = async (
@@ -340,7 +433,7 @@ async function generateEvaluationOutput(params: {
 
 	try {
 		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-			messages,
+			...modelInput,
 			responseSchema: schema,
 			responseFormat: { type: "json_object" },
 			temperature: 0,
@@ -542,17 +635,24 @@ export class EvaluatorService extends BaseService {
 
 	private async readEvaluatorOutput(params: {
 		evaluatorId: string;
-		prompt: string;
+		rendered: RenderedEvaluatorPrompt;
 		schema: JSONSchema;
 	}): Promise<{ output: Record<string, unknown> | null; error?: string }> {
-		const { evaluatorId, prompt, schema } = params;
-		let raw: unknown;
+		const { evaluatorId, rendered, schema } = params;
 		try {
-			raw = await generateEvaluationOutput({
+			const raw = await generateEvaluationOutput({
 				runtime: this.runtime,
-				prompt,
+				rendered,
 				schema,
 			});
+			const output = coerceObjectOutput(raw);
+			if (!output) {
+				throw new ElizaError("Evaluator model returned non-object output", {
+					code: "EVALUATOR_INVALID_OUTPUT",
+					context: { evaluatorId },
+				});
+			}
+			return { output };
 		} catch (error) {
 			// error-policy:J1 Evaluator execution returns an explicit failed
 			// result and emits its completion failure.
@@ -568,18 +668,6 @@ export class EvaluatorService extends BaseService {
 			});
 			return { output: null, error: messageText };
 		}
-
-		const output = coerceObjectOutput(raw);
-		if (!output) {
-			const messageText = "Evaluator model returned non-object output";
-			await this.emitEvaluatorCompleted(
-				evaluatorId,
-				false,
-				new Error(messageText),
-			);
-			return { output: null, error: messageText };
-		}
-		return { output };
 	}
 
 	private async processPreparedEntries(params: {
@@ -793,6 +881,16 @@ export class EvaluatorService extends BaseService {
 			});
 		}
 
+		const schema = buildMergedSchema(preparedEntries);
+		const rendered = buildPrompt({
+			runtime: this.runtime,
+			message,
+			state: composedState,
+			active: preparedEntries,
+			options,
+			schema,
+		});
+
 		const evaluatorId =
 			uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
 		await this.runtime
@@ -811,17 +909,9 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const prompt = buildPrompt({
-			runtime: this.runtime,
-			message,
-			state: composedState,
-			active: preparedEntries,
-			options,
-		});
-		const schema = buildMergedSchema(preparedEntries);
 		const { output, error } = await this.readEvaluatorOutput({
 			evaluatorId,
-			prompt,
+			rendered,
 			schema,
 		});
 		if (!output) {

@@ -211,6 +211,32 @@ The canonical message loop expects model outputs in the `<response>...</response
 
 Some deterministic/offline backends may return **plain text** instead. In that case, the runtime will treat the raw output as a simple **`REPLY`** so the system remains usable even when strict XML formatting is unavailable.
 
+### Post-turn evaluator prompt prefixes
+
+Evaluators retain the complete `prompt(context): string` API. They may also
+provide `promptSegments(context)` whose concatenated content equals that exact
+prompt. Only instructions independent of the turn belong in stable segments;
+prepared records, identifiers, action results and conversation text stay dynamic.
+Stable instructions must form a contiguous prefix before dynamic data, and
+segment boundaries must not split a Unicode code point. The evaluator service
+rejects invalid order, boundaries or mismatched annotations before dispatch.
+
+The merged evaluator call keeps one user message and places all annotated static
+instructions before complete shared turn context and dynamic evaluator sections.
+Unannotated plugin prompts remain complete dynamic sections. The four built-in
+reflection evaluators annotate their existing rules without dropping their data.
+Schema and instruction changes invalidate the canonical prefix metadata. This
+fingerprint identifies content/schema, not a provider/model affinity; backend
+model isolation and any optional benchmark model-scoped hint remain separate.
+Local conversation identity remains agent/room scoped; no optional cloud routing hint
+or provider retention policy is enabled by this rendering change.
+
+Schema, JSON-object and plain-JSON attempts share the same complete rendering.
+Native text-result envelopes must finish normally without tool calls before their
+JSON is processed; incomplete or malformed output cannot commit evaluator effects.
+This ordering enables automatic provider prefix reuse where supported; measured
+latency and cache reuse still require live evidence on the selected provider.
+
 ### Prompt cache hints
 
 The core can pass **prompt segments** to model providers so they can use prompt-caching APIs when supported. Each segment has `content` (string) and `stable` (boolean). **Stable** means the content is the same across calls for the same schema/character (e.g. instructions, format, examples); **unstable** means it changes every call (e.g. state, validation codes).

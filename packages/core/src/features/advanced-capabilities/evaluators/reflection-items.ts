@@ -29,10 +29,12 @@ import type {
 	ActionResult,
 	Entity,
 	Evaluator,
+	EvaluatorRunOptions,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
 	MemoryMetadata,
+	PromptSegment,
 	RegisteredEvaluator,
 	State,
 	UUID,
@@ -967,21 +969,16 @@ export function canEvaluateMessage(
 	);
 }
 
-export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
-	name: "factMemory",
-	description:
-		"Extracts durable/current fact-store ops from recent conversation.",
-	priority: EvaluatorPriority.REFLECTION_FACTS,
-	schema: factOpsSchema,
-	async shouldRun({ message, options }) {
-		return canEvaluateMessage(message, options);
-	},
-	async prepare({ runtime, message }) {
-		return prepareFacts(runtime, message);
-	},
-	prompt({ prepared }) {
-		const { durable, current } = partitionByKind(prepared.knownFacts);
-		return `Find stable/current facts about speaker.
+function renderFactMemoryPromptSegments({
+	prepared,
+}: {
+	prepared: FactPrepared;
+}): PromptSegment[] {
+	const { durable, current } = partitionByKind(prepared.knownFacts);
+
+	return [
+		{
+			content: `Find stable/current facts about speaker.
 
 Fact stores:
 - durable: identity-level claims matter in a year. Categories: identity, health, relationship, life_event, business_role, preference, goal.
@@ -1002,14 +999,40 @@ Rules:
   life_event/goal: event, to, goal, domain.
   Omit unknown fields; do not invent values.
 
-Recent messages:
+`,
+			stable: true,
+		},
+		{
+			content: `Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
 
 Known durable facts:
 ${formatKnownLines(durable, "durable")}
 
 Known current facts:
-${formatKnownLines(current, "current")}`;
+${formatKnownLines(current, "current")}`,
+			stable: false,
+		},
+	];
+}
+
+export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
+	name: "factMemory",
+	description:
+		"Extracts durable/current fact-store ops from recent conversation.",
+	priority: EvaluatorPriority.REFLECTION_FACTS,
+	schema: factOpsSchema,
+	async shouldRun({ message, options }) {
+		return canEvaluateMessage(message, options);
+	},
+	async prepare({ runtime, message }) {
+		return prepareFacts(runtime, message);
+	},
+	promptSegments: renderFactMemoryPromptSegments,
+	prompt(context) {
+		return renderFactMemoryPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		// Tolerant, op-by-op: a single malformed op must not discard the whole
@@ -1079,6 +1102,38 @@ ${formatKnownLines(current, "current")}`;
 	],
 };
 
+function renderRelationshipPromptSegments({
+	prepared,
+}: {
+	prepared: ReflectionPrepared;
+}): PromptSegment[] {
+	return [
+		{
+			content: `Find semantic relationship changes between participants.
+
+Rules:
+- Return only clearly supported relationships.
+- Use exact UUIDs from Entities in Room. Do not use names or placeholders.
+- Directional: sourceEntityId initiates, targetEntityId receives.
+- Nothing changed -> {"relationships":[]}.
+
+`,
+			stable: true,
+		},
+		{
+			content: `Recent messages:
+${formatRecentMessages(prepared.recentMessages)}
+
+Entities in Room:
+${formatEntities(prepared.entities)}
+
+Existing relationships:
+${formatRelationships(prepared.existingRelationships)}`,
+			stable: false,
+		},
+	];
+}
+
 export const relationshipEvaluator: Evaluator<
 	z.infer<typeof RelationshipOutputSchema>,
 	ReflectionPrepared
@@ -1094,23 +1149,11 @@ export const relationshipEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared }) {
-		return `Find semantic relationship changes between participants.
-
-Rules:
-- Return only clearly supported relationships.
-- Use exact UUIDs from Entities in Room. Do not use names or placeholders.
-- Directional: sourceEntityId initiates, targetEntityId receives.
-- Nothing changed -> {"relationships":[]}.
-
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
-
-Entities in Room:
-${formatEntities(prepared.entities)}
-
-Existing relationships:
-${formatRelationships(prepared.existingRelationships)}`;
+	promptSegments: renderRelationshipPromptSegments,
+	prompt(context) {
+		return renderRelationshipPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		const result = RelationshipOutputSchema.safeParse(output);
@@ -1135,6 +1178,37 @@ ${formatRelationships(prepared.existingRelationships)}`;
 	],
 };
 
+function renderIdentityPromptSegments({
+	prepared,
+}: {
+	prepared: ReflectionPrepared;
+}): PromptSegment[] {
+	return [
+		{
+			content: `Find explicit platform identity claims for known room participants.
+
+Rules:
+- Use exact UUIDs from Entities in Room.
+- Only emit identities explicitly stated in the recent conversation.
+- Do not invent identities or emit ambient public-figure mentions.
+- platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
+- confidence 0-1: higher for self-claims, lower for second-hand.
+- Nothing mentioned -> {"identities":[]}.
+
+`,
+			stable: true,
+		},
+		{
+			content: `Recent messages:
+${formatRecentMessages(prepared.recentMessages)}
+
+Entities in Room:
+${formatEntities(prepared.entities)}`,
+			stable: false,
+		},
+	];
+}
+
 export const identityEvaluator: Evaluator<
 	z.infer<typeof IdentityOutputSchema>,
 	ReflectionPrepared
@@ -1149,22 +1223,11 @@ export const identityEvaluator: Evaluator<
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
 	},
-	prompt({ prepared }) {
-		return `Find explicit platform identity claims for known room participants.
-
-Rules:
-- Use exact UUIDs from Entities in Room.
-- Only emit identities explicitly stated in the recent conversation.
-- Do not invent identities or emit ambient public-figure mentions.
-- platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
-- confidence 0-1: higher for self-claims, lower for second-hand.
-- Nothing mentioned -> {"identities":[]}.
-
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
-
-Entities in Room:
-${formatEntities(prepared.entities)}`;
+	promptSegments: renderIdentityPromptSegments,
+	prompt(context) {
+		return renderIdentityPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		const result = IdentityOutputSchema.safeParse(output);
@@ -1190,6 +1253,38 @@ ${formatEntities(prepared.entities)}`;
 	],
 };
 
+function renderSuccessPromptSegments({
+	prepared,
+	options,
+}: {
+	prepared: SuccessPrepared;
+	options: EvaluatorRunOptions;
+}): PromptSegment[] {
+	return [
+		{
+			content: `Evaluate if current user task is complete after agent response.
+
+Rules:
+- completed=true only if user needs no more action/follow-up this turn.
+- Clarifying question, failed action, pending work, or partial handling -> completed=false.
+- Ground the reason in the conversation and action results.
+
+`,
+			stable: true,
+		},
+		{
+			content: `Did respond: ${options.didRespond === true ? "true" : "false"}
+
+Recent messages:
+${formatRecentMessages(prepared.recentMessages)}
+
+Action results:
+${renderActionResultsForModel(prepared.actionResults).text}`,
+			stable: false,
+		},
+	];
+}
+
 export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
 	description: "Evaluates whether user task is complete this turn.",
@@ -1210,21 +1305,11 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 					: actionResultsFromState(state),
 		};
 	},
-	prompt({ prepared, options }) {
-		return `Evaluate if current user task is complete after agent response.
-
-Rules:
-- completed=true only if user needs no more action/follow-up this turn.
-- Clarifying question, failed action, pending work, or partial handling -> completed=false.
-- Ground the reason in the conversation and action results.
-
-Did respond: ${options.didRespond === true ? "true" : "false"}
-
-Recent messages:
-${formatRecentMessages(prepared.recentMessages)}
-
-Action results:
-${renderActionResultsForModel(prepared.actionResults).text}`;
+	promptSegments: renderSuccessPromptSegments,
+	prompt(context) {
+		return renderSuccessPromptSegments(context)
+			.map((segment) => segment.content)
+			.join("");
 	},
 	parse(output) {
 		const result = SuccessOutputSchema.safeParse(output);

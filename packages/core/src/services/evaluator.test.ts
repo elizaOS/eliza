@@ -796,3 +796,229 @@ describe("EvaluatorService", () => {
 		expect(result.errors).toEqual([]);
 	});
 });
+
+describe("lossless evaluator prefix and processing", () => {
+	it("preserves large independent room context through every fallback and persists each result", async () => {
+		const runtime = makeRuntime();
+		const captured: Array<{
+			prompt: string;
+			prefix: string;
+			conversation: string;
+			format: string;
+		}> = [];
+		const saved: NonNullable<Memory["id"]>[] = [];
+		const instructions =
+			"Extract the complete latest message verbatim, including its final reference.\n\n";
+		const evaluator: Evaluator<{ text: string }> = {
+			name: "store",
+			description: "Persist complete text for its originating room",
+			schema: {
+				type: "object",
+				properties: { text: { type: "string" } },
+				required: ["text"],
+				additionalProperties: false,
+			},
+			shouldRun: async () => true,
+			prompt: ({ message }) => instructions + message.content.text,
+			promptSegments: ({ message }) => [
+				{ content: instructions, stable: true },
+				{ content: message.content.text ?? "", stable: false },
+			],
+			parse: (output) => output as { text: string },
+			processors: [
+				{
+					process: async ({ runtime: owner, message, output }) => {
+						const id = await owner.createMemory(
+							{
+								...message,
+								id: crypto.randomUUID() as Memory["id"],
+								content: { text: output.text },
+							},
+							"messages",
+						);
+						saved.push(id);
+						return { success: true };
+					},
+				},
+			],
+		};
+		runtime.registerEvaluator(evaluator);
+		runtime.useModel = vi.fn(async (_type, params) => {
+			const prompt = params.messages[0].content;
+			expect(
+				params.promptSegments
+					.map((segment: { content: string }) => segment.content)
+					.join(""),
+			).toBe(prompt);
+			expect(params.providerOptions.openai).toBeUndefined();
+			expect(params.providerOptions.cerebras).toBeUndefined();
+			captured.push({
+				prompt,
+				prefix: params.providerOptions.eliza.prefixHash,
+				conversation: params.providerOptions.eliza.conversationId,
+				format: params.responseSchema
+					? "schema"
+					: params.responseFormat
+						? "json"
+						: "plain",
+			});
+			if (params.responseSchema) throw new Error("json_schema unsupported");
+			if (params.responseFormat) throw new Error("json_object bad request");
+			const match =
+				/Latest message:\n([\s\S]*?)\n\nAgent response messages:/.exec(prompt);
+			if (!match) throw new Error("Missing complete latest message");
+			return { store: { text: match[1] } };
+		}) as AgentRuntime["useModel"];
+		const first = {
+			...makeMessage(),
+			content: { text: `first-${"A".repeat(140_000)}-FIRST-TAIL` },
+		};
+		const second = {
+			...makeMessage(),
+			id: "00000000-0000-0000-0000-000000000004" as Memory["id"],
+			roomId: "00000000-0000-0000-0000-000000000005" as Memory["roomId"],
+			content: { text: "second-SECOND-TAIL" },
+		};
+		const results = await Promise.all([
+			new EvaluatorService(runtime).run(first),
+			new EvaluatorService(runtime).run(second),
+		]);
+		expect(
+			results.every((result) => result.processedEvaluators.includes("store")),
+		).toBe(true);
+		const persisted = await Promise.all(
+			saved.map((id) => runtime.getMemoryById(id)),
+		);
+		expect(
+			persisted.find((memory) => memory?.roomId === first.roomId)?.content.text,
+		).toBe(first.content.text);
+		expect(
+			persisted.find((memory) => memory?.roomId === second.roomId)?.content
+				.text,
+		).toBe(second.content.text);
+		expect(new Set(captured.map((call) => call.prefix)).size).toBe(1);
+		expect(new Set(captured.map((call) => call.conversation)).size).toBe(2);
+		for (const call of captured) {
+			expect(call.prompt.indexOf(instructions)).toBeLessThan(
+				call.prompt.indexOf("Latest message:"),
+			);
+			expect(call.prompt.includes("FIRST-TAIL")).not.toBe(
+				call.prompt.includes("SECOND-TAIL"),
+			);
+		}
+		const previousPrefix = captured[0]?.prefix;
+		evaluator.schema = {
+			type: "object",
+			properties: {
+				text: { type: "string", description: "new schema contract" },
+			},
+			required: ["text"],
+		};
+		await new EvaluatorService(runtime).run(second);
+		expect(captured.at(-1)?.prefix).not.toBe(previousPrefix);
+		const schemaPrefix = captured.at(-1)?.prefix;
+		runtime.registerEvaluator({
+			name: "new-context",
+			description: "A newly active evaluator",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Complete new evaluator context",
+		});
+		await new EvaluatorService(runtime).run(second);
+		expect(captured.at(-1)?.prefix).not.toBe(schemaPrefix);
+		expect(captured.at(-1)?.prompt).toContain("Complete new evaluator context");
+	});
+
+	it("rejects an annotation that drops the tail before any model or processor runs", async () => {
+		const runtime = makeRuntime();
+		const model = vi.fn();
+		const processor = vi.fn();
+		runtime.useModel = model as AgentRuntime["useModel"];
+		runtime.registerEvaluator({
+			name: "invalid",
+			description: "invalid split",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "instruction complete tail",
+			promptSegments: () => [{ content: "instruction", stable: true }],
+			processors: [{ process: processor }],
+		});
+		await expect(
+			new EvaluatorService(runtime).run(makeMessage()),
+		).rejects.toMatchObject({ code: "EVALUATOR_PROMPT_SEGMENTS_MISMATCH" });
+		expect(model).not.toHaveBeenCalled();
+		expect(processor).not.toHaveBeenCalled();
+	});
+});
+
+it("retains direct evaluator objects whose fields resemble an envelope payload", async () => {
+	const runtime = makeRuntime();
+	const processed: string[] = [];
+	runtime.registerEvaluator({
+		name: "text",
+		description: "legacy direct object",
+		schema: { type: "string" },
+		shouldRun: async () => true,
+		prompt: () => "Return the label",
+		processors: [
+			{
+				process: async ({ output }) => {
+					processed.push(String(output));
+					return { success: true };
+				},
+			},
+		],
+	});
+	runtime.useModel = vi.fn(async () => ({
+		text: "complete direct field",
+		toolCalls: [],
+	})) as AgentRuntime["useModel"];
+	const result = await new EvaluatorService(runtime).run(makeMessage());
+	expect(result.errors).toEqual([]);
+	expect(processed).toEqual(["complete direct field"]);
+});
+
+it("rejects a stable/dynamic annotation that splits an intact Unicode code point", async () => {
+	const runtime = makeRuntime();
+	const model = vi.fn();
+	runtime.useModel = model as AgentRuntime["useModel"];
+	runtime.registerEvaluator({
+		name: "unicode",
+		description: "lossless boundary",
+		schema: schema(),
+		shouldRun: async () => true,
+		prompt: () => "instruction 🐈 complete tail",
+		promptSegments: () => [
+			{ content: "instruction \uD83D", stable: true },
+			{ content: "\uDC08 complete tail", stable: false },
+		],
+	});
+	await expect(
+		new EvaluatorService(runtime).run(makeMessage()),
+	).rejects.toMatchObject({
+		code: "EVALUATOR_PROMPT_SEGMENT_BOUNDARY_INVALID",
+	});
+	expect(model).not.toHaveBeenCalled();
+});
+
+it("rejects interleaved instructions instead of relocating context-sensitive fragments", async () => {
+	const runtime = makeRuntime();
+	const model = vi.fn();
+	runtime.useModel = model as AgentRuntime["useModel"];
+	runtime.registerEvaluator({
+		name: "interleaved",
+		description: "invalid relocation",
+		schema: schema(),
+		shouldRun: async () => true,
+		prompt: () => "Compare data above",
+		promptSegments: () => [
+			{ content: "Compare ", stable: true },
+			{ content: "data", stable: false },
+			{ content: " above", stable: true },
+		],
+	});
+	await expect(
+		new EvaluatorService(runtime).run(makeMessage()),
+	).rejects.toMatchObject({ code: "EVALUATOR_PROMPT_SEGMENT_ORDER_INVALID" });
+	expect(model).not.toHaveBeenCalled();
+});
