@@ -687,6 +687,8 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 // Bob in this thread") passes through; chat-recall stays owned by the
 // visible-context-recall exception.
 const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
+	// Possessive collection assertions need proof even without a date qualifier.
+	/\byou\s+(?:(?:currently|presently)\s+)?(?:have\s+(?:no|zero)|(?:do\s+not|don['’]t)\s+have\s+(?:any|a|an))\s+(?:(?:new|saved|tracked|recorded)\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b/gi,
 	// "your task list is empty", "the todo list looks clear"
 	/\b(?:task|todo|to[- ]do|reminder|goal|habit)s?\s+list\s+(?:is|looks|seems|appears)\s+(?:empty|clear|blank)\b/gi,
 	// "no notes, tasks, or messages from earlier today", "no tasks logged"
@@ -706,6 +708,34 @@ const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
 const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
 	/\b(?:if|unless|when|whenever|once|whether|in\s+case)\b[^.!?\n]*$/i;
 
+// Classify quotes once, retaining asserted reported results. Only explicit
+// examples/wording are exempt; the projection prevents a quoted conditional
+// from changing the grammar of a later unquoted assertion.
+function emptyClaimQuoteContext(text: string): {
+	projection: string;
+	spans: { start: number; end: number; example: boolean }[];
+} {
+	const spans: { start: number; end: number; example: boolean }[] = [];
+	const projection = text.replace(
+		/"(?:\\[^\r\n]|[^"\\\r\n])*"|“(?:\\[^\r\n]|[^”\\\r\n])*”|‘(?:\\[^\r\n]|[^’\\\r\n])*’|`(?:\\[^\r\n]|[^`\\\r\n])*`|(?<![\p{L}\p{N}])'(?:\\[^\r\n]|[^'\\\r\n])*'(?![\p{L}\p{N}])/gu,
+		(quote: string, offset: number) => {
+			const example =
+				/(?:\bfor\s+example[, :] *|\b(?:the\s+)?(?:example|phrase|wording)(?:\s+(?:says|asks|reads))?\s*:?\s*)$/i.test(
+					text.slice(0, offset),
+				);
+			spans.push({ start: offset, end: offset + quote.length, example });
+			return quote.replace(/[^\r\n]/g, " ");
+		},
+	);
+	return { projection, spans };
+}
+
+// A negated ability to establish the immediately following proposition is
+// explicit uncertainty, not an assertion of that proposition. Ending at the
+// claim prevents uncertainty about an earlier clause from hiding a later claim.
+const UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN =
+	/\bi\s+(?:cannot|can\s+not|can['’]t|do\s+not|don['’]t|am\s+not\s+able\s+to)\s+(?:say|conclude|confirm|verify|establish|assert|tell)(?:\s+(?:for\s+(?:certain|sure)|with\s+confidence))?\s+(?:that\s+)?$/i;
+
 /**
  * True when a reply ASSERTS that the user's tracked work (tasks, todos,
  * reminders, habits, goals, notes, day log) is empty or unavailable. On a path
@@ -718,11 +748,27 @@ const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
  */
 export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 	const text = reply.trim();
-	if (!text) return false;
+	const { projection, spans } = emptyClaimQuoteContext(text);
+	if (!text.trim()) return false;
 	for (const pattern of EMPTY_TRACKED_STATE_CLAIM_PATTERNS) {
+		let quoteIndex = 0;
 		for (const match of text.matchAll(pattern)) {
-			const prefix = text.slice(0, match.index);
+			while (
+				quoteIndex < spans.length &&
+				spans[quoteIndex].end <= match.index
+			) {
+				quoteIndex++;
+			}
+			const candidate = spans[quoteIndex];
+			const quote =
+				candidate && candidate.start <= match.index ? candidate : undefined;
+			if (quote?.example) continue;
+			const prefix = quote
+				? projection.slice(0, quote.start) +
+					text.slice(quote.start + 1, match.index)
+				: projection.slice(0, match.index);
 			if (CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
+			if (UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
 			if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
 			return true;
 		}

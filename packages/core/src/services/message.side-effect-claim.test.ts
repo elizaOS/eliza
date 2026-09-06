@@ -1693,3 +1693,155 @@ describe("locale clause scoping through the real consumer paths", () => {
 		expect(decision.verdict).not.toBe("reject");
 	});
 });
+
+describe("possessive empty-state egress proof", () => {
+	const reader: Action = {
+		name: "NOTES",
+		description: "Read notes",
+		tags: ["resource:tracked-work", "capability:read"],
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	};
+	const filteredMiss: ActionResult = {
+		success: true,
+		userFacingText: "I couldn't find a matching note.",
+		verifiedUserFacing: true,
+		data: {
+			actionName: "NOTES",
+			op: "list",
+			count: 0,
+			total: 1,
+			filterApplied: true,
+			topic: "Passport",
+			notes: [],
+			claimGrounding: ["empty_tracked_state"],
+		},
+	};
+	const assertions = [
+		'The read confirms: "Your task list is empty."',
+		'Your current status is "Your task list is empty."',
+		"Current result: “You have no notes.”",
+		'"You have no notes."',
+
+		"You have no notes.",
+		"You don't have any notes.",
+		"You do not have any tasks.",
+		"You have zero saved notes.",
+		"You currently have no reminders.",
+		"You don’t have a goal.",
+	];
+	it.each(assertions)("requires exact read proof for %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [filteredMiss],
+				actions: [reader],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: [reader],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+		const exactRead: ActionResult = {
+			...filteredMiss,
+			userFacingText: reply,
+			data: {
+				actionName: "NOTES",
+				op: "list",
+				count: 0,
+				total: 0,
+				filterApplied: false,
+				notes: [],
+				claimGrounding: ["empty_tracked_state"],
+			},
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [exactRead],
+				actions: [reader],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+	it.each([
+		"Do you have no notes?",
+		'For example, "Your task list is empty."',
+		'The guidance says "If you have no notes, create one."',
+
+		"You have no notes?",
+		"If you have no notes, create one.",
+		"When you don't have any tasks, ask for help.",
+		'The example says: "You have no notes."',
+		"The phrase ‘You have no notes’ is only an example.",
+		"You have no apples.",
+	])("leaves non-assertive or unrelated absence %j alone", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: [reader],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+	it("does not let a quoted example hide a subsequent actual assertion", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: 'The example says "You have no notes." You have no tasks.',
+				actionResults: [],
+				actions: [reader],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+});
+
+describe("empty-state uncertainty and quoted clause boundaries", () => {
+	it.each([
+		"I cannot say you have no notes.",
+		"I can't conclude you have no tasks.",
+		"I cannot verify with confidence that you have no reminders.",
+		"I am not able to confirm that you have no goals.",
+		'The example says "You have no notes."',
+	])("does not reject explicit uncertainty or quoted wording: %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toEqual({ verdict: "allow" });
+	});
+	it.each([
+		'The example says "If you have no notes", but you have no tasks.',
+		'The example asks "Do you have no notes?" You have no tasks.',
+		"I cannot say you have no notes, but you have no tasks.",
+		"You have no notes.",
+	])("requires proof for an unquoted asserted clause: %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+});
+
+describe("escaped quote boundaries for empty-state egress", () => {
+	const quoted = String.raw`The example says "literal \"If you have no notes\" text"`;
+	it("requires proof for the assertion after escaped quoted content", () => {
+		const reply = `${quoted}; you have no tasks.`;
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+	it("keeps escaped quoted explanations non-assertive", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: quoted,
+				actionResults: [],
+				actions: [],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+	it("does not let an escaped backslash consume the actual closing quote", () => {
+		const reply = String.raw`The example says "If you have no notes\\"; you have no tasks.`;
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+});
