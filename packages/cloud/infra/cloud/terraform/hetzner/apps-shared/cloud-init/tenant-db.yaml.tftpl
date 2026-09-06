@@ -433,7 +433,20 @@ write_files:
       export RCLONE_S3_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY"
       DEST=":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX/$STAMP"
       rclone copyto backup.tar.gz.enc "$DEST/backup.tar.gz.enc"
+      # Stream the stored ciphertext back before publishing the set or pruning
+      # older recovery points. A successful upload alone is not readback proof.
+      REMOTE_SHA=$(rclone cat "$DEST/backup.tar.gz.enc" | sha256sum | awk '{print $1}')
+      if [ "$REMOTE_SHA" != "$ENC_SHA" ]; then
+        log "encrypted archive readback mismatch; refusing publication and retention cleanup."
+        exit 1
+      fi
       rclone copyto backup.json "$DEST/backup.json"
+      SIDECAR_SHA=$(sha256sum backup.json | awk '{print $1}')
+      REMOTE_SIDECAR_SHA=$(rclone cat "$DEST/backup.json" | sha256sum | awk '{print $1}')
+      if [ "$REMOTE_SIDECAR_SHA" != "$SIDECAR_SHA" ]; then
+        log "backup metadata readback mismatch; refusing retention cleanup."
+        exit 1
+      fi
 
       # Retention: dated set dirs sort lexicographically; purge anything older
       # than the cutoff stamp. Never touches other prefixes in the bucket.

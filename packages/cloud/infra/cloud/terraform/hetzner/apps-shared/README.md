@@ -128,7 +128,7 @@ gates every connection.
 - `tenant_db_public_ip` — SSH/admin only.
 - `tenant_db_admin_dsn` — **sensitive**; seed into `tenant_db_clusters` (`:5432`, direct).
 - `tenant_db_pooler_endpoint` — `10.30.1.10:6432`; set as `tenant_db_clusters.host` to route apps through pgbouncer (after rolling the node).
-- `tenant_db_backup_configured` — `true` only when the off-host encrypted backup pipeline (#21729) is fully armed; `false` means host snapshots are the only safeguard.
+- `tenant_db_backup_configured` — `true` when the complete off-host backup credential bundle is supplied. This configuration output does not prove capture, remote verification, or restore success.
 
 ## Off-host encrypted recovery — #21729
 
@@ -176,6 +176,8 @@ Each nightly set under `<prefix>/<UTC stamp>/` holds:
 - `backup.json` — plaintext sidecar (archive sha256, byte size, database
   count, cipher, timestamp) so freshness/integrity alerting and drills can
   verify the set without the passphrase.
+
+The script streams the stored ciphertext back and compares its SHA-256 before publishing `backup.json`. It then verifies the stored metadata before pruning expired sets. Any failed read or checksum mismatch exits unsuccessfully and preserves older sets. Remote readback proves stored bytes; an isolated database restore is still required to prove recovery.
 
 Retention pruning runs in the same job. Because `user_data` is under
 `lifecycle.ignore_changes`, the existing node picks up the pipeline via the
