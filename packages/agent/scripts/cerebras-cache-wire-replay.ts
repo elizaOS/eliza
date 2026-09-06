@@ -37,6 +37,45 @@ export function replayRequest(
   };
 }
 
+/** Reject HTTP-success streams that did not finish or carry provider usage. */
+export function validateReplayStream(raw: string): {
+  usage: Record<string, unknown>;
+  timeInfo: unknown;
+} {
+  const data = raw
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.substring(5).trim());
+  if (!data.includes("[DONE]"))
+    throw new Error("Provider replay stream ended without DONE");
+  const events = data
+    .filter((line) => line !== "[DONE]")
+    .map((line) => object(JSON.parse(line)));
+  if (events.some((event) => event.error !== undefined))
+    throw new Error("Provider replay returned a stream error");
+  const finished = events.some(
+    (event) =>
+      Array.isArray(event.choices) &&
+      event.choices.some((choice) => object(choice).finish_reason != null),
+  );
+  const usageEvent = events.findLast((event) => event.usage != null);
+  if (!finished || !usageEvent)
+    throw new Error("Provider replay lacks completion or usage evidence");
+  const usage = object(usageEvent.usage);
+  if (
+    typeof usage.prompt_tokens !== "number" ||
+    usage.prompt_tokens <= 0 ||
+    typeof usage.completion_tokens !== "number" ||
+    usage.completion_tokens < 0
+  )
+    throw new Error("Provider replay usage is invalid");
+  return {
+    usage,
+    timeInfo:
+      events.findLast((event) => event.time_info != null)?.time_info ?? null,
+  };
+}
+
 async function main(): Promise<void> {
   const [input, output] = process.argv.slice(2);
   if (!input || !output)
@@ -152,6 +191,7 @@ async function main(): Promise<void> {
           throw new Error(
             `Provider replay HTTP ${response.status}; complete failure body retained in report`,
           );
+        validateReplayStream(rawResponse);
         await new Promise((resolve) => setTimeout(resolve, 3000));
         break;
       }
