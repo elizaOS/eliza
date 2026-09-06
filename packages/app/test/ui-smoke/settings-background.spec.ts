@@ -277,6 +277,7 @@ async function seedSettingsBackgroundStorage(
 ): Promise<void> {
   await seedAppStorage(page, {
     "eliza:mobile-runtime-mode": "local",
+    "eliza:permissions-primed": "1",
     [UI_BACKGROUND_STORAGE_KEY]: JSON.stringify(background),
   });
 }
@@ -400,6 +401,7 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
+  await expect(page.getByTestId("permission-priming-modal")).toBeHidden();
   await mkdir(SCREENSHOT_DIR, { recursive: true });
   await captureScreenshotWithQualityRetry(page, name, {
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
