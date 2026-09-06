@@ -14,6 +14,8 @@ import { timingSafeEqualSecret } from "./cron";
 export const STAGING_SESSION_EXCHANGE_VERSION = "v1" as const;
 export const STAGING_SESSION_TOKEN_TYP = "eliza-staging-session+jwt";
 export const STAGING_SESSION_MAX_TTL_SECONDS = 60 * 60;
+/** Issuer clock-skew allowance for token/binding issued-at bounds. */
+export const STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS = 5;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEX_64_RE = /^[0-9a-f]{64}$/;
@@ -444,14 +446,14 @@ export async function validateStagingSessionBinding(input: {
   if (
     !Number.isInteger(input.binding.sessionIssuedAt) ||
     !Number.isInteger(input.binding.sessionMaxExpiresAt) ||
-    input.binding.sessionIssuedAt > nowSeconds + 5 ||
+    input.binding.sessionIssuedAt > nowSeconds + STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS ||
     absoluteWindow <= 0 ||
     absoluteWindow > STAGING_SESSION_MAX_TTL_SECONDS ||
     input.binding.sessionMaxExpiresAt <= nowSeconds ||
     !Number.isInteger(input.issuedAt) ||
     !Number.isInteger(input.expiration) ||
     input.issuedAt < input.binding.sessionIssuedAt ||
-    input.issuedAt > nowSeconds + 5 ||
+    input.issuedAt > nowSeconds + STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS ||
     input.expiration <= input.issuedAt ||
     input.expiration > input.binding.sessionMaxExpiresAt
   ) {
