@@ -7,7 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   devCloudAuthority: null as string | null,
+  ensureCompatSensitiveRouteAuthorized: vi.fn(() => true),
   ensureRouteAuthorized: vi.fn(),
+  vaultGet: vi.fn(),
+  vaultReveal: vi.fn(),
   loadElizaConfig: vi.fn(),
   loadRegistry: vi.fn(),
   readCompatJsonBody: vi.fn(),
@@ -35,7 +38,8 @@ vi.mock("@elizaos/agent", () => ({
 }));
 
 vi.mock("@elizaos/app-core/api/auth", () => ({
-  ensureCompatSensitiveRouteAuthorized: vi.fn(),
+  ensureCompatSensitiveRouteAuthorized:
+    mocks.ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized: mocks.ensureRouteAuthorized,
 }));
 
@@ -56,7 +60,10 @@ vi.mock("@elizaos/registry/first-party", () => ({
 vi.mock("@elizaos/app-core/services/vault-mirror", () => ({
   _resetSharedVaultForTesting: vi.fn(),
   mirrorPluginSensitiveToVault: vi.fn(() => Promise.resolve({ failures: [] })),
-  sharedVault: {},
+  sharedVault: vi.fn(() => ({
+    get: mocks.vaultGet,
+    reveal: mocks.vaultReveal,
+  })),
 }));
 
 vi.mock("@elizaos/core", () => ({
@@ -1225,5 +1232,128 @@ describe("app plugin compatibility routes", () => {
       "Invalid plugin path",
     );
     expect(mocks.saveElizaConfig).toHaveBeenCalledTimes(saveCallCount);
+  });
+});
+
+/**
+ * `POST /api/plugins/:id/reveal` returns a stored secret to the caller. It is
+ * gated by two lists in this file — `REVEALABLE_KEY_PREFIXES` decides whether a
+ * key can be read at all, and `SENSITIVE_KEY_PREFIXES` decides whether reading
+ * it additionally demands the hardened loopback/elevated check. Neither list,
+ * and neither branch, had a test: no case in this suite reaches the reveal
+ * route. Deleting `SENSITIVE_KEY_PREFIXES.some(...)` outright left the whole
+ * package green.
+ */
+describe("POST /api/plugins/:id/reveal", () => {
+  const SENSITIVE_PREFIXES = ["SOLANA_", "ETHEREUM_", "EVM_", "WALLET_"];
+
+  async function reveal(key: string) {
+    // The route reads the key from the JSON body, so seeding the body mock and
+    // dispatching belong together — a call that sets one without the other
+    // would silently exercise the previous key.
+    mocks.readCompatJsonBody.mockResolvedValue({ key });
+    return await handlePluginsCompatRoutes(
+      { method: "POST", url: "/api/plugins/discord/reveal" } as never,
+      {} as never,
+      { current: null } as never,
+    );
+  }
+
+  beforeEach(() => {
+    // The outer beforeEach does not know about these mocks, and call counts are
+    // the whole point of the elevation assertions below.
+    mocks.ensureCompatSensitiveRouteAuthorized.mockClear();
+    mocks.vaultReveal.mockClear();
+    mocks.sendJson.mockClear();
+    mocks.sendJsonError.mockClear();
+    mocks.vaultReveal.mockResolvedValue("secret-value");
+    mocks.ensureCompatSensitiveRouteAuthorized.mockReturnValue(true);
+  });
+
+  it("refuses a key outside the revealable allowlist without touching the vault", async () => {
+    expect(await reveal("PRIVATE_SIGNING_SEED")).toBe(true);
+    expect(mocks.sendJsonError).toHaveBeenCalledWith(
+      expect.anything(),
+      403,
+      "Key is not in the allowlist of revealable plugin config keys",
+    );
+    // The refusal has to come before the read, or the allowlist is advisory.
+    expect(mocks.vaultReveal).not.toHaveBeenCalled();
+    expect(mocks.ensureCompatSensitiveRouteAuthorized).not.toHaveBeenCalled();
+  });
+
+  it.each(SENSITIVE_PREFIXES)(
+    "demands the elevated check for %sprefixed keys",
+    async (prefix) => {
+      expect(await reveal(`${prefix}PRIVATE_KEY`)).toBe(true);
+      expect(mocks.ensureCompatSensitiveRouteAuthorized).toHaveBeenCalledTimes(
+        1,
+      );
+    },
+  );
+
+  it.each(SENSITIVE_PREFIXES)(
+    "returns nothing when the elevated check refuses a %sprefixed key",
+    async (prefix) => {
+      mocks.ensureCompatSensitiveRouteAuthorized.mockReturnValue(false);
+      expect(await reveal(`${prefix}PRIVATE_KEY`)).toBe(true);
+      // The consequence, not the flag: a refused elevation must stop the read.
+      expect(mocks.vaultReveal).not.toHaveBeenCalled();
+      expect(mocks.sendJson).not.toHaveBeenCalledWith(
+        expect.anything(),
+        200,
+        expect.objectContaining({ value: "secret-value" }),
+      );
+    },
+  );
+
+  it("reveals an ordinary allowlisted key without demanding elevation", async () => {
+    expect(await reveal("OPENAI_API_KEY")).toBe(true);
+    expect(mocks.ensureCompatSensitiveRouteAuthorized).not.toHaveBeenCalled();
+    expect(mocks.vaultReveal).toHaveBeenCalledWith(
+      "OPENAI_API_KEY",
+      "plugins:discord:reveal",
+    );
+    expect(mocks.sendJson).toHaveBeenCalledWith(expect.anything(), 200, {
+      ok: true,
+      value: "secret-value",
+    });
+  });
+
+  it("matches both lists case-insensitively, so lowercase cannot skip elevation", async () => {
+    // Both branches uppercase before comparing. If either stopped, the same key
+    // in lowercase would change tier — the allowlist would reject a legitimate
+    // key, or worse, a wallet key would slip past the elevated check.
+    expect(await reveal("openai_api_key")).toBe(true);
+    expect(mocks.sendJsonError).not.toHaveBeenCalledWith(
+      expect.anything(),
+      403,
+      expect.anything(),
+    );
+
+    vi.clearAllMocks();
+    mocks.vaultReveal.mockResolvedValue("secret-value");
+    mocks.ensureCompatSensitiveRouteAuthorized.mockReturnValue(true);
+    expect(await reveal("solana_private_key")).toBe(true);
+    expect(mocks.ensureCompatSensitiveRouteAuthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats the sensitive prefixes as a subset of the revealable ones", async () => {
+    // `SENSITIVE_KEY_PREFIXES` is spread into `REVEALABLE_KEY_PREFIXES`. If that
+    // spread were dropped, wallet keys would fail the allowlist instead of
+    // escalating — fail-closed, but it would silently retire the elevated path,
+    // and every assertion above would still pass on the 403.
+    for (const prefix of SENSITIVE_PREFIXES) {
+      vi.clearAllMocks();
+      mocks.vaultReveal.mockResolvedValue("secret-value");
+      mocks.ensureCompatSensitiveRouteAuthorized.mockReturnValue(true);
+      expect(await reveal(`${prefix}PRIVATE_KEY`)).toBe(true);
+      expect(mocks.sendJsonError).not.toHaveBeenCalledWith(
+        expect.anything(),
+        403,
+        expect.anything(),
+      );
+      expect(mocks.vaultReveal).toHaveBeenCalledTimes(1);
+    }
   });
 });
