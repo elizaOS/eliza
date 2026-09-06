@@ -13,6 +13,7 @@ import {
 } from "@elizaos/core";
 import { setNavigationConstraint } from "../actions/navigation-execution.js";
 import { VIEW_CATALOG_SCOPE_CONTEXT } from "../actions/view-catalog-scope.js";
+import { messageHasNoViewSurface } from "../actions/views.js";
 import { createViewsClient } from "../actions/views-client.js";
 import { userRequestMessageText } from "../params.js";
 
@@ -21,6 +22,15 @@ export type ContextualNavigationIntent =
 	| { disposition: "forbidden"; reason: string }
 	| { disposition: "requested" | "optional"; viewId: string; reason: string };
 
+const WHOLE_CODE_FENCE = /^```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+
+/** Unwrap only a complete code fence; never discard prose or competing decisions. */
+function unwrapJsonObjectText(raw: string): string {
+	const trimmed = raw.trim();
+	const fenced = trimmed.match(WHOLE_CODE_FENCE);
+	return (fenced?.[1] ?? trimmed).trim();
+}
+
 /** Reject malformed decisions; unknown IDs are rejected against the live catalog. */
 export function parseContextualNavigationIntent(
 	text: string,
@@ -28,7 +38,7 @@ export function parseContextualNavigationIntent(
 	// error-policy:J3 invalid model output remains an explicit parse failure.
 	let value: unknown;
 	try {
-		value = JSON.parse(text);
+		value = JSON.parse(unwrapJsonObjectText(text));
 	} catch (cause) {
 		throw new ElizaError("Contextual navigation decision is not JSON", {
 			code: "VIEW_INTENT_INVALID",
@@ -69,9 +79,12 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 	description:
 		"Adds authorized visual continuation to the existing domain plan before its final reply.",
 	shouldRun({ runtime, messageHandler, message }) {
+		// A turn that surfaces to a viewless text connector (Discord, Telegram,
+		// …) can never navigate, so it must not spend a model call deciding to.
 		return (
 			messageHandler.processMessage === "RESPOND" &&
 			!messageHandler.plan.deterministicToolCall &&
+			!messageHasNoViewSurface(message) &&
 			runtime.actions.some((action) => action.name === "VIEWS") &&
 			userRequestMessageText(message).trim().length > 0
 		);
