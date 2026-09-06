@@ -1,8 +1,8 @@
 /** Exercises real child-process timeout, cancellation, pipe-drain, and EPIPE boundaries. */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import { chmod, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { chmod, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SmithersRunRequest } from '../../src/services/smithers-runtime';
 import {
@@ -155,8 +155,14 @@ describe('Smithers worker lifecycle', () => {
 
   test('preserves a terminal result when durable event delivery exceeds pipe drain grace', async () => {
     const delivered: string[] = [];
-    const result = await run('event-before-result', {
+    const handshakePath = join(
+      resolveSmithersWorkflowDir(tenantId, workflowId),
+      'event-delivery-started'
+    );
+    const result = await run('event-before-acknowledged-result', {
+      input: { handshakePath },
       onEvent: async (event) => {
+        await writeFile(handshakePath, 'ready');
         await new Promise((resolve) => setTimeout(resolve, 1_100));
         delivered.push(event.type);
       },
