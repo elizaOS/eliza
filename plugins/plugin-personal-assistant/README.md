@@ -275,7 +275,9 @@ per-agent. The `entityId === "self"` row is bootstrapped on first use.
   `observeIdentity`; the merge engine in `entities/merge.ts` collapses
   entities with high-confidence identity matches. Manual merges go through
   `POST /api/lifeops/entities/merge` and are audited.
-- **REST surface** — routes live in `src/routes/`.
+- **REST surface** — the main plugin registers the authenticated handlers in
+  `src/routes/`. The standalone `personalAssistantRoutesPlugin` export remains
+  available to hosts that compose only the HTTP surface.
 
 ## Pause and handoff
 
