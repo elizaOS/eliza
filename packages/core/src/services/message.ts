@@ -6494,18 +6494,9 @@ export function messageHandlerFromFieldResult(
 		effectiveCandidateActions,
 		runtimeContext,
 	);
-	const planCandidateActions =
-		inferredDirectCandidateActions.length > 0 &&
-		candidateActions.length > 0 &&
-		!hasValidProvidedCandidate
-			? runnableCandidateActions
-			: effectiveCandidateActions;
-	// When the caller passes the runtime's `actions`, narrow the candidate set
-	// to those that are (a) registered actions OR (b) canonical control names
-	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
-	// which lets the routing logic below fall back to simple-reply when the
-	// only context is "simple". When no `runtimeContext` is provided, behaviour
-	// is unchanged (back-compat).
+	// Only runnable candidates drive planning. Preserve unresolved model hints
+	// in the plan so authorized action discovery can resolve their aliases or
+	// recover the complete surface; an inferred match cannot replace them.
 	const validCandidateCount = runnableCandidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
@@ -6725,9 +6716,9 @@ export function messageHandlerFromFieldResult(
 	if (
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply &&
-		planCandidateActions.length > 0
+		effectiveCandidateActions.length > 0
 	) {
-		plan.candidateActions = planCandidateActions;
+		plan.candidateActions = effectiveCandidateActions;
 	}
 	// The model emitted NO candidate of its own (rawCandidateActions is what
 	// Stage 1 actually named — an unregistered model candidate is still model
@@ -6743,7 +6734,7 @@ export function messageHandlerFromFieldResult(
 	if (
 		shouldPlan &&
 		!modelRequiresTool &&
-		planCandidateActions.length > 0 &&
+		effectiveCandidateActions.length > 0 &&
 		rawCandidateActions.length === 0 &&
 		directCurrentInference.kind !== "coding"
 	) {

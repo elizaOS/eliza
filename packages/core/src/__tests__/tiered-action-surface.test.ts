@@ -765,6 +765,99 @@ describe("v5 tiered action surface", () => {
 		}
 	});
 
+	it.each([
+		{
+			name: "compound navigation and data hints",
+			candidateActionNames: ["CALENDAR_OPEN", "CALENDAR_LIST_EVENTS_BY_DATE"],
+			completeSurface: false,
+		},
+		{
+			name: "an unresolved unary hint",
+			candidateActionNames: ["MISSING_CAPABILITY"],
+			completeSurface: true,
+		},
+		{
+			name: "unresolved and denied hints",
+			candidateActionNames: [
+				"MISSING_CAPABILITY",
+				"PRIVATE_CALENDAR_REPAIR",
+				"CALENDAR_ADMIN_ONLY",
+			],
+			completeSurface: true,
+		},
+	])(
+		"preserves $name for authorized app action discovery",
+		async ({ candidateActionNames, completeSurface }) => {
+			const privateHandler = vi.fn(async () => ({ success: true }));
+			const adminHandler = vi.fn(async () => ({ success: true }));
+			const runtime = makeRuntime({
+				actions: [
+					makeAction({ name: "CALENDAR", contexts: ["calendar"] }),
+					makeAction({ name: "VIEWS", contexts: ["calendar", "general"] }),
+					makeAction({ name: "UNRELATED", contexts: ["calendar"] }),
+					{
+						...makeAction({
+							name: "PRIVATE_CALENDAR_REPAIR",
+							contexts: ["calendar"],
+							description: "Private calendar repair implementation.",
+							handler: privateHandler,
+						}),
+						private: true,
+					},
+					makeAction({
+						name: "CALENDAR_ADMIN_ONLY",
+						contexts: ["calendar"],
+						roleGate: { minRole: "OWNER" },
+						description: "Restricted calendar administration implementation.",
+						handler: adminHandler,
+					}),
+				],
+				responses: [
+					stage1Response({
+						contexts: ["calendar"],
+						intents: [
+							"open calendar",
+							"list calendar events for September 7 2026",
+						],
+						candidateActionNames,
+						replyEffectStatus: "pending",
+						replyText:
+							"Opening Calendar and checking what's on for September 7, 2026. I'll leave all events unchanged.",
+					}),
+					plannerToolResponse("CALENDAR"),
+					finishEvaluatorResponse("The calendar lookup returned."),
+				],
+			});
+
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(
+					"Open Calendar and show me what I have on September 7, 2026. Do not change any events.",
+					"test",
+					{ uiView: "notes", uiViewPath: "/notes" },
+				),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+
+			const tools = plannerToolNames(runtime);
+			expect(tools).toContain("CALENDAR");
+			expect(tools).toContain("VIEWS");
+			expect(tools.includes("UNRELATED")).toBe(completeSurface);
+			expect(tools).not.toContain("MISSING_CAPABILITY");
+			expect(tools).not.toContain("PRIVATE_CALENDAR_REPAIR");
+			expect(tools).not.toContain("CALENDAR_ADMIN_ONLY");
+			expect(availableActionsSection(runtime)).not.toContain(
+				"Private calendar repair implementation.",
+			);
+			expect(availableActionsSection(runtime)).not.toContain(
+				"Restricted calendar administration implementation.",
+			);
+			expect(privateHandler).not.toHaveBeenCalled();
+			expect(adminHandler).not.toHaveBeenCalled();
+		},
+	);
+
 	it("keeps an app planner turn on the model-selected focused-view action", async () => {
 		const notes = makeAction({
 			name: "NOTES",
