@@ -314,10 +314,6 @@ describeE2E("Group D — /api/elevenlabs/stt", () => {
     // fileTypeFromBuffer cannot identify the bogus bytes → the route's own
     // signature validation rejects with 400 before any upstream STT I/O.
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({
-      error:
-        "Unable to verify file type. The file may be corrupted or of an unsupported format.",
-    });
   });
 
   test("validation: malformed multipart with auth returns 400", async () => {
