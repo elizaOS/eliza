@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { DockerSandboxProvider } from "./docker-sandbox-provider";
 import { DockerSSHClient } from "./docker-ssh";
 
@@ -15,7 +16,7 @@ const AGENT = "11111111-1111-4111-8111-111111111111";
 
 afterEach(() => mock.restore());
 
-test.each(["capture", "delete"] as const)(
+test.each(["capture", "delete", "replacement"] as const)(
   "retained %s uses the captured SSH host despite ambient Docker redirection",
   async (operation) => {
     const root = mkdtempSync(join(tmpdir(), "eliza-retained-daemon-"));
@@ -85,6 +86,7 @@ esac
     );
     const sshBoundary = Object.create(DockerSSHClient.prototype) as DockerSSHClient;
     spyOn(DockerSSHClient, "createDedicated").mockReturnValue(sshBoundary);
+    spyOn(DockerSSHClient, "getClient").mockReturnValue(sshBoundary);
     spyOn(sshBoundary, "disconnect").mockResolvedValue(undefined);
     const provider = new DockerSandboxProvider();
     const locator = {
@@ -101,6 +103,25 @@ esac
     try {
       if (operation === "capture") {
         expect(await provider.captureRetainedContainer(locator)).toBe(ID);
+      } else if (operation === "replacement") {
+        spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue({
+          id: AGENT,
+          node_id: locator.nodeId,
+          hostname: locator.hostname,
+          ssh_port: locator.sshPort,
+          ssh_user: locator.sshUser,
+          host_key_fingerprint: locator.hostKeyFingerprint,
+          capacity: 8,
+          enabled: true,
+          status: "healthy",
+          allocated_count: 1,
+          last_health_check: null,
+          metadata: {},
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+        await provider.stopOnSpecificNodeForReplacement(locator.nodeId, locator.containerName);
+        expect(existsSync(removed)).toBe(true);
       } else {
         expect(await provider.stopForDeletion(locator.sandboxId, locator)).toEqual({
           kind: "not-running-proven",

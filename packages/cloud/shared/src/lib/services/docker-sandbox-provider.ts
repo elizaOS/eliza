@@ -4612,7 +4612,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const remoteCommand = (command: string): string =>
       exactExecution?.expectedNodeIncarnation
         ? buildExactRestoreDockerBootFencedCommand(exactExecution.expectedNodeIncarnation, command)
-        : command;
+        : buildLocalDockerDaemonCommand(command);
     let stopErr: unknown;
     let rmErr: unknown;
     try {
@@ -4701,7 +4701,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     };
     const exactCleanupDockerCommand = (command: string): string => {
       if (locator.restoreAttemptId === undefined || locator.restoreAttemptId === null) {
-        return command;
+        return buildLocalDockerDaemonCommand(command);
       }
       if (!isCanonicalNodeAuthorityUuid(locator.nodeIncarnation)) {
         throw new ElizaError("Exact restore cleanup lacks a canonical node boot fence", {
@@ -5031,7 +5031,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const remoteCommand = (command: string): string =>
       locator.restoreAttemptId !== undefined && locator.restoreAttemptId !== null
         ? buildExactRestoreDockerBootFencedCommand(locator.nodeIncarnation!, command)
-        : command;
+        : buildLocalDockerDaemonCommand(command);
     const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.Name}}|{{.Created}}`;
     // When Docker returned the create id before a later phase failed, inspect
     // that immutable object directly. A same-name replacement can never make

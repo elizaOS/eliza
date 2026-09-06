@@ -27,6 +27,8 @@ import { DockerSandboxProvider } from "../docker-sandbox-provider";
 import { DockerSSHClient } from "../docker-ssh";
 import { headscaleIntegration } from "../headscale-integration";
 
+import { unwrapIsolatedDockerCommandForFixture } from "./docker-cli-transport-fixture";
+
 const SANDBOX_ID = "agent-capacity-ownership-test";
 const NODE_ID = "node-1";
 
@@ -77,7 +79,9 @@ beforeEach(() => {
         username,
         privateKey: Buffer.from("test-only-ssh-key"),
       });
-      spyOn(client, "exec").mockImplementation((command) => execBehavior(command));
+      spyOn(client, "exec").mockImplementation((command) =>
+        execBehavior(unwrapIsolatedDockerCommandForFixture(command)),
+      );
       spyOn(client, "disconnect").mockResolvedValue(undefined);
       return client;
     },
@@ -102,7 +106,7 @@ describe("provider stop never mutates node capacity", () => {
     const commands: string[] = [];
     execBehavior = async (command) => {
       commands.push(command);
-      if (command.startsWith("sh -lc "))
+      if (command.startsWith("sh -c "))
         return removed ? "absent" : `present|${containerId}|${agentId}`;
       if (command.startsWith("docker container inspect")) {
         return command.includes(".State.Status")
@@ -146,7 +150,7 @@ describe("provider stop never mutates node capacity", () => {
       await expect(provider.stopForDeletion(SANDBOX_ID, locator)).resolves.toEqual({
         kind: "not-running-proven",
       });
-      expect(commands.slice(before).every((command) => command.startsWith("sh -lc "))).toBe(true);
+      expect(commands.slice(before).every((command) => command.startsWith("sh -c "))).toBe(true);
       expect(decrementSpy).not.toHaveBeenCalled();
     } finally {
       nodeRead.mockRestore();
