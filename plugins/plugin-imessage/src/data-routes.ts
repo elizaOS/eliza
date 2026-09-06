@@ -66,7 +66,7 @@ interface IMessageServiceLike {
     to: string,
     text: string,
     options?: {
-      mediaUrl?: string;
+      mediaUrls?: string[];
       maxBytes?: number;
     }
   ): Promise<{
@@ -250,28 +250,65 @@ async function handleSendMessage(
       to?: string;
       chatId?: string;
       text?: string;
+      /** Legacy singular form; still accepted, equivalent to one-entry mediaUrls. */
       mediaUrl?: string;
+      mediaUrls?: string[];
       maxBytes?: number;
     }) ?? {};
 
   const to = body.to?.trim() || "";
   const chatId = body.chatId?.trim() || "";
   const text = body.text?.trim() || "";
-  const mediaUrl = body.mediaUrl?.trim() || undefined;
+
+  // Validate the untrusted body once at the boundary (#23104 review blocker
+  // 2): a requested part that is non-string or blank makes the whole request
+  // invalid BEFORE any external send — mixed input must never be silently
+  // normalized down to its valid subset.
+  if (body.mediaUrl !== undefined && typeof body.mediaUrl !== "string") {
+    res
+      .status(400)
+      .json(buildSetupError("bad_request", "mediaUrl must be a non-empty string when provided"));
+    return;
+  }
+  if (body.mediaUrls !== undefined && !Array.isArray(body.mediaUrls)) {
+    res
+      .status(400)
+      .json(buildSetupError("bad_request", "mediaUrls must be an array of non-empty strings"));
+    return;
+  }
+  const hasBlankMediaUrl = body.mediaUrl !== undefined && body.mediaUrl.trim() === "";
+  const invalidMediaUrlEntry = Array.isArray(body.mediaUrls)
+    ? body.mediaUrls.find((url) => typeof url !== "string" || url.trim() === "")
+    : undefined;
+  if (hasBlankMediaUrl || invalidMediaUrlEntry !== undefined) {
+    res
+      .status(400)
+      .json(
+        buildSetupError(
+          "bad_request",
+          "mediaUrl/mediaUrls entries must be non-empty strings; blank or non-string requested parts are rejected instead of dropped"
+        )
+      );
+    return;
+  }
+  const mediaUrls = [
+    ...(body.mediaUrl ? [body.mediaUrl.trim()] : []),
+    ...(body.mediaUrls ?? []).map((url) => url.trim()),
+  ];
 
   if (!to && !chatId) {
     res.status(400).json(buildSetupError("bad_request", "either to or chatId is required"));
     return;
   }
 
-  if (!text && !mediaUrl) {
+  if (!text && mediaUrls.length === 0) {
     res.status(400).json(buildSetupError("bad_request", "either text or mediaUrl is required"));
     return;
   }
 
   try {
     const result = await service.sendMessage(chatId ? `chat_id:${chatId}` : to, text, {
-      ...(mediaUrl ? { mediaUrl } : {}),
+      ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
       ...(typeof body.maxBytes === "number" ? { maxBytes: body.maxBytes } : {}),
     });
     if (!result.success) {

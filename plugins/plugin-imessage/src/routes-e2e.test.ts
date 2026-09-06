@@ -55,7 +55,7 @@ interface SendResult {
 }
 
 interface ImessageServiceCalls {
-  sent: Array<{ to: string; text: string; mediaUrl?: string; maxBytes?: number }>;
+  sent: Array<{ to: string; text: string; mediaUrls?: string[]; maxBytes?: number }>;
   addContact: Array<Record<string, unknown>>;
   updateContact: Array<{ id: string; patch: Record<string, unknown> }>;
   deleteContact: string[];
@@ -115,12 +115,12 @@ function makeImessageService(overrides: ImessageServiceOverrides, calls: Imessag
     sendMessage: async (
       to: string,
       text: string,
-      options?: { mediaUrl?: string; maxBytes?: number }
+      options?: { mediaUrls?: string[]; maxBytes?: number }
     ): Promise<SendResult> => {
       calls.sent.push({
         to,
         text,
-        mediaUrl: options?.mediaUrl,
+        mediaUrls: options?.mediaUrls,
         maxBytes: options?.maxBytes,
       });
       return overrides.sendResult ?? { success: true, messageId: "m-1", chatId: "c-1" };
@@ -375,6 +375,131 @@ describe("plugin-imessage data routes (real dispatch)", () => {
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("bad_request");
     expect(body.error.message).toContain("to or chatId");
+  });
+
+  it("POST /api/imessage/messages rejects a blank entry in mediaUrls with 400", async () => {
+    const calls: ImessageServiceCalls = {
+      sent: [],
+      addContact: [],
+      updateContact: [],
+      deleteContact: [],
+    };
+    const base = await startServer(makeRuntime({ imessage: { connected: true }, calls }));
+    const res = await sendJson(base, "POST", "/api/imessage/messages", {
+      to: "+155****1111",
+      text: "mixed",
+      mediaUrls: ["/media/a.png", "  "],
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("bad_request");
+    expect(body.error.message).toContain("mediaUrls");
+    // Nothing was sent: the invalid part was rejected before the first send.
+    expect(calls.sent).toHaveLength(0);
+  });
+
+  it("POST /api/imessage/messages rejects a non-string entry in mediaUrls with 400", async () => {
+    const calls: ImessageServiceCalls = {
+      sent: [],
+      addContact: [],
+      updateContact: [],
+      deleteContact: [],
+    };
+    const base = await startServer(makeRuntime({ imessage: { connected: true }, calls }));
+    const res = await sendJson(base, "POST", "/api/imessage/messages", {
+      to: "+155****1111",
+      text: "mixed",
+      mediaUrls: ["/media/a.png", 42],
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "mediaUrls"
+    );
+    expect(calls.sent).toHaveLength(0);
+  });
+
+  it("POST /api/imessage/messages rejects a non-array mediaUrls with 400", async () => {
+    const calls: ImessageServiceCalls = {
+      sent: [],
+      addContact: [],
+      updateContact: [],
+      deleteContact: [],
+    };
+    const base = await startServer(makeRuntime({ imessage: { connected: true }, calls }));
+    const res = await sendJson(base, "POST", "/api/imessage/messages", {
+      to: "+155****1111",
+      text: "wrong type",
+      mediaUrls: "/media/a.png",
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "mediaUrls"
+    );
+    expect(calls.sent).toHaveLength(0);
+  });
+
+  it("POST /api/imessage/messages sends legacy mediaUrl plus valid mediaUrls with legacy first", async () => {
+    const calls: ImessageServiceCalls = {
+      sent: [],
+      addContact: [],
+      updateContact: [],
+      deleteContact: [],
+    };
+    const base = await startServer(makeRuntime({ imessage: { connected: true }, calls }));
+    const res = await sendJson(base, "POST", "/api/imessage/messages", {
+      to: "+155****1111",
+      text: "both forms",
+      mediaUrl: "/media/legacy.png",
+      mediaUrls: ["/media/a.png", "/media/b.png"],
+    });
+    expect(res.status).toBe(200);
+    expect(calls.sent).toHaveLength(1);
+    // Legacy singular first, then valid plural entries in request order.
+    expect(calls.sent[0]?.mediaUrls).toEqual(["/media/legacy.png", "/media/a.png", "/media/b.png"]);
+  });
+
+  it("POST /api/imessage/messages rejects a blank legacy mediaUrl with 400", async () => {
+    const calls: ImessageServiceCalls = {
+      sent: [],
+      addContact: [],
+      updateContact: [],
+      deleteContact: [],
+    };
+    const base = await startServer(makeRuntime({ imessage: { connected: true }, calls }));
+    const res = await sendJson(base, "POST", "/api/imessage/messages", {
+      to: "+155****1111",
+      text: "blank legacy",
+      mediaUrl: "   ",
+    });
+    // A whitespace-only requested part must be rejected as a mixed request,
+    // not silently normalized out of existence; but the send is not content-
+    // empty because text is present — expectation: rejected for the blank
+    // requested part itself.
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "mediaUrl"
+    );
+    expect(calls.sent).toHaveLength(0);
+  });
+
+  it("POST /api/imessage/messages rejects a non-string legacy mediaUrl with 400", async () => {
+    const calls: ImessageServiceCalls = {
+      sent: [],
+      addContact: [],
+      updateContact: [],
+      deleteContact: [],
+    };
+    const base = await startServer(makeRuntime({ imessage: { connected: true }, calls }));
+    const res = await sendJson(base, "POST", "/api/imessage/messages", {
+      to: "+155****1111",
+      text: "typed legacy",
+      mediaUrl: { url: "/media/a.png" },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "mediaUrl"
+    );
+    expect(calls.sent).toHaveLength(0);
   });
 
   it("POST /api/imessage/messages rejects a body missing both text and mediaUrl with 400", async () => {

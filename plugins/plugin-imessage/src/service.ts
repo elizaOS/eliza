@@ -3,7 +3,7 @@
  */
 
 import { execFile } from "node:child_process";
-import crypto from "node:crypto";
+import crypto, { randomUUID } from "node:crypto";
 import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import { extname, isAbsolute, join } from "node:path";
@@ -35,6 +35,7 @@ import {
   type MessageConnectorUserContext,
   readResponseWithLimit,
   resolveAttachmentBytes,
+  type SendHandlerOutcome,
   Service,
   ServiceType,
   type TargetInfo,
@@ -230,6 +231,25 @@ type ResolvedOutboundMedia = {
   cleanup: () => Promise<void>;
 };
 
+/**
+ * Best-effort teardown of every staged outbound attachment directory. A
+ * cleanup rejection must never convert a delivered (or J1-failed) send into a
+ * thrown failure: Messages.app already consumed the bytes, so the loss is the
+ * temp dir lifetime only, and it is warned and swallowed.
+ */
+async function cleanupResolvedMedia(mediaList: readonly ResolvedOutboundMedia[]): Promise<void> {
+  const results = await Promise.allSettled(mediaList.map((resolved) => resolved.cleanup()));
+  for (const [index, outcome] of results.entries()) {
+    if (outcome.status === "rejected") {
+      // error-policy:J6 teardown-only failure is diagnostic, never a failed
+      // delivery; the OS reclaims tmpdir contents on reboot at worst.
+      logger.warn(
+        `[imessage] Failed to remove outbound attachment staging directory for ${mediaList[index]?.path}: ${outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)}`
+      );
+    }
+  }
+}
+
 function normalizeOutboundMediaMaxBytes(raw: number | undefined): number {
   if (raw === undefined) return DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES;
   if (!Number.isSafeInteger(raw) || raw <= 0) {
@@ -368,11 +388,12 @@ function normalizeIMessageConnectorHandle(value: string): string {
   return normalizeContactHandle(normalizedTarget) || normalizedTarget;
 }
 
-function firstAttachmentUrl(content: Content): string | undefined {
-  const attachment = content.attachments?.find(
-    (item) => typeof item.url === "string" && item.url.trim().length > 0
-  );
-  return attachment?.url?.trim();
+function attachmentUrls(content: Content): string[] {
+  return (content.attachments ?? [])
+    .map((item) =>
+      typeof item.url === "string" && item.url.trim().length > 0 ? item.url.trim() : undefined
+    )
+    .filter((url): url is string => url !== undefined);
 }
 
 function statusMetadata(status: IMessageServiceStatus): Record<string, string | boolean | null> {
@@ -789,27 +810,84 @@ export class IMessageService extends Service implements IIMessageService {
           : "local-macos-messages-single-account",
         status: statusMetadata(status),
       },
-      sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
+      sendHandler: async (
+        _runtime: IAgentRuntime,
+        target: TargetInfo,
+        content: Content
+      ): Promise<SendHandlerOutcome> => {
         const accountId = assertLocalIMessageAccount(readTargetAccountId(target));
         const text = renderIMessageInteractionText(content, resolveInteractionAppBaseUrl(runtime));
-        const mediaUrl = firstAttachmentUrl(content);
-        if (!text.trim() && !mediaUrl) {
-          return;
+        const mediaUrls = attachmentUrls(content);
+        if (!text.trim() && mediaUrls.length === 0) {
+          return {
+            kind: "not_delivered",
+            code: "IMESSAGE_EMPTY_MESSAGE",
+            message:
+              "iMessage send handler requires non-empty text or at least one attachment URL.",
+          };
         }
 
         const resolvedTarget = await resolveIMessageSendTarget(runtime, target);
         if (!resolvedTarget) {
-          throw new Error("iMessage target is missing a phone, email, or chat id");
+          return {
+            kind: "not_delivered",
+            code: "IMESSAGE_TARGET_UNRESOLVED",
+            message: "iMessage target is missing a phone, email, or chat id",
+          };
         }
 
         const result = await service.sendMessage(
           resolvedTarget,
           text,
-          mediaUrl ? { mediaUrl, accountId } : { accountId }
+          mediaUrls.length > 0 ? { mediaUrls, accountId } : { accountId }
         );
         if (!result.success) {
-          throw new Error(result.error ?? "iMessage send failed");
+          const deliveredParts = result.delivered;
+          if (deliveredParts && deliveredParts.effectStamps.length > 0) {
+            // Parts already reached Messages.app before the failure; report
+            // the partial delivery with its local-effect stamps so callers do
+            // not blind-retry and duplicate externally delivered parts.
+            return {
+              kind: "partially_delivered",
+              receipt: {
+                providerMessageIds: deliveredParts.effectStamps as [string, ...string[]],
+                acceptedAt: Date.now(),
+                persistence: {
+                  status: "not_attempted",
+                  reason:
+                    "iMessage AppleScript sends return no provider message ids; effect stamps are local completion markers.",
+                },
+                evidenceKind: "local-effect",
+              },
+              memories: [],
+              code: "IMESSAGE_PARTIAL_DELIVERY",
+              message: `iMessage delivered ${deliveredParts.textChunks} text chunk(s) and ${deliveredParts.attachments} attachment(s) before failing: ${result.error ?? "iMessage send failed"}. Do not retry blindly; delivered parts would be duplicated.`,
+            };
+          }
+          return {
+            kind: "not_delivered",
+            code: "IMESSAGE_SEND_FAILED",
+            message: result.error ?? "iMessage send failed",
+          };
         }
+        return {
+          kind: "delivered",
+          receipt: {
+            // AppleScript provides no provider message id and the service's
+            // synthetic messageId is a repeatable Date.now() echo; the
+            // receipt always carries a freshly generated unique local-effect
+            // stamp instead, honoring the per-send uniqueness contract.
+            providerMessageIds: [`imessage-effect:${randomUUID()}:send`] as [string, ...string[]],
+            acceptedAt: Date.now(),
+            persistence: {
+              status: "not_attempted",
+              reason:
+                "iMessage send handler reports effect completion only; outbound memory persistence is owned by the caller.",
+            },
+            evidenceKind: "local-effect",
+          },
+          memories: [],
+        };
       },
       resolveTargets: async (query: string) => {
         const candidates: MessageConnectorTarget[] = [];
@@ -1119,7 +1197,7 @@ export class IMessageService extends Service implements IIMessageService {
       return { success: false, error: "Service not initialized" };
     }
 
-    if (this.settings.transport === "blooio" && options?.mediaUrl) {
+    if (this.settings.transport === "blooio" && options?.mediaUrls?.length) {
       return {
         success: false,
         error:
@@ -1130,17 +1208,22 @@ export class IMessageService extends Service implements IIMessageService {
     // Format phone number if needed
     const target = isPhoneNumber(to) ? formatPhoneNumber(to) : to;
 
-    let media: ResolvedOutboundMedia | null = null;
-    if (options?.mediaUrl) {
+    const mediaList: ResolvedOutboundMedia[] = [];
+    if (options?.mediaUrls?.length) {
       try {
-        // Resolve and bound every byte before the first external send. Invalid,
-        // inaccessible, oversized, or SSRF-blocked media must fail fast instead
-        // of delivering the caption and only then discovering the attachment is
+        // Resolve and bound every byte for EVERY requested attachment before
+        // the first external send. Invalid, inaccessible, oversized, or
+        // SSRF-blocked media must fail fast instead of delivering the caption
+        // (or earlier attachments) and only then discovering a later part is
         // unusable.
-        media = await this.resolveOutboundMedia(options.mediaUrl, options.maxBytes);
+        for (const url of options.mediaUrls) {
+          mediaList.push(await this.resolveOutboundMedia(url, options.maxBytes));
+        }
       } catch (error) {
         // error-policy:J1 Outbound connector boundary translates attachment
-        // resolution failures into an explicit failed delivery.
+        // resolution failures into an explicit failed delivery. Nothing has
+        // been sent yet, so failing the whole send is truthful and safe.
+        await cleanupResolvedMedia(mediaList);
         return {
           success: false,
           error: `iMessage attachment resolution error: ${error instanceof Error ? error.message : String(error)}`,
@@ -1150,23 +1233,54 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Split message if too long
     const chunks = splitMessageForIMessage(text);
+    let deliveredTextChunks = 0;
+    let deliveredAttachments = 0;
+    const effectStamps: string[] = [];
+    // Local completion markers for parts that reached Messages.app. Stamps
+    // are prefixed with a per-send unique id so they cannot repeat across
+    // sends (#23104 review blocker 3); AppleScript returns no provider ids.
+    const sendStampId = randomUUID();
+    let partIndex = 0;
+    const nextEffectStamp = (kind: "text" | "attachment"): string => {
+      partIndex += 1;
+      return `imessage-effect:${sendStampId}:${kind}:${partIndex}`;
+    };
     try {
       for (const chunk of chunks) {
         const result = await this.sendSingleMessage(target, chunk);
         if (!result.success) {
-          return result;
+          return {
+            ...result,
+            delivered: {
+              textChunks: deliveredTextChunks,
+              attachments: deliveredAttachments,
+              effectStamps: [...effectStamps],
+            },
+          };
         }
+        deliveredTextChunks += 1;
+        effectStamps.push(nextEffectStamp("text"));
       }
 
-      // An attachment is one external effect, independent of text chunking.
-      if (media) {
+      // Each attachment is one external effect, independent of text chunking
+      // and of the other attachments; every requested part is attempted.
+      for (const media of mediaList) {
         const mediaResult = await this.sendResolvedAttachment(target, media.path);
         if (!mediaResult.success) {
-          return mediaResult;
+          return {
+            ...mediaResult,
+            delivered: {
+              textChunks: deliveredTextChunks,
+              attachments: deliveredAttachments,
+              effectStamps: [...effectStamps],
+            },
+          };
         }
+        deliveredAttachments += 1;
+        effectStamps.push(nextEffectStamp("attachment"));
       }
     } finally {
-      await media?.cleanup();
+      await cleanupResolvedMedia(mediaList);
     }
 
     // Emit sent events — both the plugin-namespaced form (for iMessage-
@@ -1181,7 +1295,7 @@ export class IMessageService extends Service implements IIMessageService {
         accountId,
         to: target,
         text,
-        hasMedia: Boolean(options?.mediaUrl),
+        hasMedia: (options?.mediaUrls?.length ?? 0) > 0,
       } as EventPayload);
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,

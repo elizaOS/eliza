@@ -44,7 +44,7 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
 }
 
 describe("iMessage connector — outbound media dispatch", () => {
-  it("passes the first attachment URL through to sendMessage as mediaUrl", async () => {
+  it("passes every attachment URL through to sendMessage as mediaUrls (#23104)", async () => {
     const registrations: MessageConnectorRegistration[] = [];
     const runtime = makeRuntime(registrations);
     const service = {
@@ -68,7 +68,7 @@ describe("iMessage connector — outbound media dispatch", () => {
     );
 
     expect(service.sendMessage).toHaveBeenCalledWith("+14155552671", "here is the file", {
-      mediaUrl: "/media/generated-speech.mp3",
+      mediaUrls: ["/media/generated-speech.mp3"],
       accountId: "default",
     });
   });
@@ -97,7 +97,7 @@ describe("iMessage connector — outbound media dispatch", () => {
     );
 
     expect(service.sendMessage).toHaveBeenCalledWith("+14155552671", "", {
-      mediaUrl: "/media/pic.png",
+      mediaUrls: ["/media/pic.png"],
       accountId: "default",
     });
   });
@@ -161,7 +161,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     await writeFile(fixturePath, "media");
     try {
       const result = await svc.sendMessage("+14155552671", "caption", {
-        mediaUrl: fixturePath,
+        mediaUrls: [fixturePath],
       });
 
       expect(result.success).toBe(true);
@@ -197,7 +197,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     await writeFile(fixturePath, "media");
     try {
       await svc.sendMessage("+14155552671", "", {
-        mediaUrl: pathToFileURL(fixturePath).href,
+        mediaUrls: [pathToFileURL(fixturePath).href],
       });
 
       // Media-only send → exactly one (attachment) script, no text script.
@@ -246,7 +246,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     );
 
     const result = await svc.sendMessage("+14155552671", "", {
-      mediaUrl: `/api/media/${hash}.png`,
+      mediaUrls: [`/api/media/${hash}.png`],
     });
 
     expect(result.success).toBe(true);
@@ -262,7 +262,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     await writeFile(fixturePath, "media");
     try {
       const result = await svc.sendMessage("+14155552671", "x".repeat(8_050), {
-        mediaUrl: fixturePath,
+        mediaUrls: [fixturePath],
       });
 
       expect(result.success).toBe(true);
@@ -280,7 +280,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     await writeFile(fixturePath, "oversized");
     try {
       const result = await svc.sendMessage("+14155552671", "caption must not leak", {
-        mediaUrl: fixturePath,
+        mediaUrls: [fixturePath],
         maxBytes: 4,
       });
 
@@ -296,7 +296,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     const { svc, scripts } = makeService();
 
     const result = await svc.sendMessage("+14155552671", "", {
-      mediaUrl: "http://169.254.169.254/latest/meta-data",
+      mediaUrls: ["http://169.254.169.254/latest/meta-data"],
     });
 
     expect(result.success).toBe(false);
@@ -304,7 +304,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     expect(scripts).toHaveLength(0);
   });
 
-  it("marks the outbound event as hasMedia when a mediaUrl is present", async () => {
+  it("marks the outbound event as hasMedia when a mediaUrls list is present", async () => {
     const runtime = {
       agentId: "agent-1" as UUID,
       emitEvent: vi.fn(),
@@ -324,7 +324,7 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     const fixturePath = join(fixtureDir, "a.png");
     await writeFile(fixturePath, "media");
     try {
-      await svc.sendMessage("+14155552671", "x", { mediaUrl: fixturePath });
+      await svc.sendMessage("+14155552671", "x", { mediaUrls: [fixturePath] });
     } finally {
       await rm(fixtureDir, { recursive: true, force: true });
     }
