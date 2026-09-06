@@ -1822,6 +1822,11 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(isUnsafeUserVisibleText('{"type":"object"}')).toBe(true);
 		expect(
 			isUnsafeUserVisibleText(
+				'{"error":"API key not found. Please set the QURATOR_API_KEY environment variable."}',
+			),
+		).toBe(true);
+		expect(
+			isUnsafeUserVisibleText(
 				'{"messages":[{"role":"assistant","content":"Got it, forgotten."}]}',
 			),
 		).toBe(true);
