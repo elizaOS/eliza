@@ -17,6 +17,15 @@ if (mode === 'ignore-termination') {
     stdio: ['ignore', 'inherit', 'inherit'],
   }).unref();
   setTimeout(() => process.exit(0), Number(payload.input.exitDelayMs ?? 0));
+} else if (mode === 'exit-with-inherited-oversized-line') {
+  spawn(
+    process.execPath,
+    [
+      '--eval',
+      `setTimeout(() => process.stdout.write('x'.repeat(${Number(payload.input.outputBytes)})), 100)`,
+    ],
+    { stdio: ['ignore', 'inherit', 'inherit'] }
+  ).unref();
 } else if (mode === 'exit-with-pending-agent-request') {
   emit({
     kind: 'agent-request',
