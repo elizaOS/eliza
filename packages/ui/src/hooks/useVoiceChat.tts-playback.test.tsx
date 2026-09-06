@@ -568,7 +568,7 @@ describe("useVoiceChat TTS playback across providers", () => {
     const tapSource = PlaybackFramePump.prototype.tapSource;
     const tapSpy = vi
       .spyOn(PlaybackFramePump.prototype, "tapSource")
-      .mockImplementation(async function (...args) {
+      .mockImplementation(async function (this: PlaybackFramePump, ...args) {
         const tap = await tapSource.apply(this, args);
         if (first) {
           first = false;

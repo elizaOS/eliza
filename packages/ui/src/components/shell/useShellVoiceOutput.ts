@@ -7,6 +7,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
+import type { VoiceTtsError } from "../../voice/voice-chat-types";
 
 /** `useVoiceChat` requires a transcript sink; the overlay owns input elsewhere. */
 const NOOP_TRANSCRIPT = (): void => {};
@@ -34,6 +35,8 @@ function findLatestAssistantText(messages: readonly ConversationMessage[]): {
 export interface ShellVoiceOutput {
   /** True while an assistant reply is being spoken aloud. */
   speaking: boolean;
+  /** The current configured-provider or committed-speech failure, retained until another attempt. */
+  ttsError: VoiceTtsError | null;
   /**
    * Speak an arbitrary message aloud on demand — backs the per-message
    * "Play audio" control (#10713). Distinct from the automatic voice-reply
@@ -118,6 +121,7 @@ export function useShellVoiceOutput(
     speak,
     stopSpeaking,
     isSpeaking,
+    ttsError,
     needsAudioUnlock,
     unlockAudio,
   } = useVoiceChat({
@@ -228,6 +232,7 @@ export function useShellVoiceOutput(
 
   return {
     speaking: isSpeaking,
+    ttsError: ttsError ?? null,
     speak,
     stopSpeaking,
     agentVoiceMuted,
