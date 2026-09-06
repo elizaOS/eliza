@@ -20,7 +20,15 @@
  * handler so the real split + pool-drain + fallback orchestration executes.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  setSystemTime,
+  test,
+} from "bun:test";
 import type {
   ContainerBillingRepository,
   RecordSuccessfulBillingInput,
@@ -174,9 +182,22 @@ mock.module("@/lib/constants/pricing", () => ({
   CONTAINER_PRICING: {
     DAILY_RUNNING_COST: 0.67,
     SHUTDOWN_WARNING_HOURS: 48,
-    LOW_CREDITS_WARNING_THRESHOLD: 2,
   },
-  calculateDailyContainerCost: () => 0.67,
+  // Config-aware stand-in mirroring the real scaling contract: extra instances
+  // add the base rate; CPU >1024 units and memory >2048 MB scale the total.
+  calculateDailyContainerCost: (config?: {
+    desiredCount?: number;
+    cpu?: number;
+    memory?: number;
+  }) => {
+    const base = 0.67;
+    const count = config?.desiredCount || 1;
+    let total = base + (count - 1) * base;
+    if (config?.cpu && config.cpu > 1024) total *= config.cpu / 1024;
+    if (config?.memory && config.memory > 2048)
+      total *= Math.sqrt(config.memory / 2048);
+    return Math.round(total * 100) / 100;
+  },
   CONTAINER_LIMITS: {},
 }));
 
@@ -258,6 +279,11 @@ async function runCron(): Promise<Response> {
 }
 
 describe("container-billing cron", () => {
+  afterEach(() => {
+    // Restore the real clock so a frozen instant cannot leak into later tests.
+    setSystemTime();
+  });
+
   beforeEach(() => {
     listBillableContainers.mockReset();
     listBillingOrganizations.mockReset();
@@ -398,6 +424,47 @@ describe("container-billing cron", () => {
         },
       },
     });
+  });
+
+  test("shutdown-warning email derives display figures from the scaled daily rate, not the prorated period amount (#22957)", async () => {
+    // 2 instances x 2 vCPU => scaled dailyRate 2.68; a half-elapsed period
+    // makes the prorated dailyCost 1.34. The email's advertised "$X/day" and
+    // "$Y/mo" must show the full scaled rate (2.68 / 80.40), while
+    // requiredCredits states the prorated shortfall (1.34).
+    // The clock is frozen so the fixture's `last_billed_at` and production's
+    // fresh `new Date()` sample the same instant; against a live wall clock,
+    // ordinary CI contention between fixture construction and runCron() alone
+    // can push the prorated value past the 4-decimal tolerance (review
+    // feedback on #26383).
+    const FIXED_NOW = new Date("2026-01-15T12:00:00.000Z");
+    setSystemTime(FIXED_NOW);
+    const HALF_DAY = 12 * 60 * 60 * 1000;
+    listBillableContainers.mockImplementation(async () => [
+      makeContainer({
+        id: "c-scaled",
+        name: "scaled",
+        desired_count: 2,
+        cpu: 2048,
+        last_billed_at: new Date(FIXED_NOW.getTime() - HALF_DAY),
+      }),
+    ]);
+    listBillingOrganizations.mockImplementation(async () => [
+      makeOrg({ credit_balance: "0" }),
+    ]);
+
+    const response = await runCron();
+    expect(response.status).toBe(200);
+    expect(sendContainerShutdownWarningEmail).toHaveBeenCalledTimes(1);
+    const emailArg = sendContainerShutdownWarningEmail.mock.calls[0][0] as {
+      dailyCost: number;
+      monthlyCost: number;
+      requiredCredits: number;
+      minimumRecommended: number;
+    };
+    expect(emailArg.dailyCost).toBe(2.68);
+    expect(emailArg.monthlyCost).toBe(80.4);
+    expect(emailArg.requiredCredits).toBeCloseTo(1.34, 4);
+    expect(emailArg.minimumRecommended).toBe(18.76);
   });
 
   test("bills a single container at the $0.67 daily cost, charged purely to credits when no earnings", async () => {
