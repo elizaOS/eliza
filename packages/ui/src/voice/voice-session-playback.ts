@@ -662,7 +662,9 @@ export async function createVoiceSessionPlayback(
       drainPreUnlock();
       while (startQueue.length > 0) {
         const samples = startQueue.shift();
-        if (samples) pushSamples(samples);
+        if (!samples) continue;
+        startQueueSamples -= samples.length;
+        pushSamples(samples);
       }
       startQueueSamples = 0;
       const boundedMs = Math.min(250, Math.max(20, crossfadeMs));

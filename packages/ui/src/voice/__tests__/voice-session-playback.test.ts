@@ -413,6 +413,7 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
       pb.beginInput();
       pb.enqueue(pcmFrame(0.8, 32));
       pb.beginHandoff(20);
+      expect(pb.getStats().maxQueuedSamples).toBe(32);
       pb.enqueue(pcmFrame(-0.8, 32));
       await pb.unlock();
       pb.finishInput();
