@@ -2973,6 +2973,43 @@ describeIfPosix("shellAction", () => {
     expect(data?.action).toBe("view_history");
   });
 
+  it.each([undefined, 120])(
+    "preserves complete requested history beyond the old implicit caps: %s",
+    async (limit) => {
+      const commands = Array.from(
+        { length: 120 },
+        (_, index) => `printf 'history-entry-${index}-complete'`,
+      );
+      const { runtime } = await makeRuntime({ shellHistoryCommands: commands });
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { action: "view_history", ...(limit === undefined ? {} : { limit }) },
+      );
+      expect(result.success).toBe(true);
+      for (const command of commands) expect(result.text).toContain(command);
+    },
+  );
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "invalid", null])(
+    "rejects an invalid history limit before reading session data: %s",
+    async (limit) => {
+      const { runtime, shellHistoryService } = await makeRuntime({
+        shellHistoryCommands: ["private session command"],
+      });
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { action: "view_history", limit },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(shellHistoryService?.getCommandHistory).not.toHaveBeenCalled();
+    },
+  );
+
   it("redacts a configured bare secret from foreground text, callback, data, and user-facing output", async () => {
     process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
     const secret = "orchid42";

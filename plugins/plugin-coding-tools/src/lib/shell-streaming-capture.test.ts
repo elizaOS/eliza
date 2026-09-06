@@ -79,8 +79,8 @@ describe("bounded foreground shell capture", () => {
     const source = `${prefix}${secret}\n-----BEGIN PRIVATE KEY-----\naGVsbG8tc2VjcmV0LWtleQ==\n-----END PRIVATE KEY-----\ntail界\n`;
     const expected = redactShellText(configuredRuntime, source);
     expect(observed).toBe(expected);
-    expect(result.projection.stdout).not.toContain(secret);
-    expect(result.projection.stdoutComplete).toBe(false);
+    expect(result.projection.stdout).toBe(expected);
+    expect(result.projection.stdoutComplete).toBe(true);
   }, 30_000);
 
   it("fails closed on ciphertext tamper and removes every unpublished file", async () => {
@@ -130,7 +130,7 @@ describe("bounded foreground shell capture", () => {
     });
   }, 30_000);
 
-  it("keeps process memory bounded from 1 MiB through 32 MiB", async () => {
+  it("bounds capture overhead while returning complete output from 1 MiB through 32 MiB", async () => {
     const reports = [];
     for (const bytes of [1, 10, 32].map((mib) => mib * 1024 * 1024)) {
       const child = fileURLToPath(
@@ -149,10 +149,17 @@ describe("bounded foreground shell capture", () => {
     }
     for (const report of reports) {
       expect(report.expectedSha256).toBe(report.observedSha256);
+      expect(report.expectedSha256).toBe(report.modelSha256);
       expect(report.pageBytesRead).toBeLessThan(report.storedBytes * 5);
       expect(report.throughputMiBPerSecond).toBeGreaterThan(0);
     }
-    const deltas = reports.map((report) => report.peakRss - report.baselineRss);
+    // Complete planner delivery necessarily retains a source-sized string.
+    // Keep the original working-memory allowance after accounting for that
+    // UTF-16 result, and verify its exact bytes independently above.
+    const deltas = reports.map(
+      (report) =>
+        report.peakRss - report.baselineRss - report.modelCharacters * 2,
+    );
     for (const [index, delta] of deltas.entries()) {
       expect(delta).toBeLessThan(160 * 1024 * 1024);
       expect(
@@ -160,15 +167,6 @@ describe("bounded foreground shell capture", () => {
           (reports[index]?.baselineHeap ?? 0),
       ).toBeLessThan(160 * 1024 * 1024);
     }
-    // Separate V8 processes have JIT/GC baseline jitter, so compare both a hard
-    // ceiling and memory per source byte instead of requiring adjacent samples
-    // to land within a narrow absolute band.
-    expect(deltas[2] ?? Number.POSITIVE_INFINITY).toBeLessThan(
-      (deltas[1] ?? 0) + 64 * 1024 * 1024,
-    );
-    expect((deltas[2] ?? Number.POSITIVE_INFINITY) / 32).toBeLessThan(
-      deltas[0] ?? 0,
-    );
   }, 600_000);
 
   async function retrieve(handle: string): Promise<string> {
@@ -201,6 +199,8 @@ interface MemoryReport {
   peakHeap: number;
   expectedSha256: string;
   observedSha256: string;
+  modelSha256: string;
+  modelCharacters: number;
 }
 
 function runtime(secret?: string): IAgentRuntime {

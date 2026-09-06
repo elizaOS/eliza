@@ -37,6 +37,7 @@ import {
   readBoolParam,
   readBoundedIntSetting,
   readNumberParam,
+  readParam,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
@@ -75,7 +76,6 @@ const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const USER_FACING_STDOUT_CAP_CHARS = 8_000;
-const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
 const COINGECKO_SIMPLE_PRICE_BASE =
@@ -389,13 +389,6 @@ function clampTimeout(value: number | undefined, fallback: number): number {
     : DEFAULT_TIMEOUT_MS;
   if (value === undefined || !Number.isFinite(value)) return boundedFallback;
   return Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(value)));
-}
-
-function clampHistoryLimit(value: number | undefined): number {
-  if (value === undefined || !Number.isFinite(value)) {
-    return SHELL_HISTORY_DEFAULT_LIMIT;
-  }
-  return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
 function readNonNegativeOffset(
@@ -1263,7 +1256,8 @@ export const shellAction: Action = {
     },
     {
       name: "limit",
-      description: "For action=view_history: max recorded commands.",
+      description:
+        "For action=view_history: optional positive integer maximum. Omit to read complete recorded history.",
       required: false,
       schema: { type: "number" },
     },
@@ -1485,7 +1479,17 @@ export const shellAction: Action = {
           message: "Shell history reading is unavailable.",
         });
       }
-      const limit = clampHistoryLimit(readNumberParam(options, "limit"));
+      const limit = readNumberParam(options, "limit");
+      if (
+        readParam(options, "limit") !== undefined &&
+        (limit === undefined || !Number.isSafeInteger(limit) || limit <= 0)
+      ) {
+        return failureToActionResult({
+          reason: "invalid_param",
+          message:
+            "History limit must be a positive safe integer when supplied.",
+        });
+      }
       const entries = shellHistoryService.getCommandHistory(
         String(conversationId),
         limit,

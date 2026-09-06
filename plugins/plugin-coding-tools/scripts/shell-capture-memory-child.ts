@@ -123,8 +123,13 @@ try {
   const durationMs = performance.now() - startedAt;
   const expectedSha256 = expected.digest("hex");
   const observedSha256 = observed.digest("hex");
+  const modelSha256 = createHash("sha256")
+    .update(finalized.projection.stdout)
+    .digest("hex");
   if (expectedSha256 !== observedSha256)
     throw new Error("artifact reassembly hash does not match redacted source");
+  if (expectedSha256 !== modelSha256 || !finalized.projection.stdoutComplete)
+    throw new Error("planner output does not match complete redacted source");
   process.stdout.write(
     `${JSON.stringify({
       targetBytes,
@@ -139,6 +144,8 @@ try {
       peakHeap,
       expectedSha256,
       observedSha256,
+      modelSha256,
+      modelCharacters: finalized.projection.stdout.length,
     })}\n`,
   );
 } finally {

@@ -1,11 +1,13 @@
 /**
- * Captures foreground shell streams without source-sized runtime buffers.
+ * Captures foreground shell streams in encrypted storage before complete redacted delivery.
  *
  * Raw bytes are written only as authenticated AES-GCM ciphertext. Finalization
  * decrypts through a bounded redaction window into incremental immutable
- * segments; no source-sized plaintext or redacted string is materialized.
+ * segments. Complete redacted strings are assembled for the planner only after
+ * capture; the JavaScript string boundary rejects oversized results explicitly.
  * Crash residue has no persisted key and is swept before later captures.
  */
+import { constants as bufferConstants } from "node:buffer";
 import {
   type CipherGCM,
   createCipheriv,
@@ -17,6 +19,7 @@ import { createReadStream, createWriteStream, type WriteStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  ElizaError,
   type IAgentRuntime,
   resolveStateDir,
   toWellFormedUnicode,
@@ -39,7 +42,7 @@ const CAPTURE_STALE_MS = 60 * 60 * 1000;
 const AES_KEY_BYTES = 32;
 const AES_IV_BYTES = 12;
 const AES_TAG_BYTES = 16;
-const MODEL_PROJECTION_LIMIT_CHARS = 20_000;
+const COMPLETE_OUTPUT_LIMIT_CHARS = bufferConstants.MAX_STRING_LENGTH;
 const REDACTION_TARGET_CHARS = 512 * 1024;
 const REDACTION_OVERLAP_CHARS = 64 * 1024;
 const REDACTION_MAX_PENDING_CHARS = 4 * 1024 * 1024;
@@ -164,59 +167,49 @@ function awaitEvent(
   });
 }
 
-class ProjectionAccumulator {
-  private head = "";
-  private tail = "";
+class CompleteOutputAccumulator {
+  private readonly chunks: Buffer[] = [];
   characters = 0;
 
   append(text: string): void {
+    assertCompleteOutputSize(this.characters + text.length);
     this.characters += text.length;
-    if (this.head.length < MODEL_PROJECTION_LIMIT_CHARS) {
-      this.head += text.slice(
-        0,
-        MODEL_PROJECTION_LIMIT_CHARS - this.head.length,
-      );
-    }
-    this.tail = `${this.tail}${text}`.slice(-MODEL_PROJECTION_LIMIT_CHARS);
+    // Copy each redacted chunk so string slices cannot retain the larger
+    // redaction windows from which they were produced.
+    this.chunks.push(Buffer.from(text, "utf8"));
   }
 
-  project(budget: number): { text: string; complete: boolean } {
-    if (this.characters <= budget) {
-      return { text: this.head.slice(0, this.characters), complete: true };
-    }
-    const marker =
-      "\n[model projection omitted content; read the artifact for exact continuation]\n";
-    const contentBudget = Math.max(2, budget - marker.length);
-    const headBudget = Math.floor(contentBudget / 2);
-    const tailBudget = contentBudget - headBudget;
-    let head = this.head.slice(0, headBudget);
-    let tail = this.tail.slice(-tailBudget);
-    if (/^[\uDC00-\uDFFF]/.test(tail)) tail = tail.slice(1);
-    if (/[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1);
-    return {
-      text: `${head}${marker}${tail}`,
-      complete: false,
-    };
+  text(): string {
+    const bytes = Buffer.concat(this.chunks);
+    this.chunks.length = 0;
+    return bytes.toString("utf8");
+  }
+}
+
+function assertCompleteOutputSize(characters: number): void {
+  if (characters > COMPLETE_OUTPUT_LIMIT_CHARS) {
+    throw new ElizaError(
+      "Complete shell output exceeds the JavaScript string boundary",
+      {
+        code: "SHELL_OUTPUT_STRING_LIMIT",
+        context: { characters, limit: COMPLETE_OUTPUT_LIMIT_CHARS },
+      },
+    );
   }
 }
 
 function projectionFor(
-  stdout: ProjectionAccumulator,
-  stderr: ProjectionAccumulator,
+  stdout: CompleteOutputAccumulator,
+  stderr: CompleteOutputAccumulator,
 ): ShellCaptureProjection {
-  const active = Number(stdout.characters > 0) + Number(stderr.characters > 0);
-  const perStream =
-    active > 1
-      ? Math.floor(MODEL_PROJECTION_LIMIT_CHARS / 2)
-      : MODEL_PROJECTION_LIMIT_CHARS;
-  const projectedStdout = stdout.project(perStream);
-  const projectedStderr = stderr.project(perStream);
+  const modelCharacters = stdout.characters + stderr.characters;
+  assertCompleteOutputSize(modelCharacters);
   return {
-    stdout: projectedStdout.text,
-    stderr: projectedStderr.text,
-    stdoutComplete: projectedStdout.complete,
-    stderrComplete: projectedStderr.complete,
-    modelCharacters: projectedStdout.text.length + projectedStderr.text.length,
+    stdout: stdout.text(),
+    stderr: stderr.text(),
+    stdoutComplete: true,
+    stderrComplete: true,
+    modelCharacters,
   };
 }
 
@@ -426,15 +419,15 @@ export class ForegroundShellCapture {
         exitCode: outcome.exitCode,
         timedOut: outcome.timedOut,
         signal: outcome.signal,
-        modelCharacterLimit: MODEL_PROJECTION_LIMIT_CHARS,
+        modelCharacterLimit: COMPLETE_OUTPUT_LIMIT_CHARS,
         ownerAgentId: outcome.ownerAgentId,
         ownerConversationId: outcome.ownerConversationId,
         sourceStdout: this.streams.stdout.metrics,
         sourceStderr: this.streams.stderr.metrics,
       });
       const projections = {
-        stdout: new ProjectionAccumulator(),
-        stderr: new ProjectionAccumulator(),
+        stdout: new CompleteOutputAccumulator(),
+        stderr: new CompleteOutputAccumulator(),
       };
       const activeWriter = writer;
       await Promise.all(

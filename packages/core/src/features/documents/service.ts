@@ -40,7 +40,6 @@ import {
 	type DocumentListQueryParams,
 	type DocumentListRequesterRole,
 	type DocumentMutationSnapshot,
-	type DocumentRangeReadParams,
 	type DocumentRangeReadResult,
 	type IAgentRuntime,
 	type Memory,
@@ -53,6 +52,10 @@ import {
 import { splitChunks, validateUuid } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
+import {
+	type DocumentReadOptions,
+	readCompleteDocumentRange,
+} from "./complete-read.ts";
 import { validateModelConfig } from "./config";
 import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";
 import {
@@ -722,7 +725,7 @@ export class DocumentService extends Service {
 	 */
 	async readDocumentRange(
 		documentId: UUID,
-		options: Pick<DocumentRangeReadParams, "unit" | "offset" | "limit">,
+		options: DocumentReadOptions,
 		message?: Memory,
 	): Promise<DocumentRangeReadResult | null> {
 		const adapter = this.runtime.adapter;
@@ -738,14 +741,17 @@ export class DocumentService extends Service {
 				},
 			);
 		}
-		const requester = await resolveDocumentRequester(this.runtime, message);
-		return adapter.readDocumentRange({
-			agentId: this.runtime.agentId,
-			documentId,
-			requesterEntityId: requester.entityId,
-			requesterRoomIds: requester.roomIds,
-			requesterRole: requester.role,
-			...options,
+		const readPage = adapter.readDocumentRange.bind(adapter);
+		return readCompleteDocumentRange(options, async (range) => {
+			const requester = await resolveDocumentRequester(this.runtime, message);
+			return readPage({
+				agentId: this.runtime.agentId,
+				documentId,
+				requesterEntityId: requester.entityId,
+				requesterRoomIds: requester.roomIds,
+				requesterRole: requester.role,
+				...range,
+			});
 		});
 	}
 

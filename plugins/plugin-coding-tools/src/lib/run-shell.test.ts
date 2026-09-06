@@ -336,8 +336,9 @@ describe("plugin-coding-tools host execution authority", () => {
     expect(result.exitCode).toBe(0);
     expect(result.signal).toBeNull();
     expect(result.sourceLoss).toBeUndefined();
-    expect(result.projection?.stdoutComplete).toBe(false);
-    expect(result.stdout.length).toBeLessThan(21_000);
+    expect(result.projection?.stdoutComplete).toBe(true);
+    expect(result.stdout).toBe("x".repeat(bytes));
+    expect(result.stderr).toBe("tail\n");
     expect(result.artifact?.source.stdout).toMatchObject({
       bytes,
       characters: bytes,
