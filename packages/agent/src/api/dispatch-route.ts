@@ -17,12 +17,12 @@
 
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
-import { Socket } from "node:net";
 import type {
   IncomingHttpHeaders,
   IncomingMessage,
   ServerResponse,
 } from "node:http";
+import { Socket } from "node:net";
 import { Readable } from "node:stream";
 
 import {
@@ -282,6 +282,8 @@ export function buildLegacyShim(args: {
   })();
   const readable = Readable.from(
     bodyText ? [Buffer.from(bodyText, "utf8")] : [],
+    // Reading the request body does not disconnect the IPC response stream.
+    { autoDestroy: false },
   );
   const req = readable as IncomingMessage & {
     query: Record<string, string | string[]>;

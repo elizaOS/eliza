@@ -33,6 +33,9 @@ describe("full API dispatch over local IPC", () => {
           expect(req.url).toBe("/v1/chat/completions?tag=one&tag=two");
           expect(req.socket.remoteAddress).toBe("127.0.0.1");
           for await (const chunk of req) receivedBody += chunk.toString();
+          await new Promise((resolve) => setImmediate(resolve));
+          expect(req.destroyed).toBe(false);
+          expect(req.socket.destroyed).toBe(false);
           res.on("finish", () => {
             finished = true;
           });
@@ -52,7 +55,9 @@ describe("full API dispatch over local IPC", () => {
       const denied = await dispatchApiRoute({
         ...request(runtime),
         headers: {},
-        onHeaders(status) { responseStatuses.push(status); },
+        onHeaders(status) {
+          responseStatuses.push(status);
+        },
       });
       expect(responseStatuses).toEqual([401]);
       expect(denied.status).toBe(401);

@@ -52,6 +52,7 @@ export async function dispatchApiRoute(
       throw new Error("Local API handler did not finish its response");
     return capturedToResult(captured);
   } finally {
+    req.destroy();
     req.socket.destroy();
   }
 }

@@ -4036,9 +4036,10 @@ export async function startApiServer(opts?: {
   let unregisterInProcessApi: (() => void) | undefined;
   const bindInProcessApi = () => {
     unregisterInProcessApi?.();
-    unregisterInProcessApi = opts?.skipListen && state.runtime
-      ? registerInProcessApi(state.runtime, routeKernel)
-      : undefined;
+    unregisterInProcessApi =
+      opts?.skipListen && state.runtime
+        ? registerInProcessApi(state.runtime, routeKernel)
+        : undefined;
   };
   bindInProcessApi();
   const server = http.createServer((req, res) => routeKernel.handle(req, res));

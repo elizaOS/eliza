@@ -54,6 +54,7 @@ export {
 } from "./dispatch-route.ts";
 export * from "./documents-service-loader.ts";
 export * from "./early-logs.ts";
+export { dispatchApiRoute } from "./in-process-api.ts";
 export * from "./memory-bounds.ts";
 export * from "./memory-routes.ts";
 export * from "./model-catalog.ts";
@@ -89,5 +90,3 @@ export * from "./wallet-rpc.ts";
 export * from "./wallet-trading-profile.ts";
 export * from "./workbench-vfs-routes.ts";
 export * from "./zip-utils.ts";
-
-export { dispatchApiRoute } from "./in-process-api.ts";
