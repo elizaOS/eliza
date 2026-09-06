@@ -602,3 +602,77 @@ test("final receipt failure rolls back the already-written source, projection, g
     );
   }
 });
+
+test("healthy unscheduled active subscriptions reconcile unchanged without commands or publication", async () => {
+  const f = await fixture();
+  provider = f.provider;
+  const before = await readback(f.input.subscriptionId);
+  for (let run = 0; run < 2; run++) {
+    if (run > 0) {
+      provider = { ...f.provider, metadata: { unrelated: "changed" } };
+      await client
+        .getPgliteClientForTests()
+        .query(
+          "UPDATE subscription_reconciliation_scans SET next_due_at=clock_timestamp()-interval '1 second' WHERE organization_id=$1",
+          [f.input.organizationId],
+        );
+    }
+    const result = await service.recoverMissedSubscriptionEvents();
+    expect(result.status).toBe("ok");
+    expect(result.attempts[0]?.disposition).toBe("no_change");
+    expect(await readback(f.input.subscriptionId)).toEqual(before);
+  }
+  expect(writes).toBe(0);
+  expect(requests).toHaveLength(4);
+  const receipt = await client
+    .getPgliteClientForTests()
+    .query(
+      "SELECT disposition, observed_revision, result_revision FROM subscription_reconciliation_attempts WHERE organization_id=$1 ORDER BY generation",
+      [f.input.organizationId],
+    );
+  expect(receipt.rows).toEqual([
+    { disposition: "no_change", observed_revision: 1, result_revision: null },
+    { disposition: "no_change", observed_revision: 1, result_revision: null },
+  ]);
+});
+
+for (const corruption of [
+  "missing_projection",
+  "corrupt_projection",
+  "source_journal_mismatch",
+  "provider_schedule_drift",
+] as const)
+  test(`ordinary active no-change rejects ${corruption}`, async () => {
+    const f = await fixture();
+    provider = f.provider;
+    const database = client.getPgliteClientForTests();
+    if (corruption === "missing_projection")
+      await database.query("DELETE FROM organization_entitlements WHERE organization_id=$1", [
+        f.input.organizationId,
+      ]);
+    else if (corruption === "corrupt_projection")
+      await database.query(
+        "UPDATE organization_entitlements SET completions_rpm=completions_rpm+1 WHERE organization_id=$1",
+        [f.input.organizationId],
+      );
+    else if (corruption === "source_journal_mismatch")
+      await database.query(
+        "UPDATE billing_subscriptions SET provider_object_digest=$1 WHERE id=$2",
+        ["f".repeat(64), f.input.subscriptionId],
+      );
+    else
+      provider = {
+        ...f.provider,
+        cancel_at_period_end: true,
+        cancel_at: f.provider.current_period_end,
+        canceled_at: Math.floor(Date.now() / 1000),
+      };
+    const before = await readback(f.input.subscriptionId);
+    const result = await service.recoverMissedSubscriptionEvents();
+    expect(result.status).toBe("degraded");
+    expect(result.attempts[0]?.disposition).toBe(
+      corruption === "provider_schedule_drift" ? "unsupported" : "unavailable",
+    );
+    expect(await readback(f.input.subscriptionId)).toEqual(before);
+    expect(writes).toBe(0);
+  });

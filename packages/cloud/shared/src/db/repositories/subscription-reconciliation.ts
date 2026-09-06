@@ -373,8 +373,12 @@ export async function finalizeSubscriptionReconciliation(
       return complete(tx, input, { disposition: "stale", reason: "captured_authority_changed" });
     if (observation.kind === "owned_schedule") {
       const command = await readLatestSubscriptionScheduleCommand(tx, source);
+      // A never-scheduled active source needs no command to confirm its unchanged
+      // state. Retained scheduling provenance still requires its owning lineage.
+      const unchangedUnscheduled =
+        command === null && !source.cancel_at_period_end && source.canceled_at === null;
       if (
-        !command ||
+        (!command && !unchangedUnscheduled) ||
         source.status !== "active" ||
         source.current_period_end === null ||
         source.current_period_end <= liveLease.now ||
