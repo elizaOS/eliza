@@ -270,7 +270,9 @@ function isIncompletePromptStopReason(stopReason: string | undefined): boolean {
 }
 
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
-const SUCCESSOR_CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp@1.1.2";
+const SUCCESSOR_CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp@1.10.0";
+const PREVIOUS_SUCCESSOR_CODEX_ACP_COMMAND =
+  "npx -y @agentclientprotocol/codex-acp@1.1.2";
 const LEGACY_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
 const DECLARED_SUCCESSOR_CODEX_ACP_COMMAND = `npx -y ${SUCCESSOR_CODEX_ACP_PACKAGE}`;
 
@@ -298,6 +300,7 @@ export function resolveCodexAcpCommand(
   if (
     !trimmed ||
     trimmed === LEGACY_CODEX_ACP_COMMAND ||
+    trimmed === PREVIOUS_SUCCESSOR_CODEX_ACP_COMMAND ||
     trimmed === DECLARED_SUCCESSOR_CODEX_ACP_COMMAND
   ) {
     return fallback;
@@ -4517,6 +4520,32 @@ export class AcpService extends Service {
     }
 
     if (sessionId && method === "session/update") {
+      if (sessionUpdate === "session_info_update") {
+        const meta = asRecord(updateBlock?._meta);
+        const air = asRecord(asRecord(meta?.jetbrains)?.air);
+        const diagnostic = asRecord(air?.sessionFailure);
+        if (
+          diagnostic &&
+          typeof diagnostic.title === "string" &&
+          (diagnostic.severity === "warning" || diagnostic.severity === "error")
+        ) {
+          this.emitSessionEvent(sessionId, "diagnostic", { diagnostic });
+          this.log(
+            diagnostic.severity === "warning" ? "warn" : "error",
+            diagnostic.title,
+            { sessionId, diagnostic },
+          );
+          if (diagnostic.severity === "error") {
+            this.runtime.reportError(
+              "AcpService.nativeDiagnostic",
+              new ElizaError(diagnostic.title, {
+                code: "ACP_SESSION_DIAGNOSTIC",
+                context: { sessionId, diagnostic },
+              }),
+            );
+          }
+        }
+      }
       // agent_message_chunk: content.text streams
       const content = asRecord(updateBlock?.content);
       const role = stringifyMaybe(

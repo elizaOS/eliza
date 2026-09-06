@@ -1428,7 +1428,7 @@ describe("AcpService", () => {
 
     expect(nativeClientMock.instances).toHaveLength(1);
     expect(nativeClientMock.instances[0]?.opts.command).toContain(
-      "--package=@agentclientprotocol/codex-acp@1.1.2",
+      "--package=@agentclientprotocol/codex-acp@1.10.0",
     );
     expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
       "agent",
@@ -1473,7 +1473,7 @@ describe("AcpService", () => {
 
     expect(nativeClientMock.instances).toHaveLength(1);
     expect(nativeClientMock.instances[0]?.opts.command).toContain(
-      "--package=@agentclientprotocol/codex-acp@1.1.2",
+      "--package=@agentclientprotocol/codex-acp@1.10.0",
     );
     expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
       "agent-full-access",
@@ -1516,7 +1516,7 @@ describe("AcpService", () => {
       expect(result.status).toBe("ready");
       expect(nativeClientMock.instances).toHaveLength(2);
       expect(nativeClientMock.instances[0]?.opts.command).toContain(
-        "--package=@agentclientprotocol/codex-acp@1.1.2",
+        "--package=@agentclientprotocol/codex-acp@1.10.0",
       );
       expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
         undefined,
@@ -2781,6 +2781,65 @@ describe("AcpService", () => {
     expect(result.finalText).toBe(
       "the change is proven and received at runtime",
     );
+  });
+
+  it("retains typed adapter warnings without adding them to the model answer", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; data: unknown }> = [];
+    service.onSessionEvent((_sid, event, data) => events.push({ event, data }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-diagnostics",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const diagnostic = {
+      id: "notice-1",
+      revision: 1,
+      severity: "warning",
+      category: "unknown",
+      title: "Provider configuration notice",
+      details: "Complete diagnostic details 🟠",
+      actions: [],
+    };
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "session_info_update",
+            _meta: {
+              jetbrains: { air: { version: 1, sessionFailure: diagnostic } },
+            },
+          },
+        },
+      } as AcpJsonRpcMessage);
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Verified result" },
+          },
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+    const result = await service.sendPrompt(sessionId, "finish");
+    expect(result.finalText).toBe("Verified result");
+    expect(events).toContainEqual({
+      event: "diagnostic",
+      data: { diagnostic },
+    });
+    expect(
+      events.filter(({ event }) => event === "message").map(({ data }) => data),
+    ).toEqual([{ text: "Verified result" }]);
+    await service.stop();
   });
 
   it("native sendPrompt forwards thought chunks as reasoning without polluting the final answer", async () => {

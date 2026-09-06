@@ -93,7 +93,7 @@ test("Smithers PGlite closure remains peer-compatible and enabled", () => {
       pluginManifest.dependencies,
       `${pluginManifestPath} dependencies`,
     );
-    expect(dependencies.smthrs, pluginManifestPath).toBe("0.34.0");
+    expect(dependencies.smthrs, pluginManifestPath).toBe("0.35.0");
   }
 
   const lock = object(
@@ -102,7 +102,7 @@ test("Smithers PGlite closure remains peer-compatible and enabled", () => {
   );
   const packages = object(lock.packages, "bun.lock.packages");
   const engine = packageTuple(packages, "@smthrs/engine");
-  expect(versionOf(engine[0])).toBe("0.34.0");
+  expect(versionOf(engine[0])).toBe("0.35.0");
   const optionalDependencies = object(
     engine[2]?.optionalDependencies,
     "Smithers optional deps",
