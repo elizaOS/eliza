@@ -8,6 +8,51 @@ Raw and intermediate owner data belongs under `packages/corpus-tools/data/`,
 which is ignored by the repo-wide `**/data/` rule. Only synthetic fixtures
 under `fixtures/` are committed.
 
+## Progressive-content evidence production
+
+`bun run content-context:produce -- --external-dir=<private-external-artifacts>
+--run-root=reports/content-context/<run-id>` generates one deterministic scale
+corpus and invokes only the fixed checked-in deterministic producer at
+`packages/scripts/produce-content-context-deterministic.mjs`. Caller-selected
+command plans and caller-supplied deterministic reports are not accepted. The
+external directory is reserved for the six-hour soak, real PostgreSQL,
+credentialed trajectories, E2E report, and E2E bytes. Every imported artifact
+must be a private, single-link regular file; missing, fixture-shaped,
+cross-commit, or cross-corpus evidence fails during canonical validation. If
+the checked-in deterministic producer is unavailable, orchestration fails
+closed instead of accepting fabricated rows.
+
+`e2e.json` declares exactly one backend log, browser trace, network log, and
+database-state artifact beneath `e2e-artifacts/`, including byte length and
+SHA-256. The publisher reads, verifies, and copies those exact bytes into the
+atomic run directory; a path-only claim cannot satisfy E2E evidence. Successful
+publication still goes exclusively through `run-content-context.mjs` and the
+normal evidence ingestor.
+
+The external soak artifact is produced separately and intentionally takes at
+least six hours:
+
+```bash
+bun run content-context:soak -- \
+  --corpus-root=/private/corpus \
+  --out=/private/external/soak.json \
+  --commit=<full-git-sha>
+```
+
+The runner verifies the complete corpus and loads the same fixed repository
+factories as deterministic evidence. It selects the largest supported object
+for each family, realizes it through the native store, and samples process RSS,
+heap, external/array-buffer memory, file descriptors, temporary artifacts,
+database rows, and WAL bytes from the bound targets. Caller-selected factory
+modules are rejected.
+
+The mappings are fixed: file, document, memory, and email use typed binary and
+invalid-UTF-8 rejection; attachment and tool output retain native bytes. A
+shortened clock, partial family set, failed cleanup, resource drift, or missed
+positive leak control stops without publishing `soak.json`. Fast tests exercise
+only the explicitly ineligible contract seam and cannot create production
+evidence.
+
 ## X archive collector
 
 `collectXArchive` (`src/collectors/x-archive.ts`) parses the official X data

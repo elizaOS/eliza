@@ -1,16 +1,21 @@
 /** Tests for the `runShell` child-process wrapper, using the core capability router doubles. */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import {
-  captureHostExecutionBaseline,
-  getHostExecutionBaseline,
-} from "@elizaos/shared/host-execution-env";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runShell } from "./run-shell.js";
+
+const TEST_CAPTURE_SCOPE = {
+  ownerAgentId: "00000000-0000-4000-8000-000000000001",
+  ownerConversationId: "00000000-0000-4000-8000-000000000002",
+};
 
 const ENV_KEYS = [
   "ELIZA_PLATFORM",
@@ -21,17 +26,13 @@ const ENV_KEYS = [
   "PATH",
   "HOME",
   "SHELL",
-  "GOPATH",
-  "GOMODCACHE",
-  "GOCACHE",
-  "NODE_OPTIONS",
-  "LD_PRELOAD",
-  "GIT_CONFIG_KEY_0",
-  "GIT_CONFIG_VALUE_0",
+  "ELIZA_STATE_DIR",
+  "SHELL_JOB_TTL_MS",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
 let savedPlatformDescriptor: PropertyDescriptor | undefined;
+let stateDir: string;
 
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
@@ -40,6 +41,9 @@ beforeEach(() => {
     "platform",
   );
   captureHostExecutionBaseline();
+  stateDir = mkdtempSync(join(tmpdir(), "run-shell-capture-"));
+  process.env.ELIZA_STATE_DIR = stateDir;
+  process.env.SHELL_JOB_TTL_MS = "60000";
 });
 
 afterEach(() => {
@@ -51,7 +55,16 @@ afterEach(() => {
   if (savedPlatformDescriptor) {
     Object.defineProperty(process, "platform", savedPlatformDescriptor);
   }
+  rmSync(stateDir, { recursive: true, force: true });
 });
+
+function hostRuntime(): IAgentRuntime {
+  return {
+    agentId: TEST_CAPTURE_SCOPE.ownerAgentId,
+    getService: () => null,
+    redactSecrets: (text: string) => text,
+  } as IAgentRuntime;
+}
 
 function runtimeWithRouter(router: ElizaCapabilityRouter): IAgentRuntime {
   return {
@@ -102,7 +115,7 @@ function remoteRouter(): {
 }
 
 describe("plugin-coding-tools runShell mobile routing", () => {
-  it("routes iOS coding commands through a Remote capability router", async () => {
+  it("reports unverifiable source capture from a Remote capability router", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_BUILD_VARIANT = "store";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
@@ -112,16 +125,21 @@ describe("plugin-coding-tools runShell mobile routing", () => {
       command: "codex exec 'touch changed.txt'",
       cwd: "/workspace",
       timeoutMs: 10_000,
+      captureScope: TEST_CAPTURE_SCOPE,
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       exitCode: 0,
       signal: null,
-      stdout: "remote coded\n",
+      stdout: "",
       stderr: "",
       durationMs: expect.any(Number),
       sandbox: "capability-router",
       timedOut: false,
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+        backend: "capability-router",
+      },
     });
     expect(runCommand).toHaveBeenCalledWith({
       command: "codex exec 'touch changed.txt'",
@@ -130,7 +148,7 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     });
   });
 
-  it("rejects over-limit capability-router output without returning a prefix", async () => {
+  it("never claims complete capability-router output regardless of returned size", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_BUILD_VARIANT = "store";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
@@ -145,12 +163,15 @@ describe("plugin-coding-tools runShell mobile routing", () => {
       command: "noisy-command",
       cwd: "/workspace",
       timeoutMs: 10_000,
+      captureScope: TEST_CAPTURE_SCOPE,
     });
 
     expect(result).toMatchObject({
       stdout: "",
       stderr: "",
-      outputLimitExceeded: true,
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+      },
       sandbox: "capability-router",
     });
   });
@@ -160,10 +181,11 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
 
     await expect(
-      runShell({ getService: () => null } as IAgentRuntime, {
+      runShell(hostRuntime(), {
         command: "codex exec 'touch changed.txt'",
         cwd: "/workspace",
         timeoutMs: 10_000,
+        captureScope: TEST_CAPTURE_SCOPE,
       }),
     ).rejects.toThrow(
       "Local coding tools are unavailable on iOS because the runtime does not expose shell, coding, or orchestrator subprocess capabilities.",
@@ -181,7 +203,7 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
 
     const exec = vi.fn(async () => ({
       exitCode: 0,
-      stdout: "sandboxed\n",
+      stdout: "",
       stderr: "",
       durationMs: 7,
       executedInSandbox: true,
@@ -198,6 +220,7 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       command: "echo sandboxed",
       cwd: process.cwd(),
       timeoutMs: 10_000,
+      captureScope: TEST_CAPTURE_SCOPE,
     });
 
     expect(exec).toHaveBeenCalledWith({
@@ -205,18 +228,22 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       workdir: "/workspace",
       timeoutMs: 10_000,
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       exitCode: 0,
       signal: null,
-      stdout: "sandboxed\n",
+      stdout: "",
       stderr: "",
       durationMs: 7,
       sandbox: "docker",
       timedOut: false,
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+        backend: "docker",
+      },
     });
   });
 
-  it("rejects over-limit sandbox output without returning a prefix", async () => {
+  it("reports unverifiable source capture for full-string sandbox output", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-safe";
     const runtime = {
       getService: () => null,
@@ -236,12 +263,15 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       command: "noisy-command",
       cwd: process.cwd(),
       timeoutMs: 10_000,
+      captureScope: TEST_CAPTURE_SCOPE,
     });
 
     expect(result).toMatchObject({
       stdout: "",
       stderr: "",
-      outputLimitExceeded: true,
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+      },
       sandbox: "docker",
     });
   });
@@ -260,10 +290,11 @@ describe("plugin-coding-tools host execution authority", () => {
       "}, 50);",
     ].join("");
 
-    const result = await runShell({ getService: () => null } as IAgentRuntime, {
+    const result = await runShell(hostRuntime(), {
       command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
       cwd: process.cwd(),
       timeoutMs: 10_000,
+      captureScope: TEST_CAPTURE_SCOPE,
     });
 
     expect(result.exitCode).toBe(0);
@@ -278,10 +309,11 @@ describe("plugin-coding-tools host execution authority", () => {
     process.env.HOME = "/tmp/runtime-home";
     process.env.SHELL = "/tmp/runtime-shell";
 
-    const result = await runShell({ getService: () => null } as IAgentRuntime, {
+    const result = await runShell(hostRuntime(), {
       command: "printf '%s' \"$PATH|$HOME|$SHELL\"",
       cwd: process.cwd(),
       timeoutMs: 10_000,
+      captureScope: TEST_CAPTURE_SCOPE,
     });
 
     expect(result.exitCode).toBe(0);
@@ -290,41 +322,31 @@ describe("plugin-coding-tools host execution authority", () => {
     expect(result.stdout).not.toContain("/tmp/runtime-shell");
   });
 
-  it("provides trusted Go caches while stripping runtime overlays and injection keys", async () => {
-    const baseline = getHostExecutionBaseline();
+  it("streams ten MiB to a private artifact without killing the command", async () => {
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
-    process.env.GOPATH = "/tmp/runtime-go";
-    process.env.GOMODCACHE = "/tmp/runtime-go-mod";
-    process.env.GOCACHE = "/tmp/runtime-go-build";
-    process.env.NODE_OPTIONS = "--require=/tmp/runtime-hook.cjs";
-    process.env.LD_PRELOAD = "/tmp/runtime-hook.dylib";
-    process.env.GIT_CONFIG_KEY_0 = "core.sshCommand";
-    process.env.GIT_CONFIG_VALUE_0 = "/tmp/runtime-git-hook";
-    const script =
-      "process.stdout.write(JSON.stringify({" +
-      "goPath:process.env.GOPATH??null," +
-      "goModCache:process.env.GOMODCACHE??null," +
-      "goCache:process.env.GOCACHE??null," +
-      "nodeOptions:process.env.NODE_OPTIONS??null," +
-      "ldPreload:process.env.LD_PRELOAD??null," +
-      "gitConfigKey:process.env.GIT_CONFIG_KEY_0??null," +
-      "gitConfigValue:process.env.GIT_CONFIG_VALUE_0??null}))";
-
-    const result = await runShell({ getService: () => null } as IAgentRuntime, {
+    const bytes = 10 * 1024 * 1024;
+    const script = `process.stdout.write("x".repeat(${bytes}));process.stderr.write("tail\\n")`;
+    const result = await runShell(hostRuntime(), {
       command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
       cwd: process.cwd(),
-      timeoutMs: 10_000,
+      timeoutMs: 30_000,
+      captureScope: TEST_CAPTURE_SCOPE,
     });
 
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({
-      goPath: baseline.goPath,
-      goModCache: baseline.goModCache,
-      goCache: baseline.goCache,
-      nodeOptions: null,
-      ldPreload: null,
-      gitConfigKey: null,
-      gitConfigValue: null,
+    expect(result.signal).toBeNull();
+    expect(result.sourceLoss).toBeUndefined();
+    expect(result.projection?.stdoutComplete).toBe(false);
+    expect(result.stdout.length).toBeLessThan(21_000);
+    expect(result.artifact?.source.stdout).toMatchObject({
+      bytes,
+      characters: bytes,
+      lines: 1,
     });
-  });
+    expect(result.artifact?.source.stderr).toMatchObject({
+      bytes: 5,
+      characters: 5,
+      lines: 1,
+    });
+  }, 120_000);
 });

@@ -38,7 +38,12 @@ export type ProgressiveContentFamily =
   | "attachment"
   | "tool-output";
 
-export type ProgressiveContentProfile = "micro" | "pr" | "nightly" | "release";
+export type ProgressiveContentProfile =
+  | "micro"
+  | "scale"
+  | "pr"
+  | "nightly"
+  | "release";
 
 export type ProgressiveContentFormat =
   | "lf-lines"
@@ -46,6 +51,7 @@ export type ProgressiveContentFormat =
   | "no-final-newline"
   | "single-line"
   | "minified-json-like"
+  | "binary"
   | "invalid-utf8";
 
 export interface ProgressiveContentCanary {
@@ -105,6 +111,24 @@ const PROFILE_SHAPES: Readonly<
       email: 16 * 1024,
       attachment: 24 * 1024,
       "tool-output": 32 * 1024,
+    },
+  },
+  scale: {
+    counts: {
+      file: 5,
+      document: 5,
+      memory: 5,
+      email: 5,
+      attachment: 5,
+      "tool-output": 5,
+    },
+    baseBytes: {
+      file: 1024 * 1024,
+      document: 1024 * 1024,
+      memory: 1024 * 1024,
+      email: 1024 * 1024,
+      attachment: 1024 * 1024,
+      "tool-output": 1024 * 1024,
     },
   },
   pr: {
@@ -178,6 +202,15 @@ const FORMAT_ORDER: readonly ProgressiveContentFormat[] = [
   "no-final-newline",
   "single-line",
   "minified-json-like",
+  "binary",
+  "invalid-utf8",
+];
+
+const SCALE_FORMAT_ORDER: readonly ProgressiveContentFormat[] = [
+  "lf-lines",
+  "no-final-newline",
+  "minified-json-like",
+  "binary",
   "invalid-utf8",
 ];
 
@@ -221,6 +254,14 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+/** Recompute the identity of a manifest value without trusting its digest field. */
+export function progressiveContentManifestDigest(
+  manifest: Record<string, unknown>,
+): string {
+  const { manifestSha256: _manifestSha256, ...unsigned } = manifest;
+  return sha256(canonicalJson(unsigned));
 }
 
 const OWNED_DIRECTORIES = ["objects", "formats"] as const;
@@ -584,8 +625,8 @@ export async function verifyProgressiveContentCorpus(
       "manifestSha256 must be a string",
     );
   }
-  const { manifestSha256, ...unsigned } = record;
-  if (sha256(canonicalJson(unsigned)) !== manifestSha256) {
+  const manifestSha256 = record.manifestSha256;
+  if (progressiveContentManifestDigest(record) !== manifestSha256) {
     corpusFailure(
       "PROGRESSIVE_CONTENT_MANIFEST_DIGEST_MISMATCH",
       "manifest identity does not match its canonical fields",
@@ -671,9 +712,16 @@ export async function verifyProgressiveContentCorpus(
       familyOrdinal,
       profile,
     );
-    const expectedFormat =
-      FORMAT_ORDER[index % FORMAT_ORDER.length] ?? "single-line";
-    const expectedCanaries = canariesFor(expectedId, expectedByteLength);
+    const expectedFormat = objectFormat(
+      profile,
+      familyOrdinal,
+      index,
+      expectedByteLength,
+    );
+    const expectedCanaries =
+      expectedFormat === "invalid-utf8"
+        ? []
+        : canariesFor(expectedId, expectedByteLength);
     const expectedSourceSha256 = deterministicObjectSha256(
       expectedByteLength,
       expectedCanaries,
@@ -1000,12 +1048,45 @@ function objectByteLength(
   profile: ProgressiveContentProfile,
 ) {
   const base = shape.baseBytes[family];
+  if (profile === "scale") {
+    if (index === 1) return 10 * 1024 * 1024;
+    if (index === 2) return 100 * 1024 * 1024;
+    if (index === 3) return 4_096;
+    if (index === 4) return 4_097;
+    return base;
+  }
   const boundaryCases =
     profile === "micro"
       ? PROGRESSIVE_CONTENT_BOUNDARY_BYTES.slice(0, 9)
       : PROGRESSIVE_CONTENT_BOUNDARY_BYTES;
   if (index < boundaryCases.length) return boundaryCases[index] ?? base;
   return base + (index % 7) * 257;
+}
+
+function objectFormat(
+  profile: ProgressiveContentProfile,
+  familyOrdinal: number,
+  objectOrdinal: number,
+  byteLength: number,
+): ProgressiveContentFormat {
+  const scheduled =
+    profile === "scale"
+      ? (SCALE_FORMAT_ORDER[familyOrdinal] ?? "single-line")
+      : (FORMAT_ORDER[objectOrdinal % FORMAT_ORDER.length] ?? "single-line");
+  return scheduled === "invalid-utf8" && byteLength === 0
+    ? "single-line"
+    : scheduled;
+}
+
+/** Return the deterministic byte schedule without materializing corpus files. */
+export function planProgressiveContentByteLengths(
+  profile: ProgressiveContentProfile,
+  family: ProgressiveContentFamily,
+): readonly number[] {
+  const shape = PROFILE_SHAPES[profile];
+  return Array.from({ length: shape.counts[family] }, (_, index) =>
+    objectByteLength(shape, family, index, profile),
+  );
 }
 
 function canariesFor(
@@ -1049,14 +1130,18 @@ function deterministicObjectChunk(
   canaries: readonly ProgressiveContentCanary[],
   format: ProgressiveContentFormat,
 ): Buffer {
-  const chunkBytes = 64 * 1024;
-  const chunk = Buffer.alloc(
-    length,
-    0x61 + (Math.floor(offset / chunkBytes) % 26),
-  );
+  const chunk = Buffer.allocUnsafe(length);
+  // Keep filler and line-ending edits single-byte. Unicode coverage comes from
+  // complete canary byte spans; repeating or overwriting arbitrary bytes from
+  // a multibyte pattern can manufacture malformed UTF-8 in a text fixture.
+  const textPattern = Buffer.from("abcdefghijklmnopqrstuvwxyzABCDEF", "ascii");
   const jsonPattern = Buffer.from('{"key":"escaped\\nvalue","n":123},');
   for (let local = 0; local < length; local += 1) {
     const absolute = offset + local;
+    chunk[local] =
+      format === "binary"
+        ? (absolute * 131 + 17) & 0xff
+        : (textPattern[absolute % textPattern.length] ?? 0x61);
     if (format === "lf-lines" && absolute % 80 === 79) chunk[local] = 0x0a;
     if (format === "crlf-lines") {
       if (absolute % 80 === 78) chunk[local] = 0x0d;
@@ -1077,8 +1162,8 @@ function deterministicObjectChunk(
   ) {
     chunk[byteLength - 1 - offset] = 0x7a;
   }
-  if (format === "invalid-utf8" && byteLength > 256) {
-    const invalidAt = 127;
+  if (format === "invalid-utf8" && byteLength > 0) {
+    const invalidAt = Math.min(127, byteLength - 1);
     if (offset <= invalidAt && invalidAt < offset + length) {
       chunk[invalidAt - offset] = 0xff;
     }
@@ -1222,12 +1307,15 @@ export async function generateProgressiveContentCorpus(options: {
     for (let index = 0; index < shape.counts[family]; index += 1) {
       const id = progressiveContentObjectId(options.rootSeed, family, index);
       const byteLength = objectByteLength(shape, family, index, profile);
-      const format =
-        FORMAT_ORDER[objectOrdinal % FORMAT_ORDER.length] ?? "single-line";
+      const format = objectFormat(profile, index, objectOrdinal, byteLength);
       objectOrdinal += 1;
       const relativePath = path.posix.join("objects", family, `${id}.txt`);
       expectedPaths.add(relativePath);
-      const canaries = canariesFor(id, byteLength);
+      // Malformed UTF-8 objects are rejection fixtures, not text-retrieval
+      // fixtures. Keeping canaries off them prevents valid canary bytes from
+      // overwriting the deliberately malformed byte in very small objects.
+      const canaries =
+        format === "invalid-utf8" ? [] : canariesFor(id, byteLength);
       const sourceSha256 = await writeStreamedObject(
         outputRoot,
         relativePath,

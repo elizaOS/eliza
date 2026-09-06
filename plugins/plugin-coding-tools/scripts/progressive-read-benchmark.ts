@@ -48,14 +48,11 @@ function args(): Args {
 }
 
 function corpus(size: number, seed: number): Buffer {
-  let state = seed >>> 0;
   const output = Buffer.allocUnsafe(size);
+  const pattern = Buffer.from("世界🙂ABCDEF", "utf8");
   for (let index = 0; index < size; index += 1) {
-    state ^= state << 13;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    state >>>= 0;
-    output[index] = index % 79 === 78 ? 10 : 32 + (state % 95);
+    output[index] =
+      pattern[(index + seed * pattern.length) % pattern.length] ?? 0x41;
   }
   return output;
 }
@@ -269,6 +266,22 @@ async function main(): Promise<void> {
     projectionDoesNotDuplicatePage:
       !smallPage.projectionContainsPage && !largePage.projectionContainsPage,
   };
+  const observedPerformance = {
+    maxPageLatencyMs: Math.max(...latencies),
+    rssGrowthBytes: Math.max(0, peak.rss - beforeMemory.rss),
+    databaseGrowthBytes: source.byteLength + small.byteLength,
+    readAmplification: sourceBytesRead / Math.max(1, bytesReturned),
+  };
+  const performanceCeilings = {
+    maxPageLatencyMs: 5_000,
+    rssGrowthBytes: 256 * 1024 * 1024,
+    databaseGrowthBytes: 2 * (source.byteLength + small.byteLength),
+    readAmplification: 1.1,
+  };
+  const performanceWithinCeilings = Object.entries(observedPerformance).every(
+    ([metric, actual]) =>
+      actual <= performanceCeilings[metric as keyof typeof performanceCeilings],
+  );
   const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
     cwd: path.resolve(import.meta.dir, "../../.."),
   })
@@ -331,6 +344,11 @@ async function main(): Promise<void> {
       bytesPerSecond: bytesReturned / (durationMs / 1000),
       durationMs,
     },
+    performance: {
+      observed: observedPerformance,
+      ceilings: performanceCeilings,
+      withinCeilings: performanceWithinCeilings,
+    },
     io: {
       sourceBytesRead,
       bytesReturned,
@@ -382,7 +400,11 @@ async function main(): Promise<void> {
     `${JSON.stringify(report, null, 2)}\n`,
     "utf8",
   );
-  if (Object.values(invariant).some((value) => !value)) process.exitCode = 1;
+  if (
+    Object.values(invariant).some((value) => !value) ||
+    !performanceWithinCeilings
+  )
+    process.exitCode = 1;
 }
 
 await main();

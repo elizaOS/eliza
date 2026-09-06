@@ -17,6 +17,7 @@
 import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,
+	createPreparedModelRequestGuard,
 	EventType,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -80,6 +81,8 @@ export const LOCAL_INFERENCE_MODEL_TYPES = [
 	ModelType.TEXT_TO_SPEECH,
 	ModelType.TRANSCRIPTION,
 ] as const;
+
+const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
 
 export type LocalInferenceUnavailableReason =
 	| "backend_unavailable"
@@ -325,7 +328,9 @@ function textGenerationArgsFromParams(
 	return {
 		prompt: promptFromParams(params),
 		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
-		maxTokens: params.maxTokens,
+		maxTokens: params.omitMaxTokens
+			? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
+			: params.maxTokens,
 		temperature: params.temperature,
 		topP: params.topP,
 		signal: params.signal,
@@ -585,7 +590,7 @@ function createTextHandler(modelType: string) {
 		// bridge) decode one request at a time on a shared resident model, so
 		// route through the process-wide interactive-over-background lane
 		// (#11914): interactive turns dispatch first; background jobs wait a
-		// bounded time without changing prompt or output capacity.
+		// bounded time and take the device-class budget clamps.
 		const args = textGenerationArgsFromParams(params);
 		const priority = params.priority ?? "interactive";
 		let lockWaitMs: number | undefined;
@@ -601,6 +606,28 @@ function createTextHandler(modelType: string) {
 			args.maxTokens = budgetedArgs.maxTokens;
 			lockWaitMs = budget.lockWaitMs;
 		}
+		const configuredModel = runtime.getSetting?.(
+			modelType === ModelType.TEXT_SMALL
+				? "LOCAL_SMALL_MODEL"
+				: "LOCAL_LARGE_MODEL",
+		);
+		const model =
+			typeof configuredModel === "string" && configuredModel.trim()
+				? configuredModel.trim()
+				: `${LOCAL_INFERENCE_PROVIDER_ID}:${modelType}`;
+		const preparedRequest = createPreparedModelRequestGuard({
+			provider: LOCAL_INFERENCE_PROVIDER_ID,
+			model,
+			projectRequest: () => ({
+				prompt: args.prompt,
+				stopSequences: args.stopSequences,
+				maxTokens: args.maxTokens,
+				temperature: args.temperature,
+				topP: args.topP,
+				stream: typeof args.onTextChunk === "function",
+			}),
+			outputReserveTokens: args.maxTokens,
+		});
 		return getInferencePriorityGate().runExclusive(
 			{
 				priority,
@@ -608,7 +635,10 @@ function createTextHandler(modelType: string) {
 				...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
 				...(params.signal ? { signal: params.signal } : {}),
 			},
-			() => generate.call(service, args),
+			() => {
+				preparedRequest.assertBeforeAttempt();
+				return generate.call(service, args);
+			},
 		);
 	};
 }
@@ -647,6 +677,7 @@ function createPiiScrubHandler() {
 			() =>
 				generate.call(service, {
 					prompt,
+					maxTokens: 1024,
 					temperature: 0,
 				}),
 		);

@@ -121,6 +121,118 @@ export const memorySchema: SchemaTable = {
 			],
 			isUnique: false,
 		},
+		idx_document_source_byte_seek: {
+			name: "idx_document_source_byte_seek",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "((metadata->>'documentId'))", isExpression: true },
+				{
+					expression: "((metadata->>'documentRevision')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'sourceByteEnd')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'revisionAttemptId'))",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment' AND metadata ? 'sourceByteEnd'",
+		},
+		idx_message_content_byte_seek: {
+			name: "idx_message_content_byte_seek",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "((metadata->>'messageId'))", isExpression: true },
+				{ expression: "((metadata->>'sourceKind'))", isExpression: true },
+				{
+					expression: "((metadata->>'attachmentIdHash'))",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'sourceRevision'))",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'byteEnd')::bigint)",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'message_content_segments' AND metadata->>'type' = 'message-content-segment'",
+		},
+		idx_document_source_line_seek: {
+			name: "idx_document_source_line_seek",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "((metadata->>'documentId'))", isExpression: true },
+				{
+					expression: "((metadata->>'documentRevision')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'sourceLineEnd')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'revisionAttemptId'))",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment' AND metadata ? 'sourceLineEnd'",
+		},
+		idx_document_source_fragment_seek: {
+			name: "idx_document_source_fragment_seek",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "((metadata->>'documentId'))", isExpression: true },
+				{
+					expression: "((metadata->>'documentRevision')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'sourceFragmentEnd')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'revisionAttemptId'))",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment' AND metadata ? 'sourceFragmentEnd'",
+		},
+		idx_documents_pinned_created: {
+			name: "idx_documents_pinned_created",
+			columns: [
+				{ expression: "created_at", isExpression: false },
+				{ expression: "id", isExpression: false },
+			],
+			isUnique: false,
+			where:
+				"type = 'documents' AND metadata->>'type' = 'document' AND metadata->>'pinned' = 'true'",
+		},
+		idx_document_source_search: {
+			name: "idx_document_source_search",
+			columns: [
+				{
+					expression:
+						"regexp_split_to_array(translate(trim(COALESCE(content->>'text', '')), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), E'[ \\t\\r\\n\\f]+')",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+		},
 	},
 	foreignKeys: {
 		fk_room: {

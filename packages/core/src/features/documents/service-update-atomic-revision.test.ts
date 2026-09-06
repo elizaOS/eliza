@@ -279,8 +279,8 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		} finally {
 			runtime.adapter.replaceDocumentRevision = realReplace;
 		}
-		// The adapter transaction never committed, so neither replacement source
-		// nor embedding fragments can be visible.
+		// The adapter transaction never committed, so neither canonical source
+		// segments nor embedding fragments from the replacement can be visible.
 		const raw = await rawFragmentsFor(documentId);
 		expect(
 			raw.filter((memory) => memory.content.text?.includes("Version two")),

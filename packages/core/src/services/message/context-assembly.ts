@@ -26,7 +26,6 @@ import {
 	appendStateProviderEvents,
 	currentMessageContentForContext,
 	hasStructuredRecentMessagesProvider,
-	PLANNER_MAX_OWN_REPLY_TURNS,
 	replyReferenceEventForContext,
 } from "./dialogue-context.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
@@ -96,13 +95,12 @@ export async function createV5MessageContextObject(args: {
 		// chat recall ("did you tell me X?"). The tool planner needs the
 		// ordinary ones too — the question/preview a continuation turn ("finish
 		// it", "that is good") refers to — but role-wide inclusion resurrects
-		// the stale-answer hazard, so the planner's window is bounded and
-		// excludes tool-derived own answers structurally.
+		// the stale-answer hazard, so the planner excludes tool-derived own
+		// answers structurally while preserving every ordinary reply in order.
 		includeOwnReplies: true,
 		...(args.includeTools
 			? {
 					excludeToolDerivedOwnReplies: true,
-					maxOwnReplies: PLANNER_MAX_OWN_REPLY_TURNS,
 				}
 			: {}),
 	});

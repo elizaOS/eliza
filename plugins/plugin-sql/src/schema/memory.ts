@@ -84,10 +84,65 @@ export const memoryTable = pgTable(
     index("idx_memories_document_search")
       .using("gin", documentSearchTokensExpression(table.content, table.metadata))
       .where(sql`${table.type} = 'documents' AND ${table.metadata}->>'type' = 'document'`),
+    index("idx_memories_document_source_search")
+      .using("gin", documentSearchTokensExpression(table.content, table.metadata))
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+      ),
+    index("idx_memories_documents_pinned_created")
+      .on(table.createdAt, table.id)
+      .where(
+        sql`${table.type} = 'documents' AND ${table.metadata}->>'type' = 'document' AND ${table.metadata}->>'pinned' = 'true'`
+      ),
     index("idx_fragments_order").on(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`
     ),
+    index("idx_document_source_byte_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'documentRevision')::bigint)`,
+        sql`((metadata->>'sourceByteEnd')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment' AND ${table.metadata} ? 'sourceByteEnd'`
+      ),
+    index("idx_document_source_line_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'documentRevision')::bigint)`,
+        sql`((metadata->>'sourceLineEnd')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment' AND ${table.metadata} ? 'sourceLineEnd'`
+      ),
+    index("idx_document_source_fragment_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'documentRevision')::bigint)`,
+        sql`((metadata->>'sourceFragmentEnd')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment' AND ${table.metadata} ? 'sourceFragmentEnd'`
+      ),
+    index("idx_message_content_byte_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'messageId'))`,
+        sql`((metadata->>'sourceKind'))`,
+        sql`((metadata->>'attachmentIdHash'))`,
+        sql`((metadata->>'sourceRevision'))`,
+        sql`((metadata->>'byteEnd')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'message_content_segments' AND ${table.metadata}->>'type' = 'message-content-segment'`
+      ),
     check(
       "fragment_metadata_check",
       sql`

@@ -86,6 +86,8 @@ export interface TrajectoryListOptions {
 	endDate?: string;
 	search?: string;
 	scenarioId?: string;
+	/** Conversation room stored in trajectory metadata for scoped inspection. */
+	roomId?: string;
 	/** Correlation join key (#13775): all trajectories in one root turn's trace. */
 	traceId?: string;
 	batchId?: string;
@@ -1553,6 +1555,9 @@ export class TrajectoriesService extends Service {
 			);
 			await this.executeRawSql(
 				`CREATE INDEX IF NOT EXISTS idx_trajectories_is_training ON trajectories(is_training_data)`,
+			);
+			await this.executeRawSql(
+				`CREATE INDEX IF NOT EXISTS idx_trajectories_room_id ON trajectories ((metadata_json ->> 'roomId'))`,
 			);
 		} catch (e) {
 			// error-policy:J4 Indexes are performance-only; table persistence
@@ -3109,6 +3114,11 @@ export class TrajectoriesService extends Service {
 		}
 		if (options.scenarioId) {
 			whereClauses.push(`scenario_id = ${sqlLiteral(options.scenarioId)}`);
+		}
+		if (options.roomId) {
+			whereClauses.push(
+				`metadata_json ->> 'roomId' = ${sqlLiteral(options.roomId)}`,
+			);
 		}
 		if (options.traceId) {
 			whereClauses.push(`trace_id = ${sqlLiteral(options.traceId)}`);

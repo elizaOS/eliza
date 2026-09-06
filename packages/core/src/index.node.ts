@@ -130,6 +130,7 @@ export {
 export * from "./features/basic-capabilities/index";
 export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
+export * from "./features/messaging/content-segments";
 export type {
 	DeferredMessageScheduleCommit,
 	DeferredMessageScheduleRequest,
@@ -298,6 +299,7 @@ export {
 // by identity and drop it as redundant next to an authoritative outcome.
 export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop";
 export { renderActionResultsForModel } from "./runtime/planner-rendering";
+export * from "./runtime/prepared-model-request";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";

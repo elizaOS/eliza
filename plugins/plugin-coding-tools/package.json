@@ -49,7 +49,10 @@
     },
     "scripts": {
       "coreBuild": true,
-      "testSerial": true
+      "testSerial": true,
+      "contentContextEvidence": {
+        "role": "coding-tools"
+      }
     }
   },
   "keywords": [

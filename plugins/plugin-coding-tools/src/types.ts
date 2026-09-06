@@ -41,6 +41,7 @@ export type ToolFailureReason =
   | "command_failed"
   | "needs_confirmation"
   | "timeout"
+  | "source_loss"
   | "io_error"
   | "internal";
 

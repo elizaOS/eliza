@@ -3,6 +3,7 @@
 import { TurnAbortedError } from "../../runtime/turn-controller";
 import { getStreamingContext } from "../../streaming-context";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
+import { persistMessageContentContinuity } from "../message-content-continuity.ts";
 import { generateStage1Decision } from "./stage1-decision.js";
 
 export { directCodingResponseHandlerResult } from "./stage1-decision.js";
@@ -1845,6 +1846,15 @@ export async function runV5MessageRuntimeStage1(
 				),
 			{ mode: "CONTEXT_AFTER" },
 		);
+		// Effects have already completed, so continuity failure is reported by the
+		// helper without throwing or replaying the turn. Await the immutable-head
+		// publication before delivery so a process exit cannot strand references.
+		await persistMessageContentContinuity({
+			runtime: args.runtime,
+			message: args.message,
+			trajectory: plannerResult.trajectory,
+		});
+
 		return finalizePlannerReply(args, {
 			plannerResult,
 			exposedPlannerActions,
