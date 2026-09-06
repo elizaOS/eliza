@@ -320,4 +320,74 @@ describe("optional sentinels are only absent when the schema rejects them", () =
 		expect(result.valid).toBe(true);
 		expect(result.args?.tag).toBe("");
 	});
+	describe("drifted key canonicalization", () => {
+		const action = {
+			name: "CALENDAR_UPDATE_EVENT",
+			description: "test",
+			parameters: [
+				{
+					name: "eventId",
+					description: "id",
+					required: true,
+					schema: { type: "string" as const },
+				},
+				{
+					name: "title",
+					description: "title",
+					required: false,
+					schema: { type: "string" as const },
+				},
+			],
+		} as unknown as Action;
+
+		it("maps a case-only or separator-only variant onto the declared property", () => {
+			for (const drifted of ["eventid", "event_id", "EVENT-ID", "EventID"]) {
+				const result = validateToolArgs(action, { [drifted]: "evt-1" });
+				expect(result.valid, drifted).toBe(true);
+				expect(result.args).toEqual({ eventId: "evt-1" });
+			}
+		});
+
+		it("keeps the drifted key unexpected when the canonical key is also present", () => {
+			const result = validateToolArgs(action, {
+				eventId: "evt-1",
+				eventid: "evt-2",
+			});
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContain("Unexpected argument 'eventid'");
+		});
+
+		it("leaves an ambiguous fold alone", () => {
+			const ambiguous = {
+				name: "X",
+				description: "test",
+				parameters: [
+					{
+						name: "userId",
+						description: "a",
+						required: false,
+						schema: { type: "string" as const },
+					},
+					{
+						name: "user_id",
+						description: "b",
+						required: false,
+						schema: { type: "string" as const },
+					},
+				],
+			} as unknown as Action;
+			const result = validateToolArgs(ambiguous, { USERID: "u" });
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContain("Unexpected argument 'USERID'");
+		});
+
+		it("still reports a genuinely unknown key", () => {
+			const result = validateToolArgs(action, {
+				eventId: "evt-1",
+				colour: "red",
+			});
+			expect(result.valid).toBe(false);
+			expect(result.errors).toContain("Unexpected argument 'colour'");
+		});
+	});
 });

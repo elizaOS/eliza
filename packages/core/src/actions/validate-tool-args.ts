@@ -129,13 +129,53 @@ function validateNumberBounds(
 	}
 }
 
+/**
+ * Fold a key's case and separators away so `eventid`, `event_id`, and
+ * `event-id` all name the declared `eventId`.
+ */
+function foldPropertyKey(key: string): string {
+	return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Map argument keys that differ from a declared property only by case or
+ * separators onto that property. Planners drift this way regularly (live
+ * 2026-09-06: `eventid` for `eventId` cost a whole extra planner iteration),
+ * and the mapping is deterministic: a folded key must match exactly one
+ * declared property and the canonical key must be absent. Anything else is
+ * left untouched and still reports as an unexpected argument.
+ */
+function canonicalizeDriftedKeys(
+	value: Record<string, unknown>,
+	properties: Record<string, JsonSchema>,
+): Record<string, unknown> {
+	const declaredNames = Object.keys(properties);
+	if (declaredNames.length === 0) return value;
+	const canonicalByFolded = new Map<string, string | null>();
+	for (const name of declaredNames) {
+		const folded = foldPropertyKey(name);
+		canonicalByFolded.set(folded, canonicalByFolded.has(folded) ? null : name);
+	}
+	let result = value;
+	for (const key of Object.keys(value)) {
+		if (hasOwn(properties, key)) continue;
+		const canonical = canonicalByFolded.get(foldPropertyKey(key));
+		if (!canonical || hasOwn(value, canonical)) continue;
+		if (result === value) result = { ...value };
+		result[canonical] = value[key];
+		delete result[key];
+	}
+	return result;
+}
+
 function validateObject(
 	schema: JsonSchema,
-	value: Record<string, unknown>,
+	rawValue: Record<string, unknown>,
 	path: string,
 	errors: string[],
 ): Record<string, unknown> {
 	const properties = schema.properties ?? {};
+	const value = canonicalizeDriftedKeys(rawValue, properties);
 	const output: Record<string, unknown> = {};
 
 	for (const key of schema.required ?? []) {
