@@ -1176,6 +1176,30 @@ async function resolveDefinitionForMutation(
     }
     return { match: exactTarget, ambiguousCandidates: [] };
   }
+  const exactTitleTargets = target
+    ? defs.filter(
+        (entry) =>
+          normalizeTitle(entry.definition.title) === normalizeTitle(target),
+      )
+    : [];
+  if (exactTitleTargets.length > 0) {
+    const authorizedTargets =
+      explicitlyNamed.length > 0
+        ? exactTitleTargets.filter((entry) => explicitlyNamed.includes(entry))
+        : exactTitleTargets;
+    const match =
+      authorizedTargets.length === 1
+        ? authorizedTargets[0]
+        : resolveDuplicateByTimeHint(authorizedTargets, ownerText);
+    return match
+      ? { match, ambiguousCandidates: [] }
+      : {
+          match: null,
+          ambiguousCandidates: authorizedTargets.map(
+            definitionDisambiguationLabel,
+          ),
+        };
+  }
   if (explicitlyNamed.length === 1) {
     return {
       match: explicitlyNamed.at(0) ?? null,
@@ -5977,11 +6001,16 @@ async function runLifeOperationHandlerInner(
       // Enumerated multi-target delete first: several DISTINCT verbatim-named
       // items in one ask delete together (guards documented on the resolver;
       // anything ambiguous falls through to the single-target path below).
-      const enumeratedTargets = await resolveEnumeratedDeleteTargets(
-        service,
-        messageText(message) || intent,
-        domain,
-      );
+      // A supplied target constrains this operation even when the complete
+      // request names other records for different steps. Resolve that single
+      // identity (or reject it) rather than widening it through bulk matching.
+      const enumeratedTargets = targetName?.trim()
+        ? []
+        : await resolveEnumeratedDeleteTargets(
+            service,
+            messageText(message) || intent,
+            domain,
+          );
       if (enumeratedTargets.length > 1) {
         for (const entry of enumeratedTargets) {
           await service.deleteDefinition(entry.definition.id);
