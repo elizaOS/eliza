@@ -138,6 +138,34 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain("<device-transfer>");
   });
 
+  it.each([".ElizaApplication", "ai.elizaos.app.ElizaApplication"])(
+    "removes the local scheduler application hook %s from the Play manifest",
+    (applicationName) => {
+      const source = fs
+        .readFileSync(
+          new URL(
+            "../platforms/android/app/src/main/AndroidManifest.xml",
+            import.meta.url,
+          ),
+          "utf8",
+        )
+        .replace(
+          'android:name=".ElizaApplication"',
+          `android:name="${applicationName}"`,
+        );
+      const hardened = applyAndroidPlayManifestHardening(source);
+      const application = hardened.match(/<application\b[^>]*>/)?.[0];
+      expect(application).toBeDefined();
+      expect(application).not.toMatch(/android:name=/);
+      expect(hardened).toContain('android:name=".MainActivity"');
+      expect(
+        applyAndroidPlayManifestHardening(hardened).match(
+          /<application\b[^>]*>/,
+        )?.[0],
+      ).toBe(application);
+    },
+  );
+
   it("packages only the restricted Play-safe Capacitor runtime config", () => {
     const sanitized = sanitizeAndroidCloudCapacitorConfig({
       appId: "ai.elizaos.app",

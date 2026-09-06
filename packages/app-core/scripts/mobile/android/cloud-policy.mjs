@@ -223,6 +223,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRecognitionService.java",
   "ElizaVoiceInputMethodService.java",
   "ElizaBootReceiver.java",
+  "ElizaApplication.java",
   "ElizaWorkScheduler.java",
   "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
@@ -758,6 +759,14 @@ export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding=
 
 export function applyAndroidPlayManifestHardening(source) {
   let xml = source
+    // Cloud builds have no WorkManager dependency or Direct Boot scheduler.
+    // Use Android's default Application after stripping the local subclass.
+    .replace(/<application\b[^>]*>/, (application) =>
+      application.replace(
+        /\s+android:name="(?:[\w.]*\.)?ElizaApplication"/,
+        "",
+      ),
+    )
     .replace(/\s+android:dataExtractionRules="[^"]*"/, "")
     .replace(/\s+android:fullBackupContent="[^"]*"/, "")
     .replace(
@@ -953,7 +962,9 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
   ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-    (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
+    (file) =>
+      file !== "ElizaApplication.java" &&
+      !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
   ),
   "SafePushNotificationsPlugin.java",
 ];
