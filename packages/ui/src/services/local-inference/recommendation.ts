@@ -271,7 +271,7 @@ export function selectRecommendedModelForSlot(
     (model) =>
       canFit(hardware, model, catalog) &&
       kernelRequirementsSatisfied(model, binaryKernels) &&
-      isPublishedCatalogTier(model),
+      isPublishedLocalModel(model),
   );
 
   // On hosts with >= 16 GB RAM/VRAM, give long-context (>= 64k) ladder
@@ -368,7 +368,7 @@ export function recommendForFirstRun(
   const isEligibleChat = (model: CatalogModel): boolean =>
     !model.hiddenFromCatalog && DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
   const isPublishedEligibleChat = (model: CatalogModel): boolean =>
-    isEligibleChat(model) && isPublishedCatalogTier(model);
+    isEligibleChat(model) && isPublishedLocalModel(model);
 
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
   if (preferred && isPublishedEligibleChat(preferred)) return preferred;
