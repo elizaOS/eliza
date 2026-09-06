@@ -841,6 +841,36 @@ export const agentSandboxes = pgTable(
       .where(
         sql`${table.warm_claim_credential_state} = 'failed' AND ${table.warm_claim_cleanup_completed_at} IS NULL`,
       ),
+    replacement_vpn_authority_check: check(
+      "agent_sandboxes_replacement_vpn_authority_check",
+      sql`(
+          ${table.replacement_cleanup_vpn_authority} IS NULL OR (
+            ${table.replacement_cleanup_sandbox_id} IS NOT NULL
+            AND jsonb_typeof(${table.replacement_cleanup_vpn_authority}) = 'object'
+            AND jsonb_typeof(${table.replacement_cleanup_vpn_authority}->'server') = 'object'
+            AND jsonb_typeof(${table.replacement_cleanup_vpn_authority}->'server'->'apiUrl') = 'string'
+            AND length(${table.replacement_cleanup_vpn_authority}->'server'->>'apiUrl') > 0
+            AND jsonb_typeof(${table.replacement_cleanup_vpn_authority}->'server'->'enrollmentUser') = 'string'
+            AND length(${table.replacement_cleanup_vpn_authority}->'server'->>'enrollmentUser') > 0
+            AND (${table.replacement_cleanup_vpn_authority}->'server'->>'publicKey') ~ '^mkey:[0-9a-f]{64}$'
+            AND ${table.replacement_cleanup_vpn_authority}->'server'->>'publicKey' <> 'mkey:' || repeat('0', 64)
+            AND (
+              ${table.replacement_cleanup_vpn_authority}->'node' = 'null'::jsonb OR (
+                jsonb_typeof(${table.replacement_cleanup_vpn_authority}->'node') = 'object'
+                AND ${table.replacement_cleanup_vpn_node_id} IS NOT NULL
+                AND jsonb_typeof(${table.replacement_cleanup_vpn_authority}->'node'->'id') = 'string'
+                AND ${table.replacement_cleanup_vpn_authority}->'node'->>'id' = ${table.replacement_cleanup_vpn_node_id}
+                AND (${table.replacement_cleanup_vpn_authority}->'node'->>'id') ~ '^[1-9][0-9]{0,19}$'
+                AND (length(${table.replacement_cleanup_vpn_node_id}) < 20 OR ${table.replacement_cleanup_vpn_node_id} <= '18446744073709551615')
+                AND (${table.replacement_cleanup_vpn_authority}->'node'->>'machineKey') ~ '^mkey:[0-9a-f]{64}$'
+                AND ${table.replacement_cleanup_vpn_authority}->'node'->>'machineKey' <> 'mkey:' || repeat('0', 64)
+                AND jsonb_typeof(${table.replacement_cleanup_vpn_authority}->'node'->'createdAt') = 'string'
+                AND length(${table.replacement_cleanup_vpn_authority}->'node'->>'createdAt') > 0
+              )
+            )
+          )
+        ) IS TRUE`,
+    ),
     replacement_cleanup_locator_check: check(
       "agent_sandboxes_replacement_cleanup_locator_check",
       sql`(
