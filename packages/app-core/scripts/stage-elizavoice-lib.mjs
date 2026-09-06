@@ -19,6 +19,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  androidCmakeBuildDirectory,
+  assertAndroidCmakeCompilers,
+} from "./build-helpers/android-cmake-cache.mjs";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.mjs";
 import { assertVulkanMaliMitigation } from "./build-helpers/verify-fused-symbols.mjs";
 
@@ -169,12 +173,13 @@ if (!existsSync(path.join(forkSrc, "tools/omnivoice/CMakeLists.txt"))) {
   );
 }
 
-const buildDir = path.join(
-  repoRoot,
-  ".cache",
-  "elizavoice-android",
-  variant === "vulkan" ? `${abi}-vulkan` : abi,
-);
+const buildDir = androidCmakeBuildDirectory({
+  cacheRoot: path.join(repoRoot, ".cache", "elizavoice-android"),
+  ndk,
+  abi,
+  platform,
+  variant,
+});
 mkdirSync(buildDir, { recursive: true });
 
 // arm64 SIMD floor: GGML_NATIVE=OFF cross-builds to bare armv8-a, which leaves
@@ -261,6 +266,10 @@ if (variant === "cpu") {
     "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH",
   ]);
 }
+
+const configuredCompilers = assertAndroidCmakeCompilers({ buildDir, ndk });
+log(`configured C compiler: ${configuredCompilers.C}`);
+log(`configured C++ compiler: ${configuredCompilers.CXX}`);
 
 let jobs = 4;
 try {

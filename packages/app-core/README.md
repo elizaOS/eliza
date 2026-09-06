@@ -57,3 +57,8 @@ setup failures fail the install instead of reporting inference as ready.
 `ELIZA_SKIP_FUSED_INFERENCE_SETUP=1` is an explicit escape hatch and does not
 establish runtime readiness. Android and iOS packaging use their platform build
 lanes to produce the corresponding NDK or Apple artifacts.
+
+Android fused builds keep separate CMake caches for the resolved NDK, its
+toolchain and revision, target platform, ABI and library variant. Before compiling,
+the stager checks CMake's recorded C and C++ compilers against the selected NDK.
+Changing NDK versions preserves old caches without reusing their compilers.

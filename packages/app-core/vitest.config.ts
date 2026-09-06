@@ -172,6 +172,7 @@ export default defineConfig({
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/ensure-fused-inference-install.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
+      "scripts/build-helpers/android-cmake-cache.test.mjs",
       "scripts/lib/electrobun-loopback-hardening.test.mjs",
       "scripts/lib/linux-artifact-permissions.test.mjs",
       // Uses Node.js built-in test runner (node:test), not vitest; runs in
