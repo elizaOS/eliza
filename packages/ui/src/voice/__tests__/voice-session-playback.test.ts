@@ -305,10 +305,10 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
   });
 
   it("streams later chunks immediately after the initial reserve starts", async () => {
-    const ctx = new FakePlaybackAudioContext(1_000);
+    const ctx = new FakePlaybackAudioContext(16_000);
     const pb = await createVoiceSessionPlayback({
       createAudioContext: () => ctx,
-      preRollMs: 4,
+      preRollMs: 0.25,
     });
     await pb.unlock();
     pb.beginInput();
@@ -326,11 +326,11 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
   });
 
   it("counts a mid-utterance underrun and rearms the reserve", async () => {
-    const ctx = new FakePlaybackAudioContext(1_000);
+    const ctx = new FakePlaybackAudioContext(16_000);
     const events: string[] = [];
     const pb = await createVoiceSessionPlayback({
       createAudioContext: () => ctx,
-      preRollMs: 4,
+      preRollMs: 0.25,
       onStats: (event) => events.push(event.reason),
     });
     await pb.unlock();
@@ -349,12 +349,12 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
   });
 
   it("reports only sanitized queue and arrival-gap counters", async () => {
-    const ctx = new FakePlaybackAudioContext(1_000);
+    const ctx = new FakePlaybackAudioContext(16_000);
     const clock = [100, 145, 250];
     const events: unknown[] = [];
     const pb = await createVoiceSessionPlayback({
       createAudioContext: () => ctx,
-      preRollMs: 4,
+      preRollMs: 0.25,
       now: () => clock.shift() ?? 250,
       onStats: (event) => events.push(event),
     });
@@ -377,7 +377,7 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
   });
 
   it("keeps old audio flowing and crossfades into the prepared reply", async () => {
-    const ctx = new FakePlaybackAudioContext(1_000);
+    const ctx = new FakePlaybackAudioContext(16_000);
     const completed = vi.fn();
     const pb = await createVoiceSessionPlayback({
       createAudioContext: () => ctx,
@@ -386,24 +386,24 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     });
     await pb.unlock();
     pb.beginInput();
-    pb.enqueue(pcmFrame(0.8, 32));
+    pb.enqueue(pcmFrame(0.8, 512));
     const before = scriptNodeOf(ctx).render(2);
     expect(before[0]).toBeCloseTo(0.8, 2);
 
     pb.beginHandoff(20);
-    pb.enqueue(pcmFrame(-0.8, 32));
-    const transition = scriptNodeOf(ctx).render(22);
+    pb.enqueue(pcmFrame(-0.8, 512));
+    const transition = scriptNodeOf(ctx).render(352);
     expect(transition[0]).toBeCloseTo(0.8, 2);
-    expect(transition[10]).toBeCloseTo(0, 1);
-    expect(transition[20]).toBeCloseTo(-0.8, 2);
+    expect(transition[160]).toBeCloseTo(0, 1);
+    expect(transition[320]).toBeCloseTo(-0.8, 2);
     expect(completed).toHaveBeenCalledTimes(1);
-    expect(pb.getStats().queuedSamples).toBe(10);
+    expect(pb.getStats().queuedSamples).toBe(160);
     await pb.stop();
   });
   it.each(["autoplay", "startup reserve"])(
     "hands off audio held by %s without replaying the obsolete response",
     async (heldBy) => {
-      const ctx = new FakePlaybackAudioContext(1_000);
+      const ctx = new FakePlaybackAudioContext(16_000);
       const completed = vi.fn();
       const pb = await createVoiceSessionPlayback({
         createAudioContext: () => ctx,
@@ -412,16 +412,16 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
       });
       if (heldBy === "startup reserve") await pb.unlock();
       pb.beginInput();
-      pb.enqueue(pcmFrame(0.8, 32));
+      pb.enqueue(pcmFrame(0.8, 512));
       pb.beginHandoff(20);
-      expect(pb.getStats().maxQueuedSamples).toBe(32);
-      pb.enqueue(pcmFrame(-0.8, 32));
+      expect(pb.getStats().maxQueuedSamples).toBe(512);
+      pb.enqueue(pcmFrame(-0.8, 512));
       await pb.unlock();
       pb.finishInput();
-      const transition = scriptNodeOf(ctx).render(22);
+      const transition = scriptNodeOf(ctx).render(352);
       expect(transition[0]).toBeCloseTo(0.8, 2);
-      expect(transition[10]).toBeCloseTo(0, 1);
-      expect(transition[20]).toBeCloseTo(-0.8, 2);
+      expect(transition[160]).toBeCloseTo(0, 1);
+      expect(transition[320]).toBeCloseTo(-0.8, 2);
       expect(completed).toHaveBeenCalledTimes(1);
       await pb.stop();
     },
@@ -444,11 +444,13 @@ describe("native-rate streaming playback", () => {
           onDrained: drained,
         });
         await playback.unlock();
+        playback.beginInput();
         for (let offset = 0; offset < source.length; offset += chunkSize) {
           playback.enqueue(
             floatPcmToInt16Bytes(source.subarray(offset, offset + chunkSize)),
           );
         }
+        playback.finishInput();
         const expectedLength = Math.ceil((source.length * rate) / 16_000);
         const output = scriptNodeOf(ctx).render(expectedLength);
         expect(drained).not.toHaveBeenCalled();
@@ -487,6 +489,53 @@ describe("native-rate streaming playback", () => {
       await playback.stop();
     },
   );
+
+  it.each([44_100, 48_000])(
+    "keeps independent utterances free of interpolation from prior audio at %i Hz",
+    async (rate) => {
+      const ctx = new FakePlaybackAudioContext(rate);
+      const playback = await createVoiceSessionPlayback({
+        createAudioContext: () => ctx,
+      });
+      await playback.unlock();
+      playback.beginInput();
+      playback.enqueue(pcmFrame(-1, 1));
+      playback.finishInput();
+      playback.beginInput();
+      playback.enqueue(pcmFrame(1, 1));
+      playback.finishInput();
+      const count = Math.ceil(rate / 16_000);
+      expect(Array.from(scriptNodeOf(ctx).render(count * 2 + 1))).toEqual([
+        ...new Array(count).fill(-1),
+        ...new Array(count).fill(1),
+        0,
+      ]);
+      await playback.stop();
+    },
+  );
+
+  it("resamples a handoff independently while preserving the old worklet queue", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const ctx = new FakePlaybackWorkletAudioContext(48_000);
+    const playback = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+    });
+    await playback.unlock();
+    playback.beginInput();
+    playback.enqueue(pcmFrame(-1, 1));
+    playback.beginHandoff(20);
+    playback.enqueue(pcmFrame(1, 1));
+    const messages = FakeVoiceAudioWorkletNode.instances[0]
+      .postedMessages as Array<{ type: string; pcm?: Float32Array }>;
+    expect(messages.map((message) => message.type)).toEqual([
+      "pcm",
+      "handoff",
+      "pcm",
+    ]);
+    expect(messages[0].pcm).toEqual(new Float32Array([-1, -1, -1]));
+    expect(messages[2].pcm).toEqual(new Float32Array([1, 1, 1]));
+    await playback.stop();
+  });
 
   it("sends context-rate PCM to the worklet after unlock", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);

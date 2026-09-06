@@ -70,7 +70,7 @@ try {
         lastNode = this;
       }
     };
-    async function render(rate, chunkSize, reset = false, single = false) {
+    async function render(rate, chunkSize, reset = false, single = false, previous = false) {
       const sourceLength = single ? 1 : 1600;
       const length = Math.ceil((sourceLength * rate) / 16000);
       const context = new OfflineAudioContext(1, length + 128, rate);
@@ -92,9 +92,16 @@ try {
         sink.enqueue(floatPcmToInt16Bytes(new Float32Array([-1])));
         sink.flush();
       }
+      if (previous) {
+        sink.beginInput();
+        sink.enqueue(floatPcmToInt16Bytes(new Float32Array([-1])));
+        sink.finishInput();
+      }
+      sink.beginInput();
       for (let i = 0; i < source.length; i += chunkSize) {
         sink.enqueue(floatPcmToInt16Bytes(source.subarray(i, i + chunkSize)));
       }
+      sink.finishInput();
       // Offline rendering can outrun MessagePort delivery. The inherited
       // processor acknowledges a FIFO barrier before the graph begins.
       await new Promise((resolve, reject) => {
@@ -122,11 +129,13 @@ try {
       const chunks = await render(rate, 7);
       const reset = await render(rate, 7, true);
       const single = await render(rate, 1, true, true);
+      const independent = await render(rate, 1, false, true, true);
       results.push({
         ...whole,
         chunked: chunks.pcm,
         reset: reset.pcm,
         single: single.pcm,
+        independent: independent.pcm,
       });
     }
     return results;
@@ -150,6 +159,11 @@ try {
       result.single,
       [...new Array(singleLength).fill(1), ...new Array(128).fill(0)],
       `final single-sample frame at ${result.rate}`,
+    );
+    assert.deepEqual(
+      result.independent,
+      [...new Array(singleLength).fill(-1), ...new Array(singleLength).fill(1), ...new Array(128 - singleLength).fill(0)],
+      `independent utterance history at ${result.rate}`,
     );
     const crossings = [];
     for (let i = 1; i < result.length; i++) {
@@ -177,6 +191,7 @@ try {
       chunkContinuity: true,
       bargeInReset: true,
       finalSingleSample: true,
+      independentUtterances: true,
     });
     if (output) {
       const wav = Buffer.alloc(44 + result.pcm.length * 2);

@@ -630,6 +630,7 @@ export async function createVoiceSessionPlayback(
     },
     beginInput() {
       if (stopped) return;
+      resampler.reset();
       inputFinished = false;
       firstQueuedAtMs = null;
       lastFrameAtMs = null;
@@ -680,6 +681,7 @@ export async function createVoiceSessionPlayback(
     },
     beginHandoff(crossfadeMs: number) {
       if (stopped) return;
+      resampler.reset();
       // All old-response samples must enter the handoff queue before new
       // response audio, including samples held for autoplay or startup reserve.
       // Suspended contexts accept queued samples without making them audible.
