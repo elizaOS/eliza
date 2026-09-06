@@ -37,6 +37,7 @@ const findOrganizationById = mock(async () => ({
 }));
 const updateOrganization = mock(async () => undefined);
 
+class MockUnavailableError extends Error {}
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
   requireCurrentBillingManagerSession: requireUserOrApiKeyWithOrg,
@@ -58,6 +59,7 @@ mock.module("@/lib/services/auto-top-up", () => ({
   },
   AutoTopUpSettingsValidationError,
   AutoTopUpSettingsPolicyError: MockPolicyError,
+  AutoTopUpSettingsUnavailableError: MockUnavailableError,
   autoTopUpService: { getSettings, updateSettings },
 }));
 

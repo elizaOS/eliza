@@ -6,6 +6,7 @@ class MockPolicyError extends Error {}
 const updateSettings = mock(async () => undefined);
 class MockAutoTopUpSettingsValidationError extends Error {}
 
+class MockUnavailableError extends Error {}
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireCurrentBillingManagerSession: async () => ({
     id: "user-1",
@@ -33,6 +34,7 @@ mock.module("@/lib/services/auto-top-up", () => ({
   },
   AutoTopUpSettingsValidationError: MockAutoTopUpSettingsValidationError,
   AutoTopUpSettingsPolicyError: MockPolicyError,
+  AutoTopUpSettingsUnavailableError: MockUnavailableError,
   autoTopUpService: {
     getSettings: async () => ({
       enabled: false,

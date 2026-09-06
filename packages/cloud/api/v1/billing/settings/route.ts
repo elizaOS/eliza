@@ -24,6 +24,7 @@ import {
 import {
   AUTO_TOP_UP_LIMITS,
   AutoTopUpSettingsPolicyError,
+  AutoTopUpSettingsUnavailableError,
   AutoTopUpSettingsValidationError,
   autoTopUpService,
 } from "@/lib/services/auto-top-up";
@@ -89,6 +90,16 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     });
   } catch (error) {
     // error-policy:J1 transport boundary returns a sanitized failure.
+    if (error instanceof AutoTopUpSettingsUnavailableError) {
+      return failureResponse(
+        c,
+        new ApiError(
+          503,
+          "service_unavailable",
+          "Billing settings are unavailable",
+        ),
+      );
+    }
     logger.error("[Billing Settings API] Error getting settings:", error);
     return failureResponse(c, error);
   }
@@ -184,6 +195,16 @@ app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
       return c.json(
         { success: false, error: error.message, code: "validation_error" },
         400,
+      );
+    }
+    if (error instanceof AutoTopUpSettingsUnavailableError) {
+      return failureResponse(
+        c,
+        new ApiError(
+          503,
+          "service_unavailable",
+          "Billing settings are unavailable",
+        ),
       );
     }
     logger.error("[Billing Settings API] Error updating settings:", error);

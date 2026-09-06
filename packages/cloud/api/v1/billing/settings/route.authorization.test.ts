@@ -26,6 +26,7 @@ const primaryReads = mock(async () => ({
   email: "owner@example.test",
   wallet_address: null,
 }));
+class MockUnavailableError extends Error {}
 mock.module("@/db/repositories/users", () => ({
   usersRepository: { findWithOrganizationForWrite: primaryReads },
 }));
@@ -65,6 +66,7 @@ mock.module("@/lib/services/auto-top-up", () => ({
   },
   AutoTopUpSettingsValidationError: ValidationError,
   AutoTopUpSettingsPolicyError: PolicyError,
+  AutoTopUpSettingsUnavailableError: MockUnavailableError,
   autoTopUpService: {
     getSettings: async () => ({
       enabled: false,

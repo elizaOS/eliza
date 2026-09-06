@@ -148,6 +148,16 @@ export class AutoTopUpSettingsValidationError extends Error {
   }
 }
 
+/** Missing account settings are unavailable, never a healthy empty configuration. */
+export class AutoTopUpSettingsUnavailableError extends ElizaError {
+  constructor(organizationId: string) {
+    super("Billing settings are unavailable", {
+      code: "BILLING_SETTINGS_UNAVAILABLE",
+      context: { organizationId },
+    });
+  }
+}
+
 /** Public validation failure with a safe, actionable settings message. */
 export class AutoTopUpSettingsPolicyError extends ElizaError {
   constructor(message: string) {
@@ -1556,7 +1566,7 @@ export class AutoTopUpService {
   }> {
     const organization = await organizationsRepository.findById(organizationId);
     if (!organization) {
-      throw new Error("Organization not found");
+      throw new AutoTopUpSettingsUnavailableError(organizationId);
     }
 
     return {
