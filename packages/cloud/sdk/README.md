@@ -92,7 +92,7 @@ sent only when set.
 > that browsers forbid `fetch` from overriding.
 
 `cloud.routes` is generated from the public Cloud API route tree under
-`apps/api`, including both Next-style exported HTTP handlers and Hono
+`packages/cloud/api`, including both Next-style exported HTTP handlers and Hono
 `app.get` / `app.post` / `app.all` route modules. It intentionally excludes
 admin, cron, webhook, internal, dashboard, auth, and MCP transport routes from
 the package root SDK surface. The route audit still inventories the full route
@@ -118,6 +118,10 @@ response instead of hiding it behind their DTO type.
 Older SDK releases could replace successful text or empty bodies with an
 invented `{ success: true }` object; callers relying on that fallback must use
 an explicit bodyless status or return a JSON response instead.
+
+`InsufficientCreditsError` preserves HTTP402 and its error body. Its
+`requiredCredits` field is `number | undefined`: render an unavailable amount
+when the server omits it, and preserve an explicitly reported zero.
 
 `pollJob` and `waitForCliLogin` enforce a total timeout through every request,
 response-body read, and polling interval. Their timeout and interval options

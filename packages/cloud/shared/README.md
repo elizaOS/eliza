@@ -5,9 +5,8 @@ Shared backend code for Eliza Cloud: billing arithmetic, Drizzle DB schemas/repo
 ## Consumers
 
 - `@elizaos/cloud-api` — Hono API on Cloudflare Workers; imports `lib/`, `db/`, `billing/`, `types/`.
-- `@elizaos/cloud-frontend` — Vite + React 19 (Cloudflare Pages); imports only the isomorphic bits (`billing/`, some `types/`).
-- `@elizaos/cloud-services/container-control-plane` — Node service for Hetzner container provisioning.
-- A few plugins (e.g. `plugin-streaming` via `@elizaos/cloud-routing`).
+- `@elizaos/container-control-plane` — Node service for Hetzner container provisioning.
+- Server-side plugins that require Cloud database or service implementations.
 
 ## Source layout
 
@@ -15,9 +14,9 @@ Shared backend code for Eliza Cloud: billing arithmetic, Drizzle DB schemas/repo
 src/
   index.ts        top barrel — re-exports billing/db/lib/types as namespaces
   billing/        pure, isomorphic markup math (applyMarkup, credit markup, Twilio SMS)
-  db/             Drizzle layer — schemas/ (97), repositories/ (66, CQRS), migrations/,
+  db/             Drizzle layer — schemas/, repositories/ (CQRS), migrations/,
                   client.ts, database-url.ts, crypto/, utils/
-  lib/            SERVER-ONLY services + use-cases — services/ (207), auth*.ts,
+  lib/            SERVER-ONLY services + use-cases — services/, auth*.ts,
                   api/ middleware/ cors/ http/ session/, stripe.ts, pricing.ts,
                   promotion-pricing.ts, utils/logger.ts
   types/          cloud-api.ts (DTOs), cloud-worker-env.ts, stripe-queue-message.ts
@@ -39,7 +38,9 @@ The lease and subprocess authorities share the exact 512-character namespace
 validator. Treat a transaction/transport exception as ambiguous and reconcile
 the canonical snapshot before retrying an acquire, rollover, or release.
 
-`src/lib/` is server-only — browser code lives in `cloud-frontend`. Only the isomorphic helpers (`billing/`, math/string/validation) are safe to import from the frontend.
+`src/lib/` is server-only. Browser surfaces in `packages/app` consume public
+`@elizaos/cloud-sdk` contracts directly; legacy browser-safe paths here remain
+compatibility exports, not the dependency boundary for new browser code.
 
 ## Commands
 

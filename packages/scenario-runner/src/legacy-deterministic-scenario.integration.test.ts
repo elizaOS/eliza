@@ -34,7 +34,7 @@ describe("legacy deterministic scenario compatibility", () => {
       attemptId: "legacy-compatibility-test",
     });
 
-    expect(report.status).toBe("passed");
+    expect(report.status, JSON.stringify(report, null, 2)).toBe("passed");
     expect(report.modelFixtureMode).toBe("legacy-fallback");
     expect(report.modelFixtureDiagnostics?.scope).toMatchObject({
       scenarioId: legacyScenario.id,

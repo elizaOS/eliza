@@ -1,24 +1,8 @@
 /**
- * OpenClaw agent-home reader.
- *
- * Reads a file-based OpenClaw ("moltbot") agent home and classifies its
- * contents into a typed source object the migration pipeline consumes. Pure
- * filesystem + classification: NO network, NO side effects. Missing files are
- * tolerated (returned as undefined / empty) so partial homes still migrate.
- *
- * OCPlatform homes come in several version-shapes (see OC-VERSION-AUDIT.md):
- *   FLAT  (.moltbot):  <home>/SOUL.md IDENTITY.md AGENTS.md USER.md TOOLS.md
- *                      <home>/memory/YYYY-MM-DD.md + <named>.md
- *   LEANER (.hermes):  <home>/SOUL.md + AGENTS.md only (no IDENTITY/USER/TOOLS)
- *                      <home>/memory/<persona>-awareness.md, <persona>-thoughts.md
- *   NESTED:            <home>/workspace/... (same files, one level down)
- *   SQLITE (.ocplatform builder):  <home>/memory/<agent>.sqlite (a vector
- *                      index, NOT markdown). chunks.text holds the prose.
- *   <home>/secrets/  keys, firewalled, never read here.
- *
- * The reader is tolerant of missing files and NEVER silently emits empty for a
- * sqlite home: it detects + warns, and best-effort reads chunks.text when the
- * node:sqlite builtin is available (no heavy dependency added).
+ * Classifies file-based agent homes for the migration archive and persona mapper.
+ * Flat, nested workspace, Markdown, and SQLite memory layouts are supported.
+ * Optional files may be absent; other filesystem failures must stop migration
+ * rather than silently omit source data. Secret-directory contents are never read.
  */
 
 import * as fs from "node:fs";
@@ -99,15 +83,7 @@ export interface OcAgentSource {
 
 const DAILY_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
 
-/**
- * UTC midnight for calendar parts, keeping years 0-99 literal. `Date.UTC`
- * remaps them into 1900-1999, and the daily-log filename pattern is `\d{4}`,
- * so `0099-03-04.md` would land on 1999-03-04 while the record's own `date`
- * field still reads "0099-03-04" — a self-contradicting row that then tiers
- * the migrated memory by a timestamp 1900 years off. `OcDailyLog.epochMs` is
- * documented as "epoch ms of the date at UTC midnight", so it has to agree
- * with `date`.
- */
+/** Keep years 0–99 literal; Date.UTC remaps them to 1900–1999. */
 function utcMidnightMs(year: number, monthIndex: number, day: number): number {
   const at = new Date(0);
   at.setUTCFullYear(year, monthIndex, day);
@@ -127,18 +103,7 @@ const ROOT_MEMORY_CANDIDATES = ["MEMORY.md", "memory.md"] as const;
  */
 const HOME_SUBROOTS = ["", "workspace", "workspace.default"] as const;
 
-/**
- * Normalize CRLF (and lone CR) line endings to LF.
- *
- * An OpenClaw home authored on — or, on CI, git-checked-out onto — Windows
- * carries CRLF markdown (no `.gitattributes eol=lf` pins these files, and
- * `core.autocrlf=true` rewrites them on checkout). The persona mapper matches
- * bullet lines with `$`-anchored, per-line regexes (`character-mapper.ts`); a
- * trailing `\r` blocks `$` (JS `.` never matches `\r`, and `$` without `m` only
- * matches the true end of string), so `style.chat` and bio bullets silently come
- * back empty. Normalizing at the read boundary makes every downstream classifier
- * and regex line-ending agnostic.
- */
+/** Normalize Windows line endings before the persona mapper's line-anchored regexes. */
 function normalizeEol(text: string): string {
   return text.replace(/\r\n?/g, "\n");
 }
@@ -224,19 +189,7 @@ function resolveAgentRoot(home: string): string {
   return home;
 }
 
-/**
- * Resolve curated root-memory by matching a directory entry case-insensitively.
- *
- * A fixed-path probe (`readFileSync(root/MEMORY.md)` then `.../memory.md`) is not
- * portable: on a case-INSENSITIVE filesystem (Windows/macOS) the canonical
- * "MEMORY.md" probe resolves onto a lowercase `memory.md` on disk, so the file is
- * read but its name is mis-reported as "MEMORY.md"; on case-SENSITIVE Linux a
- * mixed-case `Memory.md` would be missed entirely. Matching against the actual
- * directory entries fixes both: the curated memory is found regardless of case,
- * and `curatedMemoryFile` carries the file's true (case-preserved) on-disk name.
- * Canonical uppercase "MEMORY.md" wins when a home carries both spellings (only
- * possible on a case-sensitive FS); otherwise the single match is used.
- */
+/** Preserve the on-disk spelling across case-sensitive and case-insensitive filesystems. */
 function readCuratedMemory(root: string): { text?: string; file?: string } {
   const entries = entriesIfPresent(root);
   const matches = entries.filter((entry) =>
@@ -327,18 +280,18 @@ function readSqliteMemory(store: OcSqliteStore): {
   }
 
   // Group chunk text by source path, de-dup exact repeats, reassemble prose.
-  const byPath = new Map<string, { lines: Set<number>; parts: string[] }>();
+  const byPath = new Map<string, { chunks: Set<string>; parts: string[] }>();
   for (const r of rows) {
     if (!r || typeof r.path !== "string" || typeof r.text !== "string")
       continue;
     let g = byPath.get(r.path);
     if (!g) {
-      g = { lines: new Set<number>(), parts: [] };
+      g = { chunks: new Set<string>(), parts: [] };
       byPath.set(r.path, g);
     }
-    const ln = Number(r.start_line) || 0;
-    if (g.lines.has(ln)) continue; // skip duplicate chunk at same start_line
-    g.lines.add(ln);
+    const chunkKey = JSON.stringify([r.start_line, r.text]);
+    if (g.chunks.has(chunkKey)) continue;
+    g.chunks.add(chunkKey);
     g.parts.push(r.text);
   }
 

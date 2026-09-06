@@ -1,20 +1,7 @@
 /**
- * Session lifecycle routes for password and cookie auth.
- *
- *   POST /api/auth/setup            — first-run owner identity + password
- *   POST /api/auth/login/password   — password login → session cookie
- *   POST /api/auth/logout           — destroy current session
- *   GET  /api/auth/me               — current identity + session
- *   GET  /api/auth/sessions         — list active sessions for identity
- *   POST /api/auth/sessions/:id/revoke — revoke one session
- *
- * Hard rules:
- *   - Every write path is rate-limited via the auth bucket in `auth.ts`.
- *   - Every write path emits an audit event (success or failure) before
- *     returning.
- *   - Setup is one-shot — once an owner identity exists, /setup returns 409.
- *   - Logout uses the auth context to find the session id; we do NOT trust
- *     the body.
+ * Owns password setup, browser login, and session lifecycle APIs backed by the
+ * runtime's auth store. Session ownership comes from the authenticated caller;
+ * storage failures propagate to the compatibility server's HTTP error boundary.
  */
 
 import crypto from "node:crypto";
@@ -462,7 +449,7 @@ async function handleLogout(
     sendJsonResponse(res, 200, { ok: true });
     return true;
   }
-  const session = await findActiveSession(store, sessionId).catch(() => null);
+  const session = await findActiveSession(store, sessionId);
   if (session) {
     await revokeSession(session.id, {
       store,
@@ -741,8 +728,7 @@ async function handleRevoke(
     sendJsonErrorResponse(res, 401, "Unauthorized");
     return true;
   }
-  // Look up the target session and confirm it belongs to the caller.
-  const target = await store.findSession(targetSessionId).catch(() => null);
+  const target = await store.findSession(targetSessionId);
   if (!target || target.identityId !== ctx.identity.id) {
     sendJsonErrorResponse(res, 404, "session_not_found");
     return true;
@@ -754,7 +740,6 @@ async function handleRevoke(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  // If the user revoked their own session, also clear cookies.
   if (ctx.session && ctx.session.id === targetSessionId) {
     clearSessionCookies(res);
   }

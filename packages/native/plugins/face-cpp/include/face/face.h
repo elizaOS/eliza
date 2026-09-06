@@ -1,43 +1,17 @@
-/*
- * face-cpp — public C ABI for the standalone native plugin that ports
- * BlazeFace detection + a 128-d face-embedding network to the
- * elizaOS/llama.cpp fork's ggml dispatcher. Replaces the ONNX-backed
- * MediaPipe face detector and the face-api.js recognition pipeline in
- * plugin-vision (`face-detector-mediapipe.ts`, `face-recognition.ts`).
+/**
+ * Defines the native detector and embedder ABI consumed by plugin-vision.
+ * Detector boxes use source-image pixels with a top-left origin. Six landmark
+ * pairs follow BlazeFace order: left eye, right eye, nose, mouth, left ear,
+ * right ear. Embeddings are L2-normalized 128-dimensional vectors.
  *
- * Two heads are exposed:
+ * Distinct handles are reentrant; callers synchronize access to a shared
+ * handle. Status-returning operations use negative errno codes for failure;
+ * distance helpers return floating-point measurements. Model-family metadata
+ * is checked by the GGUF loader before a session handle is exposed.
  *
- *   1. BlazeFace (front, 128x128) — SSD-style single-shot detector with
- *      6-keypoint regression. Two anchor strides (8 and 16) yield 896
- *      anchors total. See:
- *        Bazarevsky et al., "BlazeFace: Sub-millisecond Neural Face
- *        Detection on Mobile GPUs", arXiv:1907.05047.
- *      Upstream weights:
- *        https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_detection/face_detection_front.tflite
- *
- *   2. 128-d face embedding network (FaceNet-style or ArcFace-mini) —
- *      input is a 112x112 RGB face crop aligned via the BlazeFace
- *      keypoints (5-of-6 used: left eye, right eye, nose tip, mouth-left,
- *      mouth-right). Output is an L2-normalized 128-d vector.
- *      Upstream weights:
- *        https://github.com/deepinsight/insightface (buffalo_s) or
- *        https://github.com/timesler/facenet-pytorch (facenet 128d).
- *
- * Coordinate convention: every detection bbox is `{x, y, w, h}` in
- * source-image absolute pixel coordinates; `(x, y)` is the bbox top-left.
- * The keypoint vector packs 6 (x, y) pairs in the BlazeFace order:
- *   [0,1]   left eye
- *   [2,3]   right eye
- *   [4,5]   nose tip
- *   [6,7]   mouth (centre / lip)
- *   [8,9]   left ear tragion
- *   [10,11] right ear tragion
- *
- * Threading: every entry point is reentrant against distinct handles.
- * Sharing one handle across threads requires the caller's own mutex.
- *
- * Error handling: all entry points return `int` — zero on success,
- * negative `errno`-style codes on failure.
+ * Detector provenance: Bazarevsky et al., arXiv:1907.05047 and MediaPipe's
+ * front-face model. Embedding converters pin FaceNet or ArcFace upstream
+ * weights; see scripts/blazeface_to_gguf.py and scripts/face_embed_to_gguf.py.
  */
 
 #ifndef FACE_FACE_H
@@ -178,8 +152,7 @@ int face_embed(face_embed_handle handle,
 int face_embed_close(face_embed_handle handle);
 
 /*
- * Cosine distance between two 128-d face embeddings. Real
- * implementation in `src/face_distance.c`. Returns a value in
+ * Cosine distance between two 128-d face embeddings. Returns a value in
  * [0, 2]: 0 for identical (post-normalization) vectors, 1 for
  * orthogonal, 2 for antipodal.
  *

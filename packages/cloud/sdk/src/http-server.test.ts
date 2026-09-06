@@ -20,6 +20,17 @@ const server = createServer((req, res) => {
   if (path === "/empty") return send("", "application/json");
   if (path === "/malformed") return send("{broken", "application/json");
   if (path === "/raw") return send("complete server text", "text/plain");
+  if (path.startsWith("/credits?")) {
+    res.statusCode = 402;
+    const amount = new URL(path, "http://localhost").searchParams.get("amount");
+    return send(
+      JSON.stringify({
+        error: "Insufficient credits",
+        ...(amount === null ? {} : { requiredCredits: Number(amount) }),
+      }),
+      "application/json",
+    );
+  }
   if (path === "/bodyless/204" || path === "/bodyless/205") {
     res.statusCode = Number(path.split("/")[2]);
     return res.end();
@@ -44,6 +55,21 @@ afterAll(async () => {
 });
 
 describe("real HTTP parsed response contracts", () => {
+  it.each([undefined, 0, 12.5])(
+    "preserves the reported credit amount %s in HTTP 402 failures",
+    async (requiredCredits) => {
+      const query =
+        requiredCredits === undefined ? "" : `amount=${requiredCredits}`;
+      await expect(
+        new ElizaCloudHttpClient({ baseUrl }).get(`/credits?${query}`),
+      ).rejects.toMatchObject({
+        name: "InsufficientCreditsError",
+        statusCode: 402,
+        requiredCredits,
+        errorBody: { error: "Insufficient credits", requiredCredits },
+      });
+    },
+  );
   it("fails the public account request on an HTML maintenance page", async () => {
     await expect(
       new ElizaCloudClient({ baseUrl }).getUser(),

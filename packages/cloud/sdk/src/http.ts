@@ -559,12 +559,13 @@ export class CloudApiError extends Error {
 }
 
 export class InsufficientCreditsError extends CloudApiError {
-  readonly requiredCredits: number;
+  /** Undefined when the server did not report a required amount. */
+  readonly requiredCredits: number | undefined;
 
   constructor(body: CloudApiErrorBody) {
     super(402, body);
     this.name = "InsufficientCreditsError";
-    this.requiredCredits = body.requiredCredits ?? 0;
+    this.requiredCredits = body.requiredCredits;
   }
 }
 

@@ -99,10 +99,15 @@ export interface LoadSkillsFromDirOptions {
 
 export interface LoadSkillsOptions {
   cwd?: string;
+  /** State root for managed and curated stores; resolved from host settings per call when omitted. */
   agentDir?: string;
+  /** Deliberate selections loaded last, including curated drafts if explicitly requested. */
   skillPaths?: string[];
+  /** False skips bundled, managed, curated and project discovery entirely. */
   includeDefaults?: boolean;
+  /** Optional library scan location; omission uses getSkillsDir's bundle resolution. */
   bundledSkillsDir?: string;
+  /** Overrides managed discovery only; curated active still belongs to agentDir. */
   managedSkillsDir?: string;
 }
 

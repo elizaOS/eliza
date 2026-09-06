@@ -132,6 +132,7 @@ export type {
   RoutingScopeKind,
 } from "./profiles.js";
 export {
+  RoutingConfigError,
   readRoutingConfig,
   resolveActiveValue,
   writeRoutingConfig,
