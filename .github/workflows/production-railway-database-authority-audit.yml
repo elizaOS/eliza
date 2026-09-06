@@ -170,7 +170,7 @@ jobs:
           set +e
           evidence_dir="$RUNNER_TEMP/production-db-authority-audit"
           if [ -d "$evidence_dir" ]; then
-            find "$evidence_dir" -type f -exec shred -u -- {} +
+            find "$evidence_dir" -type f -exec shred -f -u -- {} +
             find "$evidence_dir" -depth -type d -empty -delete
           fi
           exit 0
