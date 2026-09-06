@@ -708,15 +708,26 @@ const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
 const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
 	/\b(?:if|unless|when|whenever|once|whether|in\s+case)\b[^.!?\n]*$/i;
 
-// Quoted wording is classified once as non-assertive text. Preserve offsets and
-// line boundaries in this local grammar projection; the original reply and all
-// model context remain untouched. An escaped delimiter belongs to its quoted
-// content; only an unescaped closing delimiter ends that span.
-function unquotedEmptyClaimText(text: string): string {
-	return text.replace(
+// Classify quotes once, retaining asserted reported results. Only explicit
+// examples/wording are exempt; the projection prevents a quoted conditional
+// from changing the grammar of a later unquoted assertion.
+function emptyClaimQuoteContext(text: string): {
+	projection: string;
+	spans: { start: number; end: number; example: boolean }[];
+} {
+	const spans: { start: number; end: number; example: boolean }[] = [];
+	const projection = text.replace(
 		/"(?:\\[^\r\n]|[^"\\\r\n])*"|“(?:\\[^\r\n]|[^”\\\r\n])*”|‘(?:\\[^\r\n]|[^’\\\r\n])*’|`(?:\\[^\r\n]|[^`\\\r\n])*`|(?<![\p{L}\p{N}])'(?:\\[^\r\n]|[^'\\\r\n])*'(?![\p{L}\p{N}])/gu,
-		(quote) => quote.replace(/[^\r\n]/g, " "),
+		(quote: string, offset: number) => {
+			const example =
+				/(?:\bfor\s+example[, :] *|\b(?:the\s+)?(?:example|phrase|wording)(?:\s+(?:says|asks|reads))?\s*:?\s*)$/i.test(
+					text.slice(0, offset),
+				);
+			spans.push({ start: offset, end: offset + quote.length, example });
+			return quote.replace(/[^\r\n]/g, " ");
+		},
 	);
+	return { projection, spans };
 }
 
 // A negated ability to establish the immediately following proposition is
@@ -736,11 +747,26 @@ const UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN =
  * is empty is not a claim about looked-up state.
  */
 export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
-	const text = unquotedEmptyClaimText(reply.trim());
+	const text = reply.trim();
+	const { projection, spans } = emptyClaimQuoteContext(text);
 	if (!text.trim()) return false;
 	for (const pattern of EMPTY_TRACKED_STATE_CLAIM_PATTERNS) {
+		let quoteIndex = 0;
 		for (const match of text.matchAll(pattern)) {
-			const prefix = text.slice(0, match.index);
+			while (
+				quoteIndex < spans.length &&
+				spans[quoteIndex].end <= match.index
+			) {
+				quoteIndex++;
+			}
+			const candidate = spans[quoteIndex];
+			const quote =
+				candidate && candidate.start <= match.index ? candidate : undefined;
+			if (quote?.example) continue;
+			const prefix = quote
+				? projection.slice(0, quote.start) +
+					text.slice(quote.start + 1, match.index)
+				: projection.slice(0, match.index);
 			if (CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
 			if (UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
 			if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;

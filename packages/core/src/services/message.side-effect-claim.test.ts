@@ -1718,6 +1718,11 @@ describe("possessive empty-state egress proof", () => {
 		},
 	};
 	const assertions = [
+		'The read confirms: "Your task list is empty."',
+		'Your current status is "Your task list is empty."',
+		"Current result: “You have no notes.”",
+		'"You have no notes."',
+
 		"You have no notes.",
 		"You don't have any notes.",
 		"You do not have any tasks.",
@@ -1763,6 +1768,9 @@ describe("possessive empty-state egress proof", () => {
 	});
 	it.each([
 		"Do you have no notes?",
+		'For example, "Your task list is empty."',
+		'The guidance says "If you have no notes, create one."',
+
 		"You have no notes?",
 		"If you have no notes, create one.",
 		"When you don't have any tasks, ask for help.",
