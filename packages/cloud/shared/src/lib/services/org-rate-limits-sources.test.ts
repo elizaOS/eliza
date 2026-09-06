@@ -128,6 +128,7 @@ describe("authoritative organization rate-limit tier reads", () => {
     cacheWrite = behavior;
 
     await expect(readOrgTierFromSources("org-observation-only")).resolves.toEqual({
+      authority,
       tierName: "paid",
       completionsRpm: 120,
       embeddingsRpm: 200,
