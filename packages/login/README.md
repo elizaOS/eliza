@@ -73,3 +73,10 @@ application. Configure the platform's install command accordingly, and use
 session, provider and relying-party settings when switching the service source.
 The service handles SIGTERM by closing its listener and owned connections before
 exiting; the process integration test guards against leaked event-loop handles.
+
+Railway builds use [`railpack.json`](railpack.json). Keep the repository root as
+the build context, select Railpack, and set `RAILPACK_CONFIG_FILE` to
+`packages/login/railpack.json`. The configuration pins Bun and Node, installs the
+production dependency closure, and includes only login, core and logger
+workspaces in the runtime image. Retain the service's existing variables and
+`/health` check when changing its repository source.

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "24.15.0",
+    "bun": "1.3.14"
+  },
+  "steps": {
+    "install": {
+      "commands": [
+        "bun install --filter @elizaos/login --production --ignore-scripts --frozen-lockfile"
+      ]
+    },
+    "build": {
+      "commands": []
+    }
+  },
+  "deploy": {
+    "startCommand": "bun --conditions=eliza-source packages/login/src/server/start.ts",
+    "variables": {
+      "LOGIN_BIND_HOST": "0.0.0.0"
+    },
+    "inputs": [
+      {
+        "step": "packages:mise",
+        "include": [
+          "/mise/shims",
+          "/mise/installs",
+          "/usr/local/bin/mise",
+          "/etc/mise/config.toml",
+          "/root/.local/state/mise"
+        ]
+      },
+      {
+        "step": "install",
+        "include": [
+          "node_modules",
+          "package.json",
+          "packages/login",
+          "packages/core",
+          "packages/logger"
+        ]
+      }
+    ]
+  }
+}
