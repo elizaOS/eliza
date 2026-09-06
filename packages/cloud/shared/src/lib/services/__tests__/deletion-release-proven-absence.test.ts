@@ -536,3 +536,171 @@ test(
   },
   PGLITE_TIMEOUT,
 );
+
+test.each(["vpn-retry", "capture-owner-change", "compute-owner-change"] as const)(
+  "retiring serving resources preserve exact state through %s",
+  async (scenario) => {
+    const { service, agentId, orgId, nodeId } = await seedPlacedAgent();
+    const [node] = await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.node_id, nodeId));
+    const containerId = "a".repeat(64);
+    const containerName = `agent-${agentId}`;
+    const attemptId = crypto.randomUUID();
+    const authority = {
+      server: {
+        apiUrl: "https://vpn.fixture.invalid",
+        enrollmentUser: "staging",
+        publicKey: `mkey:${"1".repeat(64)}`,
+      },
+      node: {
+        id: "42",
+        machineKey: `mkey:${"2".repeat(64)}`,
+        createdAt: "2026-09-06T00:00:00.000Z",
+      },
+    };
+    const manifest: import("../../../db/schemas/agent-sandboxes").AgentDeletionResourceManifest = {
+      version: 1,
+      deletionAttemptId: crypto.randomUUID(),
+      deletionPolicy: { kind: "recovery_required" },
+      agentId,
+      organizationId: orgId,
+      localStateRetention: null,
+      servingPlacement: {
+        version: 1,
+        volumePath: `/data/agents/${agentId}`,
+        locator: {
+          sandboxId: containerName,
+          containerName,
+          containerId,
+          nodeId,
+          nodeRecordId: node.id,
+          nodeHostname: node.hostname,
+          nodeSshPort: node.ssh_port,
+          nodeSshUser: node.ssh_user,
+          nodeHostKeyFingerprint: "SHA256:original",
+          replacementAttemptId: attemptId,
+          replacementSecretCleanupVersion: 1,
+          vpnNodeId: "42",
+          vpnAuthority: authority,
+        },
+      },
+      resources: {
+        volume: { state: "unknown" },
+        secrets: { state: "unknown" },
+        vpn: { state: "unknown" },
+      },
+    };
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        sandbox_id: "new-sandbox",
+        node_id: "new-node",
+        container_name: "new-container",
+        replacement_cleanup_sandbox_id: containerName,
+        replacement_cleanup_node_id: nodeId,
+        replacement_cleanup_container_name: containerName,
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+        replacement_cleanup_resource_manifest: manifest,
+      })
+      .where(eq(agentSandboxes.id, agentId));
+    const read = async () =>
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, agentId)))[0];
+    const events: string[] = [];
+    const ssh = Object.create(DockerSSHClient.prototype) as DockerSSHClient;
+    const connect = spyOn(DockerSSHClient, "createDedicated").mockReturnValue(ssh);
+    const disconnect = spyOn(ssh, "disconnect").mockResolvedValue(undefined);
+    const exec = spyOn(ssh, "exec").mockImplementation(async (command) => {
+      if (command.includes("ELIZA_DELETION_VOLUME_V1")) {
+        events.push("capture");
+        if (scenario === "capture-owner-change") {
+          await dbWrite
+            .update(agentSandboxes)
+            .set({ lifecycle_revision: (await read()).lifecycle_revision + 1 })
+            .where(eq(agentSandboxes.id, agentId));
+        }
+        return `ELIZA_DELETION_VOLUME_V1|${crypto.randomUUID()}|8|101|8|102|/data/agents/${agentId}`;
+      }
+      if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
+        events.push("secrets");
+        return getReplacementSecretArtifactsCleanupReceipt(attemptId);
+      }
+      if (command.includes("docker container inspect")) {
+        events.push("compute");
+        expect(command).toContain(containerId);
+        expect((await read()).replacement_cleanup_resource_manifest?.resources.volume.state).toBe(
+          "captured",
+        );
+        if (scenario === "compute-owner-change") {
+          await dbWrite
+            .update(agentSandboxes)
+            .set({ lifecycle_revision: (await read()).lifecycle_revision + 1 })
+            .where(eq(agentSandboxes.id, agentId));
+        }
+        return "absent";
+      }
+      throw new Error("Unexpected retiring-serving SSH command");
+    });
+    let failVpn = true;
+    const vpn = spyOn(headscaleClient, "deleteNodeForAuthority").mockImplementation(
+      async (expected) => {
+        events.push("vpn");
+        expect(expected).toEqual(authority);
+        expect((await read()).replacement_cleanup_resource_manifest?.resources.secrets.state).toBe(
+          "absent",
+        );
+        if (failVpn) throw new Error("VPN provider unavailable");
+        return { state: "absent", authority, observedAt: new Date().toISOString() };
+      },
+    );
+    const legacyVpn = spyOn(headscaleClient, "deleteNode").mockRejectedValue(
+      new Error("Legacy VPN deletion forbidden"),
+    );
+    service["_provider"] = new DockerSandboxProvider();
+    const retire = () => service["retirePersistedReplacementCleanup"](agentId, orgId);
+    try {
+      if (scenario === "capture-owner-change") {
+        await expect(retire()).rejects.toThrow("ownership changed");
+        expect(events).toEqual(["capture"]);
+        expect((await read()).replacement_cleanup_resource_manifest).toEqual(manifest);
+      } else if (scenario === "compute-owner-change") {
+        await expect(retire()).rejects.toThrow("ownership changed");
+        expect(events).toEqual(["capture", "compute"]);
+        expect((await read()).replacement_cleanup_resource_manifest?.resources).toMatchObject({
+          volume: { state: "captured" },
+          secrets: { state: "unknown" },
+          vpn: { state: "unknown" },
+        });
+      } else {
+        await expect(retire()).rejects.toThrow("VPN provider unavailable");
+        expect(events).toEqual(["capture", "compute", "secrets", "vpn"]);
+        const retained = await read();
+        expect(retained.replacement_cleanup_resource_manifest?.resources).toMatchObject({
+          volume: { state: "captured" },
+          secrets: { state: "absent" },
+          vpn: { state: "unknown" },
+        });
+        failVpn = false;
+        events.length = 0;
+        await expect(retire()).rejects.toThrow("volume remains owned");
+        expect(events).toEqual(["compute", "vpn"]);
+        expect((await read()).replacement_cleanup_resource_manifest?.resources.vpn.state).toBe(
+          "absent",
+        );
+        events.length = 0;
+        await expect(retire()).rejects.toThrow("volume remains owned");
+        expect(events).toEqual(["compute"]);
+      }
+      expect((await read()).replacement_cleanup_node_id).toBe(nodeId);
+      expect((await read()).node_id).toBe("new-node");
+      expect(await nodeCount(nodeId)).toBe(2);
+      expect(legacyVpn).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+      disconnect.mockRestore();
+      exec.mockRestore();
+      vpn.mockRestore();
+      legacyVpn.mockRestore();
+    }
+  },
+  PGLITE_TIMEOUT,
+);

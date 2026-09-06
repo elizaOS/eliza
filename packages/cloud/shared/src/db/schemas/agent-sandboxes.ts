@@ -480,6 +480,10 @@ export const agentSandboxes = pgTable(
     local_state_retention: jsonb("local_state_retention").$type<AgentLocalStateRetention>(),
     /** Null identifies legacy rows whose serving placement has not been captured. */
     serving_placement: jsonb("serving_placement").$type<AgentServingPlacement>(),
+    /** Previous serving resources owned by the post-cutover cleanup fence. */
+    replacement_cleanup_resource_manifest: jsonb(
+      "replacement_cleanup_resource_manifest",
+    ).$type<AgentDeletionResourceManifest>(),
     /** Captured before compute removal; unresolved resources retain this owner row. */
     deletion_resource_manifest: jsonb(
       "deletion_resource_manifest",
@@ -841,6 +845,22 @@ export const agentSandboxes = pgTable(
       .where(
         sql`${table.warm_claim_credential_state} = 'failed' AND ${table.warm_claim_cleanup_completed_at} IS NULL`,
       ),
+    replacement_resource_manifest_check: check(
+      "agent_sandboxes_replacement_resource_manifest_check",
+      sql`(${table.replacement_cleanup_resource_manifest} IS NULL OR (
+        ${table.replacement_cleanup_sandbox_id} IS NOT NULL
+        AND ${table.replacement_cleanup_attempt_id} IS NULL
+        AND ${table.replacement_cleanup_resource_manifest}->>'version' = '1'
+        AND ${table.replacement_cleanup_resource_manifest}->>'agentId' = ${table.id}::text
+        AND ${table.replacement_cleanup_resource_manifest}->>'organizationId' = ${table.organization_id}::text
+        AND ${table.replacement_cleanup_resource_manifest}->'deletionPolicy'->>'kind' = 'recovery_required'
+        AND (${table.replacement_cleanup_resource_manifest}->>'deletionAttemptId') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        AND jsonb_typeof(${table.replacement_cleanup_resource_manifest}->'resources') = 'object'
+        AND ${table.replacement_cleanup_resource_manifest}->'servingPlacement'->'locator'->>'sandboxId' = ${table.replacement_cleanup_sandbox_id}
+        AND ${table.replacement_cleanup_resource_manifest}->'servingPlacement'->'locator'->>'nodeId' = ${table.replacement_cleanup_node_id}
+        AND ${table.replacement_cleanup_resource_manifest}->'servingPlacement'->'locator'->>'containerName' = ${table.replacement_cleanup_container_name}
+      )) IS TRUE`,
+    ),
     replacement_vpn_authority_check: check(
       "agent_sandboxes_replacement_vpn_authority_check",
       sql`(

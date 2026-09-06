@@ -23,6 +23,7 @@ import { type Job, jobsRepository } from "../../db/repositories/jobs";
 import { agentNodeIncarnationHistories } from "../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentSandboxBackup,
+  type AgentServingPlacement,
   agentSandboxes,
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
@@ -1416,349 +1417,422 @@ describe("admin agent image rollout on primary PGlite", () => {
     ).toBe(1);
   });
 
-  test("blue-green cutover transfers only old-primary identity and retains new capacity", async () => {
-    const seeded = await seedAgents(1);
-    const agentId = seeded.targets[0]!.agentId;
-    await dbWrite
-      .update(agentSandboxes)
-      .set({
-        docker_image: SOURCE_IMAGE,
-        image_digest: SOURCE_DIGEST,
-        environment_vars: { ELIZA_API_TOKEN: "agent-token" },
-      })
-      .where(eq(agentSandboxes.id, agentId));
-    await dbWrite.insert(dockerNodes).values([
-      {
-        node_id: "node-1",
-        hostname: "node-1.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 1,
-      },
-      {
-        node_id: "node-new",
-        hostname: "node-new.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 0,
-      },
-    ]);
-
-    const provider = new DockerSandboxProvider();
-    const create = spyOn(provider, "create").mockImplementation(
-      async (config: SandboxCreateConfig) => {
-        const intent = replacementHandle({
-          agentId,
-          nodeId: "node-new",
-          containerName: "agent-new",
-          dockerImage: SAME_REPO_TARGET_IMAGE,
-          previousVpnNodeId: "vpn-old",
-        });
-        const created = replacementHandle({
-          agentId,
-          nodeId: "node-new",
-          containerName: "agent-new",
-          dockerImage: SAME_REPO_TARGET_IMAGE,
-          containerId: "sha256:container-new",
-          previousVpnNodeId: "vpn-old",
-        });
-        const registered = replacementHandle({
-          agentId,
-          nodeId: "node-new",
-          containerName: "agent-new",
-          dockerImage: SAME_REPO_TARGET_IMAGE,
-          containerId: "sha256:container-new",
-          vpnNodeId: "vpn-new",
-          previousVpnNodeId: "vpn-old",
-        });
-        await config.onReplacementCreateIntent?.(intent);
-        await config.onReplacementCreated?.(created);
-        await config.onReplacementVpnRegistered?.(registered);
-        return registered;
-      },
-    );
-    spyOn(provider, "checkHealth").mockResolvedValue(true);
-    const cleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockImplementation(
-      async () => {
-        throw new Error("hold old-primary fence for assertion");
-      },
-    );
-    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
-    const snapshot = spyOn(service, "snapshot").mockResolvedValue({ success: true });
-    const originalFetch = globalThis.fetch;
-    const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url =
-        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      runtimeRequests.push({ url, headers: new Headers(init?.headers) });
-      return new Response(
-        JSON.stringify(
-          url.endsWith("/api/status")
-            ? {
-                state: "running",
-                canRespond: true,
-                startup: { phase: "running", attempt: 0 },
-              }
-            : {
-                ready: true,
-                canRespond: true,
-                runtime: "ok",
-                database: "ok",
-                plugins: { loaded: 18, failed: 0 },
-                startup: { phase: "running", attempt: 0 },
-              },
-        ),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as typeof fetch;
-    try {
-      const result = await service.executeUpgrade(
-        agentId,
-        seeded.organizationId,
-        TARGET_DIGEST,
-        SAME_REPO_TARGET_IMAGE,
-        SOURCE_DIGEST,
-      );
-      expect(result).toMatchObject({
-        success: true,
-        cleanupPending: true,
-        newNodeId: "node-new",
-      });
-      expect(create).toHaveBeenCalledTimes(1);
-      expect(snapshot).toHaveBeenCalledTimes(1);
-      expect(cleanup).toHaveBeenCalledTimes(1);
-      expect(runtimeRequests.map((request) => request.url)).toEqual([
-        "https://agent-new.example/api/status",
-        "https://agent-new.example/api/health",
-      ]);
-      for (const request of runtimeRequests) {
-        expect(request.headers.get("authorization")).toBe("Bearer agent-token");
-      }
-      const cutover = await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId);
-      expect(cutover).toMatchObject({
-        sandbox_id: "agent-new",
-        node_id: "node-new",
-        container_name: "agent-new",
-        image_digest: TARGET_DIGEST,
-        previous_image_digest: SOURCE_DIGEST,
-        replacement_cleanup_sandbox_id: "sandbox-1",
-        replacement_cleanup_node_id: "node-1",
-        replacement_cleanup_container_name: "agent-1",
-        replacement_cleanup_attempt_id: null,
-        replacement_cleanup_container_id: null,
-        replacement_cleanup_vpn_node_id: "vpn-old",
-        replacement_cleanup_vpn_node_name: null,
-        replacement_cleanup_preserved_vpn_node_id: null,
-        replacement_cleanup_vpn_registration_started_at: null,
-        replacement_cleanup_allocation_counted: true,
-      });
-      const nodeCounts = await dbWrite
-        .select({
-          nodeId: dockerNodes.node_id,
-          allocatedCount: dockerNodes.allocated_count,
+  for (const withServingReceipt of [false, true]) {
+    test(`blue-green cutover transfers only old-primary identity and retains new capacity (receipt=${withServingReceipt})`, async () => {
+      const seeded = await seedAgents(1);
+      const agentId = seeded.targets[0]!.agentId;
+      const priorServingPlacement: AgentServingPlacement | null = withServingReceipt
+        ? {
+            version: 1,
+            volumePath: "/var/lib/eliza/agents/" + agentId,
+            locator: {
+              sandboxId: "sandbox-1",
+              nodeId: "node-1",
+              containerName: "agent-1",
+              containerId: "c".repeat(64),
+              nodeRecordId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+              nodeHostname: "captured-old.internal",
+              nodeSshPort: 22,
+              nodeSshUser: "root",
+              nodeHostKeyFingerprint: "SHA256:captured-old",
+            },
+          }
+        : null;
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          serving_placement: priorServingPlacement,
+          docker_image: SOURCE_IMAGE,
+          image_digest: SOURCE_DIGEST,
+          environment_vars: { ELIZA_API_TOKEN: "agent-token" },
         })
-        .from(dockerNodes);
-      expect(
-        Object.fromEntries(nodeCounts.map((node) => [node.nodeId, node.allocatedCount])),
-      ).toEqual({
-        "node-1": 1,
-        "node-new": 1,
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-      snapshot.mockRestore();
-    }
-  });
-
-  test("blue-green rollback transfers only current-primary identity and retains rollback capacity", async () => {
-    const seeded = await seedAgents(1);
-    const agentId = seeded.targets[0]!.agentId;
-    await dbWrite
-      .update(agentSandboxes)
-      .set({
-        sandbox_id: "agent-current",
-        node_id: "node-current",
-        container_name: "agent-current",
-        docker_image: SAME_REPO_TARGET_IMAGE,
-        image_digest: TARGET_DIGEST,
-        previous_docker_image: SOURCE_IMAGE,
-        previous_image_digest: SOURCE_DIGEST,
-        environment_vars: { ELIZA_API_TOKEN: "agent-token" },
-      })
-      .where(eq(agentSandboxes.id, agentId));
-    await dbWrite.insert(dockerNodes).values([
-      {
-        node_id: "node-current",
-        hostname: "node-current.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 1,
-      },
-      {
-        node_id: "node-rollback",
-        hostname: "node-rollback.internal",
-        status: "healthy",
-        enabled: true,
-        capacity: 8,
-        allocated_count: 0,
-      },
-    ]);
-
-    const provider = new DockerSandboxProvider();
-    const create = spyOn(provider, "create").mockImplementation(
-      async (config: SandboxCreateConfig) => {
-        const intent = replacementHandle({
-          agentId,
-          nodeId: "node-rollback",
-          containerName: "agent-rollback",
-          dockerImage: SOURCE_IMAGE,
-          imageDigest: SOURCE_DIGEST,
-          previousVpnNodeId: "vpn-current",
-        });
-        const created = replacementHandle({
-          agentId,
-          nodeId: "node-rollback",
-          containerName: "agent-rollback",
-          dockerImage: SOURCE_IMAGE,
-          imageDigest: SOURCE_DIGEST,
-          containerId: "sha256:container-rollback",
-          previousVpnNodeId: "vpn-current",
-        });
-        const registered = replacementHandle({
-          agentId,
-          nodeId: "node-rollback",
-          containerName: "agent-rollback",
-          dockerImage: SOURCE_IMAGE,
-          imageDigest: SOURCE_DIGEST,
-          containerId: "sha256:container-rollback",
-          vpnNodeId: "vpn-rollback",
-          previousVpnNodeId: "vpn-current",
-        });
-        await config.onReplacementCreateIntent?.(intent);
-        await config.onReplacementCreated?.(created);
-        await config.onReplacementVpnRegistered?.(registered);
-        return registered;
-      },
-    );
-    spyOn(provider, "checkHealth").mockResolvedValue(true);
-    const cleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockImplementation(
-      async () => {
-        throw new Error("hold current-primary fence for assertion");
-      },
-    );
-    const backup = {
-      id: "00000000-0000-4000-8000-000000000091",
-      sandbox_record_id: agentId,
-      snapshot_type: "pre-upgrade",
-    } as unknown as AgentSandboxBackup;
-    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
-      backup,
-    );
-    const reconstructSpy = spyOn(
-      agentSandboxesRepository,
-      "getReconstructedBackupState",
-    ).mockResolvedValue({ memories: [], config: { restored: true }, workspaceFiles: {} });
-    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
-    const restoreSpy = spyOn(
-      service as unknown as {
-        pushState: (...args: unknown[]) => Promise<void>;
-      },
-      "pushState",
-    ).mockResolvedValue(undefined);
-    const originalFetch = globalThis.fetch;
-    const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url =
-        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      runtimeRequests.push({ url, headers: new Headers(init?.headers) });
-      return new Response(
-        JSON.stringify(
-          url.endsWith("/api/status")
-            ? {
-                state: "running",
-                canRespond: true,
-                startup: { phase: "running", attempt: 0 },
-              }
-            : {
-                ready: true,
-                canRespond: true,
-                runtime: "ok",
-                database: "ok",
-                plugins: { loaded: 18, failed: 0 },
-                startup: { phase: "running", attempt: 0 },
-              },
-        ),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as typeof fetch;
-    try {
-      const result = await service.executeDowngrade(
-        agentId,
-        seeded.organizationId,
-        SAME_REPO_TARGET_IMAGE,
-        TARGET_DIGEST,
-      );
-      expect(result).toMatchObject({
-        success: true,
-        cleanupPending: true,
-        oldNodeId: "node-current",
-        newNodeId: "node-rollback",
-        newDigest: SOURCE_DIGEST,
-      });
-      expect(create).toHaveBeenCalledTimes(1);
-      expect(restoreSpy).toHaveBeenCalledTimes(1);
-      expect(cleanup).toHaveBeenCalledTimes(1);
-      expect(runtimeRequests.map((request) => request.url)).toEqual([
-        "https://agent-rollback.example/api/status",
-        "https://agent-rollback.example/api/health",
-        "https://agent-rollback.example/api/status",
-        "https://agent-rollback.example/api/health",
+        .where(eq(agentSandboxes.id, agentId));
+      await dbWrite.insert(dockerNodes).values([
+        {
+          node_id: "node-1",
+          hostname: "node-1.internal",
+          status: "healthy",
+          enabled: true,
+          capacity: 8,
+          allocated_count: 1,
+        },
+        {
+          node_id: "node-new",
+          hostname: "node-new.internal",
+          status: "healthy",
+          enabled: true,
+          capacity: 8,
+          allocated_count: 0,
+        },
       ]);
-      for (const request of runtimeRequests) {
-        expect(request.headers.get("authorization")).toBe("Bearer agent-token");
+
+      const provider = new DockerSandboxProvider();
+      const create = spyOn(provider, "create").mockImplementation(
+        async (config: SandboxCreateConfig) => {
+          const intent = replacementHandle({
+            agentId,
+            nodeId: "node-new",
+            containerName: "agent-new",
+            dockerImage: SAME_REPO_TARGET_IMAGE,
+            previousVpnNodeId: "vpn-old",
+          });
+          const created = replacementHandle({
+            agentId,
+            nodeId: "node-new",
+            containerName: "agent-new",
+            dockerImage: SAME_REPO_TARGET_IMAGE,
+            containerId: "sha256:container-new",
+            previousVpnNodeId: "vpn-old",
+          });
+          const registered = replacementHandle({
+            agentId,
+            nodeId: "node-new",
+            containerName: "agent-new",
+            dockerImage: SAME_REPO_TARGET_IMAGE,
+            containerId: "sha256:container-new",
+            vpnNodeId: "vpn-new",
+            previousVpnNodeId: "vpn-old",
+          });
+          await config.onReplacementCreateIntent?.(intent);
+          await config.onReplacementCreated?.(created);
+          await config.onReplacementVpnRegistered?.(registered);
+          return registered;
+        },
+      );
+      spyOn(provider, "checkHealth").mockResolvedValue(true);
+      const cleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockImplementation(
+        async () => {
+          throw new Error("hold old-primary fence for assertion");
+        },
+      );
+      const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+      const snapshot = spyOn(service, "snapshot").mockResolvedValue({ success: true });
+      const originalFetch = globalThis.fetch;
+      const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        runtimeRequests.push({ url, headers: new Headers(init?.headers) });
+        return new Response(
+          JSON.stringify(
+            url.endsWith("/api/status")
+              ? {
+                  state: "running",
+                  canRespond: true,
+                  startup: { phase: "running", attempt: 0 },
+                }
+              : {
+                  ready: true,
+                  canRespond: true,
+                  runtime: "ok",
+                  database: "ok",
+                  plugins: { loaded: 18, failed: 0 },
+                  startup: { phase: "running", attempt: 0 },
+                },
+          ),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as typeof fetch;
+      try {
+        const result = await service.executeUpgrade(
+          agentId,
+          seeded.organizationId,
+          TARGET_DIGEST,
+          SAME_REPO_TARGET_IMAGE,
+          SOURCE_DIGEST,
+        );
+        expect(result).toMatchObject({
+          success: true,
+          cleanupPending: true,
+          newNodeId: "node-new",
+        });
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(snapshot).toHaveBeenCalledTimes(1);
+        expect(cleanup).toHaveBeenCalledTimes(withServingReceipt ? 0 : 1);
+        expect(runtimeRequests.map((request) => request.url)).toEqual([
+          "https://agent-new.example/api/status",
+          "https://agent-new.example/api/health",
+        ]);
+        for (const request of runtimeRequests) {
+          expect(request.headers.get("authorization")).toBe("Bearer agent-token");
+        }
+        const cutover = await agentSandboxesRepository.findByIdAndOrg(
+          agentId,
+          seeded.organizationId,
+        );
+        expect(cutover).toMatchObject({
+          replacement_cleanup_resource_manifest: priorServingPlacement
+            ? expect.objectContaining({
+                servingPlacement: priorServingPlacement,
+                deletionPolicy: { kind: "recovery_required" },
+              })
+            : null,
+          serving_placement: {
+            version: 1,
+            locator: {
+              sandboxId: "agent-new",
+              nodeId: "node-new",
+              containerName: "agent-new",
+              containerId: "sha256:container-new",
+              vpnNodeId: "vpn-new",
+            },
+          },
+          sandbox_id: "agent-new",
+          node_id: "node-new",
+          container_name: "agent-new",
+          image_digest: TARGET_DIGEST,
+          previous_image_digest: SOURCE_DIGEST,
+          replacement_cleanup_sandbox_id: "sandbox-1",
+          replacement_cleanup_node_id: "node-1",
+          replacement_cleanup_container_name: "agent-1",
+          replacement_cleanup_attempt_id: null,
+          replacement_cleanup_container_id: null,
+          replacement_cleanup_vpn_node_id: "vpn-old",
+          replacement_cleanup_vpn_node_name: null,
+          replacement_cleanup_preserved_vpn_node_id: null,
+          replacement_cleanup_vpn_registration_started_at: null,
+          replacement_cleanup_allocation_counted: true,
+        });
+        const nodeCounts = await dbWrite
+          .select({
+            nodeId: dockerNodes.node_id,
+            allocatedCount: dockerNodes.allocated_count,
+          })
+          .from(dockerNodes);
+        expect(
+          Object.fromEntries(nodeCounts.map((node) => [node.nodeId, node.allocatedCount])),
+        ).toEqual({
+          "node-1": 1,
+          "node-new": 1,
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+        snapshot.mockRestore();
       }
-      expect(
-        await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId),
-      ).toMatchObject({
-        sandbox_id: "agent-rollback",
-        node_id: "node-rollback",
-        container_name: "agent-rollback",
-        image_digest: SOURCE_DIGEST,
-        previous_image_digest: null,
-        previous_docker_image: null,
-        replacement_cleanup_sandbox_id: "agent-current",
-        replacement_cleanup_node_id: "node-current",
-        replacement_cleanup_container_name: "agent-current",
-        replacement_cleanup_attempt_id: null,
-        replacement_cleanup_container_id: null,
-        replacement_cleanup_vpn_node_id: "vpn-current",
-        replacement_cleanup_vpn_node_name: null,
-        replacement_cleanup_preserved_vpn_node_id: null,
-        replacement_cleanup_vpn_registration_started_at: null,
-        replacement_cleanup_allocation_counted: true,
-      });
-      const nodeCounts = await dbWrite
-        .select({
-          nodeId: dockerNodes.node_id,
-          allocatedCount: dockerNodes.allocated_count,
+    });
+  }
+
+  for (const withServingReceipt of [false, true]) {
+    test(`blue-green rollback transfers only current-primary identity and retains rollback capacity (receipt=${withServingReceipt})`, async () => {
+      const seeded = await seedAgents(1);
+      const agentId = seeded.targets[0]!.agentId;
+      const priorServingPlacement: AgentServingPlacement | null = withServingReceipt
+        ? {
+            version: 1,
+            volumePath: "/var/lib/eliza/agents/" + agentId,
+            locator: {
+              sandboxId: "agent-current",
+              nodeId: "node-current",
+              containerName: "agent-current",
+              containerId: "c".repeat(64),
+              nodeRecordId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+              nodeHostname: "captured-old.internal",
+              nodeSshPort: 22,
+              nodeSshUser: "root",
+              nodeHostKeyFingerprint: "SHA256:captured-old",
+            },
+          }
+        : null;
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          serving_placement: priorServingPlacement,
+          sandbox_id: "agent-current",
+          node_id: "node-current",
+          container_name: "agent-current",
+          docker_image: SAME_REPO_TARGET_IMAGE,
+          image_digest: TARGET_DIGEST,
+          previous_docker_image: SOURCE_IMAGE,
+          previous_image_digest: SOURCE_DIGEST,
+          environment_vars: { ELIZA_API_TOKEN: "agent-token" },
         })
-        .from(dockerNodes);
-      expect(
-        Object.fromEntries(nodeCounts.map((node) => [node.nodeId, node.allocatedCount])),
-      ).toEqual({
-        "node-current": 1,
-        "node-rollback": 1,
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-      backupSpy.mockRestore();
-      reconstructSpy.mockRestore();
-      restoreSpy.mockRestore();
-    }
-  });
+        .where(eq(agentSandboxes.id, agentId));
+      await dbWrite.insert(dockerNodes).values([
+        {
+          node_id: "node-current",
+          hostname: "node-current.internal",
+          status: "healthy",
+          enabled: true,
+          capacity: 8,
+          allocated_count: 1,
+        },
+        {
+          node_id: "node-rollback",
+          hostname: "node-rollback.internal",
+          status: "healthy",
+          enabled: true,
+          capacity: 8,
+          allocated_count: 0,
+        },
+      ]);
+
+      const provider = new DockerSandboxProvider();
+      const create = spyOn(provider, "create").mockImplementation(
+        async (config: SandboxCreateConfig) => {
+          const intent = replacementHandle({
+            agentId,
+            nodeId: "node-rollback",
+            containerName: "agent-rollback",
+            dockerImage: SOURCE_IMAGE,
+            imageDigest: SOURCE_DIGEST,
+            previousVpnNodeId: "vpn-current",
+          });
+          const created = replacementHandle({
+            agentId,
+            nodeId: "node-rollback",
+            containerName: "agent-rollback",
+            dockerImage: SOURCE_IMAGE,
+            imageDigest: SOURCE_DIGEST,
+            containerId: "sha256:container-rollback",
+            previousVpnNodeId: "vpn-current",
+          });
+          const registered = replacementHandle({
+            agentId,
+            nodeId: "node-rollback",
+            containerName: "agent-rollback",
+            dockerImage: SOURCE_IMAGE,
+            imageDigest: SOURCE_DIGEST,
+            containerId: "sha256:container-rollback",
+            vpnNodeId: "vpn-rollback",
+            previousVpnNodeId: "vpn-current",
+          });
+          await config.onReplacementCreateIntent?.(intent);
+          await config.onReplacementCreated?.(created);
+          await config.onReplacementVpnRegistered?.(registered);
+          return registered;
+        },
+      );
+      spyOn(provider, "checkHealth").mockResolvedValue(true);
+      const cleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockImplementation(
+        async () => {
+          throw new Error("hold current-primary fence for assertion");
+        },
+      );
+      const backup = {
+        id: "00000000-0000-4000-8000-000000000091",
+        sandbox_record_id: agentId,
+        snapshot_type: "pre-upgrade",
+      } as unknown as AgentSandboxBackup;
+      const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+        backup,
+      );
+      const reconstructSpy = spyOn(
+        agentSandboxesRepository,
+        "getReconstructedBackupState",
+      ).mockResolvedValue({ memories: [], config: { restored: true }, workspaceFiles: {} });
+      const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+      const restoreSpy = spyOn(
+        service as unknown as {
+          pushState: (...args: unknown[]) => Promise<void>;
+        },
+        "pushState",
+      ).mockResolvedValue(undefined);
+      const originalFetch = globalThis.fetch;
+      const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        runtimeRequests.push({ url, headers: new Headers(init?.headers) });
+        return new Response(
+          JSON.stringify(
+            url.endsWith("/api/status")
+              ? {
+                  state: "running",
+                  canRespond: true,
+                  startup: { phase: "running", attempt: 0 },
+                }
+              : {
+                  ready: true,
+                  canRespond: true,
+                  runtime: "ok",
+                  database: "ok",
+                  plugins: { loaded: 18, failed: 0 },
+                  startup: { phase: "running", attempt: 0 },
+                },
+          ),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as typeof fetch;
+      try {
+        const result = await service.executeDowngrade(
+          agentId,
+          seeded.organizationId,
+          SAME_REPO_TARGET_IMAGE,
+          TARGET_DIGEST,
+        );
+        expect(result).toMatchObject({
+          success: true,
+          cleanupPending: true,
+          oldNodeId: "node-current",
+          newNodeId: "node-rollback",
+          newDigest: SOURCE_DIGEST,
+        });
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(restoreSpy).toHaveBeenCalledTimes(1);
+        expect(cleanup).toHaveBeenCalledTimes(withServingReceipt ? 0 : 1);
+        expect(runtimeRequests.map((request) => request.url)).toEqual([
+          "https://agent-rollback.example/api/status",
+          "https://agent-rollback.example/api/health",
+          "https://agent-rollback.example/api/status",
+          "https://agent-rollback.example/api/health",
+        ]);
+        for (const request of runtimeRequests) {
+          expect(request.headers.get("authorization")).toBe("Bearer agent-token");
+        }
+        expect(
+          await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId),
+        ).toMatchObject({
+          replacement_cleanup_resource_manifest: priorServingPlacement
+            ? expect.objectContaining({
+                servingPlacement: priorServingPlacement,
+                deletionPolicy: { kind: "recovery_required" },
+              })
+            : null,
+          serving_placement: {
+            version: 1,
+            locator: {
+              sandboxId: "agent-rollback",
+              nodeId: "node-rollback",
+              containerName: "agent-rollback",
+            },
+          },
+          sandbox_id: "agent-rollback",
+          node_id: "node-rollback",
+          container_name: "agent-rollback",
+          image_digest: SOURCE_DIGEST,
+          previous_image_digest: null,
+          previous_docker_image: null,
+          replacement_cleanup_sandbox_id: "agent-current",
+          replacement_cleanup_node_id: "node-current",
+          replacement_cleanup_container_name: "agent-current",
+          replacement_cleanup_attempt_id: null,
+          replacement_cleanup_container_id: null,
+          replacement_cleanup_vpn_node_id: "vpn-current",
+          replacement_cleanup_vpn_node_name: null,
+          replacement_cleanup_preserved_vpn_node_id: null,
+          replacement_cleanup_vpn_registration_started_at: null,
+          replacement_cleanup_allocation_counted: true,
+        });
+        const nodeCounts = await dbWrite
+          .select({
+            nodeId: dockerNodes.node_id,
+            allocatedCount: dockerNodes.allocated_count,
+          })
+          .from(dockerNodes);
+        expect(
+          Object.fromEntries(nodeCounts.map((node) => [node.nodeId, node.allocatedCount])),
+        ).toEqual({
+          "node-current": 1,
+          "node-rollback": 1,
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+        backupSpy.mockRestore();
+        reconstructSpy.mockRestore();
+        restoreSpy.mockRestore();
+      }
+    });
+  }
 
   test("warm claim atomically transfers the digest used by canary and reconciler decisions", async () => {
     const seeded = await seedAgents(0);

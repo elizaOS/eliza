@@ -61,6 +61,7 @@ import type {
   AgentDeletionVolumeCapture,
   AgentDeletionVolumeReceipt,
   AgentDeletionVpnReceipt,
+  AgentServingPlacement,
 } from "../../db/schemas/agent-sandboxes";
 import {
   type AgentBackupStateData,
@@ -160,6 +161,10 @@ import {
 } from "./personal-dedicated-adoption-provenance";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
+import {
+  type RetiringServingResourceObservation,
+  retireServingPlacementResources,
+} from "./retiring-serving-resources";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import {
@@ -12002,6 +12007,7 @@ export class ElizaSandboxService {
         ) {
           return false;
         }
+        const retiringResourceManifest = this.captureRetiringServingResources(current);
         const exactAdminCanaryWhere = adminCanary
           ? sql`
               AND user_id = ${adminCanary.targetOwnerUserId}
@@ -12012,6 +12018,8 @@ export class ElizaSandboxService {
         const result = await tx.execute<{ id: string }>(sql`
           UPDATE ${agentSandboxes}
           SET
+            serving_placement = ${JSON.stringify(this.servingPlacementFromHandle(blueHandle))}::jsonb,
+            replacement_cleanup_resource_manifest = ${retiringResourceManifest ? JSON.stringify(retiringResourceManifest) : null}::jsonb,
             sandbox_id = ${blueHandle.sandboxId},
             bridge_url = ${blueHandle.bridgeUrl},
             health_url = ${blueHandle.healthUrl},
@@ -12529,6 +12537,7 @@ export class ElizaSandboxService {
         ) {
           return false;
         }
+        const retiringResourceManifest = this.captureRetiringServingResources(current);
         const exactAdminCanaryWhere = adminCanary
           ? sql`
               AND user_id = ${adminCanary.targetOwnerUserId}
@@ -12541,6 +12550,8 @@ export class ElizaSandboxService {
         const result = await tx.execute<{ id: string }>(sql`
           UPDATE ${agentSandboxes}
           SET
+            serving_placement = ${JSON.stringify(this.servingPlacementFromHandle(blueHandle))}::jsonb,
+            replacement_cleanup_resource_manifest = ${retiringResourceManifest ? JSON.stringify(retiringResourceManifest) : null}::jsonb,
             sandbox_id = ${blueHandle.sandboxId},
             bridge_url = ${blueHandle.bridgeUrl},
             health_url = ${blueHandle.healthUrl},
@@ -12975,6 +12986,145 @@ export class ElizaSandboxService {
     };
   }
 
+  private captureRetiringServingResources(
+    current: AgentSandbox,
+  ): AgentDeletionResourceManifest | null {
+    if (!current.serving_placement) return null;
+    if (current.deletion_resource_manifest) {
+      throw new ElizaError("Image cutover conflicts with an existing deletion resource owner", {
+        code: "AGENT_RETIRING_RESOURCE_OWNER_CONFLICT",
+        context: { agentId: current.id },
+      });
+    }
+    return captureDeletionResourceManifest(current, crypto.randomUUID(), {
+      kind: "recovery_required",
+    });
+  }
+
+  private async retireCapturedServingResources(
+    agentId: string,
+    orgId: string,
+    initialManifest: AgentDeletionResourceManifest,
+    initialRevision: number,
+  ): Promise<void> {
+    let manifest = initialManifest;
+    let revision = initialRevision;
+    const assertOwner = async (tx: DbTransaction) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      const locator = current && this.getReplacementCleanupLocator(current);
+      const owned =
+        current &&
+        (await tx.execute<{ id: string }>(sql`
+        SELECT id FROM ${agentSandboxes} WHERE id=${agentId} AND organization_id=${orgId}
+        AND lifecycle_revision=${revision}
+        AND deletion_attempt_id IS NULL
+        AND replacement_cleanup_resource_manifest = ${JSON.stringify(manifest)}::jsonb
+      `));
+      if (
+        !current ||
+        !locator ||
+        !owned ||
+        owned.rows.length !== 1 ||
+        locator.replacementAttemptId !== null ||
+        (current.node_id === locator.nodeId && current.container_name === locator.containerName)
+      ) {
+        throw new ElizaError("Retiring serving resource ownership changed", {
+          code: "AGENT_RETIRING_RESOURCE_AUTHORITY_CHANGED",
+          context: { agentId, organizationId: orgId },
+        });
+      }
+      assertDeletionResourceManifestOwner(manifest, current, manifest.deletionAttemptId);
+      const placement = manifest.servingPlacement;
+      if (
+        !placement ||
+        placement.locator.sandboxId !== locator.sandboxId ||
+        placement.locator.nodeId !== locator.nodeId ||
+        placement.locator.containerName !== locator.containerName
+      ) {
+        throw new ElizaError("Retiring resources no longer match their cleanup fence", {
+          code: "AGENT_RETIRING_RESOURCE_PLACEMENT_CHANGED",
+          context: { agentId, organizationId: orgId },
+        });
+      }
+    };
+    const persistObservation = async (observation: RetiringServingResourceObservation) => {
+      await dbWrite
+        .transaction(async (tx) => {
+          await assertOwner(tx);
+          if (manifest.resources[observation.kind].state !== "unknown") {
+            throw new ElizaError("Retiring resource observation is already committed", {
+              code: "AGENT_RETIRING_RESOURCE_OBSERVATION_CHANGED",
+              context: { agentId },
+            });
+          }
+          if (observation.kind === "volume")
+            validateDeletionVolumeCapture(manifest, observation.value);
+          else if (observation.kind === "vpn")
+            validateDeletionVpnReceipt(manifest, observation.value);
+          else validateDeletionSecretReceipt(manifest, observation.value);
+          const next: AgentDeletionResourceManifest = {
+            ...manifest,
+            resources: { ...manifest.resources, [observation.kind]: observation.value },
+          };
+          const [updated] = await tx
+            .update(agentSandboxes)
+            .set({
+              replacement_cleanup_resource_manifest: next,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(agentSandboxes.id, agentId),
+                eq(agentSandboxes.organization_id, orgId),
+                eq(agentSandboxes.lifecycle_revision, revision),
+                sql`${agentSandboxes.replacement_cleanup_resource_manifest} = ${JSON.stringify(manifest)}::jsonb`,
+              ),
+            )
+            .returning({ revision: agentSandboxes.lifecycle_revision });
+          if (!updated)
+            throw new ElizaError("Retiring resource publication lost its owner", {
+              code: "AGENT_RETIRING_RESOURCE_AUTHORITY_CHANGED",
+              context: { agentId },
+            });
+          // Publish local observations only after the transaction has committed below.
+          return { manifest: next, revision: updated.revision };
+        })
+        .then((committed) => {
+          manifest = committed.manifest;
+          revision = committed.revision;
+        });
+    };
+    await retireServingPlacementResources({
+      manifest,
+      provider: await this.getProvider(),
+      assertCurrentOwnership: () => dbWrite.transaction(assertOwner),
+      persistObservation,
+    });
+  }
+
+  private servingPlacementFromHandle(handle: SandboxHandle): AgentServingPlacement {
+    const incoming = this.replacementLocatorFromHandle(handle);
+    const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : null;
+    return {
+      version: 1,
+      volumePath: metadata?.volumePath ?? null,
+      locator: {
+        ...incoming,
+        vpnRegistrationStartedAt: incoming.vpnRegistrationStartedAt?.toISOString() ?? null,
+        nodeRecordId: metadata?.nodeRecordId ?? null,
+        nodeIncarnation: metadata?.nodeIncarnation ?? null,
+        nodeHistoryId: metadata?.nodeHistoryId ?? null,
+        nodeHostname: metadata?.hostname ?? null,
+        nodeSshPort: metadata?.nodeSshPort ?? null,
+        nodeSshUser: metadata?.nodeSshUser ?? null,
+        nodeHostKeyFingerprint: metadata?.nodeHostKeyFingerprint ?? null,
+        replacementSecretCleanupVersion: metadata?.replacementSecretCleanupVersion ?? null,
+        restoreAttemptId: metadata?.restoreAttemptId ?? null,
+      },
+    };
+  }
+
   private replacementLocatorFromCleanupError(
     cleanupError: SandboxReplacementCleanupUnresolvedError,
   ): Omit<ReplacementCleanupLocator, "createdAt"> {
@@ -13338,24 +13488,7 @@ export class ElizaSandboxService {
         ) {
           throw new Error("Replacement cleanup ownership changed before adoption");
         }
-        const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : null;
-        servingPlacement = {
-          version: 1,
-          volumePath: metadata?.volumePath ?? null,
-          locator: {
-            ...incoming,
-            vpnRegistrationStartedAt: incoming.vpnRegistrationStartedAt?.toISOString() ?? null,
-            nodeRecordId: metadata?.nodeRecordId ?? null,
-            nodeIncarnation: metadata?.nodeIncarnation ?? null,
-            nodeHistoryId: metadata?.nodeHistoryId ?? null,
-            nodeHostname: metadata?.hostname ?? null,
-            nodeSshPort: metadata?.nodeSshPort ?? null,
-            nodeSshUser: metadata?.nodeSshUser ?? null,
-            nodeHostKeyFingerprint: metadata?.nodeHostKeyFingerprint ?? null,
-            replacementSecretCleanupVersion: metadata?.replacementSecretCleanupVersion ?? null,
-            restoreAttemptId: metadata?.restoreAttemptId ?? null,
-          },
-        };
+        servingPlacement = this.servingPlacementFromHandle(handle);
       } else if (isDockerBackedMetadata(handle.metadata)) {
         const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
         if (
@@ -13543,10 +13676,30 @@ export class ElizaSandboxService {
       ) {
         return { state: "deferred" as const };
       }
+      if (locator && current.replacement_cleanup_resource_manifest) {
+        return {
+          state: "retiring-serving" as const,
+          locator,
+          manifest: current.replacement_cleanup_resource_manifest,
+          lifecycleRevision: current.lifecycle_revision,
+        };
+      }
       if (locator) return { state: "pending" as const, locator };
       if (onConvergedInTx) await onConvergedInTx(tx);
       return { state: "clean" as const };
     });
+    if (snapshot.state === "retiring-serving") {
+      await this.retireCapturedServingResources(
+        agentId,
+        orgId,
+        snapshot.manifest,
+        snapshot.lifecycleRevision,
+      );
+      throw new ElizaError("Retired serving volume remains owned pending recovery verification", {
+        code: "AGENT_RETIRING_VOLUME_RECOVERY_PENDING",
+        context: { agentId, organizationId: orgId },
+      });
+    }
     if (snapshot.state !== "pending") return snapshot.state;
 
     const provider = await this.getProvider();
