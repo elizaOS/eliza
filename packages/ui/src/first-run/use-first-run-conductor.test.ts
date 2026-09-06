@@ -1026,7 +1026,7 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("keeps native Settings recovery retryable until the window opens, then returns the overlay to chat", async () => {
+  it("keeps native Settings recovery retryable without declaring unfinished setup complete", async () => {
     windowWithElectrobun.__electrobunWindowId = 1;
     mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
       new Error("Couldn't reach Eliza Cloud"),
@@ -1054,9 +1054,14 @@ describe("useFirstRunConductor", () => {
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
     expect(spies.setTab).not.toHaveBeenCalledWith("settings");
     tryHandleFirstRunAction("__first_run__:error:settings");
-    await waitFor(() =>
-      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
-    );
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.text.includes("Finish configuring your connection"),
+        ),
+      ).toBe(true);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
     expect(mocks.openDesktopSettingsWindow).toHaveBeenCalledTimes(2);
     expect(spies.setTab).not.toHaveBeenCalledWith("settings");
     unmount();
