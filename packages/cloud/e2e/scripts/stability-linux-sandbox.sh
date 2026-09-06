@@ -89,6 +89,9 @@ require_unused_sandbox_uid() {
 
 sandbox_cleanup() {
   [ "$SANDBOX_CLEANED" -eq 0 ] || return "$SANDBOX_CLEANUP_STATUS"
+  # Cleanup owns termination until restrictions are revoked or retained with an error.
+  # sudo may forward a second process-group signal while the EXIT trap is running.
+  trap '' INT TERM HUP
   SANDBOX_CLEANED=1
   set +e
   if [[ "$SANDBOX_UID" =~ ^[1-9][0-9]*$ ]]; then
@@ -172,11 +175,17 @@ sandbox_cleanup() {
   return "$SANDBOX_CLEANUP_STATUS"
 }
 
+require_executable_command() {
+  local executable
+  executable="$(command -v "$1")" && [ -f "$executable" ] && [ -x "$executable" ] ||
+    die "missing required command: $1"
+}
+
 setup() {
   require_root
   [ "$(/usr/bin/uname -m)" = "x86_64" ] || die "seccomp policy requires x86_64"
   for command in bwrap getfacl grep iptables ip6tables iptables-save ip6tables-save prlimit setfacl setpriv useradd userdel pkill pgrep python3; do
-    command -v "$command" >/dev/null 2>&1 || die "missing required command: $command"
+    require_executable_command "$command"
   done
   printf 'ready\n'
 }

@@ -135,6 +135,132 @@ test("failed launch keeps environment bytes outside uploaded artifacts", async (
   }
 });
 
+test.skipIf(process.platform === "win32")(
+  "setup rejects a non-executable command before accepting an executable tool",
+  async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "sandbox-command-mode-"),
+    );
+    const executable = path.join(directory, "bwrap");
+    const launcher = path.join(
+      repoRoot,
+      "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+    );
+    try {
+      await writeFile(executable, "#!/bin/sh\nprintf 'tool executed\\n'\n", {
+        mode: 0o644,
+      });
+      const check = () =>
+        spawnSync(
+          "/bin/bash",
+          [
+            "-c",
+            'source "$1"; export PATH="$2"; require_executable_command bwrap; bwrap',
+            "sandbox-command-check",
+            launcher,
+            directory,
+          ],
+          { encoding: "utf8" },
+        );
+      const rejected = check();
+      expect(rejected.status).not.toBe(0);
+      expect(rejected.stderr).toContain("missing required command: bwrap");
+      expect(rejected.stdout).toBe("");
+      await chmod(executable, 0o755);
+      const accepted = check();
+      expect(accepted.status).toBe(0);
+      expect(accepted.stdout).toBe("tool executed\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "a repeated termination signal cannot interrupt owned cleanup",
+  async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "sandbox-signal-control-"),
+    );
+    const reservedRoot = await mkdtemp(
+      "/var/tmp/eliza-stability-sandbox.signal-",
+    );
+    const release = path.join(directory, "release");
+    const launcher = path.join(
+      repoRoot,
+      "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+    );
+    // Pause only the identity-release boundary; the real cleanup function and signal
+    // delivery must finish removing the owned temporary root after a second TERM.
+    const child = spawn(
+      "/bin/bash",
+      [
+        "-c",
+        `
+source "$1"
+SANDBOX_CLEANED=0
+SANDBOX_USER=fixture-unused-identity
+SANDBOX_ROOT="$2"
+release="$3"
+function /usr/sbin/userdel() {
+  printf 'revoking\\n'
+  while [ ! -f "$release" ]; do /bin/sleep 0.01; done
+}
+trap sandbox_cleanup EXIT
+trap 'exit 143' TERM
+printf 'ready\\n'
+while :; do /bin/sleep 0.01; done
+`,
+        "sandbox-cleanup-signals",
+        launcher,
+        reservedRoot,
+        release,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let output = "";
+    let errors = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      errors += chunk.toString("utf8");
+    });
+    const closed = new Promise<void>((resolve) =>
+      child.once("close", () => resolve()),
+    );
+    async function waitFor(receipt: string) {
+      const deadline = Date.now() + 2_000;
+      while (
+        !output.includes(receipt) &&
+        Date.now() < deadline &&
+        child.exitCode === null
+      ) {
+        await Bun.sleep(10);
+      }
+      expect(output).toContain(receipt);
+    }
+    try {
+      await waitFor("ready\n");
+      expect(child.kill("SIGTERM")).toBe(true);
+      await waitFor("revoking\n");
+      expect(child.kill("SIGTERM")).toBe(true);
+      await writeFile(release, "release");
+      await closed;
+      expect(child.exitCode).toBe(143);
+      expect(errors).toBe("");
+      expect(existsSync(reservedRoot)).toBe(false);
+    } finally {
+      await writeFile(release, "release");
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGTERM");
+      await closed;
+      await rm(directory, { recursive: true, force: true });
+      await rm(reservedRoot, { recursive: true, force: true });
+    }
+  },
+);
+
 const hostedLinux =
   process.platform === "linux" &&
   process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
@@ -663,23 +789,31 @@ test.skipIf(!hostedLinux)(
     } = await createPrivateAttempt("cloud-sandbox-teardown-");
     const readyPath = path.join(directory, "ready.json");
     const probePath = path.join(directory, "teardown-probe.ts");
+    let child: ReturnType<typeof spawn> | undefined;
+    let childClosed: Promise<void> | undefined;
+    let primaryError: unknown;
+    let primaryFailed = false;
+    const cleanupErrors: unknown[] = [];
+    let stderr = "";
     try {
       await writeFile(
         probePath,
         `
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { renameSync, writeFileSync } from "node:fs";
 const descendant = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], {
   detached: false,
   stdio: "ignore",
 });
 process.on("SIGTERM", () => {});
-writeFileSync(process.env.TEARDOWN_READY_PATH, JSON.stringify({
+const readyTemporary = process.env.TEARDOWN_READY_PATH + ".tmp";
+writeFileSync(readyTemporary, JSON.stringify({
   uid: process.getuid?.(),
   hostUid: Number(process.env.ELIZA_STABILITY_SANDBOX_HOST_UID),
   pid: process.pid,
   descendantPid: descendant.pid,
 }));
+renameSync(readyTemporary, process.env.TEARDOWN_READY_PATH);
 setInterval(() => {}, 1000);
 `,
         // The fresh host UID must read this non-secret probe source. Private
@@ -703,14 +837,17 @@ setInterval(() => {}, 1000);
         runtime: process.execPath,
         args: [probePath],
       });
-      const child = spawn(launch.command, launch.args, {
+      child = spawn(launch.command, launch.args, {
         cwd: repoRoot,
         detached: true,
         env: { PATH: process.env.PATH },
         stdio: ["ignore", "pipe", "pipe"],
       });
       if (!child.pid) throw new Error("sandbox teardown probe omitted PGID");
-      let stderr = "";
+      childClosed = new Promise<void>((resolve, reject) => {
+        child?.once("error", reject);
+        child?.once("close", () => resolve());
+      });
       child.stderr?.on("data", (chunk: Buffer) => {
         stderr += chunk.toString("utf8");
       });
@@ -751,10 +888,7 @@ setInterval(() => {}, 1000);
         }).status,
       ).toBe(0);
       const closed = await Promise.race([
-        new Promise<boolean>((resolve, reject) => {
-          child.once("error", reject);
-          child.once("close", () => resolve(true));
-        }),
+        childClosed.then(() => true),
         Bun.sleep(10_000).then(() => false),
       ]);
       expect(closed).toBe(true);
@@ -784,11 +918,56 @@ setInterval(() => {}, 1000);
       );
       expect(firewall.status).toBe(0);
       expect(firewall.stdout).not.toContain("ELIZA_SBX_");
+    } catch (error) {
+      // error-policy:J1 The test boundary reports primary and cleanup failures together below.
+      primaryError = error;
+      primaryFailed = true;
     } finally {
-      expectAclRestored(directory, attemptAcl);
-      expectAclRestored(outputRoot, outputRootAcl);
-      await rm(outputRoot, { recursive: true, force: true });
+      if (child?.pid && child.exitCode === null && child.signalCode === null) {
+        spawnSync("sudo", ["-n", "kill", "-s", "TERM", "--", `-${child.pid}`], {
+          stdio: "ignore",
+        });
+        try {
+          await Promise.race([
+            childClosed,
+            Bun.sleep(10_000).then(() => {
+              throw new Error(
+                "sandbox cleanup did not close after termination",
+              );
+            }),
+          ]);
+        } catch (error) {
+          // error-policy:J6 Retain cleanup failure alongside the original probe failure.
+          cleanupErrors.push(error);
+        }
+      }
+      for (const [target, expected] of [
+        [directory, attemptAcl],
+        [outputRoot, outputRootAcl],
+      ] as const) {
+        try {
+          expectAclRestored(target, expected);
+        } catch (error) {
+          // error-policy:J6 Both ACL failures remain visible without replacing the probe failure.
+          cleanupErrors.push(error);
+        }
+      }
+      if (cleanupErrors.length === 0) {
+        try {
+          await rm(outputRoot, { recursive: true, force: true });
+        } catch (error) {
+          // error-policy:J6 Artifact removal must not replace the original probe failure.
+          cleanupErrors.push(error);
+        }
+      }
     }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        primaryFailed ? [primaryError, ...cleanupErrors] : cleanupErrors,
+        `sandbox teardown failed; launcher stderr=${stderr}`,
+      );
+    }
+    if (primaryFailed) throw primaryError;
   },
   30_000,
 );
