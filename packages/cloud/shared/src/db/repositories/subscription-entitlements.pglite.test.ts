@@ -47,6 +47,13 @@ beforeAll(async () => {
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
   }
+  const eraseMigration = await readFile(
+    new URL("../migrations/0374_subscription_funding_transaction_uniqueness.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of eraseMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  }
   const identityMigration = await readFile(
     new URL("../migrations/0379_subscription_account_authority.sql", import.meta.url),
     "utf8",
@@ -83,8 +90,8 @@ beforeEach(async () => {
     ) VALUES ('${ORG_A}', '${SUB_A}', 1, 'webhook', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa',
       'plus_monthly', 'v1', 'active', '2026-08-01T00:00:00Z',
       '2026-09-01T00:00:00Z', false, '${DIGEST_A}');
-    UPDATE organizations SET subscription_authority_id = '${SUB_A}', subscription_authority_state = 'current' WHERE id = '${ORG_A}';
-    UPDATE organizations SET subscription_authority_id = '${SUB_B}', subscription_authority_state = 'current' WHERE id = '${ORG_B}';
+    UPDATE organization_subscription_authorities SET subscription_id = '${SUB_A}', state = 'current' WHERE organization_id = '${ORG_A}';
+    UPDATE organization_subscription_authorities SET subscription_id = '${SUB_B}', state = 'current' WHERE organization_id = '${ORG_B}';
   `);
 });
 
@@ -174,6 +181,41 @@ describe("current-source entitlement publication", () => {
     expect((await entitlements.find(ORG_A))?.plan_key).toBe("free");
     expect((await entitlements.rebuild(request)).entitlement.source_subscription_revision).toBe(1);
   });
+  test("account erasure releases the reverse pointer only behind the irreversible fence", async () => {
+    await expect(
+      writeTransaction((tx) => authority.releaseForAccountDeletion(tx, ORG_A)),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_AUTHORITY_CONFLICT" });
+    await getPgliteClientForTests().exec(
+      `UPDATE organizations SET account_lifecycle_state='deletion_irreversible' WHERE id='${ORG_A}'`,
+    );
+    await expect(
+      writeTransaction(async (tx) => {
+        await authority.releaseForAccountDeletion(tx, ORG_A);
+        throw new Error("erase failed");
+      }),
+    ).rejects.toThrow("erase failed");
+    const rollback = await getPgliteClientForTests().query(
+      `SELECT subscription_id FROM organization_subscription_authorities WHERE organization_id='${ORG_A}'`,
+    );
+    expect(rollback.rows).toEqual([{ subscription_id: SUB_A }]);
+    await writeTransaction(async (tx) => {
+      await authority.releaseForAccountDeletion(tx, ORG_A);
+      const { sql } = await import("drizzle-orm");
+      await tx.execute(
+        sql`SELECT set_config('eliza.subscription_account_deletion_authority', 'on', true)`,
+      );
+      await tx.execute(sql`DELETE FROM organization_entitlements WHERE organization_id=${ORG_A}`);
+      await tx.execute(
+        sql`DELETE FROM billing_subscription_revisions WHERE organization_id=${ORG_A}`,
+      );
+      await tx.execute(sql`DELETE FROM billing_subscriptions WHERE organization_id=${ORG_A}`);
+      await tx.execute(sql`DELETE FROM organizations WHERE id=${ORG_A}`);
+    });
+    expect(await entitlements.find(ORG_A)).toBeUndefined();
+    expect(await authority.findById(ORG_A, SUB_A)).toBeUndefined();
+    expect(await authority.findById(ORG_B, SUB_B)).toBeDefined();
+  });
+
   test.each(["active", "canceled"] as const)(
     "retains explicit replacement %s identity even with equal creation timestamps",
     async (status) => {
@@ -219,6 +261,7 @@ describe("current-source entitlement publication", () => {
           status,
         },
         "checkout",
+        SUB_A,
       );
       await getPgliteClientForTests().exec(
         `UPDATE billing_subscriptions SET created_at='2026-08-01Z' WHERE organization_id='${ORG_A}'`,
@@ -248,8 +291,26 @@ describe("current-source entitlement publication", () => {
         }),
       ).rejects.toMatchObject({ code: "SUBSCRIPTION_AUTHORITY_CONFLICT" });
       await expect(
-        authority.create({ ...values, id: SUB_A, organization_id: ORG_A }, "checkout"),
+        authority.create({ ...values, id: SUB_A, organization_id: ORG_A }, "checkout", null),
       ).rejects.toMatchObject({ code: "SUBSCRIPTION_AUTHORITY_CONFLICT" });
+      if (status === "canceled") {
+        await expect(
+          authority.create(
+            {
+              ...values,
+              id: "53000000-0000-4000-8000-000000000004",
+              organization_id: ORG_A,
+              stripe_subscription_id: "sub_delayed",
+              stripe_subscription_item_id: "si_delayed",
+            },
+            "checkout",
+            SUB_A,
+          ),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_AUTHORITY_CONFLICT" });
+        expect(
+          await authority.findById(ORG_A, "53000000-0000-4000-8000-000000000004"),
+        ).toBeUndefined();
+      }
       expect(await entitlements.find(ORG_A)).toEqual(current.entitlement);
     },
   );

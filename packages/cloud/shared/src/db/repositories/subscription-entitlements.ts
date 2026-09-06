@@ -12,6 +12,7 @@ import {
   type BillingSubscriptionRevision,
   billingSubscriptionRevisions,
   billingSubscriptions,
+  organizationSubscriptionAuthorities,
 } from "../schemas/billing-subscriptions";
 import {
   type NewOrganizationEntitlement,
@@ -163,11 +164,7 @@ export class SubscriptionEntitlementsRepository {
     input: RebuildSubscriptionEntitlementInput,
   ): Promise<RebuildSubscriptionEntitlementResult> {
     const [organization] = await tx
-      .select({
-        id: organizations.id,
-        subscriptionAuthorityId: organizations.subscription_authority_id,
-        subscriptionAuthorityState: organizations.subscription_authority_state,
-      })
+      .select({ id: organizations.id })
       .from(organizations)
       .where(eq(organizations.id, input.organizationId))
       .limit(1)
@@ -178,6 +175,13 @@ export class SubscriptionEntitlementsRepository {
         context: { organizationId: input.organizationId },
       });
     }
+
+    const [accountAuthority] = await tx
+      .select()
+      .from(organizationSubscriptionAuthorities)
+      .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
+      .limit(1)
+      .for("update");
 
     let values: RebuildValues;
     {
@@ -201,6 +205,19 @@ export class SubscriptionEntitlementsRepository {
           },
         });
       }
+      if (
+        !accountAuthority ||
+        accountAuthority.state !== "current" ||
+        accountAuthority.subscription_id !== input.sourceSubscriptionId
+      ) {
+        entitlementConflict(
+          "Entitlement source is not the current account subscription authority",
+          {
+            organizationId: input.organizationId,
+            subscriptionId: input.sourceSubscriptionId,
+          },
+        );
+      }
       if (subscription.lifecycle_revision !== input.sourceSubscriptionRevision) {
         entitlementConflict("Entitlement source is not the current lifecycle revision", {
           organizationId: input.organizationId,
@@ -208,19 +225,6 @@ export class SubscriptionEntitlementsRepository {
           requestedRevision: input.sourceSubscriptionRevision,
           currentRevision: subscription.lifecycle_revision,
         });
-      }
-      if (
-        organization.subscriptionAuthorityState !== "current" ||
-        organization.subscriptionAuthorityId !== subscription.id
-      ) {
-        entitlementConflict(
-          "Entitlement source is not the current account subscription authority",
-          {
-            organizationId: input.organizationId,
-            subscriptionId: subscription.id,
-            authorityState: organization.subscriptionAuthorityState,
-          },
-        );
       }
       const [revision] = await tx
         .select()

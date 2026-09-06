@@ -1,26 +1,37 @@
--- Retain account subscription identity through terminal lifecycle transitions.
-ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_authority_id uuid;
-ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_authority_state text NOT NULL DEFAULT 'none';
+-- Retain account identity without adding a reverse foreign key to the organization schema.
+CREATE TABLE IF NOT EXISTS organization_subscription_authorities (
+  organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  subscription_id uuid,
+  state text NOT NULL DEFAULT 'none',
+  CONSTRAINT organization_subscription_authorities_tenant_fk FOREIGN KEY (subscription_id, organization_id)
+    REFERENCES billing_subscriptions(id, organization_id) ON DELETE RESTRICT,
+  CONSTRAINT organization_subscription_authorities_state_check CHECK (
+    (state = 'current' AND subscription_id IS NOT NULL)
+    OR (state IN ('none','unavailable') AND subscription_id IS NULL))
+);
+INSERT INTO organization_subscription_authorities (organization_id) SELECT id FROM organizations;
 --> statement-breakpoint
 -- The unique live-subscription constraint establishes identity without timestamp ordering.
-UPDATE organizations o SET subscription_authority_id = s.id, subscription_authority_state = 'current'
+UPDATE organization_subscription_authorities a SET subscription_id = s.id, state = 'current'
 FROM billing_subscriptions s
-WHERE s.organization_id = o.id AND s.status IN ('pending','incomplete','active','grace','past_due','unpaid');
+WHERE s.organization_id = a.organization_id AND s.status IN ('pending','incomplete','active','grace','past_due','unpaid');
 --> statement-breakpoint
--- A single historical source is unambiguous; multiple terminal sources require reconciliation.
-UPDATE organizations o SET subscription_authority_id = s.id, subscription_authority_state = 'current'
+-- A sole historical identity is unambiguous; multiple terminal sources require reconciliation.
+UPDATE organization_subscription_authorities a SET subscription_id = s.id, state = 'current'
 FROM billing_subscriptions s
-WHERE s.organization_id = o.id AND o.subscription_authority_state = 'none'
-AND NOT EXISTS (SELECT 1 FROM billing_subscriptions other WHERE other.organization_id = o.id AND other.id <> s.id);
-UPDATE organizations o SET subscription_authority_state = 'unavailable'
-WHERE o.subscription_authority_state = 'none' AND EXISTS (SELECT 1 FROM billing_subscriptions s WHERE s.organization_id = o.id);
+WHERE s.organization_id = a.organization_id AND a.state = 'none'
+AND NOT EXISTS (SELECT 1 FROM billing_subscriptions other WHERE other.organization_id = a.organization_id AND other.id <> s.id);
+UPDATE organization_subscription_authorities a SET state = 'unavailable'
+WHERE a.state = 'none' AND EXISTS (SELECT 1 FROM billing_subscriptions s WHERE s.organization_id = a.organization_id);
 --> statement-breakpoint
-ALTER TABLE organizations ADD CONSTRAINT organizations_subscription_authority_tenant_fk
-FOREIGN KEY (subscription_authority_id, id) REFERENCES billing_subscriptions (id, organization_id) ON DELETE RESTRICT;
-ALTER TABLE organizations ADD CONSTRAINT organizations_subscription_authority_check CHECK (
-  (subscription_authority_state = 'current' AND subscription_authority_id IS NOT NULL)
-  OR (subscription_authority_state IN ('none','unavailable') AND subscription_authority_id IS NULL)
-);
+CREATE FUNCTION seed_organization_subscription_authority() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO organization_subscription_authorities (organization_id) VALUES (NEW.id);
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER organizations_seed_subscription_authority AFTER INSERT ON organizations
+FOR EACH ROW EXECUTE FUNCTION seed_organization_subscription_authority();
 --> statement-breakpoint
 -- Terminal projections retain the authoritative transition that produced Free.
 ALTER TABLE organization_entitlements DROP CONSTRAINT organization_entitlements_plan_state_check;

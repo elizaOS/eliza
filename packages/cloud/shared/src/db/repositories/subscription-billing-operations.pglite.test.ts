@@ -155,8 +155,8 @@ beforeEach(async () => {
     ) VALUES ('${ORG_A}', '${SUB_A}', 1, 'webhook', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa',
       'plus_monthly', 'v1', 'active', '2026-08-01T00:00:00Z',
       '2026-09-01T00:00:00Z', false, '${DIGEST_A}');
-    UPDATE organizations SET subscription_authority_id = '${SUB_A}', subscription_authority_state = 'current' WHERE id = '${ORG_A}';
-    UPDATE organizations SET subscription_authority_id = '${SUB_B}', subscription_authority_state = 'current' WHERE id = '${ORG_B}';
+    UPDATE organization_subscription_authorities SET subscription_id = '${SUB_A}', state = 'current' WHERE organization_id = '${ORG_A}';
+    UPDATE organization_subscription_authorities SET subscription_id = '${SUB_B}', state = 'current' WHERE organization_id = '${ORG_B}';
   `);
 });
 

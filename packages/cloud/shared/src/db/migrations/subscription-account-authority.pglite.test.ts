@@ -53,30 +53,30 @@ describe("subscription account identity migration", () => {
     await database.exec(migration);
     const { rows } = await database.query<{
       id: string;
-      subscription_authority_id: string | null;
-      subscription_authority_state: string;
+      subscription_id: string | null;
+      state: string;
     }>(
-      "SELECT id, subscription_authority_id, subscription_authority_state FROM organizations ORDER BY id",
+      "SELECT organization_id AS id, subscription_id, state FROM organization_subscription_authorities ORDER BY organization_id",
     );
     expect(rows).toEqual([
-      { id: org(1), subscription_authority_id: null, subscription_authority_state: "none" },
-      { id: org(2), subscription_authority_id: sub(1), subscription_authority_state: "current" },
-      { id: org(3), subscription_authority_id: sub(3), subscription_authority_state: "current" },
-      { id: org(4), subscription_authority_id: null, subscription_authority_state: "unavailable" },
-      { id: org(5), subscription_authority_id: null, subscription_authority_state: "none" },
+      { id: org(1), subscription_id: null, state: "none" },
+      { id: org(2), subscription_id: sub(1), state: "current" },
+      { id: org(3), subscription_id: sub(3), state: "current" },
+      { id: org(4), subscription_id: null, state: "unavailable" },
+      { id: org(5), subscription_id: null, state: "none" },
     ]);
     await expect(
       database.query(
-        "UPDATE organizations SET subscription_authority_id=$1, subscription_authority_state='current' WHERE id=$2",
+        "UPDATE organization_subscription_authorities SET subscription_id=$1, state='current' WHERE organization_id=$2",
         [sub(1), org(1)],
       ),
-    ).rejects.toThrow("organizations_subscription_authority_tenant_fk");
+    ).rejects.toThrow("organization_subscription_authorities_tenant_fk");
     await expect(
       database.query(
-        "UPDATE organizations SET subscription_authority_state='current' WHERE id=$1",
+        "UPDATE organization_subscription_authorities SET state='current' WHERE organization_id=$1",
         [org(4)],
       ),
-    ).rejects.toThrow("organizations_subscription_authority_check");
+    ).rejects.toThrow("organization_subscription_authorities_state_check");
     expect(
       (
         await database.query(
@@ -87,13 +87,13 @@ describe("subscription account identity migration", () => {
     ).toEqual([{ plan_key: "free" }]);
   });
 
-  test("a failed migration transaction rolls back both columns and backfill", async () => {
+  test("a failed migration transaction rolls back both the association and backfill", async () => {
     await database.exec("BEGIN");
     await database.exec(migration);
     await expect(database.exec("SELECT 1 / 0")).rejects.toThrow();
     await database.exec("ROLLBACK");
     await expect(
-      database.query("SELECT subscription_authority_id FROM organizations"),
+      database.query("SELECT subscription_id FROM organization_subscription_authorities"),
     ).rejects.toThrow("does not exist");
     expect(
       (
@@ -105,10 +105,11 @@ describe("subscription account identity migration", () => {
     await database.exec(migration);
     expect(
       (
-        await database.query("SELECT subscription_authority_state FROM organizations WHERE id=$1", [
-          org(4),
-        ])
+        await database.query(
+          "SELECT state FROM organization_subscription_authorities WHERE organization_id=$1",
+          [org(4)],
+        )
       ).rows,
-    ).toEqual([{ subscription_authority_state: "unavailable" }]);
+    ).toEqual([{ state: "unavailable" }]);
   });
 });
