@@ -42,6 +42,7 @@ export * from "./anonymous-sessions";
 export * from "./api-keys";
 export * from "./app-billing";
 export * from "./app-billing-application-slots";
+export * from "./app-billing-completion-validations";
 export * from "./app-billing-customer-closures";
 export * from "./app-billing-deletion-dispositions";
 export * from "./app-billing-delivery";

@@ -977,11 +977,13 @@ export class AccountDeletionRequestsRepository {
       if (observedPhase.phase === "stripe") {
         const [authority] = await tx
           .select({
-            valid: sql<boolean>`lock_app_billing_deletion_completion(${input.requestId}::uuid,${input.phaseReceiptId}::uuid,${input.generation})`,
+            validationId: sql<
+              string | null
+            >`record_app_billing_completion_validation(${input.requestId}::uuid,${input.phaseReceiptId}::uuid,${input.generation},${input.providerReceiptDigest})`,
           })
           .from(accountDeletionRequests)
           .where(eq(accountDeletionRequests.id, input.requestId));
-        if (!authority || !authority.valid) return false;
+        if (!authority?.validationId) return false;
       }
       const request = await lockAccountDeletionRequest(tx, input.requestId);
       if (!request || request.status !== "processing") return false;

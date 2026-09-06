@@ -139,6 +139,12 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0451_app_billing_refund_phase_obligations",
       "0452_app_billing_completion_owner_locks",
       "0453_app_billing_completion_scope_decisions",
+      "0454_app_billing_completion_validations",
+      "0455_app_billing_completion_inventory",
+      "0456_app_billing_completion_validation_locks",
+      "0457_app_billing_completion_validation_guards",
+      "0458_app_billing_completion_commit_validation",
+      "0459_app_billing_completion_mutation_fence",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -980,83 +986,111 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       ).rows[0].count,
     ).toBe(2);
   });
-  test("Stripe completion waits for the app owner before taking the phase lock", async () => {
-    const source = await buyer();
-    const auth = await deletion(source.identity.actorUserId);
-    const { accountDeletionRequestsRepository } = await import(
-      "../../db/repositories/account-deletion-requests"
-    );
-    const holder = new Client({ connectionString: postgresUrl });
-    await holder.connect();
-    await holder.query(`SET search_path TO ${schema},public`);
-    await holder.query("BEGIN");
-    let holding = true;
-    try {
-      await holder.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [org]);
-      const pid = (await holder.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
-      let settled = false;
-      // error-policy:J1 Observe repository failure while the competing transaction must release its owner lock.
-      const completion = accountDeletionRequestsRepository
-        .completeProviderPhase({
-          requestId: auth.requestId,
-          phaseReceiptId: auth.phaseReceiptId,
-          generation: auth.phaseGeneration,
-          providerReceiptDigest: "b".repeat(64),
-          now: new Date("2000-01-01T00:00:00Z"),
-        })
-        .then(
-          (value) => {
-            settled = true;
-            return { value };
-          },
-          (error) => {
-            settled = true;
-            return { error };
-          },
-        );
-      let blocked = false;
-      try {
-        const deadline = Date.now() + 60000;
-        while (!settled && Date.now() < deadline) {
-          if (
-            (
-              await db.query(
-                "SELECT pid FROM pg_stat_activity WHERE $1::int=ANY(pg_blocking_pids(pid))",
-                [pid],
-              )
-            ).rowCount
-          ) {
-            blocked = true;
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        }
-        if (blocked)
-          await holder.query(
-            "UPDATE account_deletion_phase_receipts SET lease_expires_at=(clock_timestamp() AT TIME ZONE 'UTC')-interval '1 second' WHERE id=$1",
-            [auth.phaseReceiptId],
-          );
-      } finally {
-        await holder.query("COMMIT");
-        holding = false;
+  test.each(["expired_lease", "expanded_owner"])(
+    "Stripe completion waits for the app owner and rejects %s",
+    async (mode) => {
+      const source = await buyer();
+      let extra: { appId: string; accountId: string } | null = null;
+      if (mode === "expanded_owner") {
+        const otherOwner = "00000000-0000-4000-8000-000000000001",
+          appId = randomUUID(),
+          userId = randomUUID();
+        await db.query("INSERT INTO organizations(id) VALUES($1)", [otherOwner]);
+        await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
+        await db.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [appId, otherOwner]);
+        const account = await authority.createAccount({
+          appId,
+          externalAccountKey: randomUUID(),
+          displayName: "Another workspace",
+          principalUserId: userId,
+        });
+        extra = { appId, accountId: account.id };
       }
-      const result = await completion;
-      if ("error" in result) throw result.error;
-      expect(blocked).toBe(true);
-      expect(result.value).toBe(false);
-      expect(
-        (
-          await db.query(
-            "SELECT status,provider_receipt_digest FROM account_deletion_phase_receipts WHERE id=$1",
-            [auth.phaseReceiptId],
-          )
-        ).rows[0],
-      ).toEqual({ status: "calling", provider_receipt_digest: null });
-    } finally {
-      if (holding) await holder.query("ROLLBACK");
-      await holder.end();
-    }
-  });
+      const auth = await deletion(source.identity.actorUserId);
+      const { accountDeletionRequestsRepository } = await import(
+        "../../db/repositories/account-deletion-requests"
+      );
+      const holder = new Client({ connectionString: postgresUrl });
+      await holder.connect();
+      await holder.query(`SET search_path TO ${schema},public`);
+      await holder.query("BEGIN");
+      let holding = true;
+      try {
+        await holder.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [org]);
+        const pid = (await holder.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+        let settled = false;
+        // error-policy:J1 Observe repository failure while the competing transaction must release its owner lock.
+        const completion = accountDeletionRequestsRepository
+          .completeProviderPhase({
+            requestId: auth.requestId,
+            phaseReceiptId: auth.phaseReceiptId,
+            generation: auth.phaseGeneration,
+            providerReceiptDigest: "b".repeat(64),
+            now: new Date("2000-01-01T00:00:00Z"),
+          })
+          .then(
+            (value) => {
+              settled = true;
+              return { value };
+            },
+            (error) => {
+              settled = true;
+              return { error };
+            },
+          );
+        let blocked = false;
+        try {
+          const deadline = Date.now() + 60000;
+          while (!settled && Date.now() < deadline) {
+            if (
+              (
+                await db.query(
+                  "SELECT pid FROM pg_stat_activity WHERE $1::int=ANY(pg_blocking_pids(pid))",
+                  [pid],
+                )
+              ).rowCount
+            ) {
+              blocked = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          if (blocked && extra) {
+            await holder.query(
+              "INSERT INTO app_billing_members(app_id,billing_account_id,user_id,role,livemode) VALUES($1,$2,$3,'member',false)",
+              [extra.appId, extra.accountId, source.identity.actorUserId],
+            );
+          } else if (blocked)
+            await holder.query(
+              "UPDATE account_deletion_phase_receipts SET lease_expires_at=(clock_timestamp() AT TIME ZONE 'UTC')-interval '1 second' WHERE id=$1",
+              [auth.phaseReceiptId],
+            );
+        } finally {
+          await holder.query("COMMIT");
+          holding = false;
+        }
+        const result = await completion;
+        expect(blocked).toBe(true);
+        if (mode === "expanded_owner") {
+          expect(result).toMatchObject({ error: { cause: { code: "40001" } } });
+        } else {
+          if ("error" in result) throw result.error;
+          expect(result.value).toBe(false);
+        }
+        expect(
+          (
+            await db.query(
+              "SELECT status,provider_receipt_digest FROM account_deletion_phase_receipts WHERE id=$1",
+              [auth.phaseReceiptId],
+            )
+          ).rows[0],
+        ).toEqual({ status: "calling", provider_receipt_digest: null });
+      } finally {
+        if (holding) await holder.query("ROLLBACK");
+        await holder.end();
+      }
+    },
+  );
   test("Stripe completion with no app obligations preserves current phase authority", async () => {
     const userId = randomUUID();
     await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
@@ -1111,7 +1145,18 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       ).rows[0].status,
     ).toBe("calling");
     await db.query("UPDATE users SET expires_at=NULL WHERE id=$1", [survivor]);
-    await complete();
+    const { accountDeletionRequestsRepository } = await import(
+      "../../db/repositories/account-deletion-requests"
+    );
+    expect(
+      await accountDeletionRequestsRepository.completeProviderPhase({
+        requestId: auth.requestId,
+        phaseReceiptId: auth.phaseReceiptId,
+        generation: auth.phaseGeneration,
+        providerReceiptDigest: "f".repeat(64),
+        now: new Date(),
+      }),
+    ).toBe(true);
     expect(
       (
         await db.query("SELECT status FROM account_deletion_phase_receipts WHERE id=$1", [
@@ -1145,5 +1190,285 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       (await db.query("SELECT fenced_at FROM app_billing_scopes WHERE id=$1", [source.scopeId]))
         .rows[0].fenced_at,
     ).toBeNull();
+  });
+  test("raw Stripe completion cannot bypass transaction-bound validation", async () => {
+    const userId = randomUUID();
+    await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
+    const auth = await deletion(userId);
+    await expect(
+      db.query(
+        "UPDATE account_deletion_phase_receipts SET status='completed',provider_receipt_digest=$2 WHERE id=$1",
+        [auth.phaseReceiptId, "e".repeat(64)],
+      ),
+    ).rejects.toThrow("same-transaction billing validation");
+  });
+  test("committed validation cannot be replayed and completed linkage survives live receipt deletion", async () => {
+    const userId = randomUUID();
+    await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
+    const auth = await deletion(userId);
+    const digest = "1".repeat(64);
+    const record = await db.query(
+      "SELECT record_app_billing_completion_validation($1,$2,$3,$4) AS id",
+      [auth.requestId, auth.phaseReceiptId, auth.phaseGeneration, digest],
+    );
+    const oldId = record.rows[0].id;
+    expect(oldId).toBeTruthy();
+    await expect(
+      db.query(
+        "UPDATE account_deletion_phase_receipts SET status='completed',provider_receipt_digest=$2 WHERE id=$1",
+        [auth.phaseReceiptId, digest],
+      ),
+    ).rejects.toThrow("same-transaction billing validation");
+    expect(
+      (
+        await db.query("SELECT completed_at FROM app_billing_completion_validations WHERE id=$1", [
+          oldId,
+        ])
+      ).rows[0].completed_at,
+    ).toBeNull();
+    const { accountDeletionRequestsRepository } = await import(
+      "../../db/repositories/account-deletion-requests"
+    );
+    expect(
+      await accountDeletionRequestsRepository.completeProviderPhase({
+        requestId: auth.requestId,
+        phaseReceiptId: auth.phaseReceiptId,
+        generation: auth.phaseGeneration,
+        providerReceiptDigest: digest,
+        now: new Date(),
+      }),
+    ).toBe(true);
+    await db.query("DELETE FROM account_deletion_phase_receipts WHERE id=$1", [
+      auth.phaseReceiptId,
+    ]);
+    const evidence = (
+      await db.query(
+        "SELECT id,provider_receipt_digest,completed_at FROM app_billing_completion_validations WHERE phase_receipt_id=$1 ORDER BY validated_at",
+        [auth.phaseReceiptId],
+      )
+    ).rows;
+    expect(evidence).toHaveLength(2);
+    expect(evidence[0].completed_at).toBeNull();
+    expect(evidence[1].completed_at).not.toBeNull();
+    expect(evidence[1].provider_receipt_digest).toBe(digest);
+    await expect(
+      db.query("DELETE FROM app_billing_completion_validations WHERE id=$1", [evidence[1].id]),
+    ).rejects.toThrow("immutable");
+    await expect(
+      db.query(
+        "UPDATE app_billing_completion_validations SET completed_at=clock_timestamp() WHERE id=$1",
+        [oldId],
+      ),
+    ).rejects.toThrow("atomic phase transition");
+  });
+  test("database derives validation identity and rejects receipt substitution in the same transaction", async () => {
+    const userId = randomUUID();
+    await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
+    const auth = await deletion(userId);
+    await db.query("BEGIN");
+    try {
+      const evidence = (
+        await db.query(
+          "INSERT INTO app_billing_completion_validations(request_id,phase_receipt_id,phase_generation,provider_receipt_digest,request_digest,lifecycle_revision,validation_xid,inventory_digest,validated_at) VALUES($1,$2,$3,$4,'forged',999,'1'::xid8,'forged','2000-01-01') RETURNING request_digest,lifecycle_revision,validation_xid=pg_current_xact_id() AS current_transaction,inventory_digest ~ '^[0-9a-f]{64}$' AS derived_digest,validated_at>'2000-01-02'::timestamptz AS current_clock",
+          [auth.requestId, auth.phaseReceiptId, auth.phaseGeneration, "2".repeat(64)],
+        )
+      ).rows[0];
+      expect(evidence).toEqual({
+        request_digest: auth.requestDigest,
+        lifecycle_revision: "1",
+        current_transaction: true,
+        derived_digest: true,
+        current_clock: true,
+      });
+      await expect(
+        db.query(
+          "UPDATE account_deletion_phase_receipts SET status='completed',provider_receipt_digest=$2 WHERE id=$1",
+          [auth.phaseReceiptId, "3".repeat(64)],
+        ),
+      ).rejects.toThrow("same-transaction billing validation");
+    } finally {
+      await db.query("ROLLBACK");
+    }
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM app_billing_completion_validations WHERE phase_receipt_id=$1",
+          [auth.phaseReceiptId],
+        )
+      ).rows[0].count,
+    ).toBe(0);
+  });
+  test("same-transaction membership expansion invalidates a billing validation", async () => {
+    const source = await buyer();
+    await administrator(source.identity.appId, source.identity.billingAccountId);
+    const addedUser = randomUUID();
+    await db.query("INSERT INTO users(id) VALUES($1)", [addedUser]);
+    await db.query(
+      "UPDATE app_billing_members SET role='member' WHERE user_id=$1 AND billing_account_id=$2",
+      [source.identity.actorUserId, source.identity.billingAccountId],
+    );
+    const auth = await deletion(source.identity.actorUserId);
+    const digest = "4".repeat(64);
+    await db.query("BEGIN");
+    try {
+      await db.query("SELECT record_app_billing_completion_validation($1,$2,$3,$4)", [
+        auth.requestId,
+        auth.phaseReceiptId,
+        auth.phaseGeneration,
+        digest,
+      ]);
+      await db.query(
+        "INSERT INTO app_billing_members(app_id,billing_account_id,user_id,role,livemode) VALUES($1,$2,$3,'administrator',false)",
+        [source.identity.appId, source.identity.billingAccountId, addedUser],
+      );
+      await expect(
+        db.query(
+          "UPDATE account_deletion_phase_receipts SET status='completed',provider_receipt_digest=$2 WHERE id=$1",
+          [auth.phaseReceiptId, digest],
+        ),
+      ).rejects.toThrow("obligations changed after validation");
+    } finally {
+      await db.query("ROLLBACK");
+    }
+    expect(
+      (
+        await db.query("SELECT status FROM account_deletion_phase_receipts WHERE id=$1", [
+          auth.phaseReceiptId,
+        ])
+      ).rows[0].status,
+    ).toBe("calling");
+  });
+  test("writes after phase completion invalidate the transaction before commit", async () => {
+    const userId = randomUUID();
+    await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
+    const auth = await deletion(userId);
+    const digest = "5".repeat(64);
+    await db.query("BEGIN");
+    try {
+      await db.query("SELECT record_app_billing_completion_validation($1,$2,$3,$4)", [
+        auth.requestId,
+        auth.phaseReceiptId,
+        auth.phaseGeneration,
+        digest,
+      ]);
+      await db.query(
+        "UPDATE account_deletion_phase_receipts SET status='completed',provider_receipt_digest=$2 WHERE id=$1",
+        [auth.phaseReceiptId, digest],
+      );
+      await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+      await expect(
+        db.query(
+          "UPDATE organizations SET stripe_customer_id='cus_changed_after_completion' WHERE id=(SELECT organization_id FROM account_deletion_requests WHERE id=$1)",
+          [auth.requestId],
+        ),
+      ).rejects.toThrow("changed before commit");
+    } finally {
+      await db.query("ROLLBACK");
+    }
+    expect(
+      (
+        await db.query("SELECT status FROM account_deletion_phase_receipts WHERE id=$1", [
+          auth.phaseReceiptId,
+        ])
+      ).rows[0].status,
+    ).toBe("calling");
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM app_billing_completion_validations WHERE phase_receipt_id=$1",
+          [auth.phaseReceiptId],
+        )
+      ).rows[0].count,
+    ).toBe(0);
+  });
+  test.each(["phase_rewrite", "identity_expansion", "evidence_truncate"])(
+    "forced-immediate constraints cannot bypass %s protection",
+    async (mutation) => {
+      const principal = randomUUID();
+      await buyer(principal);
+      const userId = randomUUID();
+      await db.query("INSERT INTO users(id) VALUES($1)", [userId]);
+      const auth = await deletion(userId);
+      const digest = "6".repeat(64);
+      await db.query("BEGIN");
+      try {
+        await db.query("SELECT record_app_billing_completion_validation($1,$2,$3,$4)", [
+          auth.requestId,
+          auth.phaseReceiptId,
+          auth.phaseGeneration,
+          digest,
+        ]);
+        await db.query(
+          "UPDATE account_deletion_phase_receipts SET status='completed',provider_receipt_digest=$2 WHERE id=$1",
+          [auth.phaseReceiptId, digest],
+        );
+        await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+        if (mutation === "phase_rewrite") {
+          await expect(
+            db.query(
+              "UPDATE account_deletion_phase_receipts SET status='reconciling' WHERE id=$1",
+              [auth.phaseReceiptId],
+            ),
+          ).rejects.toThrow("phase changed before commit");
+        } else if (mutation === "identity_expansion") {
+          await expect(
+            db.query(
+              "INSERT INTO billing_identity_subjects(id,live_user_id,eligibility_principal_id) VALUES($1,$1,$2)",
+              [userId, principal],
+            ),
+          ).rejects.toThrow("obligations changed before commit");
+        } else {
+          await expect(db.query("TRUNCATE app_billing_completion_validations")).rejects.toThrow(
+            "immutable",
+          );
+        }
+      } finally {
+        await db.query("ROLLBACK");
+      }
+      expect(
+        (
+          await db.query("SELECT status FROM account_deletion_phase_receipts WHERE id=$1", [
+            auth.phaseReceiptId,
+          ])
+        ).rows[0].status,
+      ).toBe("calling");
+    },
+  );
+  test("truncating an inventoried membership table cannot bypass forced-immediate validation", async () => {
+    const source = await buyer();
+    await administrator(source.identity.appId, source.identity.billingAccountId);
+    await db.query(
+      "UPDATE app_billing_members SET role='member' WHERE user_id=$1 AND billing_account_id=$2",
+      [source.identity.actorUserId, source.identity.billingAccountId],
+    );
+    const auth = await deletion(source.identity.actorUserId);
+    const digest = "7".repeat(64);
+    await db.query("BEGIN");
+    try {
+      await db.query("SELECT record_app_billing_completion_validation($1,$2,$3,$4)", [
+        auth.requestId,
+        auth.phaseReceiptId,
+        auth.phaseGeneration,
+        digest,
+      ]);
+      await db.query(
+        "UPDATE account_deletion_phase_receipts SET status='completed',provider_receipt_digest=$2 WHERE id=$1",
+        [auth.phaseReceiptId, digest],
+      );
+      await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+      await expect(db.query("TRUNCATE app_billing_members")).rejects.toThrow(
+        "obligations changed before commit",
+      );
+    } finally {
+      await db.query("ROLLBACK");
+    }
+    expect(
+      (
+        await db.query(
+          "SELECT role FROM app_billing_members WHERE user_id=$1 AND billing_account_id=$2",
+          [source.identity.actorUserId, source.identity.billingAccountId],
+        )
+      ).rows[0].role,
+    ).toBe("member");
   });
 });
