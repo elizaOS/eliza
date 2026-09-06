@@ -90,9 +90,14 @@ const CONTINUOUS_SCRIPTS =
   "\\p{sc=Han}\\p{sc=Hiragana}\\p{sc=Katakana}\\p{sc=Thai}\\p{sc=Lao}\\p{sc=Khmer}\\p{sc=Myanmar}";
 
 /**
- * Build a word-boundary matcher for a lowercased trigger, case-insensitive so
- * it runs against the original (un-lowercased) transcript and its match index
- * lines up with the string that is later sliced for the command.
+ * Build a word-boundary matcher for the trigger's original spelling,
+ * case-insensitive (`iu`) so it runs against the original (un-lowercased)
+ * transcript and its match index lines up with the string that is later sliced
+ * for the command. The trigger must keep its original spelling here: lowercasing
+ * an expanding case-fold such as Turkish "\u0130" (U+0130) produces two code
+ * points ("i" + U+0307) that `/iu/` does not equate back to the original
+ * "\u0130", so a matcher built from the lowercased form would never fire on a
+ * verbatim "\u0130pek ..." transcript.
  *
  * In space-delimited scripts the trigger must be a standalone token: a letter,
  * number, or combining mark on either side rejects the match, so "elizabeth"
@@ -110,6 +115,10 @@ const CONTINUOUS_SCRIPTS =
  * alone cannot segment those words, so this is not a regression.
  */
 function buildTriggerMatcher(trigger: string): RegExp {
+  // Build from the trigger's original spelling; the `iu` flag below supplies
+  // case-insensitivity via Unicode simple case folding, which (unlike a
+  // pre-lowercased trigger) keeps an expanding case-fold like U+0130 matchable.
+
   const before = `(?:(?<![\\p{L}\\p{N}\\p{M}])|(?<=[${CONTINUOUS_SCRIPTS}]))`;
   const after = `(?:(?![\\p{L}\\p{N}\\p{M}])|(?=[${CONTINUOUS_SCRIPTS}]))`;
   return new RegExp(`${before}${escapeRegExp(trigger)}${after}`, "iu");
@@ -171,18 +180,21 @@ function normalizeConfig(config: SwabbleConfig): SwabbleConfig {
  * Detection is purely text-based: trigger phrase + subsequent command text.
  */
 class WakeWordGate {
-  // Each matcher pairs a lowercased trigger with its word-boundary regex so a
+  // Each matcher pairs a trigger label with its word-boundary regex so a
   // trigger only fires as a standalone token, never as a bare substring of a
-  // larger word ("elizabeth" must not fire the trigger "eliza").
+  // larger word ("elizabeth" must not fire the trigger "eliza"). The regex is
+  // built from the trigger's original spelling and is case-insensitive (so an
+  // expanding case-fold like U+0130 still matches); `trigger` is the lowercased
+  // label reported as the fired wake word.
   private matchers: Array<{ trigger: string; regex: RegExp }>;
   private minCommandLength: number;
 
   constructor(config: SwabbleConfig) {
     const normalized = normalizeConfig(config);
-    this.matchers = normalized.triggers.map((t) => {
-      const trigger = t.toLowerCase();
-      return { trigger, regex: buildTriggerMatcher(trigger) };
-    });
+    this.matchers = normalized.triggers.map((t) => ({
+      trigger: t.toLowerCase(),
+      regex: buildTriggerMatcher(t),
+    }));
     this.minCommandLength = config.minCommandLength ?? 1;
     // Note: minPostTriggerGap cannot be enforced - Web Speech API lacks timing data
   }
@@ -191,10 +203,10 @@ class WakeWordGate {
     if (config.triggers) {
       this.matchers = normalizeConfig({
         triggers: config.triggers,
-      }).triggers.map((t) => {
-        const trigger = t.toLowerCase();
-        return { trigger, regex: buildTriggerMatcher(trigger) };
-      });
+      }).triggers.map((t) => ({
+        trigger: t.toLowerCase(),
+        regex: buildTriggerMatcher(t),
+      }));
     }
     if (
       typeof config.minCommandLength === "number" &&

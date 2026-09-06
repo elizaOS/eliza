@@ -508,6 +508,56 @@ describe("SwabbleWeb fallback", () => {
     );
   });
 
+  it("fires a configured trigger whose lowercase form expands the case fold (construction)", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({
+      config: { triggers: ["\u0130pek"], locale: "tr-TR" },
+    });
+
+    // "\u0130pek".toLowerCase() is "i" + U+0307 + "pek", a two-code-point sequence
+    // that /iu/ does not equate back to the single-code-point "\u0130". A matcher
+    // built from the lowercased trigger never fires on a verbatim "\u0130pek ..."
+    // transcript; building it from the original spelling keeps the gate open.
+    FakeRecognition.latest?.onresult?.(speechEvent("\u0130pek open calendar"));
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "open calendar", postGap: -1 }),
+    );
+  });
+
+  it("fires a case-fold-expanding trigger applied through updateConfig", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    // Swapping the trigger at runtime must rebuild the matcher from the original
+    // spelling too, so the expanding case fold does not silently disable the
+    // wake word after an updateConfig.
+    await plugin.updateConfig({ config: { triggers: ["\u0130pek"] } });
+    FakeRecognition.latest?.onresult?.(speechEvent("\u0130pek open calendar"));
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "open calendar", postGap: -1 }),
+    );
+  });
+
   it("does not fire the wake word when the trigger is only a substring of a larger word", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });
     setNavigator({
