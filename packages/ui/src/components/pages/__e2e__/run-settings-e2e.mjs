@@ -490,6 +490,35 @@ await mobile.waitForTimeout(450);
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-voice-mobile`);
 await mobile.close();
 
+// Connected account actions must fit the native Settings content pane, not
+// merely the full window width. The fixture retains the desktop rail gutter.
+for (const width of [760, 390]) {
+  const accountPage = await browser.newPage({
+    viewport: { width, height: 560 },
+    reducedMotion: "reduce",
+  });
+  accountPage.on("pageerror", (error) => pageErrors.push(String(error)));
+  await accountPage.goto(`${url}?account-row`);
+  const add = accountPage.getByRole("button", { name: "Add", exact: true });
+  await add.waitFor();
+  const fits = await add.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= window.innerWidth &&
+      element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  });
+  assert(fits, `connected account Add action is fully visible and hit-testable at ${width}px`);
+  await accountPage.screenshot({ path: join(outDir, `account-row-${width}.png`) });
+  await add.click();
+  assert(await accountPage.locator("output").textContent() === "add account", `visible account action dispatches at ${width}px`);
+  const activate = accountPage.getByRole("button", { name: "Use for chat & coding", exact: true });
+  await activate.hover();
+  await accountPage.screenshot({ path: join(outDir, `account-row-${width}-hover.png`) });
+  await activate.focus();
+  await accountPage.keyboard.press("Enter");
+  assert(await accountPage.locator("output").textContent() === "coding selected", `subscription activation dispatches from the keyboard at ${width}px`);
+  await accountPage.close();
+}
+
 await p.close();
 await context.close();
 await browser.close();
