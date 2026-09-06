@@ -27,6 +27,9 @@ const PURCHASED_ORG = "10000000-0000-4000-8000-000000000096";
 const PURCHASED_TRANSACTION = "13000000-0000-4000-8000-000000000096";
 
 let setupClient: Client | undefined;
+let authority: import("./subscription-authority").SubscriptionAuthorityRepository;
+let operations: import("./subscription-billing-operations").SubscriptionBillingOperationsRepository;
+let isSubscriptionFundedOrganization: typeof import("../../lib/services/ai-billing").isSubscriptionFundedOrganization;
 let entitlements: import("./subscription-entitlements").SubscriptionEntitlementsRepository;
 let allowanceRepository: import("./subscription-allowance").SubscriptionAllowanceRepository;
 let writeTransaction: typeof import("../helpers").writeTransaction;
@@ -44,6 +47,135 @@ async function connect(): Promise<Client> {
   return client;
 }
 
+/** Observe actual database waiters so concurrency assertions do not depend on a sleep guess. */
+async function waitForFinalizerWaiters(count: number): Promise<number[]> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const waiting = await setupClient!.query<{ pid: number }>(
+      `SELECT pid FROM pg_stat_activity
+       WHERE datname=current_database() AND application_name=$1
+         AND wait_event_type='Lock' AND query ILIKE '%organizations%FOR UPDATE%'`,
+      [schemaName],
+    );
+    if (waiting.rows.length >= count) return waiting.rows.map((row) => row.pid);
+    await Bun.sleep(20);
+  }
+  throw new Error(
+    `Expected ${count} independent finalizer sessions to wait on the organization lock`,
+  );
+}
+
+const copyLifecycleRevision = `INSERT INTO billing_subscription_revisions (
+  organization_id, subscription_id, revision, source, provider_environment,
+  stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+  plan_key, catalog_version, status, current_period_start, current_period_end,
+  cancel_at_period_end, provider_object_digest, canceled_at, ended_at,
+  dunning_started_at, grace_expires_at
+) SELECT organization_id, id, lifecycle_revision, 'webhook', provider_environment,
+  stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+  plan_key, catalog_version, status, current_period_start, current_period_end,
+  cancel_at_period_end, provider_object_digest, canceled_at, ended_at,
+  dunning_started_at, grace_expires_at FROM billing_subscriptions WHERE id=$1`;
+
+async function seedFinalizerSubscription() {
+  const organizationId = randomUUID();
+  const subscriptionId = randomUUID();
+  const customerId = `cus_${randomUUID().replaceAll("-", "")}`;
+  const providerSubscriptionId = `sub_${randomUUID().replaceAll("-", "")}`;
+  const itemId = `si_${randomUUID().replaceAll("-", "")}`;
+  await setupClient!.query("INSERT INTO organizations(id, stripe_customer_id) VALUES ($1,$2)", [
+    organizationId,
+    customerId,
+  ]);
+  await setupClient!.query(
+    `INSERT INTO billing_subscriptions (id, organization_id, provider_environment,
+      stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id, plan_key,
+      catalog_version, status, current_period_start, current_period_end,
+      lifecycle_revision, provider_object_digest)
+     VALUES ($1,$2,'test',$3,$4,$5,'plus_monthly','v1','active','2026-08-01Z','2026-09-01Z',1,$6)`,
+    [subscriptionId, organizationId, customerId, providerSubscriptionId, itemId, DIGEST],
+  );
+  await setupClient!.query(copyLifecycleRevision, [subscriptionId]);
+  await setupClient!.query(
+    "UPDATE organization_subscription_authorities SET subscription_id=$1, state='current' WHERE organization_id=$2",
+    [subscriptionId, organizationId],
+  );
+  await entitlements.rebuild({
+    organizationId,
+    sourceSubscriptionId: subscriptionId,
+    sourceSubscriptionRevision: 1,
+    expectedProjectionRevision: 0,
+  });
+  return { organizationId, subscriptionId, customerId, providerSubscriptionId, itemId };
+}
+
+async function captureTerminalObservation(
+  source: Awaited<ReturnType<typeof seedFinalizerSubscription>>,
+  eventTime: Date,
+  digest: string,
+) {
+  const receiptId = randomUUID();
+  const leaseToken = randomUUID();
+  const eventId = `evt_${randomUUID().replaceAll("-", "")}`;
+  await operations.recordEvent({
+    organizationId: source.organizationId,
+    subscriptionId: source.subscriptionId,
+    id: receiptId,
+    providerEventId: eventId,
+    eventType: "customer.subscription.deleted",
+    providerObjectType: "subscription",
+    providerObjectId: source.providerSubscriptionId,
+    livemode: false,
+    eventCreatedAt: eventTime,
+    payloadDigest: DIGEST,
+    now: new Date(),
+  });
+  const claimed = await operations.claimEvent({
+    organizationId: source.organizationId,
+    receiptId,
+    leaseToken,
+    leaseDurationMs: 60_000,
+  });
+  if (!claimed) throw new Error("Could not acquire independent receipt lease");
+  return {
+    organizationId: source.organizationId,
+    subscriptionId: source.subscriptionId,
+    receiptId,
+    leaseToken,
+    expectedSubscriptionRevision: 1,
+    expectedProjectionRevision: 1,
+    // Deterministic mapped provider observation; these tests prove database behavior, not Stripe transport.
+    observation: {
+      provider: "stripe" as const,
+      provider_environment: "test" as const,
+      stripe_customer_id: source.customerId,
+      stripe_subscription_id: source.providerSubscriptionId,
+      stripe_subscription_item_id: source.itemId,
+      catalog_version: "v1",
+      plan_key: "plus_monthly" as const,
+      status: "canceled" as const,
+      current_period_start: new Date("2026-08-01Z"),
+      current_period_end: new Date("2026-09-01Z"),
+      cancel_at_period_end: false,
+      canceled_at: new Date("2026-08-25Z"),
+      ended_at: new Date("2026-08-25Z"),
+      dunning_started_at: null,
+      grace_expires_at: null,
+      pending_plan_key: null,
+      last_provider_event_id: eventId,
+      last_provider_event_created_at: eventTime,
+      provider_object_digest: digest,
+    },
+  };
+}
+
+function finalizationOutcome(input: Parameters<typeof operations.finalizeLifecycleEvent>[0]) {
+  // Both results are observed, including when a failed lock assertion requires teardown.
+  return operations.finalizeLifecycleEvent(input).then(
+    (result) => ({ result }),
+    (error: unknown) => ({ error }),
+  );
+}
+
 describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", () => {
   beforeAll(async () => {
     setupClient = new Client({ connectionString: databaseUrl });
@@ -51,7 +183,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await setupClient.query(`CREATE SCHEMA ${schemaName}`);
     await setupClient.query(`SET search_path TO ${schemaName}, public`);
     await setupClient.query(`
-      CREATE TABLE organizations (id uuid PRIMARY KEY);
+      CREATE TABLE organizations (id uuid PRIMARY KEY, stripe_customer_id text, account_lifecycle_state text NOT NULL DEFAULT 'active', paid_work_fenced_at timestamptz);
       CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
@@ -90,6 +222,11 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       "./subscription-allowance"
     ));
     ({ writeTransaction } = await import("../helpers"));
+    ({ subscriptionAuthorityRepository: authority } = await import("./subscription-authority"));
+    ({ subscriptionBillingOperationsRepository: operations } = await import(
+      "./subscription-billing-operations"
+    ));
+    ({ isSubscriptionFundedOrganization } = await import("../../lib/services/ai-billing"));
     ({ subscriptionEntitlementsRepository: entitlements } = await import(
       "./subscription-entitlements"
     ));
@@ -639,4 +776,181 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       await locker.end();
     }
   });
+  test("two independently blocked finalizers reject the older observation completing second", async () => {
+    const source = await seedFinalizerSubscription();
+    const older = await captureTerminalObservation(
+      source,
+      new Date("2026-08-25T01:00:00Z"),
+      "b".repeat(64),
+    );
+    const newer = await captureTerminalObservation(
+      source,
+      new Date("2026-08-25T02:00:00Z"),
+      "c".repeat(64),
+    );
+    const locker = await connect();
+    const pending: Array<ReturnType<typeof finalizationOutcome>> = [];
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        source.organizationId,
+      ]);
+      // The newer provider retrieval returns first. Both captured the same original CAS.
+      const newerResult = finalizationOutcome(newer);
+      pending.push(newerResult);
+      const firstWaiters = await waitForFinalizerWaiters(1);
+      const olderResult = finalizationOutcome(older);
+      pending.push(olderResult);
+      const bothWaiters = await waitForFinalizerWaiters(2);
+      expect(new Set(bothWaiters).size).toBe(2);
+      expect(bothWaiters).toContain(firstWaiters[0]);
+      await locker.query("COMMIT");
+      expect(await newerResult).toMatchObject({ result: { outcome: "applied" } });
+      expect(await olderResult).toMatchObject({
+        error: { code: "SUBSCRIPTION_LIFECYCLE_REOBSERVE" },
+      });
+      const lifecycle = await authority.findById(source.organizationId, source.subscriptionId);
+      expect(lifecycle).toMatchObject({
+        lifecycle_revision: 2,
+        last_provider_event_id: newer.observation.last_provider_event_id,
+      });
+      expect(
+        await authority.listRevisions(source.organizationId, source.subscriptionId),
+      ).toHaveLength(2);
+      expect(
+        await operations.findEventReceipt(source.organizationId, older.receiptId),
+      ).toMatchObject({ status: "processing", applied_subscription_revision: null });
+      expect(
+        await operations.findEventReceipt(source.organizationId, newer.receiptId),
+      ).toMatchObject({ status: "applied", applied_subscription_revision: 2 });
+      expect(await entitlements.find(source.organizationId)).toMatchObject({
+        plan_key: "free",
+        source_subscription_revision: 2,
+      });
+      expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(false);
+    } finally {
+      await locker.query("ROLLBACK");
+      await Promise.all(pending);
+      await locker.end();
+    }
+  }, 30_000);
+
+  test("a receipt lease expiring while its worker waits on the organization lock cannot commit", async () => {
+    const source = await seedFinalizerSubscription();
+    const input = await captureTerminalObservation(source, new Date("2026-08-25Z"), "d".repeat(64));
+    const locker = await connect();
+    const pending: Array<ReturnType<typeof finalizationOutcome>> = [];
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        source.organizationId,
+      ]);
+      await setupClient!.query(
+        "UPDATE billing_subscription_event_receipts SET lease_expires_at=clock_timestamp()+interval '5 seconds' WHERE id=$1",
+        [input.receiptId],
+      );
+      const result = finalizationOutcome(input);
+      pending.push(result);
+      await waitForFinalizerWaiters(1);
+      const beforeExpiry = await setupClient!.query<{ live: boolean }>(
+        "SELECT lease_expires_at > clock_timestamp() AS live FROM billing_subscription_event_receipts WHERE id=$1",
+        [input.receiptId],
+      );
+      expect(beforeExpiry.rows).toEqual([{ live: true }]);
+      // Expire using PostgreSQL wall time while the finalizer's transaction is already waiting.
+      await setupClient!.query(
+        "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM lease_expires_at-clock_timestamp()))+0.05) FROM billing_subscription_event_receipts WHERE id=$1",
+        [input.receiptId],
+      );
+      await locker.query("COMMIT");
+      expect(await result).toMatchObject({ error: { code: "SUBSCRIPTION_LIFECYCLE_LEASE_LOST" } });
+      expect(await authority.findById(source.organizationId, source.subscriptionId)).toMatchObject({
+        status: "active",
+        lifecycle_revision: 1,
+      });
+      expect(
+        await authority.listRevisions(source.organizationId, source.subscriptionId),
+      ).toHaveLength(1);
+      expect(await entitlements.find(source.organizationId)).toMatchObject({
+        plan_key: "plus_monthly",
+        source_subscription_revision: 1,
+        projection_revision: 1,
+      });
+      expect(
+        await operations.findEventReceipt(source.organizationId, input.receiptId),
+      ).toMatchObject({ status: "processing", applied_subscription_revision: null });
+      expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
+    } finally {
+      await locker.query("ROLLBACK");
+      await Promise.all(pending);
+      await locker.end();
+    }
+  }, 30_000);
+
+  test("stale projection CAS and independently delayed historical replay cannot replace current admission", async () => {
+    const source = await seedFinalizerSubscription();
+    const input = await captureTerminalObservation(source, new Date("2026-08-25Z"), "e".repeat(64));
+    await expect(
+      operations.finalizeLifecycleEvent({ ...input, expectedProjectionRevision: 0 }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_ENTITLEMENT_CONFLICT" });
+    expect(await authority.findById(source.organizationId, source.subscriptionId)).toMatchObject({
+      lifecycle_revision: 1,
+      status: "active",
+    });
+    expect(await operations.findEventReceipt(source.organizationId, input.receiptId)).toMatchObject(
+      { status: "processing" },
+    );
+    expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
+    await operations.finalizeLifecycleEvent(input);
+    expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(false);
+
+    const replacementId = randomUUID();
+    await authority.create(
+      {
+        ...input.observation,
+        id: replacementId,
+        organization_id: source.organizationId,
+        stripe_subscription_id: `sub_${randomUUID().replaceAll("-", "")}`,
+        stripe_subscription_item_id: `si_${randomUUID().replaceAll("-", "")}`,
+        status: "active",
+        canceled_at: null,
+        ended_at: null,
+        last_provider_event_id: null,
+        last_provider_event_created_at: null,
+      },
+      "checkout",
+      source.subscriptionId,
+    );
+    const replacement = await entitlements.rebuild({
+      organizationId: source.organizationId,
+      sourceSubscriptionId: replacementId,
+      sourceSubscriptionRevision: 1,
+      expectedProjectionRevision: 2,
+    });
+    const locker = await connect();
+    const pending: Array<ReturnType<typeof finalizationOutcome>> = [];
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+        source.organizationId,
+      ]);
+      const replay = finalizationOutcome(input);
+      pending.push(replay);
+      await waitForFinalizerWaiters(1);
+      expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
+      await locker.query("COMMIT");
+      expect(await replay).toMatchObject({
+        result: { outcome: "already_applied", receipt: { applied_subscription_revision: 2 } },
+      });
+      expect(await entitlements.find(source.organizationId)).toEqual(replacement.entitlement);
+      expect(await isSubscriptionFundedOrganization(source.organizationId)).toBe(true);
+      expect(
+        await authority.listRevisions(source.organizationId, source.subscriptionId),
+      ).toHaveLength(2);
+    } finally {
+      await locker.query("ROLLBACK");
+      await Promise.all(pending);
+      await locker.end();
+    }
+  }, 30_000);
 });

@@ -130,3 +130,25 @@ export function validateTerminalSource(
     );
   }
 }
+
+/** Event identity alone cannot establish that a replay represents this observation. */
+export function validateTerminalPublication(
+  current: BillingSubscription,
+  values: TerminalObservation,
+): void {
+  for (const field of terminalObservationSchema.keyof().options) {
+    const stored = current[field];
+    const observed = values[field];
+    const same =
+      stored instanceof Date && observed instanceof Date
+        ? stored.getTime() === observed.getTime()
+        : stored === observed;
+    if (!same) {
+      lifecycleFailure(
+        SUBSCRIPTION_LIFECYCLE_REOBSERVE,
+        "Recorded lifecycle differs from the terminal observation; retrieve provider state again",
+        { subscriptionId: current.id, field },
+      );
+    }
+  }
+}

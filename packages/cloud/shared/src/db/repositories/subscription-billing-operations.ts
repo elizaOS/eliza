@@ -38,6 +38,7 @@ import {
   SUBSCRIPTION_LIFECYCLE_REOBSERVE,
   SUBSCRIPTION_LIFECYCLE_UNSUPPORTED,
   TERMINAL_LIFECYCLE_DISPOSITION,
+  validateTerminalPublication,
   validateTerminalReceipt,
   validateTerminalSource,
 } from "./subscription-lifecycle-finalization";
@@ -825,6 +826,7 @@ export class SubscriptionBillingOperationsRepository {
           { receiptId: receipt.id },
         );
       }
+      validateTerminalPublication(lifecycle.subscription, values);
       const projection = await subscriptionEntitlementsRepository.rebuildInTransaction(tx, {
         organizationId: input.organizationId,
         sourceSubscriptionId: input.subscriptionId,

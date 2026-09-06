@@ -293,6 +293,61 @@ describe("atomic terminal subscription finalization", () => {
     expect((await entitlements.find(ORG_A))?.plan_key).toBe("plus_monthly");
   });
 
+  for (const mismatch of ["active", "digest", "terminal_time"] as const) {
+    test(`current event replay with different ${mismatch} cannot finalize its receipt`, async () => {
+      const input = await prepare();
+      await authority.advance({
+        organizationId: ORG_A,
+        subscriptionId: SUB_A,
+        expectedRevision: 1,
+        source: "webhook",
+        observation: "authoritative_provider_retrieval",
+        values: {
+          ...input.observation,
+          ...(mismatch === "active"
+            ? { status: "active" as const, canceled_at: null, ended_at: null }
+            : mismatch === "digest"
+              ? { provider_object_digest: "d".repeat(64) }
+              : { ended_at: new Date("2026-08-24T00:00:00Z") }),
+        },
+      });
+      const sourceBefore = await authority.findById(ORG_A, SUB_A);
+      const projectionBefore = await entitlements.find(ORG_A);
+      const receiptBefore = await operations.findEventReceipt(ORG_A, RECEIPT);
+      await expect(
+        operations.finalizeLifecycleEvent({ ...input, expectedSubscriptionRevision: 2 }),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_LIFECYCLE_REOBSERVE" });
+      expect(await authority.findById(ORG_A, SUB_A)).toEqual(sourceBefore);
+      expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);
+      expect(await entitlements.find(ORG_A)).toEqual(projectionBefore);
+      expect(await operations.findEventReceipt(ORG_A, RECEIPT)).toEqual(receiptBefore);
+      if (mismatch === "active") {
+        expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(true);
+      }
+    });
+  }
+
+  test("matching current event replay can finish a previously unfinalized terminal receipt", async () => {
+    const input = await prepare();
+    await authority.advance({
+      organizationId: ORG_A,
+      subscriptionId: SUB_A,
+      expectedRevision: 1,
+      source: "webhook",
+      observation: "authoritative_provider_retrieval",
+      values: input.observation,
+    });
+    const result = await operations.finalizeLifecycleEvent({
+      ...input,
+      expectedSubscriptionRevision: 2,
+    });
+    expect(result.outcome).toBe("applied");
+    expect(await authority.listRevisions(ORG_A, SUB_A)).toHaveLength(2);
+    expect((await operations.findEventReceipt(ORG_A, RECEIPT))?.status).toBe("applied");
+    expect((await entitlements.find(ORG_A))?.plan_key).toBe("free");
+    expect(await isSubscriptionFundedOrganization(ORG_A)).toBe(false);
+  });
+
   test("response-loss replay returns historical receipt without overwriting a replacement's admission", async () => {
     const input = await prepare();
     await operations.finalizeLifecycleEvent(input);
