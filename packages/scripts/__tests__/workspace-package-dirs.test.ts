@@ -1,3 +1,4 @@
+/** Exercises workspace discovery against real temporary directories, including failed traversal. */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -33,6 +34,27 @@ describe("resolveWorkspacePackageDirs", () => {
     ]).map((dir) => path.relative(root, dir));
 
     expect(actual).toEqual(["packages/cloud/api", "packages/top"]);
+  });
+
+  test("rejects non-directory workspace roots instead of omitting their packages", () => {
+    const root = path.join(
+      tmpdir(),
+      `eliza-workspaces-file-${process.pid}-${Date.now()}`,
+    );
+    roots.push(root);
+    mkdirSync(root);
+    writeFileSync(path.join(root, "packages"), "not a directory");
+    expect(() => resolveWorkspacePackageDirs(root, ["packages/*"])).toThrow();
+  });
+
+  test("permits absent optional workspace roots", () => {
+    const root = path.join(
+      tmpdir(),
+      `eliza-workspaces-absent-${process.pid}-${Date.now()}`,
+    );
+    roots.push(root);
+    mkdirSync(root);
+    expect(resolveWorkspacePackageDirs(root, ["optional/*"])).toEqual([]);
   });
 
   test("honors exclusions before later explicit nested inclusions", () => {

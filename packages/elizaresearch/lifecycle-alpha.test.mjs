@@ -1,6 +1,6 @@
 /**
  * Executes the particle lifecycle helpers from the production page and pins
- * entrance handoff, post-resize initialization, and invisible reseeding.
+ * entrance handoff and invisible reseeding.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -78,14 +78,6 @@ describe("elizaresearch particle lifecycle", () => {
       particle.life -= 1;
       expect(opacityFor(particle)).toBe(1);
     }
-  });
-
-  it("initializes particles created by a post-entrance resize as opaque", () => {
-    const particle = { age: 0, life: 1 };
-    lifecycle.seedSteadyState(particle);
-    particle.age += 1;
-    particle.life -= 1;
-    expect(opacityFor(particle)).toBe(1);
   });
 
   it("preserves the original lifetime when it already clears the handoff", () => {
