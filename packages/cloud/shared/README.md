@@ -64,6 +64,18 @@ There is no build step here (`build:linked-workspaces` defers to the repo-root `
 
 ## Exact restore quarantine start
 
+`prepareAgentBackupRestoreQuarantine` joins the concrete quarantined-create
+runtime to the start service below. It requires explicit enablement and a caller
+deadline, snapshots the target before yielding, and stops on a provider outcome
+requiring reconciliation. After successful create or exact create replay it
+takes a fresh operation claim, checks the retained container, starts the host
+and releases its own claim. Lost start replies reject; retry reloads the durable
+create result and probes the same host. Claim-release failure also rejects rather
+than reporting completion. A lost claim-acquire acknowledgement stays fenced
+until that claim expires. The production worker/API dispatcher and subsequent
+streaming/materialization steps still need to invoke this preparation turn; its
+`quarantine_running` result is not an activated or restored Agent.
+
 `startAgentBackupRestoreQuarantine` is a disabled-first service for a coordinator
 that already owns a restore operation claim. It admits only `container_created`
 with settled provider authority, using the existing PRIMARY lock order to check

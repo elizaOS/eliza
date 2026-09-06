@@ -72,8 +72,10 @@ exact container under the existing PRIMARY lock order and a live lease/claim.
 It holds authority through the bounded SSH effect and rejects ambiguous outcomes;
 exact retry probes an already-running host without replacing its process. It
 does not advance the operation phase, boot a workload or publish any route.
-The quarantined-create turn still leaves the container stopped; its coordinator
-continuation must explicitly call the start service. Generation selection,
+The quarantined-create turn still leaves the container stopped. Cloud's explicit
+`prepareAgentBackupRestoreQuarantine` turn composes create/replay with a freshly
+claimed start and claim release; provider ambiguity stops before start. The
+worker/API dispatcher and streaming continuation remain unconnected. Generation selection,
 controller/workload isolation, boot grants and post-boot publication still need
 the explicit coordinator integration; there is no boot command in this host.
 

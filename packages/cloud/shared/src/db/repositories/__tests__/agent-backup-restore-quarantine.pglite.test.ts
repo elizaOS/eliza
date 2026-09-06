@@ -1,4 +1,8 @@
-/** Real-primary-DB proofs for the dormant restore activation quarantine. */
+/**
+ * Real PGlite repository and coordinator proofs for restore activation quarantine.
+ * Preparation exercises actual create replay, claim and start services; only
+ * the SSH boundary is stubbed. Native provider execution has separate coverage.
+ */
 
 import {
   afterAll,
@@ -32,7 +36,9 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { prepareAgentBackupRestoreQuarantine } from "../../../lib/services/agent-backup-restore-quarantine-preparation";
 import { startAgentBackupRestoreQuarantine } from "../../../lib/services/agent-backup-restore-quarantine-start";
+import { buildAgentBackupRestoreExactProviderReceiptDigestV1 } from "../../../lib/services/agent-backup-restore-quarantined-create-runtime";
 import { DockerSSHClient } from "../../../lib/services/docker-ssh";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
@@ -367,7 +373,7 @@ async function seedFixture(): Promise<void> {
     status: "running",
     execution_tier: "dedicated-always",
     agent_name: "restore-agent",
-    docker_image: "registry.invalid/eliza-agent:restore-source",
+    docker_image: EXACT_IMAGE_REFERENCE,
     environment_vars: { RESTORE_TEST: "true" },
     agent_config: { testMode: true },
     sandbox_id: "canonical-provider-handle",
@@ -615,11 +621,15 @@ async function settledQuarantineStartFixture() {
   };
   await markAgentSandboxExactRestoreProviderStarted({ ...boundary, locator: intent.locator });
   const locator = { ...intent.locator, containerId: CONTAINER_A };
-  await recordAgentSandboxExactRestoreProviderCreated({ ...boundary, locator });
+  const recorded = await recordAgentSandboxExactRestoreProviderCreated({ ...boundary, locator });
   await recordAgentSandboxExactRestoreProviderSucceeded({
     ...boundary,
     locator,
-    receiptDigest: HASH,
+    receiptDigest: buildAgentBackupRestoreExactProviderReceiptDigestV1({
+      operation: recorded.operation,
+      replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      locator,
+    }),
   });
   const claim = await claimAgentBackupRestoreOperation({
     operationId,
@@ -629,6 +639,33 @@ async function settledQuarantineStartFixture() {
   return {
     authority: { ...combinedIntentInput(history), claimGeneration: claim.claimGeneration },
     control: { signal: new AbortController().signal, deadlineEpochMs: Date.now() + 30_000 },
+  };
+}
+
+async function preparationFixture() {
+  const input = await settledQuarantineStartFixture();
+  const authority = input.authority;
+  await releaseAgentBackupRestoreOperationClaim({
+    operationId,
+    ownerId: authority.ownerId,
+    claimGeneration: authority.claimGeneration,
+  });
+  return {
+    enabled: true,
+    control: input.control,
+    create: {
+      operationId,
+      ownerId: authority.ownerId,
+      replacementAttemptId: authority.replacementAttemptId,
+      activationTokenSha256: authority.activationTokenSha256,
+      activationTokenCiphertext: authority.activationTokenCiphertext,
+      target: {
+        nodeRecordId: authority.targetNodeRecordId,
+        nodeId: authority.targetNodeId,
+        nodeIncarnation: authority.targetNodeIncarnation,
+        nodeHistoryId: authority.targetNodeHistoryId,
+      },
+    },
   };
 }
 
@@ -713,6 +750,112 @@ afterAll(async () => {
 });
 
 describe("restore activation quarantine", () => {
+  test(
+    "joins actual create replay and claimed start; lost start acknowledgement retries without extra capacity",
+    async () => {
+      const input = await preparationFixture();
+      const commands: string[] = [];
+      let loseResponse = true;
+      const disconnect = mock(async () => {});
+      spyOn(DockerSSHClient, "createDedicated").mockImplementation(
+        () =>
+          ({
+            execStdinAbortable: async (command: string) => {
+              commands.push(command);
+              if (loseResponse) {
+                loseResponse = false;
+                throw new Error("lost start acknowledgement");
+              }
+            },
+            disconnect,
+          }) as unknown as DockerSSHClient,
+      );
+      await expect(prepareAgentBackupRestoreQuarantine(input)).rejects.toThrow(
+        "lost start acknowledgement",
+      );
+      const failed = await readRows();
+      expect(failed.operation.claim_generation).toBeNull();
+      expect(failed.operation.phase).toBe("container_created");
+      const result = await prepareAgentBackupRestoreQuarantine(input);
+      expect(result).toMatchObject({
+        status: "quarantine_running",
+        containerId: CONTAINER_A,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        createReplayed: true,
+      });
+      expect(commands).toHaveLength(2);
+      expect(commands[0]).toBe(commands[1]);
+      expect(disconnect).toHaveBeenCalledTimes(2);
+      const after = await readRows();
+      expect(after.operation.claim_generation).toBeNull();
+      expect(after.operation.phase).toBe("container_created");
+      expect(after.sandbox.activation_phase).toBe("restore_pending");
+      expect(after.node.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "keeps ambiguous provider creation on reconciliation without invoking quarantine start",
+    async () => {
+      const input = await preparationFixture();
+      await dbWrite
+        .update(agentSandboxReplacementAttempts)
+        .set({
+          state: "in_flight_unresolved",
+          provider_succeeded_at: null,
+          provider_receipt_digest: null,
+        })
+        .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+      const ssh = spyOn(DockerSSHClient, "createDedicated").mockImplementation(() => {
+        throw new Error("unexpected start");
+      });
+      const result = await prepareAgentBackupRestoreQuarantine(input);
+      expect(result).toMatchObject({
+        status: "reconciliation_required",
+        reason: "provider_already_started",
+        claimReleased: true,
+      });
+      expect(ssh).not.toHaveBeenCalled();
+      const after = await readRows();
+      expect(after.operation.claim_generation).toBeNull();
+      expect(after.sandbox.activation_phase).toBe("restore_pending");
+      expect(after.node.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "disabled or expired preparation does not acquire a claim or contact the provider",
+    async () => {
+      const input = await preparationFixture();
+      const before = await readRows();
+      const ssh = spyOn(DockerSSHClient, "createDedicated").mockImplementation(() => {
+        throw new Error("unexpected start");
+      });
+      await expect(
+        prepareAgentBackupRestoreQuarantine({
+          ...input,
+          enabled: false,
+          get create(): never {
+            throw new Error("disabled read");
+          },
+        }),
+      ).resolves.toEqual({ status: "disabled" });
+      await expect(
+        prepareAgentBackupRestoreQuarantine({
+          ...input,
+          control: { ...input.control, deadlineEpochMs: Date.now() - 1 },
+        }),
+      ).rejects.toThrow();
+      expect(ssh).not.toHaveBeenCalled();
+      const after = await readRows();
+      expect(after.operation.attempts).toBe(before.operation.attempts);
+      expect(after.operation.claim_generation).toBeNull();
+    },
+    TIMEOUT,
+  );
+
   test(
     "starts only a settled quarantine under PRIMARY authority and replays a lost SSH response without phase or capacity change",
     async () => {
@@ -884,7 +1027,7 @@ describe("restore activation quarantine", () => {
         executionTier: "dedicated-always",
         environmentVars: { RESTORE_TEST: "true" },
         agentConfig: { testMode: true },
-        dockerImageReference: "registry.invalid/eliza-agent:restore-source",
+        dockerImageReference: EXACT_IMAGE_REFERENCE,
         activationTokenSha256: TOKEN_SHA,
         activationTokenCiphertext: TOKEN_CIPHERTEXT,
         activationGeneration: RESTORE_ATTEMPT_ID,
