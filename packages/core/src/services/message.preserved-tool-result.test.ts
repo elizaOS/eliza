@@ -15,7 +15,6 @@ import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
-import { TrajectoryLimitExceeded } from "../runtime/limits";
 import type { PlannerToolResult } from "../runtime/planner-loop";
 import type {
 	Action,
@@ -388,15 +387,16 @@ describe("planner-loop death after a completed tool", () => {
 			"limit-test",
 			200,
 		);
-		const limit = new TrajectoryLimitExceeded({
-			kind: "tool_calls",
-			max: 16,
-			observed: 17,
-		});
+		const reportedErrors: unknown[] = [];
+		const reportError = harness.runtime.reportError.bind(harness.runtime);
+		harness.runtime.reportError = (scope, error, context) => {
+			reportedErrors.push(error);
+			return reportError(scope, error, context);
+		};
 		harness.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async () => {
-				throw limit;
+				return "The tool-call budget was reached before all requested entries could be saved.";
 			},
 			"limit-test",
 			200,
@@ -422,6 +422,14 @@ describe("planner-loop death after a completed tool", () => {
 			harness.callback,
 		);
 		expect(savedItems).toEqual(Array.from({ length: 16 }, (_, i) => i));
+		expect(reportedErrors).toContainEqual(
+			expect.objectContaining({
+				name: "TrajectoryLimitExceeded",
+				kind: "tool_calls",
+				max: 16,
+				observed: 17,
+			}),
+		);
 		expect(harness.callbacks).toContainEqual(
 			expect.objectContaining({ failureKind: "planner_exhaustion" }),
 		);
