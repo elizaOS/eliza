@@ -177,6 +177,13 @@ async function installSettingsBackgroundRoutes(
   // Local-inference shell-level GETs — the booted zero-key stack answers 501,
   // which the diagnostics guard treats as a failure. A fresh agent has no local
   // model, so an idle/unsupported snapshot matches real zero-state.
+  await page.route("**/api/local-inference/providers", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { providers: [] });
+  });
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -580,6 +587,15 @@ test.describe("settings shares the unified app background (#9143)", () => {
           enabled: true,
           cloudVoiceProxyAvailable: true,
           hasApiKey: true,
+        }),
+      );
+      await page.route("**/api/cloud/credits", (route) =>
+        fulfillJson(route, {
+          connected: true,
+          balance: 100,
+          low: false,
+          critical: false,
+          authRejected: false,
         }),
       );
       let previewRequests = 0;
