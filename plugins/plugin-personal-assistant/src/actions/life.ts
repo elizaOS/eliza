@@ -1177,16 +1177,19 @@ async function resolveDefinitionForMutation(
     return { match: exactTarget, ambiguousCandidates: [] };
   }
   const exactTitleTargets = target
-    ? defs.filter(
+    ? allDefinitions.filter(
         (entry) =>
           normalizeTitle(entry.definition.title) === normalizeTitle(target),
       )
     : [];
   if (exactTitleTargets.length > 0) {
-    const authorizedTargets =
-      explicitlyNamed.length > 0
-        ? exactTitleTargets.filter((entry) => explicitlyNamed.includes(entry))
-        : exactTitleTargets;
+    // Retain the original exact identity even when a keep cue excludes it.
+    // Otherwise a longer title could replace that protected record as an alias.
+    const authorizedTargets = exactTitleTargets.filter(
+      (entry) =>
+        defs.includes(entry) &&
+        (explicitlyNamed.length === 0 || explicitlyNamed.includes(entry)),
+    );
     const match =
       authorizedTargets.length === 1
         ? authorizedTargets[0]

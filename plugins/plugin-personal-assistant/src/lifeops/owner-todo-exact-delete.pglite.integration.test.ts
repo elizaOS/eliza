@@ -21,6 +21,7 @@ it.each([
   "missing-title",
   "empty-target",
   "alias",
+  "protected-substring",
 ])(
   "constrains a multi-step delete to its durable target: %s",
   async (mode) => {
@@ -74,10 +75,14 @@ it.each([
       const id = created.effectReceipts?.[0].resource.id;
       if (!id) throw new Error("Creation omitted durable ID");
       const service = new LifeOpsService(runtime, { ownerEntityId: owner });
+      const secondTitle =
+        mode === "protected-substring"
+          ? "Guardian chain first sequel"
+          : "Guardian chain second";
       const second = await dispatch({
         action: "create",
-        title: "Guardian chain second",
-        intent: "Create Guardian chain second without any deadline.",
+        title: secondTitle,
+        intent: `Create ${secondTitle} without any deadline.`,
         idempotencyKey: "second",
         details: {
           kind: "task",
@@ -88,6 +93,11 @@ it.each([
       expect(second.success).toBe(true);
       const secondId = second.effectReceipts?.[0].resource.id;
       let targetId = mode === "title" ? "Guardian chain first" : id;
+      if (mode === "protected-substring") {
+        targetId = "Guardian chain first";
+        message.content.text =
+          "Keep Guardian chain first. Read Guardian chain first sequel.";
+      }
       if (mode === "protected" || mode === "empty-target")
         targetId = "Guardian chain first";
       if (mode === "missing-title") targetId = "Nonexistent exact target";
