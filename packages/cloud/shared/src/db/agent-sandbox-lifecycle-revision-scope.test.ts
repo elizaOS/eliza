@@ -180,6 +180,81 @@ describe("agent_sandboxes lifecycle-revision trigger", () => {
   );
 
   test(
+    "only billing columns can change without advancing the installed trigger",
+    async () => {
+      if (!databaseReady) throw new Error("PGlite unavailable");
+      const columns = await dbWrite.execute(`
+        SELECT column_name, udt_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'agent_sandboxes'
+        ORDER BY ordinal_position;
+      `);
+      const unchanged: string[] = [];
+      const mutations: Record<string, (column: string) => string> = {
+        bool: (column) => `NOT COALESCE(${column}, false)`,
+        text: (column) => `COALESCE(${column}, '') || '-revision-probe'`,
+        uuid: (column) => `CASE WHEN ${column} = '00000000-0000-4000-8000-000000000099'
+          THEN '00000000-0000-4000-8000-000000000098'::uuid
+          ELSE '00000000-0000-4000-8000-000000000099'::uuid END`,
+        int4: (column) => `COALESCE(${column}, 0) + 1`,
+        int8: (column) => `COALESCE(${column}, 0) + 1`,
+        numeric: (column) => `COALESCE(${column}, 0) + 1`,
+        jsonb: (column) => `CASE WHEN ${column} = '{"revisionProbe": true}'::jsonb
+          THEN '{"revisionProbe": false}'::jsonb ELSE '{"revisionProbe": true}'::jsonb END`,
+        timestamptz: (column) => `COALESCE(${column}, '2000-01-01'::timestamptz)
+          + interval '1 second'`,
+        xid8: (column) => `CASE WHEN ${column} = '1'::xid8 THEN '2'::xid8 ELSE '1'::xid8 END`,
+      };
+
+      await dbWrite.execute("BEGIN");
+      try {
+        for (const descriptor of columns.rows) {
+          const { column_name: name, udt_name: type } = descriptor;
+          if (typeof name !== "string" || typeof type !== "string" || !/^[a-z_]+$/.test(name)) {
+            throw new Error("Invalid installed column descriptor");
+          }
+          const mutation = mutations[type];
+          if (!mutation) throw new Error(`No real-write probe for ${name} (${type})`);
+          const column = `"${name}"`;
+          const before = await dbWrite.execute(`
+            SELECT ${column} AS value, lifecycle_revision FROM agent_sandboxes
+            WHERE id = '${SANDBOX_ID}';
+          `);
+          await dbWrite.execute("SAVEPOINT column_probe");
+          try {
+            // A forged counter must be overwritten, not accidentally equal OLD + 1.
+            const value = name === "lifecycle_revision" ? "-100" : mutation(column);
+            const changed = await dbWrite.execute(`
+              UPDATE agent_sandboxes SET ${column} = ${value}
+              WHERE id = '${SANDBOX_ID}' RETURNING ${column} AS value, lifecycle_revision;
+            `);
+            expect(changed.rows).toHaveLength(1);
+            expect(changed.rows[0].value).not.toEqual(before.rows[0].value);
+            const previous = Number(before.rows[0].lifecycle_revision);
+            const current = Number(changed.rows[0].lifecycle_revision);
+            expect([previous, previous + 1]).toContain(current);
+            if (current === previous) unchanged.push(name);
+          } finally {
+            await dbWrite.execute("ROLLBACK TO SAVEPOINT column_probe");
+            await dbWrite.execute("RELEASE SAVEPOINT column_probe");
+          }
+        }
+      } finally {
+        await dbWrite.execute("ROLLBACK");
+      }
+      expect(unchanged.sort()).toEqual([
+        "billing_status",
+        "hourly_rate",
+        "last_billed_at",
+        "scheduled_shutdown_at",
+        "shutdown_warning_sent_at",
+        "total_billed",
+        "updated_at",
+      ]);
+    },
+    TIMEOUT,
+  );
+
+  test(
     "an attestation change rejects a write using the captured lifecycle revision",
     async () => {
       if (!databaseReady) throw new Error("PGlite unavailable");
