@@ -82,6 +82,31 @@ export function isInferenceStrongRevocationEnabled(
   return env.INFERENCE_STRONG_REVOCATION_ENABLED === "true";
 }
 
+/** Only fixed type labels and native boolean flags may enter the indexed log message. */
+function describeBoundaryCause(error: unknown): string {
+  const causeType =
+    error instanceof TypeError
+      ? "TypeError"
+      : error instanceof DOMException && error.name === "AbortError"
+        ? "AbortError"
+        : error instanceof DOMException && error.name === "TimeoutError"
+          ? "TimeoutError"
+          : error instanceof Error
+            ? "Error"
+            : "unclassified";
+  const parts = [`causeType=${causeType}`];
+  if (error instanceof Error) {
+    for (const flag of ["retryable", "overloaded", "remote"]) {
+      // Inspect data properties so an exception's custom getters cannot break diagnostics.
+      const descriptor = Object.getOwnPropertyDescriptor(error, flag);
+      if (descriptor && typeof descriptor.value === "boolean") {
+        parts.push(`${flag}=${descriptor.value}`);
+      }
+    }
+  }
+  return parts.join(" ");
+}
+
 function gateStub(organizationId: string): RuntimeDurableObjectStub {
   const namespace = getCloudBinding<RuntimeDurableObjectNamespace>(GATE_BINDING);
   if (!namespace) {
@@ -89,7 +114,15 @@ function gateStub(organizationId: string): RuntimeDurableObjectStub {
       "Inference revocation Durable Object binding is missing",
     );
   }
-  return namespace.getByName(organizationId);
+  try {
+    return namespace.getByName(organizationId);
+  } catch (error) {
+    // error-policy:J2 preserve lookup failures separately from requests to the object.
+    throw new InferenceCredentialRevocationUnavailableError(
+      `Inference revocation Durable Object lookup failed ${describeBoundaryCause(error)}`,
+      { cause: error },
+    );
+  }
 }
 
 async function gateRequest(
@@ -98,11 +131,12 @@ async function gateRequest(
   body: Record<string, unknown>,
   allowExplicitDenial = false,
 ): Promise<RevocationResponse> {
+  const stub = gateStub(organizationId);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPERATION_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await gateStub(organizationId).fetch(
+    response = await stub.fetch(
       new Request(`${GATE_ORIGIN}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -113,7 +147,7 @@ async function gateRequest(
   } catch (error) {
     // error-policy:J2 transport failure must stay fail-closed with its cause.
     throw new InferenceCredentialRevocationUnavailableError(
-      "Inference revocation boundary is unavailable",
+      `Inference revocation boundary is unavailable deadlineExceeded=${controller.signal.aborted} ${describeBoundaryCause(error)}`,
       { cause: error },
     );
   } finally {
