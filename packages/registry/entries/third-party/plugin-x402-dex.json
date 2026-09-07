@@ -1,0 +1,7 @@
+{
+  "name": "@superzydan/plugin-x402-dex",
+  "repo": "https://github.com/Zydanny/plugin-x402-dex",
+  "description": "Real-time DEX market intelligence for ElizaOS agents via x402 Base Mainnet micropayments.",
+  "category": "crypto",
+  "tags": ["x402", "base", "dex", "trading", "market-intel"]
+}
