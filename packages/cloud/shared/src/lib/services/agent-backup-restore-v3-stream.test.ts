@@ -46,11 +46,13 @@ import {
   serializeAgentBackupRecordStreamV1Record,
 } from "@elizaos/shared";
 import * as catalogue from "../../db/repositories/agent-backup-restore";
+import * as sealRepository from "../../db/repositories/agent-backup-restore-v3-candidate-seal-authority";
 import {
   createExactRuntimeR2Backend,
   type ExactObjectRead,
   ObjectLocatorReceipt,
 } from "../storage/object-store";
+import * as quarantineMaterializer from "./agent-backup-restore-quarantine-materializer";
 import { streamAgentBackupRestoreV3FromCatalogue } from "./agent-backup-restore-v3-catalogue-stream";
 import {
   type AgentBackupRestoreV3KeyBundleProvider,
@@ -942,6 +944,145 @@ function catalogueFixture(fixture: RestoreFixture) {
 }
 
 afterEach(() => mock.restore());
+
+function quarantineCatalogueFixture(fixture: RestoreFixture) {
+  const catalog = catalogueFixture(fixture);
+  const { isolatedCandidateStaging, candidateSealAuthority, ...common } = catalog.input;
+  const quarantine = {
+    authority: {
+      operationId: IDS.operation,
+      ownerId: "quarantine-stream-worker",
+      claimGeneration: IDS.fencing,
+      targetNodeRecordId: IDS.nodeRecord,
+      targetNodeId: "quarantine-target",
+      targetNodeIncarnation: IDS.nodeIncarnation,
+      targetNodeHistoryId: IDS.nodeRecord,
+      replacementAttemptId: IDS.restoreAttempt,
+      activationTokenSha256: sha256Hex("retained activation token"),
+      activationTokenCiphertext: "test-only-private-ciphertext",
+    },
+    roots: {
+      trustedRoot: "/restore",
+      attemptRoot: "/restore/attempt",
+      trustedRootIdentity: { device: "1", inode: "2" },
+      attemptRootIdentity: { device: "1", inode: "3" },
+    },
+  };
+  const create = spyOn(
+    quarantineMaterializer,
+    "createAgentBackupRestoreQuarantineCandidateExecution",
+  ).mockImplementation((input) => {
+    expect(input.sourceAuthority).toEqual(fixture.input.source.sourceAuthority);
+    expect(input.enabled).toBe(true);
+    return { status: "enabled", staging: isolatedCandidateStaging };
+  });
+  const seal = spyOn(
+    sealRepository,
+    "createAgentBackupRestoreV3CandidateSealAuthority",
+  ).mockReturnValue(candidateSealAuthority);
+  return { ...catalog, input: { ...common, quarantine }, create, seal };
+}
+
+describe("catalogue-selected quarantine stream with simulated storage and repository boundaries", () => {
+  test("binds the PRIMARY source to a snapshotted target and replays lost seal acknowledgement in the same execution", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now(), loseSealResponse: true });
+    const catalog = quarantineCatalogueFixture(fixture);
+    const expectedTarget = structuredClone(catalog.input.quarantine);
+    const loading = deferred<catalogue.AgentBackupRestoreSourceV3>();
+    catalog.read.mockImplementationOnce(() => loading.promise);
+    const running = streamAgentBackupRestoreV3FromCatalogue(catalog.input);
+    catalog.input.quarantine.authority.targetNodeIncarnation = IDS.activation;
+    catalog.input.quarantine.roots.attemptRootIdentity.inode = "999";
+    loading.resolve(catalog.loaded);
+    expect(await running).toEqual({ sealed: true, receipt: fixture.sealedReceipt() });
+    expect(catalog.create).toHaveBeenCalledTimes(1);
+    expect(catalog.create.mock.calls[0]?.[0]).toMatchObject(expectedTarget);
+    expect(catalog.seal).toHaveBeenCalledTimes(1);
+    expect(fixture.stagedPayloadCopies).toEqual(fixture.sourcePayloads);
+    expect(fixture.counts.begin).toBe(1);
+    expect(fixture.counts.open).toBe(5);
+    expect(fixture.counts.seal).toBe(2);
+    expect(allZero(fixture.keyViews.dek)).toBe(true);
+    expect(fixture.keyViews.released()).toBe(true);
+  });
+
+  test("disabled and cancelled turns do not acquire a quarantine candidate", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = quarantineCatalogueFixture(fixture);
+    await expect(
+      streamAgentBackupRestoreV3FromCatalogue({
+        ...catalog.input,
+        enabled: false,
+        get quarantine(): never {
+          throw new Error("disabled target must not be read");
+        },
+      }),
+    ).resolves.toEqual({ status: "disabled" });
+    expect(catalog.read).not.toHaveBeenCalled();
+    const cancelled = new AbortController();
+    catalog.read.mockImplementation(async () => {
+      cancelled.abort();
+      return catalog.loaded;
+    });
+    await expect(
+      streamAgentBackupRestoreV3FromCatalogue({ ...catalog.input, signal: cancelled.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(catalog.create).not.toHaveBeenCalled();
+    expect(catalog.seal).not.toHaveBeenCalled();
+    expect(fixture.counts.unwrap).toBe(0);
+    expect(fixture.counts.open).toBe(0);
+  });
+
+  test("rejects a caller staging override without inspecting the supplied collaborator or reading storage", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = quarantineCatalogueFixture(fixture);
+    const mixed = {
+      ...catalog.input,
+      get isolatedCandidateStaging(): never {
+        throw new Error("override must not be read");
+      },
+    };
+    await expect(streamAgentBackupRestoreV3FromCatalogue(mixed)).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STAGING_CONFLICT",
+    });
+    expect(catalog.read).not.toHaveBeenCalled();
+    expect(catalog.create).not.toHaveBeenCalled();
+    expect(fixture.counts.open).toBe(0);
+  });
+
+  test("does not fall back when the exact quarantine factory rejects", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = quarantineCatalogueFixture(fixture);
+    catalog.create.mockImplementation(() => {
+      throw new Error("quarantine authority refused");
+    });
+    await expect(streamAgentBackupRestoreV3FromCatalogue(catalog.input)).rejects.toThrow(
+      "quarantine authority refused",
+    );
+    expect(catalog.seal).not.toHaveBeenCalled();
+    expect(fixture.counts.begin).toBe(0);
+    expect(fixture.counts.unwrap).toBe(0);
+    expect(fixture.counts.open).toBe(0);
+  });
+
+  test("rejects malformed quarantine targets before catalogue, key or candidate acquisition", async () => {
+    const fixture = await createFixture({ nowEpochMs: Date.now() });
+    const catalog = quarantineCatalogueFixture(fixture);
+    for (const quarantine of [null, false, {}, { authority: {} }, { authority: {}, roots: {} }]) {
+      const malformed = { ...catalog.input };
+      Object.defineProperty(malformed, "quarantine", { value: quarantine });
+      await expect(streamAgentBackupRestoreV3FromCatalogue(malformed)).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STAGING_CONFLICT",
+      });
+    }
+    expect(catalog.read).not.toHaveBeenCalled();
+    expect(catalog.create).not.toHaveBeenCalled();
+    expect(catalog.seal).not.toHaveBeenCalled();
+    expect(fixture.counts.begin).toBe(0);
+    expect(fixture.counts.unwrap).toBe(0);
+    expect(fixture.counts.open).toBe(0);
+  });
+});
 
 describe("catalogue to real stream composition with simulated catalogue and provider boundaries", () => {
   test("disabled and cancelled calls never load the catalogue or acquire staging", async () => {

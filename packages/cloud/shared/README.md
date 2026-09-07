@@ -125,13 +125,20 @@ object-stream, multi-connection PostgreSQL, remote SSH, boot or staging proof.
 The native Docker command test separately materializes/replays a real character
 and rejects a substituted root inode. The factory still retains a process-held
 execution bearer and requires existing trusted root identities; crash-recoverable
-session/root authority and the production catalogue/dispatcher hookup remain
+session/root authority and the production dispatcher hookup remain
 required before this can be an operational restore.
 
 `streamAgentBackupRestoreV3FromCatalogue` loads the selected manifest-v3 copy
 and its private object locators from PRIMARY, then invokes the existing exact
 GET and authenticated five-component stream. It requires explicit enablement,
-an absolute deadline and trusted storage/KMS/isolated-staging capabilities.
+an absolute deadline and trusted storage/KMS capabilities. Callers either supply
+isolated staging and its seal authority, or an exact `quarantine` target with
+existing trusted root identities. Quarantine mode snapshots the target before
+the source read, then constructs the guarded candidate journal from that PRIMARY
+source and the concrete seal repository. Supplied staging/seal overrides are
+rejected before any source read; cancellation after loading cannot acquire a
+candidate. This is one stream turn: lost seal acknowledgements reconcile within
+the same execution, but a new process cannot yet recover its execution bearer.
 Callers do not supply an object inventory or override authority revalidation.
 The source loader also accepts optional operation control, setting transaction-
 local statement/lock timeouts and rejecting cancellation before returning data.
@@ -143,11 +150,12 @@ catalogue or wrong configured backend rejects; neither triggers discovery,
 another copy selection, an empty restore, activation or route publication.
 
 Composition tests execute the real AES-GCM stream and exact GET adapter against
-a simulated catalogue and native R2 binding; separate PGlite tests exercise the
+a simulated catalogue and native R2 binding, with the quarantine factory and seal
+repository replaced at their boundaries; separate PGlite tests exercise the
 real source loader and its operation control. These are not live R2/Hetzner,
 remote Agent materialization or booted-runtime evidence. The production
-dispatcher and durable Agent transport still need to supply and invoke this
-path together with quarantine preparation.
+dispatcher still needs to invoke this path together with quarantine preparation
+and retain recoverable session/root authority for subsequent generation commit.
 
 ## More
 

@@ -1,7 +1,8 @@
 /**
  * Connects PRIMARY catalogue source authority to the existing exact stream.
  * Object keys and provider generations come only from the locked source loader;
- * callers supply trusted storage/KMS/staging capabilities, never an inventory.
+ * callers supply trusted storage/KMS and either isolated staging or an exact
+ * quarantine target whose guarded journal is constructed here, never an inventory.
  * This is private coordinator data, not an API DTO or a boot/routing grant.
  */
 
@@ -21,11 +22,13 @@ import {
   loadAgentBackupRestoreSourceV3,
 } from "../../db/repositories/agent-backup-restore";
 import { assertAgentBackupRestoreV3OperationControl } from "../../db/repositories/agent-backup-restore-v3-candidate-database-control";
+import { createAgentBackupRestoreV3CandidateSealAuthority } from "../../db/repositories/agent-backup-restore-v3-candidate-seal-authority";
 import {
   type ExactObjectStorageBackend,
   getExactObjectAtBackend,
   ObjectLocatorReceipt,
 } from "../storage/object-store";
+import { createAgentBackupRestoreQuarantineCandidateExecution } from "./agent-backup-restore-quarantine-materializer";
 import {
   type AgentBackupRestoreV3PreparedSource,
   type StreamAgentBackupRestoreV3Input,
@@ -122,25 +125,85 @@ function projectSource(
   });
 }
 
-/** Stream only the exact catalogue-selected copy into explicitly supplied isolated staging. */
+type CatalogueStaging = Pick<
+  StreamAgentBackupRestoreV3Input,
+  "isolatedCandidateStaging" | "candidateSealAuthority"
+>;
+type QuarantineTarget = Pick<
+  Parameters<typeof createAgentBackupRestoreQuarantineCandidateExecution>[0],
+  "authority" | "roots"
+>;
+
+/** One stream turn; quarantine mode constructs its own guarded journal and seal authority. */
 export async function streamAgentBackupRestoreV3FromCatalogue(
   input: Readonly<
     Omit<
       StreamAgentBackupRestoreV3Input,
-      "source" | "openExactObject" | "revalidateAuthority" | "now"
+      | "source"
+      | "openExactObject"
+      | "revalidateAuthority"
+      | "now"
+      | "isolatedCandidateStaging"
+      | "candidateSealAuthority"
     > & {
       enabled: boolean;
       source: Readonly<AgentBackupRestoreSourceV3Input>;
       backend: ExactObjectStorageBackend;
-    }
+    } & (
+        | (CatalogueStaging & { quarantine?: never })
+        | {
+            quarantine: Readonly<QuarantineTarget>;
+            isolatedCandidateStaging?: never;
+            candidateSealAuthority?: never;
+          }
+      )
   >,
 ): Promise<StreamAgentBackupRestoreV3Result | Readonly<{ status: "disabled" }>> {
   if (input.enabled !== true) return Object.freeze({ status: "disabled" });
+  const quarantineInput = input.quarantine;
+  if (
+    quarantineInput !== undefined &&
+    ("isolatedCandidateStaging" in input || "candidateSealAuthority" in input)
+  )
+    throw new ElizaError("Quarantine restore cannot override its durable staging authority", {
+      code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STAGING_CONFLICT",
+    });
+  if (
+    quarantineInput !== undefined &&
+    (quarantineInput === null ||
+      typeof quarantineInput !== "object" ||
+      !quarantineInput.authority ||
+      !quarantineInput.roots ||
+      !quarantineInput.roots.trustedRootIdentity ||
+      !quarantineInput.roots.attemptRootIdentity)
+  )
+    throw new ElizaError("Quarantine restore requires an explicit target and root identities", {
+      code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STAGING_CONFLICT",
+    });
+  // Capture the target before the catalogue read yields. No caller can swap the
+  // retained occurrence or root inode while source authority is being loaded.
+  const quarantine =
+    quarantineInput !== undefined
+      ? Object.freeze({
+          authority: Object.freeze({ ...quarantineInput.authority }),
+          roots: Object.freeze({
+            trustedRoot: quarantineInput.roots.trustedRoot,
+            attemptRoot: quarantineInput.roots.attemptRoot,
+            trustedRootIdentity: Object.freeze({ ...quarantineInput.roots.trustedRootIdentity }),
+            attemptRootIdentity: Object.freeze({ ...quarantineInput.roots.attemptRootIdentity }),
+          }),
+        })
+      : undefined;
+  let staging: CatalogueStaging | undefined =
+    quarantineInput === undefined
+      ? {
+          isolatedCandidateStaging: input.isolatedCandidateStaging,
+          candidateSealAuthority: input.candidateSealAuthority,
+        }
+      : undefined;
   const { source: sourceInput, backend: backendInput } = input;
   const streamInput = Object.freeze({
     keyBundle: input.keyBundle,
-    candidateSealAuthority: input.candidateSealAuthority,
-    isolatedCandidateStaging: input.isolatedCandidateStaging,
     signal: input.signal,
     deadlineEpochMs: input.deadlineEpochMs,
     reportDetachedFailure: input.reportDetachedFailure,
@@ -159,9 +222,30 @@ export async function streamAgentBackupRestoreV3FromCatalogue(
     sourceIdentity,
     await loadAgentBackupRestoreSourceV3(sourceIdentity, control),
   );
+  assertAgentBackupRestoreV3OperationControl(control, "Catalogue restore staging");
+  if (quarantine) {
+    const candidate = createAgentBackupRestoreQuarantineCandidateExecution({
+      enabled: true,
+      sourceAuthority: source.sourceAuthority,
+      ...quarantine,
+    });
+    if (candidate.status !== "enabled")
+      throw new ElizaError("Quarantine candidate staging was not enabled", {
+        code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STAGING_CONFLICT",
+      });
+    staging = {
+      isolatedCandidateStaging: candidate.staging,
+      candidateSealAuthority: createAgentBackupRestoreV3CandidateSealAuthority(),
+    };
+  }
+  if (!staging)
+    throw new ElizaError("Restore catalogue requires explicit isolated staging", {
+      code: "AGENT_BACKUP_RESTORE_V3_CATALOGUE_STAGING_CONFLICT",
+    });
   const canonical = canonicalizeAgentBackupRestoreV3SourceAuthority(source.sourceAuthority);
   return streamAgentBackupRestoreV3({
     ...streamInput,
+    ...staging,
     source,
     openExactObject: (object, readControl) =>
       getExactObjectAtBackend({
