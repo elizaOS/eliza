@@ -66,6 +66,7 @@ describe("Pi provider routes", () => {
       expect(provider?.apiKey).toBe("$ELIZA_PI_ROUTE_API_KEY");
       expect(models).not.toContain(`secret-${providerId}`);
       expect(settings).not.toContain(`secret-${providerId}`);
+      expect(JSON.parse(settings).compaction.enabled).toBe(false);
       expect((await stat(home)).mode & 0o777).toBe(0o700);
       expect((await stat(path.join(home, "models.json"))).mode & 0o777).toBe(
         0o600,

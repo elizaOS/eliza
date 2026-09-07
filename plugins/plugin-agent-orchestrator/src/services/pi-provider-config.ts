@@ -273,6 +273,9 @@ export async function preparePiProviderRoute(input: {
   const settings = {
     defaultProvider: route.piProviderId,
     defaultModel: model,
+    // Pi otherwise enables automatic context compaction, which would discard
+    // model-facing history outside the host's prompt-integrity boundary.
+    compaction: { enabled: false },
   };
   await Promise.all([
     writeFile(path.join(piHome, "models.json"), JSON.stringify(models), {
