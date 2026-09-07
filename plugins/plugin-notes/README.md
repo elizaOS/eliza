@@ -13,6 +13,12 @@ State is stored atomically per agent under
 capabilities share one validated mutation path, and mounted views converge
 through the normal runtime update event.
 
+The chat update action identifies the existing note with `content` and takes
+its complete new text in `replacementContent` (label, newline, then body).
+`body` is shown only for create calls; legacy update callers using `body` or
+`newText` remain supported. Partial edits must preserve the unchanged label
+and lines in the replacement; the server does not infer or invent them.
+
 Calendar UI lives in `@elizaos/plugin-calendar`, which renders real Google,
 Microsoft, Apple, and ICS calendar data from its own services.
 

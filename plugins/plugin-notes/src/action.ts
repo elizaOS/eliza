@@ -66,7 +66,7 @@ function readOp(params: Record<string, unknown>): NotesOpParse | undefined {
 function failure(
   text: string,
   code: string,
-  missingParameter?: "content" | "body",
+  missingParameter?: "content" | "replacementContent",
 ): ActionResult {
   return {
     success: false,
@@ -164,7 +164,7 @@ export const notesAction: Action = {
   descriptionCompressed:
     "notes: create, list/search, update full content (preserve unedited label/body), delete; opening the Notes view separately needs VIEWS",
   routingHint:
-    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES_CREATE with content. ANY read over the user's notes -> NOTES_LIST. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content when the owner asks for all notes, counts, or a recency comparison without a topic. Recency is determined from returned createdAt/updatedAt fields, never by searching for words such as 'latest' or 'most recently updated'. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES_DELETE with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES_UPDATE with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with NOTES_LIST. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call NOTES_LIST before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
+    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES_CREATE with content. ANY read over the user's notes -> NOTES_LIST. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content when the owner asks for all notes, counts, or a recency comparison without a topic. Recency is determined from returned createdAt/updatedAt fields, never by searching for words such as 'latest' or 'most recently updated'. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES_DELETE with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES_UPDATE with content=the existing identifying text and replacementContent=the complete updated note, preserving the existing first-line label and all unedited lines. Deleting and updating are NOT reads: never answer a removal or change request with NOTES_LIST. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call NOTES_LIST before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -268,12 +268,15 @@ export const notesAction: Action = {
       });
     }
 
-    const replacement = readString(params.body) ?? readString(params.newText);
+    const replacement =
+      readString(params.replacementContent) ??
+      readString(params.body) ??
+      readString(params.newText);
     if (!replacement) {
       return failure(
         "Tell me what the note should say after the change.",
         "NOTES_MISSING_PATCH",
-        "body",
+        "replacementContent",
       );
     }
     const updated = await service.updateNoteByLookupWithCommit(
@@ -312,9 +315,21 @@ export const notesAction: Action = {
     {
       name: "body",
       description:
-        "For update, COMPLETE replacement note content: first line is the label, remaining lines are the body. To edit only the body, include the unchanged label followed by a newline and the new body. Preserve unedited content; list the matching note first if unknown. For create, OMIT this field when content already holds the full note. If content holds ONLY a title, body may contain ONLY the requested body, never repeat the title.",
+        "For create only: optional body when content contains only the title. Omit when content already contains the whole note. For update use replacementContent, not body.",
+      subactions: ["create"],
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "replacementContent",
+      description:
+        "For update: the COMPLETE note after the edit, including its unchanged first-line label and every unedited line. This is not a body-only patch. For example, adding water to 'Packing list\\nCharger' requires 'Packing list\\nCharger and water'. Read the note first if its full content is unknown.",
+      subactions: ["update"],
       required: false,
       requiredForSubactions: ["update"],
+      // Old callers used body/newText for the complete replacement. Keep
+      // their wire contract while exposing an unambiguous name to planners.
+      aliases: ["body", "newText"],
       schema: { type: "string" },
     },
   ],
