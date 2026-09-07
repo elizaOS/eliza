@@ -2427,6 +2427,19 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               `without overflow-x:hidden)`,
           ).toBeLessThanOrEqual(HORIZONTAL_OVERFLOW_TOLERANCE_PX);
         }
+        if (view.fixtureState === "cloud-signed-out") {
+          await viewRoot
+            .getByRole("button", { name: "Connect in Settings", exact: true })
+            .click();
+          await expect(page).toHaveURL(/\/settings(?:[?#]|$)/);
+          const settingsRoot = page.locator(
+            '[data-view-lifecycle-slot="settings"][data-view-hidden="false"]',
+          );
+          await expect(settingsRoot).toBeVisible();
+          await expect(
+            settingsRoot.getByText("Voice", { exact: true }).first(),
+          ).toBeVisible();
+        }
       });
     }
   }
