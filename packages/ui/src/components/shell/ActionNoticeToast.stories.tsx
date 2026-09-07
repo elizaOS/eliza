@@ -31,4 +31,7 @@ export const Pending: Story = {
   },
 };
 
-export const Hidden: Story = { args: { actionNotice: null } };
+export const Hidden: Story = {
+  tags: ["story-gate-expect-blank"],
+  args: { actionNotice: null },
+};

@@ -21,7 +21,7 @@ const readiness = vi.hoisted(() => ({
 	loaded: false,
 	assignments: {} as Record<string, string>,
 	policy: "manual",
-	preferred: "test-cloud",
+	preferred: "test-cloud" as string | null,
 }));
 vi.mock("./engine", () => ({
 	localInferenceEngine: { hasLoadedModel: () => readiness.loaded },
@@ -132,7 +132,7 @@ describe("router and outer runtime share local text admission", () => {
 			).toBe(false);
 			expect(
 				attempts.some((attempt) => attempt.provider === ROUTER_PROVIDER),
-			).toBe(true);
+			).toBe(!preferCloud);
 			expect(report).not.toHaveBeenCalled();
 		},
 	);
@@ -143,7 +143,9 @@ describe("router and outer runtime share local text admission", () => {
 			readiness.loaded = state === "loaded";
 			if (state === "assigned")
 				readiness.assignments.TEXT_LARGE = "installed-test-model";
-			const runtime = makeRuntime(true);
+			readiness.policy = "manual";
+			readiness.preferred = null;
+			const runtime = makeRuntime(false);
 			const cloud = vi.fn(async () => {
 				throw Object.assign(new Error("rate limit"), { status: 429 });
 			});
@@ -172,7 +174,9 @@ describe("router and outer runtime share local text admission", () => {
 	);
 
 	it("keeps a later provider's terminal failure authoritative after local admission is rejected", async () => {
-		const runtime = makeRuntime(true);
+		readiness.policy = "manual";
+		readiness.preferred = null;
+		const runtime = makeRuntime(false);
 		const terminal = new Error("invalid request payload");
 		runtime.registerModel(
 			ModelType.TEXT_LARGE,
@@ -250,7 +254,9 @@ describe("router and outer runtime share local text admission", () => {
 		async (reason) => {
 			readiness.policy = "prefer-local";
 			readiness.loaded = true;
-			const runtime = makeRuntime(true);
+			readiness.policy = "manual";
+			readiness.preferred = null;
+			const runtime = makeRuntime(false);
 			const terminal =
 				reason === "auth"
 					? Object.assign(new Error("unauthorized"), { status: 401 })
@@ -323,7 +329,9 @@ describe("router and outer runtime share local text admission", () => {
 	it("does not replace callback output or its failure with another provider", async () => {
 		readiness.policy = "prefer-local";
 		readiness.loaded = true;
-		const runtime = makeRuntime(true);
+		readiness.policy = "manual";
+		readiness.preferred = null;
+		const runtime = makeRuntime(false);
 		const unavailable = new LocalInferenceUnavailableError(
 			ModelType.TEXT_LARGE,
 			"backend_unavailable",
@@ -373,7 +381,9 @@ describe("router and outer runtime share local text admission", () => {
 	])(
 		"rejects inactive direct %s aliases before dispatch",
 		async (modelType) => {
-			const runtime = makeRuntime(true);
+			readiness.policy = "manual";
+			readiness.preferred = null;
+			const runtime = makeRuntime(false);
 			const limited = Object.assign(new Error("rate limit"), { status: 429 });
 			const cloud = vi.fn(async () => {
 				throw limited;

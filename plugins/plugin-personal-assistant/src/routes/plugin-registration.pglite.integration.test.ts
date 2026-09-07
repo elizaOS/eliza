@@ -197,6 +197,33 @@ it("serves owner definition CRUD from the normally registered personal-assistant
     expect(
       (await service.getDefinition(scheduled.definition.id)).definition.status,
     ).toBe("active");
+    const agentOperation = await service.createDefinition({
+      title: "Internal agent task",
+      kind: "task",
+      cadence: { kind: "unscheduled" },
+      ownership: {
+        domain: "agent_ops",
+        subjectType: "agent",
+        subjectId: runtime.agentId,
+      },
+      reminderPlan: null,
+    });
+    await service.updateDefinition(id, { status: "archived" });
+    const filteredResponse = await fetch(`${base}/api/lifeops/todos`);
+    expect(filteredResponse.status).toBe(200);
+    const filtered = (await filteredResponse.json()).todos as Array<{
+      id: string;
+    }>;
+    expect(filtered.some((todo) => todo.id === id)).toBe(false);
+    expect(
+      filtered.some((todo) => todo.id === agentOperation.definition.id),
+    ).toBe(false);
+    expect(filtered.some((todo) => todo.id === scheduled.definition.id)).toBe(
+      false,
+    );
+    expect(
+      filtered.some((todo) => todo.id === scheduledOccurrences[0].id),
+    ).toBe(true);
     const deleted = await fetch(
       `${base}/api/lifeops/definitions/${saved.definition.id}`,
       { method: "DELETE" },

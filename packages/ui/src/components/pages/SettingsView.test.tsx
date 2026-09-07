@@ -303,27 +303,18 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SettingsView", () => {
-  it("calls loadPlugins on mount and renders the uniform header + hub list", async () => {
+  it("loads plugins and keeps section bodies deferred until selected", async () => {
     render(<SettingsView />);
 
     await waitFor(() => {
       expect(appMock.value.loadPlugins).toHaveBeenCalled();
     });
-    // The shared ViewHeader renders once, titled "Settings" on the hub.
-    const header = screen.getByTestId("view-header");
-    expect(header.textContent).toContain("Settings");
     // Product areas stay compact until opened; no section body is mounted until
     // a destination row is tapped.
     expect(hubRow("identity").textContent).toContain("Basics");
     expect(hubRow("runtime").textContent).toContain("Runtime");
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
-  });
-
-  it("renders exactly one header in the mobile hub", () => {
-    render(<SettingsView />);
-    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
-    expect(screen.queryByTestId("desktop-settings-navigation")).toBeNull();
   });
 
   it("groups the hub rows by Agent / System under the header", () => {
@@ -417,18 +408,13 @@ describe("SettingsView", () => {
       screen.queryByRole("button", { name: "Back to launcher" }),
     ).toBeNull();
     fireEvent.click(hubRow("runtime"));
-    expect(
-      screen.getByRole("button", { name: "Back to Settings" }),
-    ).toBeTruthy();
+    expect(screen.getByTestId("stub-runtime")).toBeTruthy();
   });
 
   it("does not add detached-window chrome to embedded Settings", () => {
     const { container } = render(<SettingsView />);
 
     expect(container.querySelector(".settings-window-drag-strip")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Back to launcher" }),
-    ).toBeTruthy();
   });
 
   it("keeps managed implementation controls available for local runtimes", () => {
@@ -438,12 +424,11 @@ describe("SettingsView", () => {
     );
   });
 
-  it("tapping a hub row opens that section as a subview under the same header", () => {
+  it("tapping a hub row opens only the selected section", () => {
     render(<SettingsView />);
 
     fireEvent.click(hubRow("runtime"));
 
-    // The section body is now mounted and the shared header retitles to it.
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(
       screen
@@ -451,12 +436,8 @@ describe("SettingsView", () => {
         .closest("[data-slot='settings-section-content']")?.className,
     ).toContain("!px-4");
     expect(screen.queryByTestId("stub-identity")).toBeNull();
-    expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
-    expect(screen.getByTestId("view-header").className).toContain("px-1.5");
     // The hub list is gone while a subview is open (true subview, not a rail).
     expect(screen.queryByTestId("settings-hub-list")).toBeNull();
-    // Still exactly one header — the section did not stack a second one.
-    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
   });
 
   it("respects an initialSection prop by opening that section directly", () => {
@@ -464,7 +445,6 @@ describe("SettingsView", () => {
 
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
-    expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
   });
 
   it("synchronizes same-page settings navigation dispatched through popstate", () => {
@@ -543,14 +523,11 @@ describe("SettingsView", () => {
     expect(permissionPrimingMock.calls).toHaveLength(0);
   });
 
-  it("the header back affordance returns from a section to the hub", () => {
+  it("the explicit back control returns from a section to the hub", () => {
     render(<SettingsView initialSection="runtime" />);
 
-    const back = screen.getByRole("button", { name: "Back to Settings" });
-    fireEvent.click(back);
+    fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
 
-    // Back on the hub: header titled "Settings", hub list, no section body.
-    expect(screen.getByTestId("view-header").textContent).toContain("Settings");
     expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
@@ -565,10 +542,9 @@ describe("SettingsView", () => {
       render(<SettingsView initialSection="crash" />);
 
       // The section body crashed, but the shell did NOT blank: the inline
-      // per-section fallback renders and the header/nav stay usable.
+      // per-section fallback renders.
       expect(screen.getByTestId("settings-section-error")).toBeTruthy();
       expect(screen.queryByTestId("stub-crash")).toBeNull();
-      expect(screen.getByTestId("view-header").textContent).toContain("Crash");
     } finally {
       consoleError.mockRestore();
     }
@@ -643,9 +619,6 @@ describe("SettingsView", () => {
       ).toBe("page");
       expect(screen.queryByTestId("settings-hub-list")).toBeNull();
       expect(screen.queryByTestId("view-header")).toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Back to launcher" }),
-      ).toBeTruthy();
     } finally {
       restore();
     }
@@ -679,17 +652,12 @@ describe("SettingsView", () => {
     const restore = mockMatchMedia(() => false);
     try {
       const { container } = render(<SettingsView initialSection="runtime" />);
-      // Mobile keeps the shared ViewHeader title and anchors `#<id>` on the
-      // section body (the default) — the body still contains the section's
-      // rendered content.
+      // Deep links must still reach the selected section's rendered content.
       const anchor = container.querySelector<HTMLElement>("#runtime");
       expect(anchor).not.toBeNull();
       expect(
         within(anchor as HTMLElement).getByTestId("stub-runtime"),
       ).toBeTruthy();
-      expect(screen.getByTestId("view-header").textContent).toContain(
-        "Runtime",
-      );
     } finally {
       restore();
     }
@@ -701,14 +669,7 @@ describe("SettingsView", () => {
       render(<SettingsView />);
       expect(hubRow("identity")).toBeTruthy();
       expect(screen.queryByTestId("stub-identity")).toBeNull();
-      const header = screen.getByTestId("view-header");
       const scrollRegion = screen.getByTestId("settings-scroll-region");
-      expect(screen.getAllByTestId("view-header")).toHaveLength(1);
-      expect(scrollRegion.contains(header)).toBe(false);
-      expect(
-        header.compareDocumentPosition(scrollRegion) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).not.toBe(0);
       expect(scrollRegion.className.includes("--eliza-chat-clearance")).toBe(
         false,
       );

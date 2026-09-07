@@ -129,7 +129,7 @@ describe("MemoryViewerView mobile sidebar header trigger", () => {
     expect(triggers).toHaveLength(1);
     expect(triggers[0].textContent).toContain("Filters");
     expect(
-      within(screen.getByTestId("view-header")).getByTestId(
+      within(screen.getByTestId("view-actions")).getByTestId(
         "page-layout-mobile-sidebar-trigger",
       ),
     ).toBe(triggers[0]);

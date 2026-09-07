@@ -48,7 +48,7 @@ describe("WalletSectionNav canonical surface", () => {
 
       expect(screen.queryByTestId("wallet-section-price-surface")).toBeNull();
       expect(screen.queryByTestId("chat-widget-wallet-prices")).toBeNull();
-      expect(screen.getByRole("heading", { name: "Wallet" })).toBeTruthy();
+      expect(screen.getByTestId("section-nav-wallet")).toBeTruthy();
     },
   );
 });

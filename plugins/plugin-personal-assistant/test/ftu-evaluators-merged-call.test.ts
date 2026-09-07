@@ -34,6 +34,7 @@ function createEvaluatorRuntime(modelOutput: Record<string, unknown>): {
 } {
   const calls: CapturedModelCall[] = [];
   const runtime = createOwnerRuntimeStub({
+    getMemories: async () => [],
     evaluators: [ftuGoalDiscoveryEvaluator, anticipationFeedbackEvaluator],
     useModel: (async (
       _modelType: string,

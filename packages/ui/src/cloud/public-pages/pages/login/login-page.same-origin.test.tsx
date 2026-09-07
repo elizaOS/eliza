@@ -52,11 +52,13 @@ vi.mock("@elizaos/login", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/steward-session-client")
+  >()),
   hasStewardAuthedCookie: () => false,
   readStoredStewardToken: () => null,
   writeStoredStewardToken: () => undefined,
-  StewardSessionError: class extends Error {},
 }));
 
 vi.mock("../../lib/steward-session", () => ({

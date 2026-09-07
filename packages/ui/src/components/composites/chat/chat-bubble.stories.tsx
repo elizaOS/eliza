@@ -122,6 +122,9 @@ export const FirstRun: Story = {
         );
       }
     }
+    // Portable stories run in jsdom, which has no layout engine. The browser
+    // story gate owns these rendered geometry checks.
+    if (/jsdom/i.test(navigator.userAgent)) return;
     const box = surface.getBoundingClientRect();
     const column = surface.parentElement?.getBoundingClientRect();
     if (

@@ -4,6 +4,7 @@
 // Interaction tests for CockpitNewSessionForm: submit stays disabled until a
 // goal is entered, and submitting hands the parent a lowered create-task input.
 // Deterministic RTL/jsdom, no network.
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -39,7 +40,7 @@ describe("CockpitNewSessionForm", () => {
         providerPolicy: {
           preferredFramework: "elizaos",
           providerSource: "eliza-cloud",
-          model: "gemma-4-31b",
+          model: DEFAULT_CEREBRAS_TEXT_MODEL,
         },
       },
       undefined,

@@ -78,15 +78,13 @@ export function ViewBackButton({
 }
 
 /**
- * Standard view header: a chromeless back button and a title on one line.
- *
- * Mobile centers the title with the back button overlaid on the left (the
- * iOS-style nav bar the redesign asks for); ≥sm left-aligns the title after the
- * back button. A sub-view renders its OWN `ViewHeader`, which REPLACES this one
- * rather than stacking beneath it — callers swap the header for the active
- * section, they do not nest two.
+ * Keeps page actions and explicit subview return controls available without
+ * repeating a top-level title or adding a default launcher button.
  */
 export function ViewHeader({
+  onBack,
+  backLabel,
+  showBack = true,
   right,
   className,
 }: {
@@ -103,10 +101,8 @@ export function ViewHeader({
   right?: ReactNode;
   className?: string;
 }) {
-  // Views no longer repeat a page title and launcher/back button above their
-  // content. Keep real page actions (Add, filters, etc.) available without an
-  // empty header row when a view has no actions.
-  if (!right) return null;
+  const hasBack = showBack && onBack !== undefined;
+  if (!right && !hasBack) return null;
   return (
     <div
       data-testid="view-actions"
@@ -115,6 +111,9 @@ export function ViewHeader({
         className,
       )}
     >
+      {hasBack ? (
+        <ViewBackButton onBack={onBack} label={backLabel} className="mr-auto" />
+      ) : null}
       {right}
     </div>
   );

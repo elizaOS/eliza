@@ -98,11 +98,7 @@ describe("mobile sidebar header trigger", () => {
     const trigger = screen.getByTestId("page-layout-mobile-sidebar-trigger");
     expect(trigger.textContent).toContain("People");
     // Inline variant: rendered inside the layout's main pane, not the header.
-    expect(
-      within(screen.getByTestId("view-header")).queryByTestId(
-        "page-layout-mobile-sidebar-trigger",
-      ),
-    ).toBeNull();
+    expect(screen.queryByTestId("view-actions")).toBeNull();
     expect(trigger.closest("main")).not.toBeNull();
   });
 
@@ -118,7 +114,7 @@ describe("mobile sidebar header trigger", () => {
     expect(trigger.textContent).toContain("People");
     // Header variant: inside the ViewHeader, outside the layout's main pane.
     expect(
-      within(screen.getByTestId("view-header")).getByTestId(
+      within(screen.getByTestId("view-actions")).getByTestId(
         "page-layout-mobile-sidebar-trigger",
       ),
     ).toBe(trigger);

@@ -444,9 +444,17 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         ownerConfigured: false,
       },
     };
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse(401, unauthorized))
-      .mockResolvedValueOnce(jsonResponse(401, unauthorized));
+    fetchMock.mockImplementation((url: string) => {
+      if (url.endsWith("/api/auth/status")) {
+        return Promise.resolve(
+          jsonResponse(200, { required: true, pairingEnabled: false }),
+        );
+      }
+      if (url.endsWith("/api/auth/me")) {
+        return Promise.resolve(jsonResponse(401, unauthorized));
+      }
+      throw new Error(`Unexpected authentication request: ${url}`);
+    });
 
     await act(async () => {
       primeAuthStatusProbe();
@@ -459,9 +467,12 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         reason: "remote_auth_required",
       }),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const firstHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
-    const retryHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
+    const probes = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith("/api/auth/me"),
+    );
+    expect(probes).toHaveLength(2);
+    const firstHeaders = new Headers(probes[0]?.[1]?.headers);
+    const retryHeaders = new Headers(probes[1]?.[1]?.headers);
     expect(firstHeaders.get("Authorization")).toBe("Bearer stale-token");
     expect(retryHeaders.has("Authorization")).toBe(false);
     expect(loadPersistedActiveServer()?.accessToken).toBeUndefined();

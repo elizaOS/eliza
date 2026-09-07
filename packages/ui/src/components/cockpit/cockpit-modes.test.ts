@@ -3,7 +3,9 @@
  * that each mode resolves to the right provider source, model, and
  * create-task input. Pure functions, no DOM or network.
  */
+
 import { toWellFormedUnicode } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -51,14 +53,14 @@ describe("cockpit-modes lowering", () => {
           agentType: "elizaos",
           tier: "small",
         }),
-      ).toBe("gemma-4-31b");
+      ).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
       expect(
         cockpitModeModel({
           mode: "eliza-cloud",
           agentType: "elizaos",
           tier: "large",
         }),
-      ).toBe("gemma-4-31b");
+      ).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
       expect(
         cockpitModeModel({
           mode: "subscription",
@@ -80,7 +82,7 @@ describe("cockpit-modes lowering", () => {
       ).toEqual({
         preferredFramework: "elizaos",
         providerSource: "eliza-cloud",
-        model: "gemma-4-31b",
+        model: DEFAULT_CEREBRAS_TEXT_MODEL,
       });
       expect(
         cockpitModeToProviderPolicy({

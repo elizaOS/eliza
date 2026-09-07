@@ -29,6 +29,7 @@ import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentButton, getViewRegistry } from "./agent-surface";
 import { registerAppShellPage } from "./app-shell-registry";
+import { navigateBackToLauncher } from "./components/shared/ViewHeader";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import { DEFAULT_BRANDING } from "./config/branding-base";
 import { BrandingContext } from "./config/branding-react.hooks";
@@ -1112,9 +1113,6 @@ describe("App navigate-view event wiring", () => {
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
-    expect(queryByTestId("view-header")?.textContent).toContain(
-      "Remote Ledger",
-    );
     expect(
       container
         .querySelector('[data-shell-content-region="true"] [data-page-content]')
@@ -1129,7 +1127,7 @@ describe("App navigate-view event wiring", () => {
     expect(queryByTestId("app-background-shader")).toBeNull();
   });
 
-  it("renders the same shell-owned header for an in-process normal page", async () => {
+  it("mounts a registered in-process page through the app router", async () => {
     registerAppShellPage({
       id: "signed-normal",
       pluginId: "@local/plugin-signed-normal",
@@ -1140,11 +1138,9 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/signed-normal");
 
-    const { getByTestId, getAllByTestId } = render(<App />);
+    const { getByTestId } = render(<App />);
 
     await waitFor(() => getByTestId("signed-normal-content"));
-    expect(getAllByTestId("view-header")).toHaveLength(1);
-    expect(getByTestId("view-header").textContent).toContain("Signed Normal");
   });
 
   it.each([
@@ -1186,7 +1182,6 @@ describe("App navigate-view event wiring", () => {
       }
 
       await screen.findByRole("region", { name: "Notes fixture" });
-      expect(screen.getByRole("heading", { name: "Notes" })).toBeTruthy();
       expect(getActiveSurfaceRealmScope()?.viewId).toBe("notes");
       // Prove the guard is armed, not just that a scope-shaped object exists.
       expect(() => window.history.pushState(null, "", "/views")).toThrow(
@@ -1194,7 +1189,7 @@ describe("App navigate-view event wiring", () => {
       );
       expect(window.location.pathname).toBe("/notes");
 
-      fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
+      act(() => navigateBackToLauncher());
 
       await waitFor(() => {
         expect(window.location.pathname).toBe("/views");
@@ -1202,7 +1197,6 @@ describe("App navigate-view event wiring", () => {
         expect(
           screen.queryByRole("region", { name: "Notes fixture" }),
         ).toBeNull();
-        expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
         expect(getActiveSurfaceRealmScope()?.viewId).not.toBe("notes");
       });
       // A second real browser event must not resurrect stale provider tab state.
