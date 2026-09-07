@@ -1,5 +1,6 @@
 /** Verifies live-trajectory accounting and complete wire records through deterministic usage fixtures and a real local HTTP server. */
 
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
@@ -9,6 +10,7 @@ import {
   liveUsageCostUsd,
   openAiResponse,
   resolveLiveTrajectoryConfig,
+  runController,
   selectLiveTrajectoryObjects,
   usageOf,
 } from "../produce-content-context-live-trajectories.mjs";
@@ -71,6 +73,139 @@ function object(family: string, byteLength: number) {
 }
 
 describe("live progressive-content trajectory producer", () => {
+  it("resends instructions on continuations and records complete ordered tool pages", async () => {
+    const canary = "END:🧪:complete";
+    const source = `${"synthetic source\n".repeat(5000)}${canary}`;
+    const bytes = Buffer.from(source);
+    const object = {
+      family: "file",
+      revision: "revision-one",
+      canaries: [
+        {
+          label: "end",
+          text: canary,
+          byteStart: bytes.length - Buffer.byteLength(canary),
+        },
+      ],
+    };
+    const requests: string[] = [];
+    const server = createServer((incoming, outgoing) => {
+      const chunks: Buffer[] = [];
+      incoming.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      incoming.on("end", () => {
+        requests.push(Buffer.concat(chunks).toString("utf8"));
+        const turn = requests.length;
+        const output =
+          turn <= 2
+            ? [
+                {
+                  type: "function_call",
+                  name: "read_content",
+                  call_id: `call_${turn}`,
+                  arguments: JSON.stringify({ offset: turn === 1 ? 0 : 65536 }),
+                },
+              ]
+            : [
+                {
+                  type: "message",
+                  content: [{ type: "output_text", text: canary }],
+                },
+              ];
+        outgoing.writeHead(200, { "Content-Type": "application/json" });
+        outgoing.end(
+          JSON.stringify({
+            id: `response_${turn}`,
+            model: "controller",
+            status: "completed",
+            service_tier: "default",
+            ...responseUsage(100, 10, 0, 0),
+            output,
+          }),
+        );
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No HTTP fixture port");
+    try {
+      const config = resolveLiveTrajectoryConfig(
+        {
+          ...PRICING,
+          "corpus-root": ".",
+          output: "out",
+          commit: SHA,
+          model: "controller",
+          "judge-model": "judge",
+        },
+        { OPENAI_API_KEY: "test-only" },
+      );
+      const target = {
+        object,
+        read: async ({
+          offset,
+          limit,
+          access,
+          expectedRevision,
+        }: {
+          offset: number;
+          limit: number;
+          access: string;
+          expectedRevision: string;
+        }) => {
+          if (access !== "authorized" || expectedRevision !== object.revision)
+            throw new Error("Read lost its authorization or revision");
+          const end = Math.min(bytes.length, offset + limit);
+          return {
+            bytes: bytes.subarray(offset, end),
+            view: {
+              slice: {
+                range: { start: offset, end },
+                nextOffset: end < bytes.length ? end : null,
+                hasMore: end < bytes.length,
+                sliceSha256: createHash("sha256")
+                  .update(bytes.subarray(offset, end))
+                  .digest("hex"),
+              },
+            },
+          };
+        },
+      };
+      const result = await runController(
+        config,
+        target,
+        object,
+        (_endpoint: string, init: RequestInit) =>
+          fetch(`http://127.0.0.1:${address.port}`, init),
+      );
+      const transmitted = requests.map((request) => JSON.parse(request));
+      expect(transmitted[0].instructions).toBeTruthy();
+      expect(
+        transmitted
+          .slice(1)
+          .every(
+            (request) => request.instructions === transmitted[0].instructions,
+          ),
+      ).toBe(true);
+      expect(
+        transmitted
+          .slice(1)
+          .map((request) => JSON.parse(request.input[0].output).text)
+          .join(""),
+      ).toBe(source);
+      expect(result.finalAnswer).toBe(canary);
+      expect(result.modelCalls.map((call) => call.request)).toEqual(
+        transmitted,
+      );
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
   it("retains the complete transmitted request and response without credentials", async () => {
     const content = "Full Unicode source 🧪\n".repeat(6000);
     const request = { model: "controller", input: content };

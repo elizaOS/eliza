@@ -285,8 +285,11 @@ const READ_TOOL = {
   },
 };
 
-async function runController(config, target, object) {
+/** Keeps controller instructions on every Responses turn and follows authorized page continuations. */
+export async function runController(config, target, object, transport = fetch) {
   const prompt = buildLiveControllerPrompt(object.family);
+  const instructions =
+    "Use only the supplied content tool. Never guess an offset or fabricate content.";
   const expected = object.canaries.find(({ label }) => label === "end");
   if (!expected) throw new Error("selected object lacks an end canary");
   if (
@@ -300,17 +303,20 @@ async function runController(config, target, object) {
   const modelCalls = [];
   const toolCalls = [];
   let expectedOffset = 0;
-  let exchange = await openAiResponse(config, {
-    model: config.model,
-    instructions:
-      "Use only the supplied content tool. Never guess an offset or fabricate content.",
-    input: prompt,
-    tools: [READ_TOOL],
-    tool_choice: "required",
-    parallel_tool_calls: false,
-    store: true,
-    truncation: "disabled",
-  });
+  let exchange = await openAiResponse(
+    config,
+    {
+      model: config.model,
+      instructions,
+      input: prompt,
+      tools: [READ_TOOL],
+      tool_choice: "required",
+      parallel_tool_calls: false,
+      store: true,
+      truncation: "disabled",
+    },
+    transport,
+  );
   let response = exchange.response;
   let usage = usageOf(response);
   let foundExpected = false;
@@ -367,26 +373,32 @@ async function runController(config, target, object) {
       nextOffset: page.view.slice.nextOffset ?? null,
       sliceSha256: page.view.slice.sliceSha256,
     });
-    exchange = await openAiResponse(config, {
-      model: config.model,
-      previous_response_id: response.id,
-      input: [
-        {
-          type: "function_call_output",
-          call_id: call.call_id,
-          output: JSON.stringify({
-            text,
-            nextOffset: page.view.slice.nextOffset ?? null,
-            hasMore: page.view.slice.hasMore,
-          }),
-        },
-      ],
-      tools: [READ_TOOL],
-      tool_choice: "auto",
-      parallel_tool_calls: false,
-      store: true,
-      truncation: "disabled",
-    });
+    exchange = await openAiResponse(
+      config,
+      {
+        model: config.model,
+        // Responses does not inherit instructions through previous_response_id.
+        instructions,
+        previous_response_id: response.id,
+        input: [
+          {
+            type: "function_call_output",
+            call_id: call.call_id,
+            output: JSON.stringify({
+              text,
+              nextOffset: page.view.slice.nextOffset ?? null,
+              hasMore: page.view.slice.hasMore,
+            }),
+          },
+        ],
+        tools: [READ_TOOL],
+        tool_choice: "auto",
+        parallel_tool_calls: false,
+        store: true,
+        truncation: "disabled",
+      },
+      transport,
+    );
     response = exchange.response;
     const nextUsage = usageOf(response);
     usage = addUsage(usage, nextUsage);
