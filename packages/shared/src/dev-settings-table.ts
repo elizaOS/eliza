@@ -118,7 +118,10 @@ function boxEmptyRow(outer: number): string {
 
 export function boxRow(line: string, outer: number): string {
   const inner = outer - 2;
-  const maxMid = Math.max(0, inner - 4);
+  // A row is `│ ` + content + ` │`: the frame and its two spaces take four
+  // columns of `outer`, so content may span `inner - 2` to stay flush with
+  // the rules and empty rows around it.
+  const maxMid = Math.max(0, inner - 2);
   const wellFormed = toWellFormedUnicode(line);
   const vis =
     wellFormed.length > maxMid

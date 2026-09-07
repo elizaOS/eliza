@@ -70,6 +70,14 @@ describe("dev-settings-table", () => {
       expect(row.endsWith("│")).toBe(true);
       expect(row).toContain("Status: OK");
     });
+
+    it("pads framed rows to the outer width", () => {
+      for (const outer of [24, 30, 60, 80]) {
+        expect(boxRow("Status: OK", outer)).toHaveLength(outer);
+        expect(boxRow("", outer)).toHaveLength(outer);
+        expect(boxRow("x".repeat(outer * 2), outer)).toHaveLength(outer);
+      }
+    });
   });
 
   describe("formatDevSettingsTableNarrow", () => {
@@ -94,6 +102,30 @@ describe("dev-settings-table", () => {
       expect(formatted).toContain("ELIZA_PORT");
       expect(formatted).toContain("Effective: 3000");
       expect(formatted).toContain("╰");
+    });
+
+    it("keeps every framed line flush with the border rules", () => {
+      const rows: DevSettingsRow[] = [
+        ...sampleRows,
+        {
+          setting: "ELIZA_STATE_DIR",
+          effective: "/very/long/path/that/needs/wrapping/inside/the/frame",
+          source: "default",
+          change: `Set via export ELIZA_STATE_DIR=<dir> ${"x".repeat(120)}`,
+        },
+      ];
+      for (const outer of [24, 60, 80]) {
+        const lines = formatDevSettingsTableNarrow(
+          "App Server",
+          rows,
+          outer,
+          true,
+        )
+          .trimEnd()
+          .split("\n");
+        expect(lines.length).toBeGreaterThan(8);
+        for (const line of lines) expect(line).toHaveLength(outer);
+      }
     });
 
     it("formats unframed narrow table with plain headers", () => {
