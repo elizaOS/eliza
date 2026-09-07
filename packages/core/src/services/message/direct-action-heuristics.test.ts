@@ -1062,7 +1062,7 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 
 	it.each([
 		"the window is open",
-		"this screen remains active",
+		"this window remains open",
 		"the current view stays open",
 		"if the window is open, leave it alone",
 		'preserve the text "the window is open"',
