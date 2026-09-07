@@ -52,6 +52,21 @@ async function prepare(
 
 describe("Pi provider routes", () => {
   it.each([
+    '{"defaultProvider":"unselected-provider"}',
+    '{"defaultModel":"unselected-model"}',
+    '{"defaultProvider":null}',
+  ])(
+    "refuses a project setting that changes the account route: %s",
+    async (settings) => {
+      await expect(
+        prepare("deepseek-api", undefined, settings),
+      ).rejects.toMatchObject({
+        code: "PI_PROJECT_PROVIDER_ROUTE_MISMATCH",
+      });
+    },
+  );
+
+  it.each([
     '{"compaction":{"enabled":true}}',
     '{"compaction":{"enabled":null}}',
     '{"compaction":{"enabled":"false"}}',

@@ -229,7 +229,11 @@ function credentialFor(
   return credential;
 }
 
-async function assertProjectContextPolicy(workdir: string): Promise<void> {
+async function assertProjectRoutePolicy(
+  workdir: string,
+  provider: string,
+  model: string,
+): Promise<void> {
   const settingsPath = path.join(workdir, ".pi", "settings.json");
   let contents: string;
   try {
@@ -266,6 +270,18 @@ async function assertProjectContextPolicy(workdir: string): Promise<void> {
       code: "PI_PROJECT_SETTINGS_INVALID",
       context: { settingsPath },
     });
+  }
+  if (
+    ("defaultProvider" in settings && settings.defaultProvider !== provider) ||
+    ("defaultModel" in settings && settings.defaultModel !== model)
+  ) {
+    throw new ElizaError(
+      "Pi project settings override the selected account route; remove the project provider/model override or select a matching route",
+      {
+        code: "PI_PROJECT_PROVIDER_ROUTE_MISMATCH",
+        context: { settingsPath, provider, model },
+      },
+    );
   }
   if (!("compaction" in settings)) return;
   const compaction = settings.compaction;
@@ -307,7 +323,7 @@ export async function preparePiProviderRoute(input: {
     route.accountProviderId,
   );
   const endpoint = validateEndpoint(route.baseUrl, route.accountProviderId);
-  await assertProjectContextPolicy(input.workdir);
+  await assertProjectRoutePolicy(input.workdir, route.piProviderId, model);
   const piHome = path.join(input.stateRoot, "pi-agent", input.sessionId);
   await mkdir(piHome, { recursive: true, mode: 0o700 });
 
