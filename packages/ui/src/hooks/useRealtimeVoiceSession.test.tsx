@@ -1006,10 +1006,17 @@ describe("useRealtimeVoiceSession", () => {
 });
 
 describe("isRealtimeVoiceFlagEnabled", () => {
-  it("defaults to off in non-cloud builds (batch path is the default)", () => {
-    // In the test env both VITE_VOICE_REALTIME_WS and
-    // VITE_ELIZA_DESKTOP_RUNTIME_MODE are unset → the flag reads false.
-    expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+  it("makes realtime available without build flags while preserving explicit opt-out", () => {
+    try {
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", undefined);
+      expect(isRealtimeVoiceFlagEnabled()).toBe(true);
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", "0");
+      expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", "invalid");
+      expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it.each(["1", "true", "TRUE", " yes ", "on"])(

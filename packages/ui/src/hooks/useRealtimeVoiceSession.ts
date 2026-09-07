@@ -839,13 +839,14 @@ export function useRealtimeVoiceSession(
  * `import.meta.env.VITE_*` at build time, so this MUST be a literal member read
  * (not a dynamic key).
  *
- * Realtime is opt-in on every runtime target so an unrelated build mode cannot
- * silently replace the established batch voice path.
+ * Realtime capability is present by default on every target. Runtime identity,
+ * conversation-bound availability, consent and a user gesture still gate capture.
+ * Explicit false or malformed values disable the capability.
  */
 export function isRealtimeVoiceFlagEnabled(): boolean {
   try {
     const raw = import.meta.env?.VITE_VOICE_REALTIME_WS as unknown;
-    return parseRealtimeVoiceFlag(raw);
+    return raw === undefined || parseRealtimeVoiceFlag(raw);
   } catch {
     // error-policy:J4 An unreadable build flag explicitly leaves realtime unavailable.
     return false;
