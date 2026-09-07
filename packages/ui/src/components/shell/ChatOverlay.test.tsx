@@ -2493,20 +2493,27 @@ describe("ChatOverlay", () => {
       expect(orb.getAttribute("style")).toContain("width: 20px");
       expect(orb.getAttribute("style")).toContain("height: 20px");
       expect(activity.querySelector(".rounded-full.size-2")).toBeNull();
-      expect(
-        screen.getByTestId("chat-composer-realtime-copy").textContent,
-      ).toBe("live words from Ink");
       const copy = screen.getByTestId("chat-composer-realtime-copy");
-      expect(copy.className).not.toContain("shimmer");
       const expectedPhaseLabel = {
         listening: "Listening…",
         transcribing: "Hearing you…",
         thinking: "Thinking…",
-        speaking: "Speaking…",
+        speaking: "Speaking · mic paused",
       }[status];
-      expect(activity.getAttribute("aria-label")).toBe(
-        `${expectedPhaseLabel}: live words from Ink`,
+      const listening = status === "listening" || status === "transcribing";
+      expect(copy.textContent).toBe(
+        listening ? "live words from Ink" : expectedPhaseLabel,
       );
+      expect(activity.getAttribute("aria-label")).toBe(
+        listening
+          ? `${expectedPhaseLabel}: live words from Ink`
+          : expectedPhaseLabel,
+      );
+      expect(
+        screen
+          .getByTestId("chat-composer-voice-mute")
+          .getAttribute("aria-disabled"),
+      ).toBe(String(status === "speaking"));
       expect(screen.queryByTestId("chat-overlay-voice-status")).toBeNull();
       expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
       expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
@@ -2591,8 +2598,8 @@ describe("ChatOverlay", () => {
         })}
       />,
     );
-    expect(copy.textContent).toBe(nextTranscript);
-    expect(observedScrollTop).toBe(96);
+    expect(copy.textContent).toBe("Thinking…");
+    expect(observedScrollTop).toBe(0);
   });
 
   it("keeps a retryable Cartesia error out of the text input surface", () => {

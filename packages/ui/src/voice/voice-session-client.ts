@@ -343,11 +343,14 @@ export function createVoiceSessionClient(
   let captureSocket: VoiceWebSocketLike | null = null;
   let captureAbort: AbortController | null = null;
   let microphoneMuted = false;
+  let playbackEnd: Extract<ServerControlFrame, { t: "speaking_end" }> | null =
+    null;
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
   let intentionalClose = false;
 
   const setState = (next: VoiceSessionMachineState): void => {
     state = next;
+    mic?.setMuted(microphoneMuted || state.phase === "speaking");
     options.onState?.(state, toContinuousStatus(state.phase));
   };
 
@@ -531,9 +534,10 @@ export function createVoiceSessionClient(
       // the capture path is never observed mutated after send. A muted session
       // keeps its normal packet cadence but substitutes PCM silence, allowing
       // server VAD to close a partial utterance without leaking microphone data.
-      const uplink = microphoneMuted
-        ? new Uint8Array(bytes.byteLength)
-        : bytes.slice();
+      const uplink =
+        microphoneMuted || state.phase === "speaking"
+          ? new Uint8Array(bytes.byteLength)
+          : bytes.slice();
       ws.send(uplink.buffer);
     } catch (ignoredError) {
       // error-policy:J5 a dropped uplink frame on a dying socket is observed by the close handler's reconnect path.
@@ -580,7 +584,9 @@ export function createVoiceSessionClient(
       return;
     }
 
-    setState(applyServerEvent(state, event));
+    // End-of-generation is not end-of-playback: keep the mic closed and the
+    // speaking state visible until the device consumes the last audio frame.
+    if (event.t !== "speaking_end") setState(applyServerEvent(state, event));
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
     options.onServerEvent?.(event);
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
@@ -611,14 +617,14 @@ export function createVoiceSessionClient(
         mark("llm_first_text", event.traceId);
         break;
       case "speaking_start":
+        playbackEnd = null;
         playback?.beginInput();
         mark("speaking_start", event.traceId);
         break;
       case "speaking_end":
+        playbackEnd = event;
         playback?.finishInput();
         mark("speaking_end", event.traceId);
-        // Turn complete → loop back to listening once emitted.
-        setState(loopToListening(state));
         break;
       case "handoff_requested":
         playback?.beginHandoff(event.crossfadeMs);
@@ -643,6 +649,7 @@ export function createVoiceSessionClient(
         // Reconcile: the server confirms the interruption. Ensure local audio is
         // silenced (idempotent with an optimistic local flush) and loop to
         // listening.
+        playbackEnd = null;
         playback?.flush();
         mark("interrupted", event.traceId);
         setState(loopToListening(state));
@@ -719,14 +726,8 @@ export function createVoiceSessionClient(
         return;
       }
       mic = createdMic;
-      sendControl({
-        t: "audio_capabilities",
-        mode: "continuous_handoff",
-        echoCancellation: createdMic.audioProcessing.echoCancellation,
-        noiseSuppression: createdMic.audioProcessing.noiseSuppression,
-        autoGainControl: createdMic.audioProcessing.autoGainControl,
-        referenceAwarePlayback: true,
-      });
+      // Keep the server's default half-duplex policy. Advertising continuous
+      // handoff would opt this client into acoustic interruption during speech.
       // Now genuinely listening.
       setState(beginListening(state));
     } catch (err) {
@@ -928,6 +929,8 @@ export function createVoiceSessionClient(
     setState({ ...state, phase: "connecting", lastError: null });
     // Stop capture (a dead socket must not keep the mic hot) but KEEP playback
     // context so an autoplay unlock survives the reconnect.
+    playbackEnd = null;
+    playback?.flush();
     await teardownMic();
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
 
@@ -1021,6 +1024,7 @@ export function createVoiceSessionClient(
     disposed = true;
     intentionalClose = true;
     microphoneMuted = false;
+    playbackEnd = null;
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
@@ -1108,6 +1112,15 @@ export function createVoiceSessionClient(
           onDrained: () => {
             if (isLifecycleCurrent(generation)) {
               mark("playback_drained", state.traceId);
+              const ended = playbackEnd;
+              playbackEnd = null;
+              if (
+                ended &&
+                state.phase === "speaking" &&
+                state.traceId === ended.traceId
+              ) {
+                setState(loopToListening(applyServerEvent(state, ended)));
+              }
             }
           },
           onHandoffComplete: () => {
@@ -1155,6 +1168,7 @@ export function createVoiceSessionClient(
       if (disposed) return;
       // Flush local audible output IMMEDIATELY — do NOT wait for the server
       // `interrupted` event. Then optimistically fold state and notify server.
+      playbackEnd = null;
       playback?.flush();
       setState(applyClientAction(state, { type: "client/local_barge_in" }));
       sendControl({ t: "barge_in" });
@@ -1168,6 +1182,7 @@ export function createVoiceSessionClient(
     setMicrophoneMuted(muted) {
       if (disposed || microphoneMuted === muted) return;
       microphoneMuted = muted;
+      mic?.setMuted(muted || state.phase === "speaking");
       mark(muted ? "mic_muted" : "mic_unmuted", state.traceId);
     },
 
