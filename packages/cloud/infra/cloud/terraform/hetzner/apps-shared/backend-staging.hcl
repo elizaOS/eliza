@@ -1,7 +1,7 @@
 # Environment state uses a separate R2 bucket and bucket-scoped credentials.
-# Provision this bucket before init; use credentials scoped only to production state.
-bucket                      = "eliza-terraform-state-production"
-key                         = "hetzner/apps-data-plane/production.tfstate"
+# Provision this bucket before init; use credentials scoped only to staging state.
+bucket                      = "eliza-terraform-state-staging"
+key                         = "hetzner/apps-shared/staging.tfstate"
 region                      = "auto"
 endpoints                   = { s3 = "https://23cf6feaeaa541f6a0675053c33da768.r2.cloudflarestorage.com" }
 skip_credentials_validation = true

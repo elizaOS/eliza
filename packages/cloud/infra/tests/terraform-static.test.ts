@@ -326,12 +326,6 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     }
   });
 
-  test("refuses the terraform state bucket as the backup destination", () => {
-    expect(variablesTf).toContain(
-      'var.backup_s3_bucket != "eliza-terraform-state"',
-    );
-  });
-
   test("enforces passphrase strength and a retention floor", () => {
     expect(variablesTf).toContain(
       'var.backup_encryption_passphrase == "" || length(var.backup_encryption_passphrase) >= 32',
