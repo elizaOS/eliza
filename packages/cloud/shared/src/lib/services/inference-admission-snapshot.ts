@@ -4,18 +4,22 @@
  * Worker lifetime; warm requests consume the projection from their single KV read.
  */
 
-import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
-import { creditsService } from "./credits";
-import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import {
-  type EndpointType,
-  type OrgRateLimitConfig,
-  readOrgTierFromSources,
-} from "./org-rate-limits";
+  type InferenceAdmissionSnapshot,
+  isInferenceAdmissionSnapshot,
+} from "./inference-auth-cache";
+import { type EndpointType, type OrgRateLimitConfig } from "./org-rate-limits";
+import { withOrganizationPolicyAdmission } from "./organization-policy-admission";
+import {
+  type OrganizationQuotaPolicy,
+  readOrganizationQuotaPolicy,
+  requireOrganizationPolicyBalance,
+  requireOrganizationRateTier,
+} from "./organization-quota-policy";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
 
@@ -40,33 +44,37 @@ export function inferenceRateLimitConfig(
   snapshot: InferenceAdmissionSnapshot | undefined,
   endpointType: EndpointType,
 ): OrgRateLimitConfig | undefined {
-  if (!snapshot) return undefined;
+  if (!isInferenceAdmissionSnapshot(snapshot)) return undefined;
   const rpmKey = `${endpointType}Rpm` as const;
-  return { windowMs: 60_000, maxRequests: snapshot.rateLimits[rpmKey] };
+  return {
+    windowMs: 60_000,
+    maxRequests: snapshot.rateLimits[rpmKey],
+    authority: snapshot.authority,
+  };
 }
 
 export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
-  const balanceAt = Date.now();
-  const [balance, tier, entitlement] = await Promise.all([
-    creditsService.getOrganizationBalanceSnapshot(organizationId),
-    readOrgTierFromSources(organizationId),
-    subscriptionEntitlementsRepository.find(organizationId),
-  ]);
-  const subscriptionFunded = entitlement !== undefined && entitlement.plan_key !== "free";
+  const policy = await readOrganizationQuotaPolicy(organizationId);
+  return inferenceAdmissionSnapshotFromPolicy(policy);
+}
+export function inferenceAdmissionSnapshotFromPolicy(
+  policy: OrganizationQuotaPolicy,
+): InferenceAdmissionSnapshot {
   return {
-    subscriptionFunded,
+    authority: policy.authority,
+    subscriptionFunded: policy.subscriptionFunded,
     balance: {
-      balanceUsd: balance.balanceUsd,
-      balanceAt,
-      balanceRevision: balance.revision,
+      balanceUsd: requireOrganizationPolicyBalance(policy).balanceUsd,
+      balanceAt: Date.parse(policy.observedAt),
+      balanceRevision: requireOrganizationPolicyBalance(policy).revision,
     },
     rateLimits: {
-      completionsRpm: tier.completionsRpm,
-      embeddingsRpm: tier.embeddingsRpm,
-      standardRpm: tier.standardRpm,
-      strictRpm: tier.strictRpm,
+      completionsRpm: requireOrganizationRateTier(policy).completionsRpm,
+      embeddingsRpm: requireOrganizationRateTier(policy).embeddingsRpm,
+      standardRpm: requireOrganizationRateTier(policy).standardRpm,
+      strictRpm: requireOrganizationRateTier(policy).strictRpm,
     },
   };
 }
@@ -76,10 +84,16 @@ export async function warmInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
   const key = CacheKeys.inference.orgAdmission(organizationId);
-  const snapshot = await loadInferenceAdmissionSnapshot(organizationId);
-  admissionMemoryCache.set(key, snapshot);
-  await cache.set(key, snapshot, CacheTTL.inference.orgAdmission);
-  return snapshot;
+  return withOrganizationPolicyAdmission(organizationId, undefined, async (policy) => {
+    const snapshot = inferenceAdmissionSnapshotFromPolicy(policy);
+    const outcome = await cache.setWithOutcome(key, snapshot, CacheTTL.inference.orgAdmission);
+    if (outcome.kind !== "written")
+      throw new InferenceAdmissionSnapshotCacheWarmingError(
+        "Admission snapshot publication was not acknowledged",
+      );
+    admissionMemoryCache.set(key, snapshot);
+    return snapshot;
+  });
 }
 
 /**
@@ -92,7 +106,7 @@ export async function getInferenceAdmissionSnapshotCacheOnly(
 ): Promise<InferenceAdmissionSnapshot> {
   const key = CacheKeys.inference.orgAdmission(organizationId);
   const local = admissionMemoryCache.get(key);
-  if (local) return local;
+  if (isInferenceAdmissionSnapshot(local)) return local;
 
   let cached: InferenceAdmissionSnapshot | null;
   try {
@@ -103,7 +117,7 @@ export async function getInferenceAdmissionSnapshotCacheOnly(
       error instanceof Error ? error.message : undefined,
     );
   }
-  if (cached) {
+  if (isInferenceAdmissionSnapshot(cached)) {
     admissionMemoryCache.set(key, cached);
     return cached;
   }

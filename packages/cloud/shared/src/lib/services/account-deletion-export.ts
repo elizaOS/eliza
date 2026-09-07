@@ -93,6 +93,16 @@ type ExplicitExportPath = Readonly<{
  */
 const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
   {
+    table: "app_billing_registrations",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.owner_organization_id = ${organizationId}`,
+  },
+  {
+    table: "app_subscriber_accounts",
+    policy: "portable_subject_data",
+    where: ({ userId }) => sql`subject.subscriber_user_id = ${userId}`,
+  },
+  {
     table: "conversation_messages",
     policy: "portable_subject_data",
     where: ({ userId, organizationId }) => sql`EXISTS (
@@ -112,6 +122,26 @@ const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
   {
     table: "secret_audit_log",
     policy: "retained_security_audit",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+  {
+    table: "subscription_reconciliation_scans",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+  {
+    table: "subscription_reconciliation_attempts",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+  {
+    table: "subscription_notice_intents",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+  {
+    table: "subscription_notice_attempts",
+    policy: "portable_subject_data",
     where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
   },
 ]);

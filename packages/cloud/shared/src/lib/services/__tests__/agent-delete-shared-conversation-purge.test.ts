@@ -12,6 +12,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -53,6 +54,8 @@ beforeAll(async () => {
     for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
       await dbWrite.execute(ddl);
     }
+    const { getPgliteClientForTests } = await import("../../../db/client");
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     await dbWrite.execute(`CREATE TABLE IF NOT EXISTS "shared_runtime_history" (
       "agent_id" text NOT NULL,
       "channel_id" text NOT NULL,

@@ -31,7 +31,6 @@
 import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
-
 import { dbRead } from "@/db/helpers";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
@@ -55,6 +54,8 @@ import {
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { referralsService } from "@/lib/services/referrals";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { reconcileStripeScheduledCancellationLifecycle } from "@/lib/services/stripe-scheduled-cancellation-lifecycle";
+import { reconcileStripeTerminalLifecycle } from "@/lib/services/stripe-terminal-lifecycle";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 
@@ -204,10 +205,33 @@ export async function processStripeEvent(
     `[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`,
   );
 
-  // No recurring finalizer is registered yet. Retain the complete signed
-  // delivery in the existing retry/DLQ path until it can be reconciled; an
-  // unknown handler or legacy metadata disposition is not durable application.
+  // Terminal lifecycle and known applied cancellation scheduling have dedicated owners.
+  // Other recurring deliveries remain intact until their policy can be reconciled.
   try {
+    if (
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      if (
+        event.type === "customer.subscription.updated" &&
+        event.data.object.status === "active"
+      ) {
+        await reconcileStripeScheduledCancellationLifecycle(delivery.body);
+      } else {
+        await reconcileStripeTerminalLifecycle(delivery.body);
+      }
+      return "ack";
+    }
+    if (
+      event.type === "invoice.paid" &&
+      isRecurringInvoice(event.data.object)
+    ) {
+      const { reconcileStripePaidRenewal } = await import(
+        "@/lib/services/stripe-paid-renewal"
+      );
+      await reconcileStripePaidRenewal(delivery.body);
+      return "ack";
+    }
     if (await requiresSubscriptionReconciliation(event)) {
       logger.error(
         "[Stripe Queue] Subscription reconciliation unavailable; retaining delivery",

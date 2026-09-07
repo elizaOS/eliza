@@ -882,6 +882,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1AppsByIdBillingAccount<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/account">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/billing/account", TResponse>(
+      "GET /api/v1/apps/{id}/billing/account",
+      options,
+    );
+  }
+
   getApiV1AppsByIdCharacters<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/characters">,
   ): Promise<TResponse> {
@@ -2357,6 +2366,33 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1SubscriptionsCancelByCommandId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/{commandId}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/cancel/{commandId}", TResponse>(
+      "GET /api/v1/subscriptions/cancel/{commandId}",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsCancelUndoByCommandId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/undo/{commandId}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/subscriptions/cancel/undo/{commandId}",
+      TResponse
+    >("GET /api/v1/subscriptions/cancel/undo/{commandId}", options);
+  }
+
+  getApiV1SubscriptionsCommands<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/commands"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/commands", TResponse>(
+      "GET /api/v1/subscriptions/commands",
+      options,
+    );
+  }
+
   getApiV1SubscriptionsPlans<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
   ): Promise<TResponse> {
@@ -3171,6 +3207,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/apps", TResponse>(
       "POST /api/v1/apps",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingRegistration<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/registration">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/billing/registration", TResponse>(
+      "POST /api/v1/apps/{id}/billing/registration",
       options,
     );
   }
@@ -4766,6 +4811,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1SubscriptionsCancel<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/cancel", TResponse>(
+      "POST /api/v1/subscriptions/cancel",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsCancelUndo<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/cancel/undo", TResponse>(
+      "POST /api/v1/subscriptions/cancel/undo",
+      options,
+    );
+  }
+
   postApiV1TelegramConnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/telegram/connect"> = {},
   ): Promise<TResponse> {
@@ -5870,6 +5933,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/apps/{id}/backup", options);
   }
 
+  getApiV1AppsByIdBillingAccountRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/account">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/billing/account", options);
+  }
+
   getApiV1AppsByIdCharactersRaw(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/characters">,
   ): Promise<Response> {
@@ -6935,6 +7004,30 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/steward/tenants/credentials", options);
   }
 
+  getApiV1SubscriptionsCancelByCommandIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/{commandId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/cancel/{commandId}",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsCancelUndoByCommandIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/undo/{commandId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/cancel/undo/{commandId}",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsCommandsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/commands"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/subscriptions/commands", options);
+  }
+
   getApiV1SubscriptionsPlansRaw(
     options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
   ): Promise<Response> {
@@ -7527,6 +7620,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/apps"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apps", options);
+  }
+
+  postApiV1AppsByIdBillingRegistrationRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/registration">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/billing/registration", options);
   }
 
   postApiV1AppsByIdChargesRaw(
@@ -8682,6 +8781,18 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/stripe/checkout"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/stripe/checkout", options);
+  }
+
+  postApiV1SubscriptionsCancelRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/cancel", options);
+  }
+
+  postApiV1SubscriptionsCancelUndoRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/cancel/undo", options);
   }
 
   postApiV1TelegramConnectRaw(

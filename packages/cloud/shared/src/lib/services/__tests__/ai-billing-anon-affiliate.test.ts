@@ -12,7 +12,9 @@
  * These tests drive the REAL billUsage. Only the pure downstream boundaries are
  * stubbed (pricing math + the affiliate lookup + the earnings/usage/generation
  * side-effect writers); the affiliate GUARD under test runs for real, so each
- * test fails if the guard regresses.
+ * test fails if the guard regresses. Reservation cases supply the existing
+ * admission-resolved non-subscriber selection; policy resolution is outside this
+ * affiliate calculation unit boundary.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -42,12 +44,6 @@ mock.module("../../../db/repositories/affiliates", () => ({
     })),
   },
 }));
-mock.module("../../../db/repositories/subscription-entitlements", () => ({
-  subscriptionEntitlementsRepository: {
-    find: mock(async () => undefined),
-  },
-}));
-
 // The outbox processor is the post-settlement cashable-earnings boundary.
 const processAffiliatePayoutBySource = mock(async () => ({
   processed: true,
@@ -234,6 +230,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       1000,
       500,
+      { subscriptionFunded: false },
     );
 
     expect(reserve).toHaveBeenCalledTimes(1);
@@ -257,8 +254,10 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       1000,
       500,
+      { subscriptionFunded: false },
     );
 
+    expect(reserve).toHaveBeenCalledTimes(1);
     const arg = reserve.mock.calls[0][0] as { estimatedCostMultiplier?: number };
     expect(arg.estimatedCostMultiplier).toBeUndefined();
   });

@@ -17,7 +17,12 @@ import {
   organizationSubscriptionAuthorities,
 } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
+import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
+import {
+  type ReconciliationIdentity,
+  requireLiveReconciliationLease,
+} from "./subscription-reconciliation-lease";
 
 export const SUBSCRIPTION_AUTHORITY_CONFLICT = "SUBSCRIPTION_AUTHORITY_CONFLICT";
 export const SUBSCRIPTION_AUTHORITY_NOT_FOUND = "SUBSCRIPTION_AUTHORITY_NOT_FOUND";
@@ -63,6 +68,20 @@ export interface AdvanceSubscriptionInput {
   values: SubscriptionRevisionValues;
 }
 
+export interface AdvanceSubscriptionCommandInput {
+  organizationId: string;
+  subscriptionId: string;
+  expectedRevision: number;
+  commandId: string;
+  commandLeaseToken: string;
+  commandExecutionGeneration: number;
+  observation: "authoritative_provider_retrieval";
+  values: Omit<
+    SubscriptionRevisionValues,
+    "last_provider_event_id" | "last_provider_event_created_at"
+  >;
+}
+
 export interface SubscriptionMutationResult {
   subscription: BillingSubscription;
   revision: BillingSubscriptionRevision;
@@ -80,6 +99,7 @@ function conflict(message: string, context: Record<string, unknown>): never {
 function revisionInsert(
   subscription: BillingSubscription,
   source: BillingSubscriptionRevisionSource,
+  includeWebhookProvenance = true,
 ) {
   return {
     organization_id: subscription.organization_id,
@@ -102,8 +122,10 @@ function revisionInsert(
     dunning_started_at: subscription.dunning_started_at,
     grace_expires_at: subscription.grace_expires_at,
     pending_plan_key: subscription.pending_plan_key,
-    provider_event_id: subscription.last_provider_event_id,
-    provider_event_created_at: subscription.last_provider_event_created_at,
+    provider_event_id: includeWebhookProvenance ? subscription.last_provider_event_id : null,
+    provider_event_created_at: includeWebhookProvenance
+      ? subscription.last_provider_event_created_at
+      : null,
     provider_object_digest: subscription.provider_object_digest,
   } satisfies typeof billingSubscriptionRevisions.$inferInsert;
 }
@@ -441,145 +463,254 @@ export class SubscriptionAuthorityRepository {
   }
 
   async advance(input: AdvanceSubscriptionInput): Promise<SubscriptionMutationResult> {
-    return writeTransaction(async (tx) => {
-      const [organization] = await tx
-        .select({
-          id: organizations.id,
-          account_lifecycle_state: organizations.account_lifecycle_state,
-          paid_work_fenced_at: organizations.paid_work_fenced_at,
-          stripe_customer_id: organizations.stripe_customer_id,
-        })
-        .from(organizations)
-        .where(eq(organizations.id, input.organizationId))
-        .limit(1)
-        .for("update");
-      if (!organization) {
-        throw new ElizaError("Subscription organization does not exist", {
-          code: SUBSCRIPTION_AUTHORITY_TENANT_NOT_FOUND,
-          context: { organizationId: input.organizationId },
-        });
-      }
-      const accountAuthority = await readAccountAuthority(tx, input.organizationId);
-      requireCurrentAccountAuthority(accountAuthority, input.subscriptionId);
-      requireActivationAllowed(organization, input.values);
-      const [current] = await tx
+    return writeTransaction((tx) => this.advanceInTransaction(tx, input));
+  }
+
+  /** Participates in lifecycle finalization using the caller's organization-first transaction. */
+  async advanceInTransaction(
+    tx: DbTransaction,
+    input: AdvanceSubscriptionInput,
+  ): Promise<SubscriptionMutationResult> {
+    return this.advanceWithProvenance(tx, input, { kind: "provider_event" });
+  }
+
+  /** Command observations preserve the webhook watermark without claiming that event as their journal provenance. */
+  async advanceCommandInTransaction(
+    tx: DbTransaction,
+    input: AdvanceSubscriptionCommandInput,
+  ): Promise<SubscriptionMutationResult> {
+    return this.advanceWithProvenance(
+      tx,
+      {
+        ...input,
+        source: "reconciliation",
+        values: {
+          ...input.values,
+          last_provider_event_id: null,
+          last_provider_event_created_at: null,
+        },
+      },
+      {
+        kind: "command",
+        commandId: input.commandId,
+        leaseToken: input.commandLeaseToken,
+        executionGeneration: input.commandExecutionGeneration,
+      },
+    );
+  }
+
+  /** Publishes one lease-owned reconciliation revision with no fabricated webhook provenance. */
+  async advanceReconciliationInTransaction(
+    tx: DbTransaction,
+    input: ReconciliationIdentity & { values: AdvanceSubscriptionCommandInput["values"] },
+  ): Promise<SubscriptionMutationResult> {
+    return this.advanceWithProvenance(
+      tx,
+      {
+        ...input,
+        source: "reconciliation",
+        observation: "authoritative_provider_retrieval",
+        values: {
+          ...input.values,
+          last_provider_event_id: null,
+          last_provider_event_created_at: null,
+        },
+      },
+      { kind: "reconciliation", identity: input },
+    );
+  }
+
+  private async advanceWithProvenance(
+    tx: DbTransaction,
+    input: AdvanceSubscriptionInput,
+    provenance:
+      | { kind: "provider_event" }
+      | { kind: "command"; commandId: string; leaseToken: string; executionGeneration: number }
+      | { kind: "reconciliation"; identity: ReconciliationIdentity },
+  ): Promise<SubscriptionMutationResult> {
+    const [organization] = await tx
+      .select({
+        id: organizations.id,
+        account_lifecycle_state: organizations.account_lifecycle_state,
+        paid_work_fenced_at: organizations.paid_work_fenced_at,
+        stripe_customer_id: organizations.stripe_customer_id,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for("update");
+    if (!organization) {
+      throw new ElizaError("Subscription organization does not exist", {
+        code: SUBSCRIPTION_AUTHORITY_TENANT_NOT_FOUND,
+        context: { organizationId: input.organizationId },
+      });
+    }
+    const accountAuthority = await readAccountAuthority(tx, input.organizationId);
+    requireCurrentAccountAuthority(accountAuthority, input.subscriptionId);
+    requireActivationAllowed(organization, input.values);
+    if (provenance.kind === "reconciliation")
+      await requireLiveReconciliationLease(tx, provenance.identity);
+    if (provenance.kind === "command") {
+      const [command] = await tx
         .select()
-        .from(billingSubscriptions)
+        .from(billingSubscriptionCommands)
         .where(
           and(
-            eq(billingSubscriptions.id, input.subscriptionId),
-            eq(billingSubscriptions.organization_id, input.organizationId),
+            eq(billingSubscriptionCommands.id, provenance.commandId),
+            eq(billingSubscriptionCommands.organization_id, input.organizationId),
           ),
         )
-        .limit(1)
         .for("update");
-      if (!current) {
-        throw new ElizaError("Subscription authority row does not exist", {
-          code: SUBSCRIPTION_AUTHORITY_NOT_FOUND,
-          context: {
-            organizationId: input.organizationId,
-            subscriptionId: input.subscriptionId,
-          },
+      const commandNow = await readPostLockDatabaseNow(tx);
+      if (
+        !command ||
+        (command.kind !== "cancel" && command.kind !== "resume") ||
+        command.status !== "OUTCOME_UNKNOWN" ||
+        command.subscription_id !== input.subscriptionId ||
+        command.expected_subscription_revision !== input.expectedRevision ||
+        command.lease_token !== provenance.leaseToken ||
+        command.execution_generation !== provenance.executionGeneration ||
+        !command.lease_expires_at ||
+        command.lease_expires_at <= commandNow
+      )
+        conflict("Subscription command does not own this source observation", {
+          commandId: provenance.commandId,
+          subscriptionId: input.subscriptionId,
         });
-      }
-      if (input.values.last_provider_event_id !== null) {
-        const [recordedEvent] = await tx
-          .select()
-          .from(billingSubscriptionRevisions)
-          .where(
-            and(
-              eq(billingSubscriptionRevisions.provider, input.values.provider),
-              eq(
-                billingSubscriptionRevisions.provider_environment,
-                input.values.provider_environment,
-              ),
-              eq(
-                billingSubscriptionRevisions.provider_event_id,
-                input.values.last_provider_event_id,
-              ),
-            ),
-          )
-          .limit(1);
-        if (recordedEvent) {
-          if (recordedEvent.subscription_id !== current.id) {
-            conflict("Subscription provider event replay has a different authority", {
-              subscriptionId: current.id,
-              providerEventId: input.values.last_provider_event_id,
-            });
+    }
+    const [current] = await tx
+      .select()
+      .from(billingSubscriptions)
+      .where(
+        and(
+          eq(billingSubscriptions.id, input.subscriptionId),
+          eq(billingSubscriptions.organization_id, input.organizationId),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (!current) {
+      throw new ElizaError("Subscription authority row does not exist", {
+        code: SUBSCRIPTION_AUTHORITY_NOT_FOUND,
+        context: {
+          organizationId: input.organizationId,
+          subscriptionId: input.subscriptionId,
+        },
+      });
+    }
+    const requestedValues =
+      provenance.kind !== "provider_event"
+        ? {
+            ...input.values,
+            last_provider_event_id: current.last_provider_event_id,
+            last_provider_event_created_at: current.last_provider_event_created_at,
           }
-          return { subscription: current, revision: recordedEvent, replayed: true };
-        }
-      }
-      // Provider event timestamps are deduplication metadata, not object versions. The
-      // caller contract requires a fresh authoritative retrieval, so reordered events
-      // converge on provider state without inventing a monotonic Stripe version.
-      if (isExactProviderReplay(current, input.values)) {
-        const [revision] = await tx
-          .select()
-          .from(billingSubscriptionRevisions)
-          .where(
-            and(
-              eq(billingSubscriptionRevisions.subscription_id, current.id),
-              eq(billingSubscriptionRevisions.revision, current.lifecycle_revision),
+        : input.values;
+    if (
+      provenance.kind !== "provider_event" &&
+      current.lifecycle_revision !== input.expectedRevision
+    )
+      conflict("Subscription command source revision changed", {
+        expectedRevision: input.expectedRevision,
+        actualRevision: current.lifecycle_revision,
+      });
+    if (provenance.kind === "provider_event" && requestedValues.last_provider_event_id !== null) {
+      const [recordedEvent] = await tx
+        .select()
+        .from(billingSubscriptionRevisions)
+        .where(
+          and(
+            eq(billingSubscriptionRevisions.provider, requestedValues.provider),
+            eq(
+              billingSubscriptionRevisions.provider_environment,
+              requestedValues.provider_environment,
             ),
-          )
-          .limit(1);
-        if (!revision) {
-          conflict("Subscription replay has no immutable revision", {
+            eq(
+              billingSubscriptionRevisions.provider_event_id,
+              requestedValues.last_provider_event_id,
+            ),
+          ),
+        )
+        .limit(1);
+      if (recordedEvent) {
+        if (recordedEvent.subscription_id !== current.id) {
+          conflict("Subscription provider event replay has a different authority", {
             subscriptionId: current.id,
-            revision: current.lifecycle_revision,
+            providerEventId: requestedValues.last_provider_event_id,
           });
         }
-        return { subscription: current, revision, replayed: true };
+        return { subscription: current, revision: recordedEvent, replayed: true };
       }
-      if (current.lifecycle_revision !== input.expectedRevision) {
-        conflict("Subscription lifecycle revision compare-and-swap failed", {
-          subscriptionId: current.id,
-          expectedRevision: input.expectedRevision,
-          actualRevision: current.lifecycle_revision,
-        });
-      }
-      if (
-        current.provider !== input.values.provider ||
-        current.provider_environment !== input.values.provider_environment ||
-        current.stripe_customer_id !== input.values.stripe_customer_id ||
-        current.stripe_subscription_id !== input.values.stripe_subscription_id
-      ) {
-        conflict("Subscription provider identity is immutable", {
-          subscriptionId: current.id,
-        });
-      }
-      const nextRevision = current.lifecycle_revision + 1;
-      const now = await readPostLockDatabaseNow(tx);
-      const [subscription] = await tx
-        .update(billingSubscriptions)
-        .set({ ...input.values, lifecycle_revision: nextRevision, updated_at: now })
+    }
+    // Provider event timestamps are deduplication metadata, not object versions. The
+    // caller contract requires a fresh authoritative retrieval, so reordered events
+    // converge on provider state without inventing a monotonic Stripe version.
+    if (isExactProviderReplay(current, requestedValues)) {
+      const [revision] = await tx
+        .select()
+        .from(billingSubscriptionRevisions)
         .where(
           and(
-            eq(billingSubscriptions.id, current.id),
-            eq(billingSubscriptions.organization_id, input.organizationId),
-            eq(billingSubscriptions.lifecycle_revision, input.expectedRevision),
+            eq(billingSubscriptionRevisions.subscription_id, current.id),
+            eq(billingSubscriptionRevisions.revision, current.lifecycle_revision),
           ),
         )
-        .returning();
-      if (!subscription) {
-        conflict("Subscription lifecycle revision compare-and-swap lost", {
-          subscriptionId: current.id,
-          expectedRevision: input.expectedRevision,
-        });
-      }
-      const [revision] = await tx
-        .insert(billingSubscriptionRevisions)
-        .values(revisionInsert(subscription, input.source))
-        .returning();
+        .limit(1);
       if (!revision) {
-        conflict("Subscription revision insert returned no row", {
-          subscriptionId: subscription.id,
-          revision: nextRevision,
+        conflict("Subscription replay has no immutable revision", {
+          subscriptionId: current.id,
+          revision: current.lifecycle_revision,
         });
       }
-      return { subscription, revision, replayed: false };
-    });
+      return { subscription: current, revision, replayed: true };
+    }
+    if (current.lifecycle_revision !== input.expectedRevision) {
+      conflict("Subscription lifecycle revision compare-and-swap failed", {
+        subscriptionId: current.id,
+        expectedRevision: input.expectedRevision,
+        actualRevision: current.lifecycle_revision,
+      });
+    }
+    if (
+      current.provider !== requestedValues.provider ||
+      current.provider_environment !== requestedValues.provider_environment ||
+      current.stripe_customer_id !== requestedValues.stripe_customer_id ||
+      current.stripe_subscription_id !== requestedValues.stripe_subscription_id
+    ) {
+      conflict("Subscription provider identity is immutable", {
+        subscriptionId: current.id,
+      });
+    }
+    const nextRevision = current.lifecycle_revision + 1;
+    const now = await readPostLockDatabaseNow(tx);
+    const [subscription] = await tx
+      .update(billingSubscriptions)
+      .set({ ...requestedValues, lifecycle_revision: nextRevision, updated_at: now })
+      .where(
+        and(
+          eq(billingSubscriptions.id, current.id),
+          eq(billingSubscriptions.organization_id, input.organizationId),
+          eq(billingSubscriptions.lifecycle_revision, input.expectedRevision),
+        ),
+      )
+      .returning();
+    if (!subscription) {
+      conflict("Subscription lifecycle revision compare-and-swap lost", {
+        subscriptionId: current.id,
+        expectedRevision: input.expectedRevision,
+      });
+    }
+    const [revision] = await tx
+      .insert(billingSubscriptionRevisions)
+      .values(revisionInsert(subscription, input.source, provenance.kind === "provider_event"))
+      .returning();
+    if (!revision) {
+      conflict("Subscription revision insert returned no row", {
+        subscriptionId: subscription.id,
+        revision: nextRevision,
+      });
+    }
+    return { subscription, revision, replayed: false };
   }
 }
 

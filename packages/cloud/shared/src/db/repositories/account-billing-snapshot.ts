@@ -2,8 +2,8 @@
  * Coherent primary-database read model for the account billing snapshot.
  *
  * All PostgreSQL-backed fields are read from one primary REPEATABLE READ,
- * READ ONLY transaction. No legacy billing shadow is imported or queried;
- * `organizations` is the sole billing authority.
+ * READ ONLY transaction over committed organization and subscription policy
+ * sources. No legacy billing shadow is imported or queried.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -12,11 +12,11 @@ import {
   type ActiveBillableResource,
   activeBillingService,
 } from "../../lib/services/active-billing";
+import type { OrgTierData } from "../../lib/services/org-rate-limits";
 import {
-  ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES,
-  type OrgTierData,
-  resolveOrgTierFromSourceValues,
-} from "../../lib/services/org-rate-limits";
+  type OrganizationQuotaPolicy,
+  readOrganizationQuotaPolicyInTransaction,
+} from "../../lib/services/organization-quota-policy";
 import { dbRead } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
@@ -29,14 +29,20 @@ import {
 } from "../schemas/auto-top-up-attempts";
 import { computeBillingRateSegments } from "../schemas/compute-billing-rate-segments";
 import { containers } from "../schemas/containers";
-import { creditTransactions } from "../schemas/credit-transactions";
-import { orgRateLimitOverrides } from "../schemas/org-rate-limit-overrides";
 import { orgStorageQuota } from "../schemas/org-storage-quota";
 import { organizationConfig } from "../schemas/organization-config";
 import { organizations } from "../schemas/organizations";
 import { userCharacters } from "../schemas/user-characters";
 import { requireAccountBillingAggregateRow } from "./account-billing-snapshot-aggregates";
 import { requireCustomerBindingAuthoritativeRow } from "./account-billing-snapshot-primary-values";
+import {
+  type PrimaryOrganizationSubscription,
+  readPrimaryOrganizationSubscription,
+} from "./account-billing-snapshot-subscription";
+import {
+  observeSubscriptionAllowanceEligibility,
+  type SubscriptionAllowanceEligibility,
+} from "./subscription-allowance-eligibility";
 
 export interface PrimaryStatusCounts {
   used: string;
@@ -54,6 +60,10 @@ export interface PrimaryComputeRateSegment {
 
 export interface PrimaryAccountBillingReadModel {
   observedAt: string;
+  subscription: PrimaryOrganizationSubscription;
+  allowanceFunding: SubscriptionAllowanceEligibility;
+  policyObservedAt: string;
+  policyLimits: OrganizationQuotaPolicy["limits"] | { status: "unavailable"; code: string };
   organization: {
     creditBalance: string;
     balanceRevision: string;
@@ -80,7 +90,7 @@ export interface PrimaryAccountBillingReadModel {
     | {
         status: "available";
         tier: OrgTierData;
-        tierSourceCreditTotal: string;
+        tierSourceCreditTotal: string | null;
         overrides: {
           completionsRpm: number | null;
           embeddingsRpm: number | null;
@@ -88,7 +98,7 @@ export interface PrimaryAccountBillingReadModel {
           strictRpm: number | null;
         };
       }
-    | { status: "unavailable"; code: "configured_tier_invalid" };
+    | { status: "unavailable"; code: string };
   autoTopUp: {
     control: {
       mode: "paused" | "durable";
@@ -113,18 +123,6 @@ function exactInteger(value: unknown, field: string): string {
     });
   }
   return normalized.replace(/^0+(?=\d)/, "");
-}
-
-function exactDecimal(value: unknown, field: string): string {
-  const normalized = typeof value === "string" || typeof value === "number" ? String(value) : "";
-  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(normalized)) {
-    throw new ElizaError(`Account billing ${field} is not an exact non-negative decimal`, {
-      code: "INVALID_ACCOUNT_BILLING_PRIMARY_SOURCE",
-      context: { field },
-      severity: "fatal",
-    });
-  }
-  return normalized;
 }
 
 function iso(value: Date | string, field: string): string {
@@ -196,8 +194,6 @@ export async function readPrimaryAccountBillingSnapshot(
         appRows,
         apiKeyRows,
         storageRows,
-        tierSourceCreditRows,
-        tierOverride,
         controlRows,
         blockingAttemptRows,
         blockingLegacyRows,
@@ -254,30 +250,6 @@ export async function readPrimaryAccountBillingSnapshot(
           .limit(1),
         tx
           .select({
-            tierSourceCreditTotal: sql<string>`COALESCE(SUM(${creditTransactions.amount}), '0')::text`,
-          })
-          .from(creditTransactions)
-          .where(
-            and(
-              eq(creditTransactions.organization_id, organizationId),
-              eq(creditTransactions.type, "credit"),
-              sql`COALESCE(${creditTransactions.metadata}->>'type', '') NOT IN (${sql.join(
-                ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((type) => sql`${type}`),
-                sql`, `,
-              )})`,
-            ),
-          ),
-        tx.query.orgRateLimitOverrides.findFirst({
-          where: eq(orgRateLimitOverrides.organization_id, organizationId),
-          columns: {
-            completions_rpm: true,
-            embeddings_rpm: true,
-            standard_rpm: true,
-            strict_rpm: true,
-          },
-        }),
-        tx
-          .select({
             mode: autoTopUpControl.mode,
             pausedAt: autoTopUpControl.paused_at,
             legacyReconciledThrough: autoTopUpControl.legacy_reconciled_through,
@@ -320,44 +292,42 @@ export async function readPrimaryAccountBillingSnapshot(
       const containerAggregate = requireAccountBillingAggregateRow(containerRows, "containers");
       const appAggregate = requireAccountBillingAggregateRow(appRows, "apps");
       const apiKeyAggregate = requireAccountBillingAggregateRow(apiKeyRows, "api_keys");
-      const tierSourceCreditAggregate = requireAccountBillingAggregateRow(
-        tierSourceCreditRows,
-        "tier_source_credits",
-      );
-
       let configuredTier: PrimaryAccountBillingReadModel["configuredTier"];
+      let policyObservedAt = observedAt;
+      let policyLimits: PrimaryAccountBillingReadModel["policyLimits"];
       try {
-        const tierSourceCreditTotal = exactDecimal(
-          tierSourceCreditAggregate.tierSourceCreditTotal,
-          "tier-source credit total",
-        );
-        const tierResolution = resolveOrgTierFromSourceValues(
+        const policy = await readOrganizationQuotaPolicyInTransaction(
+          tx,
           organizationId,
-          tierSourceCreditTotal,
-          tierOverride,
+          new Date(observedAt),
         );
-        configuredTier = {
-          status: "available",
-          tier: tierResolution.tierData,
-          tierSourceCreditTotal,
-          overrides: {
-            completionsRpm: tierOverride?.completions_rpm ?? null,
-            embeddingsRpm: tierOverride?.embeddings_rpm ?? null,
-            standardRpm: tierOverride?.standard_rpm ?? null,
-            strictRpm: tierOverride?.strict_rpm ?? null,
-          },
-        };
+        configuredTier =
+          policy.tier.status === "available"
+            ? {
+                status: "available",
+                tier: policy.tier.value,
+                tierSourceCreditTotal: policy.tierSourceCreditTotal,
+                overrides: policy.overrides,
+              }
+            : { status: "unavailable", code: policy.tier.code };
+        policyLimits = policy.limits;
+        policyObservedAt = policy.observedAt;
       } catch (error) {
-        // error-policy:J4 — only typed persisted tier-source corruption is
-        // exposed as unavailable; query and programming failures still abort.
+        // error-policy:J4 Persisted policy failures remain visible without hiding independent billing observations.
         if (
           !(error instanceof ElizaError) ||
-          (error.code !== "ORG_RATE_LIMIT_SOURCE_INVALID" &&
-            error.code !== "INVALID_ACCOUNT_BILLING_PRIMARY_SOURCE")
-        ) {
+          ![
+            "ORGANIZATION_POLICY_UNAVAILABLE",
+            "ORG_RATE_LIMIT_SOURCE_INVALID",
+            "INVALID_CLOUD_CHARACTER_QUOTA_SOURCE",
+            "INVALID_AGENT_SANDBOX_QUOTA_SOURCE",
+            "INVALID_CONTAINER_QUOTA_SOURCE",
+            "INVALID_MAX_APPS_PER_ORG",
+          ].includes(error.code)
+        )
           throw error;
-        }
-        configuredTier = { status: "unavailable", code: "configured_tier_invalid" };
+        configuredTier = { status: "unavailable", code: error.code };
+        policyLimits = { status: "unavailable", code: error.code };
       }
 
       const stripeCustomerIdPresent = Boolean(organization.stripeCustomerId);
@@ -420,9 +390,19 @@ export async function readPrimaryAccountBillingSnapshot(
       }
 
       const control = controlRows[0];
+      const subscription = await readPrimaryOrganizationSubscription(tx, organizationId);
+      const allowanceFunding = await observeSubscriptionAllowanceEligibility(
+        tx,
+        organizationId,
+        new Date(observedAt),
+      );
 
       return {
         observedAt,
+        subscription,
+        allowanceFunding,
+        policyLimits,
+        policyObservedAt,
         organization: {
           creditBalance: String(organization.creditBalance),
           balanceRevision: exactInteger(

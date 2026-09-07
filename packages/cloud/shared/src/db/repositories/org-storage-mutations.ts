@@ -3,7 +3,12 @@
  * Provider I/O stays outside transactions; leases and immutable generation
  * keys make its ambiguous outcomes recoverable by a strong R2 HEAD.
  */
+
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../../lib/services/organization-quota-policy";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -17,6 +22,7 @@ import {
 } from "../schemas/org-storage-mutations";
 import { orgStorageQuota } from "../schemas/org-storage-quota";
 import { DEFAULT_ORG_STORAGE_BYTES_LIMIT } from "./org-storage-quota";
+import { lockOrganizationPolicy } from "./organization-policy-generation";
 
 const GC_PIN_MS = 24 * 60 * 60 * 1000;
 const MAX_DUE_BATCH = 100;
@@ -120,6 +126,9 @@ export class OrgStorageMutationsRepository {
         return { operation: existing, replay: true };
       }
 
+      await lockOrganizationPolicy(tx, input.organizationId);
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, input.organizationId);
+      const ceiling = requireOrganizationResourceLimit(policy, "storage");
       await tx
         .insert(orgStorageObjects)
         .values({ organization_id: input.organizationId, logical_key: input.logicalKey })
@@ -170,7 +179,7 @@ export class OrgStorageMutationsRepository {
           SET bytes_used = ${orgStorageQuota.bytes_used} + ${quotaReserved},
               updated_at = NOW()
           WHERE ${orgStorageQuota.organization_id} = ${input.organizationId}
-            AND ${orgStorageQuota.bytes_used} + ${quotaReserved} <= ${orgStorageQuota.bytes_limit}
+            AND ${orgStorageQuota.bytes_used} + ${quotaReserved} <= ${ceiling}
           RETURNING ${orgStorageQuota.bytes_used}`,
       );
       if (quotaRows.length === 0) throw new StorageQuotaExceededError();

@@ -48,6 +48,19 @@ class TestInsufficientCreditsError extends Error {
   }
 }
 
+// Terminal authority has independent real-DB consumer coverage; these fixtures own purchased-credit dispatch.
+mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
+  reconcileStripeScheduledCancellationLifecycle: async () => {
+    throw new Error(
+      "Subscription schedule lifecycle unavailable in legacy fixture",
+    );
+  },
+}));
+mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
+  reconcileStripeTerminalLifecycle: async () => {
+    throw new Error("Subscription lifecycle unavailable in legacy fixture");
+  },
+}));
 mock.module("@/db/helpers", () => ({
   dbRead: {},
   dbWrite: {},
@@ -91,6 +104,12 @@ mock.module("@/lib/services/ai-billing", () => ({
   createOnFinishHandler: mock(() => () => undefined),
 }));
 
+mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
+mock.module("@/lib/services/provisioning-jobs", () => ({
+  provisioningJobService: {},
+  CONTAINER_BACKED_TARGET_REJECTION_REASON:
+    "agent_job_target_not_container_backed",
+}));
 mock.module("@/lib/services/credits", () => ({
   creditsService: {
     getTransactionByStripePaymentIntent,

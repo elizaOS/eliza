@@ -4,13 +4,18 @@
  * never accepts caller time or escapes to a global database connection.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, lt, or } from "drizzle-orm";
+import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
 import type { DbTransaction } from "../client";
 import {
   billingFundingAllocations,
   billingFundingReservations,
 } from "../schemas/billing-funding-reservations";
-import { billingSubscriptions } from "../schemas/billing-subscriptions";
+import {
+  type BillingSubscription,
+  billingSubscriptionRevisions,
+  billingSubscriptions,
+} from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
 import { subscriptionAllowanceTransactions } from "../schemas/subscription-allowance-transactions";
@@ -164,6 +169,157 @@ async function findAllowancePeriodId(
 }
 
 export class SubscriptionAllowanceRepository {
+  /** Opens one paid renewal bucket under the caller's organization/source/receipt transaction. Mutable consumption never participates in grant replay identity. */
+  async grantRenewalInTransaction(
+    tx: DbTransaction,
+    input: {
+      source: BillingSubscription;
+      invoiceId: string;
+      requestDigest: string;
+      databaseNow: Date;
+    },
+  ) {
+    const { source } = input;
+    requireDigest(input.requestDigest);
+    if (!source.current_period_start || !source.current_period_end)
+      conflict("Renewal period is missing", { subscriptionId: source.id });
+    const amount = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version)
+      .allowance.amountUsd;
+    const matches = await tx
+      .select()
+      .from(subscriptionAllowancePeriods)
+      .where(
+        or(
+          and(
+            eq(subscriptionAllowancePeriods.provider, source.provider),
+            eq(subscriptionAllowancePeriods.provider_environment, source.provider_environment),
+            eq(subscriptionAllowancePeriods.stripe_invoice_id, input.invoiceId),
+          ),
+          and(
+            eq(subscriptionAllowancePeriods.subscription_id, source.id),
+            eq(subscriptionAllowancePeriods.period_start, source.current_period_start),
+            eq(subscriptionAllowancePeriods.period_end, source.current_period_end),
+          ),
+        ),
+      )
+      .for("update");
+    if (matches.length > 1)
+      conflict("Renewal invoice and period identities disagree", { subscriptionId: source.id });
+    const existing = matches[0];
+    if (existing) {
+      const [revision] = await tx
+        .select()
+        .from(billingSubscriptionRevisions)
+        .where(
+          and(
+            eq(billingSubscriptionRevisions.subscription_id, source.id),
+            eq(billingSubscriptionRevisions.organization_id, source.organization_id),
+            eq(billingSubscriptionRevisions.revision, existing.subscription_revision),
+          ),
+        );
+      const [grant] = await tx
+        .select()
+        .from(subscriptionAllowanceTransactions)
+        .where(
+          and(
+            eq(subscriptionAllowanceTransactions.allowance_period_id, existing.id),
+            eq(subscriptionAllowanceTransactions.kind, "grant"),
+          ),
+        );
+      if (
+        !revision ||
+        !grant ||
+        existing.organization_id !== source.organization_id ||
+        existing.subscription_id !== source.id ||
+        existing.provider !== source.provider ||
+        existing.provider_environment !== source.provider_environment ||
+        existing.stripe_invoice_id !== input.invoiceId ||
+        existing.plan_key !== source.plan_key ||
+        existing.catalog_version !== source.catalog_version ||
+        existing.granted_amount !== amount ||
+        existing.period_start.getTime() !== source.current_period_start.getTime() ||
+        existing.period_end.getTime() !== source.current_period_end.getTime() ||
+        existing.expires_at.getTime() !== existing.period_end.getTime() ||
+        revision.plan_key !== source.plan_key ||
+        revision.catalog_version !== source.catalog_version ||
+        revision.provider !== source.provider ||
+        revision.provider_environment !== source.provider_environment ||
+        revision.stripe_customer_id !== source.stripe_customer_id ||
+        revision.stripe_subscription_id !== source.stripe_subscription_id ||
+        revision.stripe_subscription_item_id !== source.stripe_subscription_item_id ||
+        revision.current_period_start?.getTime() !== existing.period_start.getTime() ||
+        revision.current_period_end?.getTime() !== existing.period_end.getTime() ||
+        grant.organization_id !== source.organization_id ||
+        grant.amount !== amount ||
+        grant.request_digest !== input.requestDigest ||
+        grant.sequence !== 1 ||
+        grant.idempotency_key !== `renewal:${source.provider_environment}:${input.invoiceId}`
+      )
+        conflict("Renewal grant replay differs from immutable invoice authority", {
+          subscriptionId: source.id,
+        });
+      return { period: existing, replayed: true };
+    }
+    // The funding selector is organization-scoped: another source's future bucket must not overlap either.
+    const overlap = await tx
+      .select({ id: subscriptionAllowancePeriods.id })
+      .from(subscriptionAllowancePeriods)
+      .where(
+        and(
+          eq(subscriptionAllowancePeriods.organization_id, source.organization_id),
+          eq(subscriptionAllowancePeriods.state, "open"),
+          gt(subscriptionAllowancePeriods.expires_at, input.databaseNow),
+          lt(subscriptionAllowancePeriods.period_start, source.current_period_end),
+          gt(subscriptionAllowancePeriods.period_end, source.current_period_start),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (overlap.length)
+      conflict("An existing allowance overlaps renewal", { subscriptionId: source.id });
+    const [period] = await tx
+      .insert(subscriptionAllowancePeriods)
+      .values({
+        organization_id: source.organization_id,
+        subscription_id: source.id,
+        subscription_revision: source.lifecycle_revision,
+        provider: source.provider,
+        provider_environment: source.provider_environment,
+        stripe_invoice_id: input.invoiceId,
+        plan_key: source.plan_key,
+        catalog_version: source.catalog_version,
+        period_start: source.current_period_start,
+        period_end: source.current_period_end,
+        expires_at: source.current_period_end,
+        granted_amount: amount,
+        available_amount: amount,
+      })
+      .returning();
+    if (!period)
+      conflict("Renewal allowance insert returned no row", { subscriptionId: source.id });
+    await tx.insert(subscriptionAllowanceTransactions).values({
+      organization_id: source.organization_id,
+      allowance_period_id: period.id,
+      sequence: 1,
+      kind: "grant",
+      amount,
+      available_before: "0.000000",
+      available_after: amount,
+      reserved_before: "0.000000",
+      reserved_after: "0.000000",
+      settled_before: "0.000000",
+      settled_after: "0.000000",
+      expired_before: "0.000000",
+      expired_after: "0.000000",
+      clawed_back_before: "0.000000",
+      clawed_back_after: "0.000000",
+      request_digest: input.requestDigest,
+      idempotency_key: `renewal:${source.provider_environment}:${input.invoiceId}`,
+      occurred_at: input.databaseNow,
+    });
+    return { period, replayed: false };
+  }
+
   async reserve(tx: DbTransaction, input: ReserveAllowanceInput): Promise<AuthorityResult> {
     requireDigest(input.requestDigest);
     const databaseNow = await lockOrganization(tx, input.organizationId);

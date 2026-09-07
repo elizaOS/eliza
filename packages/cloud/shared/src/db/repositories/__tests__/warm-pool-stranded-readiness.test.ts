@@ -16,6 +16,7 @@ import { organizations } from "../../schemas/organizations";
 import { usageRecords } from "../../schemas/usage-records";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -62,6 +63,8 @@ beforeAll(async () => {
   };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
+  const { getPgliteClientForTests } = await import("../../client");
+  await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   await repository.countAllPoolEntries({ image: IMAGE });
 
   // Replenish reads the tenant-starvation guard inputs (queued tenant jobs +
@@ -639,3 +642,265 @@ describe("production crash reconciliation", () => {
     PGLITE_TIMEOUT,
   );
 });
+
+async function persistedAgent(id: string) {
+  const [row] = await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, id));
+  if (!row) throw new Error("Missing persisted sandbox");
+  return row;
+}
+
+test(
+  "provisioning wake admits container tiers but preserves live running ownership",
+  async () => {
+    for (const execution_tier of [
+      "shared",
+      "dedicated-lazy",
+      "dedicated-always",
+      "custom",
+    ] as const) {
+      await dbWrite.delete(agentSandboxes);
+      const id = await seedUserAgent();
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "sleeping", execution_tier })
+        .where(eq(agentSandboxes.id, id));
+      const result = await repository.trySetProvisioning(id);
+      expect(result?.status).toBe(execution_tier === "shared" ? undefined : "provisioning");
+      expect((await persistedAgent(id)).status).toBe(
+        execution_tier === "shared" ? "sleeping" : "provisioning",
+      );
+    }
+    await dbWrite.delete(agentSandboxes);
+    const id = await seedUserAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "running", sandbox_id: "live", container_name: "live" })
+      .where(eq(agentSandboxes.id, id));
+    expect(await repository.trySetProvisioning(id)).toBeUndefined();
+    expect((await persistedAgent(id)).sandbox_id).toBe("live");
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ sandbox_id: null, container_name: null })
+      .where(eq(agentSandboxes.id, id));
+    expect((await repository.trySetProvisioning(id))?.status).toBe("provisioning");
+  },
+  PGLITE_TIMEOUT,
+);
+
+test(
+  "permanent provision retry clears failed handles while sleeping wake retains its generation",
+  async () => {
+    const id = await seedUserAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "sleeping",
+        sandbox_id: "retained",
+        container_name: "retained",
+        node_id: "node-1",
+        error_message: null,
+      })
+      .where(eq(agentSandboxes.id, id));
+    expect((await repository.trySetProvisioning(id))?.sandbox_id).toBe("retained");
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "error", error_message: "Provisioning permanently failed: exhausted" })
+      .where(eq(agentSandboxes.id, id));
+    const retried = await repository.trySetProvisioning(id);
+    expect(retried?.status).toBe("provisioning");
+    expect(retried?.sandbox_id).toBeNull();
+    expect(retried?.container_name).toBeNull();
+  },
+  PGLITE_TIMEOUT,
+);
+
+test(
+  "restore admission rejects foreign and stale capture before accepting exact authority",
+  async () => {
+    const id = await seedUserAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "stopped" })
+      .where(eq(agentSandboxes.id, id));
+    const capture = await persistedAgent(id);
+    expect(
+      await repository.trySetProvisioningFromRestoreCapture({
+        ...capture,
+        organization_id: crypto.randomUUID(),
+      }),
+    ).toBeUndefined();
+    expect(
+      await repository.trySetProvisioningFromRestoreCapture({
+        ...capture,
+        lifecycle_revision: capture.lifecycle_revision + 1,
+      }),
+    ).toBeUndefined();
+    expect((await persistedAgent(id)).status).toBe("stopped");
+    expect((await repository.trySetProvisioningFromRestoreCapture(capture))?.status).toBe(
+      "provisioning",
+    );
+  },
+  PGLITE_TIMEOUT,
+);
+
+test(
+  "restore admission preserves replacement cleanup and failed warm ownership",
+  async () => {
+    const id = await seedUserAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "stopped",
+        replacement_cleanup_sandbox_id: "cleanup-owned",
+        replacement_cleanup_node_id: "node-1",
+        replacement_cleanup_container_name: "cleanup",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, id));
+    expect(
+      await repository.trySetProvisioningFromRestoreCapture(await persistedAgent(id)),
+    ).toBeUndefined();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        replacement_cleanup_sandbox_id: null,
+        replacement_cleanup_node_id: null,
+        replacement_cleanup_container_name: null,
+        replacement_cleanup_allocation_counted: null,
+        replacement_cleanup_created_at: null,
+        warm_claim_credential_state: "failed",
+      })
+      .where(eq(agentSandboxes.id, id));
+    expect(
+      await repository.trySetProvisioningFromRestoreCapture(await persistedAgent(id)),
+    ).toBeUndefined();
+    expect((await persistedAgent(id)).status).toBe("stopped");
+  },
+  PGLITE_TIMEOUT,
+);
+
+test(
+  "reconnect fences tenant and generation then atomically repairs persisted ingress",
+  async () => {
+    const id = await seedUserAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "disconnected",
+        sandbox_id: "reconnect",
+        container_name: "reconnect",
+        node_id: "node-1",
+        bridge_url: "http://old",
+        health_url: "http://old/health",
+      })
+      .where(eq(agentSandboxes.id, id));
+    const capture = await persistedAgent(id);
+    const ingress = {
+      headscaleIp: "100.64.0.8",
+      bridgeUrl: "http://repaired",
+      healthUrl: "http://repaired/health",
+      errorCount: 0,
+    };
+    expect(
+      await repository.markReconnectedFromDisconnected(
+        { ...capture, organization_id: crypto.randomUUID() },
+        ingress,
+      ),
+    ).toBeUndefined();
+    expect(
+      await repository.markReconnectedFromDisconnected(
+        { ...capture, environment_revision: capture.environment_revision + 1 },
+        ingress,
+      ),
+    ).toBeUndefined();
+    expect((await persistedAgent(id)).status).toBe("disconnected");
+    expect((await repository.markReconnectedFromDisconnected(capture, ingress))?.status).toBe(
+      "running",
+    );
+    const after = await persistedAgent(id);
+    expect(after.bridge_url).toBe(ingress.bridgeUrl);
+    expect(after.health_url).toBe(ingress.healthUrl);
+    expect(after.headscale_ip).toBe(ingress.headscaleIp);
+  },
+  PGLITE_TIMEOUT,
+);
+
+for (const denial of ["stale_generation", "deletion_owner"] as const)
+  test(
+    `warm claim preserves target and pool on ${denial}`,
+    async () => {
+      const pool = await seedPoolEntry();
+      const id = await seedUserAgent();
+      const captured = await persistedAgent(id);
+      if (denial === "stale_generation")
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ lifecycle_revision: captured.lifecycle_revision + 1 })
+          .where(eq(agentSandboxes.id, id));
+      else
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ deletion_attempt_id: crypto.randomUUID(), deletion_started_at: new Date() })
+          .where(eq(agentSandboxes.id, id));
+      const beforeTarget = await persistedAgent(id);
+      const beforePool = await persistedAgent(pool.id);
+      expect(
+        await repository.claimWarmContainer({
+          userAgentId: id,
+          organizationId: USER_ORG_ID,
+          image: IMAGE,
+          agentName: "rejected",
+          expectedLifecycleRevision:
+            denial === "stale_generation"
+              ? captured.lifecycle_revision
+              : beforeTarget.lifecycle_revision,
+        }),
+      ).toBeNull();
+      expect(await persistedAgent(id)).toEqual(beforeTarget);
+      expect(await persistedAgent(pool.id)).toEqual(beforePool);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+test(
+  "warm claim persists boot credential provenance and preserves user environment",
+  async () => {
+    const pool = await seedPoolEntry({
+      environment_vars: {
+        ELIZA_API_TOKEN: "fixture-pool-token",
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    });
+    const id = await seedUserAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        environment_vars: {
+          ELIZA_API_TOKEN: "fixture-stale-user-token",
+          ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+          USER_SETTING: "preserved",
+        },
+      })
+      .where(eq(agentSandboxes.id, id));
+    const captured = await persistedAgent(id);
+    const result = await repository.claimWarmContainer({
+      userAgentId: id,
+      organizationId: USER_ORG_ID,
+      image: IMAGE,
+      agentName: "credential-transfer",
+      expectedLifecycleRevision: captured.lifecycle_revision,
+    });
+    expect(result?.warm_pool_row_id).toBe(pool.id);
+    const claimed = await persistedAgent(id);
+    expect(claimed.warm_claim_source_pool_id).toBe(pool.id);
+    expect(claimed.warm_claim_credential_state).toBe("pending");
+    expect(claimed.environment_vars).toMatchObject({
+      ELIZA_API_TOKEN: "fixture-pool-token",
+      ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+      USER_SETTING: "preserved",
+    });
+    expect(await repository.findById(pool.id)).toBeUndefined();
+  },
+  PGLITE_TIMEOUT,
+);

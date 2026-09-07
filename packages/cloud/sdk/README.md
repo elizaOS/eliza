@@ -22,6 +22,18 @@ const stream = await cloud.routes.postApiV1ChatCompletionsRaw({
 });
 ```
 
+## Individual app billing account status
+
+With an interactive owner session, `registerAppBilling(appId, "test")` records
+an unconfigured registration whose infrastructure payer is the registered app
+owner. It accepts no Stripe identifiers. After the buyer approves the existing
+app consent flow, `getAppBillingAccount(appId, "test")` returns the buyer's
+individual account and explicit unavailable subscription state. Reads support
+interactive sessions and current mobile credentials issued by that exact app;
+general developer API keys do not grant buyer authority. The environment is
+required and may be `test` or `live`; registration performs no provider calls.
+This does not start a trial, create checkout, or grant credits or entitlements.
+
 ## Sign in with Eliza Cloud (web app) + app-credits
 
 A third-party web app can let users sign in with their Eliza Cloud account — no
@@ -161,3 +173,34 @@ Build and publish:
 bun run build
 npm publish --access public
 ```
+
+## Organization subscription cancellation
+
+With a current owner/admin session, `submitOrganizationSubscriptionCancellation`
+accepts the expected local subscription UUID, its expected revision, and a stable
+`idempotencyKey`. It requests cancellation at the current period end. Retain the
+same key when checking an uncertain request; contradictory pending commands are
+rejected. The UUID and revision are preconditions on the organization’s canonical
+subscription, not provider identifiers. Stripe identity comes only from server
+authority.
+`readOrganizationSubscriptionCancellation(commandId)` polls the durable outcome
+without repeating a provider mutation. `OUTCOME_UNKNOWN` is unresolved;
+`APPLIED` supplies an immutable result revision. Recovery retrieves an uncertain
+provider outcome without sending an unattended mutation. Current billing state remains
+available from the existing billing snapshot. Developer API keys cannot authorize
+these methods, and no provider identifiers or credentials are returned.
+
+To undo a scheduled cancellation before its period ends, call
+`submitOrganizationSubscriptionCancellationUndo` with the current subscription
+revision and a stable idempotency key. Poll with
+`readOrganizationSubscriptionCancellationUndo`; the original cancellation poll
+endpoint continues to read only cancellation commands. Undo uses the same
+session-manager authorization and explicit uncertain-outcome contract.
+
+Returning billing managers can discover outstanding cancel/undo commands with
+`listPendingOrganizationSubscriptionCommands({ limit: 20 })`. Pass a returned
+`nextCursor` explicitly to request another page. Each page observes current
+primary state; the cursor does not preserve a snapshot across requests, and a
+command completed between pages can disappear. Lease expiry describes the
+stored worker lease, not whether Stripe accepted an operation. The report makes
+no provider request and does not retry a command.
