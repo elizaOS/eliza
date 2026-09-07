@@ -2723,6 +2723,17 @@ async function generateChatResponseWithTiming(
     // Inbound event consumers may persist correlation state or apply
     // turn-shaping policy. Generation cannot safely continue when that
     // prerequisite fails.
+    // Stamp the request trace before trajectory listeners mint their own ID.
+    // Preserve an existing originating trace on forwarded messages.
+    const requestTraceId = getInferenceTimer()?.traceId;
+    const originatingTraceId = asRecord(message.metadata)?.traceId;
+    if (
+      requestTraceId &&
+      !(typeof originatingTraceId === "string" && originatingTraceId.trim())
+    ) {
+      message.metadata ??= { type: "message" };
+      (message.metadata as { traceId?: string }).traceId = requestTraceId;
+    }
     if (typeof runtime.emitEvent === "function") {
       await timeInferenceSpan("chat:ingress:received-event", () =>
         runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
