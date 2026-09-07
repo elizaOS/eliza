@@ -2559,6 +2559,7 @@ export class AcpService extends Service {
         ? normalizeClaudeAcpModelId(opts.model)
         : opts.model;
     if (transportMode === "native") {
+      this.modelForSessionRoute(session, promptModel);
       if (this.nativePromptSessionIds.has(sessionId)) {
         throw new Error(`ACP session is already busy: ${sessionId}`);
       }
@@ -2586,21 +2587,6 @@ export class AcpService extends Service {
       }
     }
     this.turnOutputBuffers.set(sessionId, []);
-    const args = this.baseArgs({
-      workdir: session.workdir,
-      approvalPreset: session.approvalPreset,
-      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-      model: promptModel,
-    });
-    args.push(
-      ...this.agentCommandArgs(session.agentType, [
-        "prompt",
-        "-s",
-        session.name ?? session.id,
-        "--",
-        text,
-      ]),
-    );
 
     // The cli transport spawns a fresh subprocess per prompt, so re-inject the
     // session's selected-account credentials (the native transport keeps the
@@ -2626,6 +2612,23 @@ export class AcpService extends Service {
       throw credentialResult.error;
     }
     const promptCredentials = credentialResult.value;
+    const routeModel = this.modelForSessionRoute(session, promptModel);
+    const args = this.baseArgs({
+      workdir: session.workdir,
+      approvalPreset: session.approvalPreset,
+      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+      model: routeModel,
+    });
+    args.push(
+      ...this.agentCommandArgs(session.agentType, [
+        "prompt",
+        "-s",
+        session.name ?? session.id,
+        "--",
+        text,
+      ]),
+    );
+
     if (this.promptTurns.get(sessionId)?.cancelRequested) {
       return settlePreProcessCancellation();
     }
@@ -2646,7 +2649,7 @@ export class AcpService extends Service {
       env: this.buildEnv(
         promptEnv,
         promptCredentials,
-        promptModel,
+        routeModel,
         session.agentType,
         sessionId,
       ),
@@ -3994,11 +3997,13 @@ export class AcpService extends Service {
         session,
         env: promptEnv,
         customCredentials: promptCredentials,
-        model:
+        model: this.modelForSessionRoute(
+          session,
           opts.model ??
-          (typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"
-            ? session.metadata[ACP_METADATA_SPAWN_MODEL]
-            : undefined),
+            (typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"
+              ? session.metadata[ACP_METADATA_SPAWN_MODEL]
+              : undefined),
+        ),
         timeoutMs: opts.timeoutMs,
       });
       client = attached.client;
@@ -5177,6 +5182,32 @@ export class AcpService extends Service {
       prepared.piProvider,
     );
     return prepared.env;
+  }
+
+  /** A pooled Pi prompt must use the model whose provider configuration was materialized. */
+  private modelForSessionRoute(
+    session: SessionInfo,
+    requestedModel?: string,
+  ): string | undefined {
+    if (session.agentType !== "pi-agent" || !session.metadata?.piProvider)
+      return requestedModel;
+    const model = session.metadata[ACP_METADATA_SPAWN_MODEL];
+    if (typeof model !== "string" || !model) {
+      throw new ElizaError("The pooled Pi route has no materialized model", {
+        code: "PI_PROVIDER_MODEL_MISSING",
+        context: { sessionId: session.id },
+      });
+    }
+    if (requestedModel !== undefined && requestedModel !== model) {
+      throw new ElizaError(
+        "The requested Pi model does not match the selected provider route; start a new session with that model",
+        {
+          code: "PI_PROVIDER_MODEL_ROUTE_MISMATCH",
+          context: { sessionId: session.id, requestedModel, routeModel: model },
+        },
+      );
+    }
+    return model;
   }
 
   /**
