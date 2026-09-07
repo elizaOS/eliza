@@ -4,11 +4,12 @@
  * exact source that funded the reservation.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, gt, lte } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
 import { subscriptionAllowanceRepository } from "../../db/repositories/subscription-allowance";
+import { readEligibleSubscriptionAllowance } from "../../db/repositories/subscription-allowance-eligibility";
 import {
   type CanonicalMoney,
   microsToMoney,
@@ -17,10 +18,10 @@ import {
 } from "../../db/repositories/subscription-funding-reservations";
 import {
   type BillingFundingReservation,
+  billingFundingAllocations,
   billingFundingReservations,
 } from "../../db/schemas/billing-funding-reservations";
 import { organizations } from "../../db/schemas/organizations";
-import { subscriptionAllowancePeriods } from "../../db/schemas/subscription-allowance-periods";
 import { creditsService } from "./credits";
 import {
   SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
@@ -147,24 +148,6 @@ async function lockOrganization(tx: DbTransaction, organizationId: string): Prom
   }
 }
 
-async function findCurrentAllowance(tx: DbTransaction, organizationId: string, now: Date) {
-  const [period] = await tx
-    .select()
-    .from(subscriptionAllowancePeriods)
-    .where(
-      and(
-        eq(subscriptionAllowancePeriods.organization_id, organizationId),
-        eq(subscriptionAllowancePeriods.state, "open"),
-        lte(subscriptionAllowancePeriods.period_start, now),
-        gt(subscriptionAllowancePeriods.expires_at, now),
-      ),
-    )
-    .orderBy(desc(subscriptionAllowancePeriods.expires_at))
-    .limit(1)
-    .for("update");
-  return period;
-}
-
 function reservationExpiry(input: ReserveSubscriptionFundingInput, now: Date): Date {
   if (input.expiresAt) return input.expiresAt;
   if (!Number.isFinite(input.reservationTtlMs) || input.reservationTtlMs <= 0) {
@@ -220,10 +203,55 @@ export class SubscriptionFundingService {
       await lockOrganization(tx, input.organizationId);
       const now = await readPostLockDatabaseNow(tx);
       const fundingClass = SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation];
-      const period =
-        fundingClass === "allowance_eligible"
-          ? await findCurrentAllowance(tx, input.organizationId, now)
-          : undefined;
+      // Replay is pinned to the original allocation, even after its period or source changes.
+      const [existing] = await tx
+        .select()
+        .from(billingFundingReservations)
+        .where(
+          and(
+            eq(billingFundingReservations.organization_id, input.organizationId),
+            eq(billingFundingReservations.logical_operation_id, input.logicalOperationId),
+          ),
+        )
+        .for("update");
+      if (existing) {
+        if (
+          existing.request_digest !== digest ||
+          existing.requested_amount !== requestedAmount ||
+          existing.funding_class !== fundingClass
+        )
+          fundingError(
+            SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
+            "Reservation replay differs from its immutable request",
+            { organizationId: input.organizationId },
+          );
+        const [allowanceAllocation] = await tx
+          .select({ id: billingFundingAllocations.id })
+          .from(billingFundingAllocations)
+          .where(
+            and(
+              eq(billingFundingAllocations.reservation_id, existing.id),
+              eq(billingFundingAllocations.source, "allowance"),
+            ),
+          );
+        if (!allowanceAllocation) {
+          const requestedExpiry = reservationExpiry(input, now);
+          if (
+            !Number.isFinite(requestedExpiry.getTime()) ||
+            (input.expiresAt && existing.expires_at.getTime() !== input.expiresAt.getTime())
+          )
+            fundingError(
+              SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
+              "Reservation replay changes or invalidates its expiry",
+              { organizationId: input.organizationId },
+            );
+        }
+        return { reservation: existing, replayed: true };
+      }
+      let period: Awaited<ReturnType<typeof readEligibleSubscriptionAllowance>> | undefined;
+      if (fundingClass === "allowance_eligible") {
+        period = await readEligibleSubscriptionAllowance(tx, input.organizationId, now, true);
+      }
       const split = splitSubscriptionFundingSources({
         requestedAmount,
         availableAllowance: period

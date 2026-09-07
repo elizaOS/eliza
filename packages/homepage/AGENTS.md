@@ -65,7 +65,7 @@ packages/homepage/
   public/                       Static assets plus an intentionally inert Pages AASA fallback
   wrangler-aasa.toml            Production-only route for the exact eliza.app AASA URL
   tests/
-    smoke.node.test.mjs         Node --test smoke suite (the `test` script)
+    smoke.node.test.mjs         Smoke coverage within the explicit Bun test lane
     contact.test.ts             SMS/WhatsApp href unit test
     e2e/                        Playwright e2e specs (aesthetic-audit, route-coverage, visual, live-routes, ...)
   scripts/
@@ -93,7 +93,7 @@ bun run --cwd packages/homepage lint           # Biome check --write --unsafe
 bun run --cwd packages/homepage lint:check     # Biome check (read-only)
 bun run --cwd packages/homepage format         # Biome format --write
 bun run --cwd packages/homepage format:check   # Biome format (read-only)
-bun run --cwd packages/homepage test           # Node --test smoke suite
+bun run --cwd packages/homepage test           # Explicit Bun source and DOM test suites
 bun run --cwd packages/homepage test:aasa-edge # AASA body/header/origin-pass-through contract
 bun run --cwd packages/homepage typecheck:aasa-edge # Strict standalone edge Worker typecheck
 bun run --cwd packages/homepage deploy:aasa-edge # Deploy exact-path production Worker (requires Cloudflare credentials)
@@ -146,7 +146,7 @@ unified router in `@elizaos/ui`.
 
 **Add a new i18n locale:**
 1. Add `src/i18n/locales/<locale>.json` following the existing key structure.
-2. Register the locale in `src/providers/I18nProvider.tsx`.
+2. Register its lazy loader in `src/providers/language-messages.ts`.
 
 **Update release download data:**
 Run `node packages/app-core/scripts/write-homepage-release-data.mjs` — this is

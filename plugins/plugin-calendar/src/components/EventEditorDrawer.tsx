@@ -906,6 +906,8 @@ export function EventEditorDrawer({
             maxHeight: "100dvh",
             margin: 0,
             padding: 0,
+            // The portaled editor must scroll its footer above the persistent composer.
+            paddingBottom: "var(--eliza-chat-clearance, 5.25rem)",
             overflowX: "hidden",
             overflowY: "auto",
             transform: "none",

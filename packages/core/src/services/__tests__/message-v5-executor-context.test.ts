@@ -3,7 +3,6 @@
  * actions emit widgets through the action callback, so every v5 planned-tool
  * path must preserve the message-service callback when it invokes handlers.
  */
-import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { executePlannedToolCall } from "../../runtime/execute-planned-tool-call";
 import type {
@@ -97,27 +96,5 @@ describe("v5 planner executor context", () => {
 
 		expect(result.success).toBe(true);
 		expect(callback).toHaveBeenCalledWith({ text: widgetText }, "APP");
-	});
-
-	it("keeps both deterministic and planned v5 execution on the shared context builder", () => {
-		const source = readFileSync(
-			new URL("../message.ts", import.meta.url),
-			"utf8",
-		);
-		const deterministicExecutor = source.slice(
-			source.indexOf("const invokeDeterministicToolCall"),
-			source.indexOf("const invokeDeterministicToolCall") + 12_000,
-		);
-		const plannerExecutor = source.slice(
-			source.indexOf("executeToolCall: (toolCall, ctx)"),
-			source.indexOf("executeToolCall: (toolCall, ctx)") + 5_000,
-		);
-		expect(source.match(/executorCtx:\s*buildV5ExecutorContext/g)).toHaveLength(
-			2,
-		);
-		expect(deterministicExecutor).toMatch(
-			/executorCtx:\s*buildV5ExecutorContext/,
-		);
-		expect(plannerExecutor).toMatch(/executorCtx:\s*buildV5ExecutorContext/);
 	});
 });

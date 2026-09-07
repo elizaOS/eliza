@@ -9,10 +9,11 @@
  * React-free `./plugin` subpath so UI imports never reach the Node agent.
  */
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
-import { logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import { readJsonFile } from "@elizaos/core/atomic-json";
 import {
   type AppLaunchDiagnostic,
@@ -225,24 +226,123 @@ export async function resolveWorkspacePackageDir(
   return matches[0] ?? null;
 }
 
+async function importModule<T>(specifier: string): Promise<T> {
+  try {
+    return (await import(/* webpackIgnore: true */ specifier)) as T;
+  } catch (cause) {
+    // error-policy:J2 a resolved module's evaluation failure must not select another implementation.
+    throw new ElizaError("Failed to load an app package module", {
+      code: "APP_MODULE_LOAD_FAILED",
+      context: { specifier },
+      cause,
+    });
+  }
+}
+
+function isOptionalEntrypointAbsent(specifier: string): boolean {
+  const parts = specifier.split("/");
+  const packageName = parts
+    .slice(0, specifier.startsWith("@") ? 2 : 1)
+    .join("/");
+  const subpath = `.${specifier.slice(packageName.length)}`;
+  const searchPaths = createRequire(import.meta.url).resolve.paths(packageName);
+  if (!searchPaths) return false;
+  for (const searchPath of searchPaths) {
+    let manifest: { exports?: unknown };
+    try {
+      manifest = JSON.parse(
+        fs.readFileSync(
+          path.join(searchPath, packageName, "package.json"),
+          "utf8",
+        ),
+      );
+    } catch (error) {
+      // error-policy:J3 Only a missing manifest permits searching the next package location.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      )
+        continue;
+      throw new ElizaError("Failed to inspect app package metadata", {
+        code: "APP_MODULE_RESOLUTION_FAILED",
+        context: {
+          specifier,
+          manifestPath: path.join(searchPath, packageName, "package.json"),
+        },
+        cause: error,
+      });
+    }
+    if (subpath === ".") return false;
+    const exports = manifest.exports;
+    if (exports === undefined || exports === null) return true;
+    if (typeof exports !== "object" || Array.isArray(exports)) return true;
+    if (Object.hasOwn(exports, subpath))
+      return Reflect.get(exports, subpath) === null;
+    const pattern = Object.keys(exports)
+      .filter((key) => {
+        const star = key.indexOf("*");
+        return (
+          star !== -1 &&
+          subpath.startsWith(key.slice(0, star)) &&
+          subpath.endsWith(key.slice(star + 1)) &&
+          subpath.length >= key.length - 1
+        );
+      })
+      .sort(
+        (left, right) =>
+          right.indexOf("*") - left.indexOf("*") || right.length - left.length,
+      )[0];
+    return pattern === undefined || Reflect.get(exports, pattern) === null;
+  }
+  return true;
+}
+
+async function importOptionalModule<T>(specifier: string): Promise<T | null> {
+  try {
+    const resolved = import.meta.resolve(specifier);
+    // Node resolves legacy subpaths to URLs even when their files do not exist.
+    if (
+      resolved.startsWith("file:") &&
+      fs.statSync(fileURLToPath(resolved), { throwIfNoEntry: false }) ===
+        undefined &&
+      isOptionalEntrypointAbsent(specifier)
+    )
+      return null;
+  } catch (cause) {
+    // error-policy:J3 only resolution absence makes an optional entrypoint unavailable.
+    if (
+      typeof cause === "object" &&
+      cause !== null &&
+      "code" in cause &&
+      [
+        "ERR_MODULE_NOT_FOUND",
+        "MODULE_NOT_FOUND",
+        "ERR_PACKAGE_PATH_NOT_EXPORTED",
+      ].includes(String(cause.code))
+    ) {
+      // Bun reports missing export targets and absent optional subpaths alike.
+      // A declared entrypoint must load or fail, never select another implementation.
+      if (isOptionalEntrypointAbsent(specifier)) return null;
+      return importModule<T>(specifier);
+    }
+    throw new ElizaError("Failed to resolve an app package module", {
+      code: "APP_MODULE_RESOLUTION_FAILED",
+      context: { specifier },
+      cause,
+    });
+  }
+  return importModule<T>(specifier);
+}
+
 async function importFirstExistingModule<T>(
   candidatePaths: string[],
 ): Promise<T | null> {
-  let lastError: unknown = null;
-
   for (const candidatePath of candidatePaths) {
-    if (!fs.existsSync(candidatePath)) continue;
-    try {
-      return (await import(pathToFileURL(candidatePath).href)) as T;
-    } catch (error) {
-      lastError = error;
-    }
+    if (fs.existsSync(candidatePath))
+      return importModule<T>(pathToFileURL(candidatePath).href);
   }
-
-  if (lastError) {
-    throw lastError;
-  }
-
   return null;
 }
 
@@ -443,7 +543,6 @@ async function importLocalAppPluginModule(
   if (localPaths.length === 0) return null;
 
   let firstModule: AppPluginModule | null = null;
-  let lastError: unknown = null;
   for (const localPath of localPaths) {
     // Prefer the plugin's React-free `plugin` entry over the package barrel.
     // The barrel (`index.ts`) re-exports the plugin's React view components, and
@@ -462,20 +561,9 @@ async function importLocalAppPluginModule(
     ];
     for (const candidatePath of candidatePaths) {
       if (!fs.existsSync(candidatePath)) continue;
-      let mod: AppPluginModule;
-      try {
-        mod = (await import(
-          pathToFileURL(candidatePath).href
-        )) as AppPluginModule;
-      } catch (err) {
-        lastError = err;
-        logger.warn(
-          `[app-package-modules] Failed to import plugin entry ${candidatePath}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-        continue;
-      }
+      const mod = await importModule<AppPluginModule>(
+        pathToFileURL(candidatePath).href,
+      );
       if (firstModule === null) {
         firstModule = mod;
       }
@@ -486,9 +574,6 @@ async function importLocalAppPluginModule(
   }
   if (firstModule) {
     return firstModule;
-  }
-  if (lastError) {
-    throw lastError;
   }
   return null;
 }
@@ -544,25 +629,9 @@ export async function importAppRouteModule(
 
   const resolved = await resolveAppModuleTarget(appIdentifier);
   const packageName = resolved?.packageName ?? null;
-  const label = packageName ?? appIdentifier;
-
-  try {
-    // Prefer workspace-local route modules before built-ins so checked-out app
-    // plugins can intentionally override the packaged bridge during local
-    // development. This lookup is repo/workspace-scoped rather than install-
-    // directory scoped, so accidental shadowing stays limited to active dev
-    // workspaces.
-    const localModule = await importLocalAppRouteModule(appIdentifier);
-    if (localModule) {
-      return localModule;
-    }
-  } catch (err) {
-    logger.warn(
-      `[app-package-modules] Failed to import local routes for ${label}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
+  // Workspace overrides are selected before packaged routes; a broken override is an error.
+  const localModule = await importLocalAppRouteModule(appIdentifier);
+  if (localModule) return localModule;
 
   if (!packageName) {
     return null;
@@ -576,32 +645,17 @@ export async function importAppRouteModule(
     resolved?.bridgeExport ?? null,
   );
 
-  if (bridgeSpecifier) {
-    try {
-      return (await import(
-        /* webpackIgnore: true */ bridgeSpecifier
-      )) as AppRouteModule;
-    } catch {
-      // Fall through to canonical app/routes entrypoints.
-    }
+  const specifiers = [
+    bridgeSpecifier,
+    `${packageName}/app`,
+    `${packageName}/routes`,
+  ];
+  for (const specifier of specifiers) {
+    if (!specifier) continue;
+    const module = await importOptionalModule<AppRouteModule>(specifier);
+    if (module) return module;
   }
-
-  try {
-    return (await import(
-      /* webpackIgnore: true */ `${packageName}/app`
-    )) as AppRouteModule;
-  } catch {
-    // Fall through to legacy routes entrypoint / plugin export bridge.
-  }
-
-  try {
-    return (await import(
-      /* webpackIgnore: true */ `${packageName}/routes`
-    )) as AppRouteModule;
-  } catch {
-    const plugin = await importAppPlugin(packageName);
-    return resolvePluginAppBridge(plugin);
-  }
+  return resolvePluginAppBridge(await importAppPlugin(packageName));
 }
 
 export async function importAppPlugin(
@@ -611,43 +665,17 @@ export async function importAppPlugin(
     return null;
   }
 
-  // Prefer the package's React-free `./plugin` subpath imported BY NAME so the
-  // package's export conditions (eliza-source/bun → src) are applied. A file-URL
-  // import (importLocalAppPluginModule, below) does not apply those conditions
-  // to nested bare specifiers, which mis-resolves condition-gated deps such as
-  // `@elizaos/agent/services/app-session-gate` to their `.d.ts` and breaks the
-  // import. Plugins that don't expose `./plugin` simply fall through.
-  try {
-    const subpathModule = (await import(
-      /* webpackIgnore: true */ `${packageName}/plugin`
-    )) as AppPluginModule;
+  // Named imports apply the package's source conditions and keep React-only barrels out of the host.
+  const subpathModule = await importOptionalModule<AppPluginModule>(
+    `${packageName}/plugin`,
+  );
+  if (subpathModule) {
     const plugin = resolvePluginExport(subpathModule, packageName);
-    if (plugin) {
-      return plugin;
-    }
-  } catch {
-    // No `./plugin` subpath export — fall through to the local/by-name imports.
+    if (plugin) return plugin;
   }
-
-  try {
-    const localModule = await importLocalAppPluginModule(packageName);
-    if (localModule) {
-      return resolvePluginExport(localModule, packageName);
-    }
-  } catch (err) {
-    logger.warn(
-      `[app-package-modules] Failed to import local plugin for ${packageName}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-
-  try {
-    const packageModule = (await import(
-      /* webpackIgnore: true */ packageName
-    )) as AppPluginModule;
-    return resolvePluginExport(packageModule, packageName);
-  } catch {
-    return null;
-  }
+  const localModule = await importLocalAppPluginModule(packageName);
+  if (localModule) return resolvePluginExport(localModule, packageName);
+  const packageModule =
+    await importOptionalModule<AppPluginModule>(packageName);
+  return packageModule ? resolvePluginExport(packageModule, packageName) : null;
 }

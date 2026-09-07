@@ -13,7 +13,6 @@
 
 import Decimal from "decimal.js";
 import { affiliatesRepository } from "../../db/repositories/affiliates";
-import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
 import type { UsageRecord } from "../../db/repositories/usage-records";
 import {
   calculateCost,
@@ -39,6 +38,7 @@ import {
   RESERVATION_SWEEP_GRACE_MS,
 } from "./credits";
 import { generationsService } from "./generations";
+import { readOrganizationQuotaPolicy } from "./organization-quota-policy";
 import { subscriptionFundingService } from "./subscription-funding";
 import { usageService } from "./usage";
 
@@ -110,8 +110,7 @@ interface SubscriptionFundingSelection {
 /** Paid-plan organizations must use allowance-aware inference funding. */
 export async function isSubscriptionFundedOrganization(organizationId: string): Promise<boolean> {
   if (organizationId === "anonymous") return false;
-  const entitlement = await subscriptionEntitlementsRepository.find(organizationId);
-  return entitlement !== undefined && entitlement.plan_key !== "free";
+  return (await readOrganizationQuotaPolicy(organizationId)).subscriptionFunded;
 }
 
 function inferenceFundingLogicalOperationId(

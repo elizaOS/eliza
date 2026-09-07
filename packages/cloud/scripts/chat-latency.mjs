@@ -264,6 +264,7 @@ export function consumeAgentEvent(event) {
   const content = candidates.find((value) => typeof value === "string") || "";
   return {
     content,
+    snapshot: typeof event?.fullText === "string" ? event.fullText : null,
     terminal: event?.type === "done" || event?.type === "error" ? event : null,
   };
 }
@@ -315,7 +316,13 @@ export async function readSse(
       }
       reasoningCharacters += observation.reasoning.length;
     }
-    if (observation.content) {
+    if (typeof observation.snapshot === "string") {
+      if (observation.snapshot && firstTokenMs === null) {
+        firstTokenMs = elapsed(now, startedAt);
+      }
+      outputText = observation.snapshot;
+      outputCharacters = outputText.length;
+    } else if (observation.content) {
       if (firstTokenMs === null) firstTokenMs = elapsed(now, startedAt);
       outputText += observation.content;
       outputCharacters += observation.content.length;

@@ -46,7 +46,7 @@ All exports are re-exported from `src/index.ts`:
 - `toRuntimeSettings(runtime)` — adapts any object with `getSetting(key): unknown` to `RuntimeSettings`
 - `resolveCloudRoute(runtime, spec)` — returns a `CloudRoute`; prefers `local-key` over `cloud-proxy` over `disabled`
 - `resolveFeatureCloudRoute(runtime, feature, spec, policyOverride?)` — policy-aware resolver
-- `getFeaturePolicy(runtime, feature)` — reads per-feature setting, falls back to `DEFAULT_FEATURE_POLICY` (`"auto"`)
+- `getFeaturePolicy(runtime, feature)` — reads per-feature setting; absent/blank settings use `DEFAULT_FEATURE_POLICY` (`"auto"`), explicitly invalid values throw `RoutingPolicyError`
 - `getFeaturePolicyMap(runtime)` — returns one entry per feature with defaults applied
 - `isCloudConnected(runtime)` — true when `ELIZAOS_CLOUD_API_KEY` is set and `ELIZAOS_CLOUD_ENABLED` is truthy
 - `cloudServiceApisBaseUrl(runtime, service)` — returns cloud proxy `{ baseUrl, headers }` or null
@@ -83,7 +83,7 @@ Read by the resolve functions at call time via `runtime.getSetting()`:
 | `ELIZAOS_CLOUD_ROUTING_TTS` | Per-feature policy for text-to-speech |
 | `ELIZAOS_CLOUD_ROUTING_STT` | Per-feature policy for speech-to-text |
 
-Each per-feature var accepts `"local"`, `"cloud"`, or `"auto"` (case-insensitive, whitespace-tolerant).
+Each per-feature var accepts `"local"`, `"cloud"`, or `"auto"` (case-insensitive, whitespace-tolerant). Blank or absent settings use `auto`. Other explicit values throw `RoutingPolicyError` with code `CLOUD_ROUTING_POLICY_INVALID` before selecting a route; callers should surface the configuration error.
 
 ## How to extend
 

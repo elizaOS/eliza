@@ -2,6 +2,7 @@
  * Owns the shared cloud-agent management lifecycle used by both settings presentations.
  * Callers provide the management-token boundary and retain their own rendering contracts.
  */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, ElizaClient } from "../../api";
 import { resolveCloudAgentApiBase } from "../../api/client-cloud";
@@ -16,6 +17,7 @@ import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state/persistence";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 
 const DELETE_POLL_TIMEOUT_MS = 60_000;
 const DELETE_POLL_INTERVAL_MS = 1_500;
@@ -329,16 +331,12 @@ export function useCloudAgentManagement(getManagementToken: () => string) {
 
   const deleteAgent = useCallback(
     async (agent: CloudCompatAgent) => {
-      // Destructive + irreversible — tears down the container and its data.
-      // Confirm first (matches the window.confirm pattern in the other settings
-      // sections: wallet keys, vault profiles, remote plugin hosts).
-      if (
-        !window.confirm(
-          `Delete "${agent.agent_name || agent.agent_id}"? This permanently removes the agent and its data and can't be undone.`,
-        )
-      ) {
-        return;
-      }
+      const confirmed = await confirmDesktopAction({
+        title: "Delete agent",
+        type: "warning",
+        message: `Delete "${agent.agent_name || agent.agent_id}"? This permanently removes the agent and its data and can't be undone.`,
+      });
+      if (!confirmed) return;
       setBusyId(agent.agent_id);
       try {
         const res = await client.deleteCloudCompatAgent(agent.agent_id);

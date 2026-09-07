@@ -25,7 +25,6 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { EvidenceError } from "../errors.ts";
 import type { BackendResponse } from "./backends.ts";
 import { renderQuestionPrompt, SYSTEM_RUBRIC } from "./backends.ts";
@@ -104,7 +103,7 @@ export function parseClaudeEnvelope(stdout: string): BackendResponse {
       cause,
       context: {
         cli: "claude",
-        preview: truncateWellFormed(toWellFormedUnicode(stdout), 200),
+        preview: stdout.slice(0, 200).toWellFormed(),
       },
     });
   }
@@ -295,7 +294,7 @@ export class CliVisionBackend {
     );
     if (result.code !== 0) {
       throw new EvidenceError(
-        `claude CLI exited ${result.code}: ${truncateWellFormed(toWellFormedUnicode(result.stderr), 300)}`,
+        `claude CLI exited ${result.code}: ${result.stderr.slice(0, 300).toWellFormed()}`,
         { code: "VISION_CLI_EXIT", context: { cli: "claude" } },
       );
     }
@@ -331,7 +330,7 @@ export class CliVisionBackend {
     );
     if (result.code !== 0) {
       throw new EvidenceError(
-        `codex CLI exited ${result.code}: ${truncateWellFormed(toWellFormedUnicode(result.stderr), 300)}`,
+        `codex CLI exited ${result.code}: ${result.stderr.slice(0, 300).toWellFormed()}`,
         { code: "VISION_CLI_EXIT", context: { cli: "codex" } },
       );
     }

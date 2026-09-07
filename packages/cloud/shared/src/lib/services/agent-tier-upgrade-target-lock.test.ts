@@ -7,7 +7,8 @@
  * #15929 shipped (lock released at the target commit, enqueue left outside).
  *
  * This suite closes that gap the way `inference-billing-ledger-advisory-lock`
- * does for its lock: it mocks ONLY the transaction seam, records every
+ * does for its lock: it controls the transaction and primary policy-read seams,
+ * retains real quota validation, records every
  * statement each transaction runs, and asserts the boundary transaction takes
  * the per-source tier-upgrade lock FIRST, re-checks for a live target under
  * it, and inserts the target AND its provision job (behind the nested
@@ -25,10 +26,12 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { organizations } from "../../db/schemas/organizations";
 import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
+import * as quotaActual from "./organization-quota-policy";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "aaaaaaaa-1111-4111-8111-111111111111";
@@ -45,6 +48,8 @@ type SandboxRow = Record<string, unknown>;
 
 const events: TxEvent[] = [];
 let txCounter = 0;
+const transactionIds = new WeakMap<object, number>();
+const quotaSnapshot = { ...quotaActual };
 /** What the live-target re-check returns, per transaction index — lets the
  * race-loser test show a competitor's commit between phase 1 and phase 3. */
 let liveTargetRowsForTx: (txIndex: number) => SandboxRow[] = () => [];
@@ -123,7 +128,11 @@ function makeTx(txIndex: number) {
           return [];
         },
         // biome-ignore lint/suspicious/noThenProperty: Drizzle's count chain is awaited at `.where()`, so this mock must be thenable.
-        then: (resolve: (rows: Array<{ count: number }>) => unknown) => {
+        then: (resolve: (rows: Array<{ count: number } | { id: string }>) => unknown) => {
+          if (state.table === organizations) {
+            events.push({ tx: txIndex, kind: "organization-lock" });
+            return resolve([{ id: ORG }]);
+          }
           events.push({ tx: txIndex, kind: "select-quota-count" });
           return resolve([{ count: 0 }]);
         },
@@ -148,7 +157,9 @@ function makeTx(txIndex: number) {
 
 const transaction = mock(async (fn: (tx: ReturnType<typeof makeTx>) => Promise<unknown>) => {
   txCounter += 1;
-  return fn(makeTx(txCounter));
+  const tx = makeTx(txCounter);
+  transactionIds.set(tx, txCounter);
+  return fn(tx);
 });
 
 // VALUE snapshots taken at module evaluation, while no mock is installed.
@@ -167,6 +178,50 @@ let createTierUpgradeTargetWithProvision: typeof import("./agent-tier-upgrade-ta
 // would clobber the shared bindings under every OTHER suite in a multi-file
 // run (the coverage lane co-runs all changed suites in one process, #15943).
 beforeAll(async () => {
+  mock.module("./organization-quota-policy", () => ({
+    ...quotaSnapshot,
+    readOrganizationQuotaPolicyInTransaction: async (
+      tx: object,
+      organizationId: string,
+    ): Promise<quotaActual.OrganizationQuotaPolicy> => {
+      const txIndex = transactionIds.get(tx);
+      if (txIndex === undefined || organizationId !== ORG)
+        throw new Error("Unexpected policy transaction or tenant");
+      events.push({ tx: txIndex, kind: "policy-read" });
+      const unavailable = { status: "unavailable" as const, code: "outside_test_scope" };
+      return {
+        authority: {
+          generation: "0",
+          source: "legacy",
+          sourceSubscriptionId: null,
+          sourceRevision: null,
+          projectionRevision: null,
+          catalogVersion: null,
+          effectiveFrom: "2026-01-01T00:00:00.000Z",
+          effectiveUntil: null,
+        },
+        tier: { status: "unavailable", code: "outside_test_scope" },
+        subscriptionFunded: false,
+        tierSourceCreditTotal: "0",
+        observedAt: "2026-06-24T00:00:00.000Z",
+        balance: { status: "available", value: { balanceUsd: 0, revision: "1" } },
+        overrides: {
+          completionsRpm: null,
+          embeddingsRpm: null,
+          standardRpm: null,
+          strictRpm: null,
+        },
+        limits: {
+          characters: unavailable,
+          containers: unavailable,
+          apps: unavailable,
+          storage: unavailable,
+          nonEagerSandboxes: unavailable,
+          sandboxes: { status: "available", limit: 5n, source: "legacy-sandbox-policy" },
+        },
+      };
+    },
+  }));
   mock.module("../../db/helpers", () => ({
     ...helpersSnapshot,
     dbWrite: { transaction },
@@ -209,6 +264,7 @@ beforeAll(async () => {
 // the same process — a leaked module mock patches itself into later suites'
 // imports.
 afterAll(() => {
+  mock.module("./organization-quota-policy", () => quotaSnapshot);
   mock.module("../../db/helpers", () => helpersSnapshot);
   mock.module("./managed-eliza-config", () => managedConfigSnapshot);
   mock.module("./api-keys", () => apiKeysSnapshot);
@@ -254,6 +310,8 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "select-active-job",
       "select-adoption-selection",
       "select-adoption-candidate",
+      "organization-lock",
+      "policy-read",
       "select-quota-count",
     ]);
     // Global lock order: the ORG-WIDE agent-create lock is acquired FIRST
@@ -278,6 +336,8 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "select-active-job",
       "select-adoption-selection",
       "select-adoption-candidate",
+      "organization-lock",
+      "policy-read",
       "select-quota-count",
       "insert-target",
       "deadline",

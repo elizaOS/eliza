@@ -19,6 +19,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.TEST_DATABASE_URL ||= process.env.DATABASE_URL;
@@ -199,15 +200,18 @@ beforeAll(async () => {
       await dbWrite.execute(ddl);
     }
 
+    await installOrganizationPolicyTestSchema((query) =>
+      client.getPgliteClientForTests().exec(query),
+    );
     await dbWrite.insert(organizations).values([
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "100" },
-      { id: ORG_QUOTA, name: "Org Quota", slug: "org-quota", credit_balance: "100" },
-      { id: ORG_RACE, name: "Org Race", slug: "org-race", credit_balance: "100" },
+      { id: ORG_QUOTA, name: "Org Quota", slug: "org-quota", credit_balance: "0.5" },
+      { id: ORG_RACE, name: "Org Race", slug: "org-race", credit_balance: "0.5" },
       {
         id: ORG_RACE_CREATE,
         name: "Org Race Create",
         slug: "org-race-create",
-        credit_balance: "100",
+        credit_balance: "0.5",
       },
     ]);
     await dbWrite.insert(users).values([
@@ -248,6 +252,21 @@ beforeAll(async () => {
       agent_config: { __agentUpgradedFrom: "quota-fixture-existing-source" },
     });
 
+    // Five is the persisted legacy catalog ceiling at this balance. Reserve
+    // four slots so each race still competes for exactly one remaining slot.
+    for (const organizationId of [ORG_QUOTA, ORG_RACE, ORG_RACE_CREATE]) {
+      for (let index = 0; index < 4; index++)
+        await dbWrite.insert(agentSandboxes).values({
+          id: crypto.randomUUID(),
+          organization_id: organizationId,
+          user_id: USER_A,
+          agent_name: `Quota occupancy ${index}`,
+          execution_tier: "shared",
+          status: "running",
+          database_status: "none",
+          quota_admission_scope: "organization",
+        });
+    }
     svc = await import("./agent-tier-upgrade-target");
   } catch (error) {
     pgliteReady = false;
@@ -770,7 +789,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       expect(pgliteReady).toBe(true);
       const { AgentQuotaExceededError } = await import("./eliza-sandbox");
 
-      // cap=1 with zero existing agents: one free slot, two distinct sources.
+      // Four occupied slots under the current ceiling leave one slot for two sources.
       // The per-source tier-upgrade locks differ, so only the ORG-WIDE lock
       // makes the two count→insert windows mutually exclusive (#16042 review).
       const outcomes = await Promise.allSettled([
@@ -833,7 +852,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       const orgRows = (await dbWrite.select().from(agentSandboxes)).filter(
         (row) => row.organization_id === ORG_RACE_CREATE,
       );
-      expect(orgRows).toHaveLength(1);
+      expect(orgRows).toHaveLength(5);
       await expectNoOrphanAgentKeys();
     },
     PGLITE_TIMEOUT,

@@ -21,6 +21,7 @@ import {
   type LoadedRegistry,
   loadRegistryFromRawEntries,
   normalizeConnectorAuth,
+  RegistryValidationError,
 } from "./loader";
 import { type RegistryEntry, registryEntrySchema } from "./schema";
 
@@ -135,10 +136,19 @@ function readEntriesFromDisk(): RegistryEntry[] {
     console.warn(`[registry] generated.json missing: ${generatedPath}`);
     return [];
   }
-  const parsed = JSON.parse(readFileSync(generatedPath, "utf-8")) as {
-    entries?: unknown[];
-  };
-  const raws = (parsed.entries ?? []).map((data, i) => ({
+  const parsed: unknown = JSON.parse(readFileSync(generatedPath, "utf-8"));
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    !("entries" in parsed) ||
+    !Array.isArray(parsed.entries)
+  ) {
+    throw new RegistryValidationError(
+      generatedPath,
+      "expected an object with an entries array",
+    );
+  }
+  const raws = parsed.entries.map((data: unknown, i: number) => ({
     file: `${generatedPath}#${i}`,
     data,
   }));

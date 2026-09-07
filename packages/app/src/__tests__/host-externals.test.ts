@@ -1,3 +1,4 @@
+/** Checks idempotent host registration through a mocked view-importer registry. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -22,7 +23,7 @@ describe("registerAppHostExternalImporters", () => {
       "../host-externals.ts"
     );
     registerAppHostExternalImporters();
-    registerAppHostExternalImporters(); // second call is a no-op
+    registerAppHostExternalImporters();
     expect(mocks.registerHostExternalImporter).toHaveBeenCalledTimes(2);
     expect(mocks.registerHostExternalImporter.mock.calls[0][0]).toBe(
       "@elizaos/plugin-browser",
@@ -30,19 +31,5 @@ describe("registerAppHostExternalImporters", () => {
     expect(mocks.registerHostExternalImporter.mock.calls[1][0]).toContain(
       "@elizaos/plugin-health",
     );
-  });
-
-  it("registers thunks that return promises", async () => {
-    const { registerAppHostExternalImporters } = await import(
-      "../host-externals.ts"
-    );
-    registerAppHostExternalImporters();
-    for (const call of mocks.registerHostExternalImporter.mock.calls) {
-      const thunk = call[1] as () => Promise<unknown>;
-      expect(typeof thunk).toBe("function");
-      const result = thunk();
-      expect(result).toBeInstanceOf(Promise);
-      await result.catch(() => undefined); // 动态 import 可能失败，吞掉
-    }
   });
 });

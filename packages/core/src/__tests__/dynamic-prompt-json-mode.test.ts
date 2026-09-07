@@ -1,18 +1,12 @@
-/**
- * Exercises AgentRuntime.dynamicPromptExecFromState: structured model calls
- * request JSON-object response format, structured callbacks drain before a
- * retry, a validation failure feeds corrective [REPAIR] context into the
- * reroll, and exhausted retries return null while an explicit caller response
- * format is preserved. Runs against a bare
- * AgentRuntime (no DB adapter, logModelCall stubbed) with a registered vi.fn()
- * model handler — fully deterministic, no live model.
- */
+/** Exercises structured retries, callback draining, and corrective repair prompts through a real runtime and in-memory database with deterministic model handlers. */
 import { describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import { type Character, ModelType } from "../types";
 
 function makeRuntime(): AgentRuntime {
 	const runtime = new AgentRuntime({
+		adapter: new InMemoryDatabaseAdapter(),
 		character: {
 			name: "dynamic-prompt-json-mode-test",
 			bio: "test",
@@ -20,11 +14,7 @@ function makeRuntime(): AgentRuntime {
 		} as Character,
 		logLevel: "fatal",
 	});
-	// This minimal runtime has no DB adapter, so logModelCall's
-	// `this.adapter.createLogs` would throw and route every useModel through the
-	// model_error path — never reaching validation. Stub it (pure logging) so
-	// useModel returns the handler output cleanly.
-	(runtime as unknown as { logModelCall: () => void }).logModelCall = () => {};
+
 	return runtime;
 }
 

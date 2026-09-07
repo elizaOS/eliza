@@ -430,6 +430,8 @@ export interface Bindings {
 
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
+  /** Explicit approved per-revision notice dispatches; omission leaves durable notices policy-unavailable. */
+  SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   /**
    * Test-only Stripe-compatible loopback origin. The Stripe client accepts it

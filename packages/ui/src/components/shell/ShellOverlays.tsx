@@ -9,6 +9,7 @@
  * layout-shift + frame-budget monitors that feed the perf HUD.
  */
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { SHARE_TARGET_EVENT } from "../../events";
 import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";
 import { PerfOverlay } from "../../perf/PerfOverlay";
@@ -110,7 +111,8 @@ export function ShellOverlays({
     };
   }, [tab, setState, setActionNotice]);
 
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <>
       {/* Dev-only FPS/long-task overlay (#9141) — self-gates on
           window.__ELIZA_PERF_HUD__, renders null + starts no loop when off. */}
@@ -121,6 +123,7 @@ export function ShellOverlays({
       <ComputerUseApprovalOverlay />
       <ShortcutsOverlay />
       <ActionNoticeToast actionNotice={actionNotice} />
-    </>
+    </>,
+    document.body,
   );
 }

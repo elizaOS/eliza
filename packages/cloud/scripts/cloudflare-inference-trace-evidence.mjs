@@ -47,6 +47,82 @@ export class CloudflareTraceSchemaError extends Error {
   }
 }
 
+const DENIAL_DOCUMENTATION_URLS = new Set([
+  "https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/keys/",
+  "https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/",
+  "https://developers.cloudflare.com/fundamentals/api/troubleshooting/",
+  "https://developers.cloudflare.com/fundamentals/api/how-to/restrict-tokens/",
+  "https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/",
+  "https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/",
+]);
+
+function denialDetails(responseText) {
+  const empty = { errorCodes: [], documentationUrls: [] };
+  // This public diagnostic is only a preview of an error envelope. Oversized
+  // responses remain private; never copy a partial or arbitrary response here.
+  if (typeof responseText !== "string" || responseText.length > 65_536)
+    return empty;
+  let envelope;
+  try {
+    envelope = JSON.parse(responseText);
+  } catch {
+    // error-policy:J3 malformed denial bodies yield no optional details; the
+    // original HTTP failure remains authoritative.
+    return empty;
+  }
+  if (!Array.isArray(envelope?.errors) || envelope.errors.length > 32)
+    return empty;
+  const errorCodes = new Set();
+  const documentationUrls = new Set();
+  for (const error of envelope.errors) {
+    if (
+      Number.isInteger(error?.code) &&
+      error.code >= 0 &&
+      error.code <= 999_999
+    )
+      errorCodes.add(error.code);
+    // Exact string membership rejects userinfo, alternate paths, query strings,
+    // fragments and encoded payloads, even on the official documentation host.
+    if (DENIAL_DOCUMENTATION_URLS.has(error?.documentation_url))
+      documentationUrls.add(error.documentation_url);
+  }
+  return {
+    errorCodes: [...errorCodes],
+    documentationUrls: [...documentationUrls],
+  };
+}
+
+/** Exposes only validated public diagnostics while retaining the HTTP failure. */
+export class CloudflareTraceApiError extends CloudflareTraceSchemaError {
+  constructor({ endpoint, httpStatus, responseText }) {
+    if (
+      (endpoint !== "keys" && endpoint !== "query") ||
+      !Number.isInteger(httpStatus) ||
+      httpStatus < 0 ||
+      httpStatus > 599
+    ) {
+      throw new CloudflareTraceSchemaError(
+        "Invalid telemetry failure boundary",
+      );
+    }
+    const details = denialDetails(responseText);
+    const diagnostic = Object.freeze({
+      endpoint,
+      httpStatus,
+      errorCodes: Object.freeze(details.errorCodes),
+      documentationUrls: Object.freeze(details.documentationUrls),
+    });
+    super(
+      `Cloudflare trace telemetry returned HTTP ${httpStatus} ${JSON.stringify(diagnostic)}`,
+    );
+    this.name = "CloudflareTraceApiError";
+    Object.defineProperty(this, "diagnostic", {
+      value: diagnostic,
+      enumerable: true,
+    });
+  }
+}
+
 function object(value) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -557,9 +633,11 @@ async function apiRequest({
   const text = await response.text();
   await writeRaw(privateDirectory, rawSequence, rawLabel, text);
   if (!response.ok) {
-    throw new CloudflareTraceSchemaError(
-      `Cloudflare trace telemetry returned HTTP ${response.status}`,
-    );
+    throw new CloudflareTraceApiError({
+      endpoint,
+      httpStatus: response.status,
+      responseText: text,
+    });
   }
   return text;
 }

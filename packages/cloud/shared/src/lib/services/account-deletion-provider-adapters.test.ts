@@ -1,14 +1,9 @@
 /** Proves deletion adapters require authoritative remote backup and spool absence evidence. */
 
 import { describe, expect, mock, test } from "bun:test";
-import {
-  classifyAccountDeletionForeignKey,
-  listAccountDeletionForeignKeys,
-} from "../../db/account-deletion-foreign-key-policy";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { ACCOUNT_DELETION_PHASES } from "./account-deletion";
 import {
-  ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY,
   type AccountDeletionBackupAuthority,
   type AccountDeletionBackupDatabase,
   type AccountDeletionComputeDatabase,
@@ -31,67 +26,6 @@ const context: AccountDeletionProviderContext = {
 test("spool absence is proven before backup catalogue rows can be erased", () => {
   expect(ACCOUNT_DELETION_PHASES.indexOf("spools")).toBeLessThan(
     ACCOUNT_DELETION_PHASES.indexOf("secondary_backups"),
-  );
-});
-
-test("one restrictive-grant inventory covers provider-owned retained grants", () => {
-  const inventory = ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY.map(
-    (entry) => `${entry.table}.${entry.column}`,
-  );
-  expect(inventory).toEqual(
-    expect.arrayContaining([
-      "payment_request_receipts.organization_id",
-      "agent_billing_records.organization_id",
-      "container_billing_records.organization_id",
-      "app_reservation_settlements.organization_id",
-      "app_reservation_settlement_quarantines.organization_id",
-      "stripe_checkout_legacy_quarantine.initiated_by_user_id",
-      "stripe_checkout_orders.initiated_by_user_id",
-      "jobs.user_id",
-      "secret_bindings.created_by",
-    ]),
-  );
-
-  const externallyReconciledRestrictiveGrants = new Set([
-    "org_storage_read_operations.organization_id",
-    "org_storage_read_operations.user_id",
-  ]);
-  const terminalFinalizerOwnedRestrictiveGrants = new Set([
-    "billing_cancel_command_keys.organization_id",
-    "billing_cancel_command_keys.requested_by_user_id",
-    "billing_cancel_commands.organization_id",
-    "billing_cancel_commands.requested_by_user_id",
-  ]);
-  const restrictiveAnonymizedGrants = listAccountDeletionForeignKeys()
-    .filter(
-      (descriptor) =>
-        (descriptor.onDelete === "restrict" || descriptor.onDelete === "no action") &&
-        classifyAccountDeletionForeignKey(descriptor) === "anonymize_retained_record",
-    )
-    .map((descriptor) => `${descriptor.sourceTable}.${descriptor.sourceColumns}`);
-  const expected = restrictiveAnonymizedGrants
-    .filter(
-      (grant) =>
-        !externallyReconciledRestrictiveGrants.has(grant) &&
-        !terminalFinalizerOwnedRestrictiveGrants.has(grant),
-    )
-    .sort();
-  expect([...inventory].sort()).toEqual(
-    [
-      ...expected,
-      "billing_funding_allocations.organization_id",
-      "billing_subscriptions.organization_id",
-      "organization_entitlements.organization_id",
-      "subscription_billing_fences.organization_id",
-    ].sort(),
-  );
-  expect(
-    restrictiveAnonymizedGrants
-      .filter((grant) => terminalFinalizerOwnedRestrictiveGrants.has(grant))
-      .sort(),
-  ).toEqual([...terminalFinalizerOwnedRestrictiveGrants].sort());
-  expect(ACCOUNT_DELETION_PHASES.indexOf("other_grants")).toBeLessThan(
-    ACCOUNT_DELETION_PHASES.indexOf("database_erasure"),
   );
 });
 

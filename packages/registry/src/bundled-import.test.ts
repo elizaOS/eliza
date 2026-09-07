@@ -103,3 +103,37 @@ describe("community registry executable boundary", () => {
     expect(generated).toBe(canonical);
   });
 });
+
+describe("first-party aggregate boundary", () => {
+  it("rejects malformed aggregates instead of caching an empty catalog", () => {
+    const root = makeTemporaryRoot();
+    const entryPath = path.join(root, "entry.ts");
+    const bundlePath = path.join(root, "bundle.js");
+    const generatedPath = path.join(root, "generated.json");
+    writeFileSync(
+      entryPath,
+      [
+        `import { loadRegistry } from ${JSON.stringify(path.join(packageRoot, "src/first-party/index.ts"))};`,
+        "console.log(JSON.stringify(loadRegistry().all));",
+      ].join("\n"),
+    );
+    execFileSync(
+      bunExecutable,
+      ["build", entryPath, "--target", "bun", "--outfile", bundlePath],
+      { stdio: "pipe" },
+    );
+    for (const raw of ["{}", '{"entries":null}', '{"entries":{}}', "null"]) {
+      writeFileSync(generatedPath, raw);
+      expect(() =>
+        execFileSync(bunExecutable, [bundlePath], {
+          encoding: "utf8",
+          stdio: "pipe",
+        }),
+      ).toThrow();
+    }
+    writeFileSync(generatedPath, '{"entries":[]}');
+    expect(
+      execFileSync(bunExecutable, [bundlePath], { encoding: "utf8" }).trim(),
+    ).toBe("[]");
+  });
+});

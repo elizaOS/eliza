@@ -1,6 +1,6 @@
 # @elizaos/cloud-infra
 
-Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifests, Helm values files, Terraform roots, Docker Compose, and shell scripts. This package has no TypeScript source and is not published to npm.
+Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifests, Helm values files, Terraform roots, Docker Compose, and shell scripts. This package has no production TypeScript library and is not published to npm.
 
 ## What it contains
 
@@ -42,7 +42,7 @@ Short version:
 
 ## Local development cluster
 
-Brings up a `kind` cluster with Postgres 17 (CloudNativePG), Redis (Bitnami), a redis-rest REST adapter, and an optional shared Eliza agent.
+Brings up a `kind` cluster with Postgres 17 (CloudNativePG), Redis (Bitnami), a redis-rest REST adapter, and an optional shared Eliza agent. Run the shell examples below from `packages/cloud/infra`.
 
 ```bash
 # 1. Copy and fill secrets
@@ -97,7 +97,7 @@ See `cloud/terraform/hetzner/ARCHITECTURE.md` for the two-tier (control plane / 
 
 ## Tests
 
-YAML structure smoke tests — validate Helm values files and K8s manifests without a running cluster or cloud credentials.
+Tests validate configuration boundaries and exercise local repair scripts without a running cluster or cloud credentials. Run from the repository root:
 
 ```bash
 bun run --cwd packages/cloud/infra test
@@ -114,3 +114,14 @@ bun run --cwd packages/cloud/infra test
   GitHub Environments, per-service Railway env vars (see each `railway.toml`
   header), and the control-plane daemon env in `/opt/eliza/cloud/.env.local`.
   The `.env.example` files here are for local dev only.
+
+### Local tenant database recovery drill
+
+With PostgreSQL 16 and pgBackRest installed, run `bun run --cwd packages/cloud/infra test:pitr` from the repository root. Set `PG_BIN` to the PostgreSQL 16 binary directory if it is not the default, and optionally set `PGBACKREST_BIN` to the backup executable.
+
+The drill creates private temporary clusters with Unix-socket-only access and an encrypted local repository. It takes a full backup, writes additional fixture rows, records a recovery point, deletes the fixtures, and restores a separate cluster to that point. It verifies the recovered post-backup rows and confirms the source remains deleted. Its report, repository metadata, and command/server logs remain in the printed directory; the temporary servers are stopped on completion or failure.
+
+The directory includes a generated key for fixture data only. Do not upload its configuration as evidence. Inspect the report and database logs instead. This drill proves local backup/WAL replay; remote repository durability, production data restoration, WAL delivery latency, and production RPO/RTO require separate live evidence. The production mechanism should follow the [pgBackRest archiving and recovery guide](https://pgbackrest.org/user-guide.html).
+
+
+Run `bun run --cwd packages/cloud/infra test:pitr:s3` to exercise the same recovery through a temporary authenticated S3 endpoint with certificate verification enabled. This also requires `rclone` and `openssl`. The endpoint binds only to loopback, uses generated fixture credentials and a private backing directory, and is stopped with the database clusters. The drill additionally requires rejection of incorrect S3 credentials and an untrusted certificate. This tests the S3 protocol locally; it does not replace a restore from the actual off-host backup bucket.

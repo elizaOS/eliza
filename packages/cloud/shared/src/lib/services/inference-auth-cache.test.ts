@@ -2,13 +2,86 @@
  * Pins the IAC entry shape guards against the real (mock-Redis) cache: positive
  * and rejection validators are mutually exclusive, so a hybrid entry carrying
  * both identity fields and a rejection decision is dropped as malformed instead
- * of resolving by field order into an authorization.
+ * of resolving by field order into an authorization. Primary policy and admission
+ * are controlled boundaries; the cache and its readers, writers and guards are real.
  */
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
+import type { OrganizationPolicyStamp, OrganizationQuotaPolicy } from "./organization-quota-policy";
+
+const ADMISSION: InferenceAdmissionSnapshot = {
+  authority: {
+    generation: "0",
+    source: "legacy",
+    sourceSubscriptionId: null,
+    sourceRevision: null,
+    projectionRevision: null,
+    catalogVersion: null,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+    effectiveUntil: null,
+  },
+  subscriptionFunded: false,
+  balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
+  rateLimits: {
+    completionsRpm: 60,
+    embeddingsRpm: 100,
+    standardRpm: 30,
+    strictRpm: 5,
+  },
+};
+
+const POLICY: OrganizationQuotaPolicy = {
+  authority: ADMISSION.authority,
+  tier: { status: "available", value: { tierName: "fixture", ...ADMISSION.rateLimits } },
+  subscriptionFunded: ADMISSION.subscriptionFunded,
+  tierSourceCreditTotal: "0",
+  overrides: { completionsRpm: null, embeddingsRpm: null, standardRpm: null, strictRpm: null },
+  limits: {
+    characters: { status: "unavailable", code: "outside_test_scope" },
+    nonEagerSandboxes: { status: "unavailable", code: "outside_test_scope" },
+    sandboxes: { status: "unavailable", code: "outside_test_scope" },
+    containers: { status: "unavailable", code: "outside_test_scope" },
+    apps: { status: "unavailable", code: "outside_test_scope" },
+    storage: { status: "unavailable", code: "outside_test_scope" },
+  },
+  observedAt: new Date(ADMISSION.balance.balanceAt).toISOString(),
+  balance: {
+    status: "available",
+    value: {
+      balanceUsd: ADMISSION.balance.balanceUsd,
+      revision: ADMISSION.balance.balanceRevision,
+    },
+  },
+};
+
+// Cache behavior is real; primary policy reads and admission transactions are
+// controlled boundaries. Migrated lifecycle tests own locking and publication.
+mock.module("./organization-quota-policy", () => ({
+  readOrganizationQuotaPolicy: async () => {
+    return POLICY;
+  },
+  requireOrganizationRateTier: (policy: OrganizationQuotaPolicy) => {
+    if (policy.tier.status !== "available") throw new Error("Fixture rate tier unavailable");
+    return policy.tier.value;
+  },
+}));
+mock.module("./organization-policy-admission", () => ({
+  withOrganizationPolicyAdmission: async <T>(
+    _orgId: string,
+    _authority: OrganizationPolicyStamp | undefined,
+    action: (policy: OrganizationQuotaPolicy) => Promise<T>,
+  ): Promise<T> => {
+    return action(POLICY);
+  },
+}));
+
+mock.module("./inference-admission-snapshot", () => ({
+  inferenceAdmissionSnapshotFromPolicy: (_policy: OrganizationQuotaPolicy) => ADMISSION,
+}));
 
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
@@ -27,16 +100,6 @@ const {
 
 const KEY_HASH = hashApiKey("eliza_validator_test_key");
 const STEWARD_USER_ID = "steward-validator-1";
-const ADMISSION = {
-  subscriptionFunded: false,
-  balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
-  rateLimits: {
-    completionsRpm: 60,
-    embeddingsRpm: 100,
-    standardRpm: 30,
-    strictRpm: 5,
-  },
-};
 
 beforeEach(async () => {
   await invalidateInferenceAuthContextByKeyHash(KEY_HASH);
@@ -84,6 +147,7 @@ describe("session decision validators", () => {
         orgId: "org-1",
         apiKeyId: null,
         stewardUserId: STEWARD_USER_ID,
+        admission: ADMISSION,
         decision: "rejected",
         status: 403,
       },
@@ -139,6 +203,8 @@ describe("api-key IAC validators", () => {
         orgId: "org-1",
         apiKeyId: "key-1",
         keyHash: KEY_HASH,
+        appScopeId: null,
+        admission: ADMISSION,
         decision: "rejected",
         status: 401,
       },

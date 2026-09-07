@@ -13,6 +13,7 @@ import { useAgentElement } from "../../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { confirmDesktopAction } from "../../../utils/desktop-dialogs";
 import { Alert } from "../../ui/alert";
 import { Badge, type BadgeProps } from "../../ui/badge";
 import { Button } from "../../ui/button";
@@ -255,13 +256,15 @@ export function LoginsTab() {
   const onDelete = useCallback(
     async (login: SavedLogin) => {
       if (login.source !== "in-house") return;
-      const ok = window.confirm(
-        t("logins.confirmDelete", {
+      const ok = await confirmDesktopAction({
+        title: t("common.delete"),
+        type: "warning",
+        message: t("logins.confirmDelete", {
           domain: login.domain ?? "—",
           username: login.username,
           defaultValue: "Delete saved login for {{domain}} ({{username}})?",
         }),
-      );
+      });
       if (!ok) return;
       setError(null);
       const colon = login.identifier.indexOf(":");

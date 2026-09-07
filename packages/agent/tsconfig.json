@@ -32,6 +32,7 @@
       "@elizaos/plugin-todos/plugin": [
         "../../plugins/plugin-todos/src/plugin.ts"
       ],
+      "@elizaos/plugin-todos/edge": ["../../plugins/plugin-todos/src/edge.ts"],
       "@elizaos/plugin-todos/service": [
         "../../plugins/plugin-todos/src/service.ts"
       ],
@@ -61,7 +62,13 @@
       ],
       "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet/diagnostic": [
+        "../../plugins/plugin-wallet/src/diagnostic.ts"
+      ],
       "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
+      "@elizaos/plugin-wifi/plugin": [
+        "../../plugins/plugin-wifi/src/plugin.ts"
+      ],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
@@ -73,9 +80,15 @@
       "@elizaos/plugin-contacts": [
         "../../plugins/plugin-contacts/src/index.ts"
       ],
+      "@elizaos/plugin-contacts/plugin": [
+        "../../plugins/plugin-contacts/src/plugin.ts"
+      ],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/browser-contracts": [
+        "../cloud/sdk/src/browser-contracts/index.ts"
+      ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -85,6 +98,9 @@
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-computeruse/mobile/ocr-provider": [
+        "../../plugins/plugin-computeruse/src/mobile/ocr-provider.ts"
       ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
@@ -124,6 +140,11 @@
       ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/src/index.ts"],
+      "@elizaos/plugin-vision": ["../../plugins/plugin-vision/src/index.ts"],
+      "@elizaos/plugin-notes/plugin": [
+        "../../plugins/plugin-notes/src/plugin.ts"
+      ],
       "@elizaos/plugin-meetings": [
         "../../plugins/plugin-meetings/src/index.ts"
       ],
@@ -171,11 +192,17 @@
       "@elizaos/plugin-capacitor-bridge/android/bridge": [
         "../../plugins/plugin-capacitor-bridge/src/android/bridge.ts"
       ],
+      "@elizaos/plugin-capacitor-bridge/android/dispatch": [
+        "../../plugins/plugin-capacitor-bridge/src/android/dispatch.ts"
+      ],
       "@elizaos/plugin-capacitor-bridge/ios/bridge": [
         "../../plugins/plugin-capacitor-bridge/src/ios/bridge.ts"
       ],
       "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
         "../../plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/shared/stdio-bridge.ts"
       ]
     }
   },

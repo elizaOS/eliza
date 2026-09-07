@@ -128,22 +128,25 @@ async function __hono_PATCH(
       );
     }
     // Pass values as-is: null clears a field, undefined = not provided (no change)
-    const result = await orgRateLimitOverridesRepository.upsert({
-      organization_id: orgId,
-      ...("completions_rpm" in parsed.data && {
-        completions_rpm: parsed.data.completions_rpm,
-      }),
-      ...("embeddings_rpm" in parsed.data && {
-        embeddings_rpm: parsed.data.embeddings_rpm,
-      }),
-      ...("standard_rpm" in parsed.data && {
-        standard_rpm: parsed.data.standard_rpm,
-      }),
-      ...("strict_rpm" in parsed.data && {
-        strict_rpm: parsed.data.strict_rpm,
-      }),
-      ...("note" in parsed.data && { note: parsed.data.note }),
-    });
+    const result = await orgRateLimitOverridesRepository.upsert(
+      {
+        organization_id: orgId,
+        ...("completions_rpm" in parsed.data && {
+          completions_rpm: parsed.data.completions_rpm,
+        }),
+        ...("embeddings_rpm" in parsed.data && {
+          embeddings_rpm: parsed.data.embeddings_rpm,
+        }),
+        ...("standard_rpm" in parsed.data && {
+          standard_rpm: parsed.data.standard_rpm,
+        }),
+        ...("strict_rpm" in parsed.data && {
+          strict_rpm: parsed.data.strict_rpm,
+        }),
+        ...("note" in parsed.data && { note: parsed.data.note }),
+      },
+      authResult.user.id,
+    );
 
     await invalidateOrgTierCache(orgId);
 
@@ -176,7 +179,10 @@ async function __hono_DELETE(
   if (invalid) return invalid;
 
   try {
-    await orgRateLimitOverridesRepository.deleteByOrganizationId(orgId);
+    await orgRateLimitOverridesRepository.deleteByOrganizationId(
+      orgId,
+      authResult.user.id,
+    );
     await invalidateOrgTierCache(orgId);
 
     logger.info("[Admin] Org rate limit override deleted", {

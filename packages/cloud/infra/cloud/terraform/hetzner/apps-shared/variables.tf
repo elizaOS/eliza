@@ -1,14 +1,16 @@
-# ── Shared apps-project credentials ──────────────────────────────────────────
-# The apps-shared module owns the resources that are SHARED across staging +
-# production app nodes: the private network + the tenant Postgres node.
-# Per-env app worker nodes live in apps-data-plane and consume this module's
-# outputs via a `terraform_remote_state` data source.
-#
-# The provider picks up the token from this variable OR the HCLOUD_TOKEN env
-# var. GitHub Actions wires the REPO-LEVEL secret HCLOUD_APPS_TOKEN as
-# HCLOUD_TOKEN.
+variable "environment" {
+  description = "The single environment owning this network and tenant database."
+  type        = string
+  validation {
+    condition     = contains(["development", "staging", "production"], var.environment)
+    error_message = "Select development, staging, or production; shared tenant database state is not an environment."
+  }
+}
+
+# Use a project token scoped to this environment's apps infrastructure.
+# Worker and database roots share that project's network within one tier only.
 variable "hcloud_token" {
-  description = "Hetzner Cloud API token for the shared apps Hetzner project. Leave null to pick up from HCLOUD_TOKEN env var (the GHA pattern, sourced from repo-level secret HCLOUD_APPS_TOKEN)."
+  description = "Hetzner token for this environment apps project; null uses HCLOUD_TOKEN."
   type        = string
   default     = null
   sensitive   = true
@@ -76,6 +78,31 @@ variable "operator_ingress_cidrs" {
 # R2 bucket). All of endpoint/bucket/access/secret/passphrase must be set
 # together; leaving them empty keeps the pipeline installed but INERT — the
 # tenant_db server precondition in main.tf rejects partial configuration.
+variable "pitr_repository" {
+  description = "Dedicated encrypted WAL/PITR repository, separate from logical-dump retention and Terraform state. Null leaves existing host configuration unchanged. Credentials and encryption key require independent recovery custody."
+  type = object({
+    endpoint   = string
+    bucket     = string
+    region     = string
+    access_key = string
+    secret_key = string
+    cipher_key = string
+  })
+  default   = null
+  sensitive = true
+  validation {
+    condition = var.pitr_repository == null ? true : (
+      can(regex("^[a-zA-Z0-9][a-zA-Z0-9.-]+[a-zA-Z0-9]$", var.pitr_repository.endpoint)) &&
+      can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.pitr_repository.bucket)) &&
+      !startswith(var.pitr_repository.bucket, "eliza-terraform-state") &&
+      can(regex("^[a-zA-Z0-9-]+$", var.pitr_repository.region)) &&
+      length(var.pitr_repository.cipher_key) >= 32 &&
+      alltrue([for value in [var.pitr_repository.access_key, var.pitr_repository.secret_key, var.pitr_repository.cipher_key] : length(trimspace(value)) > 0 && !can(regex("[\\r\\n]", value))])
+    )
+    error_message = "PITR requires a hostname-only TLS endpoint, dedicated bucket, region, nonempty single-line credentials and an encryption key of at least 32 characters."
+  }
+}
+
 variable "backup_s3_endpoint" {
   description = "S3-compatible endpoint URL for off-host tenant-DB backups. Empty disables the backup pipeline."
   type        = string
@@ -87,7 +114,7 @@ variable "backup_s3_bucket" {
   type        = string
   default     = ""
   validation {
-    condition     = var.backup_s3_bucket != "eliza-terraform-state"
+    condition     = !startswith(var.backup_s3_bucket, "eliza-terraform-state")
     error_message = "backup_s3_bucket must be a dedicated backup bucket, never the terraform state bucket"
   }
 }
