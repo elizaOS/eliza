@@ -53,7 +53,7 @@ describe("smoke view declaration parity (#15791)", () => {
           "/cloud",
           "CloudView",
           "gui",
-          { header: "fullscreen", capabilities: ["agent-surface"] },
+          { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
         ],
         ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
         [

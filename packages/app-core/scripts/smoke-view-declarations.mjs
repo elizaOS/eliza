@@ -39,7 +39,7 @@ export const smokeViewDeclarations = [
     "/cloud",
     "CloudView",
     "gui",
-    { header: "fullscreen", capabilities: ["agent-surface"] },
+    { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
   ],
   ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
   // The decomposed personal-assistant domain views are the real surfaces (the
