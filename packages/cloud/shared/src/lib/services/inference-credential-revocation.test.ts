@@ -7,12 +7,47 @@ import {
   InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   revokeInferenceApiKey,
+  revokeInferenceSessionsThrough,
   setInferenceSessionBindingActive,
 } from "./inference-credential-revocation";
 
 const ENABLED = { INFERENCE_STRONG_REVOCATION_ENABLED: "true" };
 
 describe("inference credential revocation client", () => {
+  test("login and logout wait for a delayed durable acknowledgement", async () => {
+    const committedPaths = new Set<string>();
+    const namespace = {
+      getByName: () => ({
+        fetch: (request: Request) =>
+          new Promise<Response>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              committedPaths.add(new URL(request.url).pathname);
+              resolve(Response.json({ committed: true }));
+            }, 2_000);
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer);
+                reject(request.signal.reason);
+              },
+              { once: true },
+            );
+          }),
+      }),
+    };
+    await runWithCloudBindingsAsync(
+      { ...ENABLED, INFERENCE_ADMISSION_GATES: namespace },
+      async () => {
+        await Promise.all([
+          setInferenceSessionBindingActive("org-1", "user-1", "steward-1", true),
+          revokeInferenceSessionsThrough("org-1", "user-1", 100),
+        ]);
+      },
+    );
+    expect(committedPaths.has("/session/set-binding-active")).toBe(true);
+    expect(committedPaths.has("/session/revoke-through")).toBe(true);
+  });
+
   test("fails closed when the Durable Object binding is absent", async () => {
     await expect(
       runWithCloudBindingsAsync(ENABLED, () =>
@@ -154,7 +189,29 @@ describe("inference credential revocation client", () => {
       message:
         "Inference revocation boundary is unavailable deadlineExceeded=true causeType=AbortError",
     });
-  });
+  }, 15_000);
+
+  test("request-time checks keep a short failure deadline", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: (request: Request) =>
+          new Promise<Response>((_resolve, reject) => {
+            request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+              once: true,
+            });
+          }),
+      }),
+    };
+    await expect(
+      runWithCloudBindingsAsync({ ...ENABLED, INFERENCE_ADMISSION_GATES: namespace }, () =>
+        assertInferenceCredentialActive("org-1", {
+          kind: "api_key",
+          credentialId: "key-1",
+          userId: "user-1",
+        }),
+      ),
+    ).rejects.toBeInstanceOf(InferenceCredentialRevocationUnavailableError);
+  }, 4_000);
 
   test("failure diagnostics reject arbitrary labels and do not invoke custom flag getters", async () => {
     const cause = new Error("private cause message");
