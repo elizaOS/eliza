@@ -1121,7 +1121,7 @@ describe("OpenAI native text plumbing", () => {
     ).resolves.toEqual({ type: "json" });
   });
 
-  it("keeps Cerebras JSON mode schema-free at the provider boundary", async () => {
+  it("preserves a Cerebras response schema alongside legacy JSON mode", async () => {
     vi.stubEnv("ELIZA_PROVIDER", "cerebras");
     vi.stubEnv("CEREBRAS_API_KEY", "test-cerebras-key");
     aiMocks.generateText.mockResolvedValue({
@@ -1142,10 +1142,10 @@ describe("OpenAI native text plumbing", () => {
     } as never);
 
     const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
-    expect((call.output as { name: string }).name).toBe("json");
+    expect((call.output as { name: string }).name).toBe("object");
     await expect(
       (call.output as { responseFormat: Promise<unknown> }).responseFormat
-    ).resolves.toEqual({ type: "json" });
+    ).resolves.toMatchObject({ type: "json", schema: { type: "object", required: ["answer"] } });
   });
 
   it("marks unconsumed streaming companion promises as handled", async () => {
