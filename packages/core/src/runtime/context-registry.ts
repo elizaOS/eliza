@@ -145,7 +145,9 @@ export class ContextRegistry {
 	 * into `removed` (present and dropped) and `missing` (not registered), then
 	 * commits the surviving map only after edge revalidation succeeds.
 	 *
-	 * Ids are normalized before lookup. If any surviving definition still
+	 * Ids are normalized and de-duplicated before lookup, so a repeated id lands
+	 * in exactly one partition rather than being reported as both removed and
+	 * missing. If any surviving definition still
 	 * references a removed context via `parent`/`parents`/`subcontexts`, this
 	 * throws `ContextRegistryError` naming the referencing id and the missing
 	 * target, and `#definitions` is left unchanged. Removing a context together
@@ -158,9 +160,14 @@ export class ContextRegistry {
 	} {
 		const removed: AgentContext[] = [];
 		const missing: AgentContext[] = [];
+		const seen = new Set<AgentContext>();
 		const next = new Map(this.#definitions);
 		for (const id of ids) {
 			const normalized = normalizeContextId(id);
+			if (seen.has(normalized)) {
+				continue;
+			}
+			seen.add(normalized);
 			if (next.delete(normalized)) {
 				removed.push(normalized);
 			} else {

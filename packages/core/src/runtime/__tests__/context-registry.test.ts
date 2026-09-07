@@ -181,6 +181,30 @@ describe("context registry", () => {
 		expect(registry.has("parent_ctx")).toBe(true);
 	});
 
+	it("de-duplicates repeated ids so each lands in exactly one partition", () => {
+		const registry = new ContextRegistry([{ id: "alpha" }, { id: "beta" }]);
+
+		// A repeated present id must not appear in both partitions: the first
+		// delete succeeds, and a naive second pass would report the same id as
+		// `missing`, breaking the removed/missing partition contract.
+		const present = registry.unregisterMany(["alpha", "alpha"]);
+		expect(present.removed).toEqual(["alpha"]);
+		expect(present.missing).toEqual([]);
+		expect(registry.has("alpha")).toBe(false);
+
+		// A repeated absent id is reported once, not once per occurrence.
+		const absent = registry.unregisterMany(["ghost", "ghost"]);
+		expect(absent.removed).toEqual([]);
+		expect(absent.missing).toEqual(["ghost"]);
+
+		// Normalization applies before de-duplication, so surface variants of the
+		// same id collapse to a single partition entry.
+		const variants = registry.unregisterMany(["beta", " Beta "]);
+		expect(variants.removed).toEqual(["beta"]);
+		expect(variants.missing).toEqual([]);
+		expect(registry.has("beta")).toBe(false);
+	});
+
 	it("reports only missing ids without mutating when nothing is removed", () => {
 		const registry = new ContextRegistry([{ id: "alpha" }]);
 		const result = registry.unregisterMany(["x", "y"]);
