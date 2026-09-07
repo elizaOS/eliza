@@ -1,7 +1,8 @@
 /**
- * Exercises complete planner tool dispatch when the declared context estimate
- * is smaller than the request and Stage 1 suggests unregistered action names.
- * Authorized children must remain callable instead of being hidden by a budget.
+ * Exercises the planner dispatch-budget fallback of the v5 message runtime
+ * (runV5MessageRuntimeStage1) when the complete tool surface exceeds the
+ * conservative estimate, Stage 1 names only candidates that resolve to no
+ * runtime action, and the umbrella-parent surface still misses the estimate.
  * Deterministic harness: a fabricated runtime whose useModel returns queued
  * responses and whose ACTION_PLANNER registration advertises a one-token
  * window; no live model, no database.
@@ -22,6 +23,10 @@ function useModelCalls(runtime: IAgentRuntime): unknown[][] {
 	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;
 }
 
+function warnCalls(runtime: IAgentRuntime): unknown[][] {
+	return (runtime.logger.warn as { mock: { calls: unknown[][] } }).mock.calls;
+}
+
 function makeRuntime(responses: unknown[]): IAgentRuntime {
 	const queue = [...responses];
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
@@ -39,7 +44,10 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 		providers: [],
 		getService: vi.fn(() => null),
 		getRoom: vi.fn(async () => null),
-		// An estimate is diagnostic, not permission to discard authorized tools.
+		// A one-token planner window makes every request miss the utf8
+		// upper-bound estimate, which is the live shape once tool schemas alone
+		// exceed the window: the estimator cannot clear any surface and the
+		// fallback chain must still pick the smallest complete one.
 		getModelRegistrations: vi.fn(() => [
 			{
 				modelType: ModelType.ACTION_PLANNER,
@@ -127,18 +135,18 @@ function parameter(name: string, description: string) {
 	};
 }
 
-describe("complete planner dispatch above the estimated window", () => {
-	it("executes an admitted child despite unknown candidates and a smaller declared window", async () => {
+describe("planner dispatch-budget umbrella fallback", () => {
+	it("dispatches the umbrella parents when unknown candidates and the estimate leave no fitting surface", async () => {
 		const runtime = makeRuntime([
 			// Live shape: Stage 1 invents child names that no plugin registers.
 			stage1Response(["CALENDAR_DELETE_EVENT", "CALENDAR_FIND_EVENT"]),
 			{
-				thought: "Remove the event through the calendar deletion tool.",
+				thought: "Remove the event through the calendar dispatcher.",
 				toolCalls: [
 					{
 						id: "calendar-1",
-						name: "CALENDAR_DELETE",
-						args: { title: "Gym session" },
+						name: "CALENDAR",
+						args: { action: "delete", title: "Gym session" },
 					},
 				],
 			},
@@ -164,7 +172,7 @@ describe("complete planner dispatch above the estimated window", () => {
 				subActions: ["CALENDAR_DELETE"],
 				examples: [],
 				validate: async () => true,
-				handler: untouchedHandler,
+				handler: calendarHandler,
 			},
 			{
 				name: "CALENDAR_DELETE",
@@ -172,7 +180,7 @@ describe("complete planner dispatch above the estimated window", () => {
 				parameters: [parameter("title", "Event title")],
 				examples: [],
 				validate: async () => true,
-				handler: calendarHandler,
+				handler: untouchedHandler,
 			},
 			{
 				name: "NOTES",
@@ -215,13 +223,42 @@ describe("complete planner dispatch above the estimated window", () => {
 		};
 		const plannerToolNames = plannerParams.tools?.map(({ name }) => name) ?? [];
 		expect(plannerToolNames).toEqual(
-			expect.arrayContaining([
-				"CALENDAR",
-				"CALENDAR_DELETE",
-				"NOTES",
-				"NOTES_CREATE",
-			]),
+			expect.arrayContaining(["CALENDAR", "NOTES"]),
 		);
+		expect(plannerToolNames).not.toContain("CALENDAR_DELETE");
+		expect(plannerToolNames).not.toContain("NOTES_CREATE");
+
+		const warnings = warnCalls(runtime);
+		const warningDetail = (
+			message: string,
+		): Record<string, number | string> => {
+			const call = warnings.find(([, text]) => text === message);
+			if (!call) {
+				throw new Error(`expected warning was not logged: ${message}`);
+			}
+			return call[0] as Record<string, number | string>;
+		};
+		const initialOverflow = warningDetail(
+			"[SERVICE:MESSAGE] Initial planner input exceeds the conservative dispatch budget",
+		);
+		const retainedDetail = warningDetail(
+			"[SERVICE:MESSAGE] Planner retained complete umbrella capability above the conservative estimate as the smallest complete surface",
+		);
+		const initialToolCount = initialOverflow.toolCount as number;
+		expect(retainedDetail.decision).toBe("smaller-than-complete-surface");
+		expect(retainedDetail.parentToolCount as number).toBeLessThan(
+			initialToolCount,
+		);
+		expect(retainedDetail.estimatedInputTokens as number).toBeGreaterThan(
+			retainedDetail.dispatchThresholdTokens as number,
+		);
+		expect(
+			warnings.some(
+				([, message]) =>
+					message ===
+					"[SERVICE:MESSAGE] Complete umbrella capability still exceeds the planner dispatch budget",
+			),
+		).toBe(false);
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe("Gym session removed.");
 		}
