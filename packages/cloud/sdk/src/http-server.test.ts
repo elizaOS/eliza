@@ -4,6 +4,7 @@
  */
 import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AppDelegationManagementClient } from "./app-delegation.js";
 import { ElizaCloudClient } from "./client.js";
 import { CloudApiClient, ElizaCloudHttpClient } from "./http.js";
 
@@ -14,6 +15,13 @@ const server = createServer((req, res) => {
     if (contentType) res.setHeader("content-type", contentType);
     res.end(body);
   };
+  const delegationBodyless = path.match(
+    /^\/apps\/bodyless-(204|205)\/delegation-clients(?:\/.*)?$/,
+  );
+  if (delegationBodyless) {
+    res.statusCode = Number(delegationBodyless[1]);
+    return res.end();
+  }
   if (path === "/api/v1/user") return send("<h1>Maintenance</h1>", "text/html");
   if (path === "/missing-type") return send('{"id":"real"}');
   if (path === "/wrong-type") return send('{"id":"real"}', "text/plain");
@@ -118,3 +126,33 @@ describe("real HTTP parsed response contracts", () => {
     expect(await response.text()).toBe("complete server text");
   });
 });
+
+for (const status of [204, 205]) {
+  describe(`delegation management requires data for HTTP ${status}`, () => {
+    for (const operation of ["list", "register", "rotate", "revoke"] as const) {
+      it(operation, async () => {
+        const client = new AppDelegationManagementClient(
+          new CloudApiClient(baseUrl),
+          `bodyless-${status}`,
+        );
+        const result =
+          operation === "list"
+            ? client.list()
+            : operation === "register"
+              ? client.register({
+                  billingEnvironment: "test",
+                  billingReturnUrl: null,
+                  redirectUris: ["https://app.example/callback"],
+                  allowedScopes: ["identity"],
+                })
+              : operation === "rotate"
+                ? client.rotate("client-test")
+                : client.revoke("client-test");
+        await expect(result).rejects.toMatchObject({
+          name: "CloudApiError",
+          errorBody: { code: "empty_response_body" },
+        });
+      });
+    }
+  });
+}

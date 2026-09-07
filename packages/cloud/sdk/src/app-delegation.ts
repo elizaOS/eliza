@@ -179,24 +179,28 @@ export class AppDelegationManagementClient {
     this.path = `/apps/${encodeURIComponent(appId)}/delegation-clients`;
   }
   list() {
-    return this.api.get<{ success: true; data: AppDelegationRegistration[] }>(
-      this.path,
-    );
+    return this.api.requestData<{
+      success: true;
+      data: AppDelegationRegistration[];
+    }>("GET", this.path);
   }
   register(input: RegisterAppDelegationClientRequest) {
-    return this.api.post<{ success: true; data: AppDelegationClientSecret }>(
-      this.path,
-      input,
-    );
+    return this.api.requestData<{
+      success: true;
+      data: AppDelegationClientSecret;
+    }>("POST", this.path, { json: input });
   }
   rotate(clientId: string) {
-    return this.api.post<{ success: true; data: AppDelegationClientSecret }>(
-      `${this.path}/${encodeURIComponent(clientId)}/rotate`,
-      {},
-    );
+    return this.api.requestData<{
+      success: true;
+      data: AppDelegationClientSecret;
+    }>("POST", `${this.path}/${encodeURIComponent(clientId)}/rotate`, {
+      json: {},
+    });
   }
   revoke(clientId: string) {
-    return this.api.delete<{ success: true }>(
+    return this.api.requestData<{ success: true }>(
+      "DELETE",
       `${this.path}/${encodeURIComponent(clientId)}`,
     );
   }

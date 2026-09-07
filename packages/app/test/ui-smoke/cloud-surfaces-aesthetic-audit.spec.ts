@@ -1082,7 +1082,9 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // it is explicitly a stability artifact, not an interaction claim.
         const hoverTarget = billingEvidenceTarget
           ? billingEvidenceTarget.locator("li").first()
-          : page.locator("button:visible, a[role='button']:visible").first();
+          : auditCase.slug === "cloud-api-keys"
+            ? page.getByRole("button", { name: "Generate key", exact: true })
+            : page.locator("button:visible, a[role='button']:visible").first();
         if (await hoverTarget.isVisible().catch(() => false)) {
           const hovered = await hoverTarget
             .hover({ timeout: 2000 })
