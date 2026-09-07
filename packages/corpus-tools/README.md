@@ -53,6 +53,29 @@ positive leak control stops without publishing `soak.json`. Fast tests exercise
 only the explicitly ineligible contract seam and cannot create production
 evidence.
 
+The credentialed live producer at
+`packages/scripts/produce-content-context-live-trajectories.mjs` requires
+`OPENAI_API_KEY`, distinct `--model` and `--judge-model` values, and explicit
+per-million-token prices for both models:
+
+| Token category | Controller flag | Judge flag |
+| --- | --- | --- |
+| Ordinary input | `--input-usd-per-million` | `--judge-input-usd-per-million` |
+| Cached input | `--cached-input-usd-per-million` | `--judge-cached-input-usd-per-million` |
+| Cache writes | `--cache-write-input-usd-per-million` | `--judge-cache-write-input-usd-per-million` |
+| Output | `--output-usd-per-million` | `--judge-output-usd-per-million` |
+
+All prices must be positive and match the selected models' standard service
+tier. The producer explicitly requests that tier and rejects responses served
+through an unpriced tier. It validates complete provider usage and charges each
+model separately, including cache reads and writes; missing usage cannot become
+a zero-cost result. Complete controller and judge request/response bodies,
+provider usage, and the configured prices remain in the evidence for inspection;
+authorization headers are never part of that record. Use current [OpenAI pricing](https://developers.openai.com/api/docs/pricing)
+and [cache accounting](https://developers.openai.com/api/docs/guides/prompt-caching)
+when configuring the run. The matrix requires all five repetitions across all
+six families; configuration and partial runs do not establish live acceptance.
+
 ## X archive collector
 
 `collectXArchive` (`src/collectors/x-archive.ts`) parses the official X data

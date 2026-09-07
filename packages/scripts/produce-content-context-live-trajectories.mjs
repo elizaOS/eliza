@@ -61,6 +61,30 @@ export function resolveLiveTrajectoryConfig(options, env = process.env) {
       options["output-usd-per-million"] ??
         env.OPENAI_LIVE_OUTPUT_USD_PER_MILLION,
     ),
+    cachedInputUsdPerMillion: Number(
+      options["cached-input-usd-per-million"] ??
+        env.OPENAI_LIVE_CACHED_INPUT_USD_PER_MILLION,
+    ),
+    cacheWriteInputUsdPerMillion: Number(
+      options["cache-write-input-usd-per-million"] ??
+        env.OPENAI_LIVE_CACHE_WRITE_INPUT_USD_PER_MILLION,
+    ),
+    judgeInputUsdPerMillion: Number(
+      options["judge-input-usd-per-million"] ??
+        env.OPENAI_LIVE_JUDGE_INPUT_USD_PER_MILLION,
+    ),
+    judgeOutputUsdPerMillion: Number(
+      options["judge-output-usd-per-million"] ??
+        env.OPENAI_LIVE_JUDGE_OUTPUT_USD_PER_MILLION,
+    ),
+    judgeCachedInputUsdPerMillion: Number(
+      options["judge-cached-input-usd-per-million"] ??
+        env.OPENAI_LIVE_JUDGE_CACHED_INPUT_USD_PER_MILLION,
+    ),
+    judgeCacheWriteInputUsdPerMillion: Number(
+      options["judge-cache-write-input-usd-per-million"] ??
+        env.OPENAI_LIVE_JUDGE_CACHE_WRITE_INPUT_USD_PER_MILLION,
+    ),
   };
   if (!/^[0-9a-f]{40}$/u.test(config.commit))
     throw new Error("--commit must be an exact SHA");
@@ -70,6 +94,15 @@ export function resolveLiveTrajectoryConfig(options, env = process.env) {
   for (const [name, value] of [
     ["input USD rate", config.inputUsdPerMillion],
     ["output USD rate", config.outputUsdPerMillion],
+    ["cached input USD rate", config.cachedInputUsdPerMillion],
+    ["cache write input USD rate", config.cacheWriteInputUsdPerMillion],
+    ["judge input USD rate", config.judgeInputUsdPerMillion],
+    ["judge output USD rate", config.judgeOutputUsdPerMillion],
+    ["judge cached input USD rate", config.judgeCachedInputUsdPerMillion],
+    [
+      "judge cache write input USD rate",
+      config.judgeCacheWriteInputUsdPerMillion,
+    ],
   ]) {
     if (!Number.isFinite(value) || value <= 0)
       throw new Error(`${name} must be a positive number`);
@@ -105,14 +138,16 @@ export function buildLiveControllerPrompt(family) {
   ].join(" ");
 }
 
-async function openAiResponse(config, body) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+/** Retains the exact JSON exchange while keeping transport credentials out of evidence. */
+export async function openAiResponse(config, body, transport = fetch) {
+  const serialized = JSON.stringify({ ...body, service_tier: "default" });
+  const response = await transport("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: serialized,
   });
   const payload = await response.json();
   if (!response.ok) {
@@ -123,14 +158,108 @@ async function openAiResponse(config, body) {
   if (payload.status !== "completed") {
     throw new Error(`OpenAI response did not complete: ${payload.status}`);
   }
-  return payload;
+  if (payload.service_tier !== "default") {
+    throw new Error(
+      `OpenAI response used an unpriced service tier: ${payload.service_tier}`,
+    );
+  }
+  return { request: JSON.parse(serialized), response: payload };
 }
 
-function usageOf(response) {
+function tokenCount(value, field) {
+  if (!Number.isSafeInteger(value) || value < 0)
+    throw new Error(`OpenAI usage ${field} must be a nonnegative safe integer`);
+  return value;
+}
+
+/** Requires complete, consistent provider usage before assigning any cost. */
+export function usageOf(response) {
+  const usage = response?.usage;
+  const inputTokens = tokenCount(usage?.input_tokens, "input_tokens");
+  const outputTokens = tokenCount(usage?.output_tokens, "output_tokens");
+  const cachedInputTokens = tokenCount(
+    usage?.input_tokens_details?.cached_tokens,
+    "cached_tokens",
+  );
+  const cacheWriteInputTokens = tokenCount(
+    usage?.input_tokens_details?.cache_write_tokens,
+    "cache_write_tokens",
+  );
+  if (cachedInputTokens + cacheWriteInputTokens > inputTokens)
+    throw new Error(
+      "OpenAI cached and cache-write usage exceeds total input tokens",
+    );
+  if (
+    tokenCount(usage?.total_tokens, "total_tokens") !==
+    inputTokens + outputTokens
+  )
+    throw new Error(
+      "OpenAI total usage does not match input and output tokens",
+    );
   return {
-    inputTokens: Number(response.usage?.input_tokens ?? 0),
-    outputTokens: Number(response.usage?.output_tokens ?? 0),
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    cacheWriteInputTokens,
   };
+}
+
+/** Accumulates model calls without losing cache categories or integer precision. */
+export function addUsage(left, right) {
+  return {
+    inputTokens: tokenCount(
+      left.inputTokens + right.inputTokens,
+      "inputTokens",
+    ),
+    outputTokens: tokenCount(
+      left.outputTokens + right.outputTokens,
+      "outputTokens",
+    ),
+    cachedInputTokens: tokenCount(
+      left.cachedInputTokens + right.cachedInputTokens,
+      "cachedInputTokens",
+    ),
+    cacheWriteInputTokens: tokenCount(
+      left.cacheWriteInputTokens + right.cacheWriteInputTokens,
+      "cacheWriteInputTokens",
+    ),
+  };
+}
+
+function modelPricing(config, judge) {
+  return {
+    inputUsdPerMillion: judge
+      ? config.judgeInputUsdPerMillion
+      : config.inputUsdPerMillion,
+    cachedInputUsdPerMillion: judge
+      ? config.judgeCachedInputUsdPerMillion
+      : config.cachedInputUsdPerMillion,
+    cacheWriteInputUsdPerMillion: judge
+      ? config.judgeCacheWriteInputUsdPerMillion
+      : config.cacheWriteInputUsdPerMillion,
+    outputUsdPerMillion: judge
+      ? config.judgeOutputUsdPerMillion
+      : config.outputUsdPerMillion,
+  };
+}
+
+/** Prices controller and judge tokens separately at their configured standard-tier rates. */
+export function liveUsageCostUsd(config, controller, judge) {
+  const cost = (usage, pricing) =>
+    ((usage.inputTokens -
+      usage.cachedInputTokens -
+      usage.cacheWriteInputTokens) *
+      pricing.inputUsdPerMillion +
+      usage.cachedInputTokens * pricing.cachedInputUsdPerMillion +
+      usage.cacheWriteInputTokens * pricing.cacheWriteInputUsdPerMillion +
+      usage.outputTokens * pricing.outputUsdPerMillion) /
+    1_000_000;
+  const total =
+    cost(controller, modelPricing(config, false)) +
+    cost(judge, modelPricing(config, true));
+  if (!Number.isFinite(total) || total < 0)
+    throw new Error("Live trajectory cost is not a finite nonnegative amount");
+  return total;
 }
 
 function responseText(response) {
@@ -171,7 +300,7 @@ async function runController(config, target, object) {
   const modelCalls = [];
   const toolCalls = [];
   let expectedOffset = 0;
-  let response = await openAiResponse(config, {
+  let exchange = await openAiResponse(config, {
     model: config.model,
     instructions:
       "Use only the supplied content tool. Never guess an offset or fabricate content.",
@@ -182,6 +311,7 @@ async function runController(config, target, object) {
     store: true,
     truncation: "disabled",
   });
+  let response = exchange.response;
   let usage = usageOf(response);
   let foundExpected = false;
   for (;;) {
@@ -190,6 +320,9 @@ async function runController(config, target, object) {
       model: response.model,
       status: response.status,
       usage: response.usage,
+      request: exchange.request,
+      response,
+      pricing: modelPricing(config, false),
     });
     const calls = response.output.filter(
       ({ type }) => type === "function_call",
@@ -234,7 +367,7 @@ async function runController(config, target, object) {
       nextOffset: page.view.slice.nextOffset ?? null,
       sliceSha256: page.view.slice.sliceSha256,
     });
-    response = await openAiResponse(config, {
+    exchange = await openAiResponse(config, {
       model: config.model,
       previous_response_id: response.id,
       input: [
@@ -254,16 +387,14 @@ async function runController(config, target, object) {
       store: true,
       truncation: "disabled",
     });
+    response = exchange.response;
     const nextUsage = usageOf(response);
-    usage = {
-      inputTokens: usage.inputTokens + nextUsage.inputTokens,
-      outputTokens: usage.outputTokens + nextUsage.outputTokens,
-    };
+    usage = addUsage(usage, nextUsage);
   }
 }
 
 async function runJudge(config, expected, controller) {
-  const response = await openAiResponse(config, {
+  const { request, response } = await openAiResponse(config, {
     model: config.judgeModel,
     instructions:
       "Independently grade exact equality. Return only the required JSON object.",
@@ -292,7 +423,7 @@ async function runJudge(config, expected, controller) {
       },
     },
   });
-  return { response, judgment: JSON.parse(responseText(response)) };
+  return { request, response, judgment: JSON.parse(responseText(response)) };
 }
 
 async function runCoordinate(config, manifest, family, repetition) {
@@ -349,6 +480,10 @@ async function runCoordinate(config, manifest, family, repetition) {
       judgeResponse: {
         id: judge.response.id,
         model: judge.response.model,
+        usage: judge.response.usage,
+        request: judge.request,
+        response: judge.response,
+        pricing: modelPricing(config, true),
         ...judge.judgment,
       },
       expectedAnswerSha256: createHash("sha256").update(expected).digest("hex"),
@@ -383,10 +518,7 @@ async function runCoordinate(config, manifest, family, repetition) {
       latencyMs: performance.now() - startedAt,
       inputTokens,
       outputTokens,
-      costUsd:
-        (inputTokens * config.inputUsdPerMillion +
-          outputTokens * config.outputUsdPerMillion) /
-        1_000_000,
+      costUsd: liveUsageCostUsd(config, controller.usage, judgeUsage),
       controllerDecision: "qualified",
       observerEvidence,
       observerEvidenceSha256:
@@ -465,6 +597,7 @@ async function main() {
     );
     await fs.rename(pending, config.output);
   } catch (error) {
+    // error-policy:J1 publication failure removes the unpublished artifact and rejects the command.
     await fs.rm(pending, { force: true });
     throw error;
   }
@@ -472,6 +605,7 @@ async function main() {
 
 if (import.meta.main)
   main().catch((error) => {
+    // error-policy:J1 the CLI reports producer failures and exits unsuccessfully.
     console.error(error instanceof Error ? error.stack : String(error));
     process.exitCode = 1;
   });
