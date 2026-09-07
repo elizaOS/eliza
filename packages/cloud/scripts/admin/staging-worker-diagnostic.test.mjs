@@ -160,6 +160,33 @@ test("Node frames carrying control-character and alternate-quote escapes decode 
   assert.equal(JSON.stringify(result).includes(name), false);
 });
 
+test("Node frames whose diagnostics render with backtick delimiters still decode their health facts", () => {
+  const name = "agent-55555555-5555-4555-8555-555555555555";
+  const digest = createHash("sha256").update(name).digest("hex");
+  // A diagnostics line containing both a single and a double quote (but no
+  // backtick and no `${`) forces Node's util.inspect to select backtick
+  // delimiters for that continuation line. The frame must still decode instead
+  // of being discarded as malformed along with its preceding inspect facts.
+  const frame = nodeFrame(
+    name,
+    "--- inspect ---\nstate=exited health=unhealthy exit=1 error=private-secret\n--- authkey marker ---\nauthkey-marker=absent\n--- logs ---\noption 'mode' received \"invalid\"; Cannot find module private-module.invalid\n",
+  );
+  // Prove the rendered frame really uses the backtick form this fix targets.
+  assert.match(frame, /`[^`]*'mode'[^`]*"invalid"[^`]*`/);
+  const result = summarizeHealthFrames([frame], digest);
+  assert.equal(result.all.frames, 1);
+  assert.equal(result.all.malformedFrames, 0);
+  assert.equal(result.target.frames, 1);
+  const observation = result.target.observations[0];
+  assert.equal(observation.containerState, "exited");
+  assert.equal(observation.exitCode, 1);
+  assert.equal(observation.inspectErrorPresent, true);
+  assert.equal(observation.authKeyMarker, "absent");
+  assert.equal(observation.bootSignals.module_resolution, true);
+  assert.equal(JSON.stringify(result).includes("private"), false);
+  assert.equal(JSON.stringify(result).includes(name), false);
+});
+
 test("malformed, interleaved, and incomplete Node frames never certify a target", () => {
   const name = "agent-33333333-3333-4333-8333-333333333333";
   const digest = createHash("sha256").update(name).digest("hex");

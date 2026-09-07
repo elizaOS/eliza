@@ -54,10 +54,15 @@ function healthSummary() {
 const BUN_HEALTH_HEADER = "[docker-sandbox] Health timeout diagnostics {";
 const NODE_HEALTH_HEADER =
   "[docker-sandbox] Health timeout diagnostics [Object: null prototype] {";
-// A complete single- or double-quoted console string literal on one rendered
-// line. `\\.` consumes an escaped character without crossing the closing quote,
-// so an embedded quote or comma inside the value never terminates the field.
-const NODE_QUOTED = String.raw`'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"`;
+// A complete single-, double-, or backtick-quoted console string literal on one
+// rendered line. `\\.` consumes an escaped character without crossing the closing
+// quote, so an embedded quote or comma inside the value never terminates the
+// field. Node's util.inspect selects backticks when a value contains both a
+// single and a double quote but no backtick (and no `${`), so a diagnostics line
+// such as `option 'mode' received "invalid"` renders backtick-delimited; without
+// this alternative that whole health frame would be rejected as malformed.
+const NODE_BACKTICK = "`";
+const NODE_QUOTED = String.raw`'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|${NODE_BACKTICK}(?:[^${NODE_BACKTICK}\\]|\\.)*${NODE_BACKTICK}`;
 const NODE_CONTAINER_LINE = new RegExp(
   `^ {2}containerName: (${NODE_QUOTED}),$`,
 );
