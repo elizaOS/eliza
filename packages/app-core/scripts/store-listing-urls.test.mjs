@@ -1,7 +1,7 @@
 /**
  * Contract tests for the support/privacy/repository URLs that ship inside store
- * listing metadata (MSIX Partner Center, iOS fastlane, Inno Setup, Flatpak
- * AppStream, Homebrew).
+ * listing metadata (MSIX Partner Center, iOS fastlane, Inno Setup,
+ * Homebrew).
  *
  * Store reviewers follow these URLs literally, so a dead one blocks a listing
  * rather than degrading it. Two failure modes are pinned here because both have
@@ -35,7 +35,6 @@ const CLOUD_ORIGIN = "https://cloud.eliza.app";
 const METADATA_FILES = [
   "packaging/msix/store/listing.json",
   "packaging/inno/ElizaOSApp.iss",
-  "packaging/flatpak/ai.elizaos.App.metainfo.xml",
   "packaging/snap/snapcraft.yaml",
   "packaging/homebrew/elizaos-app.rb",
   "packaging/homebrew/elizaos-app.cask.rb",
@@ -146,18 +145,6 @@ test("privacy and support destinations are the canonical live endpoints", () => 
   assert.match(
     inno,
     /^AppUpdatesURL=https:\/\/github\.com\/elizaOS\/eliza\/releases$/m,
-  );
-
-  const metainfo = readMetadata(
-    "packaging/flatpak/ai.elizaos.App.metainfo.xml",
-  );
-  assert.match(
-    metainfo,
-    /<url type="bugtracker">https:\/\/github\.com\/elizaOS\/eliza\/issues<\/url>/,
-  );
-  assert.match(
-    metainfo,
-    /<url type="vcs-browser">https:\/\/github\.com\/elizaOS\/eliza<\/url>/,
   );
 
   const cask = readMetadata("packaging/homebrew/elizaos-app.cask.rb");

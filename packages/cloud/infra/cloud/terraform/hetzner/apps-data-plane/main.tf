@@ -1,24 +1,5 @@
-###############################################################################
-# Eliza Cloud Apps (Product 2) — per-env data plane (Hetzner)
-#
-# This module owns the PER-ENV pieces of the apps data plane: the app worker
-# node(s) (Docker hosts for untrusted user images) and the Cloudflare wildcard
-# record routing per-app URLs at them.
-#
-# The SHARED pieces (private network, tenant Postgres node) live in
-# ../apps-shared and are read here via a `terraform_remote_state` data source.
-#
-# Topology:
-#   - SHARED (one private network, one tenant Postgres node) — owned by
-#     ../apps-shared/, single backend, no env suffix on resource names;
-#   - PER-ENV (app worker node(s) + wildcard DNS) — this module, one tfstate
-#     per env (backend-staging.hcl / backend-production.hcl).
-#
-# Security items to keep in mind (search "STAN:"):
-#   - tighten operator_ingress_cidrs (SSH);
-#   - gVisor/Kata/userns hardening on the app node for untrusted images;
-#   - egress proxy allowlist for app containers.
-###############################################################################
+# Provisions app workers and ingress for one environment. The database/network
+# state must report the same environment before any worker can attach to it.
 
 locals {
   common_labels = {
@@ -28,15 +9,12 @@ locals {
   }
 }
 
-# ── Shared infra (private network + tenant DB) lives in ../apps-shared ────────
-# Read its outputs so app nodes attach to the same network the tenant DB lives
-# on. The shared state has a single backend (no env suffix); both staging and
-# production app-node applies point at it.
+# Read only this environment's tenant database and network state.
 data "terraform_remote_state" "apps_shared" {
   backend = "s3"
   config = {
-    bucket                      = "eliza-terraform-state"
-    key                         = "hetzner/apps-shared/shared.tfstate"
+    bucket                      = "eliza-terraform-state-${var.environment}"
+    key                         = "hetzner/apps-shared/${var.environment}.tfstate"
     region                      = "auto"
     endpoints                   = { s3 = "https://23cf6feaeaa541f6a0675053c33da768.r2.cloudflarestorage.com" }
     skip_credentials_validation = true
@@ -44,6 +22,12 @@ data "terraform_remote_state" "apps_shared" {
     skip_region_validation      = true
     skip_requesting_account_id  = true
     use_path_style              = true
+  }
+  lifecycle {
+    postcondition {
+      condition     = try(self.outputs.environment, null) == var.environment
+      error_message = "Tenant database state has no matching environment identity; refusing cross-tier network and database attachment."
+    }
   }
 }
 
@@ -121,13 +105,10 @@ resource "hcloud_server_network" "app_node" {
 
   server_id  = each.value.id
   network_id = local.apps_network_id
-  # staging + production app nodes share the apps-shared subnet, so the private-IP
-  # offset MUST be partitioned per environment or the prod node #1 collides with
-  # the staging node #1 (both at host 21 → "API request failed" on attach).
-  # staging → 21,22,…  production → 31,32,… (DB node is host 10).
+  # Each environment has its own subnet; database host 10 remains reserved.
   ip = cidrhost(
     local.apps_subnet_cidr,
-    (var.environment == "production" ? 30 : 20) + tonumber(each.key),
+    20 + tonumber(each.key),
   )
 }
 

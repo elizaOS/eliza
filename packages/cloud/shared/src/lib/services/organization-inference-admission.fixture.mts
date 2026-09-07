@@ -124,7 +124,10 @@ const reserveFlatUsageCredits = mock(async (context: { requestId?: string | null
   reconcile: reconcileReservation,
 }));
 let affiliateDebitError: Error | null = null;
+let settlementFenceError: Error | null = null;
+const settlementEvents: string[] = [];
 const collectAffiliateInferenceFallback = mock(async (params: { actualCost: number }) => {
+  settlementEvents.push("affiliate_db");
   if (affiliateDebitError) throw affiliateDebitError;
   return {
     reservedAmount: params.actualCost,
@@ -135,12 +138,15 @@ const collectAffiliateInferenceFallback = mock(async (params: { actualCost: numb
     adjustmentType: "none" as const,
   };
 });
-const debitInferenceCost = mock(async (_context: unknown, actualCostUsd: number) => ({
-  status: "collected" as const,
-  collectedAmountUsd: actualCostUsd,
-  balanceUsd: 50 - actualCostUsd,
-  transactionId: "inference-debit",
-}));
+const debitInferenceCost = mock(async (_context: unknown, actualCostUsd: number) => {
+  settlementEvents.push("direct_db");
+  return {
+    status: "collected" as const,
+    collectedAmountUsd: actualCostUsd,
+    balanceUsd: 50 - actualCostUsd,
+    transactionId: "inference-debit",
+  };
+});
 const writePendingInferenceCharge = mock(async () => true);
 const optimisticSettle = mock(async () => null);
 const admitInferenceChargeViaLedger = mock(async () => ({ admitted: true }));
@@ -150,6 +156,12 @@ let subscriptionFunded = false;
 let leaseFailure: Error | undefined;
 const isSubscriptionFundedOrganization = mock(async () => subscriptionFunded);
 const isOptimisticEligible = mock(() => eligible);
+const inferenceBalanceFence = {
+  lowerCommittedBalance: mock(async () => undefined),
+  publishAuthoritativeBalance: mock(async () => undefined),
+};
+const createInferenceAdmissionBalanceFence = mock(() => inferenceBalanceFence);
+
 const acquireInferenceAdmissionLease = mock(
   async (params: { organizationId: string; requestId: string; estimatedCostUsd: number }) => {
     if (leaseFailure) throw leaseFailure;
@@ -163,7 +175,20 @@ const acquireInferenceAdmissionLease = mock(
   },
 );
 const settleInferenceAdmissionLease = mock(async () => undefined);
-const markInferenceAdmissionLeaseDispatched = mock(async () => undefined);
+const markInferenceAdmissionLeaseDispatched = mock(
+  async (lease: { providerDispatched: boolean }) => {
+    if (lease.providerDispatched) return;
+    settlementEvents.push("dispatch");
+    lease.providerDispatched = true;
+  },
+);
+const fenceInferenceAdmissionLeaseForSettlement = mock(
+  async (lease: { estimatedCostUsd: number }, knownActualCostUsd: number) => {
+    settlementEvents.push("settlement_fence");
+    if (settlementFenceError) throw settlementFenceError;
+    lease.estimatedCostUsd = Math.max(lease.estimatedCostUsd, knownActualCostUsd);
+  },
+);
 
 class TestInferenceBalanceCacheWarmingError extends Error {}
 class TestInferenceAdmissionGateUnavailableError extends Error {}
@@ -257,6 +282,8 @@ mock.module("./inference-billing-fast-path", () => ({
 }));
 mock.module("./inference-admission-gate", () => ({
   acquireInferenceAdmissionLease,
+  createInferenceAdmissionBalanceFence,
+  fenceInferenceAdmissionLeaseForSettlement,
   inferenceSettlementAmounts: (_lease: unknown, actualCostUsd: number) => ({
     balanceBackedUsd: actualCostUsd,
     gateConsumedUsd: actualCostUsd,
@@ -320,6 +347,9 @@ async function hydratePricing(model: string): Promise<void> {
   expect(background).toHaveLength(1);
   await background[0];
   acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
 }
 
 beforeEach(() => {
@@ -333,6 +363,8 @@ beforeEach(() => {
   repositoryBlock = null;
   affiliateRepositoryBlock = null;
   affiliateDebitError = null;
+  settlementFenceError = null;
+  settlementEvents.length = 0;
   pairReads = 0;
   fallbackReads = 0;
   catalogReads = 0;
@@ -347,6 +379,11 @@ beforeEach(() => {
   admitInferenceChargeViaLedger.mockClear();
   optimisticSettle.mockClear();
   acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  markInferenceAdmissionLeaseDispatched.mockClear();
+  fenceInferenceAdmissionLeaseForSettlement.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
   settleInferenceAdmissionLease.mockClear();
   markInferenceAdmissionLeaseDispatched.mockClear();
   isOptimisticEligible.mockClear();
@@ -458,6 +495,7 @@ test("warm Worker admission writes only the Durable Object lease before provider
   const leaseParams = acquireInferenceAdmissionLease.mock.calls.at(-1)?.[0] as
     | {
         requestId: string;
+        estimatedCostUsd: number;
         recovery: {
           version: number;
           kind: string;
@@ -497,6 +535,12 @@ test("warm Worker admission writes only the Durable Object lease before provider
     collectedAmount: 0.01,
   });
   await expect(replay).resolves.toMatchObject({ actualCost: 0.01 });
+  expect(settlementEvents).toEqual(["dispatch", "settlement_fence", "direct_db"]);
+  expect(fenceInferenceAdmissionLeaseForSettlement).toHaveBeenCalledTimes(1);
+  expect(fenceInferenceAdmissionLeaseForSettlement.mock.calls[0]?.[1]).toBe(0.01);
+  expect(fenceInferenceAdmissionLeaseForSettlement.mock.calls[0]?.[0].estimatedCostUsd).toBe(
+    Math.max(leaseParams.estimatedCostUsd, 0.01),
+  );
   expect(debitInferenceCost).toHaveBeenCalledTimes(1);
   expect(debitInferenceCost).toHaveBeenCalledWith(
     {
@@ -509,6 +553,7 @@ test("warm Worker admission writes only the Durable Object lease before provider
     },
     0.01,
     "deferred",
+    { preserveBalanceHintDuringFencedHandoff: true, inferenceBalanceFence },
   );
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBe(0.01);
@@ -525,6 +570,9 @@ test("strong proof on and off each acquire exactly one Durable Object lease", as
 
   for (const strongProof of [credential, undefined]) {
     acquireInferenceAdmissionLease.mockClear();
+    createInferenceAdmissionBalanceFence.mockClear();
+    inferenceBalanceFence.lowerCommittedBalance.mockClear();
+    inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
     await admitOrganizationInference({
       ...admissionParams(model, []),
       ...(strongProof ? { credential: strongProof } : {}),
@@ -549,6 +597,21 @@ test("audited provider boundaries defer the lease commit until the required mark
   expect(markInferenceAdmissionLeaseDispatched).not.toHaveBeenCalled();
   await admission.markProviderDispatched?.();
   expect(markInferenceAdmissionLeaseDispatched).toHaveBeenCalledTimes(1);
+});
+
+test("a direct settlement fence failure prevents the database debit", async () => {
+  const model = nextModel();
+  await hydratePricing(model);
+  const admission = await admitOrganizationInference(admissionParams(model, []));
+  const error = new Error("settlement fence unavailable");
+  settlementFenceError = error;
+
+  await expect(admission.settle(1)).rejects.toBe(error);
+
+  expect(settlementEvents).toEqual(["dispatch", "settlement_fence"]);
+  expect(debitInferenceCost).not.toHaveBeenCalled();
+  expect(collectAffiliateInferenceFallback).not.toHaveBeenCalled();
+  expect(settleInferenceAdmissionLease).not.toHaveBeenCalled();
 });
 
 test("flat Worker admission leases the fixed catalog cost without token pricing reads", async () => {
@@ -600,8 +663,16 @@ test("unknown provider cost retains the admitted estimate and wins a later zero 
   expect(debitInferenceCost).toHaveBeenCalledTimes(1);
   expect(debitInferenceCost.mock.calls[0]?.[1]).toBe(leaseParams.estimatedCostUsd);
   expect(debitInferenceCost.mock.calls[0]?.[2]).toBe("deferred");
+  expect(debitInferenceCost.mock.calls[0]?.[3]).toEqual({
+    preserveBalanceHintDuringFencedHandoff: true,
+    inferenceBalanceFence,
+  });
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBeCloseTo(
+    leaseParams.estimatedCostUsd,
+  );
+  expect(fenceInferenceAdmissionLeaseForSettlement).toHaveBeenCalledWith(
+    expect.anything(),
     leaseParams.estimatedCostUsd,
   );
 });
@@ -670,6 +741,9 @@ test("the exact Durable Object path admits when balance equals the estimate", as
   if (!quotedLease) throw new Error("expected quoted inference lease");
 
   acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
   gateBalance = quotedLease.estimatedCostUsd;
   const background: Promise<unknown>[] = [];
   const request = admissionParams(model, background);
@@ -796,6 +870,7 @@ test("warm Worker affiliate admission has zero pre-dispatch repository calls", a
   const leaseParams = acquireInferenceAdmissionLease.mock.calls.at(-1)?.[0] as
     | {
         requestId: string;
+        estimatedCostUsd: number;
         recovery: {
           version: number;
           accounting: {
@@ -845,6 +920,12 @@ test("warm Worker affiliate admission has zero pre-dispatch repository calls", a
   const replay = admission.reservation?.reconcile(99);
   await expect(first).resolves.toMatchObject({ actualCost: 0.02 });
   await expect(replay).resolves.toMatchObject({ actualCost: 0.02 });
+  expect(settlementEvents).toEqual(["dispatch", "settlement_fence", "affiliate_db"]);
+  expect(fenceInferenceAdmissionLeaseForSettlement).toHaveBeenCalledTimes(1);
+  expect(fenceInferenceAdmissionLeaseForSettlement.mock.calls[0]?.[1]).toBe(0.02);
+  expect(fenceInferenceAdmissionLeaseForSettlement.mock.calls[0]?.[0].estimatedCostUsd).toBe(
+    Math.max(leaseParams.estimatedCostUsd, 0.02),
+  );
   expect(collectAffiliateInferenceFallback).toHaveBeenCalledTimes(1);
   expect(collectAffiliateInferenceFallback.mock.calls[0]?.[0]).toMatchObject({
     organizationId: "org-1",
@@ -854,6 +935,8 @@ test("warm Worker affiliate admission has zero pre-dispatch repository calls", a
     provider: "cerebras",
     billingSource: "bitrouter",
     actualCost: 0.02,
+    preserveInferenceBalanceHint: true,
+    inferenceBalanceFence,
     reservationMetadata: {
       affiliatePayout: {
         sourceId: `ai_billing:affiliate:${leaseParams.requestId}`,
@@ -864,6 +947,28 @@ test("warm Worker affiliate admission has zero pre-dispatch repository calls", a
   });
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBe(0.02);
+});
+
+test("an affiliate settlement fence failure prevents the database debit", async () => {
+  const model = nextModel();
+  const affiliateCode = `PARTNER-${modelSequence}`;
+  const coldBackground: Promise<unknown>[] = [];
+  await admitOrganizationInference(admissionParams(model, coldBackground, { affiliateCode })).then(
+    () => null,
+    () => null,
+  );
+  await Promise.all(coldBackground);
+
+  const admission = await admitOrganizationInference(admissionParams(model, [], { affiliateCode }));
+  const error = new Error("settlement fence unavailable");
+  settlementFenceError = error;
+
+  await expect(admission.settle(1)).rejects.toBe(error);
+
+  expect(settlementEvents).toEqual(["dispatch", "settlement_fence"]);
+  expect(collectAffiliateInferenceFallback).not.toHaveBeenCalled();
+  expect(debitInferenceCost).not.toHaveBeenCalled();
+  expect(settleInferenceAdmissionLease).not.toHaveBeenCalled();
 });
 
 test("affiliate settlement retries the same post-provider amount after infrastructure failure", async () => {
