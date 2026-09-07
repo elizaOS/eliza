@@ -274,13 +274,16 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     setHostname("app.elizacloud.ai");
     installFetchRecorder();
     renderCatchAllWithAppModeMarkers();
-    // The gate chunk is lazy; the login redirect lands after it loads.
-    expect(await screen.findByTestId("login-page")).toBeTruthy();
+    // The first lazy chunk includes test-time transformation under suite load;
+    // wait for its real redirect without imposing a one-second build budget.
+    expect(
+      await screen.findByTestId("login-page", {}, { timeout: 5_000 }),
+    ).toBeTruthy();
     expect(screen.queryByTestId("agent-app")).toBeNull();
     expect(fetchLog).toEqual([]);
     await flushMicrotasks();
     expect(privateLoads).toBe(0);
-  });
+  }, 10_000);
 
   it("gates every non-registered (marketing/app) path on the app host, not just the root", async () => {
     setHostname("app.elizacloud.ai");
