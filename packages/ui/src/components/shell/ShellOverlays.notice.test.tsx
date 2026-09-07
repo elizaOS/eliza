@@ -1,7 +1,8 @@
+/** Verifies dismissible notification feedback through the rendered control. */
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ActionNoticeToast } from "./ShellOverlays";
+import { ActionNoticeToast } from "./ActionNoticeToast";
 
 afterEach(cleanup);
 describe("action notice", () => {
@@ -9,7 +10,7 @@ describe("action notice", () => {
     const dismiss = vi.fn();
     render(
       <ActionNoticeToast
-        notice={{
+        actionNotice={{
           text: "Voice transcription is unavailable. Try again in a moment.",
           tone: "error",
         }}
@@ -27,7 +28,7 @@ describe("action notice", () => {
   it("keeps long-running notices accessible and dismissible", () => {
     render(
       <ActionNoticeToast
-        notice={{ text: "Saving…", tone: "info", busy: true }}
+        actionNotice={{ text: "Saving…", tone: "info", busy: true }}
         onDismiss={vi.fn()}
       />,
     );

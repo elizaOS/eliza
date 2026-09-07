@@ -81,6 +81,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setActionNotice: s.setActionNotice,
   }));
   const t = app.t;
+  const realtimeVoiceEnabled =
+    isRealtimeVoiceForceEnabled() || isRealtimeVoiceSelfHostedEnabled();
   const { voiceConfig } = useVoiceConfig(app.uiLanguage);
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
@@ -111,9 +113,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
   const setActionNotice = app.setActionNotice;
   const handleInteractiveCloudLogin = app.handleInteractiveCloudLogin;
-  const realtimeVoiceEnabled =
-    props.realtimeVoiceConfigured ??
-    (isRealtimeVoiceForceEnabled() || isRealtimeVoiceSelfHostedEnabled());
 
   const notifySelectionFailure = useCallback(
     (prefix: string, err: unknown) => {
@@ -415,47 +414,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </SettingsGroup>
       ) : null}
 
-      {/* Build flags only enable the realtime path. This read-only row does
-          not probe its connection and must not imply that Cartesia is ready. */}
-      {settingsContentReady &&
-      realtimeVoiceEnabled &&
-      !selection.cloudRuntimeLocked ? (
-        <SettingsGroup
-          title={t("providerswitcher.voiceGroupTitle", {
-            defaultValue: "Voice",
-          })}
-          bare
-        >
-          <SettingsRow
-            label={
-              <span className="flex items-center gap-2">
-                <Mic className="size-[18px] shrink-0 text-accent" aria-hidden />
-                {t("providerswitcher.realtimeVoiceRowLabel", {
-                  defaultValue: "Cartesia (realtime)",
-                })}
-              </span>
-            }
-            description={
-              servingAxes.runtime === "remote"
-                ? t("providerswitcher.remoteRealtimeVoiceRowDescription", {
-                    defaultValue:
-                      "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on the remote host.",
-                  })
-                : t("providerswitcher.realtimeVoiceRowDescription", {
-                    defaultValue:
-                      "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on this device.",
-                  })
-            }
-            control={
-              <span className="text-xs text-muted">
-                {t("providerswitcher.enabledProvider", {
-                  defaultValue: "Enabled",
-                })}
-              </span>
-            }
-          />
-        </SettingsGroup>
-      ) : settingsContentReady ? (
+      {settingsContentReady ? (
         <SettingsGroup
           title={t("providerswitcher.voiceGroupTitle", {
             defaultValue: "Voice",
@@ -482,6 +441,32 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               </span>
             }
           />
+          {realtimeVoiceEnabled && !selection.cloudRuntimeLocked ? (
+            <SettingsRow
+              icon={Mic}
+              label={t("providerswitcher.realtimeVoiceRowLabel", {
+                defaultValue: "Cartesia (realtime)",
+              })}
+              description={
+                servingAxes.runtime === "remote"
+                  ? t("providerswitcher.remoteRealtimeVoiceRowDescription", {
+                      defaultValue:
+                        "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on the remote host.",
+                    })
+                  : t("providerswitcher.realtimeVoiceRowDescription", {
+                      defaultValue:
+                        "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on this device.",
+                    })
+              }
+              control={
+                <span className="text-xs text-muted">
+                  {t("providerswitcher.enabledProvider", {
+                    defaultValue: "Enabled",
+                  })}
+                </span>
+              }
+            />
+          ) : null}
         </SettingsGroup>
       ) : null}
 

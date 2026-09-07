@@ -524,10 +524,19 @@ describe("Qwen3.8 response-schema wire contract", () => {
       { metadata: null },
     ],
   ])(
-    "preserves the complete %s schema and surfaces provider rejection",
+    "preserves the complete %s schema across success and provider rejection",
     async (_name, schema, result) => {
       const original = structuredClone(schema);
       reply = result;
+      // The fixture accepts arbitrary JSON to verify transport preservation,
+      // not to claim that a live provider supports every schema feature.
+      expect(await invoke({ schema })).toEqual(result);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].response_format).toEqual({
+        type: "json_schema",
+        json_schema: { name: "response", strict: true, schema: original },
+      });
+      requests.length = 0;
       rejectSchema = true;
       await expect(invoke({ schema })).rejects.toThrow(/Unsupported response schema fixture/);
       expect(requests).toHaveLength(1);
