@@ -321,6 +321,7 @@ export * from "./utils/errors.js";
 export * from "./utils/exec-safety.js";
 export * from "./utils/format.js";
 export * from "./utils/host-capabilities.js";
+export * from "./utils/jsonl-append.js";
 export * from "./utils/labels.js";
 export * from "./utils/log-prefix.js";
 export * from "./utils/name-tokens.js";
