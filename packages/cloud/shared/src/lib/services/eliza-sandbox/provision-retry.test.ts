@@ -8,6 +8,8 @@ import { WARM_POOL_ORG_ID, WARM_POOL_USER_ID } from "../../../db/schemas/agent-s
 import { runWithCloudBindings } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { apiKeysService } from "../api-keys";
+import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import { DockerSSHClient } from "../docker-ssh";
 import {
   type SandboxProvider,
   SandboxReplacementCleanupUnresolvedError,
@@ -1735,6 +1737,103 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       apiKeySpy.mockRestore();
       ensureStartedSpy.mockRestore();
       getProviderSpy.mockRestore();
+    }
+  });
+
+  test("fresh provision health uses created placement while the canonical predecessor remains", async () => {
+    const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
+    const row: AgentSandbox = {
+      ...provisioningReadyRow(),
+      status: "stopped",
+      sandbox_id: "sandbox-blue-1",
+      bridge_url: "https://runtime-blue.example",
+      health_url: "https://runtime-blue.example/api/health",
+      node_id: "node-blue",
+      container_name: "agent-blue-1",
+      bridge_port: 3333,
+      web_ui_port: 4444,
+      headscale_ip: "100.64.0.42",
+    };
+    const finalRow: AgentSandbox = { ...row, status: "running" };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(row);
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => (data.status === "running" ? finalRow : { ...row, ...data }),
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const candidate = {
+      ...providerHandle(),
+      sandboxId: `agent-${AGENT}`,
+      metadata: {
+        ...providerHandle().metadata,
+        containerName: `agent-${AGENT}`,
+        nodeSshPort: 22,
+        nodeSshUser: "root",
+      },
+    };
+    const create = mock(async () => candidate);
+    const docker = new DockerSandboxProvider();
+    const hosts: string[] = [];
+    const sshSpy = spyOn(DockerSSHClient, "getClient").mockImplementation(((hostname: string) => {
+      hosts.push(hostname);
+      return {
+        exec: async () => {
+          if (hostname !== candidate.metadata.hostname) throw new Error("No such container");
+          return "healthy";
+        },
+      } as unknown as DockerSSHClient;
+    }) as typeof DockerSSHClient.getClient);
+    const stop = mock(async () => {});
+
+    const svc = new ElizaSandboxService();
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue(
+      replacementAwareProvider({
+        create,
+        stopForReplacement: stop,
+        stopForDeletion: async () => ({ kind: "not-running-proven" }),
+        checkHealth: docker.checkHealth.bind(docker),
+        checkHealthDetailed: docker.checkHealthDetailed.bind(docker),
+      }),
+    );
+
+    try {
+      const res = await svc.provision(AGENT, ORG);
+
+      expect(res.success).toBe(true);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
+      expect(hosts).toEqual([candidate.metadata.hostname]);
+      const runningWrite = updateSpy.mock.calls.find(
+        ([, data]) => (data as { status?: string }).status === "running",
+      );
+      expect(runningWrite).toBeDefined();
+      if (!runningWrite) {
+        throw new Error("Expected the adopted sandbox running write");
+      }
+      expect((runningWrite[1] as { sandbox_id?: string }).sandbox_id).toBe(candidate.sandboxId);
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+      sshSpy.mockRestore();
     }
   });
 
