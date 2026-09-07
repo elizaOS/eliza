@@ -746,6 +746,35 @@ describe("secret redaction", () => {
     expect(logs).toContain('"type":"Map"');
   });
 
+  it("bounds the expansion of a wide shared graph on both paths", () => {
+    // Nine distinct objects, no cycle: each of eight levels has eight keys
+    // that all point at the same next-level object, so there are 8^8
+    // reference paths. Cycle detection alone would re-walk the shared child
+    // once per path and serialize a multi-megabyte line; the repeat budget
+    // keeps the walk and its output proportional to the payload.
+    let next: Record<string, unknown> = { leaf: true };
+    for (let level = 0; level < 8; level += 1) {
+      const node: Record<string, unknown> = {};
+      for (let key = 0; key < 8; key += 1) node[`k${key}`] = next;
+      next = node;
+    }
+    const logger = redactLogger();
+
+    const payloadStart = performance.now();
+    logger.info({ graph: next }, "wide-graph");
+    const payloadMs = performance.now() - payloadStart;
+    const trailingStart = performance.now();
+    logger.info("wide-graph-trailing", { graph: next });
+    const trailingMs = performance.now() - trailingStart;
+
+    const logs = recentLogs();
+    expect(logs).toContain("[Shared]");
+    expect(logs).not.toContain("[Circular]");
+    expect(logs.length).toBeLessThan(500_000);
+    expect(payloadMs).toBeLessThan(1_000);
+    expect(trailingMs).toBeLessThan(1_000);
+  });
+
   it("renders shared references in full through trailing args", () => {
     const logger = redactLogger();
     const shared = { region: "us-east" };
