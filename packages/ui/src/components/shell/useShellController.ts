@@ -444,19 +444,13 @@ function describeRealtimeVoiceFailure(
   surfacedError: string | null,
 ): string {
   if (outcome.kind === "error") {
-    if (outcome.error.kind === "consent") {
-      return "Cartesia voice could not confirm microphone consent. Tap Talk to retry.";
-    }
-    if (outcome.error.kind === "mint") {
-      return "Cartesia voice could not start a session. Tap Talk to retry.";
-    }
     return outcome.error.message;
   }
   if (surfacedError) return surfacedError;
   if (outcome.kind === "fallback-to-batch") {
     if (outcome.message) return outcome.message;
     if (outcome.reason === "consent") {
-      return "Cartesia voice could not confirm microphone consent. Tap Talk to retry.";
+      return "Voice setup couldn't complete. Tap the mic to try again.";
     }
     if (outcome.reason === "mint") {
       return "Cartesia voice could not start a session. Tap Talk to retry.";
@@ -2689,15 +2683,7 @@ export function useShellController(): ShellController {
     realtimeVoiceOwnsMedia &&
     realtimeVoice.error
   ) {
-    if (realtimeVoice.error.kind === "consent") {
-      realtimeVoiceErrorMessage =
-        "Cartesia voice could not confirm microphone consent. Tap Talk to retry.";
-    } else if (realtimeVoice.error.kind === "mint") {
-      realtimeVoiceErrorMessage =
-        "Cartesia voice could not start a session. Tap Talk to retry.";
-    } else {
-      realtimeVoiceErrorMessage = realtimeVoice.error.message;
-    }
+    realtimeVoiceErrorMessage = realtimeVoice.error.message;
   }
   const unlockVoiceAudio = React.useCallback(() => {
     if (

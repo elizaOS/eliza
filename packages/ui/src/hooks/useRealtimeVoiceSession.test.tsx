@@ -668,7 +668,7 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.available).toBe(true);
     expect(result.current.error?.actionable).toBe(true);
     expect(result.current.error?.message).toBe(
-      "Couldn't confirm microphone consent. Tap the mic to try again.",
+      "Voice setup couldn't complete. Tap the mic to try again.",
     );
     expect(startOutcome).toEqual({
       kind: "fallback-to-batch",

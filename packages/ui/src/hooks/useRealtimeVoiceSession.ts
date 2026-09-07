@@ -225,7 +225,9 @@ function classifyError(error: Error): RealtimeVoiceError {
   if (error instanceof VoiceSessionConsentError) {
     return {
       kind: "consent",
-      message: "Couldn't confirm microphone consent. Tap the mic to try again.",
+      // This is the server nonce step, not getUserMedia permission. A null
+      // nonce can also mean an unavailable gateway or a malformed response.
+      message: "Voice setup couldn't complete. Tap the mic to try again.",
       actionable: true,
     };
   }

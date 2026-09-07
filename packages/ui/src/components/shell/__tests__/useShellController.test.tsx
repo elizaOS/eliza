@@ -2575,6 +2575,26 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     );
   });
 
+  it("preserves a classified voice setup error instead of replacing it with a consent diagnosis", async () => {
+    const message = "Voice setup couldn't complete. Tap the mic to try again.";
+    realtimeVoiceMock.startOutcome = {
+      kind: "error",
+      error: { kind: "consent", message, actionable: true },
+    };
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(result.current.handsFree).toBe(false);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      message,
+      "error",
+      6000,
+    );
+  });
+
   it("surfaces the precise browser microphone setup timeout from realtime voice", async () => {
     realtimeVoiceMock.startOutcome = {
       kind: "fallback-to-batch",
