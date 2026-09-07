@@ -363,22 +363,40 @@ describe("ElizaClient websocket connection policy", () => {
     }
   });
 
-  it.each(["", "/api", "api"])(
-    "keeps a separate injected websocket target with cloud client base %s",
-    (base) => {
-      stubWindowOrigin("https:", "cloud-staging.eliza.app");
+  it.each(
+    ["app.example.test", "cloud-staging.eliza.app"].flatMap((host) =>
+      ["", "/api", "api"].flatMap((base) =>
+        [
+          "wss://realtime.example.test",
+          "wss://abc123.cloud.eliza.app",
+          "wss://cloud.eliza.app",
+        ].map((target) => ({ host, base, target })),
+      ),
+    ),
+  )(
+    "preserves injected $target on $host with API base '$base' through retry exhaustion",
+    ({ host, base, target }) => {
+      vi.useFakeTimers();
+      stubWindowOrigin("https:", host);
       Object.defineProperty(window, "__ELIZA_WS_BASE__", {
         configurable: true,
-        value: "wss://realtime.example.test",
+        value: target,
       });
       try {
         const instances = stubWebSocketWithInstances();
         const client = new ElizaClient(base);
         client.connectWs();
-        expect(instances[0].url).toContain("wss://realtime.example.test/ws");
+        expect(instances[0]?.url).toContain(`${target}/ws`);
+        for (let i = 0; i < 15; i++) {
+          instances[instances.length - 1].onclose?.();
+          if (i < 14) vi.runOnlyPendingTimers();
+        }
+        expect(instances).toHaveLength(15);
+        expect(client.getConnectionState().state).toBe("failed");
         client.disconnectWs();
       } finally {
         Reflect.deleteProperty(window, "__ELIZA_WS_BASE__");
+        vi.useRealTimers();
       }
     },
   );

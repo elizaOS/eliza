@@ -2322,12 +2322,16 @@ export class ElizaClient {
   }
 
   connectWs(): void {
-    // An empty API base uses the page origin unless realtime has its own
-    // injected target. Explicit bases keep their existing transport policy.
+    // Infer REST-only policy from the page only for implicit same-origin
+    // clients. An injected realtime target keeps its existing socket and
+    // retry policy, even when its hostname resembles a REST-only API host.
     const effectiveBase =
       this.baseUrl ||
-      getInjectedWsBase() ||
-      (typeof window !== "undefined" ? window.location.origin : "");
+      (getInjectedWsBase()
+        ? ""
+        : typeof window !== "undefined"
+          ? window.location.origin
+          : "");
     if (shouldTreatAsConnectedWithoutWebSocket(effectiveBase)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
