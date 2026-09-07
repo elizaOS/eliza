@@ -499,7 +499,8 @@ function resolveProviderOptions(
 
 function buildStructuredOutput(
   responseSchema: unknown,
-  modelType: ModelTypeName
+  modelType: ModelTypeName,
+  cerebrasMode = false
 ): PreparedStructuredOutput {
   if (
     responseSchema &&
@@ -518,7 +519,11 @@ function buildStructuredOutput(
 
   return {
     output: Output.object({
-      schema: jsonSchema(sanitizeJsonSchema(preparedSchema.schema, true)),
+      schema: jsonSchema(
+        cerebrasMode
+          ? (preparedSchema.schema as JSONSchema7)
+          : sanitizeJsonSchema(preparedSchema.schema, true)
+      ),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }) as NativeOutput,
@@ -1542,14 +1547,11 @@ function sanitizeJsonSchema(
   const record = schema as Record<string, unknown>;
   let sanitized: Record<string, unknown> = { ...record };
 
-  // This is the single wire choke point — every response_format schema
-  // (buildStructuredOutput) and every tool schema (normalizeNativeTools)
-  // funnels through here, so strip the strict-unsupported constraint keywords
-  // centrally instead of relying on each schema author to remember the rule.
-  // UNCONDITIONAL, not Cerebras-gated: isCerebrasMode is proxy-blind — an agent
-  // pointed at api.eliza.app with OPENAI_API_KEY looks like plain OpenAI,
-  // which is exactly the deployment where the 400 fired (#11123/#11141). The
-  // recursion below reaches nested nodes via properties/items/unions.
+  // Non-Cerebras response schemas and strict/unspecified tool schemas share
+  // this compatibility rewrite. Direct Cerebras response schemas bypass it to
+  // preserve optional fields; explicit non-strict tools also bypass it.
+  // Proxy endpoints can still require strict grammar even when detected as
+  // OpenAI, so compatibility normalization remains enabled for those callers.
   stripStrictUnsupportedConstraints(sanitized);
 
   if (typeof sanitized.type !== "string") {
@@ -2490,8 +2492,10 @@ async function generateTextByModelType(
         : { prompt: promptText };
   // AI SDK v6 derives the provider-level response format from its `output`
   // contract; a similarly named top-level setting is ignored by generateText.
-  // Cerebras accepts JSON mode but not the SDK's JSON Schema wire payload, so
-  // its unstructured JSON output deliberately carries no schema.
+  // A caller's response schema takes precedence over legacy JSON-object mode.
+  // Cerebras accepts strict schemas, including optional properties; applying
+  // OpenAI's all-properties-required rewrite would change evaluator semantics.
+  // Unsupported Cerebras schemas remain visible provider errors.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -2509,10 +2513,9 @@ async function generateTextByModelType(
   const sanitizedResponseSchema = paramsWithAttachments.responseSchema
     ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
     : undefined;
-  const preparedOutput =
-    sanitizedResponseSchema && !cerebrasMode
-      ? buildStructuredOutput(sanitizedResponseSchema, modelType)
-      : undefined;
+  const preparedOutput = sanitizedResponseSchema
+    ? buildStructuredOutput(sanitizedResponseSchema, modelType, cerebrasMode)
+    : undefined;
   const requestedOutput: NativeOutput | undefined =
     preparedOutput?.output ?? (responseFormatType === "json_object" ? Output.json() : undefined);
   const restoreResponseText = (text: string): string =>

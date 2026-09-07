@@ -214,9 +214,10 @@ it.each([
         expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
           user?.indexOf("Latest message:") ?? -1
         );
-        expect(wire?.response_format?.type).toBe(
-          nativeSchema && !rejectSchema ? "json_schema" : "json_object"
-        );
+        expect(wire?.response_format?.type).toBe(!rejectSchema ? "json_schema" : "json_object");
+        if (!nativeSchema) {
+          expect(wire?.response_format?.json_schema?.schema).toEqual(visibleSchema);
+        }
         expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
         expect(wire?.prompt_cache_key).toBeUndefined();
         expect(wire?.prompt_cache_retention).toBeUndefined();
