@@ -376,7 +376,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         ocrLine(
           "mobile-portrait",
           "plugin-cloud-gui",
-          "Eliza Cloud Credits",
+          "Connected Credits $42.50 Hosted agents Research agent running",
         ),
         ocrLine(
           "ipad-portrait",
