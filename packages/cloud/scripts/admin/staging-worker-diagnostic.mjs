@@ -44,7 +44,124 @@ function healthSummary() {
   return { frames: 0, malformedFrames: 0, observations: [] };
 }
 
-function healthObservation(diagnostics) {
+// Bun renders the health-timeout context as an ordinary object (double-quoted,
+// JSON-decodable values on one line each). Node renders the production redactor's
+// null-prototype clone differently: a `[Object: null prototype] {` header,
+// single-quoted values, and a multiline string emitted as `'part\n' +`
+// continuation lines that Node's console sink caps at 10000 characters with a
+// `'…'... N more characters` marker. Both headers below are complete worker log
+// lines, never substrings of container diagnostics.
+const BUN_HEALTH_HEADER = "[docker-sandbox] Health timeout diagnostics {";
+const NODE_HEALTH_HEADER =
+  "[docker-sandbox] Health timeout diagnostics [Object: null prototype] {";
+// A complete single- or double-quoted console string literal on one rendered
+// line. `\\.` consumes an escaped character without crossing the closing quote,
+// so an embedded quote or comma inside the value never terminates the field.
+const NODE_QUOTED = String.raw`'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"`;
+const NODE_CONTAINER_LINE = new RegExp(
+  `^ {2}containerName: (${NODE_QUOTED}),$`,
+);
+const NODE_NODEID_LINE = new RegExp(`^ {2}nodeId: (${NODE_QUOTED}),$`);
+// The multiline continuation of a diagnostics string ends either with ` +` (more
+// lines follow), with the truncation marker Node appends past its string cap, or
+// with nothing (the final complete line).
+const NODE_TRUNCATION = String.raw`\.\.\. [0-9]+ more characters?`;
+const NODE_DIAGNOSTICS_FIRST = new RegExp(
+  `^ {2}diagnostics: (${NODE_QUOTED})(?:( \\+)|(${NODE_TRUNCATION}))?$`,
+);
+const NODE_DIAGNOSTICS_CONT = new RegExp(
+  `^ {4}(${NODE_QUOTED})(?:( \\+)|(${NODE_TRUNCATION}))?$`,
+);
+
+// Decodes one Node console string literal (the value still wrapped in its
+// quotes) into its original text. Only the escape sequences Node's util.inspect
+// actually emits are accepted; any other backslash sequence returns null so the
+// caller rejects the frame rather than guessing — the raw literal is never
+// evaluated. (error-policy:J3)
+function decodeNodeString(literal) {
+  const body = literal.slice(1, -1);
+  let out = "";
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    if (char !== "\\") {
+      out += char;
+      continue;
+    }
+    const esc = body[index + 1];
+    index += 1;
+    if (esc === "n") out += "\n";
+    else if (esc === "r") out += "\r";
+    else if (esc === "t") out += "\t";
+    else if (esc === "b") out += "\b";
+    else if (esc === "f") out += "\f";
+    else if (esc === "v") out += "\v";
+    else if (esc === "0") out += "\0";
+    else if (esc === "\\" || esc === "'" || esc === '"' || esc === "`")
+      out += esc;
+    else if (esc === "x") {
+      const hex = body.slice(index + 1, index + 3);
+      if (!/^[0-9a-fA-F]{2}$/.test(hex)) return null;
+      out += String.fromCharCode(Number.parseInt(hex, 16));
+      index += 2;
+    } else if (esc === "u") {
+      if (body[index + 1] === "{") {
+        const end = body.indexOf("}", index + 2);
+        const hex = end < 0 ? "" : body.slice(index + 2, end);
+        if (!/^[0-9a-fA-F]{1,6}$/.test(hex)) return null;
+        const code = Number.parseInt(hex, 16);
+        if (code > 0x10ffff) return null;
+        out += String.fromCodePoint(code);
+        index = end;
+      } else {
+        const hex = body.slice(index + 1, index + 5);
+        if (!/^[0-9a-fA-F]{4}$/.test(hex)) return null;
+        out += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 4;
+      }
+    } else return null;
+  }
+  return out;
+}
+
+/**
+ * Decodes a complete Node console frame (header line through the closing `}`) into
+ * the raw containerName and diagnostics text, or null when the collected lines do
+ * not form exactly the expected null-prototype object. The diagnostics string is
+ * losslessly reassembled from its continuation lines; `truncated` records that
+ * Node's console sink capped the value, so any later boot signals were never
+ * emitted and their absence must not read as proof of absence.
+ */
+function decodeNodeFrame(lines) {
+  if (lines.length < 5 || lines[lines.length - 1] !== "}") return null;
+  const containerMatch = NODE_CONTAINER_LINE.exec(lines[1]);
+  const nodeIdMatch = NODE_NODEID_LINE.exec(lines[2]);
+  if (!containerMatch || !nodeIdMatch) return null;
+  const container = decodeNodeString(containerMatch[1]);
+  if (container === null || decodeNodeString(nodeIdMatch[1]) === null)
+    return null;
+  const diagnosticsLines = lines.slice(3, -1);
+  const parts = [];
+  let expectMore = true;
+  let truncated = false;
+  for (let index = 0; index < diagnosticsLines.length; index += 1) {
+    if (!expectMore) return null;
+    const match = (
+      index === 0 ? NODE_DIAGNOSTICS_FIRST : NODE_DIAGNOSTICS_CONT
+    ).exec(diagnosticsLines[index]);
+    if (!match) return null;
+    const decoded = decodeNodeString(match[1]);
+    if (decoded === null) return null;
+    parts.push(decoded);
+    if (match[3]) {
+      truncated = true;
+      expectMore = false;
+    } else expectMore = Boolean(match[2]);
+  }
+  if (expectMore) return null;
+  return { container, diagnostics: parts.join(""), truncated };
+}
+
+function healthObservation(diagnostics, truncated = false) {
   const inspect = diagnostics.split("--- authkey marker ---")[0];
   const state =
     /^state=(created|running|paused|restarting|removing|exited|dead) health=(healthy|unhealthy|starting|) exit=([0-9]{1,3}) error=([^\n]*)$/m.exec(
@@ -70,6 +187,10 @@ function healthObservation(diagnostics) {
     exitCode: state && Number(state[3]) <= 255 ? Number(state[3]) : null,
     inspectErrorPresent: state ? state[4].length > 0 : null,
     authKeyMarker: marker ? marker[1] : "unknown",
+    // Node's console sink caps the diagnostics string at 10000 characters, so a
+    // truncated frame's boot signals cover only the surviving prefix; the flag
+    // keeps a false signal from being read as a confirmed absence.
+    diagnosticsTruncated: truncated,
     bootSignals:
       logs === undefined
         ? null
@@ -86,15 +207,43 @@ function healthObservation(diagnostics) {
 export function summarizeHealthFrames(messages, targetDigest) {
   const all = healthSummary();
   const target = targetDigest ? { frames: 0, observations: [] } : null;
+  const record = (container, diagnostics, truncated) => {
+    const observation = healthObservation(diagnostics, truncated);
+    all.frames += 1;
+    all.observations.push(observation);
+    if (
+      target &&
+      createHash("sha256").update(container).digest("hex") === targetDigest
+    ) {
+      target.frames += 1;
+      target.observations.push(observation);
+    }
+  };
   let frame = [];
+  let mode = null;
   for (const message of messages) {
     for (const line of message.split("\n")) {
-      if (line === "[docker-sandbox] Health timeout diagnostics {") {
+      if (line === BUN_HEALTH_HEADER || line === NODE_HEALTH_HEADER) {
         if (frame.length) all.malformedFrames += 1;
         frame = [line];
+        mode = line === NODE_HEALTH_HEADER ? "node" : "bun";
         continue;
       }
       if (!frame.length) continue;
+      if (mode === "node") {
+        // The null-prototype object spans a variable number of continuation
+        // lines, so collect until the closing brace, then validate the whole
+        // block; any interleaved or malformed line fails decodeNodeFrame.
+        frame.push(line);
+        if (line !== "}") continue;
+        const decoded = decodeNodeFrame(frame);
+        if (decoded)
+          record(decoded.container, decoded.diagnostics, decoded.truncated);
+        else all.malformedFrames += 1;
+        frame = [];
+        mode = null;
+        continue;
+      }
       const expected = [
         null,
         /^ {2}containerName: "agent-[A-Za-z0-9_.-]+",$/,
@@ -105,6 +254,7 @@ export function summarizeHealthFrames(messages, targetDigest) {
       if (!expected?.test(line)) {
         all.malformedFrames += 1;
         frame = [];
+        mode = null;
         continue;
       }
       frame.push(line);
@@ -116,21 +266,13 @@ export function summarizeHealthFrames(messages, targetDigest) {
         const diagnostics = JSON.parse(
           frame[3].slice("  diagnostics: ".length, -1),
         );
-        const observation = healthObservation(diagnostics);
-        all.frames += 1;
-        all.observations.push(observation);
-        if (
-          target &&
-          createHash("sha256").update(container).digest("hex") === targetDigest
-        ) {
-          target.frames += 1;
-          target.observations.push(observation);
-        }
+        record(container, diagnostics, false);
       } catch {
         // error-policy:J3 Unsupported console escaping is explicitly unparsed, never evaluated.
         all.malformedFrames += 1;
       }
       frame = [];
+      mode = null;
     }
   }
   if (frame.length) all.malformedFrames += 1;
