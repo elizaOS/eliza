@@ -18,18 +18,17 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * Republish the gate hint with authoritative state after a committed inference
  * debit.
  *
- * A debit necessarily runs `CacheInvalidation.onCreditMutation`, which DELETES
- * `CacheKeys.inference.orgBalance`. That delete is correct for mutations whose
- * caller cannot know the resulting balance (top-ups, refunds, admin
- * adjustments), but the inference settler is the one mutation that both lowers
- * the balance and immediately knows the new value. Leaving the key absent made
- * the *next* turn a full miss, and on the Worker hot path a full miss is read
- * `cacheOnly` — a hard, user-visible 503 "Billing authorization is warming",
- * not a slow read. Every settled turn therefore armed a guaranteed failure for
- * the following turn (observed on staging as a strict 200/503 alternation).
+ * Credit mutations normally run `CacheInvalidation.onCreditMutation`, which
+ * deletes `CacheKeys.inference.orgBalance`. That delete is correct for callers
+ * that cannot know the resulting balance (top-ups, refunds, admin adjustments).
+ * A DO-fenced inference debit instead keeps the last valid projection present
+ * only through this authoritative overwrite; legacy inference settlers still
+ * delete then seed it here. Leaving the key absent until a later request made
+ * the *next* Worker turn a full `cacheOnly` miss — a hard, user-visible 503
+ * "Billing authorization is warming", not a slow read.
  *
- * `lowerOrgBalanceHint` cannot repair this: it is lower-only and bails when no
- * entry exists, so after the delete it is always a no-op.
+ * `lowerOrgBalanceHint` cannot repair the delete path: it is lower-only and
+ * bails when no entry exists, so after eviction it is always a no-op.
  *
  * The debit statement returns both the committed balance and trigger-advanced
  * revision. Passing that atomic result here avoids a post-debit primary read
@@ -46,7 +45,12 @@ export async function republishOrgBalanceHintAfterDebit(
   organizationId: string,
   balanceUsd: number,
   balanceRevision: string,
+  options: {
+    publishAuthoritativeBalance?: (balanceUsd: number, balanceRevision: string) => Promise<void>;
+  } = {},
 ): Promise<void> {
   const balanceAt = Date.now();
+  // Fence the committed revision before exposing its eventually consistent hint.
+  await options.publishAuthoritativeBalance?.(balanceUsd, balanceRevision);
   await republishOrgBalanceHint(organizationId, balanceUsd, balanceAt, balanceRevision);
 }
