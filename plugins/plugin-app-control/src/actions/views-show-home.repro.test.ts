@@ -120,6 +120,23 @@ function scopedInteractionHarness(catalog: ViewSummary[] = [scopedCalendar()]) {
 }
 
 describe("VIEWS scoped-action namespace preflight", () => {
+	it("never rewrites an unknown explicit UI capability into a record mutation", async () => {
+		const h = scopedInteractionHarness();
+		h.request.content.text =
+			"Create a calendar event, then open Calendar to September 7.";
+		const result = await h.invoke({
+			action: "interact",
+			view: "calendar",
+			capability: "click-button",
+			params: { title: "Must not be created" },
+		});
+		expect(result.success).toBe(false);
+		expect(result.text).toContain('capability "click-button"');
+		expect(result.text).toContain("No interaction was dispatched");
+		expect(h.fetchMock).not.toHaveBeenCalled();
+		expect(h.callback).not.toHaveBeenCalled();
+	});
+
 	it("returns full no-effect coaching before aliasing the Calendar action to create-event", async () => {
 		const h = scopedInteractionHarness();
 		const result = await h.invoke({

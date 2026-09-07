@@ -408,7 +408,7 @@ describe("view management actions", () => {
 			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
 		);
 		expect(action.routingHint).toContain(
-			"reading or changing calendar events uses the CALENDAR action",
+			"reading or changing calendar events uses CALENDAR.",
 		);
 		expect(action.routingHint).toContain(
 			"action=interact view=device-control capability=set-flashlight",
@@ -2955,11 +2955,9 @@ describe("view management actions", () => {
 			mode: "show",
 			viewId: "notes",
 		});
-		expect(listNotesAliasResult?.success).toBe(true);
-		expect(listNotesAliasResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "get-notes",
+		expect(listNotesAliasResult).toMatchObject({
+			success: false,
+			text: expect.stringContaining('Cannot invoke capability "list-notes"'),
 		});
 		expect(readNamedNoteResult?.success).toBe(true);
 		expect(deleteNoteResult?.success).toBe(true);
@@ -3004,17 +3002,13 @@ describe("view management actions", () => {
 			viewId: "calendar",
 			capability: "create-calendar-event",
 		});
-		expect(camelCalendarResult?.success).toBe(true);
-		expect(camelCalendarResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "calendar",
-			capability: "create-calendar-event",
+		expect(camelCalendarResult).toMatchObject({
+			success: false,
+			text: expect.stringContaining('Cannot invoke capability "createEvent"'),
 		});
-		expect(listEventsResult?.success).toBe(true);
-		expect(listEventsResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "calendar",
-			capability: "get-calendar-state",
+		expect(listEventsResult).toMatchObject({
+			success: false,
+			text: expect.stringContaining('Cannot invoke capability "list-events"'),
 		});
 		expect(updateNamedEventResult?.success).toBe(true);
 		expect(selectDateResult?.success).toBe(true);
@@ -3085,7 +3079,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
@@ -3165,7 +3159,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
@@ -3181,7 +3175,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",

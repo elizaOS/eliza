@@ -34,6 +34,8 @@ export const currentViewProvider: Provider = {
 		const metadata = message.content.metadata;
 		if (
 			metadata &&
+			typeof metadata === "object" &&
+			"uiView" in metadata &&
 			typeof metadata.uiView === "string" &&
 			metadata.uiView.trim()
 		) {
