@@ -153,21 +153,31 @@ test("Android build output does not duplicate maintained React source", () => {
 });
 
 test("JavaScript emitted beside its TypeScript source is outside maintained source", () => {
-  // The path a concurrent sibling-package compile actually produced: emitted
-  // output beside an authored `.tsx` input inside the UI source tree.
-  const authored = path.join(
-    uiSourceRoot,
-    "components/config-ui/config-field.helpers.tsx",
-  );
-  assert.ok(fs.existsSync(authored));
-  const emitted = authored.replace(/\.tsx$/, ".js");
-  const emittedJsx = authored.replace(/\.tsx$/, ".jsx");
-  assert.equal(fs.existsSync(emitted), false, "probe target must be absent");
-  assert.equal(fs.existsSync(emittedJsx), false, "probe target must be absent");
-  const before = listMaintainedSourceFiles();
+  // Reproduces the neighboring-build race inside an isolated fixture: an
+  // authored .tsx input, then the .js and .jsx a sibling package's compile
+  // would emit beside it. The fixture never depends on the real source tree
+  // being un-compiled, so the suite stays green when that emit has already
+  // happened, which is the very state this boundary is meant to tolerate.
+  const probeRoot = fs.mkdtempSync(path.join(uiSourceRoot, "inventory-probe-"));
   try {
-    writeProbe(emitted, reactElementModule);
-    writeProbe(emittedJsx, jsxModule);
+    const authored = writeProbe(
+      path.join(probeRoot, "config-field.helpers.tsx"),
+      jsxModule,
+    );
+    const before = listMaintainedSourceFiles();
+    assert.ok(
+      before.includes(authored),
+      "the authored input must be maintained",
+    );
+
+    const emitted = writeProbe(
+      path.join(probeRoot, "config-field.helpers.js"),
+      reactElementModule,
+    );
+    const emittedJsx = writeProbe(
+      path.join(probeRoot, "config-field.helpers.jsx"),
+      jsxModule,
+    );
     assert.equal(hasTypedSourceSibling(emitted), true);
     assert.equal(hasTypedSourceSibling(emittedJsx), true);
     assert.equal(isMaintainedSource(emitted), false);
@@ -178,11 +188,13 @@ test("JavaScript emitted beside its TypeScript source is outside maintained sour
       before,
       "the maintained list must not depend on whether a neighbor has compiled",
     );
-  } finally {
+
     fs.rmSync(emitted, { force: true });
     fs.rmSync(emittedJsx, { force: true });
+    assert.deepEqual(listMaintainedSourceFiles(), before);
+  } finally {
+    fs.rmSync(probeRoot, { recursive: true, force: true });
   }
-  assert.deepEqual(listMaintainedSourceFiles(), before);
 });
 
 test("authored JavaScript without a typed sibling stays maintained", () => {
