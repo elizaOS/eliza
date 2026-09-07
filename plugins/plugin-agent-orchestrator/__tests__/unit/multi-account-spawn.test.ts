@@ -502,6 +502,7 @@ describe("multi-account coding-agent spawn", () => {
             }),
           ).rejects.toThrow("does not match the selected provider route");
           expect(nativeClientMock.instances).toHaveLength(1);
+          expect(cliCalls).toHaveLength(0);
           const { spawn } = await import("node:child_process");
           expect(spawn).not.toHaveBeenCalled();
           const refused = await service.getSession(spawned.sessionId);
