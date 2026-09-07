@@ -552,6 +552,11 @@ describe("POST /api/v1/voice/tts provider selection", () => {
   });
 
   test("tags Gandr MP3 cache entries as gandr so cross-provider collisions cannot happen", async () => {
+    // Reachable cache-miss state: the harness defaults to cacheBypass=true,
+    // which skips population entirely and would leave this assertion
+    // vacuous. Disable the bypass so the whole-input opener is warmed from
+    // the primary bytes, exactly as the ElevenLabs warm test above does.
+    cacheBypass = false;
     const response = await postTts(
       { text: "Hello from Gandr.", voiceId: "gandr-mia" },
       { GANDR_API_KEY: "gandr-key" },
@@ -559,8 +564,16 @@ describe("POST /api/v1/voice/tts provider selection", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("gandr");
-    await response.arrayBuffer();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await response.arrayBuffer()).toEqual(
+      new Uint8Array([73, 68, 51, 4]).buffer,
+    );
+    await Bun.sleep(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://tts.gandr.ai/v1/audio/speech",
+    );
+    expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
+    expect(cacheHas).not.toHaveBeenCalled();
     expect(cachePut).toHaveBeenCalledTimes(1);
     const cachedKey = cachePut.mock.calls[0]?.[0] as {
       provider: string;
