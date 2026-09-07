@@ -25,6 +25,7 @@ import type {
 const surfaceHarness = vi.hoisted(() => ({
   error: null as MobileNativeSurfaceError | null,
   retry: vi.fn(),
+  reload: vi.fn(),
   back: vi.fn().mockResolvedValue(undefined),
   onNavigation: undefined as UseMobileNativeTabSurfacesArgs["onNavigation"],
 }));
@@ -65,7 +66,7 @@ vi.mock(
         return {
           registerSurfaceElement: vi.fn(),
           navigateSurface: vi.fn(),
-          reloadSurface: vi.fn(),
+          reloadSurface: surfaceHarness.reload,
           backSurface: surfaceHarness.back,
           error: surfaceHarness.error,
           retry: surfaceHarness.retry,
@@ -152,11 +153,13 @@ vi.mock("../../api", async (importOriginal) => {
 });
 
 import { client } from "../../api";
+import { NAVIGATE_VIEW_EVENT } from "../../events";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
 
 beforeEach(() => {
   surfaceHarness.error = null;
   surfaceHarness.retry.mockClear();
+  surfaceHarness.reload.mockClear();
   surfaceHarness.back.mockClear();
   vi.mocked(client.fetch).mockClear();
   openExternalHarness.openExternalUrl.mockClear();
@@ -169,6 +172,46 @@ afterEach(() => {
 });
 
 describe("BrowserWorkspaceView native surface error states", () => {
+  it("retries the current native URL when the agent delivers another navigation", async () => {
+    render(<BrowserWorkspaceView />);
+    await screen.findByDisplayValue("https://example.com/");
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Fexample.com%2F",
+          },
+        }),
+      );
+    });
+
+    expect(surfaceHarness.reload).toHaveBeenCalledExactlyOnceWith("tab-1");
+    expect(client.navigateBrowserWorkspaceTab).not.toHaveBeenCalled();
+  });
+
+  it("reloads the existing native page when its current address is submitted again", async () => {
+    render(<BrowserWorkspaceView />);
+    const address = await screen.findByDisplayValue("https://example.com/");
+
+    await act(async () => {
+      fireEvent.keyDown(address, { key: "Enter" });
+    });
+
+    expect(surfaceHarness.reload).toHaveBeenCalledExactlyOnceWith("tab-1");
+    expect(client.navigateBrowserWorkspaceTab).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.change(address, { target: { value: "https://next.example/" } });
+    });
+    await act(async () => {
+      fireEvent.keyDown(address, { key: "Enter" });
+    });
+    expect(surfaceHarness.reload).toHaveBeenCalledTimes(1);
+    expect(screen.getByDisplayValue("https://next.example/")).not.toBeNull();
+  });
+
   it("routes Back to the native tab and updates its URL from owned page observations", async () => {
     render(<BrowserWorkspaceView />);
     await screen.findByText("Example");
