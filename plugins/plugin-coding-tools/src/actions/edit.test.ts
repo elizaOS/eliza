@@ -6,7 +6,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { editFileHandler } from "./edit.js";
 
 describe("EDIT", () => {

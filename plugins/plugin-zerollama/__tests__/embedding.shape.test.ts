@@ -104,16 +104,24 @@ describe("Ollama embeddings", () => {
     });
   });
 
-  it("preserves a large embedding input when no operator ceiling is configured", async () => {
+  it("preserves complete embedding input when no operator ceiling is configured", async () => {
     embedMock.mockResolvedValue({
       embedding: [1],
       usage: undefined,
     });
     const { runtime } = createRuntime();
+    // A failed capability probe cannot establish a real provider boundary, so
+    // it must not invent a local character ceiling or silently slice input.
+    (runtime.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response("{}", { status: 500 })
+    );
     const longText = "x".repeat(5_000);
 
     await expect(handleTextEmbedding(runtime, { text: longText })).resolves.toEqual([1]);
-    expect(embedMock).toHaveBeenCalledWith(expect.objectContaining({ value: longText }));
+    expect(embedMock).toHaveBeenCalledWith({
+      model: { model: "eliza-1-2b" },
+      value: longText,
+    });
   });
 
   it("honours OLLAMA_EMBED_MAX_CHARS when set", async () => {

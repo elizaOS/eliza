@@ -103,8 +103,54 @@ function buildFixtureRepo(): string {
   // Stage-1 group-chat timing evaluation reports.
   write(repo, "reports/group-chat-timing/when2speak.json", "{}\n");
   // Progressive content access corpus, benchmark, and access-ledger output.
-  write(repo, "reports/content-context/benchmark.json", "{}");
-  write(repo, "reports/content-context/page-ledger.jsonl", "{}\n");
+  const contentContextRoot = "reports/content-context/run-1";
+  for (const name of [
+    "content-context-result.json",
+    "completeness-manifest.json",
+    "corpus-manifest.json",
+    "native-realization-ledger.json",
+    "conformance.json",
+    "mutant-kills.json",
+    "source-work.json",
+    "benchmark.json",
+    "cleanup.json",
+    "prompt-tokens.json",
+    "faults.json",
+    "stress.json",
+    "soak.json",
+    "postgres.json",
+    "scenario.json",
+    "e2e.json",
+  ]) {
+    write(repo, `${contentContextRoot}/${name}`, "{}");
+  }
+  for (const name of [
+    "page-ledger.jsonl",
+    "scenario-native.jsonl",
+    "trajectories.jsonl",
+  ]) {
+    write(repo, `${contentContextRoot}/${name}`, "{}\n");
+  }
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/backend/server.log`,
+    "backend evidence",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/browser/trace.zip`,
+    "browser trace",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/network/requests.har`,
+    "network evidence",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/database/rows.json`,
+    "database evidence",
+  );
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
   return repo;
@@ -414,7 +460,7 @@ describe("ingestAllSilos", () => {
       "content-context": {
         silo: "content-context",
         status: "ingested",
-        artifactCount: 2,
+        artifactCount: 23,
       },
     });
   });
@@ -453,15 +499,37 @@ describe("ingestAllSilos", () => {
       source: "group-chat-timing",
       lane: "evaluation",
     });
-    expect(byPath["lanes/content-context/benchmark.json"]).toMatchObject({
+    expect(byPath["lanes/content-context/run-1/benchmark.json"]).toMatchObject({
       kind: "report",
       source: "content-context",
       lane: "content-context",
     });
+    for (const name of [
+      "content-context-result.json",
+      "completeness-manifest.json",
+      "corpus-manifest.json",
+      "native-realization-ledger.json",
+      "conformance.json",
+      "mutant-kills.json",
+      "source-work.json",
+      "cleanup.json",
+    ]) {
+      expect(byPath[`lanes/content-context/run-1/${name}`]).toMatchObject({
+        kind: "report",
+        source: "content-context",
+        lane: "content-context",
+      });
+    }
     expect(
-      byPath["trajectories/content-context/page-ledger.jsonl"],
+      byPath["trajectories/content-context/run-1/page-ledger.jsonl"],
     ).toMatchObject({
       kind: "trajectory",
+      source: "content-context",
+      lane: "content-context",
+    });
+    expect(
+      byPath["misc/content-context/run-1/e2e-artifacts/browser/trace.zip"],
+    ).toMatchObject({
       source: "content-context",
       lane: "content-context",
     });

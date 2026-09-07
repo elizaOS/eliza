@@ -20,6 +20,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  assignContentContextRun,
   captureEvidenceBaseline,
   createVerifiedBundle,
   executeSteps,
@@ -78,6 +79,7 @@ test("selects all real matrix lanes by default", () => {
       "test-all",
       "e2e-recordings",
       "app-audit",
+      "content-context",
       "ios-sim-capture",
       "android-emu-capture",
     ],
@@ -148,7 +150,37 @@ test("can skip device lanes while keeping test and visual evidence lanes", () =>
   const steps = selectMatrixSteps(MATRIX_STEPS, options);
   assert.deepEqual(
     steps.map((step) => step.id),
-    ["test-all", "e2e-recordings", "app-audit"],
+    ["test-all", "e2e-recordings", "app-audit", "content-context"],
+  );
+});
+
+test("matrix assigns the content producer a unique canonical run root", () => {
+  const source = path.join(REPO_ROOT, "tmp", "native-content-evidence");
+  const options = parseMatrixArgs([
+    "--only=content-context",
+    `--content-context-source=${source}`,
+  ]);
+  const steps = assignContentContextRun(
+    selectMatrixSteps(MATRIX_STEPS, options),
+    options,
+    { runId: "matrix-contract-test" },
+  );
+  assert.deepEqual(steps[0].command, [
+    "node",
+    "packages/scripts/run-content-context.mjs",
+    `--source=${source}`,
+    `--run-root=${path.join(REPO_ROOT, "reports", "content-context", "matrix-contract-test")}`,
+  ]);
+  assert.throws(
+    () =>
+      assignContentContextRun(
+        selectMatrixSteps(
+          MATRIX_STEPS,
+          parseMatrixArgs(["--only=content-context"]),
+        ),
+        parseMatrixArgs(["--only=content-context"]),
+      ),
+    /requires --content-context-source/,
   );
 });
 

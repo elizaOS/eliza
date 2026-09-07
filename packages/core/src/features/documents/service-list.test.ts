@@ -1,5 +1,5 @@
 /**
- * Exercises document-list filtering and pagination through a real AgentRuntime,
+ * Exercises document filtering, pagination, and complete reads through a real AgentRuntime,
  * DocumentService, and InMemoryDatabaseAdapter with persisted memory records.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	type AccessContext,
+	ChannelType,
 	type Character,
 	type Memory,
 	MemoryType,
@@ -15,6 +16,7 @@ import {
 	type UUID,
 	type World,
 } from "../../types";
+import { documentAction } from "./actions";
 import { DocumentService } from "./service";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
@@ -100,6 +102,95 @@ function userMessage(): Memory {
 		content: { text: "list documents" },
 	};
 }
+
+describe("DocumentService complete source reads", () => {
+	it("returns the complete Unicode source across native pages and honors explicit ranges", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		await adapter.createWorlds([
+			{
+				id: WORLD_ID,
+				agentId: AGENT_ID,
+				metadata: { roles: { [USER_ID]: "USER" } },
+			},
+		]);
+		await adapter.createRooms([
+			{
+				id: ROOM_A,
+				agentId: AGENT_ID,
+				worldId: WORLD_ID,
+				source: "test",
+				type: ChannelType.GROUP,
+			},
+		]);
+
+		const prefix = "First line\r\n";
+		const remainder =
+			"猫🙂 line with preserved whitespace  \r\n".repeat(24_000) +
+			"Final marker\n";
+		const content = prefix + remainder;
+		const added = await service.addDocument({
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+			roomId: ROOM_A,
+			entityId: AGENT_ID,
+			contentType: "text/plain",
+			originalFilename: "complete-source.txt",
+			content,
+			scope: "global",
+		});
+		await runtime.enableDocuments();
+		runtime.services.set(DocumentService.serviceType, [service]);
+		const actionResult = await documentAction.handler(
+			runtime,
+			userMessage(),
+			undefined,
+			{
+				parameters: {
+					action: "read",
+					documentId: added.storedDocumentMemoryId,
+				},
+			},
+		);
+		if (!actionResult) throw new Error("Document action returned no result");
+		expect(actionResult.success, actionResult.text).toBe(true);
+		expect(actionResult.text).toBe(content);
+		expect(JSON.stringify(actionResult.promptData)).not.toContain(
+			"Final marker",
+		);
+		for (const unit of ["line", "fragment", "byte"] as const) {
+			const result = await service.readDocumentRange(
+				added.storedDocumentMemoryId,
+				{ unit, offset: 0 },
+				userMessage(),
+			);
+			expect(result?.text).toBe(content);
+			expect(result?.end).toBe(result?.total);
+			expect(result?.sourceQueryCount).toBeGreaterThan(1);
+		}
+		await expect(
+			service.readDocumentRange(
+				added.storedDocumentMemoryId,
+				{ unit: "line", offset: 1 },
+				userMessage(),
+			),
+		).resolves.toMatchObject({ text: remainder });
+		await expect(
+			service.readDocumentRange(
+				added.storedDocumentMemoryId,
+				{ unit: "line", offset: 0, limit: 1 },
+				userMessage(),
+			),
+		).resolves.toMatchObject({ text: prefix, start: 0, end: 1 });
+		await adapter.deleteParticipants([{ entityId: USER_ID, roomId: ROOM_A }]);
+		await expect(
+			service.readDocumentRange(
+				added.storedDocumentMemoryId,
+				{ unit: "line", offset: 0 },
+				userMessage(),
+			),
+		).resolves.toBeNull();
+	}, 120_000);
+});
 
 describe("DocumentService list semantics", () => {
 	it("excludes room documents immediately after membership revocation", async () => {

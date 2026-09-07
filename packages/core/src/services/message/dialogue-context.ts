@@ -107,13 +107,6 @@ export function verifiedCrossRoomContent(memory: Memory): string {
 }
 
 /**
- * How many of the agent's own prior turns the tool-planner context renders.
- * Enough to cover the pending question/preview plus a short back-and-forth,
- * small enough to keep the stale-answer surface and token cost bounded.
- */
-export const PLANNER_MAX_OWN_REPLY_TURNS = 4;
-
-/**
  * Structural marker for an assistant memory whose text is a tool-derived
  * answer rather than plain dialogue: it carries merged action-callback
  * history, or its recorded actions include a real tool (anything beyond the
@@ -130,11 +123,9 @@ export function appendPriorDialogueEvents(
 		/**
 		 * Planner mode: keep ordinary own replies (questions, previews, acks —
 		 * what "yes"/"finish it" refers to) while excluding tool-derived own
-		 * answers structurally (stale-answer hazard) and bounding how many own
-		 * turns render.
+		 * answers structurally (stale-answer hazard).
 		 */
 		excludeToolDerivedOwnReplies?: boolean;
-		maxOwnReplies?: number;
 	},
 ): void {
 	const includeOwnReplies = options?.includeOwnReplies ?? false;
@@ -210,20 +201,6 @@ export function appendPriorDialogueEvents(
 				: 0;
 			return aTime - bTime;
 		});
-	// Bound how many of the agent's own turns render (newest win): the planner
-	// needs the immediate question/preview a continuation refers to, not the
-	// agent's whole side of a long conversation.
-	const maxOwnReplies = options?.maxOwnReplies;
-	if (maxOwnReplies !== undefined) {
-		let ownRepliesKept = 0;
-		for (let index = dialogue.length - 1; index >= 0; index--) {
-			if (dialogue[index]?.entityId !== runtime.agentId) continue;
-			ownRepliesKept++;
-			if (ownRepliesKept > maxOwnReplies) {
-				dialogue.splice(index, 1);
-			}
-		}
-	}
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;

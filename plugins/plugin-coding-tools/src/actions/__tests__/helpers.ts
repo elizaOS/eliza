@@ -8,14 +8,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, Service } from "@elizaos/core";
 
-import { FileStateService } from "../services/file-state-service.js";
-import { SandboxService } from "../services/sandbox-service.js";
-import { SessionCwdService } from "../services/session-cwd-service.js";
+import { FileStateService } from "../../services/file-state-service.js";
+import { SandboxService } from "../../services/sandbox-service.js";
+import { SessionCwdService } from "../../services/session-cwd-service.js";
 import {
   FILE_STATE_SERVICE,
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
-} from "../types.js";
+} from "../../types.js";
 
 export interface TestEnv {
   runtime: IAgentRuntime;
@@ -52,6 +52,8 @@ export async function setupEnv(
   options: SetupOptions = {},
 ): Promise<TestEnv> {
   const tmpDir = options.rootsPath ?? (await makeTempDir(prefix));
+  const priorStateDir = process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = path.join(tmpDir, "state");
   const blockedPath = options.blockedPath ?? path.join(tmpDir, "_blocked");
   await fs.mkdir(blockedPath, { recursive: true });
 
@@ -91,7 +93,12 @@ export async function setupEnv(
       await sandbox.stop();
       await fileState.stop();
       await sessionCwd.stop();
-      await fs.rm(tmpDir, { recursive: true, force: true });
+      try {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      } finally {
+        if (priorStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+        else process.env.ELIZA_STATE_DIR = priorStateDir;
+      }
     },
   };
 }

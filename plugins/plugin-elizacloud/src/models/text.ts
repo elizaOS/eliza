@@ -14,6 +14,7 @@ import type {
 import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
+  createPreparedModelRequestGuard,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   ElizaError,
@@ -50,6 +51,20 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeNa
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+
+function createCloudPreparedRequestGuard(
+  model: string,
+  body: Record<string, unknown>
+) {
+  const outputReserve = body.max_output_tokens ?? body.max_tokens;
+  return createPreparedModelRequestGuard({
+    provider: "eliza-cloud",
+    model,
+    serializeRequest: () => JSON.stringify(body),
+    outputReserveTokens:
+      typeof outputReserve === "number" ? outputReserve : undefined,
+  });
+}
 
 /**
  * Per-process cap on CONCURRENT native cloud text calls.
@@ -1341,6 +1356,7 @@ async function generateTextWithModel(
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
+  const preparedRequest = createCloudPreparedRequestGuard(modelName, requestBody);
 
   const responsesHeaders: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
@@ -1357,12 +1373,14 @@ async function generateTextWithModel(
   // A cold gateway's warming 503 is retried in place instead of throwing into
   // the runtime failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/responses", {
         headers: responsesHeaders,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
+      });
+    },
     "responses"
   );
   let data: ResponsesApiResponse = {};
@@ -1456,6 +1474,7 @@ export async function generateNativeChatCompletion(
     context.systemPrompt,
     runtime
   );
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
   const headers: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
@@ -1479,12 +1498,14 @@ export async function generateNativeChatCompletion(
   // warming 503 is retried in place instead of throwing into the runtime
   // failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
+      });
+    },
     "chat/completions"
   );
   let data: ChatCompletionsResponse = {};
@@ -1883,6 +1904,7 @@ export async function streamNativeChatCompletion(
   // OpenAI-compatible: ask the server to include a final usage-only frame so we
   // can meter the streamed call accurately.
   requestBody.stream_options = { include_usage: true };
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
 
   const headers: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
@@ -1922,6 +1944,7 @@ export async function streamNativeChatCompletion(
       route: "chat/completions:stream",
     });
     try {
+      preparedRequest.assertBeforeAttempt();
       response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,

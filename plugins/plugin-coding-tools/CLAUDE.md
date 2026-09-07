@@ -6,13 +6,22 @@ Native coding tools (READ, WRITE, EDIT, FILE, SHELL, WORKTREE) for Eliza agents 
 
 Adds filesystem operations, shell command execution, and git worktree management to an Eliza agent. The plugin is **opt-in**: it auto-enables when `config.features.codingTools` (or legacy `config.features["coding-agent"]`) is truthy and the runtime environment supports a terminal (disabled on `ELIZA_BUILD_VARIANT=store` and on iOS; Android only when `ELIZA_RUNTIME_MODE=local-yolo`). All actions are gated to `contexts: ["code", "terminal", "automation"]`. FILE and WORKTREE require `roleGate: minRole=ADMIN`; SHELL requires `roleGate: minRole=OWNER`.
 
+FILE and READ return complete text when `limit` is omitted. A bounded read returns
+an opaque `reference` and revision. Continue with `reference`, `expectedRevision`,
+`offset`, and an optional `limit`; omit `file_path` for reference reads. Locators
+persist privately under the state directory and are scoped to the agent and
+conversation. Every continuation rechecks the current sandbox policy and file
+revision, including after a process restart. A reference does not grant file
+access. Missing, changed, tampered, or inaccessible sources fail without returning
+unseen content. WRITE and EDIT still require a read in their current process.
+
 ## Plugin surface
 
 ### Actions
 
 - **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit and relative `path` values for grep/glob/ls resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
 - **READ / WRITE / EDIT** — strict, operation-specific schemas for direct coding loops. They delegate to the same FILE handlers and preserve its sandbox, stale-file, secret, and size checks.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c` and returns the complete accepted redacted stdout/stderr to the planner; output above the explicit 1,000,000-character capture ceiling is rejected with no partial result. `read_output_artifact` remains available for scoped artifacts retained by earlier runtimes. `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **SHELL** — `action=run` streams host stdout/stderr independently through encrypted-at-rest capture, publishes the complete redacted result as an immutable private owner/conversation-scoped artifact, and returns the complete redacted result plus the opaque handle. `read_output_artifact` reads bounded pages with stable offsets and revision. Full-string capability-router or sandbox results require exact bounded-capture attestation; otherwise SHELL fails with typed irreversible source loss and exposes no returned prefix. `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Providers
@@ -104,8 +113,7 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
-| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Default line page size for revision-bound FILE reads; responses include exact continuation state. |
-| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Byte cap for selected FILE read content. Larger files are paged with bounded line or byte reads. |
+| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | Optional | Selected-content byte budget; oversized reads fail explicitly. Omitted read limits request the complete remainder. |
 
 The folded `ShellService` also retains compatibility settings for external
 consumers of `runtime.getService("shell").exec()` / `executeCommand()`. The
@@ -122,14 +130,20 @@ canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
 | `SHELL_ALLOW_BACKGROUND` | `true` | Set to exact `false` to disable compatibility-service background/yield behavior. |
 | `SHELL_FORBIDDEN_COMMANDS` | — | Comma-separated additions to the built-in forbidden-command set. |
 
-Foreground SHELL results accepted by the one-million-character complete-capture
-boundary are returned in full after redaction. A larger result fails explicitly
-and exposes no partial prefix. The action never substitutes a preview, summary,
-or optional artifact handle for model-facing stdout/stderr. For compatibility,
-`action=read_output_artifact` can still retrieve bounded pages from an unexpired
-opaque artifact issued by an earlier runtime, but only when its persisted agent
-and conversation scope match the requesting turn; state-root paths remain
-private.
+Foreground host SHELL capture has no one-million-character kill boundary. Raw
+streams are independently AES-GCM encrypted while the process runs, with keys
+kept only in process memory. Finalization decrypts through bounded redaction
+windows into 16 KiB publication segments, while preserving complete redacted output for the planner. Exact runtime and pattern redaction runs before
+atomic immutable publication, so plaintext secrets are not persisted. A
+sensitive record that cannot be separated safely within the bounded window
+fails the unpublished capture atomically instead of exposing a prefix. The planner receives complete redacted stdout and stderr. Results beyond the
+JavaScript string boundary fail explicitly before publication; no prefix or
+head/tail substitute is returned. `action=read_output_artifact` retrieves bounded
+pages from the unexpired opaque artifact only when its persisted agent and
+conversation scope match the requesting turn; state-root paths remain private.
+The signed manifest records raw source and stored redacted byte/character/line
+counts, exit state, expiry, and content revision. Unattested upstream full-string
+backends fail as `SHELL_UPSTREAM_CAPTURE_UNVERIFIED`.
 
 Auto-enable keys (in agent `config.features`):
 - `config.features.codingTools` (canonical) — `true` or `{ enabled: true }`.

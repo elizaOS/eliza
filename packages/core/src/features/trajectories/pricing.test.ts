@@ -15,6 +15,7 @@ import {
 	computeCallCostUsd,
 	isLocalProvider,
 	lookupModelContextWindow,
+	lookupModelMaxOutputTokens,
 	lookupModelPrice,
 	MODEL_PRICES_USD_PER_M_TOKENS,
 	PRICE_TABLE_ID,
@@ -158,6 +159,15 @@ describe("lookupModelPrice", () => {
 });
 
 describe("lookupModelContextWindow", () => {
+	it("resolves every GPT-5.6 tier to its published 1.05M window", () => {
+		for (const modelName of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+			expect(lookupModelContextWindow(modelName)).toEqual({
+				matchedKey: modelName,
+				contextWindowTokens: 1_050_000,
+			});
+		}
+	});
+
 	it("resolves the current Anthropic families to their documented windows", () => {
 		expect(
 			lookupModelContextWindow("claude-opus-4-8")?.contextWindowTokens,
@@ -188,6 +198,26 @@ describe("lookupModelContextWindow", () => {
 			matchedKey: "gemma-4-31b",
 			contextWindowTokens: 131_072,
 		});
+	});
+});
+
+describe("lookupModelMaxOutputTokens", () => {
+	it("resolves exact and provider-qualified GPT-5.6 ids to 128K", () => {
+		expect(lookupModelMaxOutputTokens("gpt-5.6-sol")).toEqual({
+			matchedKey: "gpt-5.6-sol",
+			maxOutputTokens: 128_000,
+		});
+		expect(
+			lookupModelMaxOutputTokens("openai/gpt-5.6-luna-2026-08-01"),
+		).toEqual({
+			matchedKey: "gpt-5.6-luna",
+			maxOutputTokens: 128_000,
+		});
+	});
+
+	it("does not invent an output limit for unknown models", () => {
+		expect(lookupModelMaxOutputTokens(undefined)).toBeNull();
+		expect(lookupModelMaxOutputTokens("unknown-model")).toBeNull();
 	});
 });
 

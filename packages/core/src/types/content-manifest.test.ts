@@ -10,7 +10,12 @@ const baseManifest = {
 	schemaVersion: 1,
 	contentRefs: [
 		{
-			reference: { kind: "document", ref: "document-opaque", revision: "r1" },
+			reference: {
+				kind: "document",
+				ref: "document-opaque",
+				revision: "r1",
+				resumability: "restart-safe",
+			},
 			revision: "r1",
 			reason: "tool:DOCUMENT",
 			rangesUsed: [{ unit: "fragment", start: 4, end: 7 }],

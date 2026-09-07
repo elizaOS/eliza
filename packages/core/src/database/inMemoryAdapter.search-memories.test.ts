@@ -47,6 +47,31 @@ describe("InMemoryDatabaseAdapter.searchMemories", () => {
 		return adapter;
 	}
 
+	it("returns every ranked match without an explicit limit and preserves offset pagination", async () => {
+		const memories: Memory[] = Array.from({ length: 15 }, (_, index) => ({
+			entityId: entityA,
+			roomId: roomA,
+			agentId,
+			content: { text: `complete match ${index}` },
+			embedding: offAxis(index / 100),
+		}));
+		const adapter = await seed(memories);
+		const query = { tableName: "memories", embedding: onAxis(), roomId: roomA };
+		expect(
+			(await adapter.searchMemories(query)).map((row) => row.content.text),
+		).toEqual(memories.map((row) => row.content.text));
+		expect(
+			(await adapter.searchMemories({ ...query, offset: 12 })).map(
+				(row) => row.content.text,
+			),
+		).toEqual(memories.slice(12).map((row) => row.content.text));
+		expect(
+			(await adapter.searchMemories({ ...query, count: 2, offset: 12 })).map(
+				(row) => row.content.text,
+			),
+		).toEqual(memories.slice(12, 14).map((row) => row.content.text));
+	});
+
 	it("returns the in-room top-K even when a larger off-room corpus holds closer vectors", async () => {
 		const crowd: Memory[] = Array.from({ length: 20 }, (_, i) => ({
 			entityId: entityB,

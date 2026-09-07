@@ -64,6 +64,13 @@ export function buildAuditViewCases(): AuditViewCase[] {
       viewType: "gui",
       kind: "builtin",
     },
+    {
+      id: "context-inspector",
+      slug: "builtin-context-inspector",
+      path: "/apps/context-inspector",
+      viewType: "gui",
+      kind: "builtin",
+    },
     ...VIEW_CASES.flatMap((view): AuditViewCase[] => {
       const base: AuditViewCase = {
         id: view.id,

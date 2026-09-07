@@ -46,6 +46,42 @@ describe("InMemoryDatabaseAdapter safe sort comparators", () => {
 		expect(results[0]?.requests[1]?.id).toBe(req1.id); // invalid fallback to 0
 	});
 
+	it("lists all authorized connector accounts unless the caller requests a page", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		for (let index = 0; index < 105; index += 1) {
+			await adapter.upsertConnectorAccount({
+				agentId: AGENT_ID,
+				provider: "slack",
+				accountKey: `account-${index}`,
+				displayName: `Account ${index}`,
+				role: "OWNER",
+				purpose: ["messaging"],
+				accessGate: "open",
+				scopes: [],
+				metadata: {},
+			});
+		}
+		const accounts = await adapter.listConnectorAccounts({ agentId: AGENT_ID });
+		expect(accounts.map((account) => account.accountKey).sort()).toEqual(
+			Array.from({ length: 105 }, (_, index) => `account-${index}`).sort(),
+		);
+		expect(
+			await adapter.listConnectorAccounts({
+				agentId: stringToUuid("other-agent"),
+			}),
+		).toEqual([]);
+		expect(
+			await adapter.listConnectorAccounts({ agentId: AGENT_ID, offset: 102 }),
+		).toEqual(accounts.slice(102));
+		expect(
+			await adapter.listConnectorAccounts({
+				agentId: AGENT_ID,
+				offset: 102,
+				limit: 1,
+			}),
+		).toEqual(accounts.slice(102, 103));
+	});
+
 	it("sorts connector accounts safely when updatedAt contains NaN or non-finite numbers", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.init?.();

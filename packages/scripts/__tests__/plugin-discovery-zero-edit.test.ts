@@ -17,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   resolveBuildOnInstallPackages,
+  resolveContentContextEvidencePackages,
   resolveCoreBuildPackages,
   resolveDevAllSkipPlugins,
   resolveTestLaneDirs,
@@ -286,5 +287,38 @@ describe("plugin discovery is zero-edit", () => {
     expect(stale.failures.some((f) => f.includes("[coupling-stale]"))).toBe(
       true,
     );
+  });
+
+  test("progressive-content evidence roles are package-owned and unique", () => {
+    const root = makeRepo();
+    writePlugin(root, "@elizaos/plugin-reader", {
+      contentContextEvidence: { role: "coding-tools" },
+    });
+    writePlugin(root, "@elizaos/plugin-storage", {
+      contentContextEvidence: { role: "sql" },
+    });
+
+    const discovered = resolveContentContextEvidencePackages({
+      repoRoot: root,
+    });
+    expect(discovered.invalid).toEqual([]);
+    expect(discovered.packages.get("coding-tools")?.name).toBe(
+      "@elizaos/plugin-reader",
+    );
+    expect(discovered.packages.get("sql")?.name).toBe(
+      "@elizaos/plugin-storage",
+    );
+
+    writePlugin(root, "@elizaos/plugin-duplicate", {
+      contentContextEvidence: { role: "sql" },
+    });
+    writePlugin(root, "@elizaos/plugin-invalid", {
+      contentContextEvidence: { role: "other" },
+    });
+    const invalid = resolveContentContextEvidencePackages({ repoRoot: root });
+    expect(invalid.invalid).toEqual([
+      "@elizaos/plugin-invalid: contentContextEvidence.role must be coding-tools or sql",
+      "@elizaos/plugin-storage: duplicate contentContextEvidence role sql",
+    ]);
   });
 });

@@ -427,8 +427,9 @@ describe("sourcesFromRuntime", () => {
 			text: "John Smith",
 		});
 		expect(searchMemories).toHaveBeenCalledWith(
-			expect.objectContaining({ tableName: "messages", query: "John Smith" }),
+			expect.objectContaining({ tableName: "messages", count: 64, offset: 0 }),
 		);
+		expect(searchMemories.mock.calls[0]?.[0]).not.toHaveProperty("query");
 		expect(fragments).toEqual([
 			{ text: "found memory", origin: "memory", ref: "mem1", score: 0.8 },
 		]);
@@ -491,7 +492,7 @@ describe("sourcesFromRuntime", () => {
 			expect.objectContaining({ count: 64, offset: 0 }),
 		);
 		expect(searchMemories).toHaveBeenCalledWith(
-			expect.objectContaining({ count: 256, offset: 0 }),
+			expect.objectContaining({ count: 64, offset: 128 }),
 		);
 	});
 
@@ -516,7 +517,7 @@ describe("sourcesFromRuntime", () => {
 		).rejects.toMatchObject({ code: "PII_CONTEXT_SOURCE_INCOMPLETE" });
 	});
 
-	test("rejects a source that changes between complete traversals", async () => {
+	test("does not reject an unrelated append after a completed traversal", async () => {
 		let prefixReads = 0;
 		const searchMemories = vi.fn(
 			async (params: { offset?: number }): Promise<Memory[]> => {
@@ -543,7 +544,9 @@ describe("sourcesFromRuntime", () => {
 
 		await expect(
 			sourcesFromRuntime(runtime).searchMemories?.("John"),
-		).rejects.toMatchObject({ code: "PII_CONTEXT_SOURCE_UNSTABLE" });
+		).resolves.toEqual([
+			expect.objectContaining({ text: "version 1", ref: "mem-1" }),
+		]);
 	});
 });
 

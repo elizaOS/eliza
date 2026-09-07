@@ -98,6 +98,39 @@ describe("wrapOllamaNativeChatFetch", () => {
     expect(baseFetch.mock.calls[0]?.[1]).toMatchObject({ body });
   });
 
+  it("dispatches a complete body when only heuristic size evidence exists", async () => {
+    const baseFetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    const wrapped = wrapOllamaNativeChatFetch(baseFetch as unknown as typeof fetch, {
+      model: "gpt-5.5",
+      outputReserveTokens: 1,
+    });
+
+    await wrapped("http://host/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.5", prompt: "x".repeat(800_000) }),
+    });
+    expect(baseFetch).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a mutated retry instead of dispatching different bytes", async () => {
+    const baseFetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    const wrapped = wrapOllamaNativeChatFetch(baseFetch as unknown as typeof fetch, {
+      model: "gemini-2.5-pro",
+      outputReserveTokens: 64,
+    });
+    await wrapped("http://host/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ model: "gemini-2.5-pro", prompt: "first" }),
+    });
+    await expect(
+      wrapped("http://host/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ model: "gemini-2.5-pro", prompt: "changed" }),
+      })
+    ).rejects.toMatchObject({ code: "MODEL_PREPARED_REQUEST_MUTATED" });
+    expect(baseFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("resolveOllamaFetch prefers runtime.fetch", async () => {
     const runtimeFetch = vi.fn(async () => new Response("{}", { status: 200 }));
     const wrapped = resolveOllamaFetch({

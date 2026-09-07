@@ -139,6 +139,19 @@ async function runRead(params: {
 }
 
 describe("ATTACHMENT read delivery selection", () => {
+	it("passes the complete attachment to the answering model when no page was requested", async () => {
+		const text =
+			"full attachment 🙂\n".repeat(2_000) + "FINAL ATTACHMENT EVIDENCE";
+		const { result, calls } = await runRead({
+			modelResponse: SUMMARY,
+			text: "Explain this attachment",
+			attachments: [{ ...makeAttachment(), text }],
+		});
+		expect(result?.success).toBe(true);
+		expect(calls).toHaveLength(1);
+		expect(calls[0].prompt).toContain(text);
+	});
+
 	it("bare link share with addToClipboard ships ONE prose summary, never the record dump", async () => {
 		const { result, callbackTexts } = await runRead({
 			modelResponse: SUMMARY,

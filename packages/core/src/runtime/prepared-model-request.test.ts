@@ -1,0 +1,183 @@
+/**
+ * Deterministic final-wire admission coverage proves zero-dispatch rejection,
+ * byte-identical retry validation, immutable request graphs, and content-free
+ * typed failures without mocking a provider transport.
+ */
+
+import { describe, expect, it } from "vitest";
+import { createPreparedModelRequestGuard } from "./prepared-model-request";
+
+describe("createPreparedModelRequestGuard", () => {
+	it("admits and rechecks one byte-identical request on every retry", () => {
+		const request = {
+			model: "gpt-5.6-luna",
+			messages: [{ role: "user", content: "complete request" }],
+			max_output_tokens: 128_000,
+		};
+		const countedBodies: string[] = [];
+		const guard = createPreparedModelRequestGuard({
+			provider: "openai",
+			model: request.model,
+			projectRequest: () => request,
+			outputReserveTokens: request.max_output_tokens,
+			countInputTokens: (body) => {
+				countedBodies.push(body);
+				return 17;
+			},
+			countInputTokensIsExact: true,
+		});
+
+		guard.assertBeforeAttempt();
+		guard.assertBeforeAttempt();
+
+		expect(guard.attempts).toBe(2);
+		expect(guard.budget).toMatchObject({
+			contextWindowTokens: 1_050_000,
+			outputReserveTokens: 128_000,
+			inputTokens: 17,
+			countSource: "provider-tokenizer",
+		});
+		expect(new Set(countedBodies).size).toBe(1);
+		expect(Object.isFrozen(request)).toBe(true);
+		expect(Object.isFrozen(request.messages)).toBe(true);
+		expect(Object.isFrozen(request.messages[0])).toBe(true);
+	});
+
+	it("rejects an oversized prepared request before a transport can run", () => {
+		let dispatches = 0;
+		expect(() => {
+			createPreparedModelRequestGuard({
+				provider: "fixture",
+				model: "tiny",
+				projectRequest: () => ({ prompt: "raw-canary-must-not-leak" }),
+				contextWindowTokens: 100,
+				outputReserveTokens: 20,
+				countInputTokens: () => 80,
+				countInputTokensIsExact: true,
+			});
+			dispatches += 1;
+		}).toThrow(
+			expect.objectContaining({
+				code: "MODEL_INPUT_OVER_BUDGET",
+				context: expect.not.objectContaining({
+					request: expect.anything(),
+				}),
+			}),
+		);
+		expect(dispatches).toBe(0);
+	});
+
+	it("detects mutation between retry attempts", () => {
+		let prompt = "first";
+		const guard = createPreparedModelRequestGuard({
+			provider: "fixture",
+			model: "unknown-model",
+			projectRequest: () => ({ prompt }),
+			countInputTokens: () => 1,
+		});
+		guard.assertBeforeAttempt();
+		prompt = "changed";
+		expect(() => guard.assertBeforeAttempt()).toThrow(
+			expect.objectContaining({ code: "MODEL_PREPARED_REQUEST_MUTATED" }),
+		);
+		expect(guard.attempts).toBe(1);
+	});
+
+	it("guards an already serialized final-wire body byte for byte", () => {
+		let body = '{"model":"fixture","input":"complete"}';
+		const guard = createPreparedModelRequestGuard({
+			provider: "fixture",
+			model: "fixture",
+			serializeRequest: () => body,
+			contextWindowTokens: 100_000,
+			outputReserveTokens: 100,
+		});
+		guard.assertBeforeAttempt();
+		expect(guard.budget.countSource).toBe("utf8-upper-bound");
+		body = '{"model":"fixture", "input":"complete"}';
+		expect(() => guard.assertBeforeAttempt()).toThrow(
+			expect.objectContaining({ code: "MODEL_PREPARED_REQUEST_MUTATED" }),
+		);
+	});
+
+	it("keeps a UTF-8 upper bound diagnostic and dispatches the complete body", () => {
+		let dispatches = 0;
+		const guard = createPreparedModelRequestGuard({
+			provider: "fixture",
+			model: "fixture",
+			serializeRequest: () => "界".repeat(50),
+			contextWindowTokens: 170,
+			outputReserveTokens: 20,
+		});
+		guard.assertBeforeAttempt();
+		dispatches += 1;
+		expect(guard.budget).toMatchObject({
+			countSource: "utf8-upper-bound",
+			rejectionAuthority: "diagnostic-only",
+		});
+		expect(dispatches).toBe(1);
+	});
+
+	it("does not authorize rejection from a fallback tokenizer estimate", () => {
+		const guard = createPreparedModelRequestGuard({
+			provider: "openai-compatible",
+			model: "newer-than-static-tokenizer-registry",
+			serializeRequest: () => "complete",
+			contextWindowTokens: 20,
+			outputReserveTokens: 5,
+			countInputTokens: () => 20,
+		});
+		expect(guard.budget).toMatchObject({
+			countSource: "tokenizer-estimate",
+			rejectionAuthority: "diagnostic-only",
+		});
+		guard.assertBeforeAttempt();
+		expect(guard.attempts).toBe(1);
+	});
+
+	it("honors an explicit native output reserve below the generic fallback", () => {
+		const guard = createPreparedModelRequestGuard({
+			provider: "native-ios",
+			model: "local-4k",
+			serializeRequest: () => "small request",
+			contextWindowTokens: 4_096,
+			outputReserveTokens: 512,
+		});
+		expect(guard.budget).toMatchObject({
+			contextWindowTokens: 4_096,
+			outputReserveTokens: 512,
+			dispatchThresholdTokens: 3_584,
+		});
+		guard.assertBeforeAttempt();
+		expect(guard.attempts).toBe(1);
+	});
+
+	it("rejects values JSON would silently omit", () => {
+		expect(() =>
+			createPreparedModelRequestGuard({
+				provider: "fixture",
+				model: "unknown-model",
+				projectRequest: () => ({ prompt: "ok", hidden: () => "lost" }),
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+			}),
+		);
+	});
+
+	it("fails closed when tokenizer counts drift for the same body", () => {
+		let count = 4;
+		const guard = createPreparedModelRequestGuard({
+			provider: "fixture",
+			model: "unknown-model",
+			projectRequest: () => ({ prompt: "same" }),
+			countInputTokens: () => count++,
+		});
+		expect(() => guard.assertBeforeAttempt()).toThrow(
+			expect.objectContaining({
+				code: "MODEL_PREPARED_REQUEST_TOKEN_COUNT_DRIFT",
+			}),
+		);
+	});
+});
