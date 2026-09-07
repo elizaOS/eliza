@@ -627,8 +627,10 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.active).toBe(false);
     // This interaction falls back, while the next user tap may retry realtime.
     expect(result.current.available).toBe(true);
-    expect(result.current.error?.actionable).toBe(false);
-    expect(result.current.error?.message).toMatch(/standard voice/i);
+    expect(result.current.error?.actionable).toBe(true);
+    expect(result.current.error?.message).toBe(
+      "Couldn't confirm microphone consent. Tap the mic to try again.",
+    );
     expect(startOutcome).toEqual({
       kind: "fallback-to-batch",
       reason: "consent",

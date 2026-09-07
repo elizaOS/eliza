@@ -212,24 +212,19 @@ function classifyError(error: Error): RealtimeVoiceError {
     };
   }
   if (error instanceof VoiceSessionMintError) {
-    // A 404 (feature disabled) is NOT an error surface — the caller falls back
-    // to batch. Any other mint status is a real failure; it latches realtime
-    // off, so "will use standard voice" is what the next mic tap actually does.
+    // The caller owns any alternate capture policy. Realtime remains
+    // retryable, so do not promise a provider switch from this shared hook.
     return {
       kind: "mint",
-      message:
-        "Couldn't start realtime voice. The mic will use standard voice instead.",
-      actionable: false,
+      message: "Couldn't start realtime voice. Tap the mic to try again.",
+      actionable: true,
     };
   }
   if (error instanceof VoiceSessionConsentError) {
-    // Consent failures latch realtime off for this surface, so the copy's
-    // promise ("standard voice") is exactly what the next mic tap does.
     return {
       kind: "consent",
-      message:
-        "Couldn't confirm consent for realtime voice. The mic will use standard voice instead.",
-      actionable: false,
+      message: "Couldn't confirm microphone consent. Tap the mic to try again.",
+      actionable: true,
     };
   }
   // Transport loss past the reconnect budget surfaces as a generic Error from
@@ -609,10 +604,8 @@ export function useRealtimeVoiceSession(
         setError(classified);
         setActive(false);
         setConnecting(false);
-        // Latch realtime off only for failures whose copy promises the batch
-        // path ("standard voice"): mint and consent. Actionable kinds
-        // (permission, no-device, transport) keep `available` true so the
-        // advertised mic-tap retry is actually possible.
+        // Release failed clients while retaining eligibility for an explicit
+        // retry. The caller decides whether another capture path is allowed.
         if (
           !micOwnedRef.current ||
           classified.kind === "transport" ||
