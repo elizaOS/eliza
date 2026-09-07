@@ -316,6 +316,78 @@ describe("TalkModeWeb fallback", () => {
     await expect(plugin.isEnabled()).resolves.toEqual({ enabled: false });
   });
 
+  it("returns to listening when stopSpeaking() interrupts a live session and the utterance ends late", async () => {
+    const utterances: FakeUtterance[] = [];
+    const synthesis = {
+      cancel: vi.fn(),
+      speaking: false,
+      speak: vi.fn((value: FakeUtterance) => {
+        utterances.push(value);
+      }),
+    };
+    setWindow({
+      SpeechRecognition: FakeRecognition,
+      speechSynthesis: synthesis,
+    });
+    setNavigator({});
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+    const plugin = new TalkModeWeb();
+
+    await expect(plugin.start()).resolves.toEqual({ started: true });
+    const speaking = plugin.speak({ text: "A long reply the user cuts off." });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "speaking",
+      statusText: "Speaking",
+    });
+
+    // The user interrupts speech; the session itself stays on.
+    await expect(plugin.stopSpeaking()).resolves.toEqual({
+      interruptedAt: undefined,
+    });
+    expect(synthesis.cancel).toHaveBeenCalledTimes(1);
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: true });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "listening",
+      statusText: "Listening",
+    });
+
+    // The cancelled utterance's late end or error event must leave that
+    // listening state alone, and must still settle the speak() promise.
+    utterances[0]?.onerror?.({ error: "interrupted" });
+    await expect(speaking).resolves.toEqual({
+      completed: false,
+      interrupted: true,
+      usedSystemTts: true,
+      error: "interrupted",
+    });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "listening",
+      statusText: "Listening",
+    });
+  });
+
+  it("does not touch state when stopSpeaking() runs on a session that is off", async () => {
+    const synthesis = {
+      cancel: vi.fn(),
+      speaking: false,
+      speak: vi.fn(),
+    };
+    setWindow({
+      SpeechRecognition: FakeRecognition,
+      speechSynthesis: synthesis,
+    });
+    setNavigator({});
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+    const plugin = new TalkModeWeb();
+
+    await expect(plugin.stopSpeaking()).resolves.toEqual({});
+    expect(synthesis.cancel).not.toHaveBeenCalled();
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "idle",
+      statusText: "Off",
+    });
+  });
+
   it("keeps the idle teardown state when a cancelled utterance errors after stop()", async () => {
     const utterances: FakeUtterance[] = [];
     const synthesis = {

@@ -196,11 +196,12 @@ export class TalkModeWeb extends WebPlugin {
         utterance.rate = options.directive.speed;
       }
 
-      // stop() and interruptSpeech() null `currentUtterance` when they tear
-      // the session down, and the browser delivers this utterance's end or
-      // error event afterwards. A stale handler must still settle the promise
-      // and notify listeners, but must not write "listening" or "Speech error"
-      // over the idle state the teardown set.
+      // stop() and stopSpeaking() null `currentUtterance` when they cancel
+      // synthesis, and the browser delivers this utterance's end or error
+      // event afterwards. A stale handler must still settle the promise and
+      // notify listeners, but must not write "listening" or "Speech error"
+      // over the state the caller already set: idle for a teardown, listening
+      // for an interruption of a live session.
       const isStale = () => this.currentUtterance !== utterance;
 
       utterance.onend = () => {
@@ -232,6 +233,11 @@ export class TalkModeWeb extends WebPlugin {
     if (this.synthesis && this.currentUtterance) {
       this.synthesis.cancel();
       this.currentUtterance = null;
+      // The cancelled utterance's own end event is stale from here on, so the
+      // resumed listening state is set here rather than by that handler.
+      if (this.enabled) {
+        this.setState("listening", "Listening");
+      }
       return { interruptedAt: undefined };
     }
     return {};
