@@ -1921,7 +1921,10 @@ function resolveManualChunk(id: string): string | undefined {
   // remain outside the wallet graph, including the shared React chunk.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/(uuid|zod|clsx|bs58|base-x|react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar)\//.test(
+    /\/node_modules\/@tanstack\/(react-query|query-core)\//.test(
+      normalizedId,
+    ) ||
+    /\/node_modules\/(uuid|zod|clsx|bs58|base-x|safe-buffer|eventemitter3|react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar)\//.test(
       normalizedId,
     )
   ) {

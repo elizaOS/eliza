@@ -51,6 +51,12 @@ async function makeVideo(
       "-map",
       "[v]",
       ...(audioTail ? ["-map", `${colors.length}:a`, "-c:a", "aac"] : []),
+      // Keep the two-frame VFR fixture free of decoder reordering; the
+      // raw decode below verifies its sparse timestamps retain both states.
+      "-c:v",
+      "libx264",
+      "-bf",
+      "0",
       "-fps_mode",
       "vfr",
       "-pix_fmt",

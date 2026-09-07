@@ -150,7 +150,7 @@ describe("catalog-policy", () => {
   describe("filterSettingsDefaultLocalModels", () => {
     it("keeps an unpublished tier unavailable until its artifact is published", () => {
       const model = createMockCatalogModel("eliza-1-9b", {
-        publishStatus: "planned",
+        publishStatus: "pending",
       });
       expect(filterSettingsDefaultLocalModels([model])).toEqual([]);
       model.publishStatus = "published";
