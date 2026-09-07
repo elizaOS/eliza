@@ -2137,6 +2137,7 @@ export class AcpService extends Service {
         agentType === "pi-agent" && resolvedAccount
           ? await preparePiProviderRoute({
               sessionId: id,
+              workdir,
               stateRoot:
                 this.setting("ELIZA_ACP_STATE_DIR") ??
                 join(homedir(), ".eliza", "plugin-acp"),
@@ -5234,6 +5235,7 @@ export class AcpService extends Service {
       storedProvider.accountProviderId === selection.providerId;
     const route = await preparePiProviderRoute({
       sessionId: session.id,
+      workdir: session.workdir,
       stateRoot:
         this.setting("ELIZA_ACP_STATE_DIR") ??
         join(homedir(), ".eliza", "plugin-acp"),

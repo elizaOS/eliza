@@ -5,7 +5,7 @@
  * Pi configuration, argv, logs, or durable session metadata.
  */
 
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CodingAgentSelection } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
@@ -229,10 +229,67 @@ function credentialFor(
   return credential;
 }
 
+async function assertProjectContextPolicy(workdir: string): Promise<void> {
+  const settingsPath = path.join(workdir, ".pi", "settings.json");
+  let contents: string;
+  try {
+    contents = await readFile(settingsPath, "utf8");
+  } catch (cause) {
+    // error-policy:J2 only an absent optional project file is valid; other I/O
+    // failures must not hide an override of the session's context policy.
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+      return;
+    throw new ElizaError("Cannot inspect Pi project settings", {
+      code: "PI_PROJECT_SETTINGS_UNREADABLE",
+      cause,
+      context: { settingsPath },
+    });
+  }
+  let settings: unknown;
+  try {
+    settings = JSON.parse(contents.replace(/^\uFEFF/, ""));
+  } catch (cause) {
+    // error-policy:J2 reject malformed settings before Pi can degrade to its
+    // own defaults and silently enable automatic context compaction.
+    throw new ElizaError("Pi project settings must contain valid JSON", {
+      code: "PI_PROJECT_SETTINGS_INVALID",
+      cause,
+      context: { settingsPath },
+    });
+  }
+  if (
+    typeof settings !== "object" ||
+    settings === null ||
+    Array.isArray(settings)
+  ) {
+    throw new ElizaError("Pi project settings must be an object", {
+      code: "PI_PROJECT_SETTINGS_INVALID",
+      context: { settingsPath },
+    });
+  }
+  if (!("compaction" in settings)) return;
+  const compaction = settings.compaction;
+  if (
+    typeof compaction !== "object" ||
+    compaction === null ||
+    Array.isArray(compaction) ||
+    ("enabled" in compaction && compaction.enabled !== false)
+  ) {
+    throw new ElizaError(
+      "Pi project settings override the required context policy; set compaction.enabled to false or remove the override",
+      {
+        code: "PI_PROJECT_COMPACTION_UNSAFE",
+        context: { settingsPath },
+      },
+    );
+  }
+}
+
 /** Build the private Pi home and return only child-safe environment values. */
 export async function preparePiProviderRoute(input: {
   sessionId: string;
   stateRoot: string;
+  workdir: string;
   selection: CodingAgentSelection;
   model?: string;
 }): Promise<PreparedPiProviderRoute> {
@@ -250,6 +307,7 @@ export async function preparePiProviderRoute(input: {
     route.accountProviderId,
   );
   const endpoint = validateEndpoint(route.baseUrl, route.accountProviderId);
+  await assertProjectContextPolicy(input.workdir);
   const piHome = path.join(input.stateRoot, "pi-agent", input.sessionId);
   await mkdir(piHome, { recursive: true, mode: 0o700 });
 

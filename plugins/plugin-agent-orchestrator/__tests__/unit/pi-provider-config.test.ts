@@ -3,7 +3,7 @@
  * child-environment isolation; no live provider request is made.
  */
 
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,13 +25,19 @@ afterEach(async () => {
 async function prepare(
   providerId: keyof typeof PI_PROVIDER_ROUTES,
   model?: string,
+  projectSettings?: string,
 ) {
   const root = await mkdtemp(path.join(tmpdir(), "eliza-pi-route-"));
   roots.push(root);
+  if (projectSettings !== undefined) {
+    await mkdir(path.join(root, ".pi"));
+    await writeFile(path.join(root, ".pi", "settings.json"), projectSettings);
+  }
   const route = PI_PROVIDER_ROUTES[providerId];
   return preparePiProviderRoute({
     sessionId: `session-${providerId}`,
     stateRoot: root,
+    workdir: root,
     selection: {
       providerId,
       accountId: "account-1",
@@ -45,6 +51,48 @@ async function prepare(
 }
 
 describe("Pi provider routes", () => {
+  it.each([
+    '{"compaction":{"enabled":true}}',
+    '{"compaction":{"enabled":null}}',
+    '{"compaction":{"enabled":"false"}}',
+    '{"compaction":null}',
+  ])(
+    "refuses a project override that could discard context: %s",
+    async (settings) => {
+      await expect(
+        prepare("deepseek-api", undefined, settings),
+      ).rejects.toMatchObject({
+        code: "PI_PROJECT_COMPACTION_UNSAFE",
+      });
+      const root = roots.at(-1);
+      if (!root) throw new Error("Expected the isolated project fixture");
+      await expect(stat(path.join(root, "pi-agent"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
+
+  it.each([
+    '{"compaction":{"enabled":false}}',
+    '{"compaction":{"reserveTokens":1000}}',
+  ])(
+    "preserves the no-compaction policy with compatible project settings: %s",
+    async (settings) => {
+      await expect(
+        prepare("deepseek-api", undefined, settings),
+      ).resolves.toBeDefined();
+    },
+  );
+
+  it.each(["{", "null", "[]"])(
+    "refuses invalid project settings: %s",
+    async (settings) => {
+      await expect(
+        prepare("deepseek-api", undefined, settings),
+      ).rejects.toMatchObject({ code: "PI_PROJECT_SETTINGS_INVALID" });
+    },
+  );
+
   it.each(Object.keys(PI_PROVIDER_ROUTES))(
     "materializes %s without persisting its credential",
     async (providerId) => {
