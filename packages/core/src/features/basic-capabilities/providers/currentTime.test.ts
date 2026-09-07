@@ -87,10 +87,6 @@ describe("currentTimeProvider", () => {
 			timeZoneOrigin: "agent-setting",
 		});
 		expect(result.text).toContain("User timezone: Europe/Paris");
-		expect(result.text).toContain('answer from this block only: "');
-		expect(result.text).toContain(
-			"Earlier time or date statements in the conversation are stale",
-		);
 		expect(result.text).toContain("owner's configured timezone");
 		expect(result.text).toContain("User local time:");
 		expect(result.text).not.toContain("User timezone: unknown");

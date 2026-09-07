@@ -64,7 +64,6 @@ import {
 	resolvePlannerActionName,
 	resolveRuntimeAction,
 } from "./action-identifiers.js";
-import type { V5PlannerActionSurface } from "./action-surface.js";
 import { mergeAgentContexts } from "./action-surface.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { uiViewActionPriority } from "./provider-state.js";
@@ -615,21 +614,6 @@ export function decideUmbrellaPlannerBudget(args: {
  * tools. Unknown or ambiguous candidates fail open to the complete authorized
  * surface so this helper cannot invent authority or silently pick an action.
  */
-/** Tier-A parent actions of the authorized surface: the smallest complete umbrella set. */
-export function collectBudgetedUmbrellaActions(args: {
-	actions: readonly Action[];
-	actionSurface: V5PlannerActionSurface;
-}): Action[] {
-	const parentNames = new Set(
-		args.actionSurface.summary.tierAParents.map((name) =>
-			normalizeActionIdentifier(name),
-		),
-	);
-	return args.actions.filter((action) =>
-		parentNames.has(normalizeActionIdentifier(action.name)),
-	);
-}
-
 export function collectBudgetedStageOneCandidateActions(args: {
 	actions: readonly Action[];
 	candidateActions: readonly string[];

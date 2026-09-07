@@ -2257,6 +2257,26 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             viewRoot.getByText("Connected", { exact: true }),
           ).toHaveCount(0);
         }
+        if (view.id === "cloud") {
+          const oppositePolicy = resolveViewOcrPolicy(
+            view.fixtureState === "cloud-signed-out"
+              ? "plugin-cloud-gui"
+              : "plugin-cloud-signed-out-gui",
+          );
+          if (oppositePolicy.kind !== "expectation") {
+            throw new Error(
+              "Cloud account states must declare semantic content",
+            );
+          }
+          await expect(
+            readViewPaint(
+              viewRoot,
+              page.locator(overlaySelector),
+              oppositePolicy.expectation,
+            ),
+            "the rendered Cloud account must not satisfy the opposite auth state",
+          ).resolves.toMatchObject({ semanticReady: false });
+        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
