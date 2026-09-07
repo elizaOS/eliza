@@ -31,6 +31,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
@@ -270,6 +271,19 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
             val container = OccludingSurfaceLayout(activity)
             val webView = WebView(activity)
+            webView.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    val surface = surfaces[id] ?: return
+                    if (surface.webView !== view || surface.disposed || view.url != url) return
+                    if (!activeOwners.isActive(NativeOwnerIdentity(surface.owner, surface.session, surface.epoch))) return
+                    notifyListeners("navigationChanged", JSObject().apply {
+                        put("id", id)
+                        put("owner", surface.owner)
+                        put("session", surface.session)
+                        put("epoch", surface.epoch)
+                    })
+                }
+            }
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
             webView.settings.databaseEnabled = true
@@ -477,6 +491,20 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val surface = ownedSurface(call, id, identity, "reloadSurface")
                 ?: return@runOnUiThread
             surface.webView.reload()
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun goBack(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("goBack requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "goBack") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "goBack") ?: return@runOnUiThread
+            if (surface.webView.canGoBack()) surface.webView.goBack()
             call.resolve()
         }
     }

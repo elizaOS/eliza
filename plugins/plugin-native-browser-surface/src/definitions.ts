@@ -16,6 +16,8 @@
  * epic closes.
  */
 
+import type { PluginListenerHandle } from "@capacitor/core";
+
 /**
  * Native renderer policy. `isolated` means a dedicated pool on iOS and a
  * verified out-of-app sandboxed renderer on Android, which the OS may reuse
@@ -143,6 +145,13 @@ export interface ElizaSurfaceManagerPlugin {
   navigate(options: NavigateOptions): Promise<void>;
   /** Reload an existing surface's current page. */
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
+  /** Move back in this surface's own history; never replays after a lost reply. */
+  goBack(options: SurfaceIdOptions): Promise<void>;
+  /** Signals a native page change; consumers read current state before applying it. */
+  addListener(
+    eventName: "navigationChanged",
+    listener: (event: SurfaceIdOptions) => void,
+  ): Promise<PluginListenerHandle>;
   /** Atomically hide all siblings, then present the requested surface or host. */
   presentSurface(options: PresentSurfaceOptions): Promise<void>;
   /** Tear a surface down and release its native renderer and storage resources. */

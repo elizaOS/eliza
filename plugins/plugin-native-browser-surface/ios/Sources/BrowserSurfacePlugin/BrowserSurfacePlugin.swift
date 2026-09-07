@@ -15,7 +15,7 @@ import WebKit
 import UIKit
 
 @objc(ElizaSurfaceManagerPlugin)
-public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
+public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate {
     public let identifier = "ElizaSurfaceManagerPlugin"
     public let jsName = "ElizaSurfaceManager"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -24,6 +24,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setOcclusionRects", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "navigate", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reloadSurface", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "goBack", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "presentSurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "destroySurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getSurfaceState", returnType: CAPPluginReturnPromise),
@@ -188,6 +189,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             container.installContentView(webView)
             hostView.addSubview(container)
+            webView.navigationDelegate = self
 
             if let urlString = urlString, let url = URL(string: urlString) {
                 webView.load(URLRequest(url: url))
@@ -364,6 +366,29 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             surface.webView.reload()
             call.resolve()
         }
+    }
+
+    @objc func goBack(_ call: CAPPluginCall) {
+        guard let id = call.getString("id") else {
+            call.reject("goBack requires an id")
+            return
+        }
+        guard let identity = identity(call, operation: "goBack") else { return }
+        DispatchQueue.main.async {
+            guard self.requireActiveIdentity(call, identity: identity, operation: "goBack"),
+                  let surface = self.ownedSurface(call, id: id, identity: identity, operation: "goBack") else { return }
+            if surface.webView.canGoBack { surface.webView.goBack() }
+            call.resolve()
+        }
+    }
+
+    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let (id, surface) = surfaces.first(where: { $0.value.webView === webView }),
+              let active = activeOwners[surface.owner],
+              active.session == surface.session, active.epoch == surface.epoch else { return }
+        notifyListeners("navigationChanged", data: [
+            "id": id, "owner": surface.owner, "session": surface.session, "epoch": surface.epoch,
+        ])
     }
 
     @objc func presentSurface(_ call: CAPPluginCall) {

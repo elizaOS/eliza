@@ -192,6 +192,17 @@ export interface NativeSurfaceShell {
   navigate(id: string, url: string): Promise<void>;
   /** Reload the current page in an existing native surface. */
   reload(id: string): Promise<void>;
+  /** Navigate this native page's history. Non-idempotent; never auto-retry. */
+  back(id: string): Promise<void>;
+  /** Subscribe to authoritative page URLs without issuing another navigation. */
+  subscribeNavigation(
+    listener: (event: {
+      id: string;
+      url: string;
+      previousUrl: string | undefined;
+    }) => void,
+    onError: (error: unknown) => void,
+  ): Promise<() => Promise<void>>;
   /**
    * Atomically choose the one native surface that owns presentation, or `null`
    * to return paint/input ownership to the host. Selecting a surface hides all

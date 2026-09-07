@@ -44,6 +44,9 @@ export class BrowserSurfaceWeb
   async reloadSurface(_options: SurfaceIdOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
+  async goBack(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async presentSurface(_options: PresentSurfaceOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }

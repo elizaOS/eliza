@@ -52,6 +52,7 @@ export function useMobileNativeTabSurfaces(
     registerSurfaceElement: () => {},
     navigateSurface: () => {},
     reloadSurface: () => {},
+    backSurface: async () => {},
     error: currentError(),
     retry: () => {
       window.__surfaceRetries = (window.__surfaceRetries ?? 0) + 1;

@@ -17,11 +17,16 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MobileNativeSurfaceError } from "../../surface/use-mobile-native-tab-surfaces";
+import type {
+  MobileNativeSurfaceError,
+  UseMobileNativeTabSurfacesArgs,
+} from "../../surface/use-mobile-native-tab-surfaces";
 
 const surfaceHarness = vi.hoisted(() => ({
   error: null as MobileNativeSurfaceError | null,
   retry: vi.fn(),
+  back: vi.fn().mockResolvedValue(undefined),
+  onNavigation: undefined as UseMobileNativeTabSurfacesArgs["onNavigation"],
 }));
 
 const openExternalHarness = vi.hoisted(() => ({
@@ -55,13 +60,17 @@ vi.mock(
       >();
     return {
       ...actual,
-      useMobileNativeTabSurfaces: () => ({
-        registerSurfaceElement: vi.fn(),
-        navigateSurface: vi.fn(),
-        reloadSurface: vi.fn(),
-        error: surfaceHarness.error,
-        retry: surfaceHarness.retry,
-      }),
+      useMobileNativeTabSurfaces: (args: UseMobileNativeTabSurfacesArgs) => {
+        surfaceHarness.onNavigation = args.onNavigation;
+        return {
+          registerSurfaceElement: vi.fn(),
+          navigateSurface: vi.fn(),
+          reloadSurface: vi.fn(),
+          backSurface: surfaceHarness.back,
+          error: surfaceHarness.error,
+          retry: surfaceHarness.retry,
+        };
+      },
     };
   },
 );
@@ -148,6 +157,8 @@ import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
 beforeEach(() => {
   surfaceHarness.error = null;
   surfaceHarness.retry.mockClear();
+  surfaceHarness.back.mockClear();
+  vi.mocked(client.fetch).mockClear();
   openExternalHarness.openExternalUrl.mockClear();
   vi.mocked(client.getBrowserWorkspace).mockClear();
   vi.mocked(client.closeBrowserWorkspaceTab).mockClear();
@@ -158,6 +169,32 @@ afterEach(() => {
 });
 
 describe("BrowserWorkspaceView native surface error states", () => {
+  it("routes Back to the native tab and updates its URL from owned page observations", async () => {
+    render(<BrowserWorkspaceView />);
+    await screen.findByText("Example");
+    vi.mocked(client.fetch).mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    });
+    expect(surfaceHarness.back).toHaveBeenCalledWith("tab-1");
+    expect(client.fetch).not.toHaveBeenCalled();
+    act(() => {
+      surfaceHarness.onNavigation?.({
+        tabId: "tab-1",
+        url: "https://next.example/",
+        previousUrl: "https://example.com/",
+      });
+    });
+    expect(screen.getByDisplayValue("https://next.example/")).not.toBeNull();
+    act(() => {
+      surfaceHarness.onNavigation?.({
+        tabId: "tab-1",
+        url: "https://stale.example/",
+        previousUrl: "https://example.com/",
+      });
+    });
+    expect(screen.getByDisplayValue("https://next.example/")).not.toBeNull();
+  });
   it("closes all native tabs locally without calling the absent workspace API", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("Example")).not.toBeNull();

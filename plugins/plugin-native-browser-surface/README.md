@@ -39,6 +39,17 @@ it through the Capacitor `Plugins` registry under the jsName `ElizaSurfaceManage
 (create → setBounds/navigate → foreground/background → destroy) on the
 `native-mobile-webview` render path.
 
+The mobile Back control calls `goBack` on that same native tab, never a server
+workspace tab with an unrelated ID. Native page completion emits a
+`navigationChanged` invalidation carrying the surface owner/session/epoch. The
+driver reads the current native URL, discards stale observations, and updates
+the React address bar without reloading the page. Listener cleanup and ownership
+checks apply across remounts. A Back command is not automatically retried after
+a lost acknowledgement, because repeating it could navigate back twice.
+
+This URL/history channel does not expose native page DOM to the remote agent.
+Server-side browser snapshots are not proof of what a native page displays.
+
 `setBounds` carries both the page rectangle and its outer rounded clip in one
 update. The renderer reads that clip from the actual computed overflow-clipping
 host instead of copying a CSS radius token. Android and iOS update their paint

@@ -1954,6 +1954,22 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     occlusionSelector: BROWSER_WORKSPACE_TAB_MASK_SELECTORS,
     policy: BROWSER_NATIVE_SURFACE_POLICY,
     lifecycle: BROWSER_SURFACE_MANIFEST.lifecycle,
+    onNavigation: ({ tabId, url, previousUrl }) => {
+      setWorkspace((previous) => {
+        const tab = previous.tabs.find((entry) => entry.id === tabId);
+        // Do not let a late native observation replace a newer address-bar
+        // command that React has not yet sent across the native bridge.
+        if (!tab || tab.url === url || tab.url !== previousUrl) return previous;
+        return {
+          ...previous,
+          tabs: previous.tabs.map((entry) =>
+            entry.id === tabId
+              ? { ...entry, url, updatedAt: new Date().toISOString() }
+              : entry,
+          ),
+        };
+      });
+    },
   });
 
   const handleTabVaultAutofillRequest = useCallback(
@@ -2561,6 +2577,10 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
 
   const backSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
+    if (nativeMobileTabPath) {
+      await nativeTabSurfaces.backSurface(selectedTab.id);
+      return;
+    }
     const nativeTag = electrobunWebviewRefs.current.get(selectedTab.id);
     if (nativeTag) {
       nativeTag.executeJavascript("history.back()");
@@ -2578,7 +2598,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       setLocationDirty(false);
       await loadWorkspace({ preferTabId: result.tab.id, silent: true });
     }
-  }, [selectedTab, loadWorkspace]);
+  }, [selectedTab, loadWorkspace, nativeMobileTabPath, nativeTabSurfaces]);
 
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
