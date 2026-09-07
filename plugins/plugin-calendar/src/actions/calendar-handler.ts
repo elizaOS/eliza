@@ -5654,7 +5654,9 @@ const calendarAction: CalendarHandlerAction = {
       const label = baseResolved.label;
       const hasExplicitWindow = baseResolved.explicitWindow;
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
-        includeHiddenCalendars: true,
+        includeHiddenCalendars:
+          detailBoolean(details, "includeHiddenCalendars") ??
+          subaction === "search_events",
         mode: connectorModeDetail(details),
         side: connectorSideDetail(details),
         grantId: connectorGrantIdDetail(details),
@@ -6043,7 +6045,7 @@ const calendarAction: CalendarHandlerAction = {
       name: "calendarId",
       aliases: ["calendar_id", "calendarid"],
       description:
-        "Optional; leave unset. Reads cover all connected calendars automatically and event creation targets the built-in calendar.",
+        "Optional; leave unset. Agenda reads use the selected Calendar feed; searches cover connected calendars. Use details.includeHiddenCalendars to explicitly change that scope. Event creation targets the built-in calendar.",
       required: false,
       schema: { type: "string" as const },
     },

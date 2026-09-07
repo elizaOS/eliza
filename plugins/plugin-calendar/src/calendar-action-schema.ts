@@ -100,6 +100,7 @@ const CALENDAR_DETAIL_BOOLEAN_KEYS = [
   "force_sync",
   "notifyAttendees",
   "allowPast",
+  "includeHiddenCalendars",
 ] as const;
 
 const CALENDAR_DETAIL_RECURRENCE_KEYS = [
@@ -168,6 +169,8 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
 const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_BOOLEAN_KEYS)[number], string>
 > = {
+  includeHiddenCalendars:
+    "Agenda/feed reads default to the calendars selected in the Calendar view. Set true only when explicitly asked to include hidden or all connected calendars. Event searches include hidden calendars by default; set false to search only the selected feed. Hidden search results are not necessarily visible in the Calendar view.",
   allowPast:
     "Set true only when the user explicitly wants an event at a time that has already passed (recording a past event, or confirming the past time after being asked); otherwise omit it and the action asks before creating in the past.",
 };
