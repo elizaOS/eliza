@@ -53,6 +53,9 @@ export function useMobileNativeTabSurfaces(
     navigateSurface: () => {},
     reloadSurface: () => {},
     backSurface: async () => {},
+    readPage: async () => {
+      throw new Error("Native page reads are unavailable in this error fixture.");
+    },
     error: currentError(),
     retry: () => {
       window.__surfaceRetries = (window.__surfaceRetries ?? 0) + 1;

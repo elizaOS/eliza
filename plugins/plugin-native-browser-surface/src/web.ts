@@ -11,6 +11,7 @@ import { WebPlugin } from "@capacitor/core";
 import type {
   CreateSurfaceOptions,
   ElizaSurfaceManagerPlugin,
+  NativePageRead,
   NavigateOptions,
   PresentSurfaceOptions,
   ReconcileOwnerOptions,
@@ -45,6 +46,11 @@ export class BrowserSurfaceWeb
     throw this.unavailable(UNAVAILABLE);
   }
   async goBack(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async readPage(
+    _options: SurfaceIdOptions & { selector?: string },
+  ): Promise<NativePageRead> {
     throw this.unavailable(UNAVAILABLE);
   }
   async presentSurface(_options: PresentSurfaceOptions): Promise<void> {

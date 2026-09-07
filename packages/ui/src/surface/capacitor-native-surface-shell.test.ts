@@ -144,6 +144,15 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
       this.requireOwned(options);
     });
   }
+  async readPage(options: NativeSurfaceOwnerIdentity & { id: string }) {
+    this.requireOwned(options);
+    return {
+      url: "https://a.example/",
+      title: "Native page",
+      text: "Visible page text",
+      truncated: false,
+    };
+  }
   private readonly failures = new Map<NativeOperation, number>();
   private readonly appliedFailures = new Map<NativeOperation, number>();
   private readonly gates = new Map<NativeOperation, Array<Deferred<void>>>();
@@ -464,6 +473,44 @@ class StatefulNativeManager implements ElizaSurfaceManagerPlugin {
 }
 
 describe("CapacitorNativeSurfaceShell", () => {
+  it("reads the owned native page and rejects malformed native payloads", async () => {
+    const manager = new StatefulNativeManager();
+    const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);
+    await shell.createSurface(CREATE_A);
+    await expect(shell.readPage(CREATE_A.id, "h1")).resolves.toMatchObject({
+      text: "Visible page text",
+      truncated: false,
+    });
+    vi.spyOn(manager, "readPage").mockResolvedValueOnce({
+      url: "https://a.example/",
+      title: "A",
+      text: "x".repeat(16_001),
+      truncated: false,
+    });
+    await expect(shell.readPage(CREATE_A.id)).rejects.toThrow(
+      "invalid page read",
+    );
+  });
+
+  it("discards a page read if its surface is destroyed while awaiting native", async () => {
+    const manager = new StatefulNativeManager();
+    const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);
+    await shell.createSurface(CREATE_A);
+    const gate = deferred<Awaited<ReturnType<typeof manager.readPage>>>();
+    vi.spyOn(manager, "readPage").mockReturnValueOnce(gate.promise);
+    const read = shell.readPage(CREATE_A.id);
+    const rejected = expect(read).rejects.toThrow();
+    await drainPromises();
+    await shell.destroySurface(CREATE_A.id);
+    gate.resolve({
+      url: "https://a.example/",
+      title: "Old",
+      text: "Old",
+      truncated: false,
+    });
+    await rejected;
+  });
+
   it("observes the native URL without navigating back to stale desired state", async () => {
     const manager = new StatefulNativeManager();
     const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);

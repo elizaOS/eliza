@@ -127,6 +127,14 @@ export interface SurfaceStateList {
   surfaces: SurfaceStateWithId[];
 }
 
+export interface NativePageRead {
+  url: string;
+  title: string;
+  text: string;
+  /** True when the bounded visible-text scan did not include the whole page. */
+  truncated: boolean;
+}
+
 export interface ElizaSurfaceManagerPlugin {
   /**
    * Create a native web surface with the given EXPLICIT process/storage policy.
@@ -147,6 +155,10 @@ export interface ElizaSurfaceManagerPlugin {
   reloadSurface(options: SurfaceIdOptions): Promise<void>;
   /** Move back in this surface's own history; never replays after a lost reply. */
   goBack(options: SurfaceIdOptions): Promise<void>;
+  /** Read visible text from this foreground native page, never the host DOM. */
+  readPage(
+    options: SurfaceIdOptions & { selector?: string },
+  ): Promise<NativePageRead>;
   /** Signals a native page change; consumers read current state before applying it. */
   addListener(
     eventName: "navigationChanged",

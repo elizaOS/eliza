@@ -9,6 +9,7 @@
 import { logger } from "@elizaos/logger";
 import { getNativePlugin } from "../bridge/native-plugins";
 import type {
+  NativePageRead,
   NativeSurfaceCreateRequest,
   NativeSurfaceShell,
   SurfaceBounds,
@@ -65,6 +66,9 @@ export interface ElizaSurfaceManagerPlugin {
     options: SurfaceIdentityOptions & { id: string },
   ): Promise<void>;
   goBack(options: SurfaceIdentityOptions & { id: string }): Promise<void>;
+  readPage(
+    options: SurfaceIdentityOptions & { id: string; selector?: string },
+  ): Promise<unknown>;
   addListener(
     eventName: "navigationChanged",
     listener: (event: unknown) => void,
@@ -259,6 +263,38 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
     // A history step is not idempotent: a lost acknowledgement must not cause
     // the reconciler to navigate a second page back automatically.
     await this.getNativeManager().goBack({ ...this.identity, id });
+  }
+
+  async readPage(id: string, selector?: string): Promise<NativePageRead> {
+    const entry = this.surfaces.get(id);
+    if (!entry?.desired) return missingDesiredState(id, "readPage");
+    const generation = entry.desired.generation;
+    await this.requestReconcile(entry);
+    if (entry.desired?.generation !== generation)
+      return missingDesiredState(id, "readPage");
+    const result = await this.getNativeManager().readPage({
+      ...this.identity,
+      id,
+      ...(selector === undefined ? {} : { selector }),
+    });
+    if (entry.desired?.generation !== generation)
+      return missingDesiredState(id, "readPage");
+    if (
+      !isRecord(result) ||
+      typeof result.url !== "string" ||
+      typeof result.title !== "string" ||
+      typeof result.text !== "string" ||
+      result.text.length > 16_000 ||
+      typeof result.truncated !== "boolean"
+    ) {
+      throw new Error("Native Browser returned an invalid page read.");
+    }
+    return {
+      url: result.url,
+      title: result.title,
+      text: result.text,
+      truncated: result.truncated,
+    };
   }
 
   async subscribeNavigation(

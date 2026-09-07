@@ -87,6 +87,15 @@ class RecordingShell implements NativeSurfaceShell {
   async back(id: string): Promise<void> {
     this.commands.push(`back:${id}`);
   }
+  async readPage(id: string) {
+    this.commands.push(`read:${id}`);
+    return {
+      url: "https://a.example/",
+      title: "A",
+      text: "A",
+      truncated: false,
+    };
+  }
   async subscribeNavigation(
     listener: Parameters<NativeSurfaceShell["subscribeNavigation"]>[0],
   ) {
@@ -217,6 +226,14 @@ class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
   async setOcclusionRects(): Promise<void> {}
   async reloadSurface(): Promise<void> {}
   async goBack(): Promise<void> {}
+  async readPage() {
+    return {
+      url: "https://a.example/",
+      title: "A",
+      text: "A",
+      truncated: false,
+    };
+  }
   async addListener() {
     return { remove: async () => {} };
   }
@@ -407,6 +424,12 @@ describe("useMobileNativeTabSurfaces", () => {
       "no longer owns",
     );
     await newer.result.current.backSurface("a");
+    await expect(older.result.current.readPage("a")).rejects.toThrow(
+      "no longer owns",
+    );
+    await expect(newer.result.current.readPage("a")).resolves.toMatchObject({
+      text: "A",
+    });
     expect(
       shell.commands.filter((command) => command.startsWith("back:")),
     ).toEqual(["back:browser-tab:a"]);

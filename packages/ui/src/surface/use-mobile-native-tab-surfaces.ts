@@ -33,6 +33,7 @@ import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
 import { isNativeSurfaceCapabilityDenial } from "./native-surface-capability";
 import type {
+  NativePageRead,
   NativeSurfacePolicy,
   NativeSurfaceShell,
   SurfaceBounds,
@@ -104,6 +105,7 @@ export interface MobileNativeTabSurfaces {
   reloadSurface(tabId: string): void;
   /** Step through the selected native page's history without server-tab dispatch. */
   backSurface(tabId: string): Promise<void>;
+  readPage(tabId: string, selector?: string): Promise<NativePageRead>;
   /** Transport failure replacing a blank or stale native layer, if any. */
   readonly error: MobileNativeSurfaceError | null;
   /** Replay the failed desired-state commands after the user chooses Retry. */
@@ -772,6 +774,21 @@ export function useMobileNativeTabSurfaces(
     [active, activeShell],
   );
 
+  const readPage = useCallback(
+    async (tabId: string, selector?: string): Promise<NativePageRead> => {
+      const id = surfaceIdOf(tabId);
+      if (!active || !ownsSurfaceLease(activeShell, id, leaseHolder.current)) {
+        throw new Error("This renderer no longer owns the Browser tab.");
+      }
+      const result = await activeShell.readPage(id, selector);
+      if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) {
+        throw new Error("This renderer no longer owns the Browser tab.");
+      }
+      return result;
+    },
+    [active, activeShell],
+  );
+
   const readOcclusions = useCallback(
     (): SurfaceOcclusionRect[] =>
       typeof document === "undefined"
@@ -1202,6 +1219,7 @@ export function useMobileNativeTabSurfaces(
     navigateSurface,
     reloadSurface,
     backSurface,
+    readPage,
     error: surfaceError ?? navigationError,
     retry,
   };
