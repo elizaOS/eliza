@@ -2325,6 +2325,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return;
     this.clearAssistantPlaybackSuppression();
     this.closed = true;
+    // Expiry/disconnect can bypass finishResponseTurn. Preserve the bounded
+    // timing receipt before aborting callbacks, without labeling lost audio as
+    // completed or recording transcript/audio payloads.
+    if (this.turnMetrics) {
+      this.emitTurnMetrics(this.turnMetrics.traceId, "interrupted");
+    }
     for (const abort of this.overlapRequests) abort.abort();
     this.overlapRequests.clear();
     this.pendingOverlapTurn = null;

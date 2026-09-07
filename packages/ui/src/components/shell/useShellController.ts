@@ -621,7 +621,11 @@ export function useShellController(): ShellController {
       // the sole reader and deduper for saved history. Reconcile again when
       // playback actually starts so the saved assistant bubble appears with
       // its first audible frame instead of waiting for the terminal usage event.
+      // Expiry/recovery may replace the socket before those terminal frames.
+      // A newly authenticated ready boundary reloads saved history too; it must
+      // never replay the prior utterance or its potentially committed actions.
       if (
+        event.t !== "ready" &&
         event.t !== "stt_final" &&
         event.t !== "speaking_start" &&
         event.t !== "usage"
@@ -632,9 +636,11 @@ export function useShellController(): ShellController {
       dispatchConversationResync({
         conversationId,
         reason:
-          event.t === "stt_final" || event.t === "speaking_start"
-            ? "voice-turn-progress"
-            : "voice-turn-complete",
+          event.t === "ready"
+            ? "connection-recovered"
+            : event.t === "stt_final" || event.t === "speaking_start"
+              ? "voice-turn-progress"
+              : "voice-turn-complete",
       });
     },
     [],

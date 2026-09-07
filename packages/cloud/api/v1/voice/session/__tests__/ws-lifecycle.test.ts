@@ -2916,6 +2916,40 @@ describe("voice-session WS lifecycle", () => {
     expect(Object.keys(receipt)).not.toContain("audio");
   });
 
+  test.each(["expired", "client_disconnect"] as const)(
+    "records an interrupted turn exactly once when its session is %s",
+    async (reason) => {
+      let nowMs = Date.now();
+      const receipts: VoiceTurnMetricsReceipt[] = [];
+      const client = new FakeClientSocket();
+      const { sessionId } = await connectSession({
+        client,
+        fetchImpl: makeSseFetch(["A response still playing."]),
+        now: () => nowMs,
+        onTurnMetrics: (receipt) => receipts.push(receipt),
+      });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "read this page");
+      await flush();
+      expect(client.controlTypes()).toContain("speaking_start");
+      const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+      nowMs += 120;
+      expect(
+        getVoiceSessionRegistry().severBySessionId(sessionId, reason),
+      ).toBe(true);
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]?.outcome).toBe("interrupted");
+      expect(receipts[0]?.completionOffsetMs).toBe(120);
+      cartesia.emitDone();
+      client.clientClose();
+      await flush();
+      expect(receipts).toHaveLength(1);
+      expect(Object.keys(receipts[0]!)).not.toContain("text");
+      expect(Object.keys(receipts[0]!)).not.toContain("audio");
+    },
+  );
+
   test("explicit barge-in immediately releases half-duplex suppression", async () => {
     const client = new FakeClientSocket();
     await connectSession({
