@@ -3,6 +3,7 @@
  */
 
 import {
+  isBrowserWorkspacePrivateControl,
   normalizeBrowserWorkspaceText,
   readBrowserWorkspaceElementText,
 } from "./browser-workspace-helpers.js";
@@ -107,6 +108,7 @@ export function buildBrowserWorkspaceDocumentSnapshotText(
         element.getAttribute("name") ||
         element.getAttribute("id") ||
         element.tagName.toLowerCase();
+      if (isBrowserWorkspacePrivateControl(element)) return name;
       const value =
         element.tagName === "SELECT"
           ? (element as HTMLSelectElement).value

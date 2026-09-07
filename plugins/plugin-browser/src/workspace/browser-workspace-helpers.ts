@@ -77,6 +77,14 @@ export function readBrowserWorkspaceElementText(
   return normalizeBrowserWorkspaceText(text.join(""));
 }
 
+/** Ambient page context may describe these controls, but must not copy values. */
+export function isBrowserWorkspacePrivateControl(element: Element): boolean {
+  return (
+    element.tagName === "INPUT" &&
+    ["password", "hidden"].includes((element as HTMLInputElement).type)
+  );
+}
+
 export function parseBrowserWorkspaceNumberLike(
   value: unknown,
 ): number | undefined {

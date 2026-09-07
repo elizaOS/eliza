@@ -71,7 +71,7 @@ describe("browser workspace web-mode real-code command flow", () => {
         networkAction: "route",
         url: "https://example.test/text",
         responseBody:
-          '<html><body><h1>Rehearsal</h1><p>Keep all prose.</p><script>window.privateImplementation="script-noise";</script><style>.style-noise{color:red}</style></body></html>',
+          '<html><body><h1>Rehearsal</h1><p>Keep all prose.</p><script>window.privateImplementation="script-noise";</script><style>.style-noise{color:red}</style><input name="query" value="visible-search"><input type="hidden" name="csrf" value="hidden-token"><input type="password" name="password" value="password-secret"></body></html>',
       },
       webEnv,
     );
@@ -90,6 +90,9 @@ describe("browser workspace web-mode real-code command flow", () => {
     );
     expect(JSON.stringify(snapshot)).not.toContain("script-noise");
     expect(JSON.stringify(snapshot)).not.toContain("style-noise");
+    expect(JSON.stringify(snapshot)).toContain("visible-search");
+    expect(JSON.stringify(snapshot)).not.toContain("hidden-token");
+    expect(JSON.stringify(snapshot)).not.toContain("password-secret");
     const html = await executeBrowserWorkspaceCommand(
       { id: tab.id, subaction: "get", selector: "body", getMode: "html" },
       webEnv,
