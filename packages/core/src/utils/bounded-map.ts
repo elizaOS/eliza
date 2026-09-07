@@ -3,9 +3,9 @@
  * `Promise.all(items.map(fn))` admits every element at once, so the input
  * length decides how many lookups run simultaneously; callers that resolve one
  * database row per item use this to keep that number fixed. Results keep the
- * input order, and the first rejection rejects the whole map after the
- * workers already in flight settle, matching `Promise.all` semantics closely
- * enough for callers that treat one failure as total.
+ * input order. The first rejection rejects the map immediately and stops
+ * further admission, matching `Promise.all`'s prompt failure; items already in
+ * flight run to completion and their outcomes are dropped.
  */
 
 /**
@@ -13,49 +13,70 @@
  * Returns results in input order. Throws a `RangeError` for a non-positive or
  * non-integer `limit`.
  */
-export async function mapWithConcurrency<T, R>(
+export function mapWithConcurrency<T, R>(
 	items: ReadonlyArray<T>,
 	limit: number,
 	fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
 	if (!Number.isInteger(limit) || limit < 1) {
-		throw new RangeError(
-			`mapWithConcurrency limit must be a positive integer (got ${String(limit)})`,
+		return Promise.reject(
+			new RangeError(
+				`mapWithConcurrency limit must be a positive integer (got ${String(limit)})`,
+			),
 		);
 	}
 	const results: R[] = new Array(items.length);
 	if (items.length === 0) {
-		return results;
+		return Promise.resolve(results);
 	}
-	let nextIndex = 0;
-	const state: { failure: { error: unknown } | null } = { failure: null };
-	const worker = async (): Promise<void> => {
-		while (state.failure === null) {
-			// No await sits between the read and the increment, so each worker
-			// claims a distinct index in the single-threaded loop.
-			const index = nextIndex++;
-			if (index >= items.length) {
+	return new Promise<R[]>((resolve, reject) => {
+		let nextIndex = 0;
+		let inFlight = 0;
+		let settled = false;
+
+		const fail = (error: unknown): void => {
+			if (settled) {
+				// error-policy:J5 the map already rejected with the first failure;
+				// a later rejection from an item admitted before it is observed
+				// here and dropped so it cannot surface as an unhandled rejection.
 				return;
 			}
-			try {
-				results[index] = await fn(items[index], index);
-			} catch (error) {
-				// error-policy:J2 remember the first failure so the map rejects with it once in-flight workers settle
-				if (state.failure === null) {
-					state.failure = { error };
+			settled = true;
+			reject(error);
+		};
+
+		const admit = (): void => {
+			while (!settled && inFlight < limit && nextIndex < items.length) {
+				const index = nextIndex++;
+				inFlight += 1;
+				let pending: Promise<R>;
+				try {
+					pending = fn(items[index], index);
+				} catch (error) {
+					inFlight -= 1;
+					fail(error);
+					return;
 				}
-				return;
+				pending.then(
+					(value) => {
+						inFlight -= 1;
+						if (settled) return;
+						results[index] = value;
+						if (nextIndex >= items.length && inFlight === 0) {
+							settled = true;
+							resolve(results);
+							return;
+						}
+						admit();
+					},
+					(error: unknown) => {
+						inFlight -= 1;
+						fail(error);
+					},
+				);
 			}
-		}
-	};
-	const workers: Array<Promise<void>> = [];
-	const workerCount = Math.min(limit, items.length);
-	for (let i = 0; i < workerCount; i += 1) {
-		workers.push(worker());
-	}
-	await Promise.all(workers);
-	if (state.failure !== null) {
-		throw state.failure.error;
-	}
-	return results;
+		};
+
+		admit();
+	});
 }
