@@ -17,7 +17,10 @@ import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
-const OPERATION_TIMEOUT_MS = 1_500;
+const CREDENTIAL_CHECK_TIMEOUT_MS = 1_500;
+// Lifecycle writes need time to reach the object and confirm durable
+// state; request-time credential checks retain their shorter failure budget.
+const LIFECYCLE_MUTATION_TIMEOUT_MS = 10_000;
 
 export type InferenceCredentialCheck =
   | { kind: "api_key"; credentialId: string; userId: string }
@@ -129,11 +132,15 @@ async function gateRequest(
   organizationId: string,
   path: string,
   body: Record<string, unknown>,
-  allowExplicitDenial = false,
+  operation: "check" | "mutation",
 ): Promise<RevocationResponse> {
   const stub = gateStub(organizationId);
+  const allowExplicitDenial = operation === "check";
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPERATION_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    operation === "check" ? CREDENTIAL_CHECK_TIMEOUT_MS : LIFECYCLE_MUTATION_TIMEOUT_MS,
+  );
   let response: Response;
   try {
     response = await stub.fetch(
@@ -189,7 +196,7 @@ export async function assertInferenceCredentialActive(
   credential: InferenceCredentialCheck,
 ): Promise<void> {
   if (!isInferenceStrongRevocationEnabled()) return;
-  const result = await gateRequest(organizationId, "/credential/check", credential, true);
+  const result = await gateRequest(organizationId, "/credential/check", credential, "check");
   if (result.allowed !== true) {
     throw new InferenceCredentialRevokedError(result.reason ?? "revoked");
   }
@@ -201,7 +208,7 @@ async function commitMutation(
   body: Record<string, unknown>,
 ): Promise<void> {
   if (!isInferenceStrongRevocationEnabled()) return;
-  const result = await gateRequest(organizationId, path, body);
+  const result = await gateRequest(organizationId, path, body, "mutation");
   if (result.committed !== true) {
     throw new InferenceCredentialRevocationUnavailableError(
       "Inference revocation boundary did not confirm the mutation",
