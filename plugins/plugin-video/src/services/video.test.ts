@@ -377,7 +377,7 @@ describe("VideoService deterministic behavior", () => {
     expect(downloadCaption).toHaveBeenCalledWith(
       "https://captions.example.test/track.json",
     );
-    expect(result.text).toBe("Automatic caption ");
+    expect(result.text).toBe("Automatic caption");
   });
 
   it("falls through empty subtitle arrays to audio transcription", async () => {
