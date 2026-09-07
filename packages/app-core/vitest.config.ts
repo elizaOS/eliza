@@ -169,6 +169,8 @@ export default defineConfig({
       "scripts/mobile-auth-simulator-smoke-endstate.test.mjs",
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
+      "scripts/android-pglite-staging.test.mjs",
+      "scripts/lib/android-runtime-packaging.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/ensure-fused-inference-install.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
