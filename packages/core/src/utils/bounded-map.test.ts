@@ -36,8 +36,8 @@ describe("mapWithConcurrency", () => {
 			inFlight -= 1;
 			return item * 10;
 		});
-		// Let the workers start; only the first `limit` calls may be waiting.
-		await Promise.resolve();
+		// The first `limit` calls are admitted synchronously; no more until one
+		// of them settles.
 		expect(g.pending()).toBe(4);
 		while (inFlight > 0 || g.pending() > 0) {
 			await g.releaseAll();
@@ -72,20 +72,64 @@ describe("mapWithConcurrency", () => {
 		expect(peak).toBe(2);
 	});
 
-	it("rejects with the first failure and stops admitting new items", async () => {
-		const started: number[] = [];
-		const run = mapWithConcurrency([0, 1, 2, 3, 4, 5], 2, async (item) => {
-			started.push(item);
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			if (item === 1) {
+	it("rejects as soon as one item fails, without waiting for a sibling still in flight", async () => {
+		const g = gate();
+		const started: string[] = [];
+		let siblingSettled = false;
+		const run = mapWithConcurrency(
+			["held", "failing", "never-admitted"],
+			2,
+			async (item) => {
+				started.push(item);
+				if (item === "held") {
+					await g.hold();
+					siblingSettled = true;
+					return item;
+				}
+				await new Promise((resolve) => setTimeout(resolve, 0));
+				throw new Error(`${item} failed`);
+			},
+		);
+
+		// The map must reject while the sibling is still held at the gate.
+		await expect(run).rejects.toThrow("failing failed");
+		expect(siblingSettled).toBe(false);
+		expect(g.pending()).toBe(1);
+		expect(started).toEqual(["held", "failing"]);
+
+		// Releasing the sibling afterwards admits nothing further and surfaces
+		// no second error.
+		await g.releaseAll();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(siblingSettled).toBe(true);
+		expect(started).toEqual(["held", "failing"]);
+	});
+
+	it("drops a later rejection from an item admitted before the first failure", async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			const run = mapWithConcurrency([1, 2], 2, async (item) => {
+				await new Promise((resolve) => setTimeout(resolve, item));
 				throw new Error(`item ${item} failed`);
-			}
-			return item;
-		});
-		await expect(run).rejects.toThrow("item 1 failed");
-		// Items 0 and 1 were admitted first; the worker that hit the failure
-		// stops, and the surviving worker drains at most what it had claimed.
-		expect(started).not.toContain(5);
+			});
+			await expect(run).rejects.toThrow("item 1 failed");
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
+	it("rejects when fn throws synchronously", async () => {
+		await expect(
+			mapWithConcurrency([1], 2, () => {
+				throw new Error("sync boom");
+			}),
+		).rejects.toThrow("sync boom");
 	});
 
 	it("rejects a non-positive or fractional limit", async () => {
