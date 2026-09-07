@@ -28,6 +28,7 @@
 export const ENVIRONMENT_ROUTING_SCHEMA = "elizaos.cloud.env-routing/v1";
 
 export const KNOWN_ENVIRONMENTS = /** @type {const} */ ([
+  "development",
   "staging",
   "production",
 ]);
@@ -40,9 +41,10 @@ export const KNOWN_ENVIRONMENTS = /** @type {const} */ ([
  * through the Pages proxy belong here
  * (blob-staging.* serves R2 objects, not the API - it is intentionally omitted).
  *
- * @type {ReadonlyArray<{ domain: string, environment: "staging" | "production" }>}
+ * @type {ReadonlyArray<{ domain: string, environment: "development" | "staging" | "production" }>}
  */
 export const ENVIRONMENT_ROUTING = [
+  { domain: "api-development.eliza.app", environment: "development" },
   { domain: "eliza.app", environment: "production" },
   { domain: "cloud.eliza.app", environment: "production" },
   { domain: "api.eliza.app", environment: "production" },
@@ -57,13 +59,13 @@ export const ENVIRONMENT_ROUTING = [
  * @typedef {"ok" | "misrouted" | "unexpected_env" | "beacon_missing" | "unreachable"} ProbeStatus
  * @typedef {object} ProbeInput
  * @property {string} domain
- * @property {"staging" | "production"} expected
+ * @property {"development" | "staging" | "production"} expected
  * @property {string|null} observed   environment reported by /api/health, or null
  * @property {boolean} reachable      whether /api/health returned a usable 200/JSON
  * @property {string} [detail]        raw diagnostic (http code, error text)
  * @typedef {object} ProbeResult
  * @property {string} domain
- * @property {"staging" | "production"} expected
+ * @property {"development" | "staging" | "production"} expected
  * @property {string|null} observed
  * @property {ProbeStatus} status
  * @property {string} message

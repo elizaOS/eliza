@@ -2,6 +2,7 @@
  * Persists Cloud container records and enforces organization-scoped admission,
  * billing, lifecycle, and deployment-log boundaries.
  */
+
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
@@ -20,17 +21,17 @@ import {
   sql,
 } from "drizzle-orm";
 import {
-  type ContainerLimitResolution,
-  resolveMaxContainersForOrg,
-} from "../../lib/constants/pricing";
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../../lib/services/organization-quota-policy";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { hydrateTextField, offloadTextField } from "../../lib/storage/object-store";
-import { type Database, dbRead, dbWrite } from "../helpers";
+import type { DbTransaction } from "../client";
+import { dbRead, dbWrite } from "../helpers";
 import { containerComputeStopIntents } from "../schemas/compute-stop-intents";
 import { containers, TERMINAL_CONTAINER_STATUS } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { dockerNodes } from "../schemas/docker-nodes";
-import { organizationConfig } from "../schemas/organization-config";
 import { organizations } from "../schemas/organizations";
 import { redeemableEarnings } from "../schemas/redeemable-earnings";
 import { users } from "../schemas/users";
@@ -69,30 +70,6 @@ export interface QuotaCheckResult {
 export interface ContainerProjectIntentResult {
   container: Container;
   created: boolean;
-}
-
-function resolveContainerLimitFromDatabaseSources(
-  creditBalance: string | number | null | undefined,
-  orgSettings: unknown,
-): ContainerLimitResolution {
-  let parsedBalance: number;
-  try {
-    parsedBalance = parseOrganizationCreditBalance(creditBalance, "credit_balance");
-  } catch (cause) {
-    // error-policy:J2 — retain the database-boundary diagnostic internally but
-    // expose a stable, source-classified quota failure to callers.
-    throw new ElizaError("Container quota credit balance is unavailable", {
-      code:
-        creditBalance === null || creditBalance === undefined || String(creditBalance).trim() === ""
-          ? "MISSING_CONTAINER_QUOTA_SOURCE"
-          : "INVALID_CONTAINER_QUOTA_SOURCE",
-      cause,
-      context: { source: "organizations.credit_balance" },
-      severity: "fatal",
-    });
-  }
-
-  return resolveMaxContainersForOrg(parsedBalance, orgSettings);
 }
 
 function hasDeploymentLogUpdate(data: Partial<NewContainer>): boolean {
@@ -358,75 +335,45 @@ export class ContainersRepository {
    * Use createWithQuotaCheck for atomic quota enforcement.
    */
   async checkQuota(organizationId: string): Promise<QuotaCheckResult> {
-    // Get organization details
-    const org = await dbRead.query.organizations.findFirst({
-      where: eq(organizations.id, organizationId),
-      columns: { credit_balance: true },
-    });
-
-    if (!org) {
-      return {
-        availability: "unavailable",
-        allowed: false,
-        current: 0,
-        max: 0,
-        error: "Organization not found",
-      };
-    }
-
-    // Get organization config for settings
-    const config = await dbRead.query.organizationConfig.findFirst({
-      where: eq(organizationConfig.organization_id, organizationId),
-    });
-
-    // Count active containers (excluding deleting/deleted status)
-    const [{ count }] = await dbRead
-      .select({ count: sql<number>`count(*)::int` })
-      .from(containers)
-      .where(
-        and(
-          eq(containers.organization_id, organizationId),
-          notInArray(containers.status, ["deleting", "deleted"]),
-        ),
-      );
-
-    // error-policy:J4 — a corrupt `credit_balance` NUMERIC (`'NaN'::numeric`
-    // migration artifact / manual DB edit) read through a bare `Number(...)`
-    // would become NaN and silently drop the org into the FREE tier via
-    // getMaxContainersForOrg, mislabelling a paying org's quota. Fail closed:
-    // an unreadable balance denies the pre-flight check with a diagnostic
-    // error rather than fabricating a free-tier max.
-    let resolution: ContainerLimitResolution;
-    try {
-      resolution = resolveContainerLimitFromDatabaseSources(org.credit_balance, config?.settings);
-    } catch (error) {
-      // error-policy:J4 — only canonical missing/corrupt quota-source failures
-      // become an explicit unavailable result; unexpected defects still fail fast.
-      if (
-        !(error instanceof ElizaError) ||
-        !["MISSING_CONTAINER_QUOTA_SOURCE", "INVALID_CONTAINER_QUOTA_SOURCE"].includes(error.code)
-      ) {
-        throw error;
-      }
-      return {
-        availability: "unavailable",
-        allowed: false,
-        current: count,
-        max: 0,
-        error: "Container quota source unavailable",
-      };
-    }
-    const maxContainers = resolution.limit;
-
-    const allowed = count < maxContainers;
-
-    return {
-      availability: "ready",
-      allowed,
-      current: count,
-      max: maxContainers,
-      error: allowed ? undefined : `Container quota exceeded (${count}/${maxContainers})`,
-    };
+    return dbWrite.transaction(
+      async (tx) => {
+        const [{ count }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(containers)
+          .where(
+            and(
+              eq(containers.organization_id, organizationId),
+              notInArray(containers.status, ["deleting", "deleted"]),
+            ),
+          );
+        try {
+          const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+          const max = Number(requireOrganizationResourceLimit(policy, "containers"));
+          return {
+            availability: "ready",
+            allowed: count < max,
+            current: count,
+            max,
+            error: count < max ? undefined : `Container quota exceeded (${count}/${max})`,
+          };
+        } catch (error) {
+          // error-policy:J4 missing authority or an unapproved ceiling is an explicit unavailable preflight result.
+          if (
+            !(error instanceof ElizaError) ||
+            !["ORGANIZATION_POLICY_UNAVAILABLE", "RESOURCE_POLICY_UNAVAILABLE"].includes(error.code)
+          )
+            throw error;
+          return {
+            availability: "unavailable",
+            allowed: false,
+            current: count,
+            max: 0,
+            error: "Container quota source unavailable",
+          };
+        }
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
   }
 
   // ============================================================================
@@ -533,6 +480,23 @@ export class ContainersRepository {
         .for("update")
         .limit(1);
       if (!organization) throw new Error("Container billing organization not found");
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+      const ceiling = requireOrganizationResourceLimit(policy, "containers");
+      const [population] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(containers)
+        .where(
+          and(
+            eq(containers.organization_id, organizationId),
+            notInArray(containers.status, ["deleting", "deleted"]),
+          ),
+        );
+      if (!population || BigInt(population.count) > ceiling)
+        throw new QuotaExceededError(
+          "Container quota no longer permits restart",
+          population?.count ?? 0,
+          Number(ceiling),
+        );
       const creditAvailable = new Decimal(organization.credit_balance);
       if (!creditAvailable.isFinite()) {
         throw new Error("Container restart credit funding is not a finite numeric value");
@@ -833,7 +797,7 @@ export class ContainersRepository {
    * Prevents race conditions where multiple concurrent requests could bypass quota limits.
    * Uses row-level locking (FOR UPDATE) to ensure atomicity.
    */
-  async createWithQuotaCheck(data: NewContainer, transaction?: Database): Promise<Container> {
+  async createWithQuotaCheck(data: NewContainer, transaction?: DbTransaction): Promise<Container> {
     const result = await this.createWithQuotaAndOptionalProjectIntent(data, false, transaction);
     return result.container;
   }
@@ -847,7 +811,7 @@ export class ContainersRepository {
    */
   async createWithProjectIntentAndQuotaCheck(
     data: NewContainer,
-    transaction?: Database,
+    transaction?: DbTransaction,
   ): Promise<ContainerProjectIntentResult> {
     return await this.createWithQuotaAndOptionalProjectIntent(data, true, transaction);
   }
@@ -855,9 +819,9 @@ export class ContainersRepository {
   private async createWithQuotaAndOptionalProjectIntent(
     data: NewContainer,
     enforceProjectIntent: boolean,
-    transaction?: Database,
+    transaction?: DbTransaction,
   ): Promise<ContainerProjectIntentResult> {
-    const executeInTransaction = async (tx: Database) => {
+    const executeInTransaction = async (tx: DbTransaction) => {
       // 1. Lock the organization row to prevent concurrent quota checks
       const [org] = await tx
         .select({
@@ -893,11 +857,6 @@ export class ContainersRepository {
         }
       }
 
-      // Get organization config for settings
-      const config = await tx.query.organizationConfig.findFirst({
-        where: eq(organizationConfig.organization_id, data.organization_id),
-      });
-
       // 2. Count active containers (excluding deleting/deleted status)
       const [{ count }] = await tx
         .select({ count: sql<number>`count(*)::int` })
@@ -914,10 +873,8 @@ export class ContainersRepository {
       // migration artifact / manual DB edit cannot silently drop a paying org
       // into the FREE quota tier. The throw propagates out of the FOR UPDATE
       // transaction, rolling back atomically (no container row is created).
-      const maxContainers = resolveContainerLimitFromDatabaseSources(
-        org.credit_balance,
-        config?.settings,
-      ).limit;
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+      const maxContainers = Number(requireOrganizationResourceLimit(policy, "containers"));
 
       // 4. Check quota
       if (count >= maxContainers) {
@@ -978,7 +935,7 @@ export class ContainersRepository {
   ): Promise<{ container: Container; newBalance: number }> {
     return await dbWrite.transaction(async (tx) => {
       // Create container with quota check
-      const container = await this.createWithQuotaCheck(containerData, tx as typeof dbWrite);
+      const container = await this.createWithQuotaCheck(containerData, tx);
 
       // Check and deduct credits
       const org = await tx.query.organizations.findFirst({

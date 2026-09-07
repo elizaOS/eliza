@@ -20,7 +20,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { collectInferenceTraceEvidence } from "./cloudflare-inference-trace-evidence.mjs";
+import {
+  CloudflareTraceApiError,
+  collectInferenceTraceEvidence,
+} from "./cloudflare-inference-trace-evidence.mjs";
 import {
   inferenceAuthTailFailureCode,
   isCloudflarePlacement,
@@ -527,17 +530,47 @@ async function runPaired({ deploySha, sourceSha, outputDir, env }) {
   }
 }
 
-async function runTraces({ deploySha, outputDir, env, pairedRecords }) {
+/** Retain sanitized API denials even when raw capture cleanup precedes CLI failure. */
+export async function runTraces(
+  { deploySha, outputDir, env, pairedRecords },
+  { fetchImpl = fetch } = {},
+) {
   const secrets = requireTraceSecrets(env);
   const privateRoot = env.RUNNER_TEMP?.trim() || tmpdir();
   return await withPrivateTraceDirectory(async (directory) => {
-    const evidence = await collectInferenceTraceEvidence({
-      pairedRecords,
-      deploySha,
-      accountId: secrets.cloudflareAccountId,
-      apiToken: secrets.cloudflareApiToken,
-      privateDirectory: directory,
-    });
+    let evidence;
+    try {
+      evidence = await collectInferenceTraceEvidence({
+        pairedRecords,
+        deploySha,
+        accountId: secrets.cloudflareAccountId,
+        apiToken: secrets.cloudflareApiToken,
+        privateDirectory: directory,
+        fetchImpl,
+      });
+    } catch (error) {
+      // error-policy:J2 retain only the collector's validated denial before
+      // rethrowing; withPrivateTraceDirectory still removes every raw response.
+      if (error instanceof CloudflareTraceApiError) {
+        try {
+          await writeFile(
+            join(outputDir, "trace-denial.json"),
+            `${JSON.stringify({ kind: "cloudflare_trace_api_denial", ...error.diagnostic })}\n`,
+            { mode: 0o600, flag: "wx" },
+          );
+        } catch (cause) {
+          // error-policy:J2 evidence retention failure must not mask the API
+          // denial or expose a filesystem path through the CLI message.
+          throw new Error(
+            "Cloudflare trace denial evidence could not be retained",
+            {
+              cause: new AggregateError([error, cause]),
+            },
+          );
+        }
+      }
+      throw error;
+    }
     await writeFile(
       join(outputDir, "inference-traces.json"),
       `${JSON.stringify(evidence)}\n`,

@@ -32,6 +32,7 @@
 import {
   afterAll,
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -69,6 +70,26 @@ import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
 
 const aiActual = require("ai") as Record<string, unknown>;
+
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+let policyDatabase: typeof import("@/db/client");
+beforeAll(async () => {
+  policyDatabase = await import("@/db/client");
+  const pg = policyDatabase.getPgliteClientForTests();
+  await pg.exec("CREATE TABLE organizations(id uuid PRIMARY KEY)");
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  await pg.query(
+    "INSERT INTO organizations(id,credit_balance) VALUES($1,100)",
+    [ORG],
+  );
+});
+afterAll(async () => {
+  await policyDatabase.closeDatabaseConnectionsForTests();
+});
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";

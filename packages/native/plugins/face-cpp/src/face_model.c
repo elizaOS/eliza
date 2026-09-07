@@ -1,22 +1,8 @@
-/*
- * face_model.c — real implementations of the face_detect_* /
- * face_embed_* model entry points declared in include/face/face.h.
- *
- * Native CPU reference runtime. The model entries:
- *
- *   - mmap a GGUF produced by scripts/blazeface_to_gguf.py or
- *     scripts/face_embed_to_gguf.py;
- *   - validate the metadata (`face.detector` / `face.embedder` etc.)
- *     against the locked C ABI;
- *   - load all weights into a session struct;
- *   - on each forward call, preprocess the input, run the per-head
- *     forward (face_blazeface_forward / face_embed_forward), and
- *     post-process via face_blazeface_decode + face_nms_inplace
- *     (detection) or 5-pt align + L2 normalize (embedding).
- *
- * `face_active_backend()` reports `"ggml-cpu-ref"` — the kernels are
- * pure-C scalar today, but the loader, GGUF format, and forward graph
- * are real and shippable.
+/**
+ * Owns detector and embedder sessions behind the plugin-vision C ABI.
+ * GGUF metadata is validated before exposing a handle; each session owns
+ * its weights and inference state. Pure-C scalar kernels keep the reference
+ * backend portable across supported CPU architectures.
  */
 
 #include "face/face.h"
@@ -54,7 +40,6 @@ int face_detect_open(const char *gguf_path, face_detect_handle *out) {
     face_gguf *g = face_gguf_open(gguf_path, &err);
     if (!g) return err ? err : -ENOENT;
 
-    /* Metadata validation. */
     const char *detector = face_gguf_get_string(g, "face.detector");
     if (!detector || strcmp(detector, FACE_DETECTOR_BLAZEFACE_FRONT) != 0) {
         face_gguf_close(g);

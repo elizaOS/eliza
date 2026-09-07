@@ -370,6 +370,18 @@ export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventor
       action: "delete",
     },
     {
+      table: "subscription_reconciliation_attempts",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "subscription_reconciliation_scans",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
       table: "billing_subscription_revisions",
       column: "organization_id",
       subject: "organization",

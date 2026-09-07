@@ -1024,7 +1024,6 @@ serve = [
 train = [
     { name = "accelerate" },
     { name = "apollo-torch" },
-    { name = "datasets" },
     { name = "fused-turboquant" },
     { name = "gguf" },
     { name = "liger-kernel" },
@@ -1050,7 +1049,6 @@ requires-dist = [
     { name = "argostranslate", specifier = ">=1.11.0" },
     { name = "atroposlib", marker = "extra == 'rl'", specifier = ">=0.1.0" },
     { name = "datasets", specifier = ">=3.2.0" },
-    { name = "datasets", marker = "extra == 'train'", specifier = ">=3.2.0" },
     { name = "fused-turboquant", marker = "extra == 'train'", specifier = ">=0.1.0" },
     { name = "gguf", marker = "extra == 'train'", specifier = ">=0.10.0" },
     { name = "httpx", specifier = ">=0.27.0" },

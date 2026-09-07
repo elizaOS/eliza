@@ -1,10 +1,10 @@
 # @elizaos/skills
 
-Bundled skills library and skill loading utilities for elizaOS agents.
+Bundled skills library and skill loading utilities for Eliza agents.
 
 ## Purpose
 
-This package ships the bundled skills library (markdown instruction files) and the TypeScript API for discovering, loading, and formatting them. The agent runtime (`packages/agent`, `runtime/eliza.ts`) calls `getSkillsDir()` at startup to locate the bundled skills directory; `@elizaos/plugin-agent-skills` (`api/skill-discovery-helpers.ts`) also calls `getSkillsDir()` to scan bundled skills. `getSkillsDir` is the only symbol consumers import from this package today.
+This package ships the bundled skills library (markdown instruction files) and the TypeScript API for discovering, loading, and formatting them. The agent runtime (`packages/agent`, `runtime/eliza.ts`) calls `getSkillsDir()` at startup to locate the bundled skills directory; `@elizaos/plugin-agent-skills` (`src/api/skill-discovery-helpers.ts`) also calls `getSkillsDir()` to scan bundled skills. The public `loadSkills()` utility has its own discovery contract; these production consumers use the plugin's service/scanner after locating the bundle.
 
 This package is **not** a plugin — it exports pure utility functions and the bundled skill files. It does not register actions, providers, or services.
 
@@ -29,8 +29,8 @@ packages/skills/
 import {
   // Discovery
   getSkillsDir,           // absolute path to the bundled skills/ directory
-  getCuratedActiveDir,    // <stateDir>/skills/curated/active (loaded at runtime)
-  getProposedSkillsDir,   // <stateDir>/skills/curated/proposed (staged for review, NOT loaded)
+  getCuratedActiveDir,    // <stateDir>/skills/curated/active (automatic library discovery)
+  getProposedSkillsDir,   // <stateDir>/skills/curated/proposed (staged for review)
   promoteSkill,           // move a proposed skill to active atomically
   clearSkillsDirCache,    // reset the bundled-dir resolution cache
 
@@ -67,6 +67,13 @@ import {
 5. **explicit paths** — `skillPaths` option
 
 `curated/proposed/` is staged and never loaded automatically.
+
+`agentDir` selects the state root for managed and curated stores; otherwise it
+is resolved at call time. `managedSkillsDir` changes only the managed scan.
+Automatic managed scanning excludes curated stores and their symlink aliases;
+curated active is loaded separately. Explicit `skillPaths` may select drafts.
+Set `includeDefaults: false` to load only explicit paths.
+
 
 ## Skill File Format
 
@@ -105,9 +112,14 @@ bun run --cwd packages/skills clean       # rm -rf dist
 
 | Variable | Effect |
 |---|---|
-| `ELIZAOS_BUNDLED_SKILLS_DIR` | Override the bundled skills directory resolution |
+| `ELIZAOS_BUNDLED_SKILLS_DIR` | Select a readable bundle directory; invalid explicit values throw |
 
-`resolveStateDir()` from `@elizaos/core` controls the managed/curated skill locations; it honors `ELIZA_STATE_DIR`.
+`ELIZAOS_BUNDLED_SKILLS_DIR` selects a readable bundled-skill directory. A
+nonempty invalid path throws `BUNDLED_SKILLS_OVERRIDE_INVALID`; an empty directory
+is valid. Blank or unset values use normal discovery. Call
+`clearSkillsDirCache()` after changing a previously resolved setting.
+
+`resolveStateDir()` from `@elizaos/core` honors `ELIZA_STATE_DIR`.
 
 ## Adding a Bundled Skill
 
@@ -120,12 +132,12 @@ bun run --cwd packages/skills clean       # rm -rf dist
 ## Conventions and Gotchas
 
 - **Name must equal directory name.** The loader validates this and warns on mismatch. Names are lowercase `[a-z0-9-]+`, max 64 chars, no leading/trailing/consecutive hyphens.
-- **Description is required.** A skill with a missing or blank description is silently dropped by the loader.
-- **Curated learning loop.** Agent-generated skills land in `curated/proposed/` and require human promotion via `promoteSkill(name)` (or the Settings UI) before they load. This prevents untrusted agent output from injecting itself into the prompt.
+- **Description is required.** A skill with a missing or blank description is omitted with a warning diagnostic.
+- **Curated learning loop.** `promoteSkill(name)` moves proposed skills into active discovery. Explicit paths remain deliberate caller selections; this library does not enforce a product-wide approval policy.
 - **Symlinks are resolved.** The loader follows symlinks using `statSync`; duplicate real paths are deduplicated.
 - **`serializeSkillFile` is for the learning loop.** Call it to rewrite a SKILL.md after refining provenance/content. It serializes frontmatter as YAML and preserves the body.
 - **`buildSkillCommandSpecs` sanitizes names.** Command names are lowercased, non-alphanumeric chars replaced with underscores, and truncated to 32 chars. Collisions get a numeric suffix.
-- **No circular deps.** This package depends only on `@elizaos/core` (for `resolveStateDir`) and `yaml`. Do not add dependencies on agent or plugin packages.
+- **No circular deps.** This package depends only on `@elizaos/core` (for state resolution and typed errors) and `yaml`. Do not add dependencies on agent or plugin packages.
 
 ## Verification
 

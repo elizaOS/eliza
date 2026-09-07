@@ -3,13 +3,9 @@ import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
-import { getTableConfig } from "drizzle-orm/pg-core";
-import {
-  billingSubscriptionCommands,
-  billingSubscriptionEventReceipts,
-  billingSubscriptionIncidents,
-  subscriptionBillingFences,
-} from "../schemas/subscription-billing-operations";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 
 const ORG = "10000000-0000-4000-8000-000000000001",
   OTHER = "10000000-0000-4000-8000-000000000002",
@@ -36,23 +32,72 @@ async function database(): Promise<PGlite> {
   return db;
 }
 afterEach(async () => Promise.all(databases.splice(0).map((db) => db.close())));
-describe("0370 subscription operations", () => {
-  test("matches every operation table's current Drizzle column contract", async () => {
+describe("subscription operation migrations", () => {
+  test("upgrades an existing command and persists undo lineage through the current ORM", async () => {
     const db = await database();
-    for (const table of [
-      billingSubscriptionCommands,
-      subscriptionBillingFences,
-      billingSubscriptionEventReceipts,
-      billingSubscriptionIncidents,
+    await db.exec(
+      `INSERT INTO billing_subscription_commands (organization_id,subscription_id,requested_by_user_id,kind,expected_subscription_revision,idempotency_key,provider_idempotency_key,request_digest) VALUES ('${ORG}','${SUB}','${USER}','cancel',1,'command.before-upgrade','provider.before-upgrade','${DIGEST}')`,
+    );
+    for (const name of [
+      "0383_subscription_cancellation_result.sql",
+      "0384_subscription_cancellation_undo.sql",
     ]) {
-      const config = getTableConfig(table);
-      const columns = await db.query<{ column_name: string }>(
-        `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='${config.name}' ORDER BY ordinal_position`,
-      );
-      expect(columns.rows.map(({ column_name }) => column_name)).toEqual(
-        config.columns.map(({ name }) => name),
-      );
+      const upgrade = await readFile(new URL(name, import.meta.url), "utf8");
+      for (const statement of upgrade.split("--> statement-breakpoint"))
+        if (statement.trim()) await db.exec(statement);
     }
+    const orm = drizzle(db);
+    const [existing] = await orm.select().from(billingSubscriptionCommands);
+    if (!existing) throw new Error("Migration lost the existing cancellation command");
+    expect(existing).toMatchObject({
+      idempotency_key: "command.before-upgrade",
+      cancellation_dispatch_state: null,
+      result_subscription_revision: null,
+      schedule_predecessor_command_id: null,
+    });
+    const [prepared] = await orm
+      .insert(billingSubscriptionCommands)
+      .values({
+        organization_id: ORG,
+        subscription_id: SUB,
+        requested_by_user_id: USER,
+        kind: "cancel",
+        expected_subscription_revision: 1,
+        idempotency_key: "command.after-upgrade",
+        provider_idempotency_key: "provider.after-upgrade",
+        request_digest: DIGEST,
+        cancellation_dispatch_state: "ready",
+      })
+      .returning();
+    if (!prepared) throw new Error("New cancellation command was not persisted");
+    expect(prepared.cancellation_dispatch_state).toBe("ready");
+    const [undo] = await orm
+      .insert(billingSubscriptionCommands)
+      .values({
+        organization_id: ORG,
+        subscription_id: SUB,
+        requested_by_user_id: USER,
+        kind: "resume",
+        expected_subscription_revision: 1,
+        idempotency_key: "command.undo",
+        provider_idempotency_key: "provider.undo",
+        request_digest: DIGEST,
+        cancellation_dispatch_state: "ready",
+        schedule_predecessor_command_id: prepared.id,
+      })
+      .returning();
+    if (!undo) throw new Error("Undo command was not persisted");
+    expect(undo.schedule_predecessor_command_id).toBe(prepared.id);
+    await expect(
+      db.exec(
+        `UPDATE billing_subscription_commands SET schedule_predecessor_command_id=NULL WHERE id='${undo.id}'`,
+      ),
+    ).rejects.toThrow(/immutable/i);
+    const [retained] = await orm
+      .select()
+      .from(billingSubscriptionCommands)
+      .where(eq(billingSubscriptionCommands.id, undo.id));
+    expect(retained?.schedule_predecessor_command_id).toBe(prepared.id);
   });
   test("rejects cross-tenant commands and immutable retry intent", async () => {
     const db = await database();

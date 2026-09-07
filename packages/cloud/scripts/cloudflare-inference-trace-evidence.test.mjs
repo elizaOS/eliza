@@ -14,6 +14,7 @@ import {
   buildRootTraceQuery,
   buildTraceEventsQuery,
   buildTraceKeysRequest,
+  CloudflareTraceApiError,
   CloudflareTraceSchemaError,
   collectInferenceTraceEvidence,
   pairedGatewayTraceWindow,
@@ -685,6 +686,170 @@ test("API failures never copy private response content into errors", async () =>
     assert.equal(existsSync(join(directory, "001-keys.json")), true);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("collector preserves sanitized keys and query denials without accepting private error data", async () => {
+  const docs =
+    "https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/";
+  const troubleshooting =
+    "https://developers.cloudflare.com/fundamentals/api/troubleshooting/";
+  const publicError = { code: 10000, documentation_url: docs };
+  const cases = [
+    {
+      name: "valid duplicate errors",
+      body: JSON.stringify({
+        errors: [
+          publicError,
+          publicError,
+          { code: 10001, documentation_url: troubleshooting },
+        ],
+        message: "private-response-marker",
+      }),
+      codes: [10000, 10001],
+      urls: [docs, troubleshooting],
+    },
+    {
+      name: "adversarial fields",
+      body: JSON.stringify({
+        errors: [
+          null,
+          [],
+          "private-response-marker",
+          {
+            code: "10000",
+            documentation_url: `${docs}?token=private-response-marker`,
+          },
+          { code: -1, documentation_url: `${docs}#private-response-marker` },
+          { code: 1.5, documentation_url: `${docs}private-response-marker` },
+          {
+            code: 1_000_000,
+            documentation_url:
+              "https://developers.cloudflare.com/private-response-marker/",
+          },
+          {
+            code: 1e100,
+            documentation_url: docs.replace(
+              "https://",
+              "https://private-response-marker@",
+            ),
+          },
+          {
+            documentation_url: docs.replace(
+              "developers.cloudflare.com",
+              "developers.cloudflare.com.attacker.invalid",
+            ),
+          },
+          { documentation_url: docs.replace("https://", "http://") },
+          { documentation_url: docs.replace("query/", "%71uery/") },
+          {
+            code: 10000,
+            message: "private-response-marker",
+            documentation_url: docs,
+          },
+        ],
+      }),
+      codes: [10000],
+      urls: [docs],
+    },
+    {
+      name: "malformed",
+      body: '{"errors":[private-response-marker',
+      status: 502,
+      codes: [],
+      urls: [],
+    },
+    { name: "null envelope", body: "null", codes: [], urls: [] },
+    {
+      name: "wrong errors shape",
+      body: '{"errors":{"code":10000}}',
+      codes: [],
+      urls: [],
+    },
+    {
+      name: "oversized errors",
+      body: JSON.stringify({
+        errors: Array.from({ length: 33 }, () => publicError),
+      }),
+      codes: [],
+      urls: [],
+    },
+    {
+      name: "oversized response",
+      body: JSON.stringify({
+        errors: [publicError],
+        message: "private-response-marker".repeat(4000),
+      }),
+      codes: [],
+      urls: [],
+    },
+  ];
+  for (const endpoint of ["keys", "query"]) {
+    for (const scenario of cases) {
+      const directory = await mkdtemp(join(tmpdir(), "eliza-trace-denial-"));
+      const httpStatus = scenario.status ?? 403;
+      let calls = 0;
+      try {
+        await assert.rejects(
+          collectInferenceTraceEvidence({
+            pairedRecords: pairedRecords(),
+            deploySha: SHA,
+            accountId: "private-account-id",
+            apiToken: "private-api-token",
+            privateDirectory: directory,
+            sleepImpl: async () => assert.fail("HTTP denials must not retry"),
+            fetchImpl: async (url) => {
+              calls++;
+              if (endpoint === "query" && url.endsWith("/keys"))
+                return new Response(keysEnvelope());
+              assert.equal(url.endsWith(`/${endpoint}`), true);
+              return new Response(scenario.body, { status: httpStatus });
+            },
+          }),
+          (error) => {
+            assert.ok(error instanceof CloudflareTraceApiError);
+            assert.ok(error instanceof CloudflareTraceSchemaError);
+            assert.deepEqual(error.diagnostic, {
+              endpoint,
+              httpStatus,
+              errorCodes: scenario.codes,
+              documentationUrls: scenario.urls,
+            });
+            assert.ok(error.message.includes(`HTTP ${httpStatus}`));
+            assert.ok(Object.isFrozen(error.diagnostic));
+            assert.ok(Object.isFrozen(error.diagnostic.errorCodes));
+            assert.ok(Object.isFrozen(error.diagnostic.documentationUrls));
+            assert.throws(() => {
+              error.diagnostic = {};
+            }, TypeError);
+            assert.throws(() => {
+              error.diagnostic.errorCodes.push(42);
+            }, TypeError);
+            const exported = `${error.message}\n${JSON.stringify(error)}`;
+            for (const privateValue of [
+              "private-response-marker",
+              "private-account-id",
+              "private-api-token",
+            ])
+              assert.equal(
+                exported.includes(privateValue),
+                false,
+                scenario.name,
+              );
+            return true;
+          },
+        );
+        assert.equal(calls, endpoint === "keys" ? 1 : 2);
+        const privateFile =
+          endpoint === "keys" ? "001-keys.json" : "002-roots-s1-r1-1.json";
+        assert.equal(
+          await readFile(join(directory, privateFile), "utf8"),
+          scenario.body,
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
   }
 });
 

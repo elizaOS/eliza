@@ -1,12 +1,18 @@
 /**
  * Verifies that an unavailable selected-provider Vault prevents runtime and
  * chat readiness through the real `startEliza` boot boundary. The host Vault
- * is deterministic and no provider request is dispatched.
+ * uses real temporary PGlite storage; only the targeted provider lookup failure
+ * is injected, and no provider request is dispatched.
  */
 
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  generateMasterKey,
+  inMemoryMasterKey,
+  PgliteVaultImpl,
+} from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startEliza } from "./eliza.ts";
 import {
@@ -15,37 +21,30 @@ import {
   setAgentHostBridge,
 } from "./host-bridge.ts";
 
+const integrityKeyName = "system.optimized-prompt.hmac-key";
+const integrityKey = Buffer.alloc(32, 1).toString("base64");
+
+const savedIntegrityKey = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
 const savedStateDir = process.env.ELIZA_STATE_DIR;
 const savedProfileResolver = process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER;
 const savedCerebrasKey = process.env.CEREBRAS_API_KEY;
-const savedIntegrityKey = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
 let stateDir: string | null = null;
+let vault: PgliteVaultImpl | null = null;
 
 beforeEach(() => {
   delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
 });
 
-function createBootVault() {
-  const entries = new Map<string, string>();
-  return {
-    ...defaultAgentHostBridge.sharedVault(),
-    has: async (key: string) => entries.has(key),
-    get: async (key: string) => {
-      const value = entries.get(key);
-      if (value === undefined)
-        throw new Error(`Missing test Vault key: ${key}`);
-      return value;
-    },
-    setIfAbsent: async (key: string, value: string) => {
-      if (entries.has(key)) return false;
-      entries.set(key, value);
-      return true;
-    },
-  };
-}
-
 afterEach(async () => {
   _resetAgentHostBridge();
+  if (savedIntegrityKey === undefined) {
+    delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+  } else {
+    process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = savedIntegrityKey;
+  }
+  vi.restoreAllMocks();
+  if (vault) await vault.close();
+  vault = null;
   if (savedStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
   else process.env.ELIZA_STATE_DIR = savedStateDir;
   if (savedProfileResolver === undefined) {
@@ -55,11 +54,6 @@ afterEach(async () => {
   }
   if (savedCerebrasKey === undefined) delete process.env.CEREBRAS_API_KEY;
   else process.env.CEREBRAS_API_KEY = savedCerebrasKey;
-  if (savedIntegrityKey === undefined) {
-    delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
-  } else {
-    process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = savedIntegrityKey;
-  }
   if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
   stateDir = null;
 });
@@ -72,25 +66,26 @@ describe("selected provider credential boot readiness", () => {
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER = "1";
     delete process.env.CEREBRAS_API_KEY;
-
-    const vault = createBootVault();
-    const has = vi.fn(
-      async (key: string) =>
-        key === "providers.cerebras.api-key" || (await vault.has(key)),
-    );
-    const reveal = vi.fn(async (key: string) => {
-      if (key !== "providers.cerebras.api-key") {
-        throw new Error(`Unexpected test Vault reveal: ${key}`);
-      }
-      return "vault-only-cerebras-key";
+    vault = new PgliteVaultImpl({
+      dataDir: path.join(stateDir, "vault"),
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath: path.join(stateDir, "vault-audit.jsonl"),
     });
+    await vault.set(integrityKeyName, integrityKey, {
+      sensitive: true,
+      caller: "test:provider-boot",
+    });
+
+    await vault.set("providers.cerebras.api-key", "vault-only-cerebras-key", {
+      sensitive: true,
+      caller: "test:provider-boot",
+    });
+    const has = vi.spyOn(vault, "has");
+    const reveal = vi.spyOn(vault, "reveal");
+    const hostVault = vault;
     setAgentHostBridge({
       ...defaultAgentHostBridge,
-      sharedVault: () => ({
-        ...vault,
-        has,
-        reveal,
-      }),
+      sharedVault: () => hostVault,
     });
     const abort = new AbortController();
     const onRuntimeCreated = vi.fn(
@@ -138,18 +133,26 @@ describe("selected provider credential boot readiness", () => {
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER = "1";
     delete process.env.CEREBRAS_API_KEY;
+    vault = new PgliteVaultImpl({
+      dataDir: path.join(stateDir, "vault"),
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath: path.join(stateDir, "vault-audit.jsonl"),
+    });
+    await vault.set(integrityKeyName, integrityKey, {
+      sensitive: true,
+      caller: "test:provider-boot",
+    });
 
     const cause = new Error("test Vault storage unavailable");
-    const vault = createBootVault();
+    const hostVault = vault;
+    const has = hostVault.has.bind(hostVault);
+    vi.spyOn(hostVault, "has").mockImplementation(async (key: string) => {
+      if (key === "providers.cerebras.api-key") throw cause;
+      return has(key);
+    });
     setAgentHostBridge({
       ...defaultAgentHostBridge,
-      sharedVault: () => ({
-        ...vault,
-        has: vi.fn(async (key: string) => {
-          if (key === "providers.cerebras.api-key") throw cause;
-          return vault.has(key);
-        }),
-      }),
+      sharedVault: () => hostVault,
     });
     const onRuntimeCreated = vi.fn();
 

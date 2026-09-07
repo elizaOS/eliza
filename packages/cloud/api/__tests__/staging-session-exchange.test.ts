@@ -17,7 +17,6 @@ import {
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { decodeJwt, decodeProtectedHeader, jwtVerify, SignJWT } from "jose";
@@ -113,7 +112,7 @@ let getCurrentUserFromRequest: SharedAuthModule["getCurrentUserFromRequest"];
 let requireAuthOrApiKey: SharedAuthModule["requireAuthOrApiKey"];
 let getWorkersCurrentUser: WorkersHonoAuthModule["getCurrentUser"];
 let resolveInferenceSessionAuthContext: InferenceSessionAuthModule["resolveInferenceSessionAuthContext"];
-let writeInferenceSessionAuthDecision: InferenceAuthCacheModule["writeInferenceSessionAuthDecision"];
+let hashStewardUserId: InferenceAuthCacheModule["hashStewardUserId"];
 let INFERENCE_AUTH_CONTEXT_VERSION: InferenceAuthCacheModule["INFERENCE_AUTH_CONTEXT_VERSION"];
 let resolveOidcSession: OidcSessionModule["resolveOidcSession"];
 let verifyServiceJwt: ServiceJwtModule["verifyServiceJwt"];
@@ -535,23 +534,13 @@ beforeAll(async () => {
     dbWrite as never,
   );
   await apply();
-  // The origin session path loads the admission snapshot, which reads the
-  // entitlement projection. Apply the real subscription authority migrations
-  // rather than a schema push: their composite foreign keys depend on unique
-  // indexes that drizzle-kit orders after the constraints.
   const { getPgliteClientForTests } = await import("@/db/client");
-  for (const name of [
-    "0373_subscription_authority.sql",
-    "0374_subscription_funding_transaction_uniqueness.sql",
-  ]) {
-    const migration = await readFile(
-      new URL(`../../shared/src/db/migrations/${name}`, import.meta.url),
-      "utf8",
-    );
-    for (const statement of migration.split("--> statement-breakpoint")) {
-      if (statement.trim()) await getPgliteClientForTests().exec(statement);
-    }
-  }
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) =>
+    getPgliteClientForTests().exec(query),
+  );
 
   app = (await import("../auth/staging-session-exchange/route")).default;
   legacySsoApp = (await import("../auth/sso-bridge/route")).default;
@@ -575,8 +564,9 @@ beforeAll(async () => {
   ({ resolveInferenceSessionAuthContext } = await import(
     "@/lib/services/inference-session-auth-context"
   ));
-  ({ writeInferenceSessionAuthDecision, INFERENCE_AUTH_CONTEXT_VERSION } =
-    await import("@/lib/services/inference-auth-cache"));
+  ({ hashStewardUserId, INFERENCE_AUTH_CONTEXT_VERSION } = await import(
+    "@/lib/services/inference-auth-cache"
+  ));
   ({ resolveOidcSession } = await import("@/lib/oidc/session"));
   ({ verifyServiceJwt } = await import("@/lib/auth/service-jwt"));
   const apiKeyDetailRoute = (await import("../v1/api-keys/[id]/route")).default;
@@ -1530,28 +1520,46 @@ describe("full/thin verifier env and outer cookie-cache revocation", () => {
     });
 
     await runWithCloudBindingsAsync(BASE_ENV, async () => {
-      await writeInferenceSessionAuthDecision({
-        v: INFERENCE_AUTH_CONTEXT_VERSION,
-        cachedAt: Date.now(),
-        userId: OTHER_ID,
-        orgId: OTHER_ID,
-        apiKeyId: null,
-        stewardUserId: STEWARD_USER_ID,
-        admission: {
-          subscriptionFunded: false,
-          balance: {
-            balanceUsd: 100,
-            balanceAt: Date.now(),
-            balanceRevision: "1",
-          },
-          rateLimits: {
-            completionsRpm: 100,
-            embeddingsRpm: 100,
-            standardRpm: 100,
-            strictRpm: 100,
+      // Deliberately seed an obsolete identity that the authorized writer rejects.
+      // A derived QA session must bypass this unrelated combined cache entry.
+      await cache.set(
+        CacheKeys.inference.sessionAuthContext(
+          hashStewardUserId(STEWARD_USER_ID),
+        ),
+        {
+          v: INFERENCE_AUTH_CONTEXT_VERSION,
+          cachedAt: Date.now(),
+          userId: OTHER_ID,
+          orgId: OTHER_ID,
+          apiKeyId: null,
+          stewardUserId: STEWARD_USER_ID,
+          admission: {
+            authority: {
+              generation: "0",
+              source: "legacy" as const,
+              sourceSubscriptionId: null,
+              sourceRevision: null,
+              projectionRevision: null,
+              catalogVersion: null,
+              effectiveFrom: "2026-01-01T00:00:00.000Z",
+              effectiveUntil: null,
+            },
+            subscriptionFunded: false,
+            balance: {
+              balanceUsd: 100,
+              balanceAt: Date.now(),
+              balanceRevision: "1",
+            },
+            rateLimits: {
+              completionsRpm: 100,
+              embeddingsRpm: 100,
+              standardRpm: 100,
+              strictRpm: 100,
+            },
           },
         },
-      });
+        60,
+      );
     });
     const thin = await runWithCloudBindingsAsync(BASE_ENV, async () =>
       resolveInferenceSessionAuthContext(

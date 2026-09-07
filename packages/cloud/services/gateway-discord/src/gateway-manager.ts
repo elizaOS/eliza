@@ -1,9 +1,8 @@
 /** Coordinates multi-tenant Discord gateway connections and event routing. */
 import {
-  GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
   gatewayTokenRefreshDelayMs,
   gatewayTokenRetryDelayMs,
-  parseGatewayTokenResponse,
+  requestGatewayToken,
 } from "@elizaos/cloud-services-common/gateway-auth";
 import { Redis } from "@upstash/redis";
 import {
@@ -25,6 +24,11 @@ import {
   type Role,
   type User,
 } from "discord.js";
+import {
+  fetchWithTimeout,
+  HTTP_TIMEOUT_MS,
+  sendCloudUpdate,
+} from "./cloud-rest";
 import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
 import {
   type DiscordInstallWelcomeJob,
@@ -165,7 +169,6 @@ const BOT_POLL_INTERVAL_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
 /** HTTP request timeout for general operations (10 seconds) */
-const HTTP_TIMEOUT_MS = 10_000;
 
 /** HTTP request timeout for event forwarding (60 seconds) - AI processing can take longer */
 const EVENT_FORWARD_TIMEOUT_MS = 60_000;
@@ -333,31 +336,6 @@ interface HealthStatus {
     lastSuccessfulPoll: string | null;
     healthy: boolean;
   };
-}
-
-// ============================================
-// Helper Functions
-// ============================================
-
-/**
- * Fetch with timeout support.
- */
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit & { timeout?: number } = {},
-): Promise<Response> {
-  const { timeout = HTTP_TIMEOUT_MS, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    return await fetch(url, {
-      ...fetchOptions,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
 }
 
 interface GatewayManagerRoutingAdapters {
@@ -561,7 +539,7 @@ export class GatewayManager {
     const acquisitionStartedAt = Date.now();
     logger.info("Acquiring JWT token", { podName: this.config.podName });
 
-    const response = await fetchWithTimeout(
+    const data = await requestGatewayToken(
       `${this.config.elizaCloudUrl}/api/internal/auth/token`,
       {
         method: "POST",
@@ -573,16 +551,9 @@ export class GatewayManager {
           pod_name: this.config.podName,
           service: "discord-gateway",
         }),
-        timeout: GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
       },
     );
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to acquire token: ${response.status} - ${error}`);
-    }
-
-    const data = parseGatewayTokenResponse(await response.json());
     if (lifecycleGeneration !== this.authLifecycleGeneration) {
       throw new Error("Auth lifecycle changed during token acquisition");
     }
@@ -800,7 +771,7 @@ export class GatewayManager {
     // Release all connections in database so other pods can pick them up immediately
     // This is critical for graceful shutdowns (deployments, scaling) to avoid message loss
     try {
-      await fetchWithTimeout(
+      await sendCloudUpdate(
         `${this.config.elizaCloudUrl}/api/internal/discord/gateway/shutdown`,
         {
           method: "POST",
@@ -864,7 +835,7 @@ export class GatewayManager {
     // Notify backend that this pod is draining so it can reassign bots
     // This is proactive - doesn't wait for heartbeat timeout
     try {
-      await fetchWithTimeout(
+      await sendCloudUpdate(
         `${this.config.elizaCloudUrl}/api/internal/discord/gateway/drain`,
         {
           method: "POST",
@@ -1776,7 +1747,7 @@ export class GatewayManager {
     botUserId?: string,
   ): Promise<void> {
     try {
-      await fetchWithTimeout(
+      await sendCloudUpdate(
         `${this.config.elizaCloudUrl}/api/internal/discord/gateway/status`,
         {
           method: "POST",
@@ -1853,7 +1824,7 @@ export class GatewayManager {
           }),
         );
 
-        await fetchWithTimeout(
+        await sendCloudUpdate(
           `${this.config.elizaCloudUrl}/api/internal/discord/gateway/heartbeat`,
           {
             method: "POST",

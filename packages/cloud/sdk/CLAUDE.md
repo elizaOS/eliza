@@ -169,7 +169,7 @@ Implement the five methods on the interface in `src/cloud-setup-session/service-
 ## Conventions / gotchas
 
 - `ElizaCloudClient` exposes two auth surfaces: `apiKey` (sent as `Authorization: Bearer` and `X-API-Key`) and `bearerToken` (sent as `Authorization: Bearer` only). The bearer token wins over the API key when both are set. Call `setApiKey` / `setBearerToken` to update credentials on an existing instance without constructing a new one.
-- `CloudApiError` is thrown on any non-2xx response; `InsufficientCreditsError` is its 402 specialisation and exposes `requiredCredits`.
+- `CloudApiError` is thrown on any non-2xx response; `InsufficientCreditsError` is its 402 specialisation and exposes `requiredCredits` as `number | undefined`; an omitted amount remains unavailable.
 - `cloud.v1` is a `CloudApiClient` scoped to the `/api/v1` base path. Use `cloud.v1.post("/foo", body)` instead of `cloud.request("POST", "/api/v1/foo", ...)` when targeting that prefix — it is shorter and avoids double-prefix bugs.
 - `cloud.routes` methods are generated and include both a typed JSON method and a `Raw` variant returning `Response`. Use `Raw` for streaming endpoints.
 - The `./cloud-setup-session` sub-export is a distinct entry point (`exports[./cloud-setup-session]`), not part of the root barrel. Import it separately.

@@ -1,4 +1,5 @@
 /** Persists apps and serializes their database-backed cache identities across processes. */
+
 import { ElizaError } from "@elizaos/core";
 import {
   and,
@@ -21,6 +22,10 @@ import {
   metadataForDeploymentGeneration,
 } from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../../lib/services/organization-quota-policy";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -43,6 +48,7 @@ import { appConfig } from "../schemas/app-config";
 import { appDomains } from "../schemas/app-domains";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
+import { materializeAppBillingAccounts } from "./app-billing-accounts";
 
 interface AppCacheFenceIdentity {
   appId?: string;
@@ -377,8 +383,8 @@ export class AppsRepository {
     });
   }
 
-  async countByOrganization(organizationId: string): Promise<number> {
-    const [row] = await dbRead
+  async countByOrganization(organizationId: string, tx?: DbTransaction): Promise<number> {
+    const [row] = await (tx ?? dbRead)
       .select({ count: count() })
       .from(apps)
       .where(eq(apps.organization_id, organizationId));
@@ -401,38 +407,47 @@ export class AppsRepository {
     ipAddress?: string | null;
     userAgent?: string | null;
   }): Promise<"created" | "updated"> {
-    /* global-scope: counter/last-seen writes keyed by rows already resolved from (app_id, user_id). */
-    const existingConnection = await this.findAppUser(input.appId, input.userId);
-
-    if (existingConnection) {
-      await dbWrite
-        .update(appUsers)
-        .set({
-          last_seen_at: new Date(),
+    return dbWrite.transaction(async (tx) => {
+      // Registration and consent share this lock, including duplicate approvals.
+      const [app] = await tx
+        .select({ id: apps.id })
+        .from(apps)
+        .where(and(eq(apps.id, input.appId), eq(apps.is_active, true), eq(apps.is_approved, true)))
+        .limit(1)
+        .for("update");
+      if (!app)
+        throw new ElizaError("App is unavailable for consent", { code: "APP_CONSENT_UNAVAILABLE" });
+      const [existing] = await tx
+        .select({ id: appUsers.id })
+        .from(appUsers)
+        .where(and(eq(appUsers.app_id, input.appId), eq(appUsers.user_id, input.userId)))
+        .limit(1);
+      if (existing) {
+        await tx
+          .update(appUsers)
+          .set({
+            last_seen_at: new Date(),
+            signup_source: input.signupSource,
+            ...(input.ipAddress != null ? { ip_address: input.ipAddress } : {}),
+            ...(input.userAgent != null ? { user_agent: input.userAgent } : {}),
+          })
+          .where(eq(appUsers.id, existing.id));
+      } else {
+        await tx.insert(appUsers).values({
+          app_id: input.appId,
+          user_id: input.userId,
           signup_source: input.signupSource,
-          ip_address: input.ipAddress ?? existingConnection.ip_address,
-          user_agent: input.userAgent ?? existingConnection.user_agent,
-        })
-        .where(eq(appUsers.id, existingConnection.id));
-      return "updated";
-    }
-
-    await dbWrite.transaction(async (tx) => {
-      await tx.insert(appUsers).values({
-        app_id: input.appId,
-        user_id: input.userId,
-        signup_source: input.signupSource,
-        ip_address: input.ipAddress ?? null,
-        user_agent: input.userAgent ?? null,
-      });
-
-      await tx
-        .update(apps)
-        .set({ total_users: sql`COALESCE(${apps.total_users}, 0) + 1` })
-        .where(eq(apps.id, input.appId));
+          ip_address: input.ipAddress ?? null,
+          user_agent: input.userAgent ?? null,
+        });
+        await tx
+          .update(apps)
+          .set({ total_users: sql`COALESCE(${apps.total_users}, 0) + 1` })
+          .where(eq(apps.id, input.appId));
+      }
+      await materializeAppBillingAccounts(tx, input.appId);
+      return existing ? "updated" : "created";
     });
-
-    return "created";
   }
 
   /**
@@ -555,7 +570,7 @@ export class AppsRepository {
    */
   async createIfOrganizationBelowLimit(
     data: Omit<NewApp, "api_key_id">,
-    maxApps: number,
+    _requestedMaxApps: number,
     tx: DbTransaction,
   ): Promise<App | undefined> {
     await tx.execute(
@@ -567,7 +582,9 @@ export class AppsRepository {
       .from(apps)
       .where(eq(apps.organization_id, data.organization_id));
 
-    if ((row?.count ?? 0) >= maxApps) {
+    const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+    const maxApps = requireOrganizationResourceLimit(policy, "apps");
+    if (BigInt(row?.count ?? 0) >= maxApps) {
       return undefined;
     }
 

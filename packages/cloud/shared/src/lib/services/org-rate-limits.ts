@@ -8,13 +8,12 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, eq, sql } from "drizzle-orm";
-import { dbRead } from "../../db/helpers";
-import { orgRateLimitOverridesRepository } from "../../db/repositories/org-rate-limit-overrides";
-import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { isOrganizationPolicyStamp } from "./organization-policy-stamp";
+import type { OrganizationPolicyStamp } from "./organization-quota-policy";
+import { requireOrganizationRateTier } from "./organization-quota-policy";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,6 +22,7 @@ import { logger } from "../utils/logger";
 export type EndpointType = "completions" | "embeddings" | "standard" | "strict";
 
 export interface OrgRateLimitConfig {
+  authority?: OrganizationPolicyStamp;
   windowMs: number;
   maxRequests: number;
 }
@@ -33,6 +33,10 @@ export interface OrgTierData {
   embeddingsRpm: number;
   standardRpm: number;
   strictRpm: number;
+}
+
+export interface OrgTierSnapshot extends OrgTierData {
+  authority: OrganizationPolicyStamp;
 }
 
 export interface OrgTierOverrideValues {
@@ -92,7 +96,7 @@ export interface OrgTierCacheExecutionContext {
 }
 
 export type OrgTierCacheResolution =
-  | { kind: "ready"; tier: OrgTierData }
+  | { kind: "ready"; tier: OrgTierSnapshot }
   | {
       kind: "warming" | "unavailable";
       cacheRead: "miss" | "invalid" | "unavailable" | "error";
@@ -221,27 +225,13 @@ export function resolveOrgTierFromSourceValues(
 
 async function calculateOrgTierFromSources(
   orgId: string,
-): Promise<{ tierData: OrgTierData; tierSourceCreditTotal: number }> {
-  const [creditResult, override] = await Promise.all([
-    dbRead
-      .select({
-        tierSourceCreditTotal: sql<string>`COALESCE(SUM(${creditTransactions.amount}), '0')`,
-      })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.organization_id, orgId),
-          eq(creditTransactions.type, "credit"),
-          sql`COALESCE(${creditTransactions.metadata}->>'type', '') NOT IN (${sql.join(
-            ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((t) => sql`${t}`),
-            sql`, `,
-          )})`,
-        ),
-      ),
-    orgRateLimitOverridesRepository.findByOrganizationId(orgId),
-  ]);
-
-  return resolveOrgTierFromSourceValues(orgId, creditResult[0]?.tierSourceCreditTotal, override);
+): Promise<{ tierData: OrgTierSnapshot; tierSourceCreditTotal: number | null }> {
+  const { readOrganizationQuotaPolicy } = await import("./organization-quota-policy");
+  const policy = await readOrganizationQuotaPolicy(orgId);
+  return {
+    tierData: { ...requireOrganizationRateTier(policy), authority: policy.authority },
+    tierSourceCreditTotal: null,
+  };
 }
 
 /**
@@ -260,36 +250,30 @@ export async function readOrgTierFromSources(orgId: string): Promise<OrgTierData
  * markers. That input is observable implementation state, not a ratified
  * definition of paid spend; #23019 owns the qualification policy.
  */
-export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
-  const { tierData, tierSourceCreditTotal } = await calculateOrgTierFromSources(orgId);
-
-  // Cache is non-fatal: a later request can re-read the database.
-  try {
-    await cache.set(CacheKeys.org.rateLimitTier(orgId), tierData, CacheTTL.org.rateLimitTier);
-  } catch (err) {
-    // error-policy:J7 cache hydration is best-effort; the authoritative tier
-    // has already been calculated and future requests can retry the write.
-    logger.warn("[OrgRateLimits] Failed to cache tier, will re-query on next request", {
-      orgId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  logger.debug("[OrgRateLimits] Tier computed", {
-    orgId,
-    tier: tierData.tierName,
-    tierSourceCreditTotal,
+export async function recalculateOrgTier(orgId: string): Promise<OrgTierSnapshot> {
+  const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
+  return withOrganizationPolicyAdmission(orgId, undefined, async (policy) => {
+    const tierData = { ...requireOrganizationRateTier(policy), authority: policy.authority };
+    const outcome = await cache.setWithOutcome(
+      CacheKeys.org.rateLimitTier(orgId),
+      tierData,
+      CacheTTL.org.rateLimitTier,
+    );
+    if (outcome.kind !== "written")
+      logger.warn("[OrgRateLimits] Tier cache publication unavailable", {
+        orgId,
+        outcome: outcome.kind,
+      });
+    return tierData;
   });
-
-  return tierData;
 }
 
 /**
  * Returns the cached tier for an org, computing it lazily on cache miss.
  */
-export async function getOrgTier(orgId: string): Promise<OrgTierData> {
-  const cached = await cache.get<OrgTierData>(CacheKeys.org.rateLimitTier(orgId));
-  if (cached) return cached;
+export async function getOrgTier(orgId: string): Promise<OrgTierSnapshot> {
+  const cached = await cache.get<OrgTierSnapshot>(CacheKeys.org.rateLimitTier(orgId));
+  if (cached && isOrgTierData(cached) && isOrganizationPolicyStamp(cached.authority)) return cached;
   return recalculateOrgTier(orgId);
 }
 
@@ -304,8 +288,13 @@ export async function getOrgTierCacheOnly(
   options: { executionCtx?: OrgTierCacheExecutionContext } = {},
 ): Promise<OrgTierCacheResolution> {
   const outcome = await cache.getWithOutcome<unknown>(CacheKeys.org.rateLimitTier(orgId));
-  if (outcome.kind === "hit" && isOrgTierData(outcome.value)) {
-    return { kind: "ready", tier: outcome.value };
+  if (
+    outcome.kind === "hit" &&
+    isOrgTierData(outcome.value) &&
+    "authority" in outcome.value &&
+    isOrganizationPolicyStamp(outcome.value.authority)
+  ) {
+    return { kind: "ready", tier: { ...outcome.value, authority: outcome.value.authority } };
   }
 
   const cacheRead = outcome.kind === "hit" ? ("invalid" as const) : outcome.kind;
@@ -330,6 +319,7 @@ export async function getOrgRpmForEndpoint(
   return {
     windowMs: 60_000,
     maxRequests: tier[rpmKey],
+    authority: tier.authority,
   };
 }
 
@@ -351,6 +341,7 @@ export async function getOrgRpmForEndpointCacheOnly(
     config: {
       windowMs: 60_000,
       maxRequests: resolution.tier[rpmKey],
+      authority: resolution.tier.authority,
     },
   };
 }

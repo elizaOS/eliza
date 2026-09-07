@@ -105,6 +105,17 @@ const authResolveOptions: AuthResolveOptions[] = [];
 // balance plus per-endpoint rate policy — so the route derives its limiter
 // config from the single auth cache read instead of a per-route native gate.
 const ADMISSION = {
+  subscriptionFunded: false,
+  authority: {
+    generation: "0",
+    source: "legacy",
+    sourceSubscriptionId: null,
+    sourceRevision: null,
+    projectionRevision: null,
+    catalogVersion: null,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+    effectiveUntil: null,
+  },
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
     completionsRpm: 60,
@@ -521,6 +532,7 @@ describe("chat/completions cache-only organization admission", () => {
         config: {
           windowMs: 60_000,
           maxRequests: ADMISSION.rateLimits.completionsRpm,
+          authority: ADMISSION.authority,
         },
       }),
     );

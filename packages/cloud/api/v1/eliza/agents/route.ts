@@ -463,7 +463,9 @@ app.post("/", async (c) => {
       // mint a fresh uncapped row on every create (the create→suspend→create
       // loop). Trusted internal multi-agent callers don't go through this
       // route and stay uncapped.
+      quotaAdmission: "organization",
       maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(orgBalanceForQuota),
+      quotaMode: orgBalanceForQuota === undefined ? "non-eager" : "eager",
     });
   } catch (error) {
     if (error instanceof AgentQuotaExceededError) {

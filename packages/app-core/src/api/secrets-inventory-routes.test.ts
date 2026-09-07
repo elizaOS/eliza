@@ -217,7 +217,7 @@ describe("handleSecretsInventoryRoute", () => {
       expect(method.body).toEqual({ error: "method not allowed" });
     });
 
-    it("PUT persists normalized rules, drops reserved keyPatterns, and keeps order", async () => {
+    it("PUT persists normalized valid rules and keeps order", async () => {
       const result = await call("PUT", "/api/secrets/routing", {
         body: {
           config: {
@@ -226,16 +226,6 @@ describe("handleSecretsInventoryRoute", () => {
             rules: [
               {
                 keyPattern: "OPENAI_API_KEY",
-                profileId: "work",
-                scope: { agentId: "agent-a", kind: "agent" },
-              },
-              {
-                keyPattern: "_meta.OPENAI_API_KEY",
-                profileId: "work",
-                scope: { agentId: "agent-a", kind: "agent" },
-              },
-              {
-                keyPattern: ROUTING_KEY,
                 profileId: "work",
                 scope: { agentId: "agent-a", kind: "agent" },
               },
@@ -269,12 +259,57 @@ describe("handleSecretsInventoryRoute", () => {
       });
     });
 
-    it("PUT with an array config normalizes to empty rules", async () => {
-      const result = await call("PUT", "/api/secrets/routing", {
-        body: { config: [] },
+    it.each([
+      [],
+      {},
+      { rules: null },
+      {
+        rules: [
+          {
+            keyPattern: "_meta.OPENAI_API_KEY",
+            profileId: "work",
+            scope: { kind: "agent", agentId: "a" },
+          },
+        ],
+      },
+      {
+        rules: [
+          {
+            keyPattern: ROUTING_KEY,
+            profileId: "work",
+            scope: { kind: "agent", agentId: "a" },
+          },
+        ],
+      },
+      {
+        rules: [
+          {
+            keyPattern: "OPENAI_API_KEY",
+            profileId: "work",
+            scope: { kind: "agent" },
+          },
+        ],
+      },
+    ])(
+      "PUT rejects invalid config without replacing stored rules",
+      async (config) => {
+        const prior = { rules: [], defaultProfile: "retained" };
+        await testVault.vault.set(ROUTING_KEY, JSON.stringify(prior));
+        const result = await call("PUT", "/api/secrets/routing", {
+          body: { config },
+        });
+        expect(result.status).toBe(400);
+        expect(JSON.parse(await testVault.vault.get(ROUTING_KEY))).toEqual(
+          prior,
+        );
+      },
+    );
+
+    it("GET surfaces corrupt stored routing instead of returning empty success", async () => {
+      await testVault.vault.set(ROUTING_KEY, "invalid-json");
+      await expect(call("GET", "/api/secrets/routing")).rejects.toMatchObject({
+        code: "VAULT_ROUTING_CONFIG_INVALID",
       });
-      expect(result.status).toBe(200);
-      expect(result.body).toEqual({ ok: true, config: { rules: [] } });
     });
 
     it("PUT does not write when the sensitive gate refuses", async () => {

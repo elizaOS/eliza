@@ -2,13 +2,46 @@
  * Exercises direct provider credential probes against deterministic fetch
  * responses, including complete provider diagnostics and unavailable bodies.
  */
+import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { probeDirectApiKey } from "./direct-api-probe.ts";
 
 describe("probeDirectApiKey", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
+
+  it.each([200, 503])(
+    "releases unread HTTP %i bodies after the probe",
+    async (status) => {
+      let closed = false;
+      const server = createServer((_request, response) => {
+        response.on("close", () => {
+          closed = true;
+        });
+        response.writeHead(status, { "Content-Length": String(128 * 1024) });
+        response.flushHeaders();
+        response.write("{");
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Expected TCP listener");
+      vi.stubEnv("OPENAI_BASE_URL", `http://127.0.0.1:${address.port}`);
+      try {
+        const result = await probeDirectApiKey("openai-api", "fixture-key");
+        expect(result.status).toBe(status);
+        expect(result.ok).toBe(status === 200);
+        await vi.waitFor(() => expect(closed).toBe(true));
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
 
   it("preserves a provider failure body without truncation", async () => {
     const body = JSON.stringify({
@@ -36,9 +69,8 @@ describe("probeDirectApiKey", () => {
   });
 
   it("rejects an over-limit body without retaining a misleading prefix", async () => {
-    // The base URL is operator-configurable via *_BASE_URL, so the diagnostic
-    // read is bounded. A reader must be able to tell a complete body from a cut
-    // one — that is the whole point of dropping the old silent slice(0, 200).
+    // Operator-provided base URLs can return arbitrary bodies; rejection must
+    // remain distinct from a complete provider diagnostic.
     const oversized = "y".repeat(64 * 1024 + 10);
     vi.stubGlobal(
       "fetch",
@@ -56,11 +88,16 @@ describe("probeDirectApiKey", () => {
   it("keeps the HTTP status when the provider body cannot be read", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        text: vi.fn().mockRejectedValue(new Error("stream failed")),
-      }),
+      vi.fn().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error("stream failed"));
+            },
+          }),
+          { status: 503 },
+        ),
+      ),
     );
 
     await expect(
