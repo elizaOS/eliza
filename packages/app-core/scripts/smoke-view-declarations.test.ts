@@ -5,6 +5,14 @@
  * production-declared view can never be served as a fabricated bundle in audit
  * mode. Guards issue #15791.
  */
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -102,6 +110,171 @@ describe("smoke view declaration parity (#15791)", () => {
     const { ok, missing } = checkSmokeViewParity(repoRoot, wrongComponent);
     expect(ok).toBe(false);
     expect(missing[0]?.reason).toBe("component-export-missing");
+  });
+});
+
+describe("smoke navigation grants match production (#30900)", () => {
+  const cloud = smokeViewDeclarations.find(([id]) => id === "cloud");
+  if (!cloud) throw new Error("Cloud smoke declaration is required");
+  const source = readFileSync(
+    path.join(repoRoot, "plugins/plugin-elizacloud/src/index.ts"),
+    "utf8",
+  );
+  const surface =
+    /surface: \{ header: "fullscreen", capabilities: \["agent-surface", "navigate"\] \},/;
+
+  function checkPolicy(
+    productionSurface: string,
+    declarations = [cloud],
+    extraSource = "",
+    prefix = "",
+    template = source,
+  ) {
+    const fixture = mkdtempSync(path.join(os.tmpdir(), "smoke-navigation-"));
+    const pluginSource = path.join(fixture, "plugins/plugin-elizacloud/src");
+    mkdirSync(pluginSource, { recursive: true });
+    try {
+      expect(template).toMatch(surface);
+      writeFileSync(
+        path.join(pluginSource, "index.ts"),
+        prefix + template.replace(surface, productionSurface),
+      );
+      writeFileSync(path.join(pluginSource, "surface.ts"), extraSource);
+      return checkSmokeViewParity(fixture, declarations);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  }
+
+  it.each(['surface: { capabilities: ["agent-surface"] },', ""])(
+    "rejects a production navigation removal: %s",
+    (policy) => {
+      expect(checkPolicy(policy).missing).toEqual([
+        expect.objectContaining({
+          id: "cloud",
+          reason: "surface-navigation-mismatch",
+        }),
+      ]);
+    },
+  );
+
+  it.each([{ capabilities: ["agent-surface"] }, undefined])(
+    "rejects removal of the smoke navigation grant: %s",
+    (smokeSurface) => {
+      const changed = [...cloud];
+      changed[6] = smokeSurface;
+      expect(
+        checkPolicy('surface: { capabilities: ["navigate"] },', [changed])
+          .missing,
+      ).toEqual([
+        expect.objectContaining({ reason: "surface-navigation-mismatch" }),
+      ]);
+    },
+  );
+
+  it("compares navigation as a grant, without changing unrelated capabilities", () => {
+    expect(
+      checkPolicy('surface: { capabilities: ["navigate", "storage"] },').ok,
+    ).toBe(true);
+  });
+
+  it("resolves local and named relative constants without executing plugin imports", () => {
+    expect(
+      checkPolicy(
+        "surface: POLICY,",
+        [cloud],
+        "",
+        'const POLICY = { capabilities: ["navigate"] } as const;',
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkPolicy(
+        "surface: POLICY,",
+        [cloud],
+        'const grants = ["navigate"] as const; export const SHARED = { capabilities: grants } as const satisfies SurfaceManifest;',
+        'import { SHARED as POLICY } from "./surface.js";',
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("fails explicitly on cyclic constants and imports outside the plugin sources", () => {
+    for (const prefix of [
+      "const POLICY = OTHER; const OTHER = POLICY;",
+      'import { POLICY } from "../../../../outside.js";',
+    ]) {
+      expect(
+        checkPolicy("surface: POLICY,", [cloud], "", prefix).missing,
+      ).toEqual([
+        expect.objectContaining({
+          reason: "surface-navigation-policy-unresolved",
+        }),
+      ]);
+    }
+  });
+
+  it("rejects a policy reference shadowed inside a function", () => {
+    const template = `const POLICY = { capabilities: ["navigate"] } as const;
+      function build(POLICY) { return { id: "cloud", path: "/cloud", componentExport: "CloudView",
+        surface: { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
+      }; }`;
+    expect(
+      checkPolicy("surface: POLICY,", [cloud], "", "", template).missing,
+    ).toEqual([
+      expect.objectContaining({
+        reason: "surface-navigation-policy-unresolved",
+      }),
+    ]);
+  });
+
+  it.each([
+    'const POLICY = { capabilities: ["navigate"] }; POLICY.capabilities = [];',
+    'const POLICY = { capabilities: ["navigate"] } as const; POLICY.capabilities = [];',
+    'const POLICY = { capabilities: ["navigate"] } as const; POLICY.capabilities.pop();',
+    'const POLICY = { capabilities: ["navigate"] } as const; (<{capabilities:string[]}>POLICY).capabilities = [];',
+    'const POLICY = { capabilities: ["navigate"] } as const; mutate(POLICY);',
+  ])("rejects mutable or escaped named policies: %s", (prefix) => {
+    expect(
+      checkPolicy("surface: POLICY,", [cloud], "", prefix).missing,
+    ).toEqual([
+      expect.objectContaining({
+        reason: "surface-navigation-policy-unresolved",
+      }),
+    ]);
+  });
+
+  it("rejects direct mutations of either an imported alias or exported policy", () => {
+    for (const [extra, importer] of [
+      ["", "POLICY.capabilities = [];"],
+      ["SHARED.capabilities = [];", ""],
+    ]) {
+      expect(
+        checkPolicy(
+          "surface: POLICY,",
+          [cloud],
+          `export const SHARED = { capabilities: ["navigate"] } as const;${extra}`,
+          `import { SHARED as POLICY } from "./surface.js";${importer}`,
+        ).missing,
+      ).toEqual([
+        expect.objectContaining({
+          reason: "surface-navigation-policy-unresolved",
+        }),
+      ]);
+    }
+  });
+
+  it.each([
+    "surface: loadPolicy(),",
+    "surface: { capabilities: grants },",
+    'surface: { capabilities: ["navigate", ...grants] },',
+    'surface: { capabilities: ["navigate"], ...policy },',
+    'surface: { capabilities: ["navigate"], [key]: policy },',
+    'surface: { capabilities: ["navigate"] }, ...policy,',
+  ])("fails explicitly on unresolved navigation policy: %s", (policy) => {
+    expect(checkPolicy(policy).missing).toEqual([
+      expect.objectContaining({
+        reason: "surface-navigation-policy-unresolved",
+      }),
+    ]);
   });
 });
 
