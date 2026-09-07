@@ -3,6 +3,7 @@
  * shared database boundary. Warm-pool capacity and claim operations share one
  * eligibility predicate so scheduling never counts a row it cannot transfer.
  */
+
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
@@ -26,6 +27,7 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
+import { QUOTA_COUNTED_STATUSES } from "../../lib/constants/agent-sandbox-quota";
 import {
   applyBackupDelta,
   type BackupChainNode,
@@ -40,6 +42,10 @@ import {
   elizaProvisionAdvisoryLockSql,
   elizaTryProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../../lib/services/organization-quota-policy";
 import {
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
@@ -86,6 +92,7 @@ import {
   isDigestPinnedImageSql,
   pinnedImageDigestSql,
 } from "../utils/docker-image-ref";
+import { lockOrganizationPolicy } from "./organization-policy-generation";
 
 export type {
   AgentBackupSnapshotType,
@@ -535,6 +542,77 @@ export interface DeletionAllocationSpendResult {
   outcome: DeletionAllocationRelease;
   /** Post-trigger row generation when this call consumed ownership. */
   lifecycleRevision: number | null;
+}
+
+/** Existing metered rows retain their population slot; terminal recovery requires a new one. */
+async function assertProvisionQuota(
+  tx: DbTransaction,
+  id: string,
+  organizationId?: string,
+  eligibility?: SQL,
+): Promise<void> {
+  const [identity] = await tx
+    .select({ organizationId: agentSandboxes.organization_id })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, id),
+        organizationId ? eq(agentSandboxes.organization_id, organizationId) : undefined,
+      ),
+    );
+  if (!identity) return;
+  // Organization deletion takes the organization lock before cascading to agents.
+  // Resolve identity without locking, then revalidate it after the same lock order.
+  await lockOrganizationPolicy(tx, identity.organizationId);
+  const [candidate] = await tx
+    .select({
+      id: agentSandboxes.id,
+      organizationId: agentSandboxes.organization_id,
+      status: agentSandboxes.status,
+      scope: agentSandboxes.quota_admission_scope,
+      poolStatus: agentSandboxes.pool_status,
+    })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, id),
+        eq(agentSandboxes.organization_id, identity.organizationId),
+        eligibility,
+      ),
+    )
+    .for("update");
+  if (!candidate || candidate.scope === "trusted_internal" || candidate.poolStatus === "unclaimed")
+    return;
+  const policy = await readOrganizationQuotaPolicyInTransaction(tx, candidate.organizationId);
+  // Historical legacy starts were not quota re-admissions. Preserve that contract;
+  // subscription starts require current authority even for unclassified history.
+  if (policy.authority.source === "legacy") return;
+  const ceiling = requireOrganizationResourceLimit(policy, "sandboxes");
+  const [population] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.organization_id, candidate.organizationId),
+        isNull(agentSandboxes.pool_status),
+        inArray(agentSandboxes.status, QUOTA_COUNTED_STATUSES),
+      ),
+    );
+  if (!population)
+    throw new ElizaError("Sandbox population is unavailable", {
+      code: "RESOURCE_POLICY_UNAVAILABLE",
+    });
+  const required =
+    BigInt(population.count) + (QUOTA_COUNTED_STATUSES.includes(candidate.status) ? 0n : 1n);
+  if (required > ceiling)
+    throw new ElizaError("Organization sandbox quota prevents provisioning", {
+      code: "SANDBOX_QUOTA_EXCEEDED",
+      context: {
+        organizationId: candidate.organizationId,
+        required: required.toString(),
+        ceiling: ceiling.toString(),
+      },
+    });
 }
 
 export class AgentSandboxesRepository {
@@ -1471,15 +1549,12 @@ export class AgentSandboxesRepository {
    */
   async trySetProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
-    const [r] = await dbWrite
-      .update(agentSandboxes)
-      .set(provisioningAdmissionUpdatePayload())
-      .where(
-        and(
-          eq(agentSandboxes.id, id),
-          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
-          sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
-          sql`(
+    return dbWrite.transaction(async (tx) => {
+      const eligibility = and(
+        eq(agentSandboxes.id, id),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+        sql`(
             ${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')
             OR (
               ${agentSandboxes.status} = 'running'
@@ -1487,10 +1562,15 @@ export class AgentSandboxesRepository {
               AND ${agentSandboxes.sandbox_id} IS NULL
             )
           )`,
-        ),
-      )
-      .returning();
-    return r;
+      );
+      await assertProvisionQuota(tx, id, undefined, eligibility);
+      const [r] = await tx
+        .update(agentSandboxes)
+        .set(provisioningAdmissionUpdatePayload())
+        .where(eligibility)
+        .returning();
+      return r;
+    });
   }
 
   /**
@@ -1534,38 +1614,38 @@ export class AgentSandboxesRepository {
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaProvisionAdvisoryLockSql(capture.organization_id, capture.id));
+      const eligibility = and(
+        eq(agentSandboxes.id, capture.id),
+        eq(agentSandboxes.organization_id, capture.organization_id),
+        eq(agentSandboxes.status, capture.status),
+        inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
+        eq(agentSandboxes.execution_tier, capture.execution_tier),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
+        isNull(agentSandboxes.lifecycle_job_id),
+        isNull(agentSandboxes.lifecycle_execution_generation),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+        isNull(agentSandboxes.pool_status),
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+        isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+        isNull(agentSandboxes.replacement_cleanup_node_id),
+        isNull(agentSandboxes.replacement_cleanup_container_name),
+        isNull(agentSandboxes.replacement_cleanup_attempt_id),
+        isNull(agentSandboxes.replacement_cleanup_container_id),
+        isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
+        isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
+        isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
+        isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
+        isNull(agentSandboxes.replacement_cleanup_allocation_counted),
+        isNull(agentSandboxes.replacement_cleanup_created_at),
+        sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
+      );
+      await assertProvisionQuota(tx, capture.id, capture.organization_id, eligibility);
       const [r] = await tx
         .update(agentSandboxes)
         .set(provisioningAdmissionUpdatePayload())
-        .where(
-          and(
-            eq(agentSandboxes.id, capture.id),
-            eq(agentSandboxes.organization_id, capture.organization_id),
-            eq(agentSandboxes.status, capture.status),
-            inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
-            eq(agentSandboxes.execution_tier, capture.execution_tier),
-            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
-            eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
-            isNull(agentSandboxes.lifecycle_job_id),
-            isNull(agentSandboxes.lifecycle_execution_generation),
-            hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
-            isNull(agentSandboxes.pool_status),
-            isNull(agentSandboxes.deleted_at),
-            isNull(agentSandboxes.deletion_attempt_id),
-            isNull(agentSandboxes.replacement_cleanup_sandbox_id),
-            isNull(agentSandboxes.replacement_cleanup_node_id),
-            isNull(agentSandboxes.replacement_cleanup_container_name),
-            isNull(agentSandboxes.replacement_cleanup_attempt_id),
-            isNull(agentSandboxes.replacement_cleanup_container_id),
-            isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
-            isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
-            isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
-            isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
-            isNull(agentSandboxes.replacement_cleanup_allocation_counted),
-            isNull(agentSandboxes.replacement_cleanup_created_at),
-            sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
-          ),
-        )
+        .where(eligibility)
         .returning();
       return r;
     });
@@ -1620,6 +1700,32 @@ export class AgentSandboxesRepository {
         elizaTryProvisionAdvisoryLockSql(expected.organization_id, expected.id),
       );
       if (!lock?.acquired) return undefined;
+      const eligibility = and(
+        eq(agentSandboxes.id, expected.id),
+        eq(agentSandboxes.organization_id, expected.organization_id),
+        eq(agentSandboxes.status, expected.status),
+        inArray(agentSandboxes.status, ["disconnected", "error"]),
+        eq(agentSandboxes.execution_tier, expected.execution_tier),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expected.sandbox_id}`,
+        sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expected.node_id}`,
+        sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expected.container_name}`,
+        sql`${agentSandboxes.bridge_url} IS NOT DISTINCT FROM ${expected.bridge_url}`,
+        sql`${agentSandboxes.health_url} IS NOT DISTINCT FROM ${expected.health_url}`,
+        sql`${agentSandboxes.headscale_ip} IS NOT DISTINCT FROM ${expected.headscale_ip}`,
+        eq(agentSandboxes.environment_revision, expected.environment_revision),
+        eq(agentSandboxes.lifecycle_revision, expected.lifecycle_revision),
+        isNull(agentSandboxes.lifecycle_job_id),
+        isNull(agentSandboxes.lifecycle_execution_generation),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+        isNull(agentSandboxes.pool_status),
+        sql`${agentSandboxes.previous_image_digest} IS NOT DISTINCT FROM ${expected.previous_image_digest}`,
+        sql`${agentSandboxes.error_message} IS NOT DISTINCT FROM ${expected.error_message}`,
+        sql`${expected.status} != 'error' OR (${agentSandboxes.previous_image_digest} IS NOT NULL AND ${agentSandboxes.error_message} IS NULL)`,
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+      );
+      await assertProvisionQuota(tx, expected.id, expected.organization_id, eligibility);
       const [r] = await tx
         .update(agentSandboxes)
         .set({
@@ -1638,33 +1744,7 @@ export class AgentSandboxesRepository {
               }
             : {}),
         })
-        .where(
-          and(
-            eq(agentSandboxes.id, expected.id),
-            eq(agentSandboxes.organization_id, expected.organization_id),
-            eq(agentSandboxes.status, expected.status),
-            inArray(agentSandboxes.status, ["disconnected", "error"]),
-            eq(agentSandboxes.execution_tier, expected.execution_tier),
-            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
-            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expected.sandbox_id}`,
-            sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expected.node_id}`,
-            sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expected.container_name}`,
-            sql`${agentSandboxes.bridge_url} IS NOT DISTINCT FROM ${expected.bridge_url}`,
-            sql`${agentSandboxes.health_url} IS NOT DISTINCT FROM ${expected.health_url}`,
-            sql`${agentSandboxes.headscale_ip} IS NOT DISTINCT FROM ${expected.headscale_ip}`,
-            eq(agentSandboxes.environment_revision, expected.environment_revision),
-            eq(agentSandboxes.lifecycle_revision, expected.lifecycle_revision),
-            isNull(agentSandboxes.lifecycle_job_id),
-            isNull(agentSandboxes.lifecycle_execution_generation),
-            hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
-            isNull(agentSandboxes.pool_status),
-            sql`${agentSandboxes.previous_image_digest} IS NOT DISTINCT FROM ${expected.previous_image_digest}`,
-            sql`${agentSandboxes.error_message} IS NOT DISTINCT FROM ${expected.error_message}`,
-            sql`${expected.status} != 'error' OR (${agentSandboxes.previous_image_digest} IS NOT NULL AND ${agentSandboxes.error_message} IS NULL)`,
-            isNull(agentSandboxes.deleted_at),
-            isNull(agentSandboxes.deletion_attempt_id),
-          ),
-        )
+        .where(eligibility)
         .returning();
       return r;
     });
@@ -2066,6 +2146,7 @@ export class AgentSandboxesRepository {
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.userAgentId));
+      await lockOrganizationPolicy(tx, params.organizationId);
       const claimablePool = and(...claimableWarmPoolConditions({ image: params.image }));
       if (!claimablePool) {
         throw new ElizaError("Warm-pool claim predicate was empty", {
@@ -2184,6 +2265,7 @@ export class AgentSandboxesRepository {
         return null;
       }
 
+      await assertProvisionQuota(tx, params.userAgentId, params.organizationId);
       const claimedAt = new Date();
       const [updated] = await tx
         .update(agentSandboxes)

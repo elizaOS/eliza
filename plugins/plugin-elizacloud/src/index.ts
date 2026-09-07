@@ -357,7 +357,7 @@ export const elizaOSCloudPlugin: Plugin = {
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "CloudView",
-      surface: { capabilities: ["agent-surface"] },
+      surface: { header: "fullscreen", capabilities: ["agent-surface"] },
       tags: ["cloud", "billing", "credits", "account", "api-keys", "agents"],
       visibleInManager: true,
       desktopTabEnabled: true,

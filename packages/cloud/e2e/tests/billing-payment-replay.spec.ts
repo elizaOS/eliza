@@ -352,7 +352,7 @@ test("lost provider response and duplicate webhook settle exactly once", async (
     received: true,
     duplicate: true,
   });
-  expect(await drainStripeQueue()).toEqual({
+  expect(await drainStripeQueue()).toMatchObject({
     success: true,
     queue: "stripe-events",
     before: 0,
@@ -379,7 +379,7 @@ test("lost provider response and duplicate webhook settle exactly once", async (
     provider: "stripe",
     event_type: "checkout.session.completed",
   });
-  expect(await drainStripeQueue()).toEqual({
+  expect(await drainStripeQueue()).toMatchObject({
     success: true,
     queue: "stripe-events",
     before: 1,

@@ -1,25 +1,16 @@
 variable "environment" {
-  description = "Deployment environment (staging, production)"
+  description = "Deployment environment (development, staging, production)"
   type        = string
   validation {
-    condition     = contains(["staging", "production"], var.environment)
-    error_message = "Environment must be 'staging' or 'production'"
+    condition     = contains(["development", "staging", "production"], var.environment)
+    error_message = "Environment must be 'development', 'staging', or 'production'"
   }
 }
 
-# ── Shared apps-project credentials ──────────────────────────────────────────
-# The apps data-plane lives in a SINGLE SHARED Hetzner Cloud Project (one
-# quota, one set of SSH keys, one private network). The shared network +
-# tenant Postgres node are owned by ../apps-shared/. This module is per-env
-# (one tfstate per env) and only manages app worker nodes + the wildcard
-# Cloudflare record.
-#
-# The provider picks up the token from this variable OR the HCLOUD_TOKEN env
-# var. GitHub Actions wires the REPO-LEVEL secret HCLOUD_APPS_TOKEN as
-# HCLOUD_TOKEN for both staging and production runs.
-# See ARCHITECTURE.md § "Multi-project layout" for the topology.
+# Use a project token scoped to this environment's apps infrastructure.
+# Worker and database roots share that project's network within one tier only.
 variable "hcloud_token" {
-  description = "Hetzner Cloud API token for the shared apps Hetzner project. Leave null to pick up from HCLOUD_TOKEN env var (the GHA pattern, sourced from repo-level secret HCLOUD_APPS_TOKEN)."
+  description = "Hetzner token for this environment apps project; null uses HCLOUD_TOKEN."
   type        = string
   default     = null
   sensitive   = true
@@ -49,12 +40,9 @@ variable "app_node_count" {
   type        = number
   default     = 1
   validation {
-    # Per-env private-IP windows in the shared subnet are 10 apart (staging base
-    # 20, production base 30 — see hcloud_server_network.app_node). Capping at 9
-    # keeps staging's top host (20+9=29) strictly below production's base (31) so
-    # the two windows can never overlap as either env scales.
+    # Bound this operator-managed pool; runtime capacity has its own admission.
     condition     = var.app_node_count >= 1 && var.app_node_count <= 9
-    error_message = "app_node_count must be between 1 and 9 (per-env private-IP windows are 10 apart in the shared subnet)"
+    error_message = "app_node_count must be an integer between 1 and 9"
   }
 }
 
@@ -78,8 +66,8 @@ variable "legacy_apps_base_domain" {
   description = "Legacy per-app base domain kept as proxied redirect ingress during migration."
   type        = string
   validation {
-    condition     = endswith(var.legacy_apps_base_domain, ".elizacloud.ai")
-    error_message = "legacy_apps_base_domain must be under elizacloud.ai"
+    condition     = var.legacy_apps_base_domain == (var.environment == "production" ? "apps.elizacloud.ai" : "apps-${var.environment}.elizacloud.ai")
+    error_message = "legacy_apps_base_domain must belong to the selected environment"
   }
 }
 
@@ -91,8 +79,8 @@ variable "apps_base_domain" {
     error_message = "apps_base_domain must be a non-empty hostname (no whitespace)"
   }
   validation {
-    condition     = var.environment != "staging" || var.apps_base_domain == "apps-staging.eliza.app"
-    error_message = "staging apps_base_domain must be apps-staging.eliza.app"
+    condition     = var.apps_base_domain == (var.environment == "production" ? "apps.eliza.app" : "apps-${var.environment}.eliza.app")
+    error_message = "apps_base_domain must belong to the selected environment"
   }
 }
 
@@ -102,6 +90,10 @@ variable "cloud_api_origin" {
   validation {
     condition     = can(regex("^https://[^/\\s]+$", var.cloud_api_origin))
     error_message = "cloud_api_origin must be an https:// origin with no trailing slash or path (e.g. https://api-staging.eliza.app)"
+  }
+  validation {
+    condition     = var.cloud_api_origin == (var.environment == "production" ? "https://api.eliza.app" : "https://api-${var.environment}.eliza.app")
+    error_message = "cloud_api_origin must belong to the selected environment"
   }
 }
 

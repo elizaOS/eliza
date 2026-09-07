@@ -2542,6 +2542,48 @@
       "when": 1796083200006,
       "tag": "0379_subscription_account_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1796083200007,
+      "tag": "0380_organization_policy_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 364,
+      "version": "7",
+      "when": 1796083200008,
+      "tag": "0381_app_billing_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 365,
+      "version": "7",
+      "when": 1796083200009,
+      "tag": "0382_subscription_notice_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 366,
+      "version": "7",
+      "when": 1796083200010,
+      "tag": "0383_subscription_cancellation_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 367,
+      "version": "7",
+      "when": 1796083200011,
+      "tag": "0384_subscription_cancellation_undo",
+      "breakpoints": true
+    },
+    {
+      "idx": 368,
+      "version": "7",
+      "when": 1796083200012,
+      "tag": "0385_subscription_reconciliation",
+      "breakpoints": true
     }
   ]
 }

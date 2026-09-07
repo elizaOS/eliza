@@ -10,6 +10,8 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { writeTransaction } from "../../db/helpers";
+import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
@@ -19,7 +21,6 @@ import type { BillingContext, FlatBillingCost } from "./ai-billing";
 import {
   getAffiliatePayoutSourceId,
   InsufficientCreditsError,
-  isSubscriptionFundedOrganization,
   reserveCredits,
   reserveFlatUsageCredits,
 } from "./ai-billing";
@@ -33,6 +34,8 @@ import {
 } from "./credits";
 import {
   acquireInferenceAdmissionLease,
+  createInferenceAdmissionBalanceFence,
+  fenceInferenceAdmissionLeaseForSettlement,
   InferenceAdmissionGateUnavailableError,
   type InferenceAdmissionLease,
   InferenceAdmissionLeaseRejectedError,
@@ -46,6 +49,7 @@ import {
   getCachedInferenceAffiliateAttribution,
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
+import { isInferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isDeferredAdmissionEnabled } from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
@@ -68,6 +72,12 @@ import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
+import { withOrganizationPolicyAdmission } from "./organization-policy-admission";
+import { sameOrganizationPolicyStamp } from "./organization-policy-stamp";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationRateTier,
+} from "./organization-quota-policy";
 
 export type InferenceAdmissionMode =
   | "durable_object_debit"
@@ -266,6 +276,10 @@ function attachInferenceAdmissionLease(
       }
       if (selected.kind === "unknown" || selected.actualCostUsd > 0) {
         await markProviderDispatched();
+        await fenceInferenceAdmissionLeaseForSettlement(
+          lease,
+          selected.kind === "actual" ? selected.actualCostUsd : lease.estimatedCostUsd,
+        );
       }
       const reconciliation =
         selected.kind === "actual"
@@ -316,15 +330,74 @@ function attachInferenceAdmissionLease(
 export async function admitOrganizationInference(
   params: OrganizationInferenceAdmissionParams,
 ): Promise<OrganizationInferenceAdmission> {
+  // KV/LRU entries are observations, never a CAS fence. Compare policy under
+  // the same organization lock that serializes entitlement and override writes.
+  const authoritativePolicy = await writeTransaction(async (tx) => {
+    await lockOrganizationPolicy(tx, params.context.organizationId);
+    return readOrganizationQuotaPolicyInTransaction(tx, params.context.organizationId);
+  });
+  if (
+    params.admissionSnapshot &&
+    (!isInferenceAdmissionSnapshot(params.admissionSnapshot) ||
+      !sameOrganizationPolicyStamp(
+        params.admissionSnapshot.authority,
+        authoritativePolicy.authority,
+      ) ||
+      params.admissionSnapshot.rateLimits.completionsRpm !==
+        requireOrganizationRateTier(authoritativePolicy).completionsRpm ||
+      params.admissionSnapshot.rateLimits.embeddingsRpm !==
+        requireOrganizationRateTier(authoritativePolicy).embeddingsRpm ||
+      params.admissionSnapshot.rateLimits.standardRpm !==
+        requireOrganizationRateTier(authoritativePolicy).standardRpm ||
+      params.admissionSnapshot.rateLimits.strictRpm !==
+        requireOrganizationRateTier(authoritativePolicy).strictRpm)
+  ) {
+    throw new InferenceAdmissionUnavailableError({
+      context: { organizationId: params.context.organizationId, reason: "stale_policy_snapshot" },
+    });
+  }
+  const admission = await admitWithFundingPolicy(params, authoritativePolicy.subscriptionFunded);
+  const previousDispatch = admission.markProviderDispatched;
+  let dispatched = false;
+  let dispatch: Promise<void> | undefined;
+  return {
+    ...admission,
+    markProviderDispatched: () => {
+      if (dispatched) return Promise.resolve();
+      if (dispatch) return dispatch;
+      dispatch = withOrganizationPolicyAdmission(
+        params.context.organizationId,
+        authoritativePolicy.authority,
+        async (current) => {
+          if (
+            requireOrganizationRateTier(current).completionsRpm !==
+              requireOrganizationRateTier(authoritativePolicy).completionsRpm ||
+            requireOrganizationRateTier(current).embeddingsRpm !==
+              requireOrganizationRateTier(authoritativePolicy).embeddingsRpm ||
+            requireOrganizationRateTier(current).standardRpm !==
+              requireOrganizationRateTier(authoritativePolicy).standardRpm ||
+            requireOrganizationRateTier(current).strictRpm !==
+              requireOrganizationRateTier(authoritativePolicy).strictRpm
+          )
+            throw admissionUnavailable(params);
+          await previousDispatch?.();
+          dispatched = true;
+        },
+      ).finally(() => {
+        dispatch = undefined;
+      });
+      return dispatch;
+    },
+  };
+}
+async function admitWithFundingPolicy(
+  params: OrganizationInferenceAdmissionParams,
+  subscriptionFunded: boolean,
+): Promise<OrganizationInferenceAdmission> {
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
-  // Cache misses deliberately pay one authoritative entitlement read. This
-  // keeps the first request after a cache-version rollout from treating a
-  // subscriber as purchased-credit-only on the Worker hot path.
-  const subscriptionFunded =
-    params.admissionSnapshot?.subscriptionFunded ??
-    (await isSubscriptionFundedOrganization(params.context.organizationId));
+
   if (subscriptionFunded) {
     return await reserveSynchronously(params, true);
   }
@@ -521,6 +594,7 @@ export async function admitOrganizationInference(
     if (!inferenceLease) {
       throw admissionUnavailable(params);
     }
+    const inferenceBalanceFence = createInferenceAdmissionBalanceFence(inferenceLease);
     if (affiliateAttribution) {
       const affiliatePayoutSourceId = getAffiliatePayoutSourceId(params.context);
       const reservationMetadata = {
@@ -542,6 +616,11 @@ export async function admitOrganizationInference(
           billingSource: charge.billingSource,
           actualCost: actualCostUsd,
           reservationMetadata,
+          // The attached lease remains active until the affiliate debit,
+          // lower-only handoff, authoritative republish, and gate settlement
+          // all finish.
+          preserveInferenceBalanceHint: true,
+          inferenceBalanceFence,
         });
       const result: OrganizationInferenceAdmission = {
         mode: "durable_object_affiliate_debit",
@@ -568,7 +647,13 @@ export async function admitOrganizationInference(
           adjustmentType: "none",
         };
       }
-      const outcome = await debitInferenceCost(debit, actualCostUsd, "deferred");
+      const outcome = await debitInferenceCost(debit, actualCostUsd, "deferred", {
+        // The attached admission lease remains active until this authoritative
+        // debit and gate settlement finish, so the last valid projection can
+        // stay present during the post-stream republish handoff.
+        preserveBalanceHintDuringFencedHandoff: true,
+        inferenceBalanceFence,
+      });
       return {
         reservedAmount: outcome.collectedAmountUsd,
         actualCost: actualCostUsd,

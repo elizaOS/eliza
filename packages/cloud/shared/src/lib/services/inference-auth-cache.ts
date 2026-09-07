@@ -19,6 +19,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   type CacheBackendKind,
   type CacheReadOutcome,
@@ -27,12 +28,18 @@ import {
 } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import {
+  isOrganizationPolicyStamp,
+  sameOrganizationPolicyStamp,
+} from "./organization-policy-stamp";
+import type { OrganizationPolicyStamp } from "./organization-quota-policy";
 
 /** Current IAC schema version. Bump the key suffix in CacheKeys on a breaking change. */
-export const INFERENCE_AUTH_CONTEXT_VERSION = 3 as const;
+export const INFERENCE_AUTH_CONTEXT_VERSION = 4 as const;
 
 /** Admission state co-located with identity so a warm Worker performs one KV read. */
 export interface InferenceAdmissionSnapshot {
+  authority: OrganizationPolicyStamp;
   /** Paid-plan funding authority captured with the combined admission decision. */
   subscriptionFunded: boolean;
   balance: {
@@ -122,12 +129,13 @@ export type InferenceSessionAuthDecision =
 
 export type ResolvedInferenceAuthContext = InferenceAuthContext | InferenceSessionAuthContext;
 
-function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissionSnapshot {
+export function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissionSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<InferenceAdmissionSnapshot>;
   const balance = candidate.balance;
   const rateLimits = candidate.rateLimits;
   return (
+    isOrganizationPolicyStamp(candidate.authority) &&
     typeof candidate.subscriptionFunded === "boolean" &&
     Boolean(balance) &&
     typeof balance?.balanceUsd === "number" &&
@@ -321,6 +329,32 @@ export function isOrgBalanceHint(value: unknown): value is OrgBalanceHint {
   );
 }
 
+async function cachedPolicyIsCurrent(
+  orgId: string,
+  snapshot: InferenceAdmissionSnapshot | undefined,
+): Promise<boolean> {
+  if (!isInferenceAdmissionSnapshot(snapshot)) return false;
+  try {
+    const { readOrganizationQuotaPolicy, requireOrganizationRateTier } = await import(
+      "./organization-quota-policy"
+    );
+    const policy = await readOrganizationQuotaPolicy(orgId);
+    const tier = requireOrganizationRateTier(policy);
+    return (
+      sameOrganizationPolicyStamp(snapshot.authority, policy.authority) &&
+      tier.completionsRpm === snapshot.rateLimits.completionsRpm &&
+      tier.embeddingsRpm === snapshot.rateLimits.embeddingsRpm &&
+      tier.standardRpm === snapshot.rateLimits.standardRpm &&
+      tier.strictRpm === snapshot.rateLimits.strictRpm
+    );
+  } catch (error) {
+    // error-policy:J4 unresolved authority invalidates only this cached positive decision; the owning auth hydrator reports availability.
+    if (error instanceof ElizaError && error.code === "ORGANIZATION_POLICY_UNAVAILABLE")
+      return false;
+    throw error;
+  }
+}
+
 /**
  * Read only a positive cached IAC for a presented key hash. Returns null for a
  * negative decision, miss, malformed entry, or unavailable cache.
@@ -361,6 +395,8 @@ export async function readInferenceAuthContextWithOutcome(
     deferMalformedEntryCleanup(key, executionCtx);
     return { kind: "invalid", backend: outcome.backend };
   }
+  if (!(await cachedPolicyIsCurrent(outcome.value.orgId, outcome.value.admission)))
+    return { kind: "invalid", backend: outcome.backend };
   return { kind: "hit", ctx: outcome.value, backend: outcome.backend };
 }
 
@@ -368,12 +404,18 @@ export async function readInferenceAuthContextWithOutcome(
 export async function writeInferenceAuthContext(
   ctx: InferenceAuthContext,
 ): Promise<CacheWriteOutcome> {
-  return await cache.setWithOutcome(
-    CacheKeys.inference.authContext(ctx.keyHash),
-    ctx,
-    CacheTTL.inference.authContext,
-    { keyClass: "inference_auth" },
-  );
+  if (!isInferenceAdmissionSnapshot(ctx.admission))
+    throw new Error("Authorized inference cache entry requires current policy");
+  const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
+  const { inferenceAdmissionSnapshotFromPolicy } = await import("./inference-admission-snapshot");
+  return withOrganizationPolicyAdmission(ctx.orgId, ctx.admission.authority, async (policy) => {
+    return await cache.setWithOutcome(
+      CacheKeys.inference.authContext(ctx.keyHash),
+      { ...ctx, admission: inferenceAdmissionSnapshotFromPolicy(policy) },
+      CacheTTL.inference.authContext,
+      { keyClass: "inference_auth" },
+    );
+  });
 }
 
 /** Cache a bounded fail-closed API-key decision without storing identity data. */
@@ -423,6 +465,8 @@ export async function readInferenceSessionAuthDecision(
     deferMalformedEntryCleanup(key, executionCtx);
     return null;
   }
+  if ("orgId" in cached && !(await cachedPolicyIsCurrent(cached.orgId, cached.admission)))
+    return null;
   return cached;
 }
 
@@ -437,6 +481,24 @@ export async function writeInferenceSessionAuthContext(
 export async function writeInferenceSessionAuthDecision(
   decision: InferenceSessionAuthDecision,
 ): Promise<CacheWriteOutcome> {
+  if ("orgId" in decision) {
+    if (!isInferenceAdmissionSnapshot(decision.admission))
+      throw new Error("Authorized session cache entry requires current policy");
+    const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
+    const { inferenceAdmissionSnapshotFromPolicy } = await import("./inference-admission-snapshot");
+    return withOrganizationPolicyAdmission(
+      decision.orgId,
+      decision.admission.authority,
+      async (policy) => {
+        return cache.setWithOutcome(
+          CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
+          { ...decision, admission: inferenceAdmissionSnapshotFromPolicy(policy) },
+          CacheTTL.inference.authContext,
+          { keyClass: "inference_auth" },
+        );
+      },
+    );
+  }
   return await cache.setWithOutcome(
     CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
     decision,

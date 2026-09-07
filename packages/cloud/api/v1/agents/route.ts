@@ -367,6 +367,7 @@ app.post("/", async (c) => {
       }
 
       ({ agent } = await elizaSandboxService.createAgent({
+        quotaAdmission: "trusted_internal",
         organizationId: ownerOrganizationId,
         userId: ownerUserId,
         agentName,

@@ -33,6 +33,7 @@ const verdict = {
 };
 const requests: WireRequest[] = [];
 let reply: unknown = verdict;
+let rejectSchema = false;
 let baseUrl: string;
 let server: Server;
 
@@ -43,6 +44,18 @@ beforeAll(async () => {
     request.on("end", () => {
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as WireRequest;
       requests.push(body);
+      if (rejectSchema) {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: {
+              message: "Unsupported response schema fixture",
+              type: "invalid_request_error",
+            },
+          })
+        );
+        return;
+      }
       const text = JSON.stringify(reply);
       const base = { id: "chatcmpl-qwen-fixture", created: 0, model: body.model };
       if (body.stream) {
@@ -95,6 +108,7 @@ afterAll(async () => {
 beforeEach(() => {
   requests.length = 0;
   reply = verdict;
+  rejectSchema = false;
   vi.stubEnv("ELIZA_PROVIDER", "cerebras");
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_API_KEY", "loopback-only-key");
@@ -372,11 +386,45 @@ describe("Qwen3.8 response-schema wire contract", () => {
         ],
       },
     ],
-  ])("keeps the existing JSON-mode contract for %s", async (_name, options) => {
+  ])("preserves the explicit response contract for %s", async (name, options) => {
     expect(await invoke(options)).toEqual(verdict);
     expect(requests).toHaveLength(1);
-    expect(requests[0].response_format).toEqual({ type: "json_object" });
+    if (name === "schema-less JSON") {
+      expect(requests[0].response_format).toEqual({ type: "json_object" });
+    } else {
+      expect(requests[0].response_format).toEqual({
+        type: "json_schema",
+        json_schema: { name: "response", strict: true, schema: evaluatorSchema },
+      });
+    }
   });
+
+  it.each([false, true])(
+    "does not retry an unsupported native-tool/schema combination as weaker JSON (stream=%s)",
+    async (stream) => {
+      rejectSchema = true;
+      await expect(
+        invoke({
+          stream,
+          schema: evaluatorSchema,
+          tools: [
+            {
+              name: "inspect",
+              description: "Inspect state",
+              strict: false,
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+        })
+      ).rejects.toThrow(/Unsupported response schema fixture/);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].tools).toHaveLength(1);
+      expect(requests[0].response_format).toEqual({
+        type: "json_schema",
+        json_schema: { name: "response", strict: true, schema: evaluatorSchema },
+      });
+    }
+  );
 
   it.each([
     ["root array", { type: "array", items: { type: "string" } }, ["preserved"]],
@@ -475,12 +523,21 @@ describe("Qwen3.8 response-schema wire contract", () => {
       },
       { metadata: null },
     ],
-  ])("does not narrow the existing response shape for %s", async (_name, schema, result) => {
-    reply = result;
-    expect(await invoke({ schema })).toEqual(result);
-    expect(requests).toHaveLength(1);
-    expect(requests[0].response_format).toEqual({ type: "json_object" });
-  });
+  ])(
+    "preserves the complete %s schema and surfaces provider rejection",
+    async (_name, schema, result) => {
+      const original = structuredClone(schema);
+      reply = result;
+      rejectSchema = true;
+      await expect(invoke({ schema })).rejects.toThrow(/Unsupported response schema fixture/);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].response_format).toEqual({
+        type: "json_schema",
+        json_schema: { name: "response", strict: true, schema: original },
+      });
+      expect(schema).toEqual(original);
+    }
+  );
 
   it("preserves optional fields inside closed array items and unions after normalization", async () => {
     const schema = {
@@ -528,7 +585,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
     );
   });
 
-  it("preserves the existing schema-only planner argument representation", async () => {
+  it("round-trips schema-only planner arguments through the strict entry representation", async () => {
     const schema = {
       type: "object",
       additionalProperties: false,
@@ -548,13 +605,30 @@ describe("Qwen3.8 response-schema wire contract", () => {
       },
       required: ["toolCalls"],
     };
-    reply = {
+    const original = structuredClone(schema);
+    const result = {
       toolCalls: [
         { name: "LOOKUP", args: { query: "exact input", metadata: { custom: "preserved" } } },
       ],
     };
-    expect(await invoke({ schema, actionPlanner: true })).toEqual(reply);
+    reply = {
+      toolCalls: result.toolCalls.map((call) => ({
+        ...call,
+        args: {
+          __eliza_planner_arg_entries: Object.entries(call.args).map(([key, value]) => ({
+            key,
+            valueJson: JSON.stringify(value),
+          })),
+        },
+      })),
+    };
+    expect(await invoke({ schema, actionPlanner: true })).toEqual(result);
     expect(requests).toHaveLength(1);
-    expect(requests[0].response_format).toEqual({ type: "json_object" });
+    expect(requests[0].response_format?.type).toBe("json_schema");
+    const wireSchema = requests[0].response_format?.json_schema?.schema;
+    if (!wireSchema) throw new Error("Expected planner wire schema");
+    expect(parseAndValidate(JSON.stringify(reply), wireSchema).valid).toBe(true);
+    expect(parseAndValidate(JSON.stringify(result), schema).valid).toBe(true);
+    expect(schema).toEqual(original);
   });
 });

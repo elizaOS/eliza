@@ -117,6 +117,7 @@ export interface CreateTierUpgradeTargetParams {
   environmentVars?: Record<string, string>;
   characterId?: string;
   maxNonTerminalAgents: number;
+  quotaAdmission?: "organization";
 }
 
 export type TierUpgradeTargetResult =
@@ -1869,6 +1870,7 @@ export async function createTierUpgradeTargetWithProvision(
       await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
 
       const canonical = buildAgentSandboxInsertValues({
+        quotaAdmission: "organization",
         organizationId: params.organizationId,
         userId: params.userId,
         agentName: params.agentName,

@@ -3,10 +3,8 @@
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../../db/client";
-import {
-  type AgentSandbox,
-  type AgentSandboxStatus,
-} from "../../../db/repositories/agent-sandboxes";
+import { type AgentSandbox } from "../../../db/repositories/agent-sandboxes";
+import { lockOrganizationPolicy } from "../../../db/repositories/organization-policy-generation";
 import {
   type AgentExecutionTier,
   agentSandboxes,
@@ -14,6 +12,7 @@ import {
 } from "../../../db/schemas/agent-sandboxes";
 import { imageRepo } from "../../../db/utils/docker-image-ref";
 import { containersEnv } from "../../config/containers-env";
+import { QUOTA_COUNTED_STATUSES } from "../../constants/agent-sandbox-quota";
 import { logger } from "../../utils/logger";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "../coding-containers";
 import { withDefaultAgentCharacter } from "../default-agent-character";
@@ -21,6 +20,10 @@ import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "../eliza-agent-config";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../organization-quota-policy";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -62,6 +65,8 @@ export interface CreateAgentParams {
    * A create that would exceed the cap throws {@link AgentQuotaExceededError}.
    */
   maxNonTerminalAgents?: number;
+  quotaMode?: "eager" | "non-eager";
+  quotaAdmission?: "organization" | "trusted_internal";
 }
 
 /**
@@ -83,13 +88,7 @@ export interface CreateAgentParams {
  * agent — handing back a stopped/sleeping row would silently turn an
  * idempotent create into an implicit resume.
  */
-export const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
-  "pending",
-  "provisioning",
-  "running",
-  "stopped",
-  "sleeping",
-];
+export { QUOTA_COUNTED_STATUSES } from "../../constants/agent-sandbox-quota";
 
 /** Thrown by createAgent when a fresh create would exceed `maxNonTerminalAgents`. */
 export class AgentQuotaExceededError extends Error {
@@ -97,7 +96,7 @@ export class AgentQuotaExceededError extends Error {
   readonly max: number;
   constructor(count: number, max: number) {
     super(
-      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}). Delete or stop an agent, or add credits to raise the limit.`,
+      `Agent quota exceeded: your organization already has ${count} active agents (limit ${max}). Remove an agent to free capacity.`,
     );
     this.name = "AgentQuotaExceededError";
     this.count = count;
@@ -161,6 +160,7 @@ export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAge
     environment_vars: params.environmentVars ?? {},
     status,
     execution_tier: executionTier,
+    quota_admission_scope: params.quotaAdmission ?? "unclassified",
     database_status: "none",
     ...(params.characterId && { character_id: params.characterId }),
     ...(params.dockerImage && { docker_image: params.dockerImage }),
@@ -189,8 +189,17 @@ export function agentConfigForProvision(
 export async function assertOrgAgentQuota(
   tx: DbTransaction,
   organizationId: string,
-  cap: number,
+  _requestedCap: number,
+  mode: "eager" | "non-eager" = "eager",
 ): Promise<void> {
+  await lockOrganizationPolicy(tx, organizationId);
+  const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+  const cap = Number(
+    requireOrganizationResourceLimit(
+      policy,
+      mode === "non-eager" ? "nonEagerSandboxes" : "sandboxes",
+    ),
+  );
   const [{ count } = { count: 0 }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(agentSandboxes)

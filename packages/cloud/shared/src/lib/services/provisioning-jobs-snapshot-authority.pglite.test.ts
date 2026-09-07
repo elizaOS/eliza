@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "
 import { and, eq, sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { jobsRepository } from "../../db/repositories/jobs";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 import {
   agentSandboxBackups,
   agentSandboxes,
@@ -311,6 +312,8 @@ beforeAll(async () => {
     for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
       await dbWrite.execute(sql.raw(ddl));
     }
+    const { getPgliteClientForTests } = await import("../../db/client");
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch {
     pgliteReady = false;
   }

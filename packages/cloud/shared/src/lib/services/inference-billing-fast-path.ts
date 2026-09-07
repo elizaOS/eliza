@@ -13,9 +13,14 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
-import { type CreditReconciliationResult, creditsService } from "./credits";
+import {
+  type CreditReconciliationResult,
+  creditsService,
+  type InferenceBalanceFence,
+} from "./credits";
 import {
   invalidateOrgBalanceHint,
+  lowerOrgBalanceHint,
   readOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
@@ -350,7 +355,18 @@ export async function debitInferenceCost(
   ctx: DebitContext,
   amountUsd: number,
   source: "inline" | "backstop" | "deferred",
+  options: {
+    preserveBalanceHintDuringFencedHandoff?: boolean;
+    inferenceBalanceFence?: InferenceBalanceFence;
+  } = {},
 ): Promise<InferenceDebitCollectionOutcome> {
+  if (options.preserveBalanceHintDuringFencedHandoff && !options.inferenceBalanceFence) {
+    throw new InferenceDebitInfrastructureError(
+      ctx.requestId,
+      ctx.organizationId,
+      new Error("Fenced inference debit requires an admission fence"),
+    );
+  }
   let result: Awaited<ReturnType<typeof creditsService.deductCredits>>;
   try {
     result = await creditsService.deductCredits({
@@ -361,6 +377,16 @@ export async function debitInferenceCost(
       // claimed by a backstop after an acknowledgement loss. One key across
       // sources makes the database row the exactly-once collection gate.
       stripePaymentIntentId: `inference-debit:${ctx.organizationId}:${ctx.requestId}`,
+      ...(options.preserveBalanceHintDuringFencedHandoff
+        ? {
+            // Keep the previous revisioned projection present until the
+            // authoritative post-debit snapshot below replaces it. This opt-in
+            // is valid only while the admission Durable Object still accounts
+            // the active lease; legacy non-Worker debits keep normal eviction.
+            preserveInferenceBalanceHint: true,
+            inferenceBalanceFence: options.inferenceBalanceFence,
+          }
+        : {}),
       metadata: {
         user_id: ctx.userId,
         requestId: ctx.requestId,
@@ -436,16 +462,15 @@ export async function debitInferenceCost(
         persistedAmountUsd,
       });
     }
-    // The committed debit already evicted the gate hint via onCreditMutation.
-    // Republish authoritative balance + revision so the NEXT turn hits a warm
-    // entry instead of a fail-closed cache-warming 503. The revision-aware
-    // Durable Object remains the Worker dispatch authority if concurrent cache
-    // writers arrive out of order.
     try {
+      if (options.preserveBalanceHintDuringFencedHandoff) {
+        await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
+      }
       await republishOrgBalanceHintAfterDebit(
         ctx.organizationId,
         result.newBalance,
         result.balanceRevision,
+        { publishAuthoritativeBalance: options.inferenceBalanceFence?.publishAuthoritativeBalance },
       );
     } catch (cause) {
       try {

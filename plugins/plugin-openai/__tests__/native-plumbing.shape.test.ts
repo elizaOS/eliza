@@ -1164,36 +1164,33 @@ describe("OpenAI native text plumbing", () => {
     ).resolves.toEqual({ type: "json" });
   });
 
-  it.each([undefined, { type: "json_object" }])(
-    "retains legacy Cerebras JSON mode with responseFormat=%j",
-    async (responseFormat) => {
-      vi.stubEnv("ELIZA_PROVIDER", "cerebras");
-      vi.stubEnv("CEREBRAS_API_KEY", "test-cerebras-key");
-      aiMocks.generateText.mockResolvedValue({
-        text: '{"answer":"ok"}',
-        finishReason: "stop",
-        usage: { inputTokens: 3, outputTokens: 3 },
-      });
+  it("preserves a Cerebras response schema alongside legacy JSON mode", async () => {
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    vi.stubEnv("CEREBRAS_API_KEY", "test-cerebras-key");
+    aiMocks.generateText.mockResolvedValue({
+      text: '{"answer":"ok"}',
+      finishReason: "stop",
+      usage: { inputTokens: 3, outputTokens: 3 },
+    });
 
-      const { handleTextSmall } = await import("../models/text");
-      await handleTextSmall(createRuntime(), {
-        model: "gpt-oss-120b",
-        prompt: "json",
-        ...(responseFormat ? { responseFormat } : {}),
-        responseSchema: {
-          type: "object",
-          properties: { answer: { type: "string" } },
-          required: ["answer"],
-        },
-      } as never);
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      model: "gpt-oss-120b",
+      prompt: "json",
+      responseFormat: { type: "json_object" },
+      responseSchema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      },
+    } as never);
 
-      const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
-      expect((call.output as { name: string }).name).toBe("json");
-      await expect(
-        (call.output as { responseFormat: Promise<unknown> }).responseFormat
-      ).resolves.toEqual({ type: "json" });
-    }
-  );
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect((call.output as { name: string }).name).toBe("object");
+    await expect(
+      (call.output as { responseFormat: Promise<unknown> }).responseFormat
+    ).resolves.toMatchObject({ type: "json", schema: { type: "object", required: ["answer"] } });
+  });
 
   it("marks unconsumed streaming companion promises as handled", async () => {
     const noOutputError = Object.assign(
