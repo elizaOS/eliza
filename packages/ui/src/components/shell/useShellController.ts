@@ -675,18 +675,19 @@ export function useShellController(): ShellController {
     React.useState(!realtimeVoiceEnabled);
   const realtimeVoiceSelected =
     realtimeVoiceEnabled && !realtimeVoiceBatchFallback;
+  const realtimeVoiceWantedRef = React.useRef(false);
   // During an identity handoff the availability probe disarms before the old
   // client finishes teardown. Keep batch media out until that prior owner has
   // actually released the microphone/audio path.
   const realtimeVoiceOwnsMedia =
     realtimeVoiceBuildEnabled &&
     (realtimeVoiceSelected ||
+      realtimeVoiceWantedRef.current ||
       realtimeVoice.active ||
       realtimeVoice.connecting ||
       realtimeVoice.agentSpeaking);
   const realtimeVoiceRef = React.useRef(realtimeVoice);
   realtimeVoiceRef.current = realtimeVoice;
-  const realtimeVoiceWantedRef = React.useRef(false);
   const realtimeVoiceWasEnabledRef = React.useRef(realtimeVoiceEnabled);
   // True once the CURRENT wanted session has reached live; distinguishes a
   // mid-session death (parked by the effect below startRealtimeVoice) from an
@@ -2103,11 +2104,9 @@ export function useShellController(): ShellController {
   };
   stopRealtimeVoiceRef.current = stopRealtimeVoice;
 
-  // Availability is conversation-scoped. If the active conversation stops
-  // matching the local gateway, latch this Talk session onto batch ASR/TTS.
-  // A later positive probe must not steal a batch turn between capture, text,
-  // and playback; realtime becomes selectable again only after Talk is off and
-  // every batch owner is idle.
+  // Identity loss ends the current realtime intent; it must not silently
+  // reopen the microphone through a different transcription provider. A
+  // recovered identity becomes selectable only when all media owners are idle.
   React.useEffect(() => {
     const wasEnabled = realtimeVoiceWasEnabledRef.current;
     realtimeVoiceWasEnabledRef.current = realtimeVoiceEnabled;
@@ -2120,11 +2119,12 @@ export function useShellController(): ShellController {
       realtimeVoiceWantedRef.current = false;
       realtimeVoiceWasActiveRef.current = false;
       setRealtimeVoiceBatchFallback(true);
-      setRealtimeVoiceBoundaryError(null);
       if (shouldContinue) {
-        setHandsFree(true);
-        handsFreeRef.current = true;
-        setIsOpen(true);
+        stopRealtimeVoice();
+        const message =
+          "Cartesia voice connection changed. Tap Talk to reconnect.";
+        setRealtimeVoiceBoundaryError(message);
+        setActionNotice(message, "error", 6000);
       }
     }
 
@@ -2154,6 +2154,8 @@ export function useShellController(): ShellController {
     realtimeVoiceEnabled,
     recording,
     sttPending,
+    stopRealtimeVoice,
+    setActionNotice,
     voiceOutput.speaking,
   ]);
 

@@ -2343,7 +2343,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(result.current.handsFree).toBe(true);
   });
 
-  it("latches a recovered probe to batch until the current Talk session ends", async () => {
+  it("stops Talk on identity loss without batch capture or automatic mic recovery", async () => {
     vi.useFakeTimers();
     try {
       const nextConversationId = "22222222-2222-4222-8222-222222222222";
@@ -2374,12 +2374,21 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
         await vi.advanceTimersByTimeAsync(300);
       });
 
-      expect(result.current.handsFree).toBe(true);
+      expect(result.current.handsFree).toBe(false);
       expect(result.current.realtimeVoice?.enabled).toBe(false);
       expect(realtimeVoiceMock.options?.flagEnabled).toBe(false);
       expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
-      expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+      expect(realtimeVoiceMock.stop).toHaveBeenCalledTimes(1);
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
       expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("Tap Talk to reconnect"),
+        "error",
+        6000,
+      );
+      expect(
+        window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+      ).toBe("off");
 
       await act(async () => {
         realtimeVoiceMintMock.agentId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -2387,56 +2396,16 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
         rerender();
         await Promise.resolve();
       });
-      // Do not overlap microphones or steal output: the entire current Talk
-      // session stays batch even though the probe recovered.
+      // Recovery makes realtime eligible, but cannot reopen the microphone.
       expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
-      expect(result.current.realtimeVoice?.enabled).toBe(false);
-      expect(realtimeVoiceMock.options?.flagEnabled).toBe(true);
-      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
-
-      // Ending batch Talk is not enough to release the latch while that turn's
-      // text is still streaming. Drive the composer's live source (not the
-      // stale AppContext mirror), then stop Talk and its capture.
-      composerMock.value.chatSending = true;
-      await act(async () => {
-        result.current.toggleHandsFree();
-        await Promise.resolve();
-      });
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
       expect(result.current.handsFree).toBe(false);
-      expect(captureHandles[0]?.stop).toHaveBeenCalledTimes(1);
-      expect(result.current.responding).toBe(true);
-      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
-      expect(result.current.realtimeVoice?.enabled).toBe(false);
-      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
-
-      // The same batch turn moves from streaming to TTS. With Talk already off,
-      // speaking is now the only remaining owner and must keep realtime latched.
-      await act(async () => {
-        composerMock.value.chatSending = false;
-        voiceOutputMock.speaking = true;
-        rerender();
-        await Promise.resolve();
-      });
-      expect(result.current.handsFree).toBe(false);
-      expect(result.current.responding).toBe(true);
-      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
-      expect(result.current.realtimeVoice?.enabled).toBe(false);
-      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
-
-      // Once TTS settles, every batch owner is idle and the recovered probe may
-      // make realtime selectable again. It still must not auto-start the mic.
-      await act(async () => {
-        voiceOutputMock.speaking = false;
-        rerender();
-        await Promise.resolve();
-      });
-      expect(result.current.responding).toBe(false);
-      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
       expect(result.current.realtimeVoice?.enabled).toBe(true);
+      expect(realtimeVoiceMock.options?.flagEnabled).toBe(true);
       expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(true);
 
       // The next explicit Talk gesture starts realtime against the newly active
-      // conversation; probe recovery alone never steals the microphone.
+      // conversation.
       await act(async () => {
         result.current.toggleHandsFree();
         await Promise.resolve();
