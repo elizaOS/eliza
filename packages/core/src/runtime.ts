@@ -6015,6 +6015,17 @@ export class AgentRuntime implements IAgentRuntime {
 			if (serviceDef.registerSendHandlers) {
 				serviceDef.registerSendHandlers(this, serviceInstance);
 			}
+			// Hosts can attach transports to services loaded after API startup.
+			// Observers must use getService(), not await this service's startup
+			// promise (which is still being fulfilled).
+			try {
+				await this.emitEvent(EventType.SERVICE_STARTED, { serviceType });
+			} catch (error) {
+				// A broken observer does not turn a running service into a failed one.
+				this.reportError("AgentRuntime.serviceStartedObserver", error, {
+					serviceType,
+				});
+			}
 			return serviceInstance;
 		} catch (error) {
 			// error-policy:J2 service startup adds service identity and preserves the cause

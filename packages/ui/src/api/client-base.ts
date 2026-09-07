@@ -933,7 +933,8 @@ export class ElizaClient {
   /** Last cloud agent base released after an agent-gone 404 (idempotency). */
   private _releasedGoneAgentBase: string | null = null;
   private personalElizaRuntimeRepoint: Promise<boolean> | null = null;
-  private readonly clientId: string;
+  /** Renderer routing identity, shared by HTTP, WebSocket, and voice turns. */
+  readonly clientId: string;
   private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
   private wsHandlers = new Map<string, Set<WsEventHandler>>();

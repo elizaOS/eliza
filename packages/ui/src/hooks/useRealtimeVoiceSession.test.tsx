@@ -13,8 +13,10 @@
  * the real mint fetch + the real getUserMedia denial, not simulated.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { client } from "../api/client";
 
 import {
   deniedGetUserMedia,
@@ -194,6 +196,43 @@ describe("useRealtimeVoiceSession", () => {
       expect.objectContaining({ sessionId: "sess-1" }),
     );
     await expect(startPromise).resolves.toEqual({ kind: "live" });
+  });
+
+  it("carries the native Browser implementation in voice view context", async () => {
+    const native = vi
+      .spyOn(Capacitor, "isNativePlatform")
+      .mockReturnValue(true);
+    const { options, ws, micCtx } = makeOptions();
+    const { result, unmount } = renderHook(() =>
+      useRealtimeVoiceSession(options),
+    );
+    try {
+      const start = beginStart(result);
+      await flushAsync();
+      await act(async () => {
+        ws.last().emitOpen();
+        await flushAsync();
+        ws.last().emitControl({
+          t: "ready",
+          sessionId: "sess-1",
+          traceId: "native-context",
+          uiContext: true,
+        });
+        await flushAsync();
+      });
+      await expect(start).resolves.toEqual({ kind: "live" });
+      micCtx.scriptNode?.feed(new Float32Array(1600).fill(0.25));
+      expect(ws.last().sentControls()).toContainEqual({
+        t: "ui_context",
+        context: expect.objectContaining({
+          uiBrowserSurface: "native",
+          uiClientId: client.clientId,
+        }),
+      });
+    } finally {
+      unmount();
+      native.mockRestore();
+    }
   });
 
   it("full flow: start → listening → partial → final → speaking → barge-in → stop through the REAL client", async () => {

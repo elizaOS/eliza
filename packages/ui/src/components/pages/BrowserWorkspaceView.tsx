@@ -1972,6 +1972,14 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     },
   });
 
+  const readNativePage = useCallback(
+    async (selector?: string) => {
+      if (!selectedTabId) throw new Error("No native Browser tab is selected.");
+      return nativeTabSurfaces.readPage(selectedTabId, selector);
+    },
+    [selectedTabId, nativeTabSurfaces.readPage],
+  );
+
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
       tabId: string;
@@ -3399,7 +3407,10 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   );
 
   return (
-    <ShellViewAgentSurface viewId="browser">
+    <ShellViewAgentSurface
+      viewId="browser"
+      readPage={nativeMobileTabPath ? readNativePage : undefined}
+    >
       {mainNode}
       <BrowserTabSwitcher
         open={switcherOpen}

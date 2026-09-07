@@ -139,6 +139,88 @@ async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   return browserPluginModulePromise;
 }
 
+/** Bind the live runtime service, not a separately imported plugin module copy. */
+const nativeReaderWiredRuntimes = new WeakSet<AgentRuntime>();
+function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
+  if (!runtime || nativeReaderWiredRuntimes.has(runtime)) return;
+  nativeReaderWiredRuntimes.add(runtime);
+  // Context activation can register the plugin long after API startup. Bind
+  // each actual service instance when it starts, without eagerly loading it.
+  const bindReader = () => {
+    const browser = runtime.getService("browser") as InstanceType<
+      BrowserPluginModule["BrowserService"]
+    > | null;
+    if (!browser || typeof browser.setNativeClientTransport !== "function")
+      return;
+    browser.setNativeClientTransport({
+      navigate: async (clientId, url) => {
+        const [
+          { getViewsBroadcastWsToClientId },
+          { createShellNavigateViewWsFrame },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("@elizaos/shared"),
+        ]);
+        const send = getViewsBroadcastWsToClientId();
+        if (
+          !send ||
+          send(
+            clientId,
+            createShellNavigateViewWsFrame({
+              viewId: "browser",
+              viewType: "gui",
+              viewLabel: "Browser",
+              source: "agent",
+              viewPath: url
+                ? `/browser?browse=${encodeURIComponent(url)}`
+                : "/browser",
+            }),
+          ) <= 0
+        )
+          throw new Error(
+            "The requesting native Browser client is not connected.",
+          );
+      },
+      readPage: async (clientId, selector) => {
+        const [
+          { dispatchViewInteract, getViewsBroadcastWsToClientId },
+          { getView },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("./views-registry.ts"),
+        ]);
+        const entry = getView("browser", { viewType: "gui" });
+        const sendToClient = getViewsBroadcastWsToClientId();
+        if (!entry || !sendToClient)
+          throw new Error(
+            "Native Browser interaction transport is unavailable.",
+          );
+        const reply = await dispatchViewInteract(
+          entry,
+          "browser",
+          "get-text",
+          {
+            nativeOnly: true,
+            ...(selector === undefined ? {} : { selector }),
+          },
+          {
+            clientId,
+            broadcastWsToClientId: sendToClient,
+            runtime,
+          },
+        );
+        if (!reply.success)
+          throw new Error(reply.error ?? "Native Browser page read failed.");
+        return reply.result;
+      },
+    });
+  };
+  runtime.registerEvent(EventType.SERVICE_STARTED, async ({ serviceType }) => {
+    if (serviceType === "browser") bindReader();
+  });
+  bindReader();
+}
+
 // On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
 // (scripts/mobile-stubs/null-plugin.cjs): the module imports fine but its
 // workspace functions are absent, so calling one throws an uncaught TypeError
@@ -4010,6 +4092,7 @@ export async function startApiServer(opts?: {
             bindInProcessApi();
             bindRuntimeStreams(state.runtime);
             wireModelRegistrationBroadcast(state.runtime);
+            wireNativeBrowserPageReader(state.runtime);
             void wireCoordinatorBridgesWhenReady(state, {
               wireChatBridge: wireCodingAgentChatBridge,
               wireWsBridge: wireCodingAgentWsBridge,
@@ -5020,6 +5103,7 @@ export async function startApiServer(opts?: {
     });
   };
   wireModelRegistrationBroadcast(state.runtime);
+  wireNativeBrowserPageReader(state.runtime);
 
   state.broadcastWs = (data: object) => eventHub.broadcast(data);
   state.broadcastWsToClientId = (clientId: string, data: object) =>
@@ -5188,6 +5272,7 @@ export async function startApiServer(opts?: {
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
     wireModelRegistrationBroadcast(rt);
+    wireNativeBrowserPageReader(rt);
     // AppManager doesn't need a runtime reference
     state.agentState = "running";
     state.agentName =

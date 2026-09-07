@@ -8,8 +8,8 @@
 import {
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
-  REALTIME_VOICE_CLIENT_TRANSPORT,
   parseVoiceUiContext,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
   type VoiceUiContext,
 } from "@elizaos/shared";
 import {
@@ -88,6 +88,7 @@ export function createLocalRuntimeConversationFetch(
       origin,
     );
     const body = parseRequestBody(init?.body);
+    const { uiClientId, ...messageMetadata } = body.metadata;
     const sourceHeaders = new Headers(init?.headers);
     const headers = new Headers();
     for (const name of FORWARDED_HEADER_NAMES) {
@@ -96,6 +97,10 @@ export function createLocalRuntimeConversationFetch(
     }
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "text/event-stream");
+    // Preserve the speaking renderer's routing identity through the existing
+    // request-scoped API seam, not persisted history or a new model tool arg.
+    // The authenticated voice session and bound runtime scope still own auth.
+    if (uiClientId) headers.set("X-ElizaOS-Client-Id", uiClientId);
     // These values come from the startup-validated scope, never the untrusted
     // cloud request headers. The loopback host uses them as an atomic runtime
     // generation fence at its enqueue boundary.
@@ -105,7 +110,7 @@ export function createLocalRuntimeConversationFetch(
     return fetchImpl(target, {
       ...init,
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, metadata: messageMetadata }),
       redirect: "error",
     });
   }) as typeof fetch;

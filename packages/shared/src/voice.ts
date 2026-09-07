@@ -11,11 +11,16 @@
  */
 export const REALTIME_VOICE_CLIENT_TRANSPORT = "realtime_voice" as const;
 
+import { parseViewInteractionClientId } from "./views/view-interact-protocol.js";
+
 /** Renderer observations only; the runtime registry owns capabilities and authority. */
 export interface VoiceUiContext {
   uiViewPath?: string;
   uiViewSubview?: string;
   uiTimeZone?: string;
+  uiBrowserSurface?: "native";
+  /** Same renderer routing ID used by its authenticated HTTP/WS client. */
+  uiClientId?: string;
 }
 
 /** Small allowlist shared by the wire and loopback boundaries. */
@@ -23,6 +28,15 @@ export function parseVoiceUiContext(value: unknown): VoiceUiContext | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const source = value as Record<string, unknown>;
   const result: VoiceUiContext = {};
+  if (source.uiClientId !== undefined) {
+    const clientId = parseViewInteractionClientId(source.uiClientId);
+    if (!clientId) return null;
+    result.uiClientId = clientId;
+  }
+  if (source.uiBrowserSurface !== undefined) {
+    if (source.uiBrowserSurface !== "native") return null;
+    result.uiBrowserSurface = "native";
+  }
   for (const key of ["uiViewPath", "uiViewSubview", "uiTimeZone"] as const) {
     const field = source[key];
     if (field === undefined) continue;

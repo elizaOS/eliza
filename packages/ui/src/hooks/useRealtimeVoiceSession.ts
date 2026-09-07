@@ -25,7 +25,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client as apiClient } from "../api/client";
 import { getWindowNavigationPath } from "../navigation";
+import { getClientBrowserSurface } from "../platform/browser-surface";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
@@ -531,6 +533,8 @@ export function useRealtimeVoiceSession(
         clientOptionsRef.current?.getUiContext?.() ?? {
           uiViewPath: getWindowNavigationPath().split(/[?#]/, 1)[0],
           uiTimeZone,
+          uiBrowserSurface: getClientBrowserSurface(),
+          uiClientId: apiClient.clientId,
         },
       // The client invokes this immediately before every mint/re-mint. Keeping
       // the source behind a ref gives reconnects the latest callback and, more
