@@ -1587,12 +1587,9 @@ export function installPromptOptimizations(
       capturedUsage?.completionTokens ?? estimateTokenCount(responseText);
     const fallbackCall = {
       stepId: normalizedTrajectoryStepId ?? undefined,
-      model: resolveTrajectoryModelLabel(
-        runtime,
-        modelType,
-        payloadRecord,
-        args[2],
-      ),
+      model:
+        capturedUsage?.model ??
+        resolveTrajectoryModelLabel(runtime, modelType, payloadRecord, args[2]),
       systemPrompt,
       userPrompt: userPromptForTrajectory,
       response: responseText,
@@ -1648,10 +1645,13 @@ export function installPromptOptimizations(
       typeof trajectoryLogger.updateLatestLlmCall === "function"
     ) {
       try {
-        await trajectoryLogger.updateLatestLlmCall(
-          normalizedTrajectoryStepId,
-          fallbackCall,
-        );
+        await trajectoryLogger.updateLatestLlmCall(normalizedTrajectoryStepId, {
+          ...fallbackCall,
+          // The provider has already recorded its actual model. A runtime
+          // configuration or plugin label is only a fallback for missing
+          // captures, never evidence that can overwrite that identity.
+          model: capturedUsage?.model,
+        });
       } catch {
         // Ignore enrichment failures; the model call itself already succeeded.
       }

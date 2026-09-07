@@ -634,6 +634,44 @@ describe("installPromptOptimizations", () => {
         response: JSON.stringify({ text: "structured" }),
       },
     });
+    // A configuration/provider guess must not replace the model already
+    // recorded by the provider, particularly while streaming usage is pending.
+    expect(updates[0].patch.model).toBeUndefined();
+  });
+
+  it("uses the measured model rather than a provider hint for missing captures", async () => {
+    const runtime = createRuntime();
+    const logged: Array<Record<string, unknown>> = [];
+    const logger = {
+      logLlmCall: (entry: Record<string, unknown>) => logged.push(entry),
+    };
+    runtime.getServicesByType = (() => [
+      logger,
+    ]) as unknown as typeof runtime.getServicesByType;
+    runtime.getService = (() => logger) as typeof runtime.getService;
+    runtime.useModel = (async () => {
+      await runtime.emitEvent(EventType.MODEL_USED, {
+        runtime,
+        provider: "cerebras",
+        modelName: "qwen-3.8-27b",
+        tokens: { prompt: 10, completion: 2, total: 12 },
+      });
+      return "measured reply";
+    }) as typeof runtime.useModel;
+    installPromptOptimizations(runtime);
+    await runWithTrajectoryContext({ trajectoryStepId: "step-measured" }, () =>
+      callModel(
+        runtime,
+        ModelType.TEXT_EMBEDDING,
+        { prompt: "capture" },
+        "openai",
+      ),
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      model: "qwen-3.8-27b",
+      promptTokens: 10,
+    });
   });
 
   it("swallows a throwing fallback logger and still returns the model result", async () => {
