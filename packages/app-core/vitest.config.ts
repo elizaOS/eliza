@@ -263,6 +263,10 @@ export default defineConfig({
         find: /^@elizaos\/auth\/(.+)$/,
         replacement: path.join(authSrc, "$1"),
       },
+      {
+        find: /^@elizaos\/login$/,
+        replacement: path.join(monorepoRoot, "packages/login/src/sdk/index.ts"),
+      },
       { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
       {
         find: /^@elizaos\/ui\/api$/,

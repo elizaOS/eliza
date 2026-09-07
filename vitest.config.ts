@@ -41,6 +41,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@elizaos\/login$/,
+        replacement: path.join(root, "packages/login/src/sdk/index.ts"),
+      },
+      {
         // plugin-app-control's build (tsup, index + worker entries only)
         // never emits dist/actions/*.js; the agent's settings-actions.ts
         // subpath import resolves only under the `eliza-source` exports
