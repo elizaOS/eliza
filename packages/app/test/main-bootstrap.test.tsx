@@ -22,9 +22,10 @@ const mainSource = ts.createSourceFile(
 const bootstrapSource = mainSource.statements
   .filter((node) => {
     if (ts.isVariableStatement(node)) {
-      return node.declarationList.declarations.some(
-        (declaration) =>
-          declaration.name.getText(mainSource) === "rendererBootstrap",
+      return node.declarationList.declarations.some((declaration) =>
+        ["rendererHotData", "rendererBootstrap"].includes(
+          declaration.name.getText(mainSource),
+        ),
       );
     }
     if (ts.isFunctionDeclaration(node)) {
@@ -39,6 +40,7 @@ const bootstrapSource = mainSource.statements
     }
     if (ts.isIfStatement(node)) {
       return [
+        "rendererHotData",
         "import.meta.hot",
         "isNative && !rendererBootstrap.deepLinksInitialized",
         'document.readyState === "loading"',

@@ -81,7 +81,7 @@ describe("isolated script-test runner arguments", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      `[script-tests] failed: ${missingTestFile} (exit 1)`,
+      `[script-tests] failed: ${missingTestFile} (exit=1 signal=none timedOut=false)`,
     );
   });
 });

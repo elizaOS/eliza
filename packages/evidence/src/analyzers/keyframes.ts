@@ -108,13 +108,13 @@ export async function extractKeyframes(
     ],
     { timeout: 60_000 },
   );
-  // Decode the complete video stream: a container-relative EOF seek can emit
-  // an earlier frame for sparse VFR recordings even when a candidate exists.
-  // Overwriting one image through decoder EOF preserves the actual last frame.
+  // Seek near EOF for normal recordings, then decode through the actual end.
+  // Audio or sparse VFR tails can leave no video frame after the seek; only a
+  // fresh candidate can prove success, otherwise retry without seeking.
   const lastScratch = fs.mkdtempSync(path.join(outDir, ".last-frame-"));
   const candidate = path.join(lastScratch, "last.png");
   const deadline = performance.now() + 60_000;
-  const extractLast = async (): Promise<void> => {
+  const extractLast = async (seek: boolean): Promise<void> => {
     const remaining = Math.ceil(deadline - performance.now());
     if (remaining <= 0) {
       throw new EvidenceError(
@@ -130,6 +130,7 @@ export async function extractKeyframes(
         "-hide_banner",
         "-loglevel",
         "error",
+        ...(seek ? ["-sseof", "-1"] : []),
         "-i",
         videoPath,
         "-fps_mode",
@@ -142,7 +143,8 @@ export async function extractKeyframes(
     );
   };
   try {
-    await extractLast();
+    await extractLast(true);
+    if (!fs.existsSync(candidate)) await extractLast(false);
     if (!fs.existsSync(candidate)) {
       throw new EvidenceError("Video did not yield a final decoded frame", {
         code: "VIDEO_FINAL_FRAME_MISSING",

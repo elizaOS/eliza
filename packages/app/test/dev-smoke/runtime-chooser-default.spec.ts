@@ -58,7 +58,6 @@ test("explicit local development offers cloud, local, and remote", async ({
     const win = window as unknown as Record<string, unknown>;
     win.__ELIZA_APP_API_BASE__ = window.location.origin;
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: window.location.origin };
-    win.__electrobunWindowId = 1;
   });
   await seedAppStorage(page, {
     "eliza:first-run-complete": "",

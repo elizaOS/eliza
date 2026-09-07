@@ -280,20 +280,21 @@ declare global {
 const { createRoot } = ReactDomClient;
 // Keep one renderer owner across entry-module HMR. An in-flight boot finishes
 // bridge initialization once, then renders through the latest mount callback.
+const rendererHotData = import.meta.hot?.data;
 const rendererBootstrap: {
   root: ReturnType<typeof createRoot> | null;
   bootPromise: Promise<void> | null;
   mount: () => void;
   deepLinksInitialized: boolean;
-} = import.meta.hot?.data.rendererBootstrap ?? {
+} = rendererHotData?.rendererBootstrap ?? {
   root: null,
   bootPromise: null,
   mount: mountReactApp,
   deepLinksInitialized: false,
 };
 rendererBootstrap.mount = mountReactApp;
-if (import.meta.hot) {
-  import.meta.hot.data.rendererBootstrap = rendererBootstrap;
+if (rendererHotData) {
+  rendererHotData.rendererBootstrap = rendererBootstrap;
 }
 
 let deferredAppModuleLoadsScheduled = false;

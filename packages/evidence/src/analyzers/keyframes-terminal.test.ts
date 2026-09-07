@@ -30,7 +30,7 @@ async function makeVideo(
   audioTail = false,
 ): Promise<string> {
   if (!ffmpeg.available) throw new Error(ffmpeg.reason);
-  const output = join(dir, `${name}.mp4`);
+  const output = join(dir, `${name}.${sparse ? "mkv" : "mp4"}`);
   const inputs = colors.flatMap((color) => ["-f", "lavfi", "-i", color]);
   const filter =
     colors.length === 1
