@@ -1345,9 +1345,9 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 
 /**
  * The first-party app attaches this renderer-owned metadata to chat and voice
- * turns. It is a relevance signal, never an authority boundary: it can promote
- * the focused action family, but it must not remove any otherwise authorized
- * action from the model-facing catalog.
+ * turns. Realtime app voice has the same model-selected tool surface even
+ * when its gateway has no current-view snapshot. These relevance hints never
+ * bypass action authorization, and unresolved candidates keep the full surface.
  */
 function hasUiViewPlannerScope(message: Memory): boolean {
 	const metadataCandidates = [message.content?.metadata, message.metadata];
@@ -1355,6 +1355,7 @@ function hasUiViewPlannerScope(message: Memory): boolean {
 		if (!rawMetadata || typeof rawMetadata !== "object") continue;
 		const metadata = rawMetadata as Record<string, unknown>;
 		if (
+			metadata.clientTransport === "realtime_voice" ||
 			(typeof metadata.uiView === "string" && metadata.uiView.trim()) ||
 			(typeof metadata.uiViewPath === "string" && metadata.uiViewPath.trim()) ||
 			Array.isArray(metadata.uiViewCapabilities)
@@ -10432,9 +10433,8 @@ export async function runV5MessageRuntimeStage1(args: {
 						: {}),
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
-					...(responseHandlerContextSlices.length > 0
-						? { contextSlices: responseHandlerContextSlices }
-						: {}),
+					// The complete slices already live in this event's content.
+					// Repeating them in metadata doubles the planner/evaluator input.
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),

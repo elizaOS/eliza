@@ -151,7 +151,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				],
 			};
 		}
-		if (!catalog.some((view) => view.id === intent.viewId)) {
+		const selectedView = catalog.find((view) => view.id === intent.viewId);
+		if (!selectedView) {
 			throw new ElizaError(
 				"Selected contextual view is not authorized or registered",
 				{
@@ -170,7 +171,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				VIEW_CATALOG_SCOPE_CONTEXT,
 				`Navigation intent: ${JSON.stringify(intent)}. No navigation has executed.`,
 				"Keep every domain operation from the full original request. Execute visual continuation through VIEWS action=show with view=<selected id>, navigationIntent=planner-step, navigationStepId=<unique plan step>. A per-step target may differ from another step. Optional navigation must not block server-backed domain operations. Respect cancellation and user constraints. Ask before ambiguous effects. Ground the final response separately in actual navigation receipts and domain receipts; a switch never proves a save or draft.",
-				`Authorized live catalog: ${JSON.stringify(catalog)}`,
+				`Selected authorized destination: ${JSON.stringify(selectedView)}`,
+				"This is the selected destination, not the full catalog. For another destination or compound navigation, use VIEWS action=list or action=search to discover authorized views. Never infer that an unlisted view is unavailable.",
 			],
 		};
 	},
