@@ -63,7 +63,15 @@ Set these as environment variables or in your character's `settings` object.
 | `OPENAI_MEGA_MODEL` / `MEGA_MODEL` | falls back to large | Highest tier |
 | `OPENAI_RESPONSE_HANDLER_MODEL` | falls back to small | Response-handler slot |
 | `OPENAI_ACTION_PLANNER_MODEL` | falls back to medium | Action-planner slot |
+| `OPENAI_FALLBACK_MODEL` / `CEREBRAS_FALLBACK_MODEL` | unset | Optional same-endpoint model for requests made while the primary is in a rate-limit cooldown |
 | `OPENAI_REASONING_EFFORT` | — | `minimal`/`low`/`medium`/`high` for o-series models |
+
+The optional fallback applies only after a provider rate-limit response has put
+the primary model into cooldown. It keeps the full request and the same endpoint
+and credentials; it does not switch providers. An unset, identical, or also-held
+fallback preserves the explicit cooldown error. After cooldown expires, requests
+return to the primary. Configure a fallback that supports the request's tools,
+attachments, and structured output; unsupported requests still fail explicitly.
 
 ### Embeddings
 

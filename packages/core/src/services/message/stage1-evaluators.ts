@@ -28,6 +28,7 @@ import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
 } from "./side-effect-claims.ts";
 import {
 	inferDirectCurrentRequestCandidateInference,
@@ -623,5 +624,3 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			},
 		},
 	];
-
-import { replyClaimsInProgressWork } from "./side-effect-claims.js";

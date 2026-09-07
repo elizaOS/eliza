@@ -13,8 +13,11 @@ import {
 } from "./runtime/service-lifecycle.js";
 
 export {
+	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
+	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
 	EmbeddingDimensionProbeError,
 	type EmbeddingProbeAttempt,
+	type EmbeddingStoreIdentity,
 } from "./runtime/embeddings.js";
 
 import { RuntimeModelDispatch } from "./runtime/model-dispatch/dispatcher.js";
@@ -355,6 +358,20 @@ async function settleBeforeTimeout(
 		if (timer !== undefined) clearTimeout(timer);
 	}
 }
+
+/**
+ * Configuration keys that operators commonly place under `settings.secrets`
+ * but that carry no credential; their values are safe in prompts and must not
+ * be redacted literally. Closed set on purpose: any other key under `secrets`
+ * keeps the literal redaction.
+ */
+const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
+	"TIMEZONE",
+	"TZ",
+	"LOCALE",
+	"LANGUAGE",
+	"LANG",
+]);
 
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
@@ -1300,7 +1317,10 @@ export class AgentRuntime implements IAgentRuntime {
 			// snapshot, otherwise the first declaration can fail before a later
 			// implementation of the same service type is visible.
 			for (const serviceType of serviceTypesToStart) {
-				void this.startServiceEagerly(serviceType, pluginToRegister.name);
+				void this.serviceLifecycle.startServiceEagerly(
+					serviceType,
+					pluginToRegister.name,
+				);
 			}
 		}
 		if (pluginToRegister.adapter) {
@@ -5086,14 +5106,8 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!secrets || typeof secrets !== "object") {
 			return {};
 		}
-		// Filter to only include string values. A small closed set of
-		// configuration keys that operators park under `secrets` but that name
-		// no credential is left out of the literal pass (live 2026-09-06: the
-		// owner's TIMEZONE=America/Los_Angeles was rewritten to
-		// "[REDACTED:TIMEZONE]" in every provider text, so the planner never
-		// learned the zone and stored calendar moves as fabricated UTC instants).
-		// Everything else under `secrets` stays redacted literally; the pattern
-		// sweep in `redactSecrets` is unchanged.
+		// Preserve declared non-credential configuration in model context.
+		// Other secret strings retain literal redaction and the pattern sweep.
 		const result: Record<string, string> = {};
 		for (const [key, value] of Object.entries(secrets)) {
 			if (NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())) continue;
@@ -6356,54 +6370,4 @@ export class AgentRuntime implements IAgentRuntime {
 			"installRemotePlugin requires a host with RemotePluginBridge wiring (see @elizaos/agent).",
 		);
 	}
-	private async startServiceEagerly(
-		serviceType: ServiceTypeName | string,
-		pluginName: string,
-	): Promise<void> {
-		for (let attempt = 0; ; attempt += 1) {
-			try {
-				await this._ensureServiceStarted(serviceType);
-				return;
-			} catch (err) {
-				// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
-				// reports each failure and service-load callers observe the rejection.
-				const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt];
-				const willRetry =
-					delayMs !== undefined && !this.stopRequested && !this.stopped;
-				this.logger.error(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						plugin: pluginName,
-						serviceType,
-						attempt: attempt + 1,
-						willRetry,
-						error: err instanceof Error ? err.message : String(err),
-					},
-					willRetry ? "Service start failed; retrying" : "Service start failed",
-				);
-				if (!willRetry) return;
-				await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-				if (this.stopRequested || this.stopped) return;
-			}
-		}
-	}
 }
-
-export const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
-	"TIMEZONE",
-	"TZ",
-	"LOCALE",
-	"LANGUAGE",
-	"LANG",
-]);
-
-export const EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [
-	2_000, 5_000, 10_000,
-];
-
-export {
-	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
-	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
-	type EmbeddingStoreIdentity,
-} from "./runtime/embeddings.js";

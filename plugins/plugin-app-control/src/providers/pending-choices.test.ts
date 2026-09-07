@@ -11,6 +11,7 @@ import {
 	type Memory,
 	type MessageHandlerResult,
 	ModelType,
+	runWithStreamingContext,
 	type State,
 	type Task,
 	TaskStatus,
@@ -27,6 +28,7 @@ import { appControlPlugin } from "../index.js";
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
 const roomId = "00000000-0000-0000-0000-000000000002" as UUID;
 const message: Memory = {
+	id: "00000000-0000-0000-0000-000000000003" as UUID,
 	agentId,
 	entityId: agentId,
 	roomId,
@@ -43,6 +45,7 @@ function runtimeWith(tasks: Task[]): IAgentRuntime {
 			tasks.filter((task) => tags.every((tag) => task.tags?.includes(tag))),
 		),
 		reportError: vi.fn(),
+		logger: { warn: vi.fn() },
 		getRoom: vi.fn(async () => null),
 		getSetting: vi.fn(() => undefined),
 	} as unknown as IAgentRuntime;
@@ -216,8 +219,6 @@ describe("model-owned app-control choices", () => {
 
 	it("does not replace a model decision with an exact-token action dispatch", async () => {
 		const runtime = runtimeWith([pending("APP")]);
-		// This caller has app creation but no GUI navigation surface.
-		runtime.actions = runtime.actions.filter((action) => action.name === "APP");
 		const handler = {
 			processMessage: "RESPOND",
 			thought: "Ask about the current request",
@@ -228,14 +229,32 @@ describe("model-owned app-control choices", () => {
 			},
 		} as MessageHandlerResult;
 		const original = structuredClone(handler);
-		await runResponseHandlerEvaluators({
-			runtime,
-			message,
-			state,
-			messageHandler: handler,
-			availableContexts: [{ id: "general" }],
-		});
-		expect(handler).toEqual(original);
+		const catalogFetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(Response.json({ views: [] }));
+		try {
+			const evaluation = await runWithStreamingContext(
+				{ messageId: message.id },
+				() =>
+					runResponseHandlerEvaluators({
+						runtime,
+						message,
+						state,
+						messageHandler: handler,
+						availableContexts: [{ id: "general" }],
+					}),
+			);
+			expect(evaluation.errors).toEqual([]);
+			expect(handler.processMessage).toBe(original.processMessage);
+			expect(handler.plan.reply).toBe(original.plan.reply);
+			expect(handler.plan.requiresTool).toBe(false);
+			expect(handler.plan.deterministicToolCall).toBeUndefined();
+			expect(handler.plan.contextSlices?.join("\n")).toContain(
+				"no authorized registered views",
+			);
+		} finally {
+			catalogFetch.mockRestore();
+		}
 	});
 
 	it("delivers every room-scoped pending owner choice before action selection without picking one", async () => {

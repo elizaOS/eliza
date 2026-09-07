@@ -216,12 +216,13 @@ describe("runtimeModelContextProvider", () => {
 		}
 	});
 
-	it("resolves a model slot through its configured fallback without leaking the raw name", async () => {
-		// A raw slot name from the resolver must fall back to the configured
-		// large model, so the user sees the actual model instead of an internal slot.
+	it("omits an unresolvable slot instead of leaking its raw name", async () => {
+		// On a non-codex backend the resolver returns the raw slot name
+		// ("RESPONSE_HANDLER") for a slot it can't map. Resolve from the
+		// configured *_MODEL keys (ACTION_PLANNER here) and OMIT a slot that
+		// stays unresolvable, rather than rendering its raw name to the user.
 		const runtime = makeRuntime(
 			{
-				ANTHROPIC_LARGE_MODEL: "claude-opus-4-8",
 				ANTHROPIC_ACTION_PLANNER_MODEL: "claude-opus-4-8",
 			},
 			{
@@ -239,7 +240,7 @@ describe("runtimeModelContextProvider", () => {
 		);
 		expect(result.text).not.toContain("RESPONSE_HANDLER");
 		expect(result.text).toContain("claude-opus-4-8");
-		expect(result.data?.responseHandlerModel).toBe("claude-opus-4-8");
+		expect(result.data?.responseHandlerModel).toBeUndefined();
 	});
 
 	it("reports the winning provider's declared model, not a losing provider's default", async () => {

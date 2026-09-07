@@ -48,11 +48,11 @@ function isNodeEnvironment(): boolean {
 }
 
 function initManagerSync(): IActionRoutingContextManager {
-	if (isNodeEnvironment()) {
+	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { AsyncLocalStorage } =
-				require("node:async_hooks") as typeof import("node:async_hooks");
+			const { AsyncLocalStorage } = process.getBuiltinModule(
+				"node:async_hooks",
+			) as typeof import("node:async_hooks");
 			const storage = new AsyncLocalStorage<ActionRoutingContext | undefined>();
 			return {
 				run<T>(

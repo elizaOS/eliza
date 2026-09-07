@@ -296,7 +296,7 @@ describe("sanitizeJsonObject", () => {
 
 describe("memory jsonb serialization", () => {
   it("preserves shared sibling values while breaking actual ancestor cycles", () => {
-    const shared: Record<string, unknown> = { label: "a\u0000b" };
+    const shared: Record<string, unknown> = { label: "ab" };
     const input = { first: shared, second: shared, list: [shared] };
     expect(JSON.parse(serializeJsonb(input) as string)).toEqual({
       first: { label: "ab" },
@@ -320,14 +320,15 @@ describe("memory jsonb serialization", () => {
     );
   });
 
-  it("decodes legacy JSON before removing NULs and preserves literal escapes", () => {
+  it("rejects decoded legacy NULs while preserving literal escapes", () => {
     const literal = String.raw`C:\notes\version-3.5 \u0000`;
     const encoded = JSON.stringify({ text: literal, thought: "a\u0000b" });
-    expect(JSON.parse(serializeJsonb(encoded) as string)).toEqual({
+    expect(() => serializeJsonb(encoded)).toThrowError(
+      expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_NUL" })
+    );
+    expect(JSON.parse(serializeJsonb(JSON.stringify({ text: literal })) as string)).toEqual({
       text: literal,
-      thought: "ab",
     });
-    expect(encoded).toContain("\\u0000");
   });
 
   it("rejects malformed legacy JSON without copying its content into errors", () => {
@@ -358,11 +359,9 @@ describe("memory jsonb serialization", () => {
 });
 
 describe("legacy jsonb lexical preservation", () => {
-  it("retains arbitrary-precision numeric tokens while stripping NUL string escapes", () => {
-    const input = String.raw`{ "counter": 9007199254740993, "fraction": 0.1234567890123456789, "label": "a\u0000b" }`;
-    expect(serializeJsonb(input)).toBe(
-      '{ "counter": 9007199254740993, "fraction": 0.1234567890123456789, "label": "ab" }'
-    );
+  it("retains arbitrary-precision numeric tokens without a parse/stringify roundtrip", () => {
+    const input = `{ "counter": 9007199254740993, "fraction": 0.1234567890123456789, "label": "ab" }`;
+    expect(serializeJsonb(input)).toBe(input);
   });
 
   it("distinguishes literal backslash runs from actual NUL escapes in values and keys", () => {
@@ -372,17 +371,17 @@ describe("legacy jsonb lexical preservation", () => {
       const content = `${prefix}\u0000text`;
       const literal = `${prefix}\\u0000text`;
       const input = JSON.stringify({ [key]: content, literal });
-      expect(JSON.parse(serializeJsonb(input) as string)).toEqual({
-        [`${prefix}keyend`]: `${prefix}text`,
-        literal,
-      });
+      expect(() => serializeJsonb(input)).toThrowError(
+        expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_NUL" })
+      );
+      expect(JSON.parse(serializeJsonb({ literal }) as string)).toEqual({ literal });
     }
   });
 
   it("rejects sanitized key collisions instead of silently overwriting durable data", () => {
     const input = JSON.stringify({ key: "first", "k\u0000ey": "second" });
     expect(() => serializeJsonb(input)).toThrowError(
-      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+      expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_NUL" })
     );
   });
 });

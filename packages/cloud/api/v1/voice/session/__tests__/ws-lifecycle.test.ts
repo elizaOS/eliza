@@ -2805,7 +2805,6 @@ describe("voice-session WS lifecycle", () => {
       expect(fetchCalls).toBe(3);
     },
   );
-
   test("half duplex drops speaker echo through playback and bounded settle", async () => {
     let nowMs = Date.now();
     const client = new FakeClientSocket();

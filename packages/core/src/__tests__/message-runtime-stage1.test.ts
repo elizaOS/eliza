@@ -1944,8 +1944,8 @@ describe("runV5MessageRuntimeStage1", () => {
 			firstCall[1] as { messages?: Array<{ content?: unknown }> }
 		).messages;
 		const wireText = JSON.stringify(messages ?? []);
-		expect(wireText).toContain("LOSSLESS_HISTORY_MANIFEST");
-		expect(wireText).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+		expect(wireText).toContain("EAGER_CROSS_ROOM_HISTORY");
+		expect(wireText).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 		let previousPosition = -1;
 		for (const memory of recentMessages) {
 			const text = memory.content.text;
@@ -2015,7 +2015,43 @@ describe("runV5MessageRuntimeStage1", () => {
 			);
 		}
 
-		it("judges the recall signal on the user's request, not on a document-augmentation wrapper", async () => {
+		it("preserves complete provider bodies beyond a declared Stage-1 window", async () => {
+			const runtime = runtimeWithHistoryProvider();
+			runtime.getModelRegistrations = vi.fn(() => [
+				{
+					modelType: ModelType.RESPONSE_HANDLER,
+					provider: "test",
+					metadata: { contextWindowTokens: 32000 },
+				},
+			]) as IAgentRuntime["getModelRegistrations"];
+			const state = historyState();
+			const body =
+				"early instruction: do not delete the invoice\n" +
+				"calendar appointment\n".repeat(8000) +
+				"final instruction: retain the original";
+			if (!state.data.providers) throw new Error("Expected providers");
+			state.data.providers["recent-conversations"].text = body;
+			state.text = body;
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "what did we discuss yesterday?" }),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const call = useModelCalls(runtime)[0];
+			if (!call) throw new Error("Expected a Stage-1 model call");
+			const messages = (
+				call[1] as {
+					messages: Array<{ content: string }>;
+				}
+			).messages;
+			expect(messages.some((entry) => entry.content.includes(body))).toBe(true);
+			expect(wireOfFirstCall(runtime)).not.toContain(
+				"LOSSLESS_HISTORY_MANIFEST",
+			);
+		});
+
+		it("preserves complete history for document-augmented requests", async () => {
 			// Live 2026-09-06: the augmentation preamble's own words matched a
 			// relevance keyword on every API turn and the eager corpus went out.
 			const runtime = runtimeWithHistoryProvider();
@@ -2038,11 +2074,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			});
 			const wire = wireOfFirstCall(runtime);
-			expect(wire).toContain("LOSSLESS_HISTORY_MANIFEST");
-			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 		});
 
-		it("sends the lossless manifest on a text turn with no recall signal", async () => {
+		it("preserves complete history on a text turn with no recall keyword", async () => {
 			// Live 2026-09-05: the eager cross-room history was 22.7K of a
 			// 44K-token Stage-1 prompt on "whats on my calendar tuesday?".
 			const runtime = runtimeWithHistoryProvider();
@@ -2053,20 +2089,20 @@ describe("runV5MessageRuntimeStage1", () => {
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			const wire = wireOfFirstCall(runtime);
-			expect(wire).toContain("LOSSLESS_HISTORY_MANIFEST");
-			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 			// The current room's own history is a different provider and stays.
 			expect(wire).toContain("CURRENT_ROOM_TURN");
 		});
 
 		it.each([
 			{
-				name: "preserves the text manifest in the planner",
+				name: "preserves complete provider text in the planner",
 				text: "Open Notes.",
 				contexts: ["general"],
 				keywords: true,
-				stage1Manifest: true,
-				plannerManifest: true,
+				stage1Manifest: false,
+				plannerManifest: false,
 			},
 			{
 				name: "retains eager recall outside a retrieval context",
@@ -2077,12 +2113,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				plannerManifest: false,
 			},
 			{
-				name: "lets model-selected memory use its retrieval manifest",
+				name: "preserves complete provider text in the memory context",
 				text: "What did we discuss yesterday?",
 				contexts: ["memory"],
 				keywords: true,
 				stage1Manifest: false,
-				plannerManifest: true,
+				plannerManifest: false,
 			},
 			{
 				name: "retains eager history without declared relevance keywords",

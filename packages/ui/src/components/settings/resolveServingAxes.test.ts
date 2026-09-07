@@ -35,6 +35,14 @@ const base: ServingAxesInput = {
 };
 
 describe("resolveServingAxes", () => {
+  it("turns serving wire ids into stable product labels", () => {
+    expect(servingProviderLabel("cerebras")).toBe("Cerebras");
+    expect(servingProviderLabel("openai")).toBe("OpenAI");
+    expect(servingProviderLabel("claude-chat")).toBe("Claude");
+    expect(servingProviderLabel("custom-provider")).toBe("custom-provider");
+    expect(servingProviderLabel("  ")).toBeNull();
+  });
+
   it("does not infer local model readiness from a loopback runtime", () => {
     const axes = resolveServingAxes({
       ...base,
@@ -172,8 +180,8 @@ describe("resolveServingAxes", () => {
       startupTarget: "embedded-local",
     });
     expect(axes.runtime).toBe("remote");
-    expect(axes.combination).toBe("inference-unknown");
     expect(axes.inference).toBe("unknown");
+    expect(axes.combination).toBe("inference-unknown");
   });
 
   it("keeps hybrid local when the server also reports a local deployment runtime", () => {

@@ -100,7 +100,7 @@ describe("non-verdict JSON at the evaluator boundary", () => {
 
 describe("non-verdict evaluator JSON leaves remaining work to the real planner", () => {
 	it.each(["noop", "applied"] as const)(
-		"opens Home after %s Calendar work without repeating it",
+		"opens Home after %s Calendar work without replaying mutations",
 		async (outcome) => {
 			const calendarParams = {
 				action: outcome === "noop" ? "search_events" : "delete_event",
@@ -118,17 +118,39 @@ describe("non-verdict evaluator JSON leaves remaining work to the real planner",
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [
-						...(outcome === "applied"
-							? [
-									{
-										id: "calendar-repeat",
-										name: "CALENDAR",
-										arguments: calendarParams,
-									},
-								]
-							: []),
+						{
+							id: "calendar-repeat",
+							name: "CALENDAR",
+							arguments: calendarParams,
+						},
 						{
 							id: "home-1",
+							name: "VIEWS",
+							arguments: { action: "open", view: "home" },
+						},
+					],
+				})
+				.mockResolvedValueOnce(
+					JSON.stringify({
+						success: true,
+						decision: outcome === "noop" ? "CONTINUE" : "FINISH",
+						thought:
+							outcome === "noop"
+								? "The repeated observation is complete; Home still needs to open."
+								: "The recorded Calendar result and Home navigation complete the request.",
+						...(outcome === "applied"
+							? {
+									messageToUser:
+										"The temporary event is absent, and Home is open.",
+								}
+							: {}),
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "home-after-observation",
 							name: "VIEWS",
 							arguments: { action: "open", view: "home" },
 						},
@@ -222,6 +244,7 @@ describe("non-verdict evaluator JSON leaves remaining work to the real planner",
 			expect([...events]).toEqual(["untouched"]);
 			expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
 				"CALENDAR",
+				...(outcome === "noop" ? ["CALENDAR"] : []),
 				"VIEWS",
 			]);
 			expect(useModel.mock.calls.map(([type]) => type)).toEqual([
@@ -229,6 +252,9 @@ describe("non-verdict evaluator JSON leaves remaining work to the real planner",
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
+				...(outcome === "noop"
+					? [ModelType.ACTION_PLANNER, ModelType.RESPONSE_HANDLER]
+					: []),
 			]);
 			expect(result.finalMessage).toBe(
 				"The temporary event is absent, and Home is open.",

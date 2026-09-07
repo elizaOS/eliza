@@ -346,6 +346,34 @@ export function messageBypassesResponseEvaluation(
 	);
 }
 
+/**
+ * Whether an ambient (unaddressed group) turn should carry the restrained
+ * HARD-GATE shouldRespond policy instead of the participatory default. Only an
+ * explicit `addressed_or_ambient` reply_gate opts a room's agent back into the
+ * quiet-ambient bias; the unset default participates on its own judgment while
+ * keeping ambient classification (ack suppression, provider exclusions, the
+ * deliberate-silence terminal, and the engagement addressing gate) intact.
+ */
+export function isStage1AmbientHardGated(
+	runtime: IAgentRuntime,
+	message: Memory,
+): boolean {
+	try {
+		return (
+			resolveStage1ReplyGateMode(runtime, message) === "addressed_or_ambient"
+		);
+	} catch (error) {
+		// error-policy:J7 personality lookup is advisory routing context. A store
+		// failure must fail open to the participatory default, not force the
+		// restrained gate.
+		runtime.reportError("MessageService.resolveAmbientReplyGate", error, {
+			roomId: message.roomId,
+			entityId: message.entityId,
+		});
+		return false;
+	}
+}
+
 export function isAmbientStage1Turn(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -429,24 +457,4 @@ export function listAvailableContextsForRole(
 		return [];
 	}
 	return registry.listAvailable(role);
-}
-
-export function isStage1AmbientHardGated(
-	runtime: IAgentRuntime,
-	message: Memory,
-): boolean {
-	try {
-		return (
-			resolveStage1ReplyGateMode(runtime, message) === "addressed_or_ambient"
-		);
-	} catch (error) {
-		// error-policy:J7 personality lookup is advisory routing context. A store
-		// failure must fail open to the participatory default, not force the
-		// restrained gate.
-		runtime.reportError("MessageService.resolveAmbientReplyGate", error, {
-			roomId: message.roomId,
-			entityId: message.entityId,
-		});
-		return false;
-	}
 }

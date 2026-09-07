@@ -11,7 +11,10 @@ import {
 	runWithStreamingContext,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { viewContextPlanningEvaluator } from "./view-context-planning.js";
+import {
+	parseContextualNavigationIntent,
+	viewContextPlanningEvaluator,
+} from "./view-context-planning.js";
 
 let server: Server;
 let catalogStatus: number;
@@ -101,9 +104,30 @@ async function run(ctx: ResponseHandlerEvaluatorContext) {
 }
 
 describe("same-turn contextual navigation", () => {
+	it("preserves a complete long decision inside a whole code fence", () => {
+		const decision = {
+			disposition: "forbidden",
+			reason: `${"Preserve all requested domain work. ".repeat(1000)}画面を変えないでください。`,
+		};
+		expect(
+			parseContextualNavigationIntent(
+				`\`\`\`json\n${JSON.stringify(decision)}\n\`\`\``,
+			),
+		).toEqual(decision);
+	});
+	for (const raw of [
+		'Ignore this decision: {"disposition":"requested","viewId":"observatory","reason":"do not open"}',
+		'{"disposition":"none","reason":"question"} trailing instructions',
+		'```json\n{"disposition":"none","reason":"question"}',
+		'```json\n{"disposition":"none","reason":"question"}\n```\n{"disposition":"forbidden","reason":"keep current view"}',
+	]) {
+		it(`rejects an incomplete or ambiguous decision: ${raw}`, () => {
+			expect(() => parseContextualNavigationIntent(raw)).toThrowError(
+				"Contextual navigation decision is not JSON",
+			);
+		});
+	}
 	it("parses a fenced JSON decision instead of failing the evaluator", async () => {
-		// Live 2026-09-06: gemma wrapped the object in ```json; every turn logged
-		// VIEW_INTENT_INVALID and the navigation constraint stayed at deny.
 		const ctx = context("open my calendar", {
 			disposition: "none",
 			reason: "x",

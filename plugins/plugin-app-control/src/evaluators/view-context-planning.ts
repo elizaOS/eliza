@@ -24,22 +24,11 @@ export type ContextualNavigationIntent =
 
 const WHOLE_CODE_FENCE = /^```(?:json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
-/**
- * Returns the JSON object text inside raw model output: a whole ```json fence
- * is unwrapped, and prose around a single top-level `{...}` is dropped. Text
- * that is already bare JSON, or that contains no object, is returned as is so
- * `JSON.parse` reports the real failure.
- */
+/** Unwrap only a complete code fence; never discard prose or competing decisions. */
 function unwrapJsonObjectText(raw: string): string {
 	const trimmed = raw.trim();
 	const fenced = trimmed.match(WHOLE_CODE_FENCE);
-	const candidate = (fenced?.[1] ?? trimmed).trim();
-	if (candidate.startsWith("{")) return candidate;
-	const start = candidate.indexOf("{");
-	const end = candidate.lastIndexOf("}");
-	return start >= 0 && end > start
-		? candidate.slice(start, end + 1)
-		: candidate;
+	return (fenced?.[1] ?? trimmed).trim();
 }
 
 /** Reject malformed decisions; unknown IDs are rejected against the live catalog. */
@@ -47,9 +36,6 @@ export function parseContextualNavigationIntent(
 	text: string,
 ): ContextualNavigationIntent {
 	// error-policy:J3 invalid model output remains an explicit parse failure.
-	// Small models routinely wrap the object in a ```json fence or a sentence;
-	// the object itself is still the complete decision, so unwrap before
-	// judging (live 2026-09-06: every Discord turn logged VIEW_INTENT_INVALID).
 	let value: unknown;
 	try {
 		value = JSON.parse(unwrapJsonObjectText(text));
@@ -57,7 +43,6 @@ export function parseContextualNavigationIntent(
 		throw new ElizaError("Contextual navigation decision is not JSON", {
 			code: "VIEW_INTENT_INVALID",
 			cause,
-			context: { outputPreview: text.trim().slice(0, 200) },
 		});
 	}
 	if (

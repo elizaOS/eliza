@@ -14,6 +14,7 @@ import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import {
 	appliedEffectReceiptIdsForReply,
 	evaluatePlannedReplyEgress,
+	resolvePlannedReplyEgress,
 } from "./egress-policy.js";
 import {
 	collectMediaDeliveryUrls,
@@ -37,8 +38,6 @@ export async function finalizePlannerReply(
 	args: V5MessageRuntimeInput,
 	{
 		plannerResult,
-		replyRecovered,
-		recoveredReply,
 		exposedPlannerActions,
 		plannerState,
 		ambientTurn,
@@ -49,12 +48,10 @@ export async function finalizePlannerReply(
 		earlyReplyText,
 		settledPlannerToolResults,
 		deliveredVisibleTexts,
+		recoveredReply,
+		replyRecovered,
 	}: {
 		plannerResult: PlannerLoopResult;
-		replyRecovered: boolean;
-		recoveredReply:
-			| Awaited<ReturnType<typeof resolvePlannedReplyEgress>>
-			| undefined;
 		exposedPlannerActions: Action[];
 		plannerState: State;
 		ambientTurn: boolean;
@@ -68,6 +65,10 @@ export async function finalizePlannerReply(
 			result: PlannerToolResult;
 		}>;
 		deliveredVisibleTexts: Set<string>;
+		recoveredReply:
+			| Awaited<ReturnType<typeof resolvePlannedReplyEgress>>
+			| undefined;
+		replyRecovered: boolean;
 	},
 ): Promise<V5MessageRuntimeStage1Result> {
 	const actionResults = collectPreviousActionResults(
@@ -509,5 +510,3 @@ export async function finalizePlannerReply(
 				},
 	};
 }
-
-import { resolvePlannedReplyEgress } from "./egress-policy.js";

@@ -2,7 +2,10 @@
 
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
-import { normalizeTopics } from "../../runtime/builtin-field-evaluators";
+import {
+	normalizeReplyEffectStatus,
+	normalizeTopics,
+} from "../../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../../runtime/candidate-action-backstop";
 import {
 	parseJsonObject,
@@ -24,6 +27,7 @@ import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
 	getMessageHandlerCandidateActions,
 	messageHandlerStageOneReplyContexts,
+	stringArrayProperty,
 } from "./action-surface.js";
 import {
 	looksLikeCodingWorkRequest,
@@ -906,14 +910,3 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 		},
 	};
 }
-
-export function stringArrayProperty(value: unknown): string[] {
-	if (!Array.isArray(value)) {
-		return [];
-	}
-	return value
-		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-		.filter((entry) => entry.length > 0);
-}
-
-import { normalizeReplyEffectStatus } from "../../runtime/builtin-field-evaluators.js";

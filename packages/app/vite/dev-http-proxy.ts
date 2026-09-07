@@ -1,3 +1,4 @@
+/** Ends browser proxy responses when the development API disconnects. */
 import type { HttpProxy } from "vite";
 
 /** Keep a disconnected dev API response from leaving its browser stream open. */

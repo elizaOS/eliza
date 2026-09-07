@@ -134,7 +134,7 @@ describe("Memory Integration Tests", () => {
   });
 
   it.each(["adapter", "store"])(
-    "%s persists model output containing NULs without corrupting ordinary escapes",
+    "%s rejects unsupported NULs atomically and preserves literal escapes",
     async (path) => {
       const writer =
         path === "adapter"
@@ -153,42 +153,48 @@ describe("Memory Integration Tests", () => {
       const text = String.raw`C:\notes\version-3.5 https://example.org \u0000`;
       const memory = createTestMemory({
         text,
-        thought: "Moved to 11:00\u0000-11:15 AM",
+        thought: "Moved to 11:00-11:15 AM",
       });
-      memory.metadata = { ...memory.metadata, diagnostic: { label: "a\u0000b" } };
+      memory.metadata = { ...memory.metadata, diagnostic: { label: "ab" } };
 
       const id = await writer.create(memory, "messages");
       const created = await adapter.getMemoryById(id);
       expect(created?.content).toEqual({ text, thought: "Moved to 11:00-11:15 AM" });
       expect(created?.metadata).toMatchObject({ diagnostic: { label: "ab" } });
-      expect(memory.content.thought).toContain("\u0000");
-
-      await writer.update({
-        id,
-        content: { text, thought: "Finished\u0000." },
-        metadata: { ...memory.metadata, diagnostic: { label: "c\u0000d" } },
+      for (const invalid of [
+        { text, thought: "Finished\u0000." },
+        { text, "bad\u0000key": "unchanged" },
+      ]) {
+        for (const content of [invalid, JSON.stringify(invalid) as unknown as Content]) {
+          const rejected = { ...createTestMemory({ text }), content };
+          await expect(writer.create(rejected, "messages")).rejects.toMatchObject({
+            code: "SQL_JSON_UNSUPPORTED_NUL",
+          });
+          expect(await adapter.getMemoryById(rejected.id as UUID)).toBeNull();
+          await expect(writer.update({ id, content })).rejects.toMatchObject({
+            code: "DB_UPDATE_FAILED",
+            cause: { code: "SQL_JSON_UNSUPPORTED_NUL" },
+          });
+          expect(await adapter.getMemoryById(id)).toEqual(created);
+        }
+      }
+      await expect(
+        writer.update({
+          id,
+          content: { text: "must not replace original" },
+          metadata: { ...memory.metadata, diagnostic: { label: "e\u0000f" } },
+        })
+      ).rejects.toMatchObject({
+        code: "DB_UPDATE_FAILED",
+        cause: { code: "SQL_JSON_UNSUPPORTED_NUL" },
       });
-      expect((await adapter.getMemoryById(id))?.content).toEqual({
-        text,
-        thought: "Finished.",
-      });
-      expect((await adapter.getMemoryById(id))?.metadata).toMatchObject({
-        diagnostic: { label: "cd" },
-      });
-
-      await writer.update({
-        id,
-        metadata: { ...memory.metadata, diagnostic: { label: "e\u0000f" } },
-      });
-      expect((await adapter.getMemoryById(id))?.metadata).toMatchObject({
-        diagnostic: { label: "ef" },
-      });
+      expect(await adapter.getMemoryById(id)).toEqual(created);
 
       // Older callers can supply pre-encoded JSON; actual NUL and the literal
       // six-character escape must still be distinguished after decoding.
       const encoded = {
         ...createTestMemory({ text }),
-        content: JSON.stringify({ text, thought: "Encoded\u0000." }) as unknown as Content,
+        content: JSON.stringify({ text, thought: "Encoded." }) as unknown as Content,
         metadata: JSON.stringify(memory.metadata) as unknown as MemoryMetadata,
       };
       const encodedId = await writer.create(encoded, "messages");
@@ -198,7 +204,7 @@ describe("Memory Integration Tests", () => {
       });
       await writer.update({
         id: encodedId,
-        content: JSON.stringify({ text, thought: "Updated\u0000." }) as unknown as Content,
+        content: JSON.stringify({ text, thought: "Updated." }) as unknown as Content,
       });
       expect((await adapter.getMemoryById(encodedId))?.content).toEqual({
         text,
@@ -208,7 +214,7 @@ describe("Memory Integration Tests", () => {
   );
 
   it("preserves repeated shared values in atomic memory batches", async () => {
-    const shared = { text: "Release 3.5\u0000" };
+    const shared = { text: "Release 3.5" };
     const memory = createTestMemory({ text: "Shared", first: shared, second: shared });
     await adapter.createMemories([{ memory, tableName: "messages", unique: false }]);
     expect((await adapter.getMemoryById(memory.id as UUID))?.content).toEqual({

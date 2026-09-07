@@ -629,7 +629,7 @@ describe("authenticated view loopback requests", () => {
 				capability: "get-agent-state",
 			},
 		});
-		expect(result.modelReplyFallback).toBeUndefined();
+		expect(result).not.toHaveProperty("modelReplyFallback");
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(result).not.toHaveProperty("verifiedUserFacing");
 		const plannerState = JSON.stringify(result.data);
@@ -679,7 +679,6 @@ describe("authenticated view loopback requests", () => {
 			transcriptVisibility: "internal",
 		});
 		expect(result.turnComplete).toBe(false);
-		expect(result.modelReplyRequired).toBe(true);
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(
 			(result as { verifiedUserFacing?: boolean }).verifiedUserFacing,

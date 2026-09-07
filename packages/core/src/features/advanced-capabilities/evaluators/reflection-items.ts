@@ -9,8 +9,8 @@
  *
  * The evaluators share a single reflection-context prepare step (recent messages,
  * entities in room, existing relationships) and gate on `canEvaluateMessage`.
- * Fact dedupe is purely lexical (keyword / search-text similarity), so the
- * factMemory path never issues an embedding call.
+ * Fact dedupe requires an equivalent complete claim and structured meaning;
+ * keyword relevance never authorizes discarding a newly extracted fact.
  *
  * Every response `schema` here is hand-written to survive strict
  * structured-output mode (Groq / Cerebras / OpenAI strict): every object node
@@ -35,6 +35,7 @@ import type {
 	Entity,
 	Evaluator,
 	EvaluatorRunOptions,
+	EvaluatorSharedPromptContext,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
@@ -55,13 +56,12 @@ import type {
 } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
+import { stableStringify } from "../../../utils/deterministic.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
 	factClaimsEquivalent,
-	factLexicalSimilarity,
-	readStoredFactKeywords,
 } from "../fact-keywords.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
@@ -577,35 +577,33 @@ function isExplicitMemoryFact(memory: Memory): boolean {
 	);
 }
 
-/** Explicit user memories absorb only equivalent claims, never similar topics. */
+/** Suppress only equivalent claims with the same structured meaning and date. */
 function findDedupTarget(
 	candidates: FactCandidate[],
 	claim: string,
-	targetValues: unknown[],
+	structuredFields: Record<string, unknown>,
 	kind: FactKind,
 	category: string,
+	validAt?: string,
 ): Memory | null {
-	let best: { memory: Memory; similarity: number } | null = null;
 	for (const candidate of candidates) {
-		if (isExplicitMemoryFact(candidate.memory)) {
-			if (factClaimsEquivalent(claim, candidate.memory.content.text ?? "")) {
-				return candidate.memory;
-			}
+		if (!factClaimsEquivalent(claim, candidate.memory.content.text ?? ""))
 			continue;
+		if (isExplicitMemoryFact(candidate.memory)) {
+			return candidate.memory;
 		}
 		if (readFactKind(candidate.memory) !== kind) continue;
 		if (readCategory(candidate.memory) !== category) continue;
-		const similarity = factLexicalSimilarity(targetValues, [
-			candidate.searchText,
-			readStoredFactKeywords(candidate.memory),
-		]);
-		if (similarity >= DEDUP_SIMILARITY_THRESHOLD) {
-			if (!best || similarity > best.similarity) {
-				best = { memory: candidate.memory, similarity };
-			}
-		}
+		const metadata = readFactMetadata(candidate.memory);
+		if (
+			stableStringify(metadata.structuredFields ?? {}) !==
+			stableStringify(structuredFields)
+		)
+			continue;
+		if (validAt !== undefined && metadata.validAt !== validAt) continue;
+		return candidate.memory;
 	}
-	return best?.memory ?? null;
+	return null;
 }
 
 interface ApplyContext {
@@ -712,11 +710,10 @@ async function applyAddDurable(
 		op.category,
 		op.structured_fields,
 	);
-	const targetValues = [op.claim, op.category, op.structured_fields, keywords];
 	const dedupTarget = findDedupTarget(
 		[...ctx.candidatePool, ...ctx.insertedThisRun],
 		op.claim,
-		targetValues,
+		op.structured_fields,
 		"durable",
 		op.category,
 	);
@@ -756,13 +753,13 @@ async function applyAddCurrent(
 		op.category,
 		op.structured_fields,
 	);
-	const targetValues = [op.claim, op.category, op.structured_fields, keywords];
 	const dedupTarget = findDedupTarget(
 		[...ctx.candidatePool, ...ctx.insertedThisRun],
 		op.claim,
-		targetValues,
+		op.structured_fields,
 		"current",
 		op.category,
+		op.valid_at,
 	);
 	if (dedupTarget) {
 		await applyStrengthenForMemory(ctx, dedupTarget);
@@ -1028,7 +1025,7 @@ function renderFactMemoryPromptSegments({
 	shared,
 }: {
 	prepared: FactPrepared;
-	shared?: import("../../../types/evaluator").EvaluatorSharedPromptContext;
+	shared?: EvaluatorSharedPromptContext;
 }): PromptSegment[] {
 	const { durable, current } = partitionByKind(prepared.knownFacts);
 
@@ -1162,7 +1159,7 @@ function renderRelationshipPromptSegments({
 	shared,
 }: {
 	prepared: ReflectionPrepared;
-	shared?: import("../../../types/evaluator").EvaluatorSharedPromptContext;
+	shared?: EvaluatorSharedPromptContext;
 }): PromptSegment[] {
 	return [
 		{
@@ -1241,7 +1238,7 @@ function renderIdentityPromptSegments({
 	shared,
 }: {
 	prepared: ReflectionPrepared;
-	shared?: import("../../../types/evaluator").EvaluatorSharedPromptContext;
+	shared?: EvaluatorSharedPromptContext;
 }): PromptSegment[] {
 	return [
 		{
@@ -1314,13 +1311,20 @@ export const identityEvaluator: Evaluator<
 
 function renderSuccessPromptSegments({
 	prepared,
-	shared,
 	options,
+	shared,
 }: {
 	prepared: SuccessPrepared;
-	shared?: import("../../../types/evaluator").EvaluatorSharedPromptContext;
 	options: EvaluatorRunOptions;
+	shared?: EvaluatorSharedPromptContext;
 }): PromptSegment[] {
+	const actionResultsText = renderActionResultsForModel(
+		prepared.actionResults,
+	).text;
+	const actionResultsSection =
+		shared?.actionResultsText === actionResultsText
+			? 'Action results: see "Action results" in the Shared Turn Context above.'
+			: `Action results:\n${actionResultsText}`;
 	return [
 		{
 			content: `Evaluate if current user task is complete after agent response.
@@ -1338,7 +1342,7 @@ Rules:
 
 ${recentMessagesSection(shared, prepared.recentMessages)}
 
-${shared?.actionResultsText === renderActionResultsForModel(prepared.actionResults).text ? 'Action results: see "Action results" in the Shared Turn Context above.' : `Action results:\n${renderActionResultsForModel(prepared.actionResults).text}`}`,
+${actionResultsSection}`,
 			stable: false,
 		},
 	];

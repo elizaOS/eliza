@@ -511,7 +511,7 @@ describe("v5 tiered action surface", () => {
 		},
 	);
 
-	it("uses a provider's lossless retrieval projection before an oversized planner dispatch", async () => {
+	it("preserves the full provider body across an oversized planner estimate", async () => {
 		const handler = vi.fn(async () => ({
 			success: true,
 			text: "Calendar event created",
@@ -570,13 +570,15 @@ describe("v5 tiered action surface", () => {
 			(call) => call.modelType === ModelType.ACTION_PLANNER,
 		);
 		const serializedPlannerRequest = JSON.stringify(plannerCall?.params);
-		expect(serializedPlannerRequest).toContain("CALENDAR_RETRIEVE_SENTINEL");
-		expect(serializedPlannerRequest).not.toContain("EAGER_CALENDAR_SENTINEL");
+		expect(serializedPlannerRequest.includes(eagerText)).toBe(true);
+		expect(
+			serializedPlannerRequest.includes("CALENDAR_RETRIEVE_SENTINEL"),
+		).toBe(false);
 		expect(plannerToolNames(runtime)).toContain("CALENDAR_CREATE_EVENT");
 		expect(handler).toHaveBeenCalledOnce();
 	});
 
-	it("uses the model-authored Stage 1 candidate when promoted child schemas exceed the planner budget", async () => {
+	it("keeps admitted children directly executable above the estimated planner budget", async () => {
 		const childHandler = vi.fn(async () => ({
 			success: true,
 			text: "Calendar event created",
@@ -604,7 +606,6 @@ describe("v5 tiered action surface", () => {
 					contexts: ["calendar"],
 					candidateActionNames: ["CALENDAR"],
 				}),
-				plannerToolResponse("CALENDAR"),
 				plannerToolResponse("CALENDAR_OP_01"),
 				finishEvaluatorResponse("Calendar event created."),
 				finishEvaluatorResponse("Calendar event created."),
@@ -620,16 +621,9 @@ describe("v5 tiered action surface", () => {
 
 		const toolNames = plannerToolNames(runtime);
 		expect(toolNames).toContain("CALENDAR");
-		expect(toolNames).not.toContain("CALENDAR_OP_01");
-		expect(toolNames).not.toContain("CALENDAR_OP_28");
+		expect(toolNames).toContain("CALENDAR_OP_01");
+		expect(toolNames).toContain("CALENDAR_OP_28");
 		expect(childHandler).toHaveBeenCalledOnce();
-		expect(runtime.logger.warn).toHaveBeenCalledWith(
-			expect.objectContaining({
-				authorizedActionCount: 29,
-				candidateToolCount: 4,
-			}),
-			"[SERVICE:MESSAGE] Planner used the model-authored Stage 1 candidate surface to fit the dispatch budget",
-		);
 	});
 
 	it("uses Stage 1 hints to promote a parent to Tier A and expose children", async () => {
@@ -769,12 +763,10 @@ describe("v5 tiered action surface", () => {
 		{
 			name: "compound navigation and data hints",
 			candidateActionNames: ["CALENDAR_OPEN", "CALENDAR_LIST_EVENTS_BY_DATE"],
-			completeSurface: false,
 		},
 		{
 			name: "an unresolved unary hint",
 			candidateActionNames: ["MISSING_CAPABILITY"],
-			completeSurface: true,
 		},
 		{
 			name: "unresolved and denied hints",
@@ -783,11 +775,10 @@ describe("v5 tiered action surface", () => {
 				"PRIVATE_CALENDAR_REPAIR",
 				"CALENDAR_ADMIN_ONLY",
 			],
-			completeSurface: true,
 		},
 	])(
 		"preserves $name for authorized app action discovery",
-		async ({ candidateActionNames, completeSurface }) => {
+		async ({ candidateActionNames }) => {
 			const privateHandler = vi.fn(async () => ({ success: true }));
 			const adminHandler = vi.fn(async () => ({ success: true }));
 			const runtime = makeRuntime({
@@ -843,7 +834,7 @@ describe("v5 tiered action surface", () => {
 			const tools = plannerToolNames(runtime);
 			expect(tools).toContain("CALENDAR");
 			expect(tools).toContain("VIEWS");
-			expect(tools.includes("UNRELATED")).toBe(completeSurface);
+			expect(tools).toContain("UNRELATED");
 			expect(tools).not.toContain("MISSING_CAPABILITY");
 			expect(tools).not.toContain("PRIVATE_CALENDAR_REPAIR");
 			expect(tools).not.toContain("CALENDAR_ADMIN_ONLY");
@@ -858,7 +849,7 @@ describe("v5 tiered action surface", () => {
 		},
 	);
 
-	it("keeps an app planner turn on the model-selected focused-view action", async () => {
+	it("keeps other admitted actions available beside a focused-view hint", async () => {
 		const notes = makeAction({
 			name: "NOTES",
 			description: "Read the notes shown in the open Notes view.",
@@ -904,8 +895,8 @@ describe("v5 tiered action surface", () => {
 
 		const tools = plannerToolNames(runtime);
 		expect(tools).toContain("NOTES");
-		expect(tools).not.toContain("VIEWS");
-		expect(tools).not.toContain("MESSAGE");
+		expect(tools).toContain("VIEWS");
+		expect(tools).toContain("MESSAGE");
 	});
 
 	it("does not let focused-view metadata widen action context admission", async () => {

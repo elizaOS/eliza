@@ -65,6 +65,7 @@ import type {
 	HandlerCallback,
 	MessageHandlerResult,
 } from "../../types/components";
+import type { ContextEvent } from "../../types/context-object";
 import type { GenerateTextParams } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
 import { ChannelType } from "../../types/primitives";
@@ -92,6 +93,7 @@ import {
 } from "./action-surface.js";
 import {
 	isAmbientStage1Turn,
+	isStage1AmbientHardGated,
 	listAvailableContextsForRole,
 	messageChallengesPriorAgentReply,
 	messageContinuesAfterRecentAgentCorrection,
@@ -103,7 +105,10 @@ import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { withoutIntermediateVisibleText } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
-import { evaluatePlannedReplyEgress } from "./egress-policy.js";
+import {
+	evaluatePlannedReplyEgress,
+	resolvePlannedReplyEgress,
+} from "./egress-policy.js";
 import {
 	buildV5ExecutorContext,
 	collectPlannerTools,
@@ -116,13 +121,13 @@ import {
 	isOwnerLifeManagementToolCandidate,
 	isTextScoredBenchmarkTurn,
 	selectV5PlannerStateProviderNames,
-	withProviderOverflowText,
 } from "./provider-state.js";
 import {
 	createV5ReplyStrategyResult,
 	deliveredTextsCoverReply,
 	normalizeVisibleTextForDuplicateCheck,
 	preservedSettledToolResult,
+	replyNamesStructuredEffectDestination,
 	restorePiiInUserReplyText,
 	structuredEffectFromToolResult,
 	trackSettledPlannerToolResult,
@@ -131,7 +136,10 @@ import {
 	isTerseReplyWorthKeeping,
 	isUnusableStage1Reply,
 } from "./reply-quality.js";
-import { withContextRoutingValues } from "./response-state.js";
+import {
+	withActionResultsForPrompt,
+	withContextRoutingValues,
+} from "./response-state.js";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	filterSelectedContextsForRole,
@@ -205,8 +213,6 @@ export async function runV5MessageRuntimeStage1(
 		args.message.content?.channelType === ChannelType.VOICE_DM ||
 		args.message.content?.channelType === ChannelType.API ||
 		args.message.content?.channelType === ChannelType.SELF;
-	const voiceDirectMessageChannel =
-		args.message.content?.channelType === ChannelType.VOICE_DM;
 	// Ambient turn = a positively-identified unaddressed text-group turn
 	// (structural classifier only — channel type + addressing + source
 	// metadata, never message text; anything uncertain fails open to
@@ -234,7 +240,7 @@ export async function runV5MessageRuntimeStage1(
 	);
 	const ambientHardGate =
 		ambientTurn && isStage1AmbientHardGated(args.runtime, args.message);
-	let context = await createV5MessageContextObject({
+	const context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
@@ -249,44 +255,6 @@ export async function runV5MessageRuntimeStage1(
 		// left RECENT_ERRORS in state, an unaddressed group turn must not
 		// render internal diagnostics into its Stage-1 context.
 	});
-	const overflowState = withProviderOverflowText(args.state);
-	const overflowContext = overflowState
-		? await createV5MessageContextObject({
-				...args,
-				state: overflowState,
-				userRoles: [senderRole],
-				availableContexts,
-				ambientTurn,
-				ambientHardGate,
-				peerCorrectionContinuation,
-				extraProviderExclusions: ambientTurnProviderExclusions(
-					args.runtime,
-					args.message,
-				),
-			})
-		: null;
-	let useProviderOverflow = false;
-	// Realtime voice must keep the turn compact enough to answer naturally.
-	// Providers that expose `overflowText` retain a lossless retrieval manifest,
-	// so the model can still call MEMORY_SEARCH when the utterance needs older
-	// cross-room context without eagerly paying that full history on every turn.
-	if (voiceDirectMessageChannel && overflowContext) {
-		context = overflowContext;
-		useProviderOverflow = true;
-	} else if (
-		overflowContext &&
-		!stage1EagerHistoryRelevant(args.runtime, args.message, args.state)
-	) {
-		// Text turns take the same manifest whenever the message itself carries
-		// no recall signal: a provider that declares `relevanceKeywords` names
-		// the requests its eager form exists to answer directly ("what did we
-		// discuss…", "remember when…"). Every other turn pays only the
-		// manifest. Carry that representation into the planner after provider
-		// recomposition, rather than re-expanding the same corpus. Providers
-		// without keywords keep the eager form: relevance is unknown here.
-		context = overflowContext;
-		useProviderOverflow = true;
-	}
 	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -362,16 +330,13 @@ export async function runV5MessageRuntimeStage1(
 			inferenceMessageText,
 			parsedResponseHandlerReply,
 			messageHandlerEndedAt,
-			useProviderOverflow: resolvedProviderOverflow,
 		} = await generateStage1Decision(
 			args,
 			{
 				senderRole,
-				useProviderOverflow,
 				context,
 				availableContexts,
 				directMessageChannel,
-				overflowContext,
 				stage1PreprocessStartedAt,
 				recorder,
 				trajectoryId,
@@ -381,7 +346,6 @@ export async function runV5MessageRuntimeStage1(
 			},
 		);
 
-		useProviderOverflow = resolvedProviderOverflow;
 		if (messageHandler.processMessage === "RESPOND") {
 			const injectionGate = await timeInferenceSpan(
 				"evaluators:injection-risk-gate",
@@ -895,20 +859,8 @@ export async function runV5MessageRuntimeStage1(
 						},
 					}
 				: undefined;
-		// Once Stage 1 has explicitly selected the memory domain, the planner owns
-		// retrieval through its complete search tools. Repeating an eager corpus in
-		// every tool iteration adds no recall capability and can turn a technically
-		// admissible prompt into an operational timeout. Also preserve the manifest
-		// already selected for Stage 1. Providers without an explicit retrieval form
-		// and the current room's structured dialogue remain unchanged.
-		const retrievalContextSelected = selectedContexts.includes("memory");
-		const capacityAdjustedPlannerState =
-			useProviderOverflow || retrievalContextSelected
-				? (withProviderOverflowText(recomposedPlannerState) ??
-					recomposedPlannerState)
-				: recomposedPlannerState;
 		const plannerState = withContextRoutingValues(
-			attachAvailableContexts(capacityAdjustedPlannerState, args.runtime),
+			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
 		if (args.codingMode === true) {
@@ -1068,27 +1020,10 @@ export async function runV5MessageRuntimeStage1(
 					deterministicPlanSelection.name,
 				)
 			: undefined;
-		// App turns already carry a model-authored Stage 1 routing decision. Start
-		// those turns with the selected action surface instead of first rendering
-		// every unrelated runtime tool and only narrowing after an overflow. The
-		// outer action planner still chooses and invokes the native tool; this only
-		// removes irrelevant schemas from its input. Unknown candidates fail open to
-		// the complete authorized surface.
-		const appCandidateSurfaceActions =
-			!deterministicSurfaceAction && hasUiViewPlannerScope(args.message)
-				? collectBudgetedStageOneCandidateActions({
-						actions: plannerCandidateActions,
-						candidateActions:
-							messageHandler.plan.candidateActions?.map(String) ?? [],
-						contexts: messageHandler.plan.contexts ?? [],
-					})
-				: [];
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: deterministicSurfaceAction
 				? [deterministicSurfaceAction]
-				: appCandidateSurfaceActions.length > 0
-					? appCandidateSurfaceActions
-					: plannerCandidateActions,
+				: plannerCandidateActions,
 			forceFullSurface: args.codingMode === true,
 			codingActionProfile,
 			message: args.message,
@@ -1193,282 +1128,9 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		let plannerTools = collectPlannerTools(plannerContextWithDecision);
-		let budgetedPlannerContextWithDecision = plannerContextWithDecision;
-		let plannerProviderAttributionState = plannerState;
-		const losslessOverflowPlannerState = withProviderOverflowText(plannerState);
-		// Provider registrations that omit a concrete model/window still need a
-		// fail-closed preflight. The core budgeter's conservative 128k ceiling is
-		// the same unknown-model boundary used by final-wire validation; providers
-		// with declared metadata retain their exact ceiling.
-		const plannerContextWindowTokens =
-			actionPlannerContextWindow(args.runtime) ?? DEFAULT_CONTEXT_WINDOW_TOKENS;
-		const preflightConfig = {
-			...(args.plannerLoopConfig ?? {}),
-			...(!args.plannerLoopConfig?.contextWindowModelName
-				? { contextWindowTokens: plannerContextWindowTokens }
-				: {}),
-		};
-		const eagerPlannerBudget = buildInitialPlannerModelInputBudget({
-			runtime: plannerRuntime,
-			context: plannerContextWithDecision,
-			config: preflightConfig,
-			tools: plannerTools.length > 0 ? plannerTools : undefined,
-			codingMode: args.codingMode === true,
-		});
-		let effectivePlannerBudget = eagerPlannerBudget;
-		const eagerPlannerExceedsBudget =
-			eagerPlannerBudget.estimatedInputTokens >
-			eagerPlannerBudget.dispatchThresholdTokens;
-		if (
-			eagerPlannerExceedsBudget ||
-			(voiceDirectMessageChannel && losslessOverflowPlannerState)
-		) {
-			if (eagerPlannerExceedsBudget) {
-				const plannerToolSizes = plannerTools
-					.map((tool) => ({
-						name: tool.name,
-						bytes: JSON.stringify(tool).length,
-					}))
-					.sort((left, right) => right.bytes - left.bytes);
-				args.runtime.logger.warn(
-					{
-						estimatedInputTokens: eagerPlannerBudget.estimatedInputTokens,
-						dispatchThresholdTokens: eagerPlannerBudget.dispatchThresholdTokens,
-						toolCount: plannerTools.length,
-						toolSchemaBytes: plannerToolSizes.reduce(
-							(total, tool) => total + tool.bytes,
-							0,
-						),
-						largestTools: plannerToolSizes.slice(0, 5),
-						losslessProviderProjection: losslessOverflowPlannerState !== null,
-					},
-					"[SERVICE:MESSAGE] Initial planner input exceeds the conservative dispatch budget",
-				);
-			}
-			if (losslessOverflowPlannerState) {
-				const overflowPlannerContext = await createV5MessageContextObject({
-					...args,
-					state: losslessOverflowPlannerState,
-					selectedContexts,
-					includeTools: true,
-					userRoles: [senderRole],
-					availableContexts,
-					preselectedActions: exposedPlannerActions,
-					actionSurface,
-					ambientTurn,
-					extraProviderExclusions: ambientTurnProviderExclusions(
-						args.runtime,
-						args.message,
-					),
-				});
-				const overflowPlannerContextWithDecision = appendContextEvent(
-					overflowPlannerContext,
-					plannerDecisionEvent,
-				);
-				const overflowPlannerBudget = buildInitialPlannerModelInputBudget({
-					runtime: plannerRuntime,
-					context: overflowPlannerContextWithDecision,
-					config: preflightConfig,
-					tools: plannerTools.length > 0 ? plannerTools : undefined,
-					codingMode: args.codingMode === true,
-				});
-				if (
-					overflowPlannerBudget.estimatedInputTokens <
-					effectivePlannerBudget.estimatedInputTokens
-				) {
-					budgetedPlannerContextWithDecision =
-						overflowPlannerContextWithDecision;
-					plannerProviderAttributionState = losslessOverflowPlannerState;
-					effectivePlannerBudget = overflowPlannerBudget;
-				}
-				if (
-					overflowPlannerBudget.estimatedInputTokens >
-					overflowPlannerBudget.dispatchThresholdTokens
-				) {
-					args.runtime.logger.warn(
-						{
-							estimatedInputTokens: overflowPlannerBudget.estimatedInputTokens,
-							dispatchThresholdTokens:
-								overflowPlannerBudget.dispatchThresholdTokens,
-						},
-						"[SERVICE:MESSAGE] Lossless provider projection cannot fit the complete planner tool surface",
-					);
-				}
-			}
-			if (
-				args.codingMode !== true &&
-				effectivePlannerBudget.estimatedInputTokens >
-					effectivePlannerBudget.dispatchThresholdTokens
-			) {
-				const candidateActions = collectBudgetedStageOneCandidateActions({
-					actions: exposedPlannerActions,
-					candidateActions:
-						messageHandler.plan.candidateActions?.map(String) ?? [],
-					contexts: messageHandler.plan.contexts ?? [],
-				});
-				if (
-					candidateActions.length > 0 &&
-					candidateActions.length < exposedPlannerActions.length
-				) {
-					const candidateActionNames = new Set(
-						candidateActions.map((action) =>
-							normalizeActionIdentifier(action.name),
-						),
-					);
-					const candidateActionSurface: V5PlannerActionSurface = {
-						exposedActionNames: candidateActionNames,
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: candidateActions.length,
-							tierAParents: candidateActions.map((action) => action.name),
-							tierAChildrenByParent: {},
-							fallback: "stage-one-candidate-budget",
-						},
-					};
-					const candidateContext = await createV5MessageContextObject({
-						...args,
-						state: plannerProviderAttributionState,
-						selectedContexts,
-						includeTools: true,
-						userRoles: [senderRole],
-						availableContexts,
-						preselectedActions: candidateActions,
-						actionSurface: candidateActionSurface,
-						ambientTurn,
-						extraProviderExclusions: ambientTurnProviderExclusions(
-							args.runtime,
-							args.message,
-						),
-					});
-					const candidateContextWithDecision = appendContextEvent(
-						candidateContext,
-						plannerDecisionEvent,
-					);
-					const candidateTools = collectPlannerTools(
-						candidateContextWithDecision,
-						candidateActions,
-						{ expandSubActions: false },
-					);
-					const candidateBudget = buildInitialPlannerModelInputBudget({
-						runtime: plannerRuntime,
-						context: candidateContextWithDecision,
-						config: preflightConfig,
-						tools: candidateTools.length > 0 ? candidateTools : undefined,
-						codingMode: false,
-					});
-					if (
-						candidateBudget.estimatedInputTokens <=
-						candidateBudget.dispatchThresholdTokens
-					) {
-						budgetedPlannerContextWithDecision = candidateContextWithDecision;
-						plannerTools = candidateTools;
-						effectivePlannerBudget = candidateBudget;
-						args.runtime.logger.warn(
-							{
-								estimatedInputTokens: candidateBudget.estimatedInputTokens,
-								dispatchThresholdTokens:
-									candidateBudget.dispatchThresholdTokens,
-								candidateToolCount: candidateTools.length,
-								authorizedActionCount: exposedPlannerActions.length,
-							},
-							"[SERVICE:MESSAGE] Planner used the model-authored Stage 1 candidate surface to fit the dispatch budget",
-						);
-					}
-				}
-			}
-			if (
-				args.codingMode !== true &&
-				effectivePlannerBudget.estimatedInputTokens >
-					effectivePlannerBudget.dispatchThresholdTokens
-			) {
-				const umbrellaActions = collectBudgetedUmbrellaActions({
-					actions: exposedPlannerActions,
-					actionSurface,
-				});
-				if (
-					umbrellaActions.length > 0 &&
-					umbrellaActions.length < exposedPlannerActions.length
-				) {
-					const umbrellaActionNames = new Set(
-						umbrellaActions.map((action) =>
-							normalizeActionIdentifier(action.name),
-						),
-					);
-					const umbrellaActionSurface: V5PlannerActionSurface = {
-						exposedActionNames: umbrellaActionNames,
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: umbrellaActions.length,
-							fallback: "umbrella-parent-budget",
-						},
-					};
-					const umbrellaContext = await createV5MessageContextObject({
-						...args,
-						state: plannerProviderAttributionState,
-						selectedContexts,
-						includeTools: true,
-						userRoles: [senderRole],
-						availableContexts,
-						preselectedActions: umbrellaActions,
-						actionSurface: umbrellaActionSurface,
-						ambientTurn,
-						extraProviderExclusions: ambientTurnProviderExclusions(
-							args.runtime,
-							args.message,
-						),
-					});
-					const umbrellaContextWithDecision = appendContextEvent(
-						umbrellaContext,
-						plannerDecisionEvent,
-					);
-					const umbrellaTools = collectPlannerTools(
-						umbrellaContextWithDecision,
-						umbrellaActions,
-						{ expandSubActions: false },
-					);
-					const umbrellaBudget = buildInitialPlannerModelInputBudget({
-						runtime: plannerRuntime,
-						context: umbrellaContextWithDecision,
-						config: preflightConfig,
-						tools: umbrellaTools.length > 0 ? umbrellaTools : undefined,
-						codingMode: false,
-					});
-					const umbrellaDecision = decideUmbrellaPlannerBudget({
-						umbrella: umbrellaBudget,
-						current: effectivePlannerBudget,
-					});
-					if (umbrellaDecision === "not-smaller") {
-						args.runtime.logger.warn(
-							{
-								estimatedInputTokens: umbrellaBudget.estimatedInputTokens,
-								dispatchThresholdTokens: umbrellaBudget.dispatchThresholdTokens,
-								currentEstimatedInputTokens:
-									effectivePlannerBudget.estimatedInputTokens,
-								parentToolCount: umbrellaTools.length,
-							},
-							"[SERVICE:MESSAGE] Complete umbrella capability still exceeds the planner dispatch budget",
-						);
-					} else {
-						budgetedPlannerContextWithDecision = umbrellaContextWithDecision;
-						plannerTools = umbrellaTools;
-						effectivePlannerBudget = umbrellaBudget;
-						args.runtime.logger.warn(
-							{
-								estimatedInputTokens: umbrellaBudget.estimatedInputTokens,
-								dispatchThresholdTokens: umbrellaBudget.dispatchThresholdTokens,
-								parentToolCount: umbrellaTools.length,
-								authorizedActionCount: exposedPlannerActions.length,
-								decision: umbrellaDecision,
-							},
-							umbrellaDecision === "under-dispatch-budget"
-								? "[SERVICE:MESSAGE] Planner retained complete umbrella capability under the dispatch budget"
-								: "[SERVICE:MESSAGE] Planner retained complete umbrella capability above the conservative estimate as the smallest complete surface",
-						);
-					}
-				}
-			}
-		}
+		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const budgetedPlannerContextWithDecision = plannerContextWithDecision;
+		const plannerProviderAttributionState = plannerState;
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
 		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
 		// tool-required AND named at least one candidate action. A bare
@@ -2195,9 +1857,9 @@ export async function runV5MessageRuntimeStage1(
 			{ mode: "CONTEXT_AFTER" },
 		);
 		return await finalizePlannerReply(args, {
-			plannerResult,
-			replyRecovered,
 			recoveredReply,
+			replyRecovered,
+			plannerResult,
 			exposedPlannerActions,
 			plannerState,
 			ambientTurn,
@@ -2270,25 +1932,3 @@ export async function runV5MessageRuntimeStage1(
 		}
 	}
 }
-
-import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../../runtime/model-input-budget.js";
-import { buildInitialPlannerModelInputBudget } from "../../runtime/planner-loop.js";
-import type { ContextEvent } from "../../types/context-object";
-import type { V5PlannerActionSurface } from "./action-surface.js";
-import { isStage1AmbientHardGated } from "./addressing.js";
-import {
-	replyNamesStructuredEffectDestination,
-	resolvePlannedReplyEgress,
-} from "./egress-policy.js";
-import {
-	collectBudgetedStageOneCandidateActions,
-	collectBudgetedUmbrellaActions,
-	decideUmbrellaPlannerBudget,
-} from "./planned-tool.js";
-import {
-	actionPlannerContextWindow,
-	hasUiViewPlannerScope,
-	stage1EagerHistoryRelevant,
-} from "./provider-state.js";
-
-import { withActionResultsForPrompt } from "./response-state.js";

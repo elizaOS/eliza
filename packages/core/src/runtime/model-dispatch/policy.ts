@@ -10,17 +10,20 @@ import {
 import { assertModelOutputComplete } from "../../utils/model-errors";
 import { isPlainObject } from "../../utils/type-guards";
 
-/**
- * Thrown by `AgentRuntime.useModel` when a text-generation model is requested
- * but no LLM provider plugin is registered for any text model type at all.
- *
- * This is distinct from "one provider is registered but the specific type is
- * missing" — that case still throws the generic `No handler found for delegate
- * type` error so legitimate misconfigurations stay loud.
- *
- * Surfacing this as a typed error lets the chat layer render an actionable
- * hint instead of a generic parse-failure template. See issue elizaOS/eliza#7203.
- */
+/** Capability absence is recoverable; malformed input/output is not absence. */
+export function isUnavailableLocalModel(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
+		"reason" in error &&
+		(error.reason === "backend_unavailable" ||
+			error.reason === "capability_unavailable")
+	);
+}
+
+/** Distinguishes absent model configuration from a deliberately disabled capability. */
 export class NoModelProviderConfiguredError extends Error {
 	readonly reason: "no-provider" | "capability-disabled";
 
@@ -156,16 +159,4 @@ export interface ResolvedModelRegistration {
 	metadata?: ModelRegistrationMetadata;
 	modelKey: string;
 	provider: string;
-}
-
-export function isUnavailableLocalModel(error: unknown): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		error.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
-		"reason" in error &&
-		(error.reason === "backend_unavailable" ||
-			error.reason === "capability_unavailable")
-	);
 }

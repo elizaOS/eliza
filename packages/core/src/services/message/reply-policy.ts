@@ -99,8 +99,6 @@ export function preservedSettledToolResult(
 export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
 	"I ran that, but it finished without producing a result I can report back.";
 
-export const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
-
 /**
  * Structured machine effect parsed from a tool result's receipt `text` — the
  * shape actions emit as an internal-visibility JSON receipt when the effect
@@ -152,34 +150,23 @@ export function structuredEffectFromToolResult(
 	};
 }
 
-/**
- * Deterministic confirmation for the most recent successful tool result whose
- * receipt carries an accepted structured effect. An internal-visibility
- * success with no `userFacingText` used to fall through to the no-result
- * apology even though the effect verifiably happened (live tj-a835d4c6da235f:
- * a deterministic VIEWS navigation accepted `viewId:"chat"`, label "Home",
- * and the turn closed with "finished without producing a result"). The old
- * action-owned reply composer ("Opened Notes.") was deleted in the
- * effect-receipt migration, so this is the one effect→text renderer; wording
- * stays in the lowercase persona voice of the other canned replies. Only an
- * `accepted` status may claim completion — pending/unconfirmed/unsupported
- * receipts keep the honest no-result fallback.
- */
-export function structuredEffectConfirmation(
-	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
-): string | undefined {
-	for (let index = settled.length - 1; index >= 0; index--) {
-		const entry = settled[index];
-		if (entry?.result.success !== true) continue;
-		if (isTerminalPlannerToolName(entry.name)) continue;
-		const effect = structuredEffectFromToolResult(entry.result);
-		if (effect?.status !== "accepted") continue;
-		if (effect.effect === "view_navigation" && effect.label) {
-			return `done — you're on ${effect.label}.`;
-		}
-		return effect.label ? `done — ${effect.label}.` : "done.";
-	}
-	return undefined;
+export function replyNamesStructuredEffectDestination(
+	reply: string,
+	effect: StructuredToolEffect,
+): boolean {
+	if (effect.effect !== "view_navigation" || !effect.label) return true;
+	const normalize = (value: string): string =>
+		value
+			.toLocaleLowerCase()
+			.replace(/[^\p{L}\p{N}]+/gu, " ")
+			.trim();
+	const normalizedReply = normalize(reply);
+	const normalizedLabel = normalize(effect.label);
+	return (
+		normalizedReply.length > 0 &&
+		normalizedLabel.length > 0 &&
+		normalizedReply.includes(normalizedLabel)
+	);
 }
 
 export function preservedVerifiedFailure(
@@ -271,9 +258,8 @@ export type ZeroDeliveryRecoverySource =
  * toolless turn covered by the delivery floor. Source precedence is the
  * planner's surviving terminal text, then the last explicit action-owned
  * `userFacingText`, then the Stage-1 ack ONLY when no early ack already shipped
- * it, then a hardcoded fallback. Fallback wording is effect-aware: it claims
- * completion only when a tool succeeded, failure only when a tool ran, and
- * otherwise gives a neutral no-answer response. After an early progress ack,
+ * it. Missing prose is left empty for model-backed recovery from the settled
+ * results; this function never manufactures dialogue. After an early progress ack,
  * the turn recovers only when grounded text exists or any tool failed: a
  * successful async handoff reports through a later completion relay, so
  * manufacturing a "finished" line behind its ack would be a lie, while a failed

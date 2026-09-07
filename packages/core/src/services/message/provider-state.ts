@@ -4,7 +4,6 @@ import { filterProvidersByContextGate } from "../../runtime/context-gates.ts";
 import type { Action, AgentContext, Provider } from "../../types/components";
 import type { RoleGateRole } from "../../types/contexts";
 import type { Memory } from "../../types/memory";
-import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import {
@@ -314,42 +313,6 @@ export async function composeResponseState(
 	return runtime.composeState(message, providers, true, skipCache);
 }
 
-/** Replace provider text only with explicitly declared lossless retrieval forms. */
-export function withProviderOverflowText(state: State): State | null {
-	const providerResults = state.data.providers;
-	const providerOrder = Array.isArray(state.data.providerOrder)
-		? state.data.providerOrder.filter(
-				(name): name is string => typeof name === "string",
-			)
-		: Object.keys(providerResults ?? {});
-	if (!providerResults) return null;
-	let changed = false;
-	const nextProviders = { ...providerResults };
-	for (const name of providerOrder) {
-		const result = providerResults[name];
-		if (typeof result?.overflowText !== "string") continue;
-		nextProviders[name] = { ...result, text: result.overflowText };
-		changed = true;
-	}
-	if (!changed) return null;
-	const text = providerOrder
-		.map((name) => nextProviders[name]?.text)
-		.filter((value): value is string => Boolean(value?.trim()))
-		.join("\n");
-	return {
-		...state,
-		values: { ...state.values, providers: text },
-		data: { ...state.data, providers: nextProviders },
-		text,
-	};
-}
-
-export function responseHandlerContextWindow(
-	runtime: IAgentRuntime,
-): number | undefined {
-	return registeredModelContextWindow(runtime, ModelType.RESPONSE_HANDLER);
-}
-
 export function selectV5PlannerStateProviderNames(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -397,65 +360,3 @@ export function selectV5PlannerStateProviderNames(args: {
 	}
 	return [...providerNames];
 }
-
-export function stage1EagerHistoryRelevant(
-	runtime: IAgentRuntime,
-	message: Memory,
-	state: State,
-): boolean {
-	const providerResults = state.data.providers;
-	if (!providerResults) return true;
-	for (const [name, result] of Object.entries(providerResults)) {
-		if (typeof result?.overflowText !== "string") continue;
-		const provider = runtime.providers?.find(
-			(candidate) => candidate.name === name,
-		);
-		const keywords = provider?.relevanceKeywords;
-		if (!Array.isArray(keywords) || keywords.length === 0) return true;
-		// Score the user's request, not the wrapper it arrives in: by now
-		// content.text may be the external-content envelope or the document-
-		// augmentation preamble, both of which contain "conversation" and
-		// matched a recall keyword on every wrapped turn (live 2026-09-06).
-		const request = userRequestFromAugmentedText(
-			unwrapUserMessageTextForDetection(message) ||
-				(message.content.text ?? ""),
-		);
-		if (
-			validateActionKeywords(
-				{ ...message, content: { ...message.content, text: request } },
-				[],
-				keywords,
-			)
-		) {
-			return true;
-		}
-	}
-	return false;
-}
-
-export function actionPlannerContextWindow(
-	runtime: IAgentRuntime,
-): number | undefined {
-	return registeredModelContextWindow(runtime, ModelType.ACTION_PLANNER);
-}
-
-export function registeredModelContextWindow(
-	runtime: IAgentRuntime,
-	modelType: ModelTypeName,
-): number | undefined {
-	const getModelRegistrations = runtime.getModelRegistrations;
-	if (typeof getModelRegistrations !== "function") return undefined;
-	return getModelRegistrations
-		.call(runtime)
-		.find(
-			(registration) =>
-				registration.modelType === modelType &&
-				typeof registration.metadata?.contextWindowTokens === "number",
-		)?.metadata?.contextWindowTokens;
-}
-
-import { userRequestFromAugmentedText } from "../../security/augmented-request";
-
-import { unwrapUserMessageTextForDetection } from "../../security/incoming-message-security";
-import type { ModelTypeName } from "../../types/model";
-import { validateActionKeywords } from "../../validation/keywords";

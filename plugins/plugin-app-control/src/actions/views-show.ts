@@ -470,9 +470,6 @@ export async function runViewsShow({
 	userRoles,
 	resolveCallerRoles,
 }: RunViewsShowInput): Promise<ActionResult> {
-	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
-	// no explicit view name, so the verb scan yields nothing — the domain intent
-	// supplies the view id. Either source is enough to proceed.
 	const plannerStep =
 		readStringOpt(options, "navigationIntent") === "planner-step";
 	const navigationStepId = readStringOpt(options, "navigationStepId");
@@ -507,7 +504,7 @@ export async function runViewsShow({
 	};
 	const initialBlock = blockedResult();
 	if (initialBlock) return initialBlock;
-	const extractedTarget = extractViewTarget(options);
+	const target = extractViewTarget(options);
 	if (plannerStep && (!readStringOpt(options, "view") || !navigationStepId)) {
 		return {
 			success: false,
@@ -517,7 +514,6 @@ export async function runViewsShow({
 			data: { navigation: receipt("invalid", null, "VIEW_STEP_INVALID") },
 		};
 	}
-	const target = extractedTarget;
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
@@ -550,8 +546,7 @@ export async function runViewsShow({
 	}
 	const catalogBlock = blockedResult();
 	if (catalogBlock) return catalogBlock;
-	// Normalize a canonical ID/label such as Home from the explicit parameter
-	// only. Other clauses in a compound request cannot replace the planned target.
+	// Resolve only the structured destination; other request clauses cannot replace it.
 	const canonicalTarget = Object.entries(SHARED_NAV_TARGETS).find(
 		([id, entry]) =>
 			id.toLowerCase() === target.toLowerCase() ||
@@ -620,7 +615,6 @@ export async function runViewsShow({
 			transcriptVisibility: "internal",
 			turnComplete: false,
 			text: JSON.stringify(navigation),
-			modelReplyRequired: true,
 			data: { navigation, navigationAttempted: false },
 		};
 	}

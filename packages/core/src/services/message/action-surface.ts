@@ -1,8 +1,8 @@
 /** Builds the complete authorized planner action surface and caches rendered catalogs by runtime registration state. */
 
 import { evaluateConnectorAccountPolicies } from "../../connectors/account-manager";
+import { recordInferenceSpan } from "../../inference-timing";
 import {
-	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 	normalizeActionName,
@@ -528,50 +528,6 @@ export function buildFullV5PlannerActionSurface(params: {
 	};
 }
 
-// buildActionCatalog is a pure function of (actions, localizedExamples) but was
-// rebuilt from scratch on every message (~349 us/message). Cache it keyed by the
-// action-name list: adding/removing any action — including plugin/view actions —
-// changes the key, so the cache self-invalidates on the path that matters (newly
-// registered view actions appear in the next message's catalog) without any
-// manual register/unregister hook. Only cached when no localized-example
-// resolver is active: that resolver depends on the recent message, so the
-// localized catalog is message-specific and must be rebuilt each turn.
-export const actionCatalogCache = new Map<string, ActionCatalog>();
-
-export const ACTION_CATALOG_CACHE_LIMIT = 8;
-
-export function actionCatalogCacheKey(actions: readonly Action[]): string {
-	let key = "";
-	for (const action of actions) {
-		key += `${action.name}\u0000`;
-	}
-	return key;
-}
-
-export function getCachedActionCatalog(
-	actions: readonly Action[],
-	localizedExamples?: LocalizedActionExampleResolver,
-): ActionCatalog {
-	if (localizedExamples) {
-		// Message-specific examples — never cache across turns.
-		return buildActionCatalog([...actions], { localizedExamples });
-	}
-	const key = actionCatalogCacheKey(actions);
-	const cached = actionCatalogCache.get(key);
-	if (cached) {
-		return cached;
-	}
-	const catalog = buildActionCatalog([...actions], { localizedExamples });
-	actionCatalogCache.set(key, catalog);
-	if (actionCatalogCache.size > ACTION_CATALOG_CACHE_LIMIT) {
-		const oldest = actionCatalogCache.keys().next().value;
-		if (typeof oldest === "string") {
-			actionCatalogCache.delete(oldest);
-		}
-	}
-	return catalog;
-}
-
 export function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	forceFullSurface?: boolean;
@@ -823,5 +779,3 @@ export function buildV5PlannerActionSurface(params: {
 		},
 	};
 }
-
-import { recordInferenceSpan } from "../../inference-timing";

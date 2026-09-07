@@ -5,8 +5,9 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers its app and view actions, one model-driven response-handler evaluator, no natural-language shortcuts
-or deterministic response-handler evaluators, three providers,
+This opt-in plugin registers its app and view actions, one model-assisted
+pre-planner navigation evaluator, no natural-language shortcuts or deterministic
+response-handler evaluators, three providers,
 and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
@@ -30,8 +31,8 @@ port resolver.
 
 | Name | File | Description |
 |---|---|---|
-| `viewContextPlanningEvaluator` | `src/evaluators/view-context-planning.ts` | Model-selected authorized navigation enters the action queue before the final reply. |
-| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Legacy compatibility export; not registered as a post-response navigator. |
+| `viewContextPlanningEvaluator` | `src/evaluators/view-context-planning.ts` | Selects an authorized live-catalog destination before planning without removing domain work; the same action queue owns navigation and receipts. |
+| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Legacy compatibility export only; not registered as a post-response navigator. |
 | `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Compatibility export only; not registered by the first-party plugin. |
 | `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Compatibility export only; pending choices reach model context through `app_control_choices`. |
 | `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Compatibility export for downstream users; the first-party plugin leaves focused-view mutation follow-ups to Stage 1 and the planner. |

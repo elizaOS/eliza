@@ -4,12 +4,15 @@ import {
 	parseEgressDisclosureSubject,
 	resolveEgressAudienceAdmission,
 } from "../../access-control/audience-egress";
+import { ElizaError } from "../../errors";
 import {
 	effectDeliveryBindingIsValid,
 	effectDeliveryBindingProvesApplication,
 	getEffectDeliveryBinding,
 	stripEffectDeliveryBinding,
 } from "../../runtime/effect-delivery";
+import type { EvaluatorOutput } from "../../runtime/evaluator";
+import { renderActionResultsForModel } from "../../runtime/planner-rendering";
 import {
 	getTrustedDeliveryAudience,
 	ownerExclusiveDisclosureWasUsed,
@@ -26,6 +29,7 @@ import type { Content } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { resolveCallbackActionName } from "./action-identifiers.js";
+import { rewriteActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
 	replyClaimsCompletedSideEffect,
@@ -78,30 +82,10 @@ export function appliedEffectReceiptIdsForReply(
 	return [];
 }
 
-export function uniqueAppliedCanonicalActionReply(
-	results: readonly ActionResult[],
-): string | null {
-	const allTurnReceipts = mergeEffectReceipts(
-		...results.map((result) => result.effectReceipts),
-	);
-	const candidates = new Set<string>();
-	for (const result of results) {
-		const text = result.userFacingText?.trim();
-		if (result.verifiedUserFacing !== true || !text) continue;
-		if (!resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts)) {
-			continue;
-		}
-		candidates.add(text);
-	}
-	return candidates.size === 1
-		? (candidates.values().next().value ?? null)
-		: null;
-}
-
 /**
  * An action result grounds only the capability it actually proves.
  * Empty tracked-work claims require a `resource:tracked-work` read action.
- * Completion claims require exact action-owned text bound to an active
+ * Completion claims require exact action-owned or evaluator-authored text bound to an active
  * committed receipt from this turn — applied, or a replayed no-op proving the
  * desired state was already committed; bare success, previews, non-replayed
  * no-ops, failures, and rolled-back effects cannot ground them.
@@ -171,9 +155,6 @@ export type PlannedReplyEgressDecision =
 			kind: PlannedReplyClaimKind;
 	  };
 
-export const UNVERIFIED_EFFECT_REPLY =
-	"I couldn't verify that the requested change was completed, so I won't claim it was. Want me to try again?";
-
 /**
  * Final planned replies may assert only state proven by a matching action
  * receipt from this trajectory. Rejection degrades to an honest statement at
@@ -224,12 +205,99 @@ export function evaluatePlannedReplyEgress(args: {
 	return { verdict: "allow" };
 }
 
-export function enforceEffectGroundedVisibleContent(
+/**
+ * Recover missing or ungrounded final prose without replaying actions. The
+ * existing action-response renderer receives the request and complete settled
+ * results; its output must pass the same receipt checks as the original reply.
+ */
+export async function resolvePlannedReplyEgress(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	reply: string;
+	actionResults: readonly ActionResult[];
+	evaluator?: EvaluatorOutput;
+}): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
+	const decision = evaluatePlannedReplyEgress({
+		reply: args.reply,
+		actionResults: args.actionResults,
+		actions: args.runtime.actions,
+		evaluator: args.evaluator,
+	});
+	if (args.reply.trim() && decision.verdict === "allow") {
+		return {
+			text: args.reply,
+			effectReceiptIds: appliedEffectReceiptIdsForReply(
+				args.reply,
+				args.actionResults,
+				args.evaluator,
+			),
+		};
+	}
+	const text = JSON.stringify({
+		request: args.message.content,
+		rejectedReply: args.reply,
+		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
+		results: renderActionResultsForModel([...args.actionResults]).text,
+	});
+	const rewritten = await rewriteActionCallbackInCharacter({
+		runtime: args.runtime,
+		message: args.message,
+		response: { text },
+		text,
+	});
+	const reply = rewritten?.text;
+	// The renderer selects proof for its own prose, not an action's canned
+	// wording. Resolve every selected ID against this turn's authoritative
+	// receipts; invented IDs, previews and rolled-back effects stay rejected.
+	const proof = rewritten?.effectReceiptIds.length
+		? resolveAppliedUserFacingEffectReceipts(
+				{
+					verifiedUserFacing: true,
+					userFacingText: reply,
+					userFacingEffectReceiptIds: rewritten.effectReceiptIds,
+				},
+				mergeEffectReceipts(
+					...args.actionResults.map((result) => result.effectReceipts),
+				),
+			)
+		: null;
+	const rewrittenDecision = reply
+		? evaluatePlannedReplyEgress({
+				reply,
+				actionResults: args.actionResults,
+				actions: args.runtime.actions,
+			})
+		: undefined;
+	if (
+		!reply ||
+		(rewritten?.effectReceiptIds.length && !proof) ||
+		(rewrittenDecision?.verdict !== "allow" &&
+			!(rewrittenDecision?.kind === "completed_side_effect" && proof))
+	) {
+		const error = new ElizaError(
+			"A grounded conversational reply could not be generated",
+			{
+				code: "REPLY_GROUNDING_FAILED",
+				context: { roomId: args.message.roomId, messageId: args.message.id },
+			},
+		);
+		args.runtime.reportError("MessageService.replyRecovery", error);
+		throw error;
+	}
+	return {
+		text: reply,
+		effectReceiptIds:
+			proof?.map((receipt) => receipt.receiptId) ??
+			appliedEffectReceiptIdsForReply(reply, args.actionResults),
+	};
+}
+
+export async function enforceEffectGroundedVisibleContent(
 	runtime: IAgentRuntime,
 	message: Memory,
 	response: Content,
 	actionName?: string,
-): Content | Promise<Content> {
+): Promise<Content> {
 	const hasEffectDeliveryBinding =
 		getEffectDeliveryBinding(response) !== undefined;
 	if (!hasEffectDeliveryBinding && response.effectReceiptIds !== undefined) {
@@ -250,16 +318,18 @@ export function enforceEffectGroundedVisibleContent(
 			},
 			"Replaced visible completion text that lacked validated effect receipt bindings",
 		);
-		return resolvePlannedReplyEgress({
-			runtime,
-			message,
-			reply: response.text ?? "",
-			actionResults: [],
-		}).then((grounded) => ({
+		return {
 			...stripEffectDeliveryBinding(response),
-			text: grounded.text,
+			text: (
+				await resolvePlannedReplyEgress({
+					runtime,
+					message,
+					reply: response.text ?? "",
+					actionResults: [],
+				})
+			).text,
 			agentVoiced: true,
-		}));
+		};
 	}
 	return response;
 }
@@ -427,111 +497,3 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 		})),
 	};
 }
-
-export function replyNamesStructuredEffectDestination(
-	reply: string,
-	effect: StructuredToolEffect,
-): boolean {
-	if (effect.effect !== "view_navigation" || !effect.label) return true;
-	const normalize = (value: string): string =>
-		value
-			.toLocaleLowerCase()
-			.replace(/[^\p{L}\p{N}]+/gu, " ")
-			.trim();
-	const normalizedReply = normalize(reply);
-	const normalizedLabel = normalize(effect.label);
-	return (
-		normalizedReply.length > 0 &&
-		normalizedLabel.length > 0 &&
-		normalizedReply.includes(normalizedLabel)
-	);
-}
-
-export async function resolvePlannedReplyEgress(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	reply: string;
-	actionResults: readonly ActionResult[];
-	evaluator?: EvaluatorOutput;
-}): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
-	const decision = evaluatePlannedReplyEgress({
-		reply: args.reply,
-		actionResults: args.actionResults,
-		actions: args.runtime.actions,
-		evaluator: args.evaluator,
-	});
-	if (args.reply.trim() && decision.verdict === "allow") {
-		return {
-			text: args.reply,
-			effectReceiptIds: appliedEffectReceiptIdsForReply(
-				args.reply,
-				args.actionResults,
-				args.evaluator,
-			),
-		};
-	}
-	const text = JSON.stringify({
-		request: args.message.content,
-		rejectedReply: args.reply,
-		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
-		results: renderActionResultsForModel([...args.actionResults]).text,
-	});
-	const rewritten = await rewriteActionCallbackInCharacter({
-		runtime: args.runtime,
-		message: args.message,
-		response: { text },
-		text,
-	});
-	const reply = rewritten?.text;
-	// The renderer selects proof for its own prose, not an action's canned
-	// wording. Resolve every selected ID against this turn's authoritative
-	// receipts; invented IDs, previews and rolled-back effects stay rejected.
-	const proof = rewritten?.effectReceiptIds.length
-		? resolveAppliedUserFacingEffectReceipts(
-				{
-					verifiedUserFacing: true,
-					userFacingText: reply,
-					userFacingEffectReceiptIds: rewritten.effectReceiptIds,
-				},
-				mergeEffectReceipts(
-					...args.actionResults.map((result) => result.effectReceipts),
-				),
-			)
-		: null;
-	const rewrittenDecision = reply
-		? evaluatePlannedReplyEgress({
-				reply,
-				actionResults: args.actionResults,
-				actions: args.runtime.actions,
-			})
-		: undefined;
-	if (
-		!reply ||
-		(rewritten?.effectReceiptIds.length && !proof) ||
-		(rewrittenDecision?.verdict !== "allow" &&
-			!(rewrittenDecision?.kind === "completed_side_effect" && proof))
-	) {
-		const error = new ElizaError(
-			"A grounded conversational reply could not be generated",
-			{
-				code: "REPLY_GROUNDING_FAILED",
-				context: { roomId: args.message.roomId, messageId: args.message.id },
-			},
-		);
-		args.runtime.reportError("MessageService.replyRecovery", error);
-		throw error;
-	}
-	return {
-		text: reply,
-		effectReceiptIds:
-			proof?.map((receipt) => receipt.receiptId) ??
-			appliedEffectReceiptIdsForReply(reply, args.actionResults),
-	};
-}
-
-import { ElizaError } from "../../errors";
-import { renderActionResultsForModel } from "../../runtime/planner-rendering.js";
-import type { EvaluatorOutput } from "../../runtime/planner-types.js";
-
-import { rewriteActionCallbackInCharacter } from "./delivery.js";
-import type { StructuredToolEffect } from "./reply-policy.js";

@@ -41,7 +41,6 @@ import {
 	isSubAgentCompletionArtifact,
 	resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
-import { responseHandlerContextWindow } from "./provider-state.js";
 import {
 	getStage1FinishReason,
 	stage1HitCompletionLimit,
@@ -102,23 +101,17 @@ export async function generateStage1Decision(
 	args: V5MessageRuntimeInput,
 	{
 		senderRole,
-		useProviderOverflow,
 		context,
 		availableContexts,
 		directMessageChannel,
-		overflowContext,
 		stage1PreprocessStartedAt,
 		recorder,
 		trajectoryId,
 	}: {
-		useProviderOverflow: boolean;
 		senderRole: Awaited<ReturnType<typeof resolveStage1SenderRole>>;
 		context: Awaited<ReturnType<typeof createV5MessageContextObject>>;
 		availableContexts: ReturnType<typeof listAvailableContextsForRole>;
 		directMessageChannel: boolean;
-		overflowContext: Awaited<
-			ReturnType<typeof createV5MessageContextObject>
-		> | null;
 		stage1PreprocessStartedAt: number;
 		recorder: TrajectoryRecorder | undefined;
 		trajectoryId: ReturnType<TrajectoryRecorder["startTrajectory"]> | undefined;
@@ -146,7 +139,7 @@ export async function generateStage1Decision(
 		);
 	const responseHandlerSchema =
 		args.runtime.responseHandlerFieldRegistry.composeSchema();
-	let messageHandlerInput = renderMessageHandlerModelInput(
+	const messageHandlerInput = renderMessageHandlerModelInput(
 		args.runtime,
 		context,
 		availableContexts,
@@ -156,18 +149,18 @@ export async function generateStage1Decision(
 			responseHandlerFields: responseHandlerFieldPrompt.rendered,
 		},
 	);
-	let stage1PrefixHashes = computePrefixHashes(
+	const stage1PrefixHashes = computePrefixHashes(
 		messageHandlerInput.promptSegments,
 	);
-	let stableStage1Segments = messageHandlerInput.promptSegments.filter(
+	const stableStage1Segments = messageHandlerInput.promptSegments.filter(
 		(segment) => segment.stable,
 	);
-	let stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-	let stage1SystemContent =
+	const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+	const stage1SystemContent =
 		typeof messageHandlerInput.messages[0]?.content === "string"
 			? messageHandlerInput.messages[0].content
 			: "";
-	let stage1PrefixHash =
+	const stage1PrefixHash =
 		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 		hashString(`stage1:${stage1SystemContent}`);
 	const messageHandlerTools = [
@@ -178,46 +171,6 @@ export async function generateStage1Decision(
 				"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 		}),
 	];
-	const contextWindowTokens = responseHandlerContextWindow(args.runtime);
-	if (overflowContext && contextWindowTokens) {
-		const eagerBudget = buildModelInputBudget({
-			messages: messageHandlerInput.messages,
-			promptSegments: messageHandlerInput.promptSegments,
-			tools: messageHandlerTools,
-			contextWindowTokens,
-			estimationMode: "utf8-upper-bound",
-		});
-		if (
-			eagerBudget.estimatedInputTokens > eagerBudget.dispatchThresholdTokens
-		) {
-			useProviderOverflow = true;
-			context = overflowContext;
-			messageHandlerInput = renderMessageHandlerModelInput(
-				args.runtime,
-				context,
-				availableContexts,
-				{
-					directMessage: directMessageChannel && !voiceDirectMessageChannel,
-					voiceDirectMessage: voiceDirectMessageChannel,
-					responseHandlerFields: responseHandlerFieldPrompt.rendered,
-				},
-			);
-			stage1PrefixHashes = computePrefixHashes(
-				messageHandlerInput.promptSegments,
-			);
-			stableStage1Segments = messageHandlerInput.promptSegments.filter(
-				(segment) => segment.stable,
-			);
-			stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-			stage1SystemContent =
-				typeof messageHandlerInput.messages[0]?.content === "string"
-					? messageHandlerInput.messages[0].content
-					: "";
-			stage1PrefixHash =
-				stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
-				hashString(`stage1:${stage1SystemContent}`);
-		}
-	}
 	const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 		cacheProviderOptions({
 			prefixHash: stage1PrefixHash,
@@ -603,6 +556,5 @@ export async function generateStage1Decision(
 		inferenceMessageText,
 		parsedResponseHandlerReply,
 		messageHandlerEndedAt,
-		useProviderOverflow,
 	};
 }

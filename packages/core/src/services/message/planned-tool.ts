@@ -5,6 +5,7 @@ import {
 	CORE_PLANNER_TERMINALS,
 } from "../../actions/to-tool";
 import { actionGateFailure } from "../../runtime/action-gate";
+import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval";
 import type {
 	EvaluatorEffects,
 	EvaluatorOutput,
@@ -61,9 +62,11 @@ import { toWellFormedUnicode } from "../../utils/well-formed";
 import {
 	buildRuntimeActionLookup,
 	resolvePlannerActionName,
+	resolveRuntimeAction,
 } from "./action-identifiers.js";
 import { mergeAgentContexts } from "./action-surface.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import { uiViewActionPriority } from "./provider-state.js";
 
 export interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
@@ -570,6 +573,117 @@ export function collectPlannerTools(
 	];
 }
 
+export type UmbrellaPlannerBudgetDecision =
+	| "under-dispatch-budget"
+	| "smaller-than-complete-surface"
+	| "not-smaller";
+
+/**
+ * Decide whether the umbrella-parent request replaces the current planner
+ * request. The dispatch threshold compares a utf8-upper-bound ESTIMATE (one
+ * token per byte) against the model window, and the provider's real count runs
+ * far below it (190,732 tokens for a surface this estimator put at 506,107), so
+ * an umbrella that misses the estimate routinely fits the real window. Both
+ * requests are measured with the same upper bound, so a smaller umbrella
+ * estimate is a strictly smaller request: keeping the larger complete surface
+ * instead fails whenever the umbrella would fail and also whenever it would not
+ * (the provider rejects the larger request and the turn ends in the typed
+ * overflow apology). The umbrella keeps every authorized parent, and the
+ * provider boundary in planner-loop.ts remains the ground-truth backstop.
+ */
+export function decideUmbrellaPlannerBudget(args: {
+	umbrella: { estimatedInputTokens: number; dispatchThresholdTokens: number };
+	current: { estimatedInputTokens: number };
+}): UmbrellaPlannerBudgetDecision {
+	if (
+		args.umbrella.estimatedInputTokens <= args.umbrella.dispatchThresholdTokens
+	) {
+		return "under-dispatch-budget";
+	}
+	if (args.umbrella.estimatedInputTokens < args.current.estimatedInputTokens) {
+		return "smaller-than-complete-surface";
+	}
+	return "not-smaller";
+}
+
+/**
+ * Recover an oversized planner request from Stage 1's model-authored action
+ * candidates. This is a dispatch-budget fallback, not a command router: Stage 1
+ * has already interpreted the user's request with the response-handler model,
+ * and the action planner still has to select and call one of the resulting
+ * tools. Unknown or ambiguous candidates fail open to the complete authorized
+ * surface so this helper cannot invent authority or silently pick an action.
+ */
+export function collectBudgetedStageOneCandidateActions(args: {
+	actions: readonly Action[];
+	candidateActions: readonly string[];
+	contexts: readonly AgentContext[];
+}): Action[] {
+	if (args.candidateActions.length === 0) return [];
+
+	const actionLookup = buildRuntimeActionLookup({ actions: args.actions });
+	const selectedNames = new Set<string>();
+	for (const candidateName of args.candidateActions) {
+		const direct = resolveRuntimeAction(actionLookup, candidateName);
+		const resolved = direct
+			? [direct]
+			: parentAliasesForCandidateAction(candidateName)
+					.map((alias) => resolveRuntimeAction(actionLookup, alias))
+					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) return [];
+		for (const action of resolved) {
+			selectedNames.add(normalizeActionIdentifier(action.name));
+		}
+	}
+	// A candidate child is a routing hint, not a complete plan. Keep its
+	// authorized umbrella available so a compound request can use another
+	// operation after the first result (e.g. navigate, then read the page).
+	// Use declared relationships, never guessed name prefixes. Only parents
+	// already admitted by the execution gates may enter this surface.
+	for (const parent of args.actions) {
+		if (
+			parent.subActions?.some((child) =>
+				selectedNames.has(
+					normalizeActionIdentifier(
+						typeof child === "string" ? child : child.name,
+					),
+				),
+			)
+		) {
+			selectedNames.add(normalizeActionIdentifier(parent.name));
+		}
+	}
+	// Fill only domains missing from the resolved candidates. A synthetic
+	// candidate may resolve to VIEWS without the Notes data action. Once an
+	// explicit candidate covers a domain, do not add every related action:
+	// Calendar shares its context with many life-management tools, whose full
+	// schemas can overflow the model despite a precise CALENDAR selection.
+	const coveredContexts = new Set(
+		args.actions
+			.filter((action) =>
+				selectedNames.has(normalizeActionIdentifier(action.name)),
+			)
+			.flatMap((action) => action.contexts ?? [])
+			.map((context) => String(context).trim().toLowerCase()),
+	);
+	const uncoveredContexts = args.contexts.filter(
+		(context) => !coveredContexts.has(String(context).trim().toLowerCase()),
+	);
+	const noFocusedViewActions = new Set<string>();
+	for (const action of args.actions) {
+		if (
+			uiViewActionPriority(action, uncoveredContexts, noFocusedViewActions) ===
+			1
+		) {
+			selectedNames.add(normalizeActionIdentifier(action.name));
+		}
+	}
+
+	return args.actions.filter((action) =>
+		selectedNames.has(normalizeActionIdentifier(action.name)),
+	);
+}
+
 /**
  * Read the historical tier-A metadata for telemetry compatibility. Tool
  * construction ignores it and expands every authorized parent and child.
@@ -816,114 +930,3 @@ export async function settleFailedDirectToolCallOnStream(
 		metadata: { deterministic: true },
 	});
 }
-
-export function decideUmbrellaPlannerBudget(args: {
-	umbrella: { estimatedInputTokens: number; dispatchThresholdTokens: number };
-	current: { estimatedInputTokens: number };
-}): UmbrellaPlannerBudgetDecision {
-	if (
-		args.umbrella.estimatedInputTokens <= args.umbrella.dispatchThresholdTokens
-	) {
-		return "under-dispatch-budget";
-	}
-	if (args.umbrella.estimatedInputTokens < args.current.estimatedInputTokens) {
-		return "smaller-than-complete-surface";
-	}
-	return "not-smaller";
-}
-
-export function collectBudgetedUmbrellaActions(args: {
-	actions: readonly Action[];
-	actionSurface: V5PlannerActionSurface;
-}): Action[] {
-	const parentNames = new Set(
-		args.actionSurface.summary.tierAParents.map((name) =>
-			normalizeActionIdentifier(name),
-		),
-	);
-	return args.actions.filter((action) =>
-		parentNames.has(normalizeActionIdentifier(action.name)),
-	);
-}
-
-export function collectBudgetedStageOneCandidateActions(args: {
-	actions: readonly Action[];
-	candidateActions: readonly string[];
-	contexts: readonly AgentContext[];
-}): Action[] {
-	if (args.candidateActions.length === 0) return [];
-
-	const actionLookup = buildRuntimeActionLookup({ actions: args.actions });
-	const selectedNames = new Set<string>();
-	for (const candidateName of args.candidateActions) {
-		const direct = resolveRuntimeAction(actionLookup, candidateName);
-		const resolved = direct
-			? [direct]
-			: parentAliasesForCandidateAction(candidateName)
-					.map((alias) => resolveRuntimeAction(actionLookup, alias))
-					.filter((action): action is Action => action !== undefined);
-		if (resolved.length === 0) return [];
-		for (const action of resolved) {
-			selectedNames.add(normalizeActionIdentifier(action.name));
-		}
-	}
-	// A candidate child is a routing hint, not a complete plan. Keep its
-	// authorized umbrella available so a compound request can use another
-	// operation after the first result (e.g. navigate, then read the page).
-	// Use declared relationships, never guessed name prefixes. Only parents
-	// already admitted by the execution gates may enter this surface.
-	for (const parent of args.actions) {
-		if (
-			parent.subActions?.some((child) =>
-				selectedNames.has(
-					normalizeActionIdentifier(
-						typeof child === "string" ? child : child.name,
-					),
-				),
-			)
-		) {
-			selectedNames.add(normalizeActionIdentifier(parent.name));
-		}
-	}
-	// Fill only domains missing from the resolved candidates. A synthetic
-	// candidate may resolve to VIEWS without the Notes data action. Once an
-	// explicit candidate covers a domain, do not add every related action:
-	// Calendar shares its context with many life-management tools, whose full
-	// schemas can overflow the model despite a precise CALENDAR selection.
-	const coveredContexts = new Set(
-		args.actions
-			.filter((action) =>
-				selectedNames.has(normalizeActionIdentifier(action.name)),
-			)
-			.flatMap((action) => action.contexts ?? [])
-			.map((context) => String(context).trim().toLowerCase()),
-	);
-	const uncoveredContexts = args.contexts.filter(
-		(context) => !coveredContexts.has(String(context).trim().toLowerCase()),
-	);
-	const noFocusedViewActions = new Set<string>();
-	for (const action of args.actions) {
-		if (
-			uiViewActionPriority(action, uncoveredContexts, noFocusedViewActions) ===
-			1
-		) {
-			selectedNames.add(normalizeActionIdentifier(action.name));
-		}
-	}
-
-	return args.actions.filter((action) =>
-		selectedNames.has(normalizeActionIdentifier(action.name)),
-	);
-}
-
-export type UmbrellaPlannerBudgetDecision =
-	| "under-dispatch-budget"
-	| "smaller-than-complete-surface"
-	| "not-smaller";
-
-import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.js";
-
-import { resolveRuntimeAction } from "./action-identifiers.js";
-import type { V5PlannerActionSurface } from "./action-surface.js";
-
-import { uiViewActionPriority } from "./provider-state.js";

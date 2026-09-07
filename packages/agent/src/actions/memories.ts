@@ -124,8 +124,7 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "its",
   // Subject and naming fillers that never discriminate a saved fact: the row
   // binds the subject through its entity, and "named"/"called" only introduce
-  // the value (live 2026-09-06: `update query="sister named Dana"` required
-  // every term and missed "user has_sister Dana").
+  // the value rather than distinguishing the stored relationship.
   "user",
   "users",
   "named",

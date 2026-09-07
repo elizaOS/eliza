@@ -1,4 +1,5 @@
 /** Renders passive feedback outside transformed and collapsible shell containers. */
+
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ActionNotice } from "../../state/types";

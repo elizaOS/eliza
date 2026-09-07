@@ -312,6 +312,82 @@ describe("factMemoryEvaluator pending corrections", () => {
 });
 
 describe("factMemoryEvaluator keyword dedupe", () => {
+	it.each([
+		{
+			storedFields: { city: "Berlin" },
+			incomingFields: { city: "Paris" },
+			storedDate: "2026-09-01",
+			incomingDate: "2026-09-01",
+			added: 1,
+		},
+		{
+			storedFields: { city: "Berlin" },
+			incomingFields: { city: "Berlin" },
+			storedDate: "2026-09-01",
+			incomingDate: "2026-09-02",
+			added: 1,
+		},
+		{
+			storedFields: { city: "Berlin" },
+			incomingFields: { city: "Berlin" },
+			storedDate: "2026-09-01",
+			incomingDate: "2026-09-01",
+			added: 0,
+		},
+	])(
+		"respects structured meaning and effective dates: $incomingFields / $incomingDate",
+		async (scenario) => {
+			const runtime = makeRuntime();
+			const existing: Memory = {
+				id: "00000000-0000-0000-0000-0000000000ff" as UUID,
+				entityId,
+				agentId,
+				roomId,
+				content: { text: "working remotely" },
+				metadata: {
+					kind: "current",
+					category: "uncategorized",
+					structuredFields: scenario.storedFields,
+					validAt: scenario.storedDate,
+				},
+				createdAt: Date.now(),
+			};
+			const result = await processFactOps(runtime, [existing], {
+				ops: [
+					{
+						op: "add_current",
+						claim: "working remotely",
+						category: "uncategorized",
+						structured_fields: scenario.incomingFields,
+						valid_at: scenario.incomingDate,
+						keywords: ["remote"],
+					},
+				],
+			});
+			expect(result?.data).toMatchObject({
+				added: scenario.added,
+				strengthened: 1 - scenario.added,
+			});
+			if (scenario.added) {
+				expect(runtime.createMemory).toHaveBeenCalledWith(
+					expect.objectContaining({
+						metadata: expect.objectContaining({
+							structuredFields: scenario.incomingFields,
+							validAt: scenario.incomingDate,
+						}),
+					}),
+					"facts",
+					true,
+				);
+				expect(runtime.updateMemory).not.toHaveBeenCalled();
+			} else {
+				expect(runtime.createMemory).not.toHaveBeenCalled();
+				expect(runtime.updateMemory).toHaveBeenCalledWith(
+					expect.objectContaining({ id: existing.id }),
+				);
+			}
+		},
+	);
 	it("stores extracted keywords and does not queue fact embeddings", async () => {
 		const runtime = makeRuntime();
 
@@ -340,46 +416,51 @@ describe("factMemoryEvaluator keyword dedupe", () => {
 		);
 	});
 
-	it("strengthens a lexical duplicate instead of embedding the candidate", async () => {
-		const runtime = makeRuntime();
-		const existingFact: Memory = {
-			id: "00000000-0000-0000-0000-0000000000ff" as UUID,
-			entityId,
-			agentId,
-			roomId,
-			content: { text: "lives in Berlin" },
-			metadata: {
-				kind: "durable",
-				category: "identity",
-				confidence: 0.7,
-				keywords: ["berlin", "lives"],
-			},
-			createdAt: Date.now(),
-		};
-
-		const result = await processFactOps(runtime, [existingFact], {
-			ops: [
-				{
-					op: "add_durable",
-					claim: "Berlin has been treating me well",
+	it.each([
+		["lives in Berlin", "Berlin has been treating me well"],
+		["prefers tea over coffee", "prefers coffee over tea"],
+		["likes oat milk", "does not like oat milk"],
+	])(
+		"preserves distinct facts despite lexical overlap: %s / %s",
+		async (storedClaim, newClaim) => {
+			const runtime = makeRuntime();
+			const existingFact: Memory = {
+				id: "00000000-0000-0000-0000-0000000000ff" as UUID,
+				entityId,
+				agentId,
+				roomId,
+				content: { text: storedClaim },
+				metadata: {
+					kind: "durable",
 					category: "identity",
-					structured_fields: { city: "Berlin" },
-					keywords: ["berlin"],
+					confidence: 0.7,
+					keywords: ["berlin", "lives"],
 				},
-			],
-		});
+				createdAt: Date.now(),
+			};
 
-		expect(runtime.useModel).not.toHaveBeenCalled();
-		expect(runtime.createMemory).not.toHaveBeenCalled();
-		expect(runtime.updateMemory).toHaveBeenCalledWith(
-			expect.objectContaining({ id: existingFact.id }),
-		);
-		const updateArg = runtime.updateMemory.mock.calls[0]?.[0] as {
-			metadata?: { confidence?: number };
-		};
-		expect(updateArg.metadata?.confidence).toBeCloseTo(0.8);
-		expect(result?.data).toMatchObject({ added: 0, strengthened: 1 });
-	});
+			const result = await processFactOps(runtime, [existingFact], {
+				ops: [
+					{
+						op: "add_durable",
+						claim: newClaim,
+						category: "identity",
+						structured_fields: { city: "Berlin" },
+						keywords: ["berlin"],
+					},
+				],
+			});
+
+			expect(runtime.useModel).not.toHaveBeenCalled();
+			expect(runtime.createMemory).toHaveBeenCalledWith(
+				expect.objectContaining({ content: { text: newClaim } }),
+				"facts",
+				true,
+			);
+			expect(runtime.updateMemory).not.toHaveBeenCalled();
+			expect(result?.data).toMatchObject({ added: 1, strengthened: 0 });
+		},
+	);
 });
 
 describe("factMemoryEvaluator dedupe against explicit MEMORY facts", () => {

@@ -579,7 +579,7 @@ describe("view switching — VIEWS action resolver", () => {
 			);
 
 			expect(result?.success).toBe(false);
-			expect(result?.modelReplyRequired).toBe(true);
+			expect(result?.modelReplyRequired).toBeUndefined();
 			expect(result?.turnComplete).toBe(false);
 			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});
@@ -752,7 +752,7 @@ describe("view switching — VIEWS action resolver", () => {
 					transcriptVisibility: "internal",
 					turnComplete: false,
 				});
-				expect(result?.modelReplyRequired).toBe(true);
+				expect(result?.modelReplyRequired).toBeUndefined();
 				expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 					effect: "view_navigation",
 					status: "unsupported-route",

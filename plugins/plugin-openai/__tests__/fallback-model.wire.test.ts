@@ -89,9 +89,6 @@ function runtime(settings: Record<string, string> = {}): IAgentRuntime {
 
 describe("fallback model while the primary is rate limited", () => {
   it("serves the next requests with OPENAI_FALLBACK_MODEL after the primary's 429", async () => {
-    // Live 2026-09-06 22:18: every slot pinned to qwen-3.8-27b, one 429 held
-    // it for 60 s, the runtime's slot chain re-entered the same model and the
-    // user got "Too many requests reached me at once".
     const agent = runtime({ OPENAI_FALLBACK_MODEL: "gemma-4-31b" });
     await expect(
       handleTextSmall(agent, { prompt: "first", model: "qwen-3.8-27b", stream: false })

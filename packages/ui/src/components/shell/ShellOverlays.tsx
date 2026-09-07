@@ -20,7 +20,7 @@ import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelector } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
-import { ActionNoticeToast } from "./ActionNoticeToast";
+import { ActionNoticeToast as NoticeToast } from "./ActionNoticeToast";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
 import { ComputerUseApprovalOverlay } from "./ComputerUseApprovalOverlay";
@@ -122,11 +122,21 @@ export function ShellOverlays({
       <BugReportModal />
       <ComputerUseApprovalOverlay />
       <ShortcutsOverlay />
-      <ActionNoticeToast
+      <NoticeToast
         actionNotice={actionNotice}
         onDismiss={() => setState("actionNotice", null)}
       />
     </>,
     document.body,
   );
+}
+
+export function ActionNoticeToast({
+  notice,
+  onDismiss,
+}: {
+  notice: ActionNotice;
+  onDismiss: () => void;
+}) {
+  return <NoticeToast actionNotice={notice} onDismiss={onDismiss} />;
 }

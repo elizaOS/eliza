@@ -1,7 +1,9 @@
 /** Executes structured prompts with schema validation, streaming delivery, and retry diagnostics.
  * The runtime supplies public model and optimization hooks; the per-runtime trace store owns enrichment.
  * Attempt metrics are shared across runtimes as before. */
+
 import { v4 as uuidv4 } from "uuid";
+import { isRateLimitError } from "../../services/message/fallback-reply";
 import { runWithStreamingContext } from "../../streaming-context";
 import {
 	type GenerateTextParams,
@@ -1472,5 +1474,3 @@ ${section_end}`;
 		});
 	}
 }
-
-import { isRateLimitError } from "../../services/message/fallback-reply.js";

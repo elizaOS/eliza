@@ -2215,10 +2215,8 @@ function resolveFallbackModelName(
 /**
  * The concrete model a request should use: the primary unless it is cooling
  * down after a 429 and a distinct fallback is configured and not itself
- * cooling down. Every slot keeps its primary model (live 2026-09-06: every
- * slot pinned to one Cerebras model meant the runtime's slot chain re-sent
- * held requests to the same model and the user saw a hold notice); the
- * fallback is reached only for the duration of the provider's Retry-After.
+ * cooling down. Every slot keeps its primary model; fallback applies only
+ * for the duration of the provider's Retry-After.
  */
 function selectRequestModelName(
   models: Map<string, number>,

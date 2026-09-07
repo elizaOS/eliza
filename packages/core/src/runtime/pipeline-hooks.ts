@@ -18,6 +18,10 @@ import {
 	resolvePipelineHookSpec,
 	sortPipelineHooksByPosition,
 } from "../types/pipeline-hooks";
+import {
+	isUnavailableLocalModel,
+	TEXT_GENERATION_MODEL_KEYS,
+} from "./model-dispatch/policy.js";
 
 export function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
@@ -466,8 +470,3 @@ export class RuntimePipelineHooks {
 		}
 	}
 }
-
-import {
-	isUnavailableLocalModel,
-	TEXT_GENERATION_MODEL_KEYS,
-} from "./model-dispatch/policy.js";

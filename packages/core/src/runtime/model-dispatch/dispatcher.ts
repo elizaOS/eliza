@@ -36,8 +36,10 @@ import {
 	getModelFallbackChain,
 	type IAgentRuntime,
 	type JsonValue,
+	MODEL_PROVIDER_ATTEMPTS,
 	type ModelAttemptContext,
 	type ModelParamsMap,
+	type ModelProviderAttempt,
 	type ModelRegistrationInfo,
 	type ModelRegistrationMetadata,
 	type ModelResultMap,
@@ -93,6 +95,7 @@ import {
 import {
 	assertRuntimeModelOutputComplete,
 	isTextStreamResult,
+	isUnavailableLocalModel,
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,
 	readReasoningTokensFromResponse,
@@ -2483,10 +2486,3 @@ export class RuntimeModelDispatch {
 		}
 	}
 }
-
-import {
-	MODEL_PROVIDER_ATTEMPTS,
-	type ModelProviderAttempt,
-} from "../../types";
-
-import { isUnavailableLocalModel } from "./policy.js";
