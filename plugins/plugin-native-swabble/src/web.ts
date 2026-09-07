@@ -99,16 +99,25 @@ const CONTINUOUS_SCRIPTS =
  * slice correct for an expanding case fold such as Turkish "\u0130" (U+0130),
  * whose lowercase form is the two code points "i" + U+0307.
  *
- * `toLowerCase()` is context-free (unlike locale-aware `toLocaleLowerCase()`),
- * so folding per code point here matches folding the whole string at once,
- * which is why the folded trigger and the folded transcript stay comparable.
+ * `toLowerCase()` folds each code point independently EXCEPT for Greek capital
+ * sigma, whose whole-string lowercase is context-sensitive: word-final it is
+ * "\u03c2" (U+03C2, final sigma) and medial it is "\u03c3" (U+03C3). A
+ * per-code-point fold cannot observe word position and always yields "\u03c3",
+ * so per-code-point and whole-string folds would disagree whenever a trigger
+ * and transcript spell the same word in different case (e.g. "\u039f\u0394\u039f\u03a3"
+ * vs "\u03bf\u03b4\u03bf\u03c2"), silently shutting the gate. To keep the two folds
+ * equal on both sides, final sigma is canonicalized to "\u03c3"; that swap is
+ * length-preserving (one code point for one), so the offset `map` stays exact.
  */
 function foldForMatch(value: string): { folded: string; map: number[] } {
   let folded = "";
   const map: number[] = [];
   let originalIndex = 0;
   for (const codePoint of value) {
-    const lowered = codePoint.toLowerCase();
+    // Canonicalize Greek final sigma to medial sigma so this per-code-point
+    // fold equals a whole-string toLowerCase() (length-preserving, so `map`
+    // is unaffected).
+    const lowered = codePoint.toLowerCase().replace(/\u03c2/g, "\u03c3");
     for (let i = 0; i < lowered.length; i++) {
       map.push(originalIndex);
     }

@@ -620,6 +620,44 @@ describe("SwabbleWeb fallback", () => {
     );
   });
 
+  it("fires a Greek trigger whose case-folding is contextual (final vs medial sigma)", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+
+    // The settings UI whole-string-lowercases a manual entry, so "\u039f\u0394\u039f\u03a3"
+    // reaches the plugin as "\u03bf\u03b4\u03bf\u03c2" with word-final sigma "\u03c2" (U+03C2).
+    // toLowerCase() is context-sensitive for Greek capital sigma, so a
+    // per-code-point fold of a capitalized transcript yields medial "\u03c3"
+    // (U+03C3); without canonicalizing final sigma the two folds disagree and
+    // the gate never opens for a legitimately spoken wake word (regression vs
+    // develop, which whole-string-lowercased both sides).
+    const settingsGreekTrigger = "\u039f\u0394\u039f\u03a3".toLowerCase();
+    expect(settingsGreekTrigger).toBe("\u03bf\u03b4\u03bf\u03c2");
+    await plugin.start({
+      config: { triggers: [settingsGreekTrigger], locale: "el-GR" },
+    });
+    FakeRecognition.latest?.onresult?.(
+      speechEvent(
+        "\u039f\u0394\u039f\u03a3 \u03b1\u03bd\u03bf\u03b9\u03be\u03b5",
+      ),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "\u03b1\u03bd\u03bf\u03b9\u03be\u03b5",
+        postGap: -1,
+      }),
+    );
+  });
+
   it("does not fire the wake word when the trigger is only a substring of a larger word", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });
     setNavigator({
