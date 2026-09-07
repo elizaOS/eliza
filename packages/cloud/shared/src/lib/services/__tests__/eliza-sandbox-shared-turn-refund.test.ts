@@ -19,7 +19,7 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 const aiBillingActual = await import("../ai-billing");
 const runTurnActual = await import("../shared-runtime/run-shared-agent-turn");
@@ -52,6 +52,16 @@ mock.module("../shared-runtime/run-shared-agent-turn", () => ({
   runSharedAgentTurn: mock(async () => turnImpl()),
 }));
 
+const { sharedRuntimeHistoryRepository } = await import(
+  "../../../db/repositories/shared-runtime-history"
+);
+const loadHistory = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+const saveHistory = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
+afterAll(() => {
+  loadHistory.mockRestore();
+  saveHistory.mockRestore();
+});
+
 const { ElizaSandboxService } = await import("../eliza-sandbox");
 
 type BridgeCallable = {
@@ -59,21 +69,13 @@ type BridgeCallable = {
     rec: Record<string, unknown>,
     rpc: { jsonrpc: string; id: number; method: string; params: { text: string } },
   ) => Promise<unknown>;
-  buildSharedRuntimeCharacter: (...args: unknown[]) => Promise<unknown>;
-  loadSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
-  saveSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
 };
 
 function makeService(): BridgeCallable {
   const svc = new ElizaSandboxService() as unknown as BridgeCallable;
-  // Private seams the turn path calls before/after runSharedAgentTurn.
-  svc.buildSharedRuntimeCharacter = mock(async () => ({
-    name: "Eliza",
-    model: "openai/gpt-oss-120b",
-    system: "",
-    bio: [],
-  })) as never;
-  svc.loadSharedRuntimeHistory = mock(async () => []) as never;
+  loadHistory.mockClear();
+  saveHistory.mockReset();
+  saveHistory.mockResolvedValue([]);
   return svc;
 }
 
@@ -119,9 +121,9 @@ describe("bridgeSharedMessageSend — refunds the hold on a post-reserve throw (
       model: "openai/gpt-oss-120b",
     });
     const svc = makeService();
-    svc.saveSharedRuntimeHistory = mock(async () => {
+    saveHistory.mockImplementation(async () => {
       throw new Error("pg write timeout");
-    }) as never;
+    });
 
     await expect(svc.bridgeSharedMessageSend(REC, RPC)).rejects.toThrow("pg write timeout");
 

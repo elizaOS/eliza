@@ -1,12 +1,8 @@
-// Interaction coverage for the decomposed personal-assistant domain views
-// (calendar, finances, focus, goals, health, inbox, todos, relationships).
-// These are dynamic plugin views; the ui-smoke stub registers their bundles so
-// they render (not the launcher fallback). Each `<Domain>View` is a spatial
-// wrapper that renders the same DOM on the desktop `chromium` and Pixel-7
-// `mobile-chromium` lanes, so every assertion below is a viewport-independent
-// semantic outcome: populated content from the mocked lifeops endpoints plus a
-// real state-changing interaction (channel/kind/status filters, calendar day
-// selection and month navigation). This is the interaction owner that closes
+/**
+ * Exercises populated personal-assistant domain views through the browser.
+ * Real filter, navigation, and editor interactions run against deterministic
+ * HTTP fixtures on desktop and mobile viewports.
+ */
 
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -127,16 +123,13 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   ).toBeVisible({ timeout: 15_000 });
 
   // Activating a channel chip narrows the server query (?channels=<channel>)
-  // and the rendered list: the active chip is renamed "* <Channel>", its
-  // thread stays, and the other channel's thread disappears.
+  // and the rendered list: its thread stays and the other channel disappears.
   const emailChip = page
     .getByRole("button", { name: "Email", exact: true })
     .first();
   await expectTopmostAtCenter(emailChip, "Inbox Email filter chip");
   await emailChip.click();
-  await expect(
-    page.getByRole("button", { name: "* Email", exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(emailChip).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible({
     timeout: 15_000,
   });
@@ -192,9 +185,10 @@ test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
     timeout: 15_000,
   });
 
-  // Toggling the "Active" status chip narrows the groups: the paused goal
+  // Selecting the "Active" status narrows the groups: the paused goal
   // disappears, the active goal stays.
-  await page.getByRole("button", { name: "Active", exact: true }).click();
+  await page.getByRole("combobox", { name: "Status", exact: true }).click();
+  await page.getByRole("option", { name: "Active", exact: true }).click();
   await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0, {
     timeout: 15_000,
   });

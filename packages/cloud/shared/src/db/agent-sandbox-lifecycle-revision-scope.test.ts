@@ -6,7 +6,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -205,7 +205,7 @@ describe("lifecycle-revision exclusion list drift guard", () => {
     expect(excluded.has("lifecycle_revision")).toBe(false);
   });
 
-  // Every fence, from both files and both spellings: raw SQL predicates and the
+  // Every lifecycle owner and both spellings: raw SQL predicates and the
   // Drizzle builder. Scanning one file or one form fails open — which is the
   // failure mode this guard exists to prevent.
   function scanFences(): Set<string> {
@@ -223,6 +223,9 @@ describe("lifecycle-revision exclusion list drift guard", () => {
     for (const source of [
       "../lib/services/eliza-sandbox.ts",
       "./repositories/agent-sandboxes.ts",
+      ...readdirSync(new URL("../lib/services/eliza-sandbox/lifecycle/", import.meta.url))
+        .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
+        .map((file) => `../lib/services/eliza-sandbox/lifecycle/${file}`),
     ]) {
       const text = readFileSync(fileURLToPath(new URL(source, import.meta.url)), "utf8");
       // Look both ways: the revision is not always last in its predicate, and
@@ -246,7 +249,7 @@ describe("lifecycle-revision exclusion list drift guard", () => {
     expect([...scanFences()].filter((column) => excluded.has(column))).toEqual([]);
   });
 
-  test("the scan reaches both fence files and both fence spellings", () => {
+  test("the scan reaches lifecycle and repository fences in both spellings", () => {
     // Structural pins rather than a count floor: a count only fails once the
     // number happens to drop below it, so it can lose a whole source silently.
     // Each of these dies with exactly one gap: `execution_tier` is fenced only

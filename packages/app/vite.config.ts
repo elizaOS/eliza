@@ -1914,15 +1914,16 @@ function resolveManualChunk(id: string): string | undefined {
     return "view-icons";
   }
 
-  // Self-contained leaf libraries needed EAGERLY by the app/core graph and
+  // Shared libraries needed eagerly by the app/core graph and
   // also by the pinned wallet stack. Without an explicit assignment the
   // manual-chunk fold captures them into `vendor-crypto`, anchoring the whole
-  // wallet chunk into the entry's static import closure. They import nothing
-  // outside themselves, so the vendor-crypto → vendor-boot-leaves edge cannot
-  // form the cross-chunk init cycle the crypto pin guards against.
+  // wallet chunk into the entry's static import closure. Their dependencies
+  // remain outside the wallet graph, including the shared React chunk.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/(uuid|zod)\//.test(normalizedId)
+    /\/node_modules\/(uuid|zod|clsx|bs58|base-x|react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar)\//.test(
+      normalizedId,
+    )
   ) {
     return "vendor-boot-leaves";
   }

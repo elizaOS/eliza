@@ -148,6 +148,15 @@ describe("catalog-policy", () => {
   });
 
   describe("filterSettingsDefaultLocalModels", () => {
+    it("keeps an unpublished tier unavailable until its artifact is published", () => {
+      const model = createMockCatalogModel("eliza-1-9b", {
+        publishStatus: "planned",
+      });
+      expect(filterSettingsDefaultLocalModels([model])).toEqual([]);
+      model.publishStatus = "published";
+      expect(filterSettingsDefaultLocalModels([model])).toEqual([model]);
+    });
+
     it("filters catalog to only eligible visible models with preserved ordering", () => {
       const catalog: CatalogModel[] = [
         createMockCatalogModel("eliza-1-2b", { hiddenFromCatalog: false }),

@@ -18,7 +18,7 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 const aiBillingActual = await import("../ai-billing");
 const runTurnActual = await import("../shared-runtime/run-shared-agent-turn");
@@ -65,6 +65,16 @@ mock.module("../shared-runtime/run-shared-agent-turn", () => ({
   runSharedAgentTurnStream: mock(async () => streamTurnImpl()),
 }));
 
+const { sharedRuntimeHistoryRepository } = await import(
+  "../../../db/repositories/shared-runtime-history"
+);
+const loadHistory = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+const saveHistory = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
+afterAll(() => {
+  loadHistory.mockRestore();
+  saveHistory.mockRestore();
+});
+
 const { ElizaSandboxService } = await import("../eliza-sandbox");
 
 type StreamCallable = {
@@ -73,22 +83,13 @@ type StreamCallable = {
     rpc: { jsonrpc: string; id: number; method: string; params: { text: string } },
     executionCtx?: { waitUntil(promise: Promise<unknown>): void },
   ) => Promise<Response>;
-  buildSharedRuntimeCharacter: (...args: unknown[]) => Promise<unknown>;
-  loadSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
-  saveSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
 };
 
 function makeService(): StreamCallable {
   const svc = new ElizaSandboxService() as unknown as StreamCallable;
-  // Private seams the turn path calls before/after runSharedAgentTurnStream.
-  svc.buildSharedRuntimeCharacter = mock(async () => ({
-    name: "Eliza",
-    model: "openai/gpt-oss-120b",
-    system: "",
-    bio: [],
-  })) as never;
-  svc.loadSharedRuntimeHistory = mock(async () => []) as never;
-  svc.saveSharedRuntimeHistory = mock(async () => undefined) as never;
+  loadHistory.mockClear();
+  saveHistory.mockReset();
+  saveHistory.mockResolvedValue([]);
   return svc;
 }
 
@@ -158,8 +159,8 @@ describe("bridgeSharedMessageStream — billing tail deferred via executionCtx.w
     const response = await svc.bridgeSharedMessageStream(REC, RPC);
     const body = await drainSse(response);
 
-    expect(svc.saveSharedRuntimeHistory).toHaveBeenCalledTimes(1);
-    const persisted = (svc.saveSharedRuntimeHistory as ReturnType<typeof mock>).mock.calls[0]?.[2];
+    expect(saveHistory).toHaveBeenCalledTimes(1);
+    const persisted = saveHistory.mock.calls[0]?.[2];
     expect(persisted).toBeArray();
     expect((persisted as Array<Record<string, unknown>>).at(-1)?.grounding).toEqual(
       internalGrounding,

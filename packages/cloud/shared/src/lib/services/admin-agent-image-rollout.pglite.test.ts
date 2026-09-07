@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+import { SandboxReplacementCleanup } from "./eliza-sandbox/lifecycle/replacement-cleanup";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -85,16 +86,6 @@ type ReplacementStageService = {
     },
     stage: "intent" | "created" | "vpn",
   ): Promise<void>;
-};
-
-type ReplacementCleanupService = {
-  retirePersistedReplacementCleanup(
-    agentId: string,
-    orgId: string,
-    expectation?: undefined,
-    onConvergedInTx?: undefined,
-    source?: "lifecycle" | "background-reconcile" | "admin-converge",
-  ): Promise<"missing" | "clean" | "deferred" | "retired">;
 };
 
 function replacementHandle(params: {
@@ -1266,28 +1257,28 @@ describe("admin agent image rollout on primary PGlite", () => {
       undefined,
     );
     const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
-    const cleanupService = service as unknown as ReplacementCleanupService;
-    const retire = cleanupService.retirePersistedReplacementCleanup.bind(service);
+    const retire = SandboxReplacementCleanup.prototype.retirePersistedReplacementCleanup;
     let insertedJobId: string | null = null;
-    spyOn(cleanupService, "retirePersistedReplacementCleanup").mockImplementation(
-      async (...args) => {
-        if (!insertedJobId) {
-          const [job] = await dbWrite
-            .insert(jobs)
-            .values({
-              type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-              status: "pending",
-              organization_id: seeded.organizationId,
-              user_id: seeded.actorUserId,
-              agent_id: agentId,
-              data: {},
-            })
-            .returning({ id: jobs.id });
-          insertedJobId = job!.id;
-        }
-        return retire(...args);
-      },
-    );
+    spyOn(
+      SandboxReplacementCleanup.prototype,
+      "retirePersistedReplacementCleanup",
+    ).mockImplementation(async function (...args) {
+      if (!insertedJobId) {
+        const [job] = await dbWrite
+          .insert(jobs)
+          .values({
+            type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+            status: "pending",
+            organization_id: seeded.organizationId,
+            user_id: seeded.actorUserId,
+            agent_id: agentId,
+            data: {},
+          })
+          .returning({ id: jobs.id });
+        insertedJobId = job!.id;
+      }
+      return retire.apply(this, args);
+    });
 
     expect(await service.reconcileReplacementCleanupFences()).toEqual({
       total: 1,

@@ -140,6 +140,26 @@ async function installSettingsBackgroundRoutes(
 ): Promise<void> {
   await installDefaultAppRoutes(page);
 
+  await page.route("**/api/cloud/credits", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    });
+  });
+  await page.route("**/api/local-inference/providers", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { providers: [] });
+  });
+
   await page.route("**/api/config", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

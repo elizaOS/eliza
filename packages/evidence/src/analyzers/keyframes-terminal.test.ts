@@ -59,6 +59,35 @@ async function makeVideo(
     ],
     { timeout: 30_000 },
   );
+  if (sparse) {
+    const { stdout } = await execFileAsync(
+      ffmpeg.bin,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        output,
+        "-fps_mode",
+        "passthrough",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "pipe:1",
+      ],
+      { encoding: "buffer", timeout: 30_000 },
+    );
+    const frameBytes = 64 * 64 * 3;
+    expect(
+      stdout.length,
+      "Sparse fixture must retain both encoded frames",
+    ).toBe(2 * frameBytes);
+    expect(
+      stdout[frameBytes + 1],
+      "Sparse fixture must decode its green terminal state",
+    ).toBeGreaterThan(220);
+  }
   return output;
 }
 

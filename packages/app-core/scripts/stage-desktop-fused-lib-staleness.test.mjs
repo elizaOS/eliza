@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { nativeLibraryInventory } from "./lib/fused-artifact-integrity.mjs";
 
@@ -14,14 +14,43 @@ import { nativeLibraryInventory } from "./lib/fused-artifact-integrity.mjs";
 // a native lib that no longer matches the fork source; a stamp matching the
 // current fork exits 0.
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const script = path.join(scriptDir, "stage-desktop-fused-lib.mjs");
+// Run the real CLI against an isolated Git source tree, including in CI lanes
+// that intentionally do not install the native inference submodule.
+const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fused-source-"));
+after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+const fixtureScripts = path.join(fixtureRoot, "packages/app-core/scripts");
+fs.mkdirSync(fixtureScripts, { recursive: true });
+const script = path.join(fixtureScripts, "stage-desktop-fused-lib.mjs");
+fs.copyFileSync(path.join(scriptDir, "stage-desktop-fused-lib.mjs"), script);
+fs.symlinkSync(
+  path.join(scriptDir, "lib"),
+  path.join(fixtureScripts, "lib"),
+  process.platform === "win32" ? "junction" : "dir",
+);
 const forkDir = path.join(
-  scriptDir,
-  "..",
-  "..",
-  "..",
+  fixtureRoot,
   "plugins/plugin-local-inference/native/llama.cpp",
 );
+fs.mkdirSync(forkDir, { recursive: true });
+fs.writeFileSync(
+  path.join(forkDir, "CMakeLists.txt"),
+  "project(StalenessFixture)\n",
+);
+execFileSync("git", ["init", "-q", forkDir]);
+execFileSync("git", ["-C", forkDir, "add", "CMakeLists.txt"]);
+execFileSync("git", [
+  "-C",
+  forkDir,
+  "-c",
+  "user.name=Fixture",
+  "-c",
+  "user.email=fixture@example.invalid",
+  "-c",
+  "commit.gpgsign=false",
+  "commit",
+  "-qm",
+  "Initialize native source fixture",
+]);
 const libName =
   process.platform === "win32"
     ? "elizainference.dll"
@@ -31,13 +60,9 @@ const libName =
 const STAMP = ".eliza-fused-build-stamp.json";
 
 function currentFork() {
-  try {
-    return execFileSync("git", ["-C", forkDir, "rev-parse", "HEAD"], {
-      encoding: "utf8",
-    }).trim();
-  } catch {
-    return "unknown";
-  }
+  return execFileSync("git", ["-C", forkDir, "rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
 }
 
 /** Run `--check --out <dir>`; return the process exit code (0 fresh, 2 stale). */

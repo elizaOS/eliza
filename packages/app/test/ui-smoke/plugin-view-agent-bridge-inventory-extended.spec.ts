@@ -115,10 +115,8 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Goals",
     path: "/goals",
     viewId: "goals",
-    // Populated goals fixture → 1 active + 1 paused goal, so the active/paused
-    // status-filter chips both render.
     ready: { text: "Run a half marathon" },
-    requiredIds: ["filter:active", "filter:paused"],
+    requiredIds: ["goal-status-filter"],
   },
   {
     label: "Todos",

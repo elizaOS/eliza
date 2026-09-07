@@ -41,6 +41,7 @@ import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
 import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-schema";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { SandboxPower } from "./eliza-sandbox/lifecycle/power";
 import { JOB_TYPES } from "./provisioning-job-types";
 import {
   listRecoverableAgentComputeStopIntents,
@@ -463,7 +464,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue({
       error: new Error("provider unavailable"),
     });
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -662,7 +663,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -992,7 +993,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1081,7 +1082,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1178,7 +1179,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1270,7 +1271,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1400,7 +1401,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });
@@ -1475,7 +1476,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
-    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+    const gateSpy = spyOn(SandboxPower.prototype, "prepareSuspendBackupGate").mockResolvedValue({
       outcome: "proceed",
       capturedFresh: false,
     });

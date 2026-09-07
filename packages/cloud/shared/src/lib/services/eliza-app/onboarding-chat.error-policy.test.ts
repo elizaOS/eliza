@@ -231,11 +231,16 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
           }),
         ),
     };
-    const startedAt = performance.now();
+    // Let headers reach the reader before expiring the deadline. A real 1ms
+    // clock can expire before dispatch on a busy runner and miss this loop.
+    const realNow = performance.now.bind(performance);
+    spyOn(performance, "now").mockImplementation(() => (emitted >= 3 ? 2 : 0));
+    const startedAt = realNow();
     await expect(
       onboardingFetch(stub, "https://onboarding.internal/resolve", undefined, 1),
     ).rejects.toMatchObject({ name: "TimeoutError" });
-    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(realNow() - startedAt).toBeLessThan(1_000);
+    expect(emitted).toBeGreaterThan(1);
     expect(emitted).toBeLessThan(100_000);
     expect(cancelled).toBe(true);
   });
