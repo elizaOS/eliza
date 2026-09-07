@@ -316,6 +316,73 @@ describe("ElizaClient websocket connection policy", () => {
     expect(client.getConnectionState().state).toBe("connected");
   });
 
+  it.each([
+    ["cloud-staging.eliza.app", ""],
+    ["cloud.eliza.app", ""],
+  ])(
+    "keeps the same-origin console on %s with base %s connected without websocket retries",
+    (host, base) => {
+      vi.useFakeTimers();
+      try {
+        stubWindowOrigin("https:", host);
+        const instances = stubWebSocketWithInstances();
+        const client = new ElizaClient(base);
+        client.connectWs();
+        // Drive failed upgrades if the client incorrectly dials the console.
+        for (let i = 0; i < 15 && instances.length > 0; i++) {
+          instances[instances.length - 1].onclose?.();
+          if (i < 14) vi.runOnlyPendingTimers();
+        }
+        expect(client.getConnectionState().state).toBe("connected");
+        expect(instances).toHaveLength(0);
+        client.resetConnection();
+        expect(client.getConnectionState().state).toBe("connected");
+        expect(instances).toHaveLength(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("preserves selected-agent websocket failures on a cloud console page", () => {
+    vi.useFakeTimers();
+    try {
+      stubWindowOrigin("https:", "cloud-staging.eliza.app");
+      const instances = stubWebSocketWithInstances();
+      const client = new ElizaClient("https://agent.example.test");
+      client.connectWs();
+      expect(instances[0].url).toContain("wss://agent.example.test/ws");
+      for (let i = 0; i < 15; i++) {
+        instances[instances.length - 1].onclose?.();
+        if (i < 14) vi.runOnlyPendingTimers();
+      }
+      expect(client.getConnectionState().state).toBe("failed");
+      client.disconnectWs();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["", "/api", "api"])(
+    "keeps a separate injected websocket target with cloud client base %s",
+    (base) => {
+      stubWindowOrigin("https:", "cloud-staging.eliza.app");
+      Object.defineProperty(window, "__ELIZA_WS_BASE__", {
+        configurable: true,
+        value: "wss://realtime.example.test",
+      });
+      try {
+        const instances = stubWebSocketWithInstances();
+        const client = new ElizaClient(base);
+        client.connectWs();
+        expect(instances[0].url).toContain("wss://realtime.example.test/ws");
+        client.disconnectWs();
+      } finally {
+        Reflect.deleteProperty(window, "__ELIZA_WS_BASE__");
+      }
+    },
+  );
+
   it("still goes failed for a non-cloud agent base after WS exhaustion (overlay preserved)", () => {
     vi.useFakeTimers();
     try {
