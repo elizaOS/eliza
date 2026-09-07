@@ -25,6 +25,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getWindowNavigationPath } from "../navigation";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
@@ -517,6 +518,7 @@ export function useRealtimeVoiceSession(
       );
     };
 
+    const uiTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const client = createClientRef.current({
       // The client's own LIVE reconnect budget (with backoff, healthy refill,
       // and pre-expiry rotation) is the structural answer to transient
@@ -530,6 +532,11 @@ export function useRealtimeVoiceSession(
       preLiveMaxReconnects: clientOptionsRef.current?.preLiveMaxReconnects ?? 0,
       agentId: aId,
       conversationId: cId,
+      getUiContext: () =>
+        clientOptionsRef.current?.getUiContext?.() ?? {
+          uiViewPath: getWindowNavigationPath().split(/[?#]/, 1)[0],
+          uiTimeZone,
+        },
       // The client invokes this immediately before every mint/re-mint. Keeping
       // the source behind a ref gives reconnects the latest callback and, more
       // importantly, prevents replay of the one-use nonce from the first mint.

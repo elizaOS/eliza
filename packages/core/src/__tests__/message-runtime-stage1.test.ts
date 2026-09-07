@@ -1868,8 +1868,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		).toBe(true);
 		const systemContent = String(params.messages?.[0]?.content ?? "");
 		expect(systemContent).toContain("voice engagement rules:");
+		expect(systemContent).toContain("Plan this direct message");
+		expect(systemContent).not.toContain("response_precedence:");
 		expect(systemContent).toContain(
-			"shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise",
+			"shouldRespond=IGNORE only for non-speech/noise",
 		);
 		expect(systemContent).toContain("### facts");
 	});

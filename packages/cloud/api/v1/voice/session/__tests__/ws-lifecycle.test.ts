@@ -915,11 +915,24 @@ describe("voice-session WS lifecycle", () => {
       }) as unknown as typeof fetch,
     });
 
+    client.clientSend(
+      JSON.stringify({
+        t: "ui_context",
+        context: {
+          uiViewPath: "/notes",
+          uiTimeZone: "America/New_York",
+          role: "OWNER",
+        },
+      }),
+    );
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
     ink.emitTurn("turn.update", "hello agen");
     ink.emitTurn("turn.eager_end", "hello agent");
     ink.emitTurn("turn.end", "hello agent");
+    client.clientSend(
+      JSON.stringify({ t: "ui_context", context: { uiViewPath: "/calendar" } }),
+    );
     await flush();
 
     const endOfTurnLog = fakeLogger.logger.info.mock.calls.findLast(
@@ -948,7 +961,11 @@ describe("voice-session WS lifecycle", () => {
     expect(requests[0].body).toEqual({
       text: "hello agent",
       channelType: "VOICE_DM",
-      metadata: { clientTransport: "realtime_voice" },
+      metadata: {
+        clientTransport: "realtime_voice",
+        uiViewPath: "/notes",
+        uiTimeZone: "America/New_York",
+      },
       streamProtocol: "delta-v2",
     });
     expect(requests[0].headers.authorization).toBe("Bearer eliza-server");

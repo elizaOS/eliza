@@ -64,6 +64,9 @@ describe("local runtime conversation fetch", () => {
           clientMessageId: "twilio-call:CA123:started",
           metadata: {
             clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+            uiViewPath: "/notes",
+            uiTimeZone: "America/New_York",
+            uiViewActionNames: ["UNTRUSTED_ACTION"],
           },
           streamProtocol: "delta-v2",
         }),
@@ -84,6 +87,8 @@ describe("local runtime conversation fetch", () => {
       clientMessageId: "twilio-call:CA123:started",
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+        uiViewPath: "/notes",
+        uiTimeZone: "America/New_York",
       },
       streamProtocol: "delta-v2",
     });

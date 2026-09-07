@@ -111,6 +111,77 @@ function playbackScriptNodeOf(ctx: FakePlaybackAudioContext) {
 }
 
 describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
+  it.each([true, false])(
+    "sends changed view context before audio only when supported: %s",
+    async (supported) => {
+      const mint = makeMintFetch();
+      const ws = makeWsFactory();
+      const mic = new FakeMicAudioContext(16_000);
+      let path = "/notes";
+      const client = createVoiceSessionClient({
+        agentId: "agent-a",
+        conversationId: "conversation-a",
+        getConsentNonce: async () => "context",
+        fetch: mint.fetch,
+        webSocketFactory: ws.factory,
+        getUserMedia: fakeGetUserMedia(),
+        createMicAudioContext: () => mic,
+        createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+        getUiContext: () => ({ uiViewPath: path }),
+      });
+      await client.start();
+      const socket = ws.last();
+      socket.emitOpen();
+      socket.emitControl({
+        t: "ready",
+        sessionId: "s",
+        traceId: "t",
+        uiContext: supported,
+      });
+      await flush();
+      const input = new Float32Array(1600).fill(0.25);
+      mic.scriptNode?.feed(input);
+      mic.scriptNode?.feed(input);
+      path = "/calendar";
+      mic.scriptNode?.feed(input);
+      const contexts = socket
+        .sentControls()
+        .filter((frame) => frame.t === "ui_context");
+      expect(contexts).toEqual(
+        supported
+          ? [
+              { t: "ui_context", context: { uiViewPath: "/notes" } },
+              { t: "ui_context", context: { uiViewPath: "/calendar" } },
+            ]
+          : [],
+      );
+      expect(socket.sentAudioCount()).toBe(3);
+      if (supported) {
+        const index = socket.sent.findIndex(
+          (frame) =>
+            typeof frame === "string" && frame.includes('"ui_context"'),
+        );
+        expect(socket.sent[index + 1]).toBeInstanceOf(ArrayBuffer);
+      }
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        path = "//invalid-host";
+        mic.scriptNode?.feed(input);
+        mic.scriptNode?.feed(input);
+        expect(socket.sentAudioCount()).toBe(5);
+        expect(warn).toHaveBeenCalledTimes(supported ? 1 : 0);
+        if (supported) {
+          expect(socket.sentControls().at(-1)).toEqual({
+            t: "ui_context",
+            context: {},
+          });
+        }
+      } finally {
+        warn.mockRestore();
+      }
+      await client.stop();
+    },
+  );
   it("retries a transient post-mint agent_not_found race, then connects", async () => {
     const mint = makeMintFetch([
       { status: 404, code: "agent_not_found" },
@@ -350,6 +421,29 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     // Every server-derived mark carries the turn traceId (not synthesized).
     const sttMark = marks.find((m) => m.name === "stt_final");
     expect(sttMark?.traceId).toBe("T1");
+    await client.stop();
+  });
+
+  it("returns to listening when a silent turn settles without speech events", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const { client } = baseDeps(mint, ws);
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "sess-1", traceId: "T1" });
+    await flush();
+    sock.emitControl({
+      t: "stt_final",
+      text: "Please stay quiet.",
+      traceId: "T1",
+    });
+    expect(client.state.phase).toBe("thinking");
+    sock.emitControl({ t: "usage", sttMs: 100, ttsChars: 0, traceId: "older" });
+    expect(client.state.phase).toBe("thinking");
+    sock.emitControl({ t: "usage", sttMs: 100, ttsChars: 0, traceId: "T1" });
+    expect(client.state.phase).toBe("listening");
     await client.stop();
   });
 

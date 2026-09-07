@@ -5408,7 +5408,8 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 
 const VOICE_ENGAGEMENT_RULES = [
 	"- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
-	"- shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise, or ambient speech clearly not addressed to the agent.",
+	"- This is a one-to-one conversation: respond naturally to acknowledgements, reactions, and brief follow-ups, including disagreement or requests to clarify your previous reply.",
+	"- shouldRespond=IGNORE only for non-speech/noise or ambient speech clearly not addressed to the agent.",
 	"- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
 	"- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
 ].join("\n");
@@ -9217,7 +9218,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			context,
 			availableContexts,
 			{
-				directMessage: directMessageChannel && !voiceDirectMessageChannel,
+				directMessage: directMessageChannel,
 				voiceDirectMessage: voiceDirectMessageChannel,
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
@@ -9263,7 +9264,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					context,
 					availableContexts,
 					{
-						directMessage: directMessageChannel && !voiceDirectMessageChannel,
+						directMessage: directMessageChannel,
 						voiceDirectMessage: voiceDirectMessageChannel,
 						responseHandlerFields: responseHandlerFieldPrompt.rendered,
 					},

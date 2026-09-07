@@ -48,6 +48,7 @@ import {
   type ElizaSseBridgeResponseHeaders,
   streamElizaConversation,
 } from "@/lib/voice-session/eliza-sse-bridge";
+import type { VoiceUiContext } from "@elizaos/shared";
 import { PhraseAggregator } from "@/lib/voice-session/phrase-aggregator";
 import type { ServerControlFrame } from "@/lib/voice-session/protocol";
 import {
@@ -330,6 +331,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     readonly transcript: string;
     readonly abort: AbortController;
     replyText: string | null;
+    uiContext: VoiceUiContext;
     handoffRequested: boolean;
     viewHandoff?: {
       viewId: string;
@@ -518,7 +520,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // The session-level trace span id is stable until the first turn mints its own.
     const sessionTrace = this.mintTraceId("session");
     this.currentTraceId = sessionTrace;
-    this.send({ t: "ready", sessionId: this.sessionId, traceId: sessionTrace });
+    this.send({
+      t: "ready",
+      sessionId: this.sessionId,
+      traceId: sessionTrace,
+      uiContext: true,
+    });
     if (this.config.openingPrompt?.trim()) {
       const traceId = this.mintTraceId("turn");
       this.currentTraceId = traceId;
@@ -534,6 +541,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } else if (this.config.openingGreeting?.trim()) {
       this.speakOpeningGreeting(this.config.openingGreeting.trim());
     }
+  }
+
+  private uiContext: VoiceUiContext = {};
+
+  setUiContext(context: VoiceUiContext): void {
+    this.uiContext = { ...context };
   }
 
   setAudioCapabilities(capabilities: {
@@ -1385,6 +1398,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const pending = {
       traceId,
       transcript,
+      uiContext: { ...this.uiContext },
       abort,
       replyText: null,
       handoffRequested: false,
@@ -1423,6 +1437,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           authorization: this.config.elizaAuthorization,
           model: this.config.elizaModel,
           transcript: pending.transcript,
+          uiContext: pending.uiContext,
           agentId: this.config.agentId,
           conversationId: this.config.conversationId,
           organizationId: this.config.organizationId,
@@ -1742,6 +1757,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } = {},
   ): Promise<void> {
     const responseStartedAt = this.now();
+    const uiContext = { ...this.uiContext };
     this.assistantReferenceText = "";
     this.beginTurnMetrics(traceId, responseStartedAt);
     let firstModelTextAt: number | null = null;
@@ -1946,6 +1962,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         authorization: this.config.elizaAuthorization,
         model: this.config.elizaModel,
         transcript,
+        uiContext,
         ...(options.messageRole ? { messageRole: options.messageRole } : {}),
         ...(options.clientMessageId
           ? { clientMessageId: options.clientMessageId }

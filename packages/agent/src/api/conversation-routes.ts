@@ -110,6 +110,7 @@ import {
   getChatFailureReply,
   getChatMessageIdOutcome,
   initSse,
+  isIntentionalNoResponseResult,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
   normalizeClientMessageId,
@@ -3211,7 +3212,12 @@ export async function handleConversationRoutes(
           // An interrupted receipt may intentionally have no model text. Keep
           // its exact partial reply; the interruption metadata owns its status.
           const text =
-            transcriptVisibility === "internal"
+            transcriptVisibility === "internal" ||
+            (role === "assistant" &&
+              isIntentionalNoResponseResult(
+                { responseContent: m.content },
+                rawText,
+              ))
               ? ""
               : role === "assistant" && !interrupted
                 ? normalizeChatResponseText(rawText, state.logBuffer, runtime)

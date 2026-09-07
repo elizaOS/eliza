@@ -1651,7 +1651,7 @@ function listResponseActions(
     .filter((action) => action.length > 0);
 }
 
-function isIntentionalNoResponseResult(
+export function isIntentionalNoResponseResult(
   result:
     | {
         didRespond?: boolean;

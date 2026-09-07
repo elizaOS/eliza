@@ -41,6 +41,7 @@
  * through fakes — not stubs of the client itself.
  */
 
+import { parseVoiceUiContext, type VoiceUiContext } from "@elizaos/shared";
 import type { VoiceContinuousStatus } from "./voice-chat-types";
 import {
   type MicAudioContextLike,
@@ -141,6 +142,8 @@ export interface VoiceTraceMark {
 }
 
 export interface VoiceSessionClientOptions {
+  /** Read current renderer state, not the snapshot from session creation. */
+  getUiContext?: () => VoiceUiContext;
   agentId: string;
   conversationId: string;
   /**
@@ -318,6 +321,8 @@ export function createVoiceSessionClient(
   let state: VoiceSessionMachineState = { ...INITIAL_VOICE_SESSION_STATE };
   let connPhase: ConnectionPhase = "idle";
   let ws: VoiceWebSocketLike | null = null;
+  let uiContextSupported = false;
+  let lastUiContext: string | undefined;
   let mic: VoiceMicCapture | null = null;
   let playback: VoiceSessionPlayback | null = null;
   let reconnectsUsed = 0;
@@ -506,6 +511,22 @@ export function createVoiceSessionClient(
   function sendUplinkAudio(bytes: Uint8Array): void {
     if (!ws || connPhase !== "open") return;
     try {
+      if (uiContextSupported && options.getUiContext) {
+        const context = parseVoiceUiContext(options.getUiContext());
+        // Clear a stale view rather than dropping audio when a renderer sends
+        // invalid context. Report once per change, not once per audio packet.
+        const serialized = JSON.stringify(context ?? {});
+        if (serialized !== lastUiContext) {
+          ws.send(
+            encodeClientControl({ t: "ui_context", context: context ?? {} }),
+          );
+          lastUiContext = serialized;
+          if (!context)
+            console.warn(
+              "[voice] Invalid renderer view context; cleared stale context",
+            );
+        }
+      }
       // Copy into a standalone ArrayBuffer so a shared/pooled backing store from
       // the capture path is never observed mutated after send. A muted session
       // keeps its normal packet cadence but substitutes PCM silence, allowing
@@ -566,6 +587,8 @@ export function createVoiceSessionClient(
 
     switch (event.t) {
       case "ready":
+        uiContextSupported = event.uiContext === true;
+        lastUiContext = undefined;
         mark("ready", event.traceId);
         // The server accepted the session: record the health timestamp the
         // budget-refill decision reads on the next transport loss.
@@ -640,6 +663,9 @@ export function createVoiceSessionClient(
         }
         break;
       case "usage":
+        // A deliberate silent turn has no playback completion callback.
+        if (state.phase === "complete") setState(loopToListening(state));
+        break;
       case "navigate_view":
       case "stt_partial":
       case "stt_eager_eot":
@@ -730,6 +756,8 @@ export function createVoiceSessionClient(
     }
 
     connPhase = "connecting";
+    uiContextSupported = false;
+    lastUiContext = undefined;
     const socket = wsFactory(minted.wsUrl);
     socket.binaryType = "arraybuffer";
     ws = socket;

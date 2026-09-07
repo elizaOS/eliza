@@ -11,6 +11,36 @@
  */
 export const REALTIME_VOICE_CLIENT_TRANSPORT = "realtime_voice" as const;
 
+/** Renderer observations only; the runtime registry owns capabilities and authority. */
+export interface VoiceUiContext {
+  uiViewPath?: string;
+  uiViewSubview?: string;
+  uiTimeZone?: string;
+}
+
+/** Small allowlist shared by the wire and loopback boundaries. */
+export function parseVoiceUiContext(value: unknown): VoiceUiContext | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const result: VoiceUiContext = {};
+  for (const key of ["uiViewPath", "uiViewSubview", "uiTimeZone"] as const) {
+    const field = source[key];
+    if (field === undefined) continue;
+    if (
+      typeof field !== "string" ||
+      field.length > (key === "uiViewPath" ? 2048 : 128)
+    )
+      return null;
+    result[key] = field;
+  }
+  if (
+    result.uiViewPath &&
+    (!result.uiViewPath.startsWith("/") || result.uiViewPath.startsWith("//"))
+  )
+    return null;
+  return result;
+}
+
 /**
  * Loopback-only identity fence stamped by the local voice bridge. The agent
  * host uses this pair to reject turns after an in-process runtime or
