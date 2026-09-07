@@ -372,10 +372,17 @@ describe("Qwen3.8 response-schema wire contract", () => {
         ],
       },
     ],
-  ])("keeps the existing JSON-mode contract for %s", async (_name, options) => {
+  ])("preserves the explicit output contract for %s", async (name, options) => {
     expect(await invoke(options)).toEqual(verdict);
     expect(requests).toHaveLength(1);
-    expect(requests[0].response_format).toEqual({ type: "json_object" });
+    expect(requests[0].response_format).toEqual(
+      name === "schema-less JSON"
+        ? { type: "json_object" }
+        : {
+            type: "json_schema",
+            json_schema: { name: "response", strict: true, schema: evaluatorSchema },
+          }
+    );
   });
 
   it.each([
@@ -479,7 +486,10 @@ describe("Qwen3.8 response-schema wire contract", () => {
     reply = result;
     expect(await invoke({ schema })).toEqual(result);
     expect(requests).toHaveLength(1);
-    expect(requests[0].response_format).toEqual({ type: "json_object" });
+    expect(requests[0].response_format).toEqual({
+      type: "json_schema",
+      json_schema: { name: "response", strict: true, schema },
+    });
   });
 
   it("preserves optional fields inside closed array items and unions after normalization", async () => {
@@ -528,7 +538,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
     );
   });
 
-  it("preserves the existing schema-only planner argument representation", async () => {
+  it("restores complete planner arguments from the strict wire representation", async () => {
     const schema = {
       type: "object",
       additionalProperties: false,
@@ -548,13 +558,26 @@ describe("Qwen3.8 response-schema wire contract", () => {
       },
       required: ["toolCalls"],
     };
+    const args = { query: "exact input", metadata: { custom: "preserved" } };
     reply = {
       toolCalls: [
-        { name: "LOOKUP", args: { query: "exact input", metadata: { custom: "preserved" } } },
+        {
+          name: "LOOKUP",
+          args: {
+            __eliza_planner_arg_entries: Object.entries(args).map(([key, value]) => ({
+              key,
+              valueJson: JSON.stringify(value),
+            })),
+          },
+        },
       ],
     };
-    expect(await invoke({ schema, actionPlanner: true })).toEqual(reply);
+    expect(await invoke({ schema, actionPlanner: true })).toEqual({
+      toolCalls: [{ name: "LOOKUP", args }],
+    });
     expect(requests).toHaveLength(1);
-    expect(requests[0].response_format).toEqual({ type: "json_object" });
+    const wireSchema = requests[0].response_format?.json_schema?.schema;
+    if (!wireSchema) throw new Error("Expected the planner response schema on the wire");
+    expect(parseAndValidate(JSON.stringify(reply), wireSchema).valid).toBe(true);
   });
 });
