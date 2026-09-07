@@ -799,14 +799,48 @@ export async function dispatchStreamingRequest(
 	}
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
+	// Serve the same inline handler chain the buffered path runs, in the same
+	// order (wake token guard → core startup routes → notification inbox), before
+	// falling through to the plugin dispatcher. Each returns a buffered envelope,
+	// emitted as a response head plus a single body chunk. The wake guard must be
+	// here as well: `dispatchRoute` below runs with authorization forced true, so
+	// a streaming `POST /api/internal/wake` that skipped the inline handler would
+	// bypass the bearer check the buffered channel enforces for the same path.
+	const emitBuffered = (response: AndroidBufferedResponse): void => {
+		sink.emitResponse({
+			status: response.status,
+			statusText: response.statusText,
+			headers: response.headers,
+		});
+		if (response.bodyBase64) sink.emitChunk(response.bodyBase64);
+	};
+
+	const wake = await directAndroidWakeRoute(
+		runtime,
+		method,
+		pathname,
+		headers,
+		payloadBody(payload),
+	);
+	if (wake) {
+		emitBuffered(wake);
+		return;
+	}
+
 	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
 	if (direct) {
-		sink.emitResponse({
-			status: direct.status,
-			statusText: direct.statusText,
-			headers: direct.headers,
-		});
-		if (direct.bodyBase64) sink.emitChunk(direct.bodyBase64);
+		emitBuffered(direct);
+		return;
+	}
+
+	const notif = await directAndroidNotificationRoute(
+		runtime,
+		method,
+		pathname,
+		query,
+	);
+	if (notif) {
+		emitBuffered(notif);
 		return;
 	}
 
