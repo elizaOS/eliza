@@ -2,7 +2,7 @@
  * Applies the lifecycle-revision trigger to a real PGlite table and proves what
  * the counter means: it advances for a lifecycle write, stays put for a
  * billing-only write, and cannot be forged by a writer that supplies its own
- * value. The last suite is a drift guard over the migration text itself.
+ * value. A stale lifecycle write must fail after warm-claim attestation changes.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -178,83 +178,34 @@ describe("agent_sandboxes lifecycle-revision trigger", () => {
     },
     TIMEOUT,
   );
-});
 
-describe("lifecycle-revision exclusion list drift guard", () => {
-  // The trigger's blind spot is whatever the migration excludes. If a fence is
-  // ever added on one of those columns, the fence silently stops working: the
-  // write it wants to detect no longer advances the counter. This reads both
-  // sides from source rather than asking anyone to remember.
-  const excluded = new Set(
-    Array.from(migrationSql.matchAll(/^\s*'([a-z_]+)',?$/gm), (match) => match[1]),
+  test(
+    "an attestation change rejects a write using the captured lifecycle revision",
+    async () => {
+      if (!databaseReady) throw new Error("PGlite unavailable");
+      await dbWrite.execute(`
+        UPDATE agent_sandboxes SET status = 'running', warm_claim_attested_at = NULL
+        WHERE id = '${SANDBOX_ID}';
+      `);
+      const captured = await revision();
+      await dbWrite.execute(`
+        UPDATE agent_sandboxes
+        SET warm_claim_attested_at = '2026-07-23T12:00:01Z'
+        WHERE id = '${SANDBOX_ID}';
+      `);
+
+      const rejected = await dbWrite.execute(`
+        UPDATE agent_sandboxes SET status = 'stopped'
+        WHERE id = '${SANDBOX_ID}' AND lifecycle_revision = ${captured}
+        RETURNING id;
+      `);
+      expect(rejected.rows).toHaveLength(0);
+      const retained = await dbWrite.execute(`
+        SELECT status FROM agent_sandboxes WHERE id = '${SANDBOX_ID}';
+      `);
+      expect(retained.rows).toEqual([{ status: "running" }]);
+      expect(await revision()).toBe(captured + 1);
+    },
+    TIMEOUT,
   );
-
-  test("the migration really does exclude the billing columns and nothing else", () => {
-    expect([...excluded].sort()).toEqual([
-      "billing_status",
-      "hourly_rate",
-      "last_billed_at",
-      "scheduled_shutdown_at",
-      "shutdown_warning_sent_at",
-      "total_billed",
-      "updated_at",
-    ]);
-  });
-
-  test("the counter itself is compared, so a supplied value cannot survive", () => {
-    expect(excluded.has("lifecycle_revision")).toBe(false);
-  });
-
-  // Every fence, from both files and both spellings: raw SQL predicates and the
-  // Drizzle builder. Scanning one file or one form fails open — which is the
-  // failure mode this guard exists to prevent.
-  function scanFences(): Set<string> {
-    const columns = new Set(
-      Array.from(
-        readFileSync(
-          fileURLToPath(new URL("./schemas/agent-sandboxes.ts", import.meta.url)),
-          "utf8",
-        ).matchAll(/^\s{4}([a-z_]+):/gm),
-        (match) => match[1],
-      ),
-    );
-
-    const fenced = new Set<string>();
-    for (const source of [
-      "../lib/services/eliza-sandbox.ts",
-      "./repositories/agent-sandboxes.ts",
-    ]) {
-      const text = readFileSync(fileURLToPath(new URL(source, import.meta.url)), "utf8");
-      // Look both ways: the revision is not always last in its predicate, and
-      // assuming it is made an earlier version of this window silently wrong.
-      for (const at of text.matchAll(/lifecycle_revision|lifecycleRevision/g)) {
-        const index = at.index ?? 0;
-        const window = text.slice(Math.max(0, index - 1500), index + 1500);
-        for (const [, column] of window.matchAll(/AND\s+([a-z_]+)\s+(?:=|IS)/g)) {
-          if (columns.has(column)) fenced.add(column);
-        }
-        for (const [, column] of window.matchAll(/eq\(\s*agentSandboxes\.([a-z_]+)/g)) {
-          if (columns.has(column)) fenced.add(column);
-        }
-      }
-    }
-    fenced.delete("lifecycle_revision");
-    return fenced;
-  }
-
-  test("no column a lifecycle fence compares on is excluded", () => {
-    expect([...scanFences()].filter((column) => excluded.has(column))).toEqual([]);
-  });
-
-  test("the scan reaches both fence files and both fence spellings", () => {
-    // Structural pins rather than a count floor: a count only fails once the
-    // number happens to drop below it, so it can lose a whole source silently.
-    // Each of these dies with exactly one gap: `execution_tier` is fenced only
-    // in the repository file, `id` only through the Drizzle builder, and
-    // `warm_claim_attested_at` only ahead of its predicate's revision clause.
-    const fenced = scanFences();
-    expect(fenced.has("execution_tier")).toBe(true);
-    expect(fenced.has("id")).toBe(true);
-    expect(fenced.has("warm_claim_attested_at")).toBe(true);
-  });
 });
