@@ -217,12 +217,18 @@ function shouldLog(messageLevel: string, currentLevel: string): boolean {
  */
 function safeStringify(obj: unknown): string {
   try {
-    const seen = new WeakSet();
-    return JSON.stringify(obj, (_, value) => {
-      if (typeof value === "object" && value !== null) {
-        if (seen.has(value)) return "[Circular]";
-        seen.add(value);
+    // The replacer receives the holder as `this`, so the ancestor path can be
+    // rebuilt by popping until the holder is on top: only a value that is
+    // already on that path is circular. A visited set would also mark a
+    // subobject referenced by two siblings as circular.
+    const ancestors: object[] = [];
+    return JSON.stringify(obj, function replacer(this: unknown, _, value) {
+      if (typeof value !== "object" || value === null) return value;
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) {
+        ancestors.pop();
       }
+      if (ancestors.includes(value)) return "[Circular]";
+      ancestors.push(value);
       return value;
     });
   } catch {
@@ -625,8 +631,25 @@ function redactLogValue(
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return "[Circular]";
   if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
+  // `seen` is the active ancestor path, not a visited set: a reference is
+  // circular only when it re-enters a container that is still being walked.
+  // Removing the entry on the way out lets a subobject shared by two siblings
+  // render in full at each reference, as JSON.stringify does for DAG-shaped
+  // values, while self, mutual, array, and Map cycles still collapse.
   seen.add(value);
+  try {
+    return redactContainer(value, seen, depth);
+  } finally {
+    seen.delete(value);
+  }
+}
 
+/** Clone one container `value` already on the ancestor path in `seen`. */
+function redactContainer(
+  value: object,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
   if (value instanceof Error) {
     const clone = new Error(redactSensitiveLogText(value.message));
     clone.name = redactSensitiveLogText(value.name);

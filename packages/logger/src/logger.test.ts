@@ -694,6 +694,67 @@ describe("secret redaction", () => {
     expect(recentLogs()).toContain("[Circular]");
   });
 
+  // A reference is circular only when it re-enters a container still being
+  // walked. The walker used to keep a permanent visited set, so a subobject
+  // referenced from two siblings rendered as `[Circular]` at its second
+  // reference although nothing was cyclic (#25125).
+  it("renders a subobject shared by two siblings in full at each reference", () => {
+    const logger = redactLogger();
+    const shared = { region: "us-east", retries: 3 };
+    logger.info({ config: shared, retryConfig: shared }, "shared-siblings");
+    const logs = recentLogs();
+    expect(logs).toContain('config={"region":"us-east","retries":3}');
+    expect(logs).toContain('retryConfig={"region":"us-east","retries":3}');
+    expect(logs).not.toContain("[Circular]");
+  });
+
+  it("renders a nested diamond without a circular marker", () => {
+    const logger = redactLogger();
+    const leaf = { zone: "shared-leaf" };
+    logger.info({ outer: { inner: leaf }, direct: leaf }, "nested-diamond");
+    const logs = recentLogs();
+    expect(logs).toContain('outer={"inner":{"zone":"shared-leaf"}}');
+    expect(logs).toContain('direct={"zone":"shared-leaf"}');
+    expect(logs).not.toContain("[Circular]");
+  });
+
+  it("collapses only the back-edge of a mutual cycle", () => {
+    const logger = redactLogger();
+    const a: Record<string, unknown> = { name: "node-a" };
+    const b: Record<string, unknown> = { name: "node-b", peer: a };
+    a.peer = b;
+    logger.info({ a, b }, "mutual-cycle");
+    const logs = recentLogs();
+    expect(logs).toContain(
+      'a={"name":"node-a","peer":{"name":"node-b","peer":"[Circular]"}}',
+    );
+    expect(logs).toContain(
+      'b={"name":"node-b","peer":{"name":"node-a","peer":"[Circular]"}}',
+    );
+  });
+
+  it("still collapses array and Map self-references", () => {
+    const logger = redactLogger();
+    const list: unknown[] = ["head"];
+    list.push(list);
+    const map = new Map<string, unknown>();
+    map.set("self", map);
+    logger.info({ list, map }, "container-cycles");
+    const logs = recentLogs();
+    expect(logs).toContain('list=["head","[Circular]"]');
+    expect(logs).toContain("[Circular]");
+    expect(logs).toContain('"type":"Map"');
+  });
+
+  it("renders shared references in full through trailing args", () => {
+    const logger = redactLogger();
+    const shared = { region: "us-east" };
+    logger.info("trailing", { config: shared, retryConfig: shared });
+    const logs = recentLogs();
+    expect(logs.split("us-east").length - 1).toBe(2);
+    expect(logs).not.toContain("[Circular]");
+  });
+
   it("masks webhook, connection-string, and concatenated key shapes (W5-026)", () => {
     const logger = redactLogger();
     logger.info(
