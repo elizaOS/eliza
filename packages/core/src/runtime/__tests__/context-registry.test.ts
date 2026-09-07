@@ -161,6 +161,26 @@ describe("context registry", () => {
 		expect(registry.has("other_ctx")).toBe(true);
 	});
 
+	it("rolls back the whole batch when one requested removal would orphan an edge", () => {
+		const registry = new ContextRegistry([
+			{ id: "parent_ctx", subcontexts: ["child_ctx"] },
+			{ id: "child_ctx" },
+			{ id: "removable_ctx" },
+		]);
+
+		// child_ctx is still referenced by parent_ctx, so removing it is invalid;
+		// removable_ctx is unrelated and would drop cleanly on its own.
+		expect(() =>
+			registry.unregisterMany(["removable_ctx", "child_ctx"]),
+		).toThrow(ContextRegistryError);
+
+		// Atomic rollback: the otherwise-removable sibling in the same batch is
+		// not dropped when a later id fails validation.
+		expect(registry.has("removable_ctx")).toBe(true);
+		expect(registry.has("child_ctx")).toBe(true);
+		expect(registry.has("parent_ctx")).toBe(true);
+	});
+
 	it("reports only missing ids without mutating when nothing is removed", () => {
 		const registry = new ContextRegistry([{ id: "alpha" }]);
 		const result = registry.unregisterMany(["x", "y"]);
