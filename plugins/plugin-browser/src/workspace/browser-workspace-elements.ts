@@ -6,6 +6,7 @@ import type { JSDOM } from "jsdom";
 import {
   buildBrowserWorkspaceCssStringLiteral,
   normalizeBrowserWorkspaceText,
+  readBrowserWorkspaceElementText,
 } from "./browser-workspace-helpers.js";
 import { getJSDOMClass } from "./browser-workspace-jsdom.js";
 import type {
@@ -79,9 +80,9 @@ export function createBrowserWorkspaceElementSummary(
   return {
     selector: buildBrowserWorkspaceElementSelector(element),
     tag: element.tagName.toLowerCase(),
-    text: normalizeBrowserWorkspaceText(
-      inputLike ? elementValue : element.textContent,
-    ),
+    text: inputLike
+      ? normalizeBrowserWorkspaceText(elementValue)
+      : readBrowserWorkspaceElementText(element),
     type: element.getAttribute("type"),
     name: element.getAttribute("name"),
     href: element.getAttribute("href"),
