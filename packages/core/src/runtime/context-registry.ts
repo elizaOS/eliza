@@ -126,6 +126,60 @@ export class ContextRegistry {
 	}
 
 	/**
+	 * Remove a single context definition. Returns true when an entry with the
+	 * given id existed and was removed, false when it was not present. The id is
+	 * normalized (like `get`/`has`) before lookup.
+	 *
+	 * Removal is validated: if a surviving definition still references the
+	 * removed context through a `parent`/`parents`/`subcontext` edge, this throws
+	 * `ContextRegistryError` and leaves `#definitions` untouched. This lets a
+	 * narrow-domain deployment trim the seeded first-party catalog without
+	 * leaving the registry in an inconsistent, dangling-edge state.
+	 */
+	unregister(id: AgentContext): boolean {
+		return this.unregisterMany([id]).removed.length > 0;
+	}
+
+	/**
+	 * Batch removal, atomic like `registerMany`. Partitions the requested ids
+	 * into `removed` (present and dropped) and `missing` (not registered), then
+	 * commits the surviving map only after edge revalidation succeeds.
+	 *
+	 * Ids are normalized before lookup. If any surviving definition still
+	 * references a removed context via `parent`/`parents`/`subcontexts`, this
+	 * throws `ContextRegistryError` naming the referencing id and the missing
+	 * target, and `#definitions` is left unchanged. Removing a context together
+	 * with every definition that references it in a single call therefore
+	 * succeeds.
+	 */
+	unregisterMany(ids: readonly AgentContext[]): {
+		removed: AgentContext[];
+		missing: AgentContext[];
+	} {
+		const removed: AgentContext[] = [];
+		const missing: AgentContext[] = [];
+		const next = new Map(this.#definitions);
+		for (const id of ids) {
+			const normalized = normalizeContextId(id);
+			if (next.delete(normalized)) {
+				removed.push(normalized);
+			} else {
+				missing.push(normalized);
+			}
+		}
+		if (removed.length === 0) {
+			return { removed, missing };
+		}
+		assertNoUnknownEdges(next);
+		assertNoContextCycles(next);
+		this.#definitions.clear();
+		for (const [id, definition] of next) {
+			this.#definitions.set(id, definition);
+		}
+		return { removed, missing };
+	}
+
+	/**
 	 * Return all context definitions whose role gate (if any) is satisfied by
 	 * the supplied caller role(s). Contexts without a role gate are always
 	 * included. The order matches `list()` for stable prompt rendering.
