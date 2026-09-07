@@ -37,9 +37,7 @@ import {
 	getMessageHandlerReply,
 	routeMessageHandlerOutput,
 } from "../../runtime/message-handler";
-import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../../runtime/model-input-budget";
 import {
-	buildInitialPlannerModelInputBudget,
 	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
@@ -68,8 +66,7 @@ import type {
 	MessageHandlerResult,
 } from "../../types/components";
 import type { ContextEvent } from "../../types/context-object";
-import type { GenerateTextParams, ModelTypeName } from "../../types/model";
-import { ModelType } from "../../types/model";
+import type { GenerateTextParams } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
 import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
@@ -93,7 +90,6 @@ import {
 	getMessageHandlerParentActionHints,
 	privacyDenialReplyForReasons,
 	stringArrayProperty,
-	type V5PlannerActionSurface,
 } from "./action-surface.js";
 import {
 	isAmbientStage1Turn,
@@ -115,11 +111,8 @@ import {
 } from "./egress-policy.js";
 import {
 	buildV5ExecutorContext,
-	collectBudgetedStageOneCandidateActions,
-	collectBudgetedUmbrellaActions,
 	collectPlannerTools,
 	collectPreviousActionResults,
-	decideUmbrellaPlannerBudget,
 	executeV5PlannedToolCall,
 } from "./planned-tool.js";
 import {
@@ -191,25 +184,6 @@ export function actionOwnsResponseHandlerEarlyReply(
 
 	if (resolvedCandidates.size !== 1) return false;
 	return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
-}
-
-/**
- * Declared context window of the registered planner model, when the provider
- * published one; undefined leaves the budgeter's conservative ceiling in charge.
- */
-function registeredModelContextWindow(
-	runtime: IAgentRuntime,
-	modelType: ModelTypeName,
-): number | undefined {
-	const getModelRegistrations = runtime.getModelRegistrations;
-	if (typeof getModelRegistrations !== "function") return undefined;
-	return getModelRegistrations
-		.call(runtime)
-		.find(
-			(registration) =>
-				registration.modelType === modelType &&
-				typeof registration.metadata?.contextWindowTokens === "number",
-		)?.metadata?.contextWindowTokens;
 }
 
 export async function runV5MessageRuntimeStage1(
@@ -1154,225 +1128,9 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		let plannerTools = collectPlannerTools(plannerContextWithDecision);
-		let budgetedPlannerContextWithDecision = plannerContextWithDecision;
+		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const budgetedPlannerContextWithDecision = plannerContextWithDecision;
 		const plannerProviderAttributionState = plannerState;
-		// Dispatch-budget preflight (restored after the pipeline extraction dropped
-		// it; live 2026-09-07: every planner call carried the full tool catalog,
-		// 77K tokens on a 22K-char user message, and a 79K-token Stage 1 room was
-		// rejected before dispatch). The complete authorized surface is tried
-		// first; when its estimate exceeds the conservative threshold the planner
-		// falls back to Stage 1's model-authored candidates, then to the complete
-		// umbrella parents — never a truncated prompt. Coding turns keep the full
-		// surface. Providers without declared window metadata use the budgeter's
-		// conservative ceiling, the same boundary final-wire validation applies.
-		const plannerContextWindowTokens =
-			registeredModelContextWindow(args.runtime, ModelType.ACTION_PLANNER) ??
-			DEFAULT_CONTEXT_WINDOW_TOKENS;
-		const preflightConfig = {
-			...(args.plannerLoopConfig ?? {}),
-			...(!args.plannerLoopConfig?.contextWindowModelName
-				? { contextWindowTokens: plannerContextWindowTokens }
-				: {}),
-		};
-		const eagerPlannerBudget = buildInitialPlannerModelInputBudget({
-			runtime: plannerRuntime,
-			context: plannerContextWithDecision,
-			config: preflightConfig,
-			tools: plannerTools.length > 0 ? plannerTools : undefined,
-			codingMode: args.codingMode === true,
-		});
-		let effectivePlannerBudget = eagerPlannerBudget;
-		if (
-			eagerPlannerBudget.estimatedInputTokens >
-			eagerPlannerBudget.dispatchThresholdTokens
-		) {
-			const plannerToolSizes = plannerTools
-				.map((tool) => ({
-					name: tool.name,
-					bytes: JSON.stringify(tool).length,
-				}))
-				.sort((left, right) => right.bytes - left.bytes);
-			args.runtime.logger.warn(
-				{
-					estimatedInputTokens: eagerPlannerBudget.estimatedInputTokens,
-					dispatchThresholdTokens: eagerPlannerBudget.dispatchThresholdTokens,
-					toolCount: plannerTools.length,
-					toolSchemaBytes: plannerToolSizes.reduce(
-						(total, tool) => total + tool.bytes,
-						0,
-					),
-					largestTools: plannerToolSizes.slice(0, 5),
-				},
-				"[SERVICE:MESSAGE] Initial planner input exceeds the conservative dispatch budget",
-			);
-			if (args.codingMode !== true) {
-				const candidateActions = collectBudgetedStageOneCandidateActions({
-					actions: exposedPlannerActions,
-					candidateActions:
-						messageHandler.plan.candidateActions?.map(String) ?? [],
-					contexts: messageHandler.plan.contexts ?? [],
-				});
-				if (
-					candidateActions.length > 0 &&
-					candidateActions.length < exposedPlannerActions.length
-				) {
-					const candidateActionSurface: V5PlannerActionSurface = {
-						exposedActionNames: new Set(
-							candidateActions.map((action) =>
-								normalizeActionIdentifier(action.name),
-							),
-						),
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: candidateActions.length,
-							tierAParents: candidateActions.map((action) => action.name),
-							tierAChildrenByParent: {},
-							fallback: "stage-one-candidate-budget",
-						},
-					};
-					const candidateContext = await createV5MessageContextObject({
-						...args,
-						state: plannerProviderAttributionState,
-						selectedContexts,
-						includeTools: true,
-						userRoles: [senderRole],
-						availableContexts,
-						preselectedActions: candidateActions,
-						actionSurface: candidateActionSurface,
-						ambientTurn,
-						extraProviderExclusions: ambientTurnProviderExclusions(
-							args.runtime,
-							args.message,
-						),
-					});
-					const candidateContextWithDecision = appendContextEvent(
-						candidateContext,
-						plannerDecisionEvent,
-					);
-					const candidateTools = collectPlannerTools(
-						candidateContextWithDecision,
-						candidateActions,
-						{ expandSubActions: false },
-					);
-					const candidateBudget = buildInitialPlannerModelInputBudget({
-						runtime: plannerRuntime,
-						context: candidateContextWithDecision,
-						config: preflightConfig,
-						tools: candidateTools.length > 0 ? candidateTools : undefined,
-						codingMode: false,
-					});
-					if (
-						candidateBudget.estimatedInputTokens <=
-						candidateBudget.dispatchThresholdTokens
-					) {
-						budgetedPlannerContextWithDecision = candidateContextWithDecision;
-						plannerTools = candidateTools;
-						effectivePlannerBudget = candidateBudget;
-						args.runtime.logger.warn(
-							{
-								estimatedInputTokens: candidateBudget.estimatedInputTokens,
-								dispatchThresholdTokens:
-									candidateBudget.dispatchThresholdTokens,
-								candidateToolCount: candidateTools.length,
-								authorizedActionCount: exposedPlannerActions.length,
-							},
-							"[SERVICE:MESSAGE] Planner used the model-authored Stage 1 candidate surface to fit the dispatch budget",
-						);
-					}
-				}
-			}
-			if (
-				args.codingMode !== true &&
-				effectivePlannerBudget.estimatedInputTokens >
-					effectivePlannerBudget.dispatchThresholdTokens
-			) {
-				const umbrellaActions = collectBudgetedUmbrellaActions({
-					actions: exposedPlannerActions,
-					actionSurface,
-				});
-				if (
-					umbrellaActions.length > 0 &&
-					umbrellaActions.length < exposedPlannerActions.length
-				) {
-					const umbrellaActionSurface: V5PlannerActionSurface = {
-						exposedActionNames: new Set(
-							umbrellaActions.map((action) =>
-								normalizeActionIdentifier(action.name),
-							),
-						),
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: umbrellaActions.length,
-							fallback: "umbrella-parent-budget",
-						},
-					};
-					const umbrellaContext = await createV5MessageContextObject({
-						...args,
-						state: plannerProviderAttributionState,
-						selectedContexts,
-						includeTools: true,
-						userRoles: [senderRole],
-						availableContexts,
-						preselectedActions: umbrellaActions,
-						actionSurface: umbrellaActionSurface,
-						ambientTurn,
-						extraProviderExclusions: ambientTurnProviderExclusions(
-							args.runtime,
-							args.message,
-						),
-					});
-					const umbrellaContextWithDecision = appendContextEvent(
-						umbrellaContext,
-						plannerDecisionEvent,
-					);
-					const umbrellaTools = collectPlannerTools(
-						umbrellaContextWithDecision,
-						umbrellaActions,
-						{ expandSubActions: false },
-					);
-					const umbrellaBudget = buildInitialPlannerModelInputBudget({
-						runtime: plannerRuntime,
-						context: umbrellaContextWithDecision,
-						config: preflightConfig,
-						tools: umbrellaTools.length > 0 ? umbrellaTools : undefined,
-						codingMode: false,
-					});
-					const umbrellaDecision = decideUmbrellaPlannerBudget({
-						umbrella: umbrellaBudget,
-						current: effectivePlannerBudget,
-					});
-					if (umbrellaDecision === "not-smaller") {
-						args.runtime.logger.warn(
-							{
-								estimatedInputTokens: umbrellaBudget.estimatedInputTokens,
-								dispatchThresholdTokens: umbrellaBudget.dispatchThresholdTokens,
-								currentEstimatedInputTokens:
-									effectivePlannerBudget.estimatedInputTokens,
-								parentToolCount: umbrellaTools.length,
-							},
-							"[SERVICE:MESSAGE] Complete umbrella capability still exceeds the planner dispatch budget",
-						);
-					} else {
-						budgetedPlannerContextWithDecision = umbrellaContextWithDecision;
-						plannerTools = umbrellaTools;
-						effectivePlannerBudget = umbrellaBudget;
-						args.runtime.logger.warn(
-							{
-								estimatedInputTokens: umbrellaBudget.estimatedInputTokens,
-								dispatchThresholdTokens: umbrellaBudget.dispatchThresholdTokens,
-								parentToolCount: umbrellaTools.length,
-								authorizedActionCount: exposedPlannerActions.length,
-								decision: umbrellaDecision,
-							},
-							umbrellaDecision === "under-dispatch-budget"
-								? "[SERVICE:MESSAGE] Planner retained complete umbrella capability under the dispatch budget"
-								: "[SERVICE:MESSAGE] Planner retained complete umbrella capability above the conservative estimate as the smallest complete surface",
-						);
-					}
-				}
-			}
-		}
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
 		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
 		// tool-required AND named at least one candidate action. A bare

@@ -215,7 +215,7 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 
 ## Cerebras compatibility
 
-Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: caller-supplied response schemas use strict `json_schema` output without promoting optional fields to required; explicit JSON-only requests retain `json_object` mode, `reasoning_effort` defaults to `"none"` for Qwen and `"low"` for GPT-OSS and GLM, and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
+Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: caller-supplied response schemas use strict `json_schema` output without promoting optional fields to required; explicit JSON-only requests retain `json_object` mode, `reasoning_effort` defaults to `"none"` for Qwen 3.8 and `"low"` for GPT-OSS/GLM, and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
 
 ## EvoLink compatibility
 
@@ -234,10 +234,11 @@ await runtime.useModel(ModelType.TEXT_LARGE, {
 });
 ```
 
-## Free-form record/map tool arguments degrade under strict schema
+## Free-form record/map tool arguments
 
-A tool parameter that declares a free-form record/map — `additionalProperties: true` or a value schema (e.g. a contact `customFields: { type: "object", additionalProperties: { type: "string" } }`) — **cannot round-trip today**. The plugin's single schema choke point forces `additionalProperties: false` on every object before it reaches the wire, because strict-grammar backends (Cerebras / Eliza Cloud) reject open maps with a hard 400 and provider strictness is proxy-blind (an agent pointed at `api.eliza.app` with `OPENAI_API_KEY` looks like plain OpenAI but may still route to strict Cerebras — see #11123 / #11156). With the object closed, the model can emit no arbitrary keys, so the map arg arrives **empty**.
-
-This is a known limitation, not a silent one: the declared intent is folded into the property `description`, and when a tool's parameters contain such a record the plugin emits **one structured `logger.warn` per tool** (`[OpenAI] Tool "…" declares N free-form record/map argument(s) …`) listing each offending path so the degradation is observable in logs. The warning is scoped to **tool parameters only** — `response_format` is intentionally excluded.
-
-Making these args actually emittable requires a product decision tracked in [#12150](https://github.com/elizaOS/eliza/issues/12150): option **A** (preserve open records for known non-strict providers, which first needs a reliable strictness signal) or option **B** (a two-sided transform that rewrites records into a strict-safe key/value shape and reverse-maps returned tool-call arguments). This plugin currently ships option **C** (accept the limitation, but make it observable + documented) as the safe stopgap.
+Strict tool schemas encode open maps as reversible key/value entry arrays.
+Returned arguments are restored to the original object shape before runtime
+validation. Structured planner responses use their own reversible transform.
+Direct Cerebras response schemas preserve caller semantics, including optional
+fields; unsupported schemas remain explicit provider errors. Other compatible
+providers retain their existing strict-schema normalization.
