@@ -95,7 +95,7 @@ describe("APP — hardened-envelope messages never leak the envelope", () => {
 		expectNoEnvelope(result?.text);
 		// The unwrapped user word — not the envelope remainder — is what echoes.
 		expect(result?.text).toContain('"zorptastic"');
-		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		expect(callback).not.toHaveBeenCalled();
 		expectNormalizedTarget(result?.data);
 	});
 

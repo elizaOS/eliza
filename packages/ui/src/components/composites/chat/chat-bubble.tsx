@@ -79,18 +79,21 @@ export function ChatBubble({
             : "transparent"
         }
         padding={
-          appearance === "default" && !bare && tone === "user"
-            ? "compact"
-            : undefined
+          appearance === "firstRun"
+            ? "comfortable"
+            : appearance === "default" && !bare && tone === "user"
+              ? "compact"
+              : undefined
         }
-        wallpaperText
+        wallpaperText={appearance !== "firstRun"}
         border={
           appearance === "default" && !bare && tone === "user"
             ? "subtle"
             : undefined
         }
         radius={
-          appearance === "default" && !bare && tone === "user"
+          appearance === "firstRun" ||
+          (appearance === "default" && !bare && tone === "user")
             ? "xlarge"
             : undefined
         }
@@ -101,7 +104,7 @@ export function ChatBubble({
           appearance === "default" && !bare && tone === "assistant" && "py-1",
           // Message text must remain selectable for normal highlight/copy.
           "select-text [-webkit-touch-callout:default]",
-          WALLPAPER_FLOAT_SHADOW,
+          appearance !== "firstRun" && WALLPAPER_FLOAT_SHADOW,
           className,
         )}
         data-chat-source={normalizedSource ?? undefined}

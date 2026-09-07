@@ -120,6 +120,9 @@ describe("app-shell-registry", () => {
       ownerId: "@elizaos/plugin-wallet",
       path: "/inventory",
     });
+    expect(
+      appShellAgentSurfaceDescriptor({ ...page, agentViewId: "wallet" }).viewId,
+    ).toBe("wallet");
     expect(overlayAgentSurfaceDescriptor(overlay)).toEqual({
       kind: "overlay",
       viewId: "native-settings",

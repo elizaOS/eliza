@@ -41,6 +41,48 @@ bun run --cwd packages/app-core lint         # Biome
 
 This package supplies host integration to the `packages/app` shell and app-facing plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
 
+## Isolated local development
+
+Give each concurrent instance distinct `ELIZA_UI_PORT`, `ELIZA_API_PORT`,
+`ELIZA_STATE_DIR`, and `ELIZA_WORKSPACE_DIR` values. The development launcher
+rejects occupied ports; it never terminates existing services or processes
+from another workspace. Stop an old instance explicitly before reusing its ports.
+
+Startup checks optional camera tools without installing them. To install those
+tools intentionally, run `node packages/app-core/scripts/ensure-vision-deps.mjs --install` from the repository root. Ollama is a separately managed, optional
+provider; Eliza does not need its daemon for in-process local inference.
+
+The web development supervisor also hands diagnostic ownership to
+its replacement API process after observing an exact child exit. New tracked
+turns are enrolled before the runtime is published; a replacement settles only
+matching active trajectories in the same persistent PGlite directory. It never
+replays chat or actions. Startup records written before enrollment, historical
+unowned records, supervisor/laptop failure, Bun watch mode and native hosts are outside
+this recovery scope. Postgres and in-memory databases retain their normal
+behavior.
+
+## Local development voice
+
+For the full checkout, provide `CARTESIA_API_KEY` securely in the launch
+environment, then run `bun packages/app-core/scripts/dev-ui.mjs --cloud-target=offline`
+from the repository root. The supervisor starts the Cartesia realtime gateway
+after API readiness, configures Vite's same-origin voice proxy and realtime UI
+eligibility, and stops the gateway with the other children. Microphone consent
+and gateway health are still required. No separate voice flags are needed for
+this local development path. Existing explicit flag overrides remain respected.
+
+The default gateway port is `31338`; override it with
+`ELIZA_LOCAL_VOICE_GATEWAY_PORT` when running concurrent checkouts. Check
+`/api/v1/voice/session/health` on the UI origin before testing. Without a Cartesia
+key, the supervisor does not start this gateway. Do not put the key in `VITE_*`
+variables or commit it. This is a loopback development gateway, not a production
+deployment recipe; remote and device voice require separate verification.
+
+For the shared demo branch, use `nubsstableDONOTDELETE` and the same commit as
+the other developer. Configure the local agent's Cerebras credential and Qwen
+small/large text models separately; the voice gateway forwards turns to that
+existing runtime and does not create a second agent or change its text model.
+
 ## Native inference setup
 
 A normal root `bun install` initializes the pinned fused inference submodule,

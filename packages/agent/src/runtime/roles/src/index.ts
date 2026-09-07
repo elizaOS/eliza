@@ -82,6 +82,9 @@ function systemRoleMessage(actorEntityId: string, roomId: UUID): Memory {
   } as Memory;
 }
 
+/** Window inside which repeated world events share one trailing bootstrap re-run. */
+const BOOTSTRAP_RERUN_COALESCE_MS = 60_000;
+
 async function requireCommittedRoleWrite(
   result: Awaited<ReturnType<typeof setEntityRoleCas>>,
   label: string,
@@ -282,11 +285,12 @@ async function applyConnectorAdminWhitelists(
           );
           if (!matched) continue;
           matchedEntityIds.add(entity.id);
-          if (
-            metadata.roleSources?.[entity.id] === "connector_admin" &&
-            normalizeRole(metadata.roles?.[entity.id]) === "ADMIN"
-          )
-            continue;
+          // The whitelist promotes; it never relabels or demotes. An entity
+          // already ADMIN (any source) or the canonical OWNER needs no write —
+          // live 2026-09-06: the owner matched the Discord whitelist and was
+          // re-granted ADMIN on every world event, 6,184 audit rows deep.
+          const currentRole = normalizeRole(metadata.roles?.[entity.id]);
+          if (currentRole === "OWNER" || currentRole === "ADMIN") continue;
           await requireCommittedRoleWrite(
             await setEntityRoleCas(runtime, message, entity.id, "ADMIN", {
               source: "connector_admin",
@@ -402,7 +406,10 @@ const rolesPlugin: Plugin = {
     // hidden from the Stage 1 planner. Hooking WORLD_JOINED + WORLD_CONNECTED
     // makes the bootstrap converge as soon as the first connector world
     // appears, regardless of the initial retry-window timing.
+    let lastBootstrapRunAt = Date.now();
+    let coalescedRerun: ReturnType<typeof setTimeout> | null = null;
     const rerunOwnerBootstrap = async (label: string): Promise<void> => {
+      lastBootstrapRunAt = Date.now();
       const ok = await ensureOwnerRole(runtime, {
         pruneConnectorAdmins: !hasConnectorAdmins,
       });
@@ -413,11 +420,29 @@ const rolesPlugin: Plugin = {
         await applyConnectorAdminWhitelists(runtime, connectorAdmins);
       }
     };
+    // World events arrive in bursts (every connector sync fires one per world);
+    // each re-run scans every world, room and entity. One immediate run, then at
+    // most one trailing run per window, so a genuinely new world is still
+    // processed within the window.
+    const scheduleOwnerBootstrapRerun = async (
+      label: string,
+    ): Promise<void> => {
+      const elapsed = Date.now() - lastBootstrapRunAt;
+      if (elapsed >= BOOTSTRAP_RERUN_COALESCE_MS) {
+        await rerunOwnerBootstrap(label);
+        return;
+      }
+      if (coalescedRerun) return;
+      coalescedRerun = setTimeout(() => {
+        coalescedRerun = null;
+        void rerunOwnerBootstrap(`${label} (coalesced)`);
+      }, BOOTSTRAP_RERUN_COALESCE_MS - elapsed);
+    };
     runtime.registerEvent("WORLD_JOINED", async () => {
-      await rerunOwnerBootstrap("WORLD_JOINED");
+      await scheduleOwnerBootstrapRerun("WORLD_JOINED");
     });
     runtime.registerEvent("WORLD_CONNECTED", async () => {
-      await rerunOwnerBootstrap("WORLD_CONNECTED");
+      await scheduleOwnerBootstrapRerun("WORLD_CONNECTED");
     });
 
     logger.info("[roles] Roles initialized");

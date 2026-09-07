@@ -110,6 +110,29 @@ describe("TrajectoriesView header lifecycle", () => {
     vi.clearAllMocks();
   });
 
+  it("shows missing usage as unknown instead of zero", async () => {
+    clientMock.getTrajectories.mockResolvedValue({
+      trajectories: [
+        {
+          ...trajectory,
+          totalPromptTokens: undefined,
+          totalCompletionTokens: undefined,
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 50,
+    });
+    render(
+      <TrajectoriesView
+        selectedTrajectoryId={null}
+        onSelectTrajectory={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("— tokens")).toBeTruthy());
+    expect(screen.queryByText("0 tokens")).toBeNull();
+  });
+
   it("replaces the mobile list header with one detail header and keeps clearance at the router boundary", async () => {
     const onSelectTrajectory = vi.fn();
     const rendered = render(

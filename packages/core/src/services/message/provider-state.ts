@@ -4,7 +4,6 @@ import { filterProvidersByContextGate } from "../../runtime/context-gates.ts";
 import type { Action, AgentContext, Provider } from "../../types/components";
 import type { RoleGateRole } from "../../types/contexts";
 import type { Memory } from "../../types/memory";
-import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import {
@@ -312,50 +311,6 @@ export async function composeResponseState(
 		);
 	}
 	return runtime.composeState(message, providers, true, skipCache);
-}
-
-/** Replace provider text only with explicitly declared lossless retrieval forms. */
-export function withProviderOverflowText(state: State): State | null {
-	const providerResults = state.data.providers;
-	const providerOrder = Array.isArray(state.data.providerOrder)
-		? state.data.providerOrder.filter(
-				(name): name is string => typeof name === "string",
-			)
-		: Object.keys(providerResults ?? {});
-	if (!providerResults) return null;
-	let changed = false;
-	const nextProviders = { ...providerResults };
-	for (const name of providerOrder) {
-		const result = providerResults[name];
-		if (typeof result?.overflowText !== "string") continue;
-		nextProviders[name] = { ...result, text: result.overflowText };
-		changed = true;
-	}
-	if (!changed) return null;
-	const text = providerOrder
-		.map((name) => nextProviders[name]?.text)
-		.filter((value): value is string => Boolean(value?.trim()))
-		.join("\n");
-	return {
-		...state,
-		values: { ...state.values, providers: text },
-		data: { ...state.data, providers: nextProviders },
-		text,
-	};
-}
-
-export function responseHandlerContextWindow(
-	runtime: IAgentRuntime,
-): number | undefined {
-	const getModelRegistrations = runtime.getModelRegistrations;
-	if (typeof getModelRegistrations !== "function") return undefined;
-	return getModelRegistrations
-		.call(runtime)
-		.find(
-			(registration) =>
-				registration.modelType === ModelType.RESPONSE_HANDLER &&
-				typeof registration.metadata?.contextWindowTokens === "number",
-		)?.metadata?.contextWindowTokens;
 }
 
 export function selectV5PlannerStateProviderNames(args: {

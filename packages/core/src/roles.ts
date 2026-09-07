@@ -26,6 +26,7 @@ import {
 	getConnectorWorldIdMetadataKeys,
 	normalizeConnectorSource,
 } from "./connectors.ts";
+import { worldMetadataValueEquals } from "./database/world-metadata-cas";
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
@@ -1531,6 +1532,13 @@ export async function setEntityRoleCas(
 		const replacement: RolesWorldMetadata = structuredClone(expectedSnapshot);
 		recordRoleGrant(replacement, targetEntityId, newRole, source);
 		options.mutateMetadata?.(replacement);
+		// The requested state is already committed. Writing it again would only
+		// append an audit row and bump the world revision — live 2026-09-06: 6,184
+		// no-op connector-admin re-grants grew one world's metadata to 1.5 MB and
+		// its revision to 7,050, racing every first request after boot.
+		if (worldMetadataValueEquals(expectedSnapshot, replacement)) {
+			return { status: "committed", roles: { ...(replacement.roles ?? {}) } };
+		}
 
 		const result = await runtime.adapter.compareAndSwapWorldMetadata({
 			worldId: world.id,

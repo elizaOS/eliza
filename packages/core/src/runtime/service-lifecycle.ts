@@ -36,7 +36,48 @@ export interface RuntimeServiceLifecycleHost {
 	stopped(): boolean;
 }
 
+/** Backoff between eager service-start attempts after a failed boot-time start. */
+const EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [
+	2_000, 5_000, 10_000,
+];
+
 export class RuntimeServiceLifecycle {
+	/** Retries eager startup after transient failures; shutdown terminates retries. */
+	async startServiceEagerly(
+		serviceType: ServiceTypeName | string,
+		pluginName: string,
+	): Promise<void> {
+		for (let attempt = 0; ; attempt += 1) {
+			try {
+				await this._ensureServiceStarted(serviceType);
+				return;
+			} catch (err) {
+				// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
+				// reports each failure and service-load callers observe the rejection.
+				const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt];
+				const willRetry =
+					delayMs !== undefined &&
+					!this.host.stopRequested() &&
+					!this.host.stopped();
+				this.runtime.logger.error(
+					{
+						src: "agent",
+						agentId: this.runtime.agentId,
+						plugin: pluginName,
+						serviceType,
+						attempt: attempt + 1,
+						willRetry,
+						error: err instanceof Error ? err.message : String(err),
+					},
+					willRetry ? "Service start failed; retrying" : "Service start failed",
+				);
+				if (!willRetry) return;
+				await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+				if (this.host.stopRequested() || this.host.stopped()) return;
+			}
+		}
+	}
+
 	constructor(
 		private readonly runtime: IAgentRuntime,
 		private readonly host: RuntimeServiceLifecycleHost,

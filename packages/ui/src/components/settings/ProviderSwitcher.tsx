@@ -14,6 +14,10 @@ import {
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
+import {
+  isRealtimeVoiceForceEnabled,
+  isRealtimeVoiceSelfHostedEnabled,
+} from "../../voice/realtime-voice-build-flags";
 import { VOICE_PROVIDERS } from "../../voice/types";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import { resolveEffectiveVoiceConfig } from "../../voice/voice-chat-types";
@@ -24,7 +28,12 @@ import { RoutingMatrix } from "../local-inference/RoutingMatrix";
 import { IntelligenceServingSummary } from "./IntelligenceServingSummary";
 import { ModelConfigurationPanel } from "./ModelConfigurationPanel";
 import { ProviderCard } from "./ProviderCard";
-import { ApiKeyPanel, CloudPanel, LocalProviderPanel } from "./ProviderPanels";
+import {
+  ApiKeyPanel,
+  CloudPanel,
+  describeUnsignedCloudChat,
+  LocalProviderPanel,
+} from "./ProviderPanels";
 import type { ServingAxes } from "./resolveServingAxes";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -53,6 +62,8 @@ interface ProviderSwitcherProps {
     pluginId: string,
     values: Record<string, unknown>,
   ) => void | Promise<void>;
+  /** Test override for build capability only; this does not verify a voice connection. */
+  realtimeVoiceConfigured?: boolean;
 }
 
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
@@ -70,6 +81,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setActionNotice: s.setActionNotice,
   }));
   const t = app.t;
+  const realtimeVoiceEnabled =
+    isRealtimeVoiceForceEnabled() || isRealtimeVoiceSelfHostedEnabled();
   const { voiceConfig } = useVoiceConfig(app.uiLanguage);
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
@@ -144,6 +157,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     });
 
   const { visibleProviderPanelId, resolvedSelectedId } = selection;
+  const settingsContentReady =
+    bootstrap.routingConfigResolved || selection.cloudRuntimeLocked;
 
   // The tiles below only answer "who computes chat replies?". Runtime is the
   // other, independent axis — without it a hosted Cloud agent and a local
@@ -275,13 +290,16 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             defaultValue:
               "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
           })
-        : t("providerswitcher.cloudTileUnsignedDescription", {
-            defaultValue: "Sign in to use managed models.",
+        : describeUnsignedCloudChat(servingAxes, t, "tile")
+      : servingAxes.runtime === "remote"
+        ? t("providerswitcher.remoteLocalTileDescription", {
+            defaultValue:
+              "Runs with your remote agent. Private to that host and available while it stays online.",
           })
-      : t("providerswitcher.localTileDescription", {
-          defaultValue:
-            "Use an installed model to process chat on this device.",
-        });
+        : t("providerswitcher.localTileDescription", {
+            defaultValue:
+              "Use an installed model to process chat on this device.",
+          });
 
   return (
     <SettingsStack>
@@ -323,7 +341,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           </div>
         ) : null}
 
-        {visibleProviderPanelId === "__local__" &&
+        {bootstrap.routingConfigResolved &&
+        visibleProviderPanelId === "__local__" &&
         !selection.cloudRuntimeLocked ? (
           <LocalProviderPanel
             cloudCallsDisabled={
@@ -331,11 +350,13 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             }
             routingModeSaving={selection.routingModeSaving}
             onSelectLocalOnly={() => void selection.handleSelectLocalOnly()}
+            runtime={servingAxes.runtime}
             servingFallback={Boolean(servingLocalFallback)}
           />
         ) : null}
 
-        {visibleProviderPanelId === "__cloud__" &&
+        {bootstrap.routingConfigResolved &&
+        visibleProviderPanelId === "__cloud__" &&
         !selection.cloudRuntimeLocked ? (
           <CloudPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
@@ -351,13 +372,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             modelSaving={cloudModel.modelSaving}
             modelSaveSuccess={cloudModel.modelSaveSuccess}
             onModelFieldChange={cloudModel.handleModelFieldChange}
+            servingAxes={servingAxes}
           />
         ) : null}
       </SettingsGroup>
 
       {/* Per-role model configuration (small/large chat brains + coding
           sub-agent), driven by the validated /api/models catalog. */}
-      {!selection.cloudRuntimeLocked ? (
+      {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <ModelConfigurationPanel
           activeChatProvider={activeChatCatalogProvider}
           showChatModels={
@@ -366,7 +388,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         />
       ) : null}
 
-      {!selection.cloudRuntimeLocked ? (
+      {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <SettingsGroup
           title={t("providerswitcher.accountsGroupTitle", {
             defaultValue: "Accounts",
@@ -391,33 +413,63 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </SettingsGroup>
       ) : null}
 
-      <SettingsGroup
-        title={t("providerswitcher.voiceGroupTitle", { defaultValue: "Voice" })}
-        bare
-      >
-        <SettingsRow
-          icon={Mic}
-          label={t("providerswitcher.speechPlaybackLabel", {
-            defaultValue: "Speech playback",
+      {settingsContentReady ? (
+        <SettingsGroup
+          title={t("providerswitcher.voiceGroupTitle", {
+            defaultValue: "Voice",
           })}
-          description={t("providerswitcher.speechPlaybackDescription", {
-            defaultValue: "Provider used for spoken replies.",
-          })}
-          control={
-            <span className="text-xs text-txt-strong">
-              {voiceProvider
-                ? t(voiceProvider.labelKey, {
-                    defaultValue: voiceProvider.label,
-                  })
-                : t("providerswitcher.servingInferenceUnconfirmed", {
-                    defaultValue: "Unconfirmed",
+          bare
+        >
+          <SettingsRow
+            icon={Mic}
+            label={t("providerswitcher.speechPlaybackLabel", {
+              defaultValue: "Speech playback",
+            })}
+            description={t("providerswitcher.speechPlaybackDescription", {
+              defaultValue: "Provider used for spoken replies.",
+            })}
+            control={
+              <span className="text-xs text-txt-strong">
+                {voiceProvider
+                  ? t(voiceProvider.labelKey, {
+                      defaultValue: voiceProvider.label,
+                    })
+                  : t("providerswitcher.servingInferenceUnconfirmed", {
+                      defaultValue: "Unconfirmed",
+                    })}
+              </span>
+            }
+          />
+          {realtimeVoiceEnabled && !selection.cloudRuntimeLocked ? (
+            <SettingsRow
+              icon={Mic}
+              label={t("providerswitcher.realtimeVoiceRowLabel", {
+                defaultValue: "Cartesia (realtime)",
+              })}
+              description={
+                servingAxes.runtime === "remote"
+                  ? t("providerswitcher.remoteRealtimeVoiceRowDescription", {
+                      defaultValue:
+                        "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on the remote host.",
+                    })
+                  : t("providerswitcher.realtimeVoiceRowDescription", {
+                      defaultValue:
+                        "Connection not verified. Cartesia handles speech recognition and playback when connected. Your agent stays on this device.",
+                    })
+              }
+              control={
+                <span className="text-xs text-muted">
+                  {t("providerswitcher.enabledProvider", {
+                    defaultValue: "Enabled",
                   })}
-            </span>
-          }
-        />
-      </SettingsGroup>
+                </span>
+              }
+            />
+          ) : null}
+        </SettingsGroup>
+      ) : null}
 
-      {!selection.cloudRuntimeLocked ? (
+      {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <SettingsGroup
           title={t("providerswitcher.advancedGroupTitle", {
             defaultValue: "Advanced",

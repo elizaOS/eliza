@@ -18,6 +18,7 @@ import type {
   ActionResult,
   AgentContext,
   EffectReceipt,
+  GroundedActionReply,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -25,6 +26,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   ElizaError,
   logger,
   NoModelProviderConfiguredError,
@@ -1714,7 +1716,7 @@ async function renderLifeActionReply(args: {
   scenario: LifeReplyScenario;
   fallback: string;
   context?: Record<string, unknown>;
-}): Promise<string> {
+}): Promise<GroundedActionReply> {
   const { runtime, message, state, intent, scenario, fallback, context } = args;
   const naturalFallback = buildRuleBasedLifeReply({
     scenario,
@@ -1722,7 +1724,7 @@ async function renderLifeActionReply(args: {
     fallback,
     context,
   });
-  const rendered = await renderGroundedActionReply({
+  return renderGroundedActionReply({
     runtime,
     message,
     state,
@@ -1747,7 +1749,33 @@ async function renderLifeActionReply(args: {
       "Answer only about the user's tracked items (todos, reminders, goals, routines, habits, alarms). If the user's message also asked about something outside these records — a personal fact, general knowledge, another tool — leave that part unaddressed rather than answering or denying it; the assistant covers it separately.",
     ],
   });
-  return rendered.trim().length > 0 ? rendered : naturalFallback;
+}
+
+// Keep reply availability attached to the outcome until the action boundary
+// binds its receipt. A missing reply must not discard an already committed write.
+type PendingLifeActionResult = Omit<ActionResult, "text" | "userFacingText"> & {
+  text?: string | GroundedActionReply;
+  userFacingText?: string | GroundedActionReply;
+};
+
+function settleLifeActionReply(result: PendingLifeActionResult): ActionResult {
+  const { text, userFacingText, ...outcome } = result;
+  if (typeof text !== "object") {
+    return {
+      ...outcome,
+      ...(text !== undefined ? { text } : {}),
+      ...(typeof userFacingText === "string" ? { userFacingText } : {}),
+    };
+  }
+  return applyGroundedActionReply(
+    {
+      ...outcome,
+      ...(userFacingText !== undefined && text.kind === "model"
+        ? { userFacingText: text.text }
+        : {}),
+    },
+    text,
+  );
 }
 
 function buildLifeClarificationFallback(args: {
@@ -1810,7 +1838,7 @@ type LifeConnectedQueryOperation =
  * unconnected owners get a refusal. Exported for direct unit testing with a
  * stubbed service.
  */
-export async function runLifeConnectedQuery(args: {
+async function runLifeConnectedQueryInner(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
@@ -1818,7 +1846,7 @@ export async function runLifeConnectedQuery(args: {
   service: LifeOpsService;
   queryOperation: LifeConnectedQueryOperation;
   actionName: string;
-}): Promise<ActionResult> {
+}): Promise<PendingLifeActionResult> {
   const {
     runtime,
     message,
@@ -1946,6 +1974,12 @@ export async function runLifeConnectedQuery(args: {
     }
     throw err;
   }
+}
+
+export async function runLifeConnectedQuery(
+  args: Parameters<typeof runLifeConnectedQueryInner>[0],
+): Promise<ActionResult> {
+  return settleLifeActionReply(await runLifeConnectedQueryInner(args));
 }
 
 // ── Calendar/email formatters ─────────────────────────
@@ -4187,7 +4221,7 @@ async function runLifeOperationHandlerInner(
   message: Memory,
   state: State | undefined,
   options: HandlerOptions | undefined,
-): Promise<ActionResult> {
+): Promise<PendingLifeActionResult> {
   const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
   // Defense-in-depth: validate() excludes owner-operation candidates on
   // foreign page-* scopes, and this handler keeps direct tool execution a
@@ -6701,11 +6735,8 @@ export async function runLifeOperationHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const result = await runLifeOperationHandlerInner(
-    runtime,
-    message,
-    state,
-    options,
+  const result = settleLifeActionReply(
+    await runLifeOperationHandlerInner(runtime, message, state, options),
   );
   const receipt = await lifeEffectReceiptForResult({
     runtime,
@@ -6713,6 +6744,9 @@ export async function runLifeOperationHandler(
     options,
     result,
   });
+  if (result.replyFailure) {
+    return { ...result, effectReceipts: [receipt] };
+  }
   // A rejected lookup leaves no write to reconcile. Preserve its failure and
   // diagnostics while allowing the planner's existing observation recovery.
   const observationFailure =

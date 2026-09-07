@@ -153,6 +153,20 @@ beforeEach(() => {
 });
 
 describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
+  it.each([null, "local-runtime-token"])(
+    "does not launch interactive sign-in during boot recovery (backend=%s)",
+    async (backendToken) => {
+      clientStub.getRestAuthToken.mockReturnValue(backendToken);
+      const { ports: p, handleInteractiveCloudLogin } = ports({
+        allowInteractiveCloudLogin: false,
+      });
+      const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
+      expect(outcome.kind).toBe("needs-cloud-login");
+      expect(handleInteractiveCloudLogin).not.toHaveBeenCalled();
+      expect(clientStub.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+    },
+  );
+
   it("binds the personal identity directly when a bearer is already present", async () => {
     storeStewardToken();
     const { ports: p } = ports();

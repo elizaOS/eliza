@@ -27,6 +27,11 @@ function normalizeEnvValue(value: string): string {
     .trim();
 }
 
+/** Platform embedding model served by every fresh node's sidecar (see embeddingSidecarModelId). */
+export const DEFAULT_EMBEDDING_SIDECAR_MODEL_ID = "BAAI/bge-small-en-v1.5";
+/** Audited Hugging Face revision of the platform embedding model (1_Pooling: CLS, 384-dim). */
+export const DEFAULT_EMBEDDING_SIDECAR_MODEL_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a";
+
 function pick(...candidates: (string | undefined)[]): string | undefined {
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -144,17 +149,55 @@ export const containersEnv = {
   },
 
   /**
-   * Model the embedding sidecar serves. gte-small is the platform's local
-   * embedding standard (384-dim, ~50ms on node CPU) — the same model the
-   * on-device `plugin-local-inference` path uses, so a per-agent cutover to the
-   * sidecar never changes vector width.
+   * Model the embedding sidecar serves. The platform standard is
+   * BAAI/bge-small-en-v1.5 (384-dim, CLS pooling, L2-normalized) — the same
+   * model the on-device `plugin-local-inference` path and Workers AI serve, so
+   * vectors stay comparable across sidecar, device and cloud when pooling is
+   * explicit. Same width is NOT the same space: a node that still holds
+   * gte-small stores must keep `CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID=
+   * thenlper/gte-small` pinned until each agent has had a scoped backup +
+   * fresh-index cutover; the runtime's embedding store identity guard refuses
+   * to write a different model into an existing same-width store.
    */
   embeddingSidecarModelId(): string {
     const env = getCloudAwareEnv();
     return (
       pick(env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID, env.ELIZA_EMBEDDING_SIDECAR_MODEL_ID) ??
-      "thenlper/gte-small"
+      DEFAULT_EMBEDDING_SIDECAR_MODEL_ID
     );
+  },
+
+  /**
+   * Hugging Face revision the sidecar pins. Defaults to the audited revision
+   * of the platform model and to unpinned for any other model id unless the
+   * operator sets one — a model swap must never silently drift revisions.
+   */
+  embeddingSidecarModelRevision(): string | null {
+    const env = getCloudAwareEnv();
+    const explicit = pick(
+      env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_REVISION,
+      env.ELIZA_EMBEDDING_SIDECAR_MODEL_REVISION,
+    );
+    if (explicit) return explicit;
+    return this.embeddingSidecarModelId() === DEFAULT_EMBEDDING_SIDECAR_MODEL_ID
+      ? DEFAULT_EMBEDDING_SIDECAR_MODEL_REVISION
+      : null;
+  },
+
+  /**
+   * Pooling TEI applies. bge-small-en-v1.5 is a CLS-pooled model and CLS and
+   * mean vectors are incompatible (Cloudflare's Workers AI defaults to mean),
+   * so the platform model is pinned to `cls` explicitly; other models fall back
+   * to TEI's own model-config detection unless the operator sets a pooling.
+   */
+  embeddingSidecarPooling(): string | null {
+    const env = getCloudAwareEnv();
+    const explicit = pick(
+      env.CONTAINERS_EMBEDDING_SIDECAR_POOLING,
+      env.ELIZA_EMBEDDING_SIDECAR_POOLING,
+    );
+    if (explicit) return explicit;
+    return this.embeddingSidecarModelId() === DEFAULT_EMBEDDING_SIDECAR_MODEL_ID ? "cls" : null;
   },
 
   /**

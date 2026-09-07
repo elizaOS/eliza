@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import { AgentRuntime, NoModelProviderConfiguredError } from "../../runtime";
+import { AgentRuntime } from "../../runtime";
 import {
 	type Character,
 	EventType,
@@ -175,7 +175,10 @@ describe("AgentRuntime model-registration observability", () => {
 		expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
 		await expect(
 			runtime.useModel(ModelType.TEXT_EMBEDDING, null),
-		).rejects.toBeInstanceOf(NoModelProviderConfiguredError);
+		).rejects.toMatchObject({
+			name: "NoModelProviderConfiguredError",
+			reason: "capability-disabled",
+		});
 		expect(embeddingHandler).not.toHaveBeenCalled();
 	});
 
@@ -198,7 +201,10 @@ describe("AgentRuntime model-registration observability", () => {
 		expect(runtime.getModel(ModelType.TEXT_SMALL)).toBeUndefined();
 		await expect(
 			runtime.useModel(ModelType.TEXT_SMALL, { prompt: "hello" }),
-		).rejects.toBeInstanceOf(NoModelProviderConfiguredError);
+		).rejects.toMatchObject({
+			name: "NoModelProviderConfiguredError",
+			reason: "capability-disabled",
+		});
 		await expect(
 			runtime.useModel(ModelType.TEXT_EMBEDDING, "hello"),
 		).resolves.toHaveLength(384);

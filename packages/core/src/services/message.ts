@@ -19,10 +19,7 @@ export {
 	shouldRunMetadataActionRescue,
 	stripReplyWhenActionOwnsTurn,
 } from "./message/action-ownership.js";
-export {
-	getCachedActionCatalog,
-	privacyDenialReplyForReasons,
-} from "./message/action-surface.js";
+export { privacyDenialReplyForReasons } from "./message/action-surface.js";
 export type {
 	Stage1DecisionObservation,
 	V5MessageRuntimeStage1Result,
@@ -39,12 +36,15 @@ export {
 	type PlannedReplyClaimKind,
 	type PlannedReplyEgressDecision,
 	plannedReplyHasClaimGroundingReceipt,
+	resolvePlannedReplyEgress,
 } from "./message/egress-policy.js";
 export { persistInferenceTimingSummary } from "./message/inference-timing.js";
 export { runV5MessageRuntimeStage1 } from "./message/pipeline.js";
 export {
 	__buildV5ExecutorContextForTests,
 	__invalidateEvidenceSensitiveProviderCacheForTests,
+	collectBudgetedStageOneCandidateActions,
+	decideUmbrellaPlannerBudget,
 	subPlannerResultToPlannerToolResult,
 } from "./message/planned-tool.js";
 export {
@@ -64,7 +64,6 @@ export {
 	resolveActionResultTranscriptVisibility,
 	resolveZeroDeliveryRecovery,
 	restorePiiInUserReplyText,
-	structuredEffectConfirmation,
 	type ZeroDeliveryRecoverySource,
 } from "./message/reply-policy.js";
 export { withActionResultsForPrompt } from "./message/response-state.js";
@@ -287,9 +286,14 @@ export {
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
 } from "./message/side-effect-claims.ts";
 
-export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
+export {
+	replyClaimsCompletedSideEffect,
+	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
+};
 
 /**
  * Default implementation of the MessageService interface.

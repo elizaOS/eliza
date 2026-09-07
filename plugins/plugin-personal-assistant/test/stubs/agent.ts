@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { GroundedActionReply } from "@elizaos/core";
 
 // The LifeOps route dispatcher rate-limits state-changing routes; re-export the
 // real limiter (self-contained, in-memory) so route e2e tests run the genuine
@@ -168,11 +169,11 @@ export async function extractActionParamsViaLlm(): Promise<unknown> {
   return null;
 }
 
-export function renderGroundedActionReply(args?: {
-  fallback?: string;
-  text?: string;
-}): string {
-  return args?.fallback ?? args?.text ?? "";
+export async function renderGroundedActionReply(args: {
+  fallback: string;
+}): Promise<GroundedActionReply> {
+  // Deterministic model collaborator; tests of unavailable replies override it.
+  return { kind: "model", text: args.fallback };
 }
 
 // Integration telemetry is self-contained (only the core logger), so the test

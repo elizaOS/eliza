@@ -8,6 +8,7 @@
 
 import { logger } from "@elizaos/logger";
 import { client } from "../api";
+import { readSettingsHashSectionId } from "../components/settings/settings-route";
 
 /** View lifecycle reports share the bounded 15s renderer-network budget. */
 const VIEW_NAVIGATION_FETCH_TIMEOUT_MS = 15_000;
@@ -34,6 +35,7 @@ export function shouldClearReportedView(navigationPath: string): boolean {
 async function postViewNavigationReport(args: {
   viewId: string;
   viewPath?: string;
+  subview?: string;
   action?: ViewNavigationAction;
 }): Promise<void> {
   const res = await client.rawRequest(
@@ -47,6 +49,7 @@ async function postViewNavigationReport(args: {
         source: "user",
         ...(args.viewPath ? { path: args.viewPath } : {}),
         ...(args.action ? { action: args.action } : {}),
+        ...(args.subview ? { subview: args.subview } : {}),
       }),
     },
     { allowNonOk: true, timeoutMs: VIEW_NAVIGATION_FETCH_TIMEOUT_MS },
@@ -62,6 +65,7 @@ async function postViewNavigationReport(args: {
 function reportViewNavigation(args: {
   viewId: string;
   viewPath?: string;
+  subview?: string;
   action?: ViewNavigationAction;
 }): void {
   void postViewNavigationReport(args).catch((err) => {
@@ -74,8 +78,20 @@ function reportViewNavigation(args: {
 }
 
 /** Publish the exact agent-surface the user opened. */
-export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
-  reportViewNavigation({ viewId, viewPath });
+export function reportUserViewSwitch(
+  viewId: string,
+  viewPath?: string,
+  subview?: string,
+): void {
+  reportViewNavigation({
+    viewId,
+    viewPath,
+    subview:
+      subview ??
+      (viewId === "settings"
+        ? (readSettingsHashSectionId() ?? undefined)
+        : undefined),
+  });
 }
 
 /**

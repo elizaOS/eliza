@@ -26,9 +26,12 @@ export function detailString(
   key: string,
 ): string | undefined {
   const value = details?.[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  return trimmed;
 }
 
 export type PlannerCalendarWindow = {
@@ -140,6 +143,27 @@ const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
   "unknown",
   "any",
   "auto",
+  // Synthetic "the calendar" spellings models invent when no real id is in
+  // context (observed live: a create with calendarId "cal_primary" excluded
+  // every source and died with CALENDAR_MUTATION_CONTEXT_INCOMPLETE while the
+  // aggregated feed was complete). "primary" itself is a REAL Google/eliza id
+  // and must keep passing through.
+  "cal_primary",
+  "primary_calendar",
+  "default_calendar",
+  "cal_default",
+  "my_calendar",
+  "main_calendar",
+  "cal_main",
+  "calendar",
+  "cal",
+  "cal_1",
+  "calendar_1",
+  "calendar_id",
+  "cal_id",
+  "id",
+  "example",
+  "placeholder",
 ]);
 
 export function sanitizeCalendarId(
@@ -151,4 +175,33 @@ export function sanitizeCalendarId(
   return CALENDAR_ID_PLACEHOLDER_TOKENS.has(trimmed.toLowerCase())
     ? undefined
     : trimmed;
+}
+
+const CALENDAR_WINDOW_PRESETS = new Set([
+  "tomorrow_morning",
+  "tomorrow_afternoon",
+  "tomorrow_evening",
+]);
+
+export type CalendarWindowPreset =
+  | "tomorrow_morning"
+  | "tomorrow_afternoon"
+  | "tomorrow_evening";
+
+/**
+ * Planner-authored `windowPreset` is junk-prone: models invent values such as
+ * "tuesday_morning" for arbitrary dates, and CalendarService rejects them with
+ * a hard 400 that aborted the whole create ("the calendar hit a snag",
+ * observed live for "gym session tuesday at 7am"). Only the declared presets
+ * pass; anything else resolves to unset so an explicit or extracted startAt —
+ * or the normal timestamp re-extraction — decides the time instead.
+ */
+export function sanitizeWindowPreset(
+  value: string | undefined,
+): CalendarWindowPreset | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return CALENDAR_WINDOW_PRESETS.has(normalized)
+    ? (normalized as CalendarWindowPreset)
+    : undefined;
 }

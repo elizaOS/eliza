@@ -20,10 +20,7 @@ import type { State } from "../../types/state";
 import { getUserMessageText } from "../../utils/message-text";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
-import {
-	appliedEffectReceiptIdsForReply,
-	evaluatePlannedReplyEgress,
-} from "./egress-policy.js";
+import { resolvePlannedReplyEgress } from "./egress-policy.js";
 import {
 	announceDirectToolCallToStream,
 	settleFailedDirectToolCallOnStream,
@@ -158,19 +155,13 @@ export async function runShortcutGate(args: {
 		? withActionResultsForPrompt(args.state, [actionResult], args.runtime)
 		: args.state;
 	const shortcutActionResults = actionResult ? [actionResult] : [];
-	const shortcutReplyDecision = evaluatePlannedReplyEgress({
-		reply: captured,
-		actionResults: shortcutActionResults,
-		actions: args.runtime.actions,
-	});
-	const shortcutReply =
-		shortcutReplyDecision.verdict === "allow"
-			? captured
-			: shortcutReplyDecision.fallbackReply;
-	const shortcutReplyReceiptIds = appliedEffectReceiptIdsForReply(
-		shortcutReply,
-		shortcutActionResults,
-	);
+	const { text: shortcutReply, effectReceiptIds: shortcutReplyReceiptIds } =
+		await resolvePlannedReplyEgress({
+			runtime: args.runtime,
+			message: args.message,
+			reply: captured,
+			actionResults: shortcutActionResults,
+		});
 
 	// #8792: report the interaction so the proactive-comment decider can react.
 	const interactionEvent = emitInteractionEvent(

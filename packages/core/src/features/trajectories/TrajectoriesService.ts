@@ -1057,6 +1057,10 @@ export class TrajectoriesService extends Service {
 	private enabled = true;
 	private initialized = false;
 	private stopping = false;
+	private stopPromise: Promise<void> | null = null;
+	// Routing can include another service's same-agent trajectory. Only a
+	// successful start grants this service shutdown ownership, even before a step.
+	private ownedTrajectoryIds = new Set<string>();
 
 	// Only keep lightweight ID caches for sync compatibility.
 	// Trajectory payloads are always read from / written to the database.
@@ -1214,8 +1218,24 @@ export class TrajectoriesService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		if (this.stopPromise) return this.stopPromise;
 		this.stopping = true;
+		this.stopPromise = this.finishStop();
+		try {
+			await this.stopPromise;
+		} finally {
+			// Failed terminal writes retain their ownership for an explicit retry.
+			this.stopPromise = null;
+		}
+	}
+
+	private async finishStop(): Promise<void> {
 		await this.drainInflightOperations();
+		const results = await Promise.allSettled(
+			[...this.ownedTrajectoryIds].map((trajectoryId) =>
+				this.terminateOwnedTrajectory(trajectoryId),
+			),
+		);
 		this.enabled = false;
 		for (const trajectoryId of new Set(this.stepToTrajectory.values())) {
 			this.releaseTrajectoryRouting(trajectoryId);
@@ -1223,6 +1243,53 @@ export class TrajectoriesService extends Service {
 		for (const trajectoryId of this.activeStepIds.keys()) {
 			this.releaseTrajectoryRouting(trajectoryId);
 		}
+		const failures = results.flatMap((result) =>
+			result.status === "rejected" ? [result.reason] : [],
+		);
+		if (failures.length > 0) {
+			throw new AggregateError(
+				failures,
+				"Failed to terminate owned trajectories during shutdown",
+			);
+		}
+	}
+
+	private async terminateOwnedTrajectory(trajectoryId: string): Promise<void> {
+		await this.withTrajectoryWriteLock(trajectoryId, async () => {
+			await this.executeRawSqlTransaction(async (execute) => {
+				const trajectory = await this.getTrajectoryById(
+					trajectoryId,
+					execute,
+					true,
+				);
+				if (
+					!trajectory ||
+					!this.runtime.runtimeInstanceId ||
+					trajectory.metadata.runtimeInstanceId !==
+						this.runtime.runtimeInstanceId ||
+					trajectory.metrics.finalStatus !== "active"
+				)
+					return;
+
+				const now = Date.now();
+				await this.markAllStepsInactive(trajectoryId, execute);
+				// Preserve captured payloads and usage exactly; shutdown only settles
+				// lifecycle fields after all accepted captures have drained.
+				await execute(`UPDATE trajectories SET
+					status = 'terminated',
+					end_time = ${now},
+					duration_ms = ${now - trajectory.startTime},
+					metrics_json = ${sqlLiteral({
+						...trajectory.metrics,
+						finalStatus: "terminated",
+						episodeLength: trajectory.steps.length,
+					})},
+					updated_at = ${sqlLiteral(new Date(now).toISOString())}
+					WHERE id = ${sqlLiteral(trajectoryId)}
+					AND agent_id = ${sqlLiteral(this.runtime.agentId)}`);
+			});
+		});
+		this.ownedTrajectoryIds.delete(trajectoryId);
 	}
 
 	setEnabled(enabled: boolean): void {
@@ -2620,7 +2687,15 @@ export class TrajectoriesService extends Service {
 		options: StartTrajectoryOptions = {},
 	): Promise<string> {
 		if (!this.acceptsNewCapture()) return uuidv4();
+		return this.trackInflightOperation(
+			this.startAcceptedTrajectory(stepIdOrAgentId, options),
+		);
+	}
 
+	private async startAcceptedTrajectory(
+		stepIdOrAgentId: string,
+		options: StartTrajectoryOptions,
+	): Promise<string> {
 		const isLegacySignature = options.agentId !== undefined;
 		const legacyStepId = isLegacySignature ? stepIdOrAgentId : null;
 		const requestedAgentId = isLegacySignature
@@ -2645,6 +2720,7 @@ export class TrajectoriesService extends Service {
 		const timestampIso = new Date(now).toISOString();
 		const metadata: Record<string, JsonValue> = {
 			...(options.metadata ?? {}),
+			runtimeInstanceId: this.runtime.runtimeInstanceId,
 		};
 		if (options.roomId) metadata.roomId = options.roomId;
 		if (options.entityId) metadata.entityId = options.entityId;
@@ -2704,6 +2780,9 @@ export class TrajectoriesService extends Service {
 				${sqlLiteral(timestampIso)}
 			)
 		`;
+		// Register before the insert resolves: a concurrent clear can delete a
+		// committed row while its caller is still awaiting the SQL response.
+		this.ownedTrajectoryIds.add(trajectoryId);
 		try {
 			if (legacyStepId) {
 				await this.executeRawSqlTransaction(async (execute) => {
@@ -2720,6 +2799,7 @@ export class TrajectoriesService extends Service {
 				await this.executeRawSql(insertSql);
 			}
 		} catch (error) {
+			this.ownedTrajectoryIds.delete(trajectoryId);
 			// error-policy:J2 Preserve the database cause with trajectory identity.
 			throw new ElizaError(
 				`[trajectory-logger] Failed to persist trajectory start for ${trajectoryId}`,
@@ -3064,6 +3144,7 @@ export class TrajectoriesService extends Service {
 		});
 
 		this.releaseTrajectoryRouting(trajectoryId);
+		this.ownedTrajectoryIds.delete(trajectoryId);
 	}
 
 	/**
@@ -3340,7 +3421,7 @@ export class TrajectoriesService extends Service {
 		await this.ensureStorageReady();
 
 		const ids = trajectoryIds.map(sqlLiteral).join(", ");
-		return this.executeRawSqlTransaction(async (execute) => {
+		const deletedRows = await this.executeRawSqlTransaction(async (execute) => {
 			await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
 				SELECT id FROM trajectories WHERE id IN (${ids})
 				AND agent_id = ${sqlLiteral(this.runtime.agentId)}
@@ -3349,8 +3430,9 @@ export class TrajectoriesService extends Service {
 				`DELETE FROM trajectories WHERE id IN (${ids})
 				 AND agent_id = ${sqlLiteral(this.runtime.agentId)} RETURNING id`,
 			);
-			return result.rows.length;
+			return result.rows;
 		});
+		return this.releaseDeletedTrajectories(deletedRows);
 	}
 
 	async clearAllTrajectories(): Promise<number> {
@@ -3358,23 +3440,28 @@ export class TrajectoriesService extends Service {
 		if (!runtime.adapter) throw this.storageUnavailableError();
 		await this.ensureStorageReady();
 
-		return this.executeRawSqlTransaction(async (execute) => {
-			const countResult = await execute(
-				`SELECT count(*)::int AS cnt FROM trajectories
-				 WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}`,
-			);
-			const count = requiredTrajectoryCell(
-				asNumber(pickCell(countResult.rows[0] ?? {}, "cnt")),
-				"cnt",
-			);
+		const deletedRows = await this.executeRawSqlTransaction(async (execute) => {
 			await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
 				SELECT id FROM trajectories WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}
 			)`);
-			await execute(
-				`DELETE FROM trajectories WHERE agent_id = ${sqlLiteral(this.runtime.agentId)}`,
+			const result = await execute(
+				`DELETE FROM trajectories WHERE agent_id = ${sqlLiteral(this.runtime.agentId)} RETURNING id`,
 			);
-			return count;
+			return result.rows;
 		});
+		return this.releaseDeletedTrajectories(deletedRows);
+	}
+
+	private releaseDeletedTrajectories(rows: SqlRow[]): number {
+		for (const row of rows) {
+			const trajectoryId = requiredTrajectoryCell(
+				asString(pickCell(row, "id")),
+				"id",
+			);
+			this.ownedTrajectoryIds.delete(trajectoryId);
+			this.releaseTrajectoryRouting(trajectoryId);
+		}
+		return rows.length;
 	}
 
 	private storageUnavailableError(): ElizaError {

@@ -179,7 +179,7 @@ const VECTOR_SEARCH_CATEGORY: SearchCategoryRegistration = {
       name: "table",
       label: "Table",
       description:
-        "Memory table to search. One of: messages, memories, facts, documents, document_fragments.",
+        "Memory table to search. Conversation turns use messages. Document content embeddings use document_fragments; documents stores document headers. One of: messages, memories, facts, documents, document_fragments.",
       type: "enum",
       options: [...VECTOR_SEARCH_ALLOWED_TABLES].map((value) => ({
         label: value,
@@ -739,7 +739,7 @@ export const databaseAction: Action = {
     {
       name: "table",
       description:
-        "search_vectors: memory table (messages, memories, facts, documents, document_fragments).",
+        "search_vectors: memory table. Use messages for conversation turns and document_fragments for document content embeddings; documents contains headers. Tables: messages, memories, facts, documents, document_fragments.",
       required: false,
       schema: { type: "string" as const },
     },

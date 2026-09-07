@@ -277,6 +277,7 @@ import {
   CharacterSectionNav,
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav";
+import { PageLoadingState } from "./components/composites/page-panel";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
@@ -344,11 +345,13 @@ function useShellMode(): AppShellMode {
  */
 function ChatOverlayShell({
   releaseFirstRunToFull,
+  retainMountedFirstRunOpen,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
   firstRunMountEpoch,
 }: {
   releaseFirstRunToFull: boolean;
+  retainMountedFirstRunOpen: boolean;
   onFirstRunReleaseHandled: () => void;
   onFirstRunChatMounted: (epoch: number) => void;
   firstRunMountEpoch: number | null;
@@ -386,6 +389,7 @@ function ChatOverlayShell({
         <ShellFoundationMount
           useWebChatPanel
           releaseFirstRunToFull={releaseFirstRunToFull}
+          retainMountedFirstRunOpen={retainMountedFirstRunOpen}
           onFirstRunReleaseHandled={onFirstRunReleaseHandled}
           onFirstRunChatMounted={onFirstRunChatMounted}
           firstRunMountEpoch={firstRunMountEpoch}
@@ -633,9 +637,10 @@ function RegisteredAppShellPage({
         cacheKey={registration.id}
         componentProps={{ ...APP_SHELL_VIEW_PROPS, ...viewProps }}
         fallback={
-          <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-            Loading {registration.label}…
-          </div>
+          <PageLoadingState
+            heading={`Loading ${registration.label}…`}
+            className="flex-1"
+          />
         }
         onError={(error) => (
           <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center px-4 text-center text-sm text-destructive">
@@ -752,16 +757,6 @@ function useCurrentNavigationPath(): string {
 function viewRegistrationBackgroundPolicy(
   decl: SurfaceManifestBearer | null | undefined,
 ): AppShellBackgroundPolicy {
-  // Host default: a BUILTIN view that declares no background sits on the
-  // shared launcher wallpaper (with the readability scrim). The wallpaper
-  // default is scoped to first-party registrations only — an undeclared
-  // remote/plugin view keeps the grant-gated default-deny (#13452: shared is
-  // an explicit opt-in via the `wallpaper` grant, never an accident), and an
-  // explicit declaration always resolves through the core resolver (browser
-  // stays opaque; ungranted "shared" downgrades).
-  const declared = decl?.surface?.background ?? decl?.backgroundPolicy;
-  const builtin = (decl as { builtin?: boolean } | null | undefined)?.builtin;
-  if (declared === undefined && builtin === true) return "shared";
   return resolveSurfaceBackgroundPolicy(decl);
 }
 
@@ -837,11 +832,8 @@ function resolveActiveScreenBackgroundPolicy({
     return viewRegistrationBackgroundPolicy(registeredView);
   }
 
-  // Default: builtin views paint NO surface of their own — they sit on the
-  // shared launcher wallpaper (with the readability scrim below). A view that
-  // needs an opaque surface declares it (manifest / registration), like the
-  // browser's native-webview isolation above.
-  return "shared";
+  // Ordinary views use the neutral surface. Wallpaper is an explicit opt-in.
+  return "opaque";
 }
 
 function useActiveScreenBackgroundPolicy({
@@ -984,7 +976,7 @@ function resolveActiveViewSurface({
   if (appShellPageForTab) {
     return {
       manifest: resolveRoutedSurfaceManifest(appShellPageForTab),
-      viewId: appShellPageForTab.id,
+      viewId: appShellPageForTab.agentViewId ?? appShellPageForTab.id,
     };
   }
 
@@ -993,7 +985,7 @@ function resolveActiveViewSurface({
       manifest: resolveRoutedSurfaceManifest(
         dynamicPage.registration ?? dynamicPage,
       ),
-      viewId: dynamicPage.id,
+      viewId: dynamicPage.registration?.agentViewId ?? dynamicPage.id,
     };
   }
 
@@ -1019,7 +1011,10 @@ function resolveActiveViewSurface({
   // branches.
   const builtinManifest = resolveBuiltinRoutedViewManifest(tab);
   if (builtinManifest) {
-    return { manifest: builtinManifest, viewId: resolveBuiltinTabId(tab) };
+    return {
+      manifest: builtinManifest,
+      viewId: tab === "tasks" ? "projects" : resolveBuiltinTabId(tab),
+    };
   }
 
   const builtinDescriptor = resolveBuiltinRouteDescriptor(tab);
@@ -1147,7 +1142,11 @@ function findRemoteViewForRoute(
   // affinity such as Wallet. This lets web/desktop mount the agent-served
   // bundle while native shells still fall back to their in-process page.
   const exactMatch = views.find(
-    (view) => remoteViewAvailable(view) && view.path === normalizedPath,
+    // A registered route still owns its loading/error state when its bundle
+    // is unavailable. Let the loader offer recovery instead of falling
+    // through to the unrelated Views manager.
+    (view) =>
+      Boolean(view.bundleUrl || view.frameUrl) && view.path === normalizedPath,
   );
   if (exactMatch) return exactMatch;
   if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
@@ -1468,7 +1467,11 @@ function buildStaticTabRenderers(): Record<
     browser: wrapOverlayAware(<LazyBrowserWorkspaceView />),
     stream: wrap(<LazyStreamView />),
     "pendant-transcript": wrapOverlayAware(<LazyPendantTranscriptView />),
-    tasks: wrapOverlayAware(<LazyTasksPageView />),
+    tasks: wrapOverlayAware(
+      <ShellViewAgentSurface viewId="projects">
+        <LazyTasksPageView />
+      </ShellViewAgentSurface>,
+    ),
     automations: wrapOverlayAware(<LazyAutomationsFeed />),
     plugins: withHeader("plugins", <LazyPluginsPageView />),
     skills: withHeader("skills", <LazySkillsView />),
@@ -2076,6 +2079,7 @@ function SecretsManagerModalMount(): ReactNode {
 function ShellFoundationMount({
   useWebChatPanel = false,
   releaseFirstRunToFull = false,
+  retainMountedFirstRunOpen = false,
   onFirstRunReleaseHandled = () => {},
   onFirstRunChatMounted,
   firstRunMountEpoch = null,
@@ -2083,6 +2087,8 @@ function ShellFoundationMount({
   /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
   useWebChatPanel?: boolean;
   releaseFirstRunToFull?: boolean;
+  /** Keep an already-mounted authoritative onboarding transcript pinned while startup advances. */
+  retainMountedFirstRunOpen?: boolean;
   onFirstRunReleaseHandled?: () => void;
   onFirstRunChatMounted?: (epoch: number) => void;
   firstRunMountEpoch?: number | null;
@@ -2095,10 +2101,9 @@ function ShellFoundationMount({
     firstRunComplete: state.firstRunComplete,
     startupPhase: state.startupCoordinator.phase,
   }));
-  const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(
-    firstRunComplete,
-    startupPhase,
-  );
+  const firstRunPinnedOpen =
+    isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
+    (firstRunComplete === false && retainMountedFirstRunOpen);
   // Completion updates the store before the half-height overlay can release
   // its first-run pin. Keep that mounted instance through the edge so its
   // shared transcript stays visible until the user deliberately folds to the
@@ -2313,6 +2318,7 @@ function ShellFoundationMount({
         initialMode="input"
         fillHostAtHalf
         releaseFirstRunToFull={releaseFirstRunToFull}
+        retainMountedFirstRunOpen={retainMountedFirstRunOpen}
         onFirstRunReleaseHandled={onFirstRunReleaseHandled}
         onFirstRunChatMounted={onFirstRunChatMounted}
         firstRunMountEpoch={firstRunMountEpoch}
@@ -2395,6 +2401,7 @@ function ChatOverlayMount({
   initialMode,
   fillHostAtHalf = false,
   releaseFirstRunToFull,
+  retainMountedFirstRunOpen = false,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
   firstRunMountEpoch = null,
@@ -2405,6 +2412,7 @@ function ChatOverlayMount({
   initialMode?: "input" | "half";
   fillHostAtHalf?: boolean;
   releaseFirstRunToFull: boolean;
+  retainMountedFirstRunOpen?: boolean;
   onFirstRunReleaseHandled: () => void;
   onFirstRunChatMounted?: (epoch: number) => void;
   firstRunMountEpoch?: number | null;
@@ -2420,10 +2428,9 @@ function ChatOverlayMount({
       firstRunComplete: s.firstRunComplete,
       startupPhase: s.startupCoordinator.phase,
     }));
-  const firstRunOpen = isAuthoritativeFirstRunOpen(
-    firstRunComplete,
-    startupPhase,
-  );
+  const firstRunOpen =
+    isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
+    (firstRunComplete === false && retainMountedFirstRunOpen);
   // #12087 Item 20: derive the slash-command authority from the authoritative
   // role instead of the fail-open defaults. Elevated (owner-only) commands
   // require OWNER; authenticated commands require rank ≥ USER. A remote
@@ -3257,7 +3264,9 @@ function AppContent() {
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
 
+  const androidCloudAuthAutoStart = isAndroidCloudBuild();
   const cloudAuthFirstScreenOwnsSurface =
+    androidCloudAuthAutoStart &&
     shellMode === "full" &&
     !isPopout &&
     !isAuxiliaryAppWindow &&
@@ -3289,6 +3298,7 @@ function AppContent() {
   const cloudAuthAutoStartedRef = useRef(false);
   useEffect(() => {
     if (
+      !androidCloudAuthAutoStart ||
       !cloudAuthFirstScreenOwnsSurface ||
       hasUsableCloudSession ||
       elizaCloudLoginBusy ||
@@ -3302,13 +3312,13 @@ function AppContent() {
       // error-policy:J4 the full-screen retry surface renders the hook's error.
     });
   }, [
+    androidCloudAuthAutoStart,
     cloudAuthFirstScreenOwnsSurface,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
     hasUsableCloudSession,
     startCloudAuthFirstScreen,
   ]);
-
   useEffect(() => {
     // Safety-net watchdog: the coordinator has its own timeouts per phase, but
     // this catches any edge case where the coordinator gets stuck in a loading
@@ -3411,10 +3421,9 @@ function AppContent() {
     return <VoiceWorkbenchShell />;
   }
 
-  // Cloud account auth owns the primary viewport before chat exists. Hosted
-  // web redirects to Steward in this tab; the Android launcher keeps Eliza's
-  // hosted page in-app and uses the secure browser only for providers such as
-  // Google that reject embedded WebViews.
+  // Android's Cloud build owns its native auth startup surface. Web and Mac
+  // keep first run inside the normal Eliza chat overlay so sign-in remains a
+  // deliberate conversational choice instead of replacing the whole app.
   if (cloudAuthFirstScreenOwnsSurface && !hasUsableCloudSession) {
     return (
       <BugReportProvider value={bugReport}>
@@ -3459,6 +3468,7 @@ function AppContent() {
         <ShellControllerProvider>
           <ChatOverlayShell
             releaseFirstRunToFull={firstRunChatRelease.releasePending}
+            retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
             onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
             onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
             firstRunMountEpoch={firstRunChatRelease.mountEpoch}
@@ -3661,21 +3671,17 @@ function AppContent() {
           // indicator, native-app style.
           data-app-shell-root=""
           className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
-          // Reserve a TIGHT status-bar inset: enough to clear the notch/Dynamic
-          // Island but no oversized empty band above the content (the repeated
-          // "too much space at the top" report; device r8 screenshot still showed
-          // dead space above the in-app clock). The iOS status bar clock already
-          // draws INSIDE the safe-area-top zone, so any app paddingTop below the
-          // full inset is ADDITIVE dead space. Shave harder, subtract 2rem from
-          // the safe area (was 1.25rem) so the big in-app clock seats snug under
-          // the status bar, with a 0.75rem floor so notch-less phones still
-          // clear their status bar. Top banners bleed their bg back up via
-          // `.mobile-top-banner:first-child` (styles.css). No-op on web.
+          // The OS inset is protected space, not decorative padding to trim.
+          // Settings and Wallet own the inset inside their scrolling headers;
+          // Home and other non-immersive views receive it once at this shared
+          // boundary. Home's wallpaper remains a separate full-bleed layer.
           style={{
             paddingTop:
-              isFullBleed || isSettingsPage || isWalletPage
+              (isFullBleed && !isChat) || isSettingsPage || isWalletPage
                 ? 0
-                : "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
+                : "var(--safe-area-top, 0px)",
+            paddingLeft: "var(--safe-area-left, 0px)",
+            paddingRight: "var(--safe-area-right, 0px)",
           }}
         >
           {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling
@@ -3779,6 +3785,7 @@ function AppContent() {
           <>
             <ChatOverlayMount
               releaseFirstRunToFull={firstRunChatRelease.releasePending}
+              retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
               onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
               onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
               firstRunMountEpoch={firstRunChatRelease.mountEpoch}

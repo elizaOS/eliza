@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "sourceAtomicSchemaVersion": 1,
-  "scannedFiles": 907,
+  "scannedFiles": 908,
   "canonicalContracts": [
     {
       "id": "auth-result-shell",
@@ -975,7 +975,7 @@
             "button"
           ],
           "file": "packages/ui/src/components/settings/ProviderPanels.tsx",
-          "line": 127,
+          "line": 193,
           "name": "CloudPanel",
           "renderedTags": [
             "Alert",

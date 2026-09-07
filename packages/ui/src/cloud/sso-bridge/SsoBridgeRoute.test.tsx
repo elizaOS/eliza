@@ -113,6 +113,8 @@ afterEach(() => {
   globalThis.fetch = realFetch;
   appModeNavigation.replace = realReplace;
   setReferrer("");
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("SsoBridgeRoute — inert role", () => {
@@ -524,6 +526,33 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     expect(fetchLog[0].init?.keepalive).toBe(true);
     expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({ code: CODE });
   }
+
+  it("removes the one-time code and nonce from browser history before exchange finishes", async () => {
+    armHandshake();
+    const callbackPath = `/auth/bridge?code=${CODE}&state=${STATE}&returnTo=%2Fchat`;
+    window.history.replaceState(null, "", callbackPath);
+    const replaceStateSpy = vi
+      .spyOn(window.history, "replaceState")
+      .mockImplementation(() => {});
+    let strippedBeforeFetch = false;
+    fetchLog = [];
+    replacedUrls = [];
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      strippedBeforeFetch = replaceStateSpy.mock.calls.length > 0;
+      fetchLog.push({ url: String(input), init });
+      return new Promise<Response>(() => {});
+    }) as typeof fetch;
+
+    renderBridge("cloud.eliza.app", callbackPath.slice("/auth/bridge".length));
+
+    await waitFor(() => expect(fetchLog).toHaveLength(1));
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      window.history.state,
+      "",
+      "/auth/bridge?returnTo=%2Fchat",
+    );
+    expect(strippedBeforeFetch).toBe(true);
+  });
 
   it("state mismatch aborts to the local login — the code is never EXCHANGED, only burned", async () => {
     armHandshake(OTHER_STATE);

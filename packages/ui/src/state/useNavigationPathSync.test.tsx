@@ -20,6 +20,16 @@ afterEach(() => {
 });
 
 describe("useNavigationPathSync — app-shell registry reactivity", () => {
+  it("replaces /home with the canonical chat-backed Home canvas", () => {
+    window.history.replaceState(null, "", "/home");
+    const setTabRaw = vi.fn();
+
+    renderHook(() => useNavigationPathSync({ tab: "views" as Tab, setTabRaw }));
+
+    expect(window.location.pathname).toBe("/chat");
+    expect(setTabRaw).toHaveBeenCalledWith("chat");
+  });
+
   it.each(["/documents", "/knowledge"])(
     "replaces the retired Knowledge path %s with the canonical registry route",
     (legacyPath) => {

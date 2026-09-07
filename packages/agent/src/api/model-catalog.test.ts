@@ -14,6 +14,17 @@ const NO_CACHE = {
   env: {} as NodeJS.ProcessEnv,
 };
 
+it("offers Qwen 3.8 for both chat tiers with reasoning disabled by default", () => {
+  const catalog = buildModelCatalog(NO_CACHE);
+  for (const provider of ["cerebras", "elizacloud"]) {
+    expect(entry(catalog, provider, "qwen-3.8-27b")).toMatchObject({
+      efforts: ["none", "low", "medium", "high"],
+      defaultEffort: "none",
+      roles: ["small", "large"],
+    });
+  }
+});
+
 function entry(
   providerEntries: ReturnType<typeof buildModelCatalog>,
   provider: string,

@@ -68,12 +68,14 @@ interface ApproveResponse {
 
 function formatTimestamp(value: string | null): string | null {
   if (!value) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(new Date(timestamp));
 }
 
 function statusLabel(status: ApprovalRequestStatus, t: TFn): string {

@@ -101,6 +101,20 @@ regexes = [
   '''capacity-proposal-key-1''',
 ]
 
+# This deterministic runtime redaction test supplies an invented credential to
+# prove configured secrets are removed from output. Match only that literal in
+# that test; other credentials in the same file must still fail the scan.
+[[allowlists]]
+description = "Runtime configured-secret redaction synthetic credential fixture"
+condition = "AND"
+paths = [
+  '''(^|/)packages/core/src/__tests__/runtime-redaction-configured-secrets\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^sk-live-abcdef1234567890abcdef$''',
+]
+
 # Chrome derives an unpacked extension's stable ID from this public RSA
 # verification key. It is intentionally shipped in the manifest and cannot
 # authenticate or sign an extension; the corresponding private signing key is

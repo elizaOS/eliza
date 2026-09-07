@@ -74,6 +74,36 @@ async function fulfillJson(
   });
 }
 
+async function installAssistantPersonalElizaRoute(
+  page: Page,
+): Promise<() => void> {
+  let releasePersonalIdentity: (() => void) | undefined;
+  const personalIdentityGate = new Promise<void>((resolve) => {
+    releasePersonalIdentity = resolve;
+  });
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await personalIdentityGate;
+    await fulfillJson(route, {
+      success: true,
+      data: {
+        identity: {
+          id: "personal:11111111-1111-5111-8111-111111111111",
+          displayName: "Eliza Cloud",
+          runtime: "dedicated",
+          activeAgentId: "22222222-2222-4222-8222-222222222222",
+          apiBase:
+            "https://22222222-2222-4222-8222-222222222222.cloud.eliza.app",
+        },
+      },
+    });
+  });
+  return () => releasePersonalIdentity?.();
+}
+
 async function installAssistantFlowRoutes(page: Page): Promise<{
   messages: Array<{
     id: string;
@@ -201,6 +231,30 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       totalBuffered: 0,
       replayed: true,
     });
+  });
+  await page.route("**/api/character", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      character: {
+        name: "Eliza",
+        bio: ["Assistant flow test agent"],
+        system: "You are Eliza",
+        adjectives: ["helpful"],
+        style: { all: [], chat: [], post: [] },
+        postExamples: [],
+        messageExamples: [],
+      },
+    });
+  });
+  await page.route("**/api/apps/overlay-presence", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { ok: true, app: null, present: false });
   });
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
@@ -794,12 +848,86 @@ async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
 }
 
 test.describe("assistant home app flow", () => {
+  test.use({ serviceWorkers: "block" });
+
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
 
   test.afterEach(async ({ page }, testInfo) => {
     await expectNoPageDiagnostics(page, testInfo.title);
+  });
+
+  test("keeps the Cloud tutorial choices visible in the open first-run sheet", async ({
+    page,
+  }) => {
+    await installAssistantFlowRoutes(page);
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("elizaos:first-run:force-fresh", "1");
+      localStorage.setItem("eliza:voice:prefix-done", "1");
+      localStorage.setItem("eliza:mobile-runtime-mode", "local");
+      localStorage.setItem("eliza:enable-runtime-chooser", "1");
+    });
+    await page.route("**/api/first-run/status", async (route) => {
+      await fulfillJson(route, { complete: false, cloudProvisioned: false });
+    });
+    // Install the Personal route before navigation so a startup probe cannot
+    // escape to the real Cloud host. Hold its response until the chooser is
+    // visibly committed, preserving the exact fresh-first-run transition.
+    const releasePersonalIdentity =
+      await installAssistantPersonalElizaRoute(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const firstRunOverlay = page.getByTestId("chat-overlay");
+    await expect(firstRunOverlay).toBeVisible({ timeout: 20_000 });
+    const cloudRuntime = page.getByTestId("choice-__first_run__:runtime:cloud");
+    await expect(cloudRuntime).toBeVisible({ timeout: 20_000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem(
+        "steward_session_token",
+        "assistant-flow-cloud-token",
+      );
+      localStorage.setItem(
+        "steward_session_active_scope",
+        "eliza-cloud:production",
+      );
+      localStorage.setItem(
+        "steward_session_token_scope",
+        "eliza-cloud:production",
+      );
+    });
+    await cloudRuntime.evaluate((node: HTMLElement) => node.click());
+    releasePersonalIdentity();
+    const onboardingProbe = page.getByTestId("onboarding-state-probe");
+    await expect(onboardingProbe).toContainText("onboarding-step:tutorial", {
+      timeout: 60_000,
+    });
+    await expect(onboardingProbe).toContainText("__first_run__:tutorial:start");
+    await expect(onboardingProbe).toContainText("__first_run__:tutorial:skip");
+
+    // Binding the selected Cloud identity advances startup independently of
+    // the conductor's final tutorial choice. The committed first-run epoch
+    // keeps the sheet open so both accessible choices remain actionable.
+    await expect(firstRunOverlay).toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+      "data-variant",
+      "open",
+    );
+    await expect(
+      page.getByTestId("choice-__first_run__:tutorial:start"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Take the tutorial" }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("choice-__first_run__:tutorial:skip"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Skip for now" }),
+    ).toBeVisible();
   });
 
   test("captures first-run, assistant home, chat suppression, and view pill states", async ({
@@ -920,6 +1048,9 @@ test.describe("assistant home app flow", () => {
       page
         .getByRole("tablist", { name: "Wallet asset type" })
         .getByRole("tab", { name: "Tokens", selected: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Show wallet details", exact: true }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
     const personalRequests = [

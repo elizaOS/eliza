@@ -15,9 +15,6 @@ import { loadPersistedActiveServer } from "../state/persistence";
 import { configuredCloudVoiceOrigin } from "./shared-runtime-voice";
 
 function cloudVoiceSessionUrl(path: string): string {
-  if (!path.startsWith("/") || path.startsWith("//")) {
-    throw new Error("Cloud voice-session requests require a relative API path");
-  }
   const origin = configuredCloudVoiceOrigin();
   if (!origin) {
     throw new Error("Eliza Cloud voice-session origin is not configured");
@@ -34,9 +31,22 @@ export async function fetchVoiceSession(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  if (loadPersistedActiveServer()?.kind !== "cloud") {
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    throw new Error("Voice-session requests require a relative API path");
+  }
+
+  const activeServer = loadPersistedActiveServer();
+  if (activeServer?.kind !== "cloud") {
     const { fetchWithCsrf } = await import("../api/csrf-client");
-    return fetchWithCsrf(path, init);
+    const headers = new Headers(init.headers);
+    const accessToken =
+      activeServer?.kind === "remote"
+        ? activeServer.accessToken?.trim()
+        : undefined;
+    if (accessToken && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${accessToken}`);
+    }
+    return fetchWithCsrf(path, { ...init, headers });
   }
 
   const headers = new Headers(init.headers);

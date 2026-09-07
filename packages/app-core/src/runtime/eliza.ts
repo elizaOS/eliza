@@ -27,8 +27,8 @@ import {
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 
+export { prepareDevTrajectoryRecovery } from "@elizaos/agent";
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
-
 export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
 
 import { readAliasedEnv } from "@elizaos/shared";

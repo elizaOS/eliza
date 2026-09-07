@@ -533,8 +533,8 @@ export function useModelConfiguration(
       // error-policy:J4 catalog/config fetch failure renders the panel's
       // designed error state (with retry) instead of a healthy-empty panel.
       if (!ownsLoad()) return;
-      // Promise.all rejects before its other request settles; cancel that
-      // sibling before releasing this load's controller.
+      // Promise.all can reject while its sibling is still pending. Cancel it
+      // before finally releases the controller needed by retry/unmount cleanup.
       abortController.abort();
       setLoad({ phase: "error", message: failureMessage(err) });
     } finally {

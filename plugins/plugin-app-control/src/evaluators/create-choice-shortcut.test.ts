@@ -72,12 +72,18 @@ function appIntent(roomId = "room-1") {
 		choices: [{ key: "cancel", label: "Cancel" }],
 		intentCreatedAt: "2026-07-06T00:00:00.000Z",
 	};
-	return { id: "app-intent-1", tags: [APP_CREATE_INTENT_TAG], metadata };
+	return {
+		id: "app-intent-1",
+		agentId: "agent-1",
+		tags: [APP_CREATE_INTENT_TAG],
+		metadata,
+	};
 }
 
 function viewsIntent(roomId = "room-1") {
 	return {
 		id: "views-intent-1",
+		agentId: "agent-1",
 		tags: [VIEWS_CREATE_INTENT_TAG],
 		metadata: {
 			roomId,
@@ -149,62 +155,48 @@ describe("createChoiceShortcutEvaluator", () => {
 		);
 	});
 
-	it("routes an ambiguous model-switch request before a planner can narrate", async () => {
-		const tasks: Task[] = [];
-		const switchModel = vi.fn(async () => ({
-			ok: true,
-			target: "cloud" as const,
-		}));
-		const action = createModelSwitchAction({ switchModel });
-		const runtime = {
-			agentId: "agent-1" as UUID,
-			actions: [action],
-			getTasks: vi.fn(async ({ roomId, tags, agentIds }) =>
-				tasks.filter(
-					(task) =>
-						(!roomId || task.roomId === roomId) &&
-						task.agentId !== undefined &&
-						agentIds.includes(task.agentId) &&
-						(!tags || tags.every((tag) => task.tags?.includes(tag))),
-				),
-			),
-			createTask: vi.fn(async (task: Task) => {
-				const id = "model-switch-task" as UUID;
-				tasks.push({ ...task, id });
-				return id;
-			}),
-			deleteTask: vi.fn(async () => undefined),
-		} as unknown as IAgentRuntime;
-		const ctx = context("switch to the faster model", [], [action]);
-		ctx.runtime = runtime;
+	it.each([
+		"switch to the faster model",
+		"use the local model",
+		"use Eliza Cloud",
+	])("leaves model-switch prose to normal planning: %s", async (text) => {
+		const ctx = context(text, []);
 
-		expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(true);
-		const shortcut = await createChoiceShortcutEvaluator.evaluate(ctx);
-		expect(shortcut?.deterministicToolCall).toEqual({
-			name: "MODEL_SWITCH",
-			params: {},
-		});
-
-		const result = await action.handler(
-			runtime,
-			ctx.message,
-			ctx.state,
-			shortcut?.deterministicToolCall?.params,
-		);
-		expect(result?.values).toMatchObject({ awaitingTarget: true });
-		expect(switchModel).not.toHaveBeenCalled();
-		expect(tasks).toHaveLength(1);
+		expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(false);
+		await expect(
+			createChoiceShortcutEvaluator.evaluate(ctx),
+		).resolves.toBeUndefined();
+		expect(ctx.runtime.getTasks).not.toHaveBeenCalled();
 	});
 
-	it("routes an explicit model-switch request with the user-authored target", async () => {
-		const ctx = context("use the local model", []);
+	it.each([false, true])(
+		"preserves the Home/local-testing turn without a shortcut (pending model choice: %s)",
+		async (pending) => {
+			const text =
+				"Go home. In one sentence, remind me whether I wanted local testing before VPS or phone.";
+			for (const routed of [false, true]) {
+				const ctx = context(text, pending ? [modelSwitchIntent()] : []);
+				ctx.messageHandler.plan = {
+					contexts: routed ? ["general"] : ["simple"],
+					intents: routed ? ["Go home", "Recall testing order"] : [],
+					candidateActions: routed ? ["VIEWS", "SEARCH_MESSAGES"] : [],
+					...(routed
+						? { parentActionHints: ["VIEWS", "SEARCH_MESSAGES"] }
+						: {}),
+					requiresTool: routed,
+					reply: "You wanted local testing before VPS or phone testing.",
+				};
+				const originalPlan = structuredClone(ctx.messageHandler.plan);
 
-		expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(true);
-		expect(
-			(await createChoiceShortcutEvaluator.evaluate(ctx))
-				?.deterministicToolCall,
-		).toEqual({ name: "MODEL_SWITCH", params: { target: "local" } });
-	});
+				expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(false);
+				await expect(
+					createChoiceShortcutEvaluator.evaluate(ctx),
+				).resolves.toBeUndefined();
+				expect(ctx.messageHandler.plan).toEqual(originalPlan);
+				expect(ctx.runtime.getTasks).not.toHaveBeenCalled();
+			}
+		},
+	);
 
 	it("does not claim model questions, unrelated settings, or stopped turns", async () => {
 		for (const text of [
@@ -214,13 +206,13 @@ describe("createChoiceShortcutEvaluator", () => {
 			const ctx = context(text, []);
 			expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(false);
 		}
-		const stopped = context("switch to the local model", []);
+		const stopped = context("local", [modelSwitchIntent()]);
 		stopped.messageHandler.processMessage = "STOP";
 		expect(await createChoiceShortcutEvaluator.shouldRun(stopped)).toBe(false);
 
 		const unregistered = context(
-			"switch to the local model",
-			[],
+			"local",
+			[modelSwitchIntent()],
 			[{ name: "APP" }],
 		);
 		expect(await createChoiceShortcutEvaluator.shouldRun(unregistered)).toBe(
@@ -297,6 +289,17 @@ describe("createChoiceShortcutEvaluator", () => {
 			false,
 		);
 	});
+
+	it.each(["local", "cloud"])(
+		"does not dispatch the bare target %s without a pending choice",
+		async (text) => {
+			const ctx = context(text, []);
+			expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(false);
+			await expect(
+				createChoiceShortcutEvaluator.evaluate(ctx),
+			).resolves.toBeUndefined();
+		},
+	);
 
 	it("leaves ordinary replies alone when there is no pending choice task", async () => {
 		const ctx = context("cancel", []);

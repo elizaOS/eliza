@@ -14,9 +14,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiKeyPanel,
   CloudPanel,
+  describeUnsignedCloudChat,
   LocalProviderPanel,
   SubscriptionPanel,
 } from "./ProviderPanels";
+import type { ServingAxes } from "./resolveServingAxes";
+
+const LOCAL_SERVING_AXES: ServingAxes = {
+  runtime: "local",
+  inference: "local",
+  combination: "all-local",
+  inferenceFallback: true,
+  activeChatProvider: "elizacloud",
+  activeChatEndpoint: "api.eliza.app",
+};
+
+const EXTERNAL_SERVING_AXES: ServingAxes = {
+  runtime: "local",
+  inference: "external",
+  combination: "external-inference",
+  inferenceFallback: false,
+  activeChatProvider: "cerebras",
+  activeChatEndpoint: "api.cerebras.ai",
+};
 
 const appState = vi.hoisted(() => ({
   t: (key: string, vars?: Record<string, unknown>) =>
@@ -76,12 +96,17 @@ describe("ProviderPanels", () => {
   it("activates local and cloud routing", () => {
     const local = vi.fn();
     const cloud = vi.fn();
-    const { rerender } = render(
+    const { container, rerender } = render(
       <LocalProviderPanel
         cloudCallsDisabled={false}
         routingModeSaving={false}
         onSelectLocalOnly={local}
+        runtime="local"
       />,
+    );
+    expect(container.firstElementChild?.className).toContain("min-h-[28rem]");
+    expect(container.firstElementChild?.className).toContain(
+      "sm:min-h-[32rem]",
     );
     fireEvent.click(screen.getByRole("button", { name: "Use local only" }));
     expect(local).toHaveBeenCalled();
@@ -100,6 +125,7 @@ describe("ProviderPanels", () => {
         modelSaving={false}
         modelSaveSuccess={false}
         onModelFieldChange={vi.fn()}
+        servingAxes={LOCAL_SERVING_AXES}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Use Eliza Cloud" }));
@@ -124,6 +150,7 @@ describe("ProviderPanels", () => {
         modelSaving={false}
         modelSaveSuccess={false}
         onModelFieldChange={vi.fn()}
+        servingAxes={LOCAL_SERVING_AXES}
       />,
     );
     // Unsigned-in Cloud is inspect-only: the action must sign the user in,
@@ -137,7 +164,9 @@ describe("ProviderPanels", () => {
     ).toBeNull();
     expect(screen.queryByText(/cloud controls/)).toBeNull();
     expect(
-      screen.getByText("Sign in to use Eliza Cloud services."),
+      screen.getByText(
+        "Eliza Cloud isn't signed in. Chat replies are using Local.",
+      ),
     ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
@@ -161,10 +190,48 @@ describe("ProviderPanels", () => {
         modelSaving={false}
         modelSaveSuccess={false}
         onModelFieldChange={vi.fn()}
+        servingAxes={LOCAL_SERVING_AXES}
       />,
     );
     expect(screen.getByRole("button", { name: "Cloud active" })).toBeTruthy();
     expect(screen.getByText("cloud controls:true")).toBeTruthy();
+  });
+
+  it("keeps unsigned Cloud copy aligned with direct external inference", () => {
+    render(
+      <CloudPanel
+        cloudCallsDisabled={false}
+        isCloudSelected={false}
+        routingModeSaving={false}
+        onSelectCloud={vi.fn()}
+        onSignIn={vi.fn()}
+        elizaCloudConnected={false}
+        largeModelOptions={[]}
+        cloudModelSchema={null}
+        modelValues={{ values: {}, setKeys: new Set() }}
+        currentLargeModel=""
+        modelSaving={false}
+        modelSaveSuccess={false}
+        onModelFieldChange={vi.fn()}
+        servingAxes={EXTERNAL_SERVING_AXES}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Eliza Cloud isn't signed in. Chat replies are using Cerebras.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/replies are using Local/)).toBeNull();
+    expect(
+      describeUnsignedCloudChat(
+        EXTERNAL_SERVING_AXES,
+        (key, vars) => String(vars?.defaultValue ?? key),
+        "tile",
+      ),
+    ).toBe(
+      "Sign in to use managed models. Chat replies keep using Cerebras until then.",
+    );
   });
 
   it("shows and activates a paused subscription", () => {
@@ -218,12 +285,26 @@ describe("ProviderPanels", () => {
         cloudCallsDisabled={false}
         routingModeSaving={false}
         onSelectLocalOnly={vi.fn()}
+        runtime="local"
         servingFallback
       />,
     );
     expect(
       screen.getByText("Answering chat because Eliza Cloud isn't signed in."),
     ).toBeTruthy();
+  });
+
+  it("keeps on-device model management out of a remote runtime panel", () => {
+    render(
+      <LocalProviderPanel
+        cloudCallsDisabled
+        routingModeSaving={false}
+        onSelectLocalOnly={vi.fn()}
+        runtime="remote"
+      />,
+    );
+    expect(screen.getByText("Ready on your remote host.")).toBeTruthy();
+    expect(screen.queryByText("local inference")).toBeNull();
   });
 });
 
@@ -243,6 +324,7 @@ function pendingCloudPanel(onSignIn: () => void) {
       modelSaving={false}
       modelSaveSuccess={false}
       onModelFieldChange={vi.fn()}
+      servingAxes={LOCAL_SERVING_AXES}
     />
   );
 }

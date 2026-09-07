@@ -36,12 +36,19 @@ import type {
 	State,
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
+import { ChannelType } from "../types/primitives.ts";
 import { Service as BaseService } from "../types/service.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../utils/well-formed.ts";
+import { CONVERSATION_MESSAGES_HEADER_PREFIX } from "../utils.ts";
+import {
+	formatRecentMessages,
+	getRoomTranscript,
+	ROOM_TRANSCRIPT_HEADING,
+} from "./evaluator-transcript.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -95,6 +102,21 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
 		// JSON is an explicit invalid result.
 		return null;
 	}
+}
+
+/**
+ * Whether the composed state carries the RECENT_MESSAGES conversation block:
+ * detected on that provider's own text, never on arbitrary state text, so a
+ * message quoting the heading cannot suppress the transcript.
+ */
+function hasProviderConversationBlock(state: State): boolean {
+	const providers = isRecord(state.data) ? state.data.providers : undefined;
+	const recent = isRecord(providers) ? providers.RECENT_MESSAGES : undefined;
+	return (
+		isRecord(recent) &&
+		typeof recent.text === "string" &&
+		recent.text.includes(CONVERSATION_MESSAGES_HEADER_PREFIX)
+	);
 }
 
 function mergeStates(base: State | undefined, providerState: State): State {
@@ -173,6 +195,9 @@ ${part("responseTexts")}
 Action results:
 ${part("actionResults", "[]")}
 
+${ROOM_TRANSCRIPT_HEADING} (complete, oldest first):
+${part("roomTranscript")}
+
 Provider context:
 ${part("providerContext")}
 `;
@@ -182,6 +207,8 @@ function buildPrompt(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
+	/** Complete room transcript, or null when the read failed this turn. */
+	roomTranscript: Memory[] | null;
 	active: PreparedEntry[];
 	options: EvaluatorRunOptions;
 	schema: JSONSchema;
@@ -199,17 +226,37 @@ function buildPrompt(params: {
 		? state.data.actionResults
 		: undefined;
 	const providerContext = state.text.trim() || "(none)";
+	// The RECENT_MESSAGES provider renders the canonical complete room
+	// conversation (same retained rows, same hygiene and dedupe as
+	// getRoomTranscript, plus names, timestamps, attachments and actions). When
+	// that block is in provider context the room conversation is already in
+	// this prompt once; the transcript slot points at it instead of embedding a
+	// second, plainer copy (live 2026-09-06: three copies per call, 107K tokens,
+	// the provider limit reachable as the room grows).
+	const providerConversationRendered = hasProviderConversationBlock(state);
 	// The merged evaluator prompt uses complete model projections while the
 	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
 		latestMessage,
 		responseTexts,
 		actionResults: Array.isArray(actionResults)
-			? renderActionResultsForModel(actionResults as ActionResult[], {
-					header: "",
-				}).text
+			? renderActionResultsForModel(actionResults as ActionResult[]).text
 			: stringifyForPrompt(actionResults ?? []),
 		providerContext,
+		// Rendered once here; sections refer to it instead of embedding their
+		// own copy (live 2026-09-05: five copies of the room history per call).
+		// A failed transcript read leaves sections on their own copies so the
+		// failure isolates per evaluator exactly as before.
+		roomTranscript: providerConversationRendered
+			? `rendered once below in Provider context under "${CONVERSATION_MESSAGES_HEADER_PREFIX}N retained)" (complete, deduped, oldest first)`
+			: params.roomTranscript === null
+				? "(unavailable this turn)"
+				: formatRecentMessages(params.roomTranscript),
+	};
+	const shared = {
+		roomTranscriptRendered:
+			providerConversationRendered || params.roomTranscript !== null,
+		actionResultsText: sharedParts.actionResults,
 	};
 
 	const stable: PromptSegment[] = [
@@ -221,7 +268,7 @@ function buildPrompt(params: {
 	];
 	const dynamic: PromptSegment[] = [];
 	for (const { evaluator, prepared } of active) {
-		const context = { runtime, message, state, options, prepared };
+		const context = { runtime, message, state, options, prepared, shared };
 		const full = evaluator.prompt(context);
 		const segments = evaluator.promptSegments?.(context) ?? [
 			{ content: full, stable: false },
@@ -673,6 +720,9 @@ export class EvaluatorService extends BaseService {
 			);
 			this.runtime.reportError("EvaluatorService.evaluate", error, {
 				evaluatorId,
+				// Optional reflection failure is recorded above; it must not create
+				// owner recovery work after the chat/action already completed.
+				diagnosticOnly: true,
 			});
 			return { output: null, error: messageText };
 		}
@@ -870,11 +920,18 @@ export class EvaluatorService extends BaseService {
 			return this.skippedResult({ errors });
 		}
 
-		const composedState = await this.composeEvaluatorState(
-			message,
-			state,
-			active,
-		);
+		const [composedState, roomTranscript] = await Promise.all([
+			this.composeEvaluatorState(message, state, active),
+			getRoomTranscript(this.runtime, message).catch((error: unknown) => {
+				// error-policy:J7 the shared transcript is a dedupe of what each
+				// evaluator reads for itself; its failure is reported and the
+				// sections fall back to their own reads, which isolate per evaluator.
+				this.runtime.reportError("EvaluatorService.roomTranscript", error, {
+					roomId: message.roomId,
+				});
+				return null;
+			}),
+		]);
 		const preparedEntries = await this.collectPreparedEntries(
 			active,
 			message,
@@ -894,6 +951,7 @@ export class EvaluatorService extends BaseService {
 			runtime: this.runtime,
 			message,
 			state: composedState,
+			roomTranscript,
 			active: preparedEntries,
 			options,
 			schema,
@@ -957,12 +1015,19 @@ export async function runPostTurnEvaluators(
 	state?: State,
 	options: EvaluatorRunOptions = {},
 ): Promise<EvaluatorRunResult | null> {
-	// On mobile (single on-device GPU context, single-threaded agent) the
-	// post-turn reflection pass is a 256-512 token generation that serializes on
-	// the SAME engine as the user reply and blocks the next inbound turn for
-	// ~30-64s. Skip it on android/ios — reflection's value at the 2B local tier
-	// is marginal and not worth the per-turn latency. Desktop/server keep it.
-	if (isMobilePlatform()) {
+	// Realtime voice and mobile local inference both require the room to admit the
+	// next utterance immediately after the visible reply. Post-turn reflection is
+	// optional model work, but the host deliberately drains room-state tasks before
+	// releasing that room. Running reflection here therefore serializes the next
+	// utterance behind another generation; a malformed provider response can keep
+	// the room occupied until the runtime watchdog fires. Voice still runs the
+	// complete response/action pipeline above, including ALWAYS_AFTER actions; only
+	// this post-delivery reflection call is skipped.
+	if (
+		isMobilePlatform() ||
+		message.content.channelType === ChannelType.VOICE_DM ||
+		message.content.channelType === ChannelType.VOICE_GROUP
+	) {
 		return null;
 	}
 	try {

@@ -1,19 +1,46 @@
 /**
  * Agent source hot-reload watcher.
  *
- * Watches the backend `<pkg>/src` dirs (the TypeScript the dev API child loads via
- * the `eliza-source` condition) and fires a debounced callback when real code
- * changes. Watching each `<pkg>/src` dir directly — never `dist/`, `node_modules/`,
- * or build output — means concurrent package builds rewriting `dist/` generate
- * no events here. That decoupling is the whole point: the old `node --watch`
- * followed imports into `dist/` and reloaded mid-build, so it had to be
- * disabled; this never does.
+ * Watches backend `src` dirs and declared flat plugin source, firing a debounced
+ * callback for hand-written code changes. Build output, dependencies, declarations
+ * and tests are excluded so a package build cannot restart the API mid-write.
  *
  * dev-ui.mjs wires `onChange` to the API supervisor's `restart()`.
  */
 
-import { existsSync, readdirSync, watch } from "node:fs";
+import { existsSync, readdirSync, readFileSync, watch } from "node:fs";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+// Resolve through the agent package boundary, but use its lightweight source
+// module in a checkout so this dev tool never depends on an older agent build.
+// Published agent packages expose the same helper through their compiled export.
+const agentManifestUrl = import.meta.resolve("@elizaos/agent/package.json");
+const sourceHelperUrl = new URL(
+  "./src/runtime/workspace-plugin-source.ts",
+  agentManifestUrl,
+);
+let sourceHelperSpecifier = sourceHelperUrl.href;
+if (!existsSync(fileURLToPath(sourceHelperUrl))) {
+  const agentManifest = JSON.parse(
+    readFileSync(fileURLToPath(agentManifestUrl), "utf8"),
+  );
+  if (typeof agentManifest.main !== "string") {
+    throw new Error(
+      "Installed @elizaos/agent is missing its compiled main entry.",
+    );
+  }
+  // Published manifests flatten dist; anchor to their compiled main directory.
+  // Re-entering exports here could select missing src under Bun/eliza-source.
+  sourceHelperSpecifier = pathToFileURL(
+    path.resolve(
+      path.dirname(fileURLToPath(agentManifestUrl)),
+      path.dirname(agentManifest.main),
+      "runtime/workspace-plugin-source.js",
+    ),
+  ).href;
+}
+const { resolvePackageSourceEntry } = await import(sourceHelperSpecifier);
 
 // Pure-frontend packages are served + HMR'd by Vite and are NOT loaded by the
 // API child, so editing them must not bounce the agent.
@@ -41,14 +68,14 @@ export const HOT_RELOAD_IGNORED_SEGMENT =
 export const HOT_RELOAD_DEBOUNCE_MS = 350;
 
 /**
- * Collect the `<group>/<pkg>/src` dirs whose changes should reload the agent.
- * Skips pure-frontend packages (Vite owns those) and any package without a
- * `src/` dir.
+ * Collect backend source dirs, including flat plugins with valid source entries.
+ * Skips pure-frontend packages (Vite owns those) and undeclared src-less packages.
  *
  * @param {string} root Repo root that holds `packages/` and `plugins/`.
- * @returns {string[]} Absolute `<pkg>/src` dirs to watch.
+ * @param {(dir: string, err: Error) => void} [onError] Invalid optional candidate.
+ * @returns {string[]} Absolute source directories to watch.
  */
-export function collectAgentSourceDirs(root) {
+export function collectAgentSourceDirs(root, onError) {
   const dirs = [];
   for (const group of ["packages", "plugins"]) {
     const groupDir = path.join(root, group);
@@ -66,8 +93,22 @@ export function collectAgentSourceDirs(root) {
       ) {
         continue;
       }
-      const srcDir = path.join(groupDir, entry.name, "src");
+      const packageDir = path.join(groupDir, entry.name);
+      const srcDir = path.join(packageDir, "src");
       if (existsSync(srcDir)) dirs.push(srcDir);
+      else if (group === "plugins") {
+        try {
+          if (resolvePackageSourceEntry(packageDir)) dirs.push(packageDir);
+        } catch (err) {
+          // error-policy:J4 Report and omit an invalid optional watch candidate;
+          // the selected plugin's actual import still fails on its declaration.
+          if (onError) onError(packageDir, err);
+          else
+            process.emitWarning(
+              `Hot-reload watch skipped for ${packageDir}: ${err.message}`,
+            );
+        }
+      }
     }
   }
   return dirs;
@@ -113,7 +154,7 @@ export function startAgentSourceWatcher({
   onError,
   debounceMs = HOT_RELOAD_DEBOUNCE_MS,
 }) {
-  const dirs = collectAgentSourceDirs(root);
+  const dirs = collectAgentSourceDirs(root, onError);
   /** @type {import("node:fs").FSWatcher[]} */
   const watchers = [];
   /** @type {ReturnType<typeof setTimeout> | null} */

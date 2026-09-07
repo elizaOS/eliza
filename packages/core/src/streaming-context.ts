@@ -116,11 +116,11 @@ function isNodeEnvironment(): boolean {
 // Initialize synchronously to avoid the race where early calls use the
 // StackContextManager fallback (which doesn't propagate through async/await).
 function initContextManagerSync(): IStreamingContextManager {
-	if (isNodeEnvironment()) {
+	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { AsyncLocalStorage } =
-				require("node:async_hooks") as typeof import("node:async_hooks");
+			const { AsyncLocalStorage } = process.getBuiltinModule(
+				"node:async_hooks",
+			) as typeof import("node:async_hooks");
 			const storage = new AsyncLocalStorage<StreamingContext | undefined>();
 			return {
 				run<T>(context: StreamingContext | undefined, fn: () => T): T {
@@ -331,11 +331,11 @@ function getModelStreamChunkDeliveryStorage():
 	| null {
 	if (!modelStreamChunkDeliveryStorageInitialized) {
 		modelStreamChunkDeliveryStorageInitialized = true;
-		if (isNodeEnvironment()) {
+		if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
 			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const { AsyncLocalStorage } =
-					require("node:async_hooks") as typeof import("node:async_hooks");
+				const { AsyncLocalStorage } = process.getBuiltinModule(
+					"node:async_hooks",
+				) as typeof import("node:async_hooks");
 				modelStreamChunkDeliveryDepthStorage = new AsyncLocalStorage();
 			} catch {
 				// error-policy:J4 Stream-deduplication storage is optional outside

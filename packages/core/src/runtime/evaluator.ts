@@ -6,6 +6,7 @@
  */
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
+import { timeInferenceSpan } from "../inference-timing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import {
 	composeToolDiagnosticRedactor,
@@ -84,6 +85,7 @@ interface RawEvaluatorOutput {
 	nextTool?: unknown;
 	nextRecommendedTool?: unknown;
 	messageToUser?: unknown;
+	effectReceiptIds?: unknown;
 	copyToClipboard?: unknown;
 	recommendedToolCallId?: unknown;
 }
@@ -91,6 +93,8 @@ interface RawEvaluatorOutput {
 interface ParsedEvaluatorObject {
 	object: RawEvaluatorOutput | null;
 	parseError?: string;
+	/** The unparseable response is a tool invocation, not a malformed verdict. */
+	toolInvocation?: true;
 }
 
 const EVALUATOR_ENVELOPE_KEYS = new Set([
@@ -101,6 +105,7 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 	"nextTool",
 	"nextRecommendedTool",
 	"messageToUser",
+	"effectReceiptIds",
 	"copyToClipboard",
 	"recommendedToolCallId",
 ]);
@@ -571,14 +576,18 @@ export async function runEvaluator(
 		params.context,
 		params.trajectory,
 	);
-	await emitStreamingHook(streamingContext, "onEvaluation", {
-		evaluation: projectToolDiagnosticValue(
-			output,
-			redactDiagnosticText,
-		) as EvaluatorOutput,
-		messageId: streamingContext?.messageId,
-	});
-	await applyEvaluatorEffects(output, params.effects);
+	await timeInferenceSpan("evaluator:stream-hook", () =>
+		emitStreamingHook(streamingContext, "onEvaluation", {
+			evaluation: projectToolDiagnosticValue(
+				output,
+				redactDiagnosticText,
+			) as EvaluatorOutput,
+			messageId: streamingContext?.messageId,
+		}),
+	);
+	await timeInferenceSpan("evaluator:effects", () =>
+		applyEvaluatorEffects(output, params.effects),
+	);
 
 	const snapshot = selectedCall?.preparedAttempt;
 	await recordEvaluationStage({
@@ -625,7 +634,8 @@ async function recordEvaluationStage(args: {
 	prefixHash: string;
 	logger?: EvaluatorRuntime["logger"];
 }): Promise<void> {
-	if (!args.recorder || !args.trajectoryId) return;
+	const { recorder, trajectoryId } = args;
+	if (!recorder || !trajectoryId) return;
 	try {
 		const responseText =
 			typeof args.raw === "string"
@@ -662,6 +672,7 @@ async function recordEvaluationStage(args: {
 				decision: args.output.decision,
 				thought: args.output.thought,
 				messageToUser: args.output.messageToUser,
+				effectReceiptIds: args.output.effectReceiptIds,
 				copyToClipboard: args.output.copyToClipboard,
 				recommendedToolCallId: args.output.recommendedToolCallId,
 				protocolFailure: args.output.protocolFailure,
@@ -672,7 +683,9 @@ async function recordEvaluationStage(args: {
 				prefixHash: args.prefixHash,
 			},
 		};
-		await args.recorder.recordStage(args.trajectoryId, stage);
+		await timeInferenceSpan("evaluator:record-stage", () =>
+			recorder.recordStage(trajectoryId, stage),
+		);
 	} catch (err) {
 		// error-policy:J7 Evaluation recording is diagnostic and cannot alter
 		// the evaluator decision it observes.
@@ -814,10 +827,27 @@ function renderEvaluatorModelInput(params: {
 }
 
 export function parseEvaluatorOutput(
-	raw: string | { text?: string; object?: unknown },
+	raw: EvaluatorModelResult,
 ): EvaluatorOutput {
 	const parsedResult = getStructuredEvaluatorObject(raw);
 	if (parsedResult.parseError) {
+		if (parsedResult.toolInvocation) {
+			// The model tried to ACT instead of judging. In substance that is a
+			// CONTINUE verdict — the recorded work is not finished — so it must not
+			// be reported as a protocol failure: the loop answers a protocol
+			// failure by relaying the last successful tool text as the final
+			// message (live: a calendar delete ended after its lookup step with
+			// "Your matching calendar event is …" while the evaluator had emitted
+			// the delete_event call). A plain CONTINUE replans through real tool
+			// dispatch; the invocation itself is never executed from here.
+			return {
+				success: false,
+				decision: "CONTINUE",
+				thought: `Invalid evaluator output: ${parsedResult.parseError}; the response is a tool invocation, so the recorded work is not finished. Replanning from recorded tool results.`,
+				parseError: parsedResult.parseError,
+				raw: {},
+			};
+		}
 		return {
 			success: false,
 			decision: "CONTINUE",
@@ -850,6 +880,9 @@ export function parseEvaluatorOutput(
 			parsed.messageToUser.trim().length > 0
 				? parsed.messageToUser
 				: undefined,
+		...(Array.isArray(parsed.effectReceiptIds)
+			? { effectReceiptIds: parsed.effectReceiptIds as string[] }
+			: {}),
 		copyToClipboard: normalizeClipboard(parsed.copyToClipboard),
 		recommendedToolCallId:
 			typeof parsed.recommendedToolCallId === "string"
@@ -886,6 +919,16 @@ function evaluatorEnvelopeProtocolError(
 		typeof output.messageToUser !== "string"
 	) {
 		return 'optional field "messageToUser" must be a string';
+	}
+	if (
+		Object.hasOwn(output, "effectReceiptIds") &&
+		(!Array.isArray(output.effectReceiptIds) ||
+			output.effectReceiptIds.some(
+				(id) => typeof id !== "string" || !id.trim(),
+			) ||
+			new Set(output.effectReceiptIds).size !== output.effectReceiptIds.length)
+	) {
+		return 'optional field "effectReceiptIds" must be an array of distinct nonempty strings';
 	}
 	if (
 		Object.hasOwn(output, "recommendedToolCallId") &&
@@ -1119,8 +1162,22 @@ const FINISH_PROGRESS_PROMISE_TAIL_RE =
  */
 const UNSERVED_INTENTS_THOUGHT_MARKER = "unserved declared intents";
 
-function declaredIntentsFromContext(context: ContextObject): string[] {
+export function declaredIntentsFromContext(context: ContextObject): string[] {
 	const events = Array.isArray(context.events) ? context.events : [];
+	const plan = [...events]
+		.reverse()
+		.find((event) => event.type === "message_handler")?.metadata?.plan;
+	if (
+		plan &&
+		typeof plan === "object" &&
+		!Array.isArray(plan) &&
+		Array.isArray(plan.intents)
+	) {
+		return plan.intents.filter(
+			(intent: unknown): intent is string =>
+				typeof intent === "string" && intent.trim().length > 0,
+		);
+	}
 	for (const event of events) {
 		if (
 			event &&
@@ -1145,6 +1202,14 @@ function repairFinishWithUnservedDeclaredIntents(
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
 	if (output.decision !== "FINISH") return output;
+	// The legacy instruction listed separate tool operations. Structured v5
+	// intents describe outcomes: one update may change a body AND preserve its
+	// title. Let the evaluator judge outcomes rather than demand one call each.
+	if (
+		!context.events?.some((event) => event.id === "stage1-declared-intents")
+	) {
+		return output;
+	}
 	const intents = declaredIntentsFromContext(context);
 	if (intents.length < 2) return output;
 	const priorCoercion = (trajectory.evaluatorOutputs ?? []).some((prior) =>
@@ -1165,7 +1230,7 @@ function repairFinishWithUnservedDeclaredIntents(
 	};
 }
 
-function repairFinishWithProgressPromise(
+export function repairFinishWithProgressPromise(
 	output: EvaluatorOutput,
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
@@ -1195,9 +1260,37 @@ function recoverEvaluatorTextOutput(
 ): EvaluatorOutput {
 	if (!output.parseError) return output;
 	const text = rawText(raw).trim();
+	const structured =
+		(typeof raw === "object" ? raw.object : undefined) ??
+		tryParseJson(unwrapJsonFence(stripReasoningPrefixes(text).trim()));
+	if (
+		structured !== null &&
+		typeof structured === "object" &&
+		!isEvaluatorShapedObject(structured)
+	) {
+		// Whole JSON objects/arrays are structured model output, not free-form
+		// prose. A schema such as {"type":"object"} supplies no verdict about
+		// remaining work. Replan from the retained results rather than finishing
+		// with its bytes or relaying an earlier tool's partial answer. Explicit
+		// JSON inside a valid evaluator messageToUser never enters this recovery.
+		return {
+			...output,
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator returned non-verdict JSON; replanning from recorded tool results.",
+			messageToUser: undefined,
+			protocolFailure: undefined,
+			parseError: undefined,
+			raw: { recoverySource: "non_verdict_json" },
+		};
+	}
 	if (!text) return output;
 
 	if (
+		// A structurally recognized tool attempt already requires replanning.
+		// Its companion prose must not be recovered as a finished answer.
+		output.protocolFailure !== true ||
 		containsToolAttemptObject(text) ||
 		containsInvocationDsl(text) ||
 		invokesTrajectoryTool(text, trajectory)
@@ -1208,6 +1301,7 @@ function recoverEvaluatorTextOutput(
 			decision: "CONTINUE",
 			thought:
 				"Evaluator emitted tool/action syntax instead of evaluator JSON; replanning from recorded tool results.",
+			protocolFailure: undefined,
 			parseError: undefined,
 			raw: { recoverySource: "tool_attempt_text" },
 		};
@@ -1246,15 +1340,20 @@ function recoverEvaluatorTextOutput(
 
 	if (!hasSuccessfulToolResult(trajectory)) return output;
 
-	const envelopeMessage = trailingFinishEnvelopeMessage(text);
-	if (envelopeMessage) {
+	const envelope = trailingEvaluatorEnvelope(text);
+	if (envelope) {
+		const envelopeSource = (envelope.raw as { recoverySource?: unknown })
+			?.recoverySource;
 		return {
-			success: true,
-			decision: "FINISH",
-			thought:
-				"Recovered the terminal evaluator envelope's answer from surrounding debris.",
-			messageToUser: envelopeMessage,
-			raw: { recoverySource: "trailing_finish_envelope_message" },
+			...envelope,
+			messageToUser:
+				envelope.decision === "FINISH" ? envelope.messageToUser : undefined,
+			raw: {
+				recoverySource:
+					typeof envelopeSource === "string"
+						? envelopeSource
+						: "trailing_evaluator_envelope",
+			},
 		};
 	}
 	if (!looksLikeUserFacingAnswer(text)) return output;
@@ -1327,32 +1426,64 @@ function latestVerifiedToolUserFacingText(
 }
 
 /**
- * Recover the user-facing answer from a valid trailing terminal envelope.
+ * Recover control flow from a valid trailing evaluator envelope.
  * Nonterminal envelopes remain planner control flow and must never be promoted
  * into a finished user reply merely because noisy text preceded them.
  */
-function trailingFinishEnvelopeMessage(text: string): string | null {
-	const trimmed = text.trimEnd();
+function trailingEvaluatorEnvelope(text: string): EvaluatorOutput | null {
+	// A trailing fenced envelope (prose, then a ```json … ``` block) is the same
+	// verdict as a bare trailing object; only the fence has to go (live
+	// 2026-09-05: a NEXT_RECOMMENDED delete verdict inside a fence read as a
+	// protocol failure and the turn ended on the lookup listing).
+	const trimmed = stripTrailingJsonFence(text.trimEnd());
 	if (!trimmed.endsWith("}")) return null;
-	const candidate = extractJsonObjects(trimmed).at(-1);
+	const objects = extractJsonObjects(trimmed);
+	if (objects.length !== 1) return null;
+	const candidate = objects[0];
 	if (!candidate || !trimmed.endsWith(candidate)) return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(candidate);
-	} catch {
-		// error-policy:J3 malformed model output is not a recoverable envelope.
+	const object = tryParseJson(candidate);
+	if (!isEvaluatorEnvelopeObject(object)) return null;
+	const parsed = parseEvaluatorOutput(candidate);
+	if (parsed.parseError || parsed.protocolFailure) {
+		// The envelope names a valid non-terminal decision but carries fields the
+		// protocol does not license (e.g. `nextTool`/`nextParams` the model
+		// invented to request the next step). Its intent is unambiguous: the
+		// work is not finished. Replan through real tool dispatch instead of
+		// reporting a protocol failure, which the loop answers by relaying the
+		// last tool text as the final message.
+		const record = object as { decision?: unknown; route?: unknown };
+		const decision = String(
+			record.decision ?? record.route ?? "",
+		).toUpperCase();
+		if (decision === "CONTINUE" || decision === "NEXT_RECOMMENDED") {
+			return {
+				success: false,
+				decision: "CONTINUE",
+				thought:
+					"Evaluator envelope carried unlicensed fields with a non-terminal decision; replanning from recorded tool results.",
+				raw: { recoverySource: "unlicensed_envelope_nonterminal" },
+			};
+		}
 		return null;
 	}
-	if (!isEvaluatorEnvelopeObject(parsed)) return null;
-	const record = parsed as Record<string, unknown>;
-	const decision = String(record.decision ?? record.route)
-		.trim()
-		.toUpperCase();
-	if (decision !== "FINISH") return null;
-	const message = record.messageToUser;
-	return typeof message === "string" && message.trim().length > 0
-		? message.trim()
-		: null;
+	// A terminal envelope without an answer still uses the existing safe prose
+	// recovery. Nonterminal decisions must never be replaced by that prose.
+	if (parsed.decision === "FINISH" && !parsed.messageToUser?.trim())
+		return null;
+	return parsed;
+}
+
+/** Remove one trailing fenced block's fences so its body ends the text. */
+function stripTrailingJsonFence(text: string): string {
+	if (!text.endsWith("```")) return text;
+	const withoutClose = text.slice(0, -3).trimEnd();
+	const open = withoutClose.lastIndexOf("```");
+	if (open === -1) return text;
+	const body = withoutClose
+		.slice(open + 3)
+		.replace(/^(?:json|json5)?\s*/i, "")
+		.trimEnd();
+	return `${withoutClose.slice(0, open).trimEnd()}\n${body}`.trimEnd();
 }
 
 /**
@@ -1598,15 +1729,23 @@ function containsToolAttemptObject(text: string): boolean {
 }
 
 function isToolAttemptObject(value: unknown): boolean {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
+	if (
+		!value ||
+		typeof value !== "object" ||
+		Array.isArray(value) ||
+		isEvaluatorShapedObject(value)
+	) {
 		return false;
 	}
 	const record = value as Record<string, unknown>;
+	for (const calls of [record.toolCalls, record.tool_calls]) {
+		if (Array.isArray(calls) && calls.some(isToolAttemptObject)) return true;
+	}
+	if (record.type === "function" && isToolAttemptObject(record.function)) {
+		return true;
+	}
 	const name = record.name ?? record.tool ?? record.action;
 	if (typeof name !== "string" || name.trim().length === 0) {
-		return false;
-	}
-	if (isEvaluatorShapedObject(record)) {
 		return false;
 	}
 	return (
@@ -1615,6 +1754,24 @@ function isToolAttemptObject(value: unknown): boolean {
 		"args" in record ||
 		"command" in record ||
 		"arguments" in record
+	);
+}
+
+/**
+ * Model output that is a tool invocation rather than a verdict: native XML tool
+ * markup, a JSON tool-call shape, a bare ACTION_NAME followed by a JSON args
+ * object, or an invocation DSL. An evaluator model reaches this shape by
+ * continuing the planner transcript it was shown (live: Qwen answered a
+ * calendar delete's evaluation with `<tool_call><function=CALENDAR>` …
+ * `delete_event`). These are the same screens that gate user-facing prose in
+ * {@link looksLikeUserFacingAnswer}.
+ */
+function looksLikeToolInvocation(text: string): boolean {
+	return (
+		containsToolCallShapedMarkup(text) ||
+		containsToolAttemptObject(text) ||
+		/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text) ||
+		containsInvocationDsl(text)
 	);
 }
 
@@ -1802,10 +1959,17 @@ function isEvaluatorShapedObject(value: unknown): value is RawEvaluatorOutput {
 }
 
 function getStructuredEvaluatorObject(
-	raw: string | { text?: string; object?: unknown },
+	raw: EvaluatorModelResult,
 ): ParsedEvaluatorObject {
 	if (typeof raw === "string") {
 		return parseEvaluatorText(raw);
+	}
+	if (Array.isArray(raw.toolCalls) && raw.toolCalls.some(isToolAttemptObject)) {
+		return {
+			object: null,
+			parseError: "evaluator returned native tool calls instead of a verdict",
+			toolInvocation: true,
+		};
 	}
 	if (
 		raw.object &&
@@ -1818,9 +1982,13 @@ function getStructuredEvaluatorObject(
 		// parse-error path so the loop sees a malformed evaluation and retries,
 		// instead of a silent default verdict.
 		if (!isEvaluatorShapedObject(raw.object)) {
+			const serialized = toWellFormedUnicode(JSON.stringify(raw.object));
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${toWellFormedUnicode(JSON.stringify(raw.object))}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${serialized}`,
+				...(looksLikeToolInvocation(serialized)
+					? { toolInvocation: true }
+					: {}),
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };
@@ -1888,6 +2056,7 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 			return {
 				object: null,
 				parseError: "JSON object is not evaluator-shaped",
+				...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
 			};
 		}
 		return { object: parsed };
@@ -1916,6 +2085,9 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 							object: null,
 							parseError:
 								"leading evaluator envelope followed by machine output (tool syntax), not a user-facing answer",
+							...(looksLikeToolInvocation(prose)
+								? { toolInvocation: true }
+								: {}),
 						};
 					}
 					record.messageToUser = prose;
@@ -1935,7 +2107,11 @@ function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 		if (labeled) {
 			return { object: labeled };
 		}
-		return { object: null, parseError: "response is not a single JSON object" };
+		return {
+			object: null,
+			parseError: "response is not a single JSON object",
+			...(looksLikeToolInvocation(candidate) ? { toolInvocation: true } : {}),
+		};
 	}
 }
 

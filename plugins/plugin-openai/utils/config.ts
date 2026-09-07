@@ -260,7 +260,6 @@ export function getBaseURL(runtime: IAgentRuntime): string {
       mockBaseURL: getEnvValue("ELIZA_MOCK_OPENAI_BASE"),
     }
   );
-  logger.debug(`[OpenAI] Base URL: ${baseURL}`);
   return baseURL;
 }
 
@@ -271,7 +270,6 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
     : getSetting(runtime, "OPENAI_EMBEDDING_URL");
 
   if (embeddingURL) {
-    logger.debug(`[OpenAI] Using embedding base URL: ${embeddingURL}`);
     return embeddingURL;
   }
 
@@ -298,7 +296,6 @@ export function getImageDescriptionAuthHeader(runtime: IAgentRuntime): Record<st
 export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
   const imageDescriptionURL = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL");
   if (imageDescriptionURL) {
-    logger.debug(`[OpenAI] Using image-description base URL: ${imageDescriptionURL}`);
     return imageDescriptionURL;
   }
   return getBaseURL(runtime);

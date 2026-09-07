@@ -124,6 +124,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { ViewBackButton } from "../shared/ViewHeader";
 import { ChatOverlay, PillHandle } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
@@ -134,6 +135,11 @@ import {
 beforeAll(() => {
   // jsdom has no scrollIntoView; the overlay calls it when the thread grows.
   Element.prototype.scrollIntoView = vi.fn();
+  // jsdom has no text layout; range geometry is verified in the real browser.
+  Object.defineProperty(Range.prototype, "getClientRects", {
+    configurable: true,
+    value: () => [],
+  });
   // The realtime status orb is a real Canvas component. The component still
   // mounts and exposes its semantic state in jsdom; pixel drawing belongs to
   // the browser evidence lane rather than a synthetic Canvas implementation.
@@ -425,7 +431,7 @@ describe("ChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("opens an exact view immediately while preserving the model-authored turn", () => {
+  it("keeps natural-language view requests model-owned", () => {
     const controller = makeController();
     const navigateView = vi.fn();
     const command: SlashCommandCatalogItem = {
@@ -451,8 +457,7 @@ describe("ChatOverlay", () => {
       commands: [command],
       loading: false,
       error: false,
-      // Ordinary prose stays model-owned; exact view navigation has a narrow
-      // optimistic path that must remain available independently.
+      // Ordinary prose stays model-owned, including exact route requests.
       naturalShortcutsEnabled: true,
       resolveChoices: () => ["notes", "calendar"],
       describeChoice: () => "",
@@ -468,15 +473,14 @@ describe("ChatOverlay", () => {
 
     render(<ChatOverlay controller={controller} slash={slash} />);
     const input = screen.getByLabelText("message") as HTMLInputElement;
+    fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "open notes" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(navigateView).toHaveBeenCalledWith({
-      viewId: "notes",
-      viewPath: undefined,
-    });
+    expect(navigateView).not.toHaveBeenCalled();
     expect(controller.send).toHaveBeenCalledWith("open notes");
     expect(input.value).toBe("");
+    expect(document.activeElement).toBe(input);
   });
 
   it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
@@ -749,7 +753,7 @@ describe("ChatOverlay", () => {
       fireEvent.focus(screen.getByLabelText("message"));
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Message Playwright Smoke",
+        "Hey Eliza…",
       );
 
       expect(
@@ -938,7 +942,7 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).not.toBe(composer);
   });
 
-  it("collapses an open thread sheet and returns the launcher rail home for agent Home navigation", () => {
+  it("returns the launcher rail home without collapsing or blurring chat", () => {
     render(<ChatOverlay controller={makeController()} />);
     const composer = screen.getByLabelText("message") as HTMLTextAreaElement;
     const sheet = screen.getByTestId("chat-sheet");
@@ -955,15 +959,15 @@ describe("ChatOverlay", () => {
         new CustomEvent(NAVIGATE_VIEW_EVENT, {
           detail: {
             viewId: "chat",
-            viewPath: "/chat",
+            viewPath: "/home",
             source: "agent",
           },
         }),
       );
     });
 
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(document.activeElement).not.toBe(composer);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(document.activeElement).toBe(composer);
     expect(getShellSurface().page).toBe("home");
   });
 
@@ -1042,6 +1046,66 @@ describe("ChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("keeps routed-view clearance fixed while the collapsed sheet is dragged open", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    let panelHeight = 72;
+    let publishPanelResize: (() => void) | undefined;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(
+        () =>
+          ({
+            width: 380,
+            height: panelHeight,
+            x: 0,
+            y: 0,
+            top: 0,
+            right: 380,
+            bottom: panelHeight,
+            left: 0,
+            toJSON: () => ({}),
+          }) as DOMRect,
+      );
+    class TestResizeObserver {
+      constructor(private callback: () => void) {}
+      observe(target: Element) {
+        if (target.getAttribute("data-testid") === "chat-sheet") {
+          publishPanelResize = this.callback;
+        }
+      }
+      disconnect() {}
+    }
+    try {
+      vi.stubGlobal("ResizeObserver", TestResizeObserver);
+      render(<ChatOverlay controller={makeController()} />);
+      const clearance = () =>
+        document.documentElement.style.getPropertyValue(
+          "--eliza-chat-clearance",
+        );
+      expect(clearance()).toBe("80px");
+      expect(publishPanelResize).toBeTypeOf("function");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+      await act(async () => {
+        await new Promise(requestAnimationFrame);
+      });
+      panelHeight = 212;
+      // A delivery queued before the observer disconnects must not publish the
+      // growing sheet as the resting composer footprint.
+      act(() => publishPanelResize?.());
+      expect(clearance()).toBe("80px");
+      fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+      act(() => publishPanelResize?.());
+      expect(clearance()).toBe("80px");
+    } finally {
+      cleanup();
+      rectSpy.mockRestore();
+      vi.stubGlobal("ResizeObserver", originalResizeObserver);
+      document.documentElement.style.removeProperty("--eliza-chat-clearance");
+    }
   });
 
   // #14331: the waveform reflects only spoken-conversation capture. Dedicated
@@ -1769,24 +1833,19 @@ describe("ChatOverlay", () => {
     expect(row?.className).toContain("w-full");
   });
 
-  it("fades the expanded transcript under the grabber without masking its scroller", () => {
+  it("keeps the expanded transcript free of decorative lighting beneath the grabber", () => {
     render(<ChatOverlay controller={makeController()} />);
     fireEvent.focus(screen.getByLabelText("message"));
 
-    const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
     const surface = screen.getByTestId("chat-sheet-surface");
     const viewport = screen.getByTestId("chat-thread-scroll");
-    expect(fade.className).toContain("pointer-events-none");
-    expect(fade.className).toContain("absolute");
-    expect(fade.className).toContain("inset-x-px");
-    expect(fade.className).toContain("top-px");
-    expect(fade.className).toContain("z-30");
-    expect(fade.style.opacity).not.toBe("");
-    expect(fade.style.backgroundImage).toContain("linear-gradient");
-    expect(fade.style.backgroundImage).toContain("28%");
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
+    expect(surface.style.getPropertyValue("--chat-sheet-shadow")).toBe("none");
+    expect(surface.style.getPropertyValue("--chat-sheet-image")).toBe("none");
     expect(surface.className.split(/\s+/)).not.toContain("border");
     const content = screen.getByTestId("chat-content");
     expect(content.style.clipPath).toContain("inset(1px round");
@@ -1861,6 +1920,52 @@ describe("ChatOverlay", () => {
     fireEvent.pointerDown(document.body);
     expect(document.activeElement).not.toBe(input);
   });
+
+  it.each(["mouse", "touch"])(
+    "lets a %s tap activate the view back button without consuming the chat draft",
+    (pointerType) => {
+      function ActiveView() {
+        const [notesOpen, setNotesOpen] = React.useState(true);
+        return (
+          <>
+            {notesOpen ? (
+              <ViewBackButton onBack={() => setNotesOpen(false)} />
+            ) : (
+              <h1>Home</h1>
+            )}
+            <ChatOverlay controller={makeController()} />
+          </>
+        );
+      }
+      render(<ActiveView />);
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+      // Model handoffs keep an already-open chat focused. Unlike focus from
+      // collapsed, outside pointerdown must not unmount the capture handlers.
+      fireEvent.focus(input);
+      act(() => input.focus());
+      fireEvent.change(input, { target: { value: "Keep this draft" } });
+      const back = screen.getByRole("button", { name: "Back to launcher" });
+      const icon = back.querySelector("svg");
+      if (!icon) throw new Error("Back control must render its icon target");
+      const pointer = {
+        pointerId: 41,
+        pointerType,
+        button: 0,
+        clientX: 24,
+        clientY: 24,
+      };
+      fireEvent.pointerDown(icon, pointer);
+      fireEvent.pointerUp(icon, pointer);
+      fireEvent.click(icon, { clientX: 24, clientY: 24 });
+
+      expect(screen.getByRole("heading", { name: "Home" })).toBeTruthy();
+      expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
+      expect(input.value).toBe("Keep this draft");
+      expect(
+        screen.getByTestId("chat-sheet").getAttribute("data-variant"),
+      ).toBe("open");
+    },
+  );
 
   it("composes multi-line with an auto-growing textarea (Enter still sends)", () => {
     const controller = makeController();
@@ -2259,6 +2364,19 @@ describe("ChatOverlay", () => {
     );
   });
 
+  it("clears the view search when sending the draft to the agent", () => {
+    const onQuery = vi.fn();
+    setViewChatBinding({ onQuery });
+    const controller = makeController({ messages: [] });
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "Save a document here" },
+    });
+    fireEvent.click(screen.getByLabelText("send"));
+    expect(controller.send).toHaveBeenCalledWith("Save a document here");
+    expect(onQuery).toHaveBeenLastCalledWith("");
+  });
+
   it("a view-binding does NOT claim an image-bearing turn (images must not be lost)", async () => {
     // A focused cockpit session registers a text-only onSubmit binding. A turn
     // that also carries an image must fall through to the host agent (which can
@@ -2375,19 +2493,20 @@ describe("ChatOverlay", () => {
       expect(orb.getAttribute("style")).toContain("width: 20px");
       expect(orb.getAttribute("style")).toContain("height: 20px");
       expect(activity.querySelector(".rounded-full.size-2")).toBeNull();
-      const expectedCopy =
-        status === "listening" || status === "transcribing"
-          ? "live words from Ink"
-          : `${status[0]?.toUpperCase()}${status.slice(1)}…`;
       expect(
         screen.getByTestId("chat-composer-realtime-copy").textContent,
-      ).toBe(expectedCopy);
+      ).toBe("live words from Ink");
       const copy = screen.getByTestId("chat-composer-realtime-copy");
-      if (status === "thinking" || status === "speaking") {
-        expect(copy.className).toContain("shimmer");
-      } else {
-        expect(copy.className).not.toContain("shimmer");
-      }
+      expect(copy.className).not.toContain("shimmer");
+      const expectedPhaseLabel = {
+        listening: "Listening…",
+        transcribing: "Hearing you…",
+        thinking: "Thinking…",
+        speaking: "Speaking…",
+      }[status];
+      expect(activity.getAttribute("aria-label")).toBe(
+        `${expectedPhaseLabel}: live words from Ink`,
+      );
       expect(screen.queryByTestId("chat-overlay-voice-status")).toBeNull();
       expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
       expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
@@ -2472,8 +2591,8 @@ describe("ChatOverlay", () => {
         })}
       />,
     );
-    expect(copy.textContent).toBe("Thinking…");
-    expect(observedScrollTop).toBe(0);
+    expect(copy.textContent).toBe(nextTranscript);
+    expect(observedScrollTop).toBe(96);
   });
 
   it("keeps a retryable Cartesia error out of the text input surface", () => {
@@ -4322,18 +4441,6 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
         ),
       ).toBeTruthy(),
     );
-    const highlight = bubble?.querySelector<HTMLElement>(
-      '[data-chat-selectable="true"][data-chat-search-highlight="true"]',
-    );
-    expect(bubble?.style.outline).toBe("");
-    expect(bubble?.style.boxShadow).toBe("");
-    expect(highlight?.style.display).toBe("");
-    expect(highlight?.style.maxWidth).toBe("");
-    expect(highlight?.style.width).toBe("");
-    expect(highlight?.style.borderRadius).toBe("0.75rem");
-    expect(highlight?.style.boxShadow).toContain("rgba(255, 255, 255, 0.28)");
-    expect(highlight?.style.filter).toContain("drop-shadow");
-    expect(highlight?.style.textShadow).toContain("rgba(255, 255, 255, 0.72)");
     expect(aroundSpy).not.toHaveBeenCalled();
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -4415,10 +4522,13 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
 
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
+    expect(surface.style.getPropertyValue("--chat-sheet-image")).toBe("none");
+
     bigPullUp();
 
     const viewport = screen.getByTestId("chat-thread-scroll");
-    const surface = screen.getByTestId("chat-sheet-surface");
     expect(viewport.className.split(/\s+/)).toContain("scroll-fade");
     expect(viewport.className.split(/\s+/)).not.toContain("scroll-fade-b");
     expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
@@ -4861,6 +4971,49 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
     expect(body).toBeTruthy();
     return body as HTMLElement;
   }
+
+  it("shows interrupted receipts as status without a pending spinner or invented prose", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: [
+            {
+              id: "empty-interruption",
+              role: "assistant",
+              content: "",
+              interrupted: true,
+              createdAt: 1,
+            },
+            {
+              id: "partial-interruption",
+              role: "assistant",
+              content: "The model's partial reply",
+              interrupted: true,
+              createdAt: 2,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const empty = assistantTurnBody("empty-interruption");
+    const partial = assistantTurnBody("partial-interruption");
+    for (const body of [empty, partial]) {
+      expect(body.dataset.phase).toBe("interrupted");
+      expect(
+        body.querySelector('[data-testid="turn-status-indicator"]'),
+      ).toBeNull();
+      expect(body.textContent).toContain("(Response interrupted)");
+    }
+    expect(empty.dataset.hasMessageText).toBe("false");
+    expect(empty.textContent).toBe("(Response interrupted)");
+    expect(partial.dataset.hasMessageText).toBe("true");
+    expect(partial.textContent).toBe(
+      "The model's partial reply(Response interrupted)",
+    );
+  });
 
   it("marks parsed prose, not attachment or inline-widget chrome, as message text", () => {
     const form = JSON.stringify({

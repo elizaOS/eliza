@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 907 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 908 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -108,7 +108,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 ### panel: alert + button
 
 - `LocalInferencePanel` in `packages/ui/src/components/local-inference/LocalInferencePanel.tsx:50`
-- `CloudPanel` in `packages/ui/src/components/settings/ProviderPanels.tsx:127`
+- `CloudPanel` in `packages/ui/src/components/settings/ProviderPanels.tsx:193`
 - Fingerprint: `sha256:a14d378f1e6f547c20aa0f5a4b83c7fe183474e48738c53e3a3ae19765696f1b`
 - Decision: **distinct-domain-compositions**. Cloud sign-in reopens an existing browser authorization session and tracks login completion. Local inference refreshes authenticated model snapshots, retains the last valid download state on failure, and fences obsolete responses. Their Alert and Button atoms are shared; session handoff and download reconciliation have separate state owners and recovery contracts.
 

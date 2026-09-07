@@ -102,7 +102,7 @@ const badgeVariants = cva(
       },
       tone: {
         default: "",
-        accent: "bg-accent/12 text-accent-fg",
+        accent: "bg-accent/12 text-txt",
         success: "bg-ok/10 text-ok",
         warning: "bg-warn/10 text-warn",
         danger: "bg-danger/10 text-danger",
@@ -128,6 +128,14 @@ const badgeVariants = cva(
           "pointer-events-none absolute -top-4 left-0 whitespace-nowrap rounded-sm border-0 bg-accent px-1 py-0 font-mono text-[10px] leading-[14px] text-accent-foreground",
       },
     },
+    compoundVariants: [
+      {
+        variant: "default",
+        tone: "accent",
+        // The stronger hover fill needs its paired accent foreground.
+        class: "hover:text-accent-foreground",
+      },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",

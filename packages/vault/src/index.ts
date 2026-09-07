@@ -157,6 +157,8 @@ export {
   VaultMissError,
 } from "./vault.js";
 export {
+  type MirrorSensitiveValueOutcome,
+  mirrorSensitiveValueIfAbsent,
   VaultWriteVerificationError,
   writeSensitiveValueIfAbsentVerified,
   writeSensitiveValueVerified,

@@ -54,8 +54,8 @@ const PROACTIVE_CHATTINESS_VALUES: readonly ProactiveChattiness[] = [
 
 type CapabilityConnectMode = "endpoint" | "cloud";
 
-/** Default when no value is persisted (mirrors the gate's `subtle` default). */
-const DEFAULT_PROACTIVE_CHATTINESS: ProactiveChattiness = "subtle";
+/** Default when no value is persisted (mirrors the gate's `off` default). */
+const DEFAULT_PROACTIVE_CHATTINESS: ProactiveChattiness = "off";
 
 function readProactiveChattinessFromEnv(
   env: unknown,

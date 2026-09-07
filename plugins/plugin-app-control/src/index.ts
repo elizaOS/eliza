@@ -24,11 +24,10 @@ import {
 	viewsAction,
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
-import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
-import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextPlanningEvaluator } from "./evaluators/view-context-planning.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
+import { pendingAppControlChoicesProvider } from "./providers/pending-choices.js";
 import {
 	applyCurrentViewComposeHook,
 	CURRENT_VIEW_HOOK_ID,
@@ -172,14 +171,14 @@ export const appControlPlugin: Plugin = {
 		runtimeManagementAction,
 		settingsAction,
 	],
-	// Both exact and contextual navigation execute through the action queue.
+	// Contextual navigation joins domain work in the same planner action queue.
 	evaluators: [],
-	responseHandlerEvaluators: [
-		viewCommandShortcutEvaluator,
-		viewContextPlanningEvaluator,
-		createChoiceShortcutEvaluator,
+	responseHandlerEvaluators: [viewContextPlanningEvaluator],
+	providers: [
+		availableAppsProvider,
+		currentViewProvider,
+		pendingAppControlChoicesProvider,
 	],
-	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
 		AppVerificationService,

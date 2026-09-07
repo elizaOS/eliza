@@ -345,7 +345,7 @@ describe("answer-clobber rescue", () => {
 							{
 								id: "reply-1",
 								name: "REPLY",
-								arguments: { text: finalReply },
+								arguments: { text: finalReply, eliza_turn_scope: "final" },
 							},
 						],
 					},

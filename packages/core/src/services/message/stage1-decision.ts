@@ -41,7 +41,6 @@ import {
 	isSubAgentCompletionArtifact,
 	resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
-import { responseHandlerContextWindow } from "./provider-state.js";
 import {
 	getStage1FinishReason,
 	stage1HitCompletionLimit,
@@ -105,7 +104,6 @@ export async function generateStage1Decision(
 		context,
 		availableContexts,
 		directMessageChannel,
-		overflowContext,
 		stage1PreprocessStartedAt,
 		recorder,
 		trajectoryId,
@@ -114,19 +112,15 @@ export async function generateStage1Decision(
 		context: Awaited<ReturnType<typeof createV5MessageContextObject>>;
 		availableContexts: ReturnType<typeof listAvailableContextsForRole>;
 		directMessageChannel: boolean;
-		overflowContext: Awaited<
-			ReturnType<typeof createV5MessageContextObject>
-		> | null;
 		stage1PreprocessStartedAt: number;
 		recorder: TrajectoryRecorder | undefined;
 		trajectoryId: ReturnType<TrajectoryRecorder["startTrajectory"]> | undefined;
 	},
 	registerStageTask: (task: Promise<void>) => void,
 ) {
-	let useProviderOverflow = false;
-	const messageHandlerStartedAt = Date.now();
 	const voiceDirectMessageChannel =
 		args.message.content?.channelType === ChannelType.VOICE_DM;
+	const messageHandlerStartedAt = Date.now();
 	const stage1TurnSignal =
 		getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
@@ -145,7 +139,7 @@ export async function generateStage1Decision(
 		);
 	const responseHandlerSchema =
 		args.runtime.responseHandlerFieldRegistry.composeSchema();
-	let messageHandlerInput = renderMessageHandlerModelInput(
+	const messageHandlerInput = renderMessageHandlerModelInput(
 		args.runtime,
 		context,
 		availableContexts,
@@ -155,18 +149,18 @@ export async function generateStage1Decision(
 			responseHandlerFields: responseHandlerFieldPrompt.rendered,
 		},
 	);
-	let stage1PrefixHashes = computePrefixHashes(
+	const stage1PrefixHashes = computePrefixHashes(
 		messageHandlerInput.promptSegments,
 	);
-	let stableStage1Segments = messageHandlerInput.promptSegments.filter(
+	const stableStage1Segments = messageHandlerInput.promptSegments.filter(
 		(segment) => segment.stable,
 	);
-	let stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-	let stage1SystemContent =
+	const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+	const stage1SystemContent =
 		typeof messageHandlerInput.messages[0]?.content === "string"
 			? messageHandlerInput.messages[0].content
 			: "";
-	let stage1PrefixHash =
+	const stage1PrefixHash =
 		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 		hashString(`stage1:${stage1SystemContent}`);
 	const messageHandlerTools = [
@@ -177,46 +171,6 @@ export async function generateStage1Decision(
 				"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 		}),
 	];
-	const contextWindowTokens = responseHandlerContextWindow(args.runtime);
-	if (overflowContext && contextWindowTokens) {
-		const eagerBudget = buildModelInputBudget({
-			messages: messageHandlerInput.messages,
-			promptSegments: messageHandlerInput.promptSegments,
-			tools: messageHandlerTools,
-			contextWindowTokens,
-			estimationMode: "utf8-upper-bound",
-		});
-		if (
-			eagerBudget.estimatedInputTokens > eagerBudget.dispatchThresholdTokens
-		) {
-			useProviderOverflow = true;
-			context = overflowContext;
-			messageHandlerInput = renderMessageHandlerModelInput(
-				args.runtime,
-				context,
-				availableContexts,
-				{
-					directMessage: directMessageChannel && !voiceDirectMessageChannel,
-					voiceDirectMessage: voiceDirectMessageChannel,
-					responseHandlerFields: responseHandlerFieldPrompt.rendered,
-				},
-			);
-			stage1PrefixHashes = computePrefixHashes(
-				messageHandlerInput.promptSegments,
-			);
-			stableStage1Segments = messageHandlerInput.promptSegments.filter(
-				(segment) => segment.stable,
-			);
-			stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-			stage1SystemContent =
-				typeof messageHandlerInput.messages[0]?.content === "string"
-					? messageHandlerInput.messages[0].content
-					: "";
-			stage1PrefixHash =
-				stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
-				hashString(`stage1:${stage1SystemContent}`);
-		}
-	}
 	const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 		cacheProviderOptions({
 			prefixHash: stage1PrefixHash,
@@ -424,11 +378,13 @@ export async function generateStage1Decision(
 	let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 	let messageHandler: MessageHandlerResult | null = null;
 	if (rawFieldParsed) {
+		const normalizedRawParsed =
+			normalizeRawParsedForFieldRegistry(rawFieldParsed);
 		fieldRunResult = await timeInferenceSpan(
 			"evaluators:response-handler-fields",
 			() =>
 				args.runtime.responseHandlerFieldRegistry.dispatch({
-					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
+					rawParsed: normalizedRawParsed,
 					runtime: args.runtime,
 					message: args.message,
 					state: args.state,
@@ -437,7 +393,21 @@ export async function generateStage1Decision(
 				}),
 		);
 		messageHandler = messageHandlerFromFieldResult(
-			fieldRunResult.parsed,
+			{
+				...fieldRunResult.parsed,
+				// Registry defaults are not an explicit model no-effect decision.
+				// Keep missing/malformed statuses conservative without discarding
+				// pending or applied statuses produced by field evaluators.
+				replyEffectStatus:
+					fieldRunResult.parsed.replyEffectStatus === "none" &&
+					!(
+						typeof normalizedRawParsed.replyEffectStatus === "string" &&
+						normalizedRawParsed.replyEffectStatus.trim().toLowerCase() ===
+							"none"
+					)
+						? undefined
+						: fieldRunResult.parsed.replyEffectStatus,
+			},
 			fieldRunResult,
 			{
 				actions: args.runtime.actions,
@@ -586,6 +556,5 @@ export async function generateStage1Decision(
 		inferenceMessageText,
 		parsedResponseHandlerReply,
 		messageHandlerEndedAt,
-		useProviderOverflow,
 	};
 }

@@ -21,6 +21,7 @@ import type {
   InstalledAppInfo,
 } from "../../api/client-types-cloud";
 import { useAppSelector } from "../../state";
+import { PageLoadingState } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -803,21 +804,11 @@ export function AppsManagementSection({
 
       {listStatus.state === "loading" ? (
         <SettingsGroup bare>
-          <div
-            className="flex items-center gap-2 px-1 py-3 text-sm text-muted"
-            role="status"
-            aria-live="polite"
-          >
-            <Loader2
-              className="size-4 animate-spin motion-reduce:animate-none"
-              aria-hidden
-            />
-            <span>
-              {t("settings.sections.apps.loadingApps", {
-                defaultValue: "Loading apps…",
-              })}
-            </span>
-          </div>
+          <PageLoadingState
+            heading={t("settings.sections.apps.loadingApps", {
+              defaultValue: "Loading apps…",
+            })}
+          />
         </SettingsGroup>
       ) : listStatus.state === "error" ? (
         <SettingsGroup bare>

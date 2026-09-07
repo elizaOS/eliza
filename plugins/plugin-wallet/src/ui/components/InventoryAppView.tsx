@@ -920,16 +920,12 @@ function WalletBalancesUnavailableInline({ onRetry }: { onRetry: () => void }) {
 
 function WalletBalancesLoadingState() {
   return (
-    <div
-      role="status"
+    <PagePanel.Loading
+      heading="Loading wallet…"
       aria-label="Loading wallet balances"
       data-testid="wallet-balances-loading"
-      className="flex min-h-40 w-full items-center rounded-xl border border-border bg-card px-4 py-5"
-    >
-      <div className="w-full">
-        <ListSkeleton rows={2} rowClassName="h-11" />
-      </div>
-    </div>
+      variant="panel"
+    />
   );
 }
 
@@ -1289,7 +1285,7 @@ function WalletRailTabButton({
       size="compact"
       ref={ref}
       type="button"
-      className="min-w-0 shrink-0"
+      className="min-w-0 shrink-0 px-2 sm:px-3"
       data-state={active ? "on" : "off"}
       onClick={() => onSelect(tab.id)}
       aria-label={tab.label}
@@ -1301,7 +1297,7 @@ function WalletRailTabButton({
       data-testid={`wallet-tab-${tab.id}`}
       {...agentProps}
     >
-      <tab.icon className="size-3.5 shrink-0" />
+      <tab.icon className="hidden size-3.5 shrink-0 sm:block" />
       <span>{tab.label}</span>
     </Button>
   );

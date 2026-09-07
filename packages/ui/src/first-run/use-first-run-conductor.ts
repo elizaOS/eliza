@@ -995,7 +995,10 @@ export function useFirstRunConductor(): void {
   );
 
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
+  const allowInteractiveCloudLoginRef = React.useRef(true);
   const startCloudProvisionFlow = React.useCallback(() => {
+    const allowInteractiveCloudLogin = allowInteractiveCloudLoginRef.current;
+    allowInteractiveCloudLoginRef.current = true;
     busyRef.current = true;
     // Explicit waiting state on the opener while Cloud auth runs in the
     // popup/tab — the sign-in CTA must not look idle (#18001). A silent cloud
@@ -1085,6 +1088,7 @@ export function useFirstRunConductor(): void {
     }
     void listOrAutoProvisionCloudAgent(draftRef.current, {
       ...portsRef.current,
+      allowInteractiveCloudLogin,
       signal: abortController.signal,
       onInteractiveLogin: () => {
         if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
@@ -1235,6 +1239,10 @@ export function useFirstRunConductor(): void {
       }
       pendingCloudResumeRef.current = null;
       if (resume === "cloud") {
+        // Automatic resume may reuse a valid session, but it has no user
+        // gesture authorizing a browser handoff. A stale credential must fall
+        // back to the visible sign-in choice instead of replacing localhost.
+        allowInteractiveCloudLoginRef.current = false;
         startCloudProvisionFlow();
         return;
       }

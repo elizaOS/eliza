@@ -2,7 +2,10 @@
 
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
-import { normalizeTopics } from "../../runtime/builtin-field-evaluators";
+import {
+	normalizeReplyEffectStatus,
+	normalizeTopics,
+} from "../../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../../runtime/candidate-action-backstop";
 import {
 	parseJsonObject,
@@ -24,6 +27,7 @@ import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
 	getMessageHandlerCandidateActions,
 	messageHandlerStageOneReplyContexts,
+	stringArrayProperty,
 } from "./action-surface.js";
 import {
 	looksLikeCodingWorkRequest,
@@ -154,8 +158,20 @@ export function normalizeRawParsedForFieldRegistry(
 	if (normalized.replyText === undefined) {
 		normalized.replyText = typeof plan?.reply === "string" ? plan.reply : "";
 	}
+	if (
+		normalized.replyEffectStatus === undefined &&
+		plan?.replyEffectStatus !== undefined
+	) {
+		normalized.replyEffectStatus = plan.replyEffectStatus;
+	}
 	if (normalized.contexts === undefined) {
 		normalized.contexts = Array.isArray(plan?.contexts) ? plan.contexts : [];
+	}
+	if (normalized.intents === undefined) {
+		normalized.intents = Array.isArray(plan?.intents) ? plan.intents : [];
+	}
+	if (normalized.requiresTool === undefined && plan?.requiresTool === true) {
+		normalized.requiresTool = true;
 	}
 	if (normalized.candidateActionNames === undefined) {
 		normalized.candidateActionNames = Array.isArray(plan?.candidateActions)
@@ -291,11 +307,11 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw = stripJsonStructuralJunkReply(
 		typeof result.replyText === "string" ? result.replyText : "",
 	);
-	const replyEffectStatus =
-		result.replyEffectStatus === "applied" ||
-		result.replyEffectStatus === "non_applied"
-			? result.replyEffectStatus
-			: "none";
+	const replyEffectStatus = normalizeReplyEffectStatus(
+		result.replyEffectStatus,
+	);
+	const declaredIntents = stringArrayProperty(result.intents);
+	const modelRequiresTool = result.requiresTool === true;
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -327,15 +343,18 @@ export function messageHandlerFromFieldResult(
 					currentMessageText,
 				)
 			: ({ names: [], kind: null } as DirectCurrentRequestCandidateInference);
-	// A weak view-capability token overlap must not force-plan a turn Stage 1
-	// already answered (see shouldSuppressInferredCandidateEscalation) — drop
-	// the inferred candidates entirely so the turn keeps its direct reply.
+	// Text-derived hints cannot override a completed model answer
+	// unless the model also declared work or an effect requiring verification.
 	const directCurrentCandidateActions =
+		!modelRequiresTool &&
 		shouldSuppressInferredCandidateEscalation({
 			inference: directCurrentInference,
 			stageOneContexts: rawContexts,
 			stageOneReplyText: replyTextRaw,
 			stageOneCandidateActions: rawCandidateActions,
+			stageOneReplyEffectStatus:
+				result.replyEffectStatus === undefined ? undefined : replyEffectStatus,
+			stageOneIntents: declaredIntents,
 		})
 			? []
 			: directCurrentInference.names;
@@ -378,18 +397,9 @@ export function messageHandlerFromFieldResult(
 		effectiveCandidateActions,
 		runtimeContext,
 	);
-	const planCandidateActions =
-		inferredDirectCandidateActions.length > 0 &&
-		candidateActions.length > 0 &&
-		!hasValidProvidedCandidate
-			? runnableCandidateActions
-			: effectiveCandidateActions;
-	// When the caller passes the runtime's `actions`, narrow the candidate set
-	// to those that are (a) registered actions OR (b) canonical control names
-	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
-	// which lets the routing logic below fall back to simple-reply when the
-	// only context is "simple". When no `runtimeContext` is provided, behaviour
-	// is unchanged (back-compat).
+	// Only runnable candidates drive planning. Preserve unresolved model hints
+	// in the plan so authorized action discovery can resolve their aliases or
+	// recover the complete surface; an inferred match cannot replace them.
 	const validCandidateCount = runnableCandidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
@@ -441,8 +451,26 @@ export function messageHandlerFromFieldResult(
 	const initialPlanningContexts = routedContexts.filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
 	);
+	const pendingDeclaredWork =
+		processMessage === "RESPOND" &&
+		!preemptDirect &&
+		!subAgentCompletionRelay &&
+		(replyEffectStatus === "pending" || modelRequiresTool);
+	// A model-declared actionable outcome must not disappear just because the
+	// same payload says "simple" and omits an action name. The real planner owns
+	// action selection; do not infer an intent or fabricate a tool call here.
+	const unservedDeclaredIntent =
+		!preemptDirect &&
+		!subAgentCompletionRelay &&
+		declaredIntents.length > 0 &&
+		initialPlanningContexts.length === 0 &&
+		validCandidateCount === 0 &&
+		replyEffectStatus !== "non_applied";
 	const requestedPlanning =
-		initialPlanningContexts.length > 0 || validCandidateCount > 0;
+		pendingDeclaredWork ||
+		initialPlanningContexts.length > 0 ||
+		validCandidateCount > 0 ||
+		unservedDeclaredIntent;
 	// The model can explicitly commit to delegation: for a genuine coding-work
 	// request it routes to a non-simple context of its OWN choosing AND names a
 	// runnable coding-delegation / spawn-class action in its OWN candidate list
@@ -539,7 +567,9 @@ export function messageHandlerFromFieldResult(
 		});
 	const preferCompleteDirectReply =
 		!preemptDirect &&
+		!pendingDeclaredWork &&
 		requestedPlanning &&
+		!unservedDeclaredIntent &&
 		!modelCommittedToDelegation &&
 		!modelCommittedToPlanning &&
 		!looksLikeWebSearchRequest(currentMessageText) &&
@@ -550,7 +580,9 @@ export function messageHandlerFromFieldResult(
 		});
 	const preferInlineCodeSnippetDirectReply =
 		!preemptDirect &&
+		!pendingDeclaredWork &&
 		requestedPlanning &&
+		!unservedDeclaredIntent &&
 		shouldPreferInlineCodeSnippetDirectReply({
 			currentMessageText,
 			candidateActions: runnableCandidateActions,
@@ -574,9 +606,14 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	const replyText = replyTextRaw;
+	const replyText =
+		unservedDeclaredIntent ||
+		(pendingDeclaredWork && replyEffectStatus === "pending")
+			? ""
+			: replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
+		intents: declaredIntents,
 		reply: replyText,
 		replyEffectStatus,
 		simple: preemptDirect ? true : !shouldPlan,
@@ -585,9 +622,9 @@ export function messageHandlerFromFieldResult(
 	if (
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply &&
-		planCandidateActions.length > 0
+		effectiveCandidateActions.length > 0
 	) {
-		plan.candidateActions = planCandidateActions;
+		plan.candidateActions = effectiveCandidateActions;
 	}
 	// The model emitted NO candidate of its own (rawCandidateActions is what
 	// Stage 1 actually named — an unregistered model candidate is still model
@@ -602,7 +639,8 @@ export function messageHandlerFromFieldResult(
 	// a repeated progress/fallback answer without ever executing delegation.
 	if (
 		shouldPlan &&
-		planCandidateActions.length > 0 &&
+		!modelRequiresTool &&
+		effectiveCandidateActions.length > 0 &&
 		rawCandidateActions.length === 0 &&
 		directCurrentInference.kind !== "coding"
 	) {

@@ -5,6 +5,7 @@
  */
 
 import { asRecord } from "@elizaos/shared";
+import { readSettingsHashSectionId } from "../components/settings/settings-route";
 import { getWindowNavigationPath, type Tab } from "../navigation";
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
@@ -219,9 +220,12 @@ export function buildChatViewMetadata(
     viewRouting.primaryContext,
   ]);
 
+  const subview = tab === "settings" ? readSettingsHashSectionId() : null;
+
   return {
     ...(metadata ?? {}),
     uiView: viewRouting.view,
+    ...(subview ? { uiViewSubview: subview } : {}),
     uiTab: tab,
     uiViewPath: normalizedViewPath,
     uiViewCapabilities: viewRouting.capabilities,

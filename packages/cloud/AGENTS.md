@@ -49,10 +49,18 @@ operation; operational details change more often than this overview.
 ```bash
 bun run verify:cloud          # cloud lint and typecheck lanes
 bun run test:cloud            # cloud unit/integration package sweep
+bun run test:cloud:integration # isolated local Worker + PGlite integration lane
 bun run test:cloud:e2e        # cloud API end-to-end lane
 bun run cloud:e2e             # full local Playwright stack
 bun run cloud:mock            # local mock stack for manual verification
 ```
+
+The integration harness owns random loopback API/PGlite ports and a temporary
+state tree for each run. `CLOUD_INTEGRATION_API_PORT` and
+`CLOUD_INTEGRATION_PGLITE_PORT` provide fail-closed port overrides. Setting
+`TEST_API_BASE_URL` or `TEST_BASE_URL` explicitly selects external mode, which
+also requires `TEST_DATABASE_URL` or `DATABASE_URL`; external services are
+health-checked but never stopped by the harness.
 
 Money, identity, provisioning, and deployment changes require tests at both the
 owning package boundary and the real full-stack boundary. Manually inspect the

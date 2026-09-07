@@ -83,6 +83,8 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
   if (!Number.isInteger(value.cpuCores)) {
     invalidHardware("response.hardware.cpuCores", "a non-negative integer");
   }
+  // Forward-compatible host identifiers stay strings because Node may add a
+  // platform or architecture before the bundled TypeScript unions catch up.
   if (typeof value.platform !== "string" || value.platform.length === 0) {
     invalidHardware("response.hardware.platform", "a non-empty string");
   }
@@ -126,6 +128,7 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
   }
 }
 
+/** Validates the hardware subsection; other hub fields keep their own owners. */
 function parseModelHubSnapshotHardware(value: unknown): ModelHubSnapshot {
   if (!isRecord(value)) invalidHardware("response", "an object");
   assertHardwareProbe(value.hardware);

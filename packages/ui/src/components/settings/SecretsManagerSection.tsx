@@ -683,7 +683,7 @@ export function VaultWorkspace({
                 ))}
               </TabsList>
 
-              <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+              <div className="eliza-chat-scroll mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
                 <TabsContent
                   value="overview"
                   className="mt-0"

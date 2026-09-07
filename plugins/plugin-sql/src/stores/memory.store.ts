@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { serializeJsonb } from "../sanitize-json";
 import { embeddingTable, memoryTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
@@ -308,11 +309,9 @@ export class MemoryStore implements Store {
       }
     }
 
-    const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+    const contentToInsert = serializeJsonb(memory.content);
 
-    const metadataToInsert =
-      typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
+    const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
     await this.ctx.withIsolationContext(memory.entityId, async (tx) => {
       const inserted = await tx
@@ -349,13 +348,9 @@ export class MemoryStore implements Store {
       try {
         await this.db.transaction(async (tx) => {
           if (memory.content) {
-            const contentToUpdate =
-              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+            const contentToUpdate = serializeJsonb(memory.content);
 
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+            const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 
             await tx
               .update(memoryTable)
@@ -367,10 +362,7 @@ export class MemoryStore implements Store {
               })
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata);
+            const metadataToUpdate = serializeJsonb(memory.metadata);
 
             await tx
               .update(memoryTable)

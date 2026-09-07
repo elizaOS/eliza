@@ -1,4 +1,4 @@
-/** Exercises owner-authorized Notes reads against real filesystem state, trusted dispatch and the production reply-egress guard; live model selection is outside this harness. */
+/** Exercises owner-authorized Notes reads against real filesystem state, trusted dispatch, the planner loop and reply-egress guard with bounded scripted models. */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +12,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { afterEach, expect, test } from "vitest";
+import { runPlannerLoop } from "../../../../packages/core/src/runtime/planner-loop.js";
 import { notesAction } from "../action.js";
 import { notesPlugin } from "../plugin.js";
 import { NotesService } from "../service.js";
@@ -72,27 +73,20 @@ async function setup() {
   return { runtime, service, filePath, invoke };
 }
 
-test("an actual empty owner read grounds its exact answer without licensing an invented broader claim", async () => {
+test("an empty owner read remains structured and does not license an invented broader claim", async () => {
   const { invoke, service } = await setup();
   const before = service.snapshot();
   const result = await invoke({ action: "list" });
-  if (typeof result.text !== "string")
-    throw new Error("Read produced no answer");
-  expect(
-    plannedReplyHasClaimGroundingReceipt({
-      kind: "empty_tracked_state",
-      reply: result.text,
-      results: [result],
-      actions: [notesAction],
-    }),
-  ).toBe(true);
-  expect(
-    evaluatePlannedReplyEgress({
-      reply: result.text,
-      actionResults: [result],
-      actions: [notesAction],
-    }),
-  ).toEqual({ verdict: "allow" });
+  expect(result).toMatchObject({
+    success: true,
+    transcriptVisibility: "internal",
+    modelReplyRequired: true,
+    data: { count: 0, total: 0, notes: [], filterApplied: false },
+  });
+  expect(result.text).toBeUndefined();
+  expect(result.userFacingText).toBeUndefined();
+  expect(result.verifiedUserFacing).toBeUndefined();
+  expect(result.turnComplete).toBeUndefined();
   expect(
     evaluatePlannedReplyEgress({
       reply: "Your list is empty. You have no tasks or notes today.",
@@ -103,7 +97,7 @@ test("an actual empty owner read grounds its exact answer without licensing an i
   expect(service.snapshot()).toEqual(before);
 });
 
-test("a filtered miss proves only the exact scoped answer and preserves existing persisted notes", async () => {
+test("a filtered miss preserves its scope and persisted notes without granting global absence authority", async () => {
   const { invoke, service, filePath } = await setup();
   await service.createNote({
     title: "Shopping",
@@ -112,16 +106,26 @@ test("a filtered miss proves only the exact scoped answer and preserves existing
   });
   const before = await readFile(filePath, "utf8");
   const result = await invoke({ action: "list", content: "Passport" });
-  if (typeof result.text !== "string")
-    throw new Error("Read produced no answer");
+  expect(result).toMatchObject({
+    success: true,
+    transcriptVisibility: "internal",
+    modelReplyRequired: true,
+    data: {
+      count: 0,
+      total: 1,
+      notes: [],
+      filterApplied: true,
+      topic: "Passport",
+    },
+  });
   expect(
     plannedReplyHasClaimGroundingReceipt({
       kind: "empty_tracked_state",
-      reply: result.text,
+      reply: "You have no notes.",
       results: [result],
       actions: [notesAction],
     }),
-  ).toBe(true);
+  ).toBe(false);
   expect(
     evaluatePlannedReplyEgress({
       reply: "Your list is empty. Zero notes saved, nothing there yet.",
@@ -130,6 +134,86 @@ test("a filtered miss proves only the exact scoped answer and preserves existing
     }).verdict,
   ).toBe("reject");
   expect(await readFile(filePath, "utf8")).toBe(before);
+});
+
+test("the real planner re-reads Notes after a mutation with identical list arguments", async () => {
+  const { invoke } = await setup();
+  const plans: Record<string, string>[] = [
+    { action: "list" },
+    { action: "create", content: "Freshness proof\nComplete note body." },
+    { action: "list" },
+  ];
+  const counts: number[] = [];
+  let planningRounds = 0;
+  let evaluations = 0;
+  const finalReply = "The new note is present.";
+  const result = await runPlannerLoop({
+    runtime: {
+      useModel: async () => {
+        const params = plans[planningRounds++];
+        if (!params) throw new Error("Unexpected extra planner round");
+        return {
+          text: "",
+          toolCalls: [
+            {
+              id: `notes-freshness-${planningRounds}`,
+              name: "NOTES",
+              arguments: {
+                ...params,
+                eliza_turn_scope:
+                  planningRounds === plans.length
+                    ? "final"
+                    : "more_work_pending",
+              },
+            },
+          ],
+        };
+      },
+    },
+    context: {
+      id: "notes-read-freshness",
+      events: [
+        {
+          id: "request",
+          type: "message",
+          source: "user",
+          createdAt: 1,
+          content:
+            "Read my notes, create Freshness proof with Complete note body., then read all notes again to verify it is present.",
+        },
+      ],
+    },
+    tools: [{ name: "NOTES", description: "Read and create owner notes." }],
+    executeToolCall: async (call) => {
+      const result = await invoke(call.params ?? {});
+      if (call.params?.action === "list") {
+        counts.push(Number(result.data?.count));
+      }
+      return result;
+    },
+    evaluate: async () => {
+      evaluations++;
+      if (evaluations > plans.length)
+        throw new Error("Unexpected extra evaluation");
+      return evaluations === plans.length
+        ? {
+            success: true,
+            decision: "FINISH",
+            thought: "The repeated read observed the newly created note.",
+            messageToUser: finalReply,
+          }
+        : {
+            success: false,
+            decision: "CONTINUE",
+            thought:
+              "The requested create and verification are not both complete.",
+          };
+    },
+  });
+  expect(counts).toEqual([0, 1]);
+  expect(planningRounds).toBe(3);
+  expect(evaluations).toBe(3);
+  expect(result.finalMessage).toBe(finalReply);
 });
 
 test("denied reads and mutations cannot supply empty-read authority", async () => {

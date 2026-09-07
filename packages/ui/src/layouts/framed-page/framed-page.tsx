@@ -45,7 +45,8 @@ export function FramedPage({
       <div
         className={cn(
           "flex h-full min-h-0 w-full min-w-0 flex-col",
-          reserveComposer && "pb-[var(--eliza-chat-clearance,5.25rem)]",
+          reserveComposer &&
+            "[&_.eliza-chat-scroll]:pb-[var(--eliza-chat-clearance,5.25rem)] [&_[data-slot=scroll-area-viewport]]:pb-[var(--eliza-chat-clearance,5.25rem)]",
           className,
         )}
         data-framed-page=""

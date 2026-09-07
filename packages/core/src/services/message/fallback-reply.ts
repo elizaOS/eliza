@@ -22,6 +22,7 @@ import {
 
 type ErrorWithStatus = {
 	code?: unknown;
+	reason?: unknown;
 	status?: unknown;
 	statusCode?: unknown;
 	lastError?: unknown;
@@ -295,9 +296,15 @@ export function isModelProviderFallbackError(
 	}
 	// Local inference can disappear after registration (model unload, device
 	// disconnect, or an unavailable native binding). Its typed capability error
-	// means another text provider may safely answer the same request.
-	if (asErrorObject(unwrapped)?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
-		return true;
+	// means another text provider may safely answer the same request. The same
+	// envelope also carries input/output validation failures, which must remain
+	// terminal even when another provider could return a plausible response.
+	const localFailure = asErrorObject(unwrapped);
+	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
+		return (
+			localFailure.reason === "backend_unavailable" ||
+			localFailure.reason === "capability_unavailable"
+		);
 	}
 	if (isRateLimitError(error)) {
 		return true;
@@ -439,6 +446,8 @@ export function buildFailureReplyPrompt(
 		"Hard rules:",
 		"- Stay in character. Keep your usual voice and tone.",
 		"- NEVER answer the user's question on the merits.",
+		"- Clearly say you could not complete this request. Do not imply the requested action happened or is still running.",
+		"- Do not ask the user to perform the requested action themselves or report what they see; you did not execute it successfully.",
 		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
 		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
 		FAILURE_PROMPT_CAUSE_RETRY_RULE[cause],
