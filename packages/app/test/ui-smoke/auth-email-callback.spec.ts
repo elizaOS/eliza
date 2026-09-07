@@ -7,9 +7,17 @@
 import { expect, test } from "@playwright/test";
 import { createStewardSessionToken } from "./helpers/test-auth";
 
+const TEST_AUTH_ENABLED =
+  process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+  process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
+
 test("fresh email callback commits its session before navigation and rejects replay", async ({
   page,
 }) => {
+  test.skip(
+    TEST_AUTH_ENABLED,
+    "requires production Steward auth provider; run with VITE_PLAYWRIGHT_TEST_AUTH=false and NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH=false",
+  );
   const email = "callback-browser@example.test";
   const proof = "single-use-browser-proof";
   const token = createStewardSessionToken({ jwt: true, email });
