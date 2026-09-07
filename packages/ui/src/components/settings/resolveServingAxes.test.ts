@@ -9,6 +9,7 @@ import {
   type ServingAxesInput,
   servingAxesDescription,
   servingAxesHeadline,
+  servingProviderLabel,
 } from "./resolveServingAxes";
 
 const CLOUD = {
