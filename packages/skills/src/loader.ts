@@ -134,7 +134,26 @@ function loadSkillFromFile(
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
 
-  const name = frontmatter.name || expectedName;
+  // YAML types a bare `name: 123` or `name: true` as a number or boolean.
+  // Such a value is not a usable identifier and would reach string handling
+  // in the name registry and prompt formatter; report it and fall back to the
+  // name the path implies, the same way an omitted name does.
+  const rawName = frontmatter.name;
+  if (
+    rawName !== undefined &&
+    rawName !== null &&
+    typeof rawName !== "string"
+  ) {
+    diagnostics.push({
+      type: "warning",
+      message: `name must be a string (got ${typeof rawName}); using "${expectedName}"`,
+      path: filePath,
+    });
+  }
+  const name =
+    typeof rawName === "string" && rawName.trim() !== ""
+      ? rawName
+      : expectedName;
 
   const nameErrors = validateName(name, expectedName, isSkillMd);
   for (const error of nameErrors) {
