@@ -46,6 +46,25 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it("rejects a URL on an element read instead of returning the previous page", async () => {
+    const callback = vi.fn();
+    const { result, service } = await runBrowserAction({
+      parameters: {
+        action: "get",
+        selector: "h1",
+        url: "https://example.com/",
+      },
+      callback,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      transcriptVisibility: "internal",
+      text: expect.stringContaining("navigate"),
+    });
+    expect(service?.execute).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
   it("allows automatic target selection and plugin-registered target IDs", async () => {
     const automatic = validateToolArgs(browserAction, {
       action: "snapshot",

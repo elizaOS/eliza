@@ -825,6 +825,14 @@ export const browserAction: Action = {
     const messageText = getMessageText(message);
     const subaction = inferBrowserSubaction(params, messageText);
 
+    if (subaction === "get" && params?.url?.trim()) {
+      return {
+        success: false,
+        transcriptVisibility: "internal",
+        text: "BROWSER action=get reads an element on the current page and does not accept url. No read was dispatched. First use action=navigate with the requested url, wait for its result, then use action=get with selector and no url.",
+      };
+    }
+
     if (subaction === "autofill-login") {
       const { executeBrowserAutofillLogin } = await import(
         "./browser-autofill-login.js"
@@ -1110,7 +1118,7 @@ export const browserAction: Action = {
     {
       name: "url",
       description:
-        "Website URL for open or navigate, grounded in the user's requested website or observed page links. Do not invent a URL from an Eliza app navigation command; app screens use VIEWS.",
+        "Website URL for open or navigate, grounded in the user's requested website or observed page links. Not accepted by get: navigate first, then read the current page without url. Do not invent a URL from an Eliza app navigation command; app screens use VIEWS.",
       required: false,
       schema: { type: "string" as const },
     },
