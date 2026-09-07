@@ -745,16 +745,27 @@ async function downloadModel(
 		if (statusCode < 200 || statusCode >= 300) {
 			throw new Error(`HTTP ${statusCode} ${response.statusMessage ?? ""}`);
 		}
+		// A Range request the origin did not honor comes back as 200 with the
+		// whole file (CDN redirect targets, gated repos, and mirrors do this).
+		// Appending that body to the stale partial produces a corrupt GGUF whose
+		// first four bytes still read "GGUF", so the magic check below cannot
+		// catch it; restart from byte zero instead, as services/downloader.ts
+		// does on the same condition.
+		let startByte = existingPartial;
+		if (startByte > 0 && statusCode !== 206) {
+			startByte = 0;
+			record.received = 0;
+		}
 		const contentLength = Number.parseInt(
 			String(response.headers["content-length"] ?? "0"),
 			10,
 		);
 		if (Number.isFinite(contentLength) && contentLength > 0) {
-			record.total = existingPartial + contentLength;
+			record.total = startByte + contentLength;
 		}
 
 		const stream = fs.createWriteStream(partialPath, {
-			flags: existingPartial > 0 ? "a" : "w",
+			flags: startByte > 0 ? "a" : "w",
 		});
 		let lastSampleAt = Date.now();
 		let lastSampleBytes = record.received;
