@@ -469,4 +469,97 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		extractor.push("ignored");
 		expect(events.filter((e) => e.eventType === "error")).toHaveLength(1);
 	});
+
+	// Regression for #30904: a non-BMP code point (emoji) must never be split
+	// into its two UTF-16 surrogate code units across separate onChunk chunks.
+	// Clients encode each chunk into UTF-8 SSE / WebSocket text / JSON.stringify,
+	// which corrupts a lone surrogate. Every emitted chunk must be well-formed
+	// UTF-16 and the join of all chunks must reconstruct the original string.
+	it("never emits a lone surrogate for a JSON-escaped emoji in a single push", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		// The whole escaped surrogate pair `\ud83d\ude00` (😀) arrives in one push,
+		// so the split cannot be rescued by chunk-boundary luck — the escaped path
+		// itself must funnel the lead surrogate into the pending buffer.
+		extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"Hi \\ud83d\\ude00!","facts":[]}',
+		);
+		extractor.flush();
+
+		for (const c of chunks) {
+			expect(c.isWellFormed()).toBe(true);
+		}
+		expect(chunks.join("")).toBe("Hi \u{1f600}!");
+	});
+
+	it("never emits a lone surrogate for a literal emoji split across push boundaries", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		const emoji = "\u{1f600}"; // 😀 as literal surrogate pair \ud83d\ude00
+		const head = `{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"Hi ${emoji[0]}`;
+		// Split the emoji: the high surrogate ends push #1, the low surrogate
+		// starts push #2, so a naive one-code-unit-at-a-time consumer would emit
+		// each half as its own chunk.
+		extractor.push(head);
+		extractor.push(`${emoji[1]}!","facts":[]}`);
+		extractor.flush();
+
+		for (const c of chunks) {
+			expect(c.isWellFormed()).toBe(true);
+		}
+		expect(chunks.join("")).toBe("Hi \u{1f600}!");
+	});
+
+	it("replaces a genuinely lone trailing high surrogate at end-of-stream", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		// The reply ends on a lone high surrogate whose low half never arrives.
+		// It is held back while streaming, then flushed as U+FFFD so the emitted
+		// stream stays well-formed rather than dropping or leaking the code unit.
+		extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"Hi \\ud83d","facts":[]}',
+		);
+		extractor.flush();
+
+		for (const c of chunks) {
+			expect(c.isWellFormed()).toBe(true);
+		}
+		expect(chunks.join("")).toBe("Hi \ufffd");
+	});
+
+	it("keeps ASCII/BMP text byte-identical (no surrogate handling regression)", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push('{"shouldRespond":"RESPOND","contexts":[],"intents":[],');
+		extractor.push('"replyText":"Hello, ');
+		extractor.push('world \u2728!","facts":[]}'); // includes a BMP sparkle
+		extractor.flush();
+
+		for (const c of chunks) {
+			expect(c.isWellFormed()).toBe(true);
+		}
+		expect(chunks.join("")).toBe("Hello, world \u2728!");
+		// BMP text still streams incrementally rather than collapsing to one chunk.
+		expect(chunks.length).toBeGreaterThan(1);
+	});
 });

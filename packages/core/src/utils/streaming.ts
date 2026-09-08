@@ -17,6 +17,16 @@ import type {
 	IStreamExtractor,
 	StructuredFieldEventCallbacks,
 } from "../types/streaming";
+import { toWellFormedUnicode } from "./well-formed";
+
+/**
+ * True when `code` is a UTF-16 high (lead) surrogate. A chunk ending on one is
+ * the first half of a non-BMP code point (e.g. an emoji); emitting it alone
+ * produces a lone surrogate that corrupts UTF-8/JSON serialization downstream.
+ */
+function isHighSurrogate(code: number): boolean {
+	return code >= 0xd800 && code <= 0xdbff;
+}
 
 // ============================================================================
 // StreamError - Standardized error handling for streaming
@@ -690,6 +700,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (flushed) {
 				this.appendVisibleAndEmit(field, flushed);
 			}
+			this.flushPendingSurrogate(field);
 		}
 		this.activeStringField = null;
 		this.pendingEscape = "";
@@ -1071,16 +1082,65 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		const next = `${this.fieldContents.get(field) ?? ""}${value}`;
 		this.fieldContents.set(field, next);
 		const previous = this.emittedContent.get(field) ?? "";
-		const chunk = next.slice(previous.length);
+		let chunk = next.slice(previous.length);
 		if (!chunk) {
 			return;
 		}
-		this.emittedContent.set(field, next);
-		this.config.onChunk(chunk, field, next, this.streamRevision);
+		// Never split a surrogate pair across chunks. When the tail of this chunk
+		// is a lone high surrogate (the lead half of a non-BMP code point that is
+		// serialized either as a `\uXXXX\uXXXX` escape pair decoded one escape at a
+		// time, or as literal code units split across a `push()` boundary), hold it
+		// back so the trailing low surrogate joins it on the next emission. Both the
+		// escaped and literal paths funnel through here, so buffering once fixes
+		// both. `emittedContent` therefore stays well-formed and is the running
+		// join of emitted chunks; the held code unit is flushed at end-of-stream.
+		if (isHighSurrogate(chunk.charCodeAt(chunk.length - 1))) {
+			chunk = chunk.slice(0, -1);
+			if (!chunk) {
+				return;
+			}
+		}
+		const emitted = previous + chunk;
+		this.emittedContent.set(field, emitted);
+		this.config.onChunk(chunk, field, emitted, this.streamRevision);
 		this.emitEvent({
 			eventType: "chunk",
 			field,
 			chunk,
+			timestamp: Date.now(),
+		});
+	}
+
+	/**
+	 * At genuine end-of-stream, emit any code unit that `appendVisibleAndEmit`
+	 * held back. The only unemitted tail it can leave is a single lone high
+	 * surrogate whose low half never arrived, so this is a truly malformed
+	 * trailing code unit. Follow the codebase's well-formed convention and
+	 * replace it with U+FFFD rather than dropping a real character or shipping a
+	 * lone surrogate; the sanitized value is also written back into
+	 * `fieldContents` so the validated field content stays well-formed.
+	 */
+	private flushPendingSurrogate(field: string): void {
+		const content = this.fieldContents.get(field);
+		if (content === undefined) {
+			return;
+		}
+		const emitted = this.emittedContent.get(field) ?? "";
+		if (content.length <= emitted.length) {
+			return;
+		}
+		const remainder = toWellFormedUnicode(content.slice(emitted.length));
+		if (!remainder) {
+			return;
+		}
+		const finalContent = emitted + remainder;
+		this.fieldContents.set(field, finalContent);
+		this.emittedContent.set(field, finalContent);
+		this.config.onChunk(remainder, field, finalContent, this.streamRevision);
+		this.emitEvent({
+			eventType: "chunk",
+			field,
+			chunk: remainder,
 			timestamp: Date.now(),
 		});
 	}
