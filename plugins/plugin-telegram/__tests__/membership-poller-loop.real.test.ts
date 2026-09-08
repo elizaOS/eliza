@@ -1069,7 +1069,7 @@ describe("telegram membership lifecycle over the real long-poll connector (keyle
     expect(wire.unsupportedCalls).toEqual([]);
   }, 240_000);
 
-  it.fails("bot re-add + fresh join evidence restores admission for a still-valid member (KNOWN deadlock at the PR head)", async () => {
+  it("bot re-add + fresh join evidence restores admission for a still-valid member (KNOWN deadlock at the PR head)", async () => {
     // KNOWN connector-path recovery deadlock, pinned so a fix flips this
     // tripwire green: after a bot kick, `my_chat_member` revoked→present
     // clears the IN-MEMORY tombstone, but the PERSISTED scope health stays

@@ -259,63 +259,100 @@ export class TelegramMembershipMessageGate {
     if (decision.decision === "allowed") {
       return true;
     }
+    if (
+      decision.reason === "authority_unavailable" &&
+      (await this.authority.readdedAfterUnavailable({
+        chatId: input.chatId,
+        chatRoomKey: input.chatRoomKey,
+      }))
+    ) {
+      // Durable re-add recovery: the authority was consulted successfully
+      // and read a persisted "unavailable" row that a durable,
+      // generation-fenced re-add watermark PROVES stale (the bot was
+      // re-added — my_chat_member is Telegram-authoritative). The very
+      // next join evidence that would restore the scope is the update this
+      // gate is blocking, so fall through to the getChatMember reconcile,
+      // which commits fresh point-query evidence and advances the scope
+      // back to current. This is deliberately NOT a blanket
+      // authority_unavailable reconcile: without the watermark proof the
+      // denial below stands (fail closed), preserving the fail-open
+      // prohibition earlier review rounds established.
+      const recheck = await this.runReconcile(input, decision.reason);
+      if (recheck) return true;
+      return false;
+    }
     if (telegramMembershipShouldReconcile(decision)) {
-      let reconciled: Awaited<
-        ReturnType<TelegramMembershipAuthority["reconcile"]>
-      > = null;
-      try {
-        reconciled = await this.authority.reconcile({
-          chatId: input.chatId,
-          chatRoomKey: input.chatRoomKey,
-          canonicalPrincipalId: input.principalEntityId,
-          telegramUserId: input.telegramUserId,
-          runtime: input.runtimeMapping,
-          getChatMember: input.getChatMember,
-          nonce: `${Date.now()}-${++this.reconcileNonce}`,
-        });
-      } catch (error) {
-        // error-policy:J1 A revoked reconcile could be neither committed nor
-        // degraded fail-closed: no durable fence landed, so prior active
-        // evidence may still authorize the departed principal on a later
-        // message. Mark the connector gate broken — every group admission
-        // then fails closed until a later boot rebinds a healthy gate —
-        // mirroring the recordEvent failure path in TelegramService.
-        if (
-          authorityErrorCode(error) === "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE"
-        ) {
-          this.runtime.reportError(
-            "telegram:membership-reconcile-unsafe",
-            error,
-            {
-              chatId: input.chatId,
-              telegramUserId: input.telegramUserId,
-            },
-          );
-          this.markBroken();
-          return false;
-        }
-        throw error;
-      }
-      if (reconciled?.state === "active") {
-        const recheck = await this.authority.authorize({
-          chatId: input.chatId,
-          chatRoomKey: input.chatRoomKey,
-          canonicalPrincipalId: input.principalEntityId,
-        });
-        if (recheck.decision === "allowed") {
-          return true;
-        }
-        this.logDenial(input, recheck.reason, "post-reconcile");
-        return false;
-      }
-      this.logDenial(
-        input,
-        reconciled ? reconciled.reason : decision.reason,
-        reconciled ? "reconciled-revoked" : "reconcile-failed",
-      );
+      const recheck = await this.runReconcile(input, decision.reason);
+      if (recheck) return true;
       return false;
     }
     this.logDenial(input, decision.reason, "authority");
+    return false;
+  }
+
+  /**
+   * Shared getChatMember reconcile + re-authorize. Returns true when the
+   * reconciled evidence re-authorizes the sender. THROWS through to the
+   * caller on non-revocation-unsafe errors (same contract as before).
+   */
+  private async runReconcile(
+    input: TelegramMembershipGateDecisionInput,
+    fallbackReason: string,
+  ): Promise<boolean> {
+    if (!this.authority) return false;
+    let reconciled: Awaited<
+      ReturnType<TelegramMembershipAuthority["reconcile"]>
+    > = null;
+    try {
+      reconciled = await this.authority.reconcile({
+        chatId: input.chatId,
+        chatRoomKey: input.chatRoomKey,
+        canonicalPrincipalId: input.principalEntityId,
+        telegramUserId: input.telegramUserId,
+        runtime: input.runtimeMapping,
+        getChatMember: input.getChatMember,
+        nonce: `${Date.now()}-${++this.reconcileNonce}`,
+      });
+    } catch (error) {
+      // error-policy:J1 A revoked reconcile could be neither committed nor
+      // degraded fail-closed: no durable fence landed, so prior active
+      // evidence may still authorize the departed principal on a later
+      // message. Mark the connector gate broken — every group admission
+      // then fails closed until a later boot rebinds a healthy gate —
+      // mirroring the recordEvent failure path in TelegramService.
+      if (
+        authorityErrorCode(error) === "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE"
+      ) {
+        this.runtime.reportError(
+          "telegram:membership-reconcile-unsafe",
+          error,
+          {
+            chatId: input.chatId,
+            telegramUserId: input.telegramUserId,
+          },
+        );
+        this.markBroken();
+        return false;
+      }
+      throw error;
+    }
+    if (reconciled?.state === "active") {
+      const recheck = await this.authority.authorize({
+        chatId: input.chatId,
+        chatRoomKey: input.chatRoomKey,
+        canonicalPrincipalId: input.principalEntityId,
+      });
+      if (recheck.decision === "allowed") {
+        return true;
+      }
+      this.logDenial(input, recheck.reason, "post-reconcile");
+      return false;
+    }
+    this.logDenial(
+      input,
+      reconciled ? reconciled.reason : fallbackReason,
+      reconciled ? "reconciled-revoked" : "reconcile-failed",
+    );
     return false;
   }
 

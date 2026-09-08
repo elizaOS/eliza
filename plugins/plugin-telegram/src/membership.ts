@@ -1448,6 +1448,66 @@ export class TelegramMembershipAuthority {
     });
   }
 
+  /**
+   * Durable re-add probe for `authority_unavailable` admission denials:
+   * true only when the persisted degraded row is PROVABLY stale — a durable
+   * re-add watermark persisted by clearScopeRemoval exists whose recorded
+   * generation covers the observed unavailable row's generation (the same
+   * generation comparison restart hydration uses). The my_chat_member
+   * re-add transition that wrote the watermark is itself
+   * Telegram-authoritative evidence the bot is present again, so gating a
+   * reconcile on this proof is NOT the fail-open "reconcile while the
+   * authority is down" shape: an authority that could not be consulted
+   * throws or is never reached, while this decision arrived FROM a
+   * successfully consulted authority that read a persisted degraded row.
+   * A cache read failure fails the probe closed (report + false): without
+   * the watermark the unavailable row cannot be proven stale, so the
+   * denial stands.
+   */
+  async readdedAfterUnavailable(input: {
+    chatId: string;
+    chatRoomKey: string;
+  }): Promise<boolean> {
+    const scope = telegramMembershipScope({
+      agentId: this.runtime.agentId,
+      connectorAccountId: this.connectorAccountId,
+      chatId: input.chatId,
+      chatRoomKey: input.chatRoomKey,
+    });
+    const health = await this.service.getScopeHealth(scope);
+    if (health?.health !== "unavailable") return false;
+    let persistedReadd: { at: number; generation: number } | null = null;
+    try {
+      const persisted = await this.runtime.getCache<{
+        at: number;
+        generation: number;
+      }>(this.readdWatermarkCacheKey(scope));
+      if (
+        persisted !== undefined &&
+        persisted !== null &&
+        typeof persisted.at === "number" &&
+        typeof persisted.generation === "number"
+      ) {
+        persistedReadd = persisted;
+      }
+    } catch (error) {
+      // error-policy:J4 Durable re-add watermark unreadable: the probe
+      // cannot prove the unavailable row stale, so it fails closed (the
+      // denial stands) and the read failure is reported for diagnostics;
+      // a later admission attempt re-runs the probe against the recovered
+      // cache.
+      this.runtime.reportError(
+        "telegram:membership-readd-watermark-read",
+        error,
+        { chatId: input.chatId },
+      );
+      return false;
+    }
+    return (
+      persistedReadd !== null && persistedReadd.generation >= health.generation
+    );
+  }
+
   /** Read-only scope health accessor (used by tests and diagnostics). */
   async scopeHealth(input: {
     chatId: string;
