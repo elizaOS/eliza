@@ -123,6 +123,35 @@ export function createRendererSecureStoreRpc(
     return resolved;
   };
   let host: Promise<RendererSecureStoreTransactions> | undefined;
+  const active = new Map<string, Set<AbortController>>();
+  const cancelling = new Map<
+    string,
+    Promise<"cancelled" | "published" | "not-current">
+  >();
+  const operationKey = (slot: RendererSecureSlot, id: string) =>
+    JSON.stringify([slot, id]);
+  async function owned<T>(
+    slot: RendererSecureSlot,
+    id: string,
+    work: (
+      protocol: RendererSecureStoreTransactions,
+      signal: AbortSignal,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const key = operationKey(slot, id);
+    const pending = cancelling.get(key);
+    if (pending) await pending;
+    const controller = new AbortController();
+    const controllers = active.get(key) ?? new Set<AbortController>();
+    controllers.add(controller);
+    active.set(key, controllers);
+    try {
+      return await work(await load(), controller.signal);
+    } finally {
+      controllers.delete(controller);
+      if (controllers.size === 0) active.delete(key);
+    }
+  }
   function load(): Promise<RendererSecureStoreTransactions> {
     if (!host) {
       const initialize = async () => {
@@ -187,14 +216,37 @@ export function createRendererSecureStoreRpc(
           const operationId = identity(params.operationId);
           return {
             operation: "prepare",
-            receipt: await (await load()).prepare(
-              configuration().vault,
-              selected,
-              expected,
-              next,
-              operationId,
+            receipt: await owned(selected, operationId, (protocol, signal) =>
+              protocol.prepare(
+                configuration().vault,
+                selected,
+                expected,
+                next,
+                operationId,
+                signal,
+              ),
             ),
           };
+        }
+        case "cancel": {
+          const operationId = identity(params.operationId);
+          const key = operationKey(selected, operationId);
+          // Wake the actual host owner before waiting for its SQLite lock.
+          // A different process cannot claim cancellation until its durable
+          // turn: if seal won first, the result explicitly says published.
+          for (const controller of active.get(key) ?? []) controller.abort();
+          let pending = cancelling.get(key);
+          if (!pending) {
+            pending = load().then((protocol) =>
+              protocol.cancel(configuration().vault, selected, operationId),
+            );
+            cancelling.set(key, pending);
+          }
+          try {
+            return { operation: "cancel", state: await pending };
+          } finally {
+            if (cancelling.get(key) === pending) cancelling.delete(key);
+          }
         }
         case "lookup": {
           const operationId = identity(params.operationId);
@@ -212,17 +264,23 @@ export function createRendererSecureStoreRpc(
         case "rollback": {
           const token = receipt(params.receipt),
             operation = params.operation;
-          const protocol = await load();
           if (operation === "rollback") {
+            const protocol = await load();
             await protocol.rollback(configuration().vault, selected, token);
             return { operation };
           }
           return {
             operation,
-            snapshot: await protocol[operation](
-              configuration().vault,
+            snapshot: await owned(
               selected,
-              token,
+              token.operationId,
+              (protocol, signal) =>
+                protocol[operation](
+                  configuration().vault,
+                  selected,
+                  token,
+                  signal,
+                ),
             ),
           };
         }

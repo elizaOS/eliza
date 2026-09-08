@@ -24,6 +24,8 @@ export type {
 export interface RendererSecureCommitBoundary {
   /** Synchronous checks run immediately before durable publication, after all native awaits. */
   beforeCommit(check: () => void): void;
+  isCancelled(slot: RendererSecureSlot, operationId: string): boolean;
+  cancelOperation(slot: RendererSecureSlot, operationId: string): void;
 }
 
 export interface RendererSecureSerialization {
@@ -232,6 +234,29 @@ export class RendererSecureStoreTransactions {
     });
   }
 
+  private async runOwned<T>(
+    vault: string,
+    slot: RendererSecureSlot,
+    operationId: string,
+    signal: AbortSignal | undefined,
+    work: (
+      record: RecordState,
+      boundary: RendererSecureCommitBoundary,
+    ) => Promise<T>,
+  ): Promise<T> {
+    signal?.throwIfAborted();
+    return this.run(vault, slot, async (record, boundary) => {
+      const validate = () => {
+        signal?.throwIfAborted();
+        if (boundary.isCancelled(slot, operationId))
+          throw failure("NATIVE_STORE_CANCELLED");
+      };
+      validate();
+      boundary.beforeCommit(validate);
+      return work(record, boundary);
+    });
+  }
+
   /** Only called while holding the vault-wide native serialization boundary. */
   private async load(
     vault: string,
@@ -341,6 +366,7 @@ export class RendererSecureStoreTransactions {
     selection: RendererSecureSnapshot,
     value: string | null,
     operationId: string,
+    signal?: AbortSignal,
   ): Promise<RendererSecureReceipt> {
     if (
       !isValue(value) ||
@@ -353,7 +379,7 @@ export class RendererSecureStoreTransactions {
       return Promise.reject(failure("NATIVE_STORE_INVALID_INPUT"));
     // A caller may retain/mutate its DTO while this operation waits for the host.
     const expected = { ...selection, authority: { ...selection.authority } };
-    return this.run(vault, slot, async (record) => {
+    return this.runOwned(vault, slot, operationId, signal, async (record) => {
       await this.assertAuthority(vault, slot, expected.authority);
       const existing = record.transaction;
       if (existing?.operationId === operationId) {
@@ -424,27 +450,34 @@ export class RendererSecureStoreTransactions {
     vault: string,
     slot: RendererSecureSlot,
     receipt: RendererSecureReceipt,
+    signal?: AbortSignal,
   ): Promise<RendererSecureSnapshot> {
-    return this.run(vault, slot, async (record) => {
-      const transaction = record.transaction;
-      if (
-        !transaction ||
-        transaction.operationId !== receipt.operationId ||
-        transaction.revision !== receipt.revision ||
-        transaction.state === "rolled-back" ||
-        transaction.state === "sealed"
-      )
-        throw failure("NATIVE_STORE_SUPERSEDED");
-      if (transaction.state === "pending") {
-        record = {
-          ...record,
-          value: transaction.proposed,
-          transaction: { ...transaction, state: "committed" },
-        };
-        await this.persist(vault, slot, record);
-      }
-      return this.snapshot(vault, slot, record, true);
-    });
+    return this.runOwned(
+      vault,
+      slot,
+      receipt.operationId,
+      signal,
+      async (record) => {
+        const transaction = record.transaction;
+        if (
+          !transaction ||
+          transaction.operationId !== receipt.operationId ||
+          transaction.revision !== receipt.revision ||
+          transaction.state === "rolled-back" ||
+          transaction.state === "sealed"
+        )
+          throw failure("NATIVE_STORE_SUPERSEDED");
+        if (transaction.state === "pending") {
+          record = {
+            ...record,
+            value: transaction.proposed,
+            transaction: { ...transaction, state: "committed" },
+          };
+          await this.persist(vault, slot, record);
+        }
+        return this.snapshot(vault, slot, record, true);
+      },
+    );
   }
 
   /**
@@ -456,46 +489,53 @@ export class RendererSecureStoreTransactions {
     vault: string,
     slot: RendererSecureSlot,
     receipt: RendererSecureReceipt,
+    signal?: AbortSignal,
   ): Promise<RendererSecureSnapshot> {
-    return this.run(vault, slot, async (record, boundary) => {
-      const transaction = record.transaction;
-      if (
-        !transaction ||
-        transaction.operationId !== receipt.operationId ||
-        transaction.revision !== receipt.revision ||
-        (transaction.state !== "committed" && transaction.state !== "sealed")
-      )
-        throw failure("NATIVE_STORE_SUPERSEDED");
-      if (transaction.state === "committed") {
-        await this.assertAuthority(vault, slot, transaction.authority);
-        const validateLifetime = () => {
-          const now = this.now();
-          if (!Number.isSafeInteger(now))
-            throw failure("NATIVE_STORE_INVALID_CLOCK");
-          if (
-            now >= transaction.expiresAt ||
-            transaction.expiresAt > now + PENDING_LIFETIME_MS
-          )
-            throw failure("NATIVE_STORE_SUPERSEDED");
-        };
-        validateLifetime();
-        // A native payload write is not publication. The adapter repeats this
-        // check before its durable pointer commit, without another await.
-        boundary.beforeCommit(validateLifetime);
-        record = {
-          revision: randomUUID(),
-          value: record.value,
-          transaction: {
-            ...transaction,
-            state: "sealed",
-            previous: null,
-            proposed: null,
-          },
-        };
-        await this.persist(vault, slot, record);
-      }
-      return this.snapshot(vault, slot, record);
-    });
+    return this.runOwned(
+      vault,
+      slot,
+      receipt.operationId,
+      signal,
+      async (record, boundary) => {
+        const transaction = record.transaction;
+        if (
+          !transaction ||
+          transaction.operationId !== receipt.operationId ||
+          transaction.revision !== receipt.revision ||
+          (transaction.state !== "committed" && transaction.state !== "sealed")
+        )
+          throw failure("NATIVE_STORE_SUPERSEDED");
+        if (transaction.state === "committed") {
+          await this.assertAuthority(vault, slot, transaction.authority);
+          const validateLifetime = () => {
+            const now = this.now();
+            if (!Number.isSafeInteger(now))
+              throw failure("NATIVE_STORE_INVALID_CLOCK");
+            if (
+              now >= transaction.expiresAt ||
+              transaction.expiresAt > now + PENDING_LIFETIME_MS
+            )
+              throw failure("NATIVE_STORE_SUPERSEDED");
+          };
+          validateLifetime();
+          // A native payload write is not publication. The adapter repeats this
+          // check before its durable pointer commit, without another await.
+          boundary.beforeCommit(validateLifetime);
+          record = {
+            revision: randomUUID(),
+            value: record.value,
+            transaction: {
+              ...transaction,
+              state: "sealed",
+              previous: null,
+              proposed: null,
+            },
+          };
+          await this.persist(vault, slot, record);
+        }
+        return this.snapshot(vault, slot, record);
+      },
+    );
   }
 
   rollback(
@@ -514,6 +554,29 @@ export class RendererSecureStoreTransactions {
         throw failure("NATIVE_STORE_SUPERSEDED");
       if (transaction.state === "rolled-back") return;
       await this.persist(vault, slot, this.rolledBack(transaction));
+    });
+  }
+
+  /** Durable cancellation fences delayed/replayed requests; already sealed values are never undone. */
+  cancel(
+    vault: string,
+    slot: RendererSecureSlot,
+    operationId: string,
+  ): Promise<"cancelled" | "published" | "not-current"> {
+    if (!isIdentity(operationId))
+      return Promise.reject(failure("NATIVE_STORE_INVALID_INPUT"));
+    return this.run(vault, slot, async (record, boundary) => {
+      const transaction = record.transaction;
+      if (
+        transaction?.operationId === operationId &&
+        transaction.state === "sealed"
+      )
+        return "published";
+      boundary.cancelOperation(slot, operationId);
+      if (transaction?.operationId !== operationId) return "not-current";
+      if (transaction.state !== "rolled-back")
+        await this.persist(vault, slot, this.rolledBack(transaction));
+      return "cancelled";
     });
   }
 }

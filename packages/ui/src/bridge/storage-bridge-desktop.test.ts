@@ -1,5 +1,6 @@
 /** Exercises the bundled UI bridge and continuation capture in independent realms against desktop RPC and real SQLite. OS credentials, transport timing and non-native session/selection collaborators are isolated fixtures; this is not a full authenticated app journey. */
 /// <reference types="bun-types/sqlite" />
+import { AsyncResource } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,11 +23,19 @@ type Bridge = {
   setStorageValue(
     key: string,
     value: string,
-    options?: { revalidate(): void; nativeAuthority?: DesktopStorageAuthority },
+    options?: {
+      revalidate(): void;
+      nativeAuthority?: DesktopStorageAuthority;
+      signal?: AbortSignal;
+    },
   ): Promise<void>;
   removeStorageValue(
     key: string,
-    options: { revalidate(): void; nativeAuthority?: DesktopStorageAuthority },
+    options: {
+      revalidate(): void;
+      nativeAuthority?: DesktopStorageAuthority;
+      signal?: AbortSignal;
+    },
   ): Promise<void>;
 };
 type Rpc = ReturnType<typeof createRendererSecureStoreRpc>;
@@ -100,7 +109,7 @@ function deferred() {
   return { promise, resolve: resolvePromise };
 }
 
-async function setup() {
+async function setup(afterProtectedSet: (value: string) => void = () => {}) {
   const directory = mkdtempSync(
     resolve(tmpdir(), "eliza-renderer-ledger-test-"),
   );
@@ -115,6 +124,7 @@ async function setup() {
     },
     set: async (vault, slot, value) => {
       values.set(`${vault}:${slot}`, value);
+      afterProtectedSet(value);
       return { ok: true };
     },
   };
@@ -132,6 +142,9 @@ function realm(
   afterCall: (operation: string) => Promise<void> = async () => undefined,
   transactions = true,
 ) {
+  // Native IPC enters from a separate async root, not the credential writer's
+  // AsyncLocalStorage transaction context (even when a test delivers it inline).
+  const transportContext = new AsyncResource("isolated-renderer-ipc");
   // Different origins/partitions have independent localStorage but share a host vault.
   const data = new Map<string, string>();
   class Storage {
@@ -151,9 +164,11 @@ function realm(
       .map(([name, method]) => [
         name,
         async (params: Record<string, unknown>) => {
-          const result = await (
-            method as (params: Record<string, unknown>) => Promise<unknown>
-          )(params);
+          const result = await transportContext.runInAsyncScope(() =>
+            (method as (params: Record<string, unknown>) => Promise<unknown>)(
+              params,
+            ),
+          );
           await afterCall(
             name === "secureStoreTransaction" ? String(params.operation) : name,
           );
@@ -180,6 +195,100 @@ function realm(
 }
 
 describe("desktop renderer conditional persistence", () => {
+  it.each(["prepare", "seal"])(
+    "reconciles cancellation arriving during lost-%s acknowledgement lookup",
+    async (lostOperation) => {
+      const controller = new AbortController();
+      const rpc = await setup();
+      let lost = false;
+      const a = realm(rpc, async (operation) => {
+        if (operation === lostOperation && !lost) {
+          lost = true;
+          throw new Error("lost operation reply");
+        }
+        if (operation === "lookup") controller.abort();
+      });
+      await a.bridge.initializeStorageBridge();
+      await expect(
+        a.bridge.setStorageValue(key, "operation-value", {
+          revalidate() {},
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject(
+        lostOperation === "seal"
+          ? { code: "NATIVE_STORE_ALREADY_PUBLISHED" }
+          : { name: "AbortError" },
+      );
+      expect(await rpc.secureStoreGet({ kind })).toEqual({
+        ok: true,
+        value: lostOperation === "seal" ? "operation-value" : "original",
+      });
+      expect(a.localStorage.getItem(key)).toBeNull();
+    },
+  );
+
+  it("keeps an unacknowledged cancellation unavailable instead of reporting success", async () => {
+    const controller = new AbortController();
+    const rpc = await setup();
+    const a = realm(rpc, async (operation) => {
+      if (operation === "commit") controller.abort();
+      if (operation === "cancel") throw new Error("lost cancellation reply");
+    });
+    await a.bridge.initializeStorageBridge();
+    await expect(
+      a.bridge.setStorageValue(key, "cancelled-value", {
+        revalidate() {},
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: "NATIVE_STORE_TRANSPORT_UNAVAILABLE" });
+    expect(await rpc.secureStoreGet({ kind })).toEqual({
+      ok: true,
+      value: "original",
+    });
+    expect(a.localStorage.getItem(key)).toBeNull();
+  });
+  it("sends cancellation to the host while seal is awaiting native payload persistence", async () => {
+    const controller = new AbortController();
+    const rpc = await setup((value) => {
+      if (value.includes('"state":"sealed"')) controller.abort();
+    });
+    const a = realm(rpc);
+    await a.bridge.initializeStorageBridge();
+    const nativeAuthority = await a.bridge.captureStorageMutationAuthority(
+      () => {},
+    );
+    await expect(
+      a.bridge.setStorageValue(key, "cancelled-during-native-write", {
+        revalidate() {},
+        nativeAuthority,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(await rpc.secureStoreGet({ kind })).toEqual({
+      ok: true,
+      value: "original",
+    });
+    expect(a.localStorage.getItem(key)).toBeNull();
+  });
+
+  it("reports already-published cancellation without undoing the acknowledged native value", async () => {
+    const controller = new AbortController();
+    const rpc = await setup();
+    const a = realm(rpc, async (operation) => {
+      if (operation === "seal") controller.abort();
+    });
+    await a.bridge.initializeStorageBridge();
+    await expect(
+      a.bridge.setStorageValue(key, "already-published", {
+        revalidate() {},
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: "NATIVE_STORE_ALREADY_PUBLISHED" });
+    expect(await rpc.secureStoreGet({ kind })).toEqual({
+      ok: true,
+      value: "already-published",
+    });
+  });
   it("carries actual continuation capture into its later guarded target publication", async () => {
     const rpc = await setup();
     const a = realm(rpc);

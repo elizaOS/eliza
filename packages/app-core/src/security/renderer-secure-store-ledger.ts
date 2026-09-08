@@ -58,7 +58,8 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // including one whose native request survives its process or deadline.
 const INITIALIZED = "eliza-renderer-ledger-initialized:v1";
 const schema = `CREATE TABLE IF NOT EXISTS renderer_vaults (vault TEXT PRIMARY KEY NOT NULL, anchor TEXT NOT NULL, migration TEXT NOT NULL CHECK(migration IN ('prepared', 'ready')));
-CREATE TABLE IF NOT EXISTS renderer_slots (vault TEXT NOT NULL, slot TEXT NOT NULL, payload TEXT, PRIMARY KEY (vault, slot));`;
+CREATE TABLE IF NOT EXISTS renderer_slots (vault TEXT NOT NULL, slot TEXT NOT NULL, payload TEXT, PRIMARY KEY (vault, slot));
+CREATE TABLE IF NOT EXISTS renderer_cancellations (vault TEXT NOT NULL, slot TEXT NOT NULL, operation TEXT NOT NULL, PRIMARY KEY (vault, slot, operation));`;
 
 function fail(code: string): ElizaError {
   return new ElizaError(
@@ -205,6 +206,24 @@ export class RendererSecureStoreLedger implements RendererSecureSerialization {
           work({
             beforeCommit: (check) => {
               this.transaction(vault).checks.push(check);
+            },
+            isCancelled: (slot, operationId) => {
+              if (!transaction.active)
+                throw fail("NATIVE_LEDGER_OUTSIDE_TRANSACTION");
+              return object(
+                db
+                  .prepare(
+                    "SELECT operation FROM renderer_cancellations WHERE vault = ? AND slot = ? AND operation = ?",
+                  )
+                  .get(vault, slot, operationId),
+              );
+            },
+            cancelOperation: (slot, operationId) => {
+              if (!transaction.active)
+                throw fail("NATIVE_LEDGER_OUTSIDE_TRANSACTION");
+              db.prepare(
+                "INSERT OR IGNORE INTO renderer_cancellations (vault, slot, operation) VALUES (?, ?, ?)",
+              ).run(vault, slot, operationId);
             },
           }),
         );
