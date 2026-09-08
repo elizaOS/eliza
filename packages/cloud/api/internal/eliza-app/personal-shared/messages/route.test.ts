@@ -487,6 +487,19 @@ describe("personal Shared messaging deliveries", () => {
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 
+  test("preserves the safe no-response terminal for the Telegram transport", async () => {
+    sharedRestMessageSend.mockImplementationOnce(async () => ({
+      text: "",
+      responded: false,
+      responseReason: "no_response" as const,
+    }));
+    const response = await request(valid);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { reply: "", responded: false, responseReason: "no_response" },
+    });
+  });
+
   test("uses one account-native identity and platform funding", async () => {
     const response = await request(valid);
     expect(response.status).toBe(200);

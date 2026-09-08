@@ -1,6 +1,9 @@
 /** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { PERSONAL_SHARED_FAILURE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
+import {
+  PERSONAL_SHARED_FAILURE_REPLY,
+  PERSONAL_SHARED_NO_RESPONSE_REPLY,
+} from "@elizaos/cloud-services-common/personal-shared-failure";
 import type {
   ChatEvent,
   PlatformAdapter,
@@ -1279,6 +1282,73 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sendReply).toHaveBeenCalledTimes(1);
     expect(sendReply.mock.calls[0]?.[2]).toBe(PERSONAL_SHARED_FAILURE_REPLY);
   });
+
+  test.each(["", " \n\t"])(
+    "delivers one Telegram fallback for a completed blank reply %j",
+    async (reply) => {
+      configureTelegramIdentity();
+      const event: ChatEvent = {
+        platform: "telegram",
+        messageId: "update-terminal-before-egress",
+        platformRecordId: "message-terminal-before-egress",
+        chatId: "chat-1",
+        chatType: "private",
+        senderId: "sender-1",
+        senderName: "Ada",
+        text: "remove that reminder",
+        rawPayload: {},
+      };
+      const sendReply = mock(async () => undefined);
+      const adapter: PlatformAdapter = {
+        platform: "telegram",
+        getDedupeScope: () => "scope",
+        verifyWebhook: mock(async () => true),
+        extractEvent: mock(async () => event),
+        sendTypingIndicator: mock(async () => undefined),
+        sendReply,
+        sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+          await sendReply(config, replyEvent, text, hooks);
+          return { providerMessageIds: ["provider-terminal-1"] };
+        }),
+      };
+      const redis = new MemoryRedis();
+      redis.store.set(
+        "identity:telegram:sender-1",
+        JSON.stringify({ notFound: true }),
+      );
+      let sharedAttempts = 0;
+      globalThis.fetch = mock(
+        withTelegramIdentity(async () => {
+          sharedAttempts += 1;
+          return Response.json({
+            data: { reply, responded: false, responseReason: "no_response" },
+          });
+        }),
+      ) as typeof fetch;
+      const request = () =>
+        new Request("https://gateway.example/webhook/eliza-app/telegram", {
+          method: "POST",
+          body: "{}",
+        });
+      const deps = {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      };
+
+      expect(
+        (await handleWebhook(request(), adapter, deps, "eliza-app")).status,
+      ).toBe(200);
+      expect(
+        (await handleWebhook(request(), adapter, deps, "eliza-app")).status,
+      ).toBe(200);
+      expect(sharedAttempts).toBe(1);
+      expect(sendReply).toHaveBeenCalledTimes(1);
+      expect(sendReply.mock.calls[0]?.[2]).toBe(
+        PERSONAL_SHARED_NO_RESPONSE_REPLY,
+      );
+    },
+  );
 
   test("delivers one Telegram fallback when private voice resolution fails", async () => {
     configureTelegramIdentity();

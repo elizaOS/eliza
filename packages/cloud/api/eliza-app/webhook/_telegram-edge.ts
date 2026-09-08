@@ -10,7 +10,8 @@ import {
   identityLinkReply,
 } from "@elizaos/cloud-services-common/identity-link-code";
 import {
-  PERSONAL_SHARED_FAILURE_REPLY,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
   readPersonalSharedFailureMetadata,
 } from "@elizaos/cloud-services-common/personal-shared-failure";
 import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
@@ -1137,6 +1138,16 @@ export async function handlePersonalTelegramEdge(
                   "Personal Shared edge turn returned no reply",
                 );
               }
+              if (
+                event.chatType === "private" &&
+                !event.membershipChange &&
+                candidate.trim().length === 0
+              ) {
+                throw new PersonalTelegramPreEgressError(
+                  "Personal Shared private turn completed without a reply",
+                  { failure: personalSharedNoResponseFailure() },
+                );
+              }
               reply = candidate;
             }
           } catch (error) {
@@ -1179,7 +1190,7 @@ export async function handlePersonalTelegramEdge(
             await sendTelegramReply(
               config,
               event,
-              PERSONAL_SHARED_FAILURE_REPLY,
+              personalSharedFailureReply(fallbackFailure),
               logger,
               deliveryHooks,
             );

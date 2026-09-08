@@ -5,8 +5,9 @@ import {
   truncateWellFormed,
 } from "@elizaos/cloud-services-common";
 import {
-  PERSONAL_SHARED_FAILURE_REPLY,
   type PersonalSharedFailureMetadata,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
   readPersonalSharedFailureMetadata,
 } from "@elizaos/cloud-services-common/personal-shared-failure";
 import {
@@ -906,7 +907,7 @@ async function processMessage(
           adapter,
           config,
           event,
-          PERSONAL_SHARED_FAILURE_REPLY,
+          personalSharedFailureReply(error.failure),
           deliveryHooks,
         );
         return;
@@ -1462,6 +1463,17 @@ async function sendPersonalSharedReply(
   if (typeof reply !== "string") {
     throw new PersonalSharedPreEgressError(
       "personal Shared chat returned no reply",
+    );
+  }
+  if (
+    adapter.platform === "telegram" &&
+    event.chatType === "private" &&
+    !event.membershipChange &&
+    reply.trim().length === 0
+  ) {
+    throw new PersonalSharedPreEgressError(
+      "personal Shared private turn completed without a reply",
+      { failure: personalSharedNoResponseFailure() },
     );
   }
   const replyMediaUrls = parsePersonalSharedMediaUrls(data);
