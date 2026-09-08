@@ -46,6 +46,7 @@ vi.mock("./utils/with-timeout", () => ({
   withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
 }));
 
+import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
 import {
@@ -58,6 +59,28 @@ import { shellHistory, shellLocalStorage } from "./surface-realm-channel";
 const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
   tab: "views" as string,
+}));
+
+const authorityState = vi.hoisted(() => ({
+  agent: "agent-one",
+  identityId: "test-user",
+  sessionId: "test-session",
+  cloudAuthenticated: false,
+  cloudUserId: null as string | null,
+}));
+
+vi.mock("./hooks/useActiveAgentAuthority", () => ({
+  useActiveAgentAuthority: () => authorityState.agent,
+  getActiveAgentAuthority: () => authorityState.agent,
+}));
+vi.mock("./cloud/lib/use-session-auth", () => ({
+  useSessionAuth: () => ({
+    ready: true,
+    authenticated: authorityState.cloudAuthenticated,
+    user: authorityState.cloudUserId
+      ? { id: authorityState.cloudUserId, email: "test@example.test" }
+      : null,
+  }),
 }));
 
 const bgState = vi.hoisted(() => ({
@@ -136,7 +159,11 @@ const navigateView = {
   viewType: "gui" as const,
   surface: { capabilities: ["navigate"] as const },
 };
-const mockAvailableViews = [noGrantView, storageView, navigateView];
+let mockAvailableViews: ViewRegistryEntry[] = [
+  noGrantView,
+  storageView,
+  navigateView,
+];
 
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
@@ -166,7 +193,12 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 vi.mock("./hooks/useAuthStatus", () => ({
   useAuthStatus: () => ({
-    state: { phase: "authenticated" },
+    state: {
+      phase: "authenticated",
+      identity: { id: authorityState.identityId },
+      session: { id: authorityState.sessionId },
+      access: {},
+    },
     refetch: vi.fn(),
   }),
   useIsAuthenticated: () => true,
@@ -505,6 +537,14 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
   };
 
   beforeEach(() => {
+    mockAvailableViews = [noGrantView, storageView, navigateView];
+    Object.assign(authorityState, {
+      agent: "agent-one",
+      identityId: "test-user",
+      sessionId: "test-session",
+      cloudAuthenticated: false,
+      cloudUserId: null,
+    });
     appState.tab = "views";
     appState.setTab.mockClear();
     desktopTabsState.tabs = [];
@@ -560,6 +600,87 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
     expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-nogrant");
     await navigate(rerender, "views", "/iso-storage");
     expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-storage");
+  }, 60_000);
+
+  it("retains the mounted view scope when unrelated registry metadata changes", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-navigate");
+    const scope = getActiveSurfaceRealmScope();
+    expect(scope?.viewId).toBe("iso-navigate");
+
+    await act(async () => {
+      mockAvailableViews = mockAvailableViews.map((view) => ({
+        ...view,
+        label: `${view.label} refreshed`,
+        surface: { ...view.surface },
+      }));
+      rerender(<App />);
+    });
+
+    expect(getActiveSurfaceRealmScope()).toBe(scope);
+  }, 60_000);
+
+  it("replaces the scope when the mounted view's navigation grant changes", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-navigate");
+    const previous = getActiveSurfaceRealmScope();
+    await act(async () => {
+      mockAvailableViews = mockAvailableViews.map((view) =>
+        view.id === "iso-navigate"
+          ? { ...view, surface: noGrantView.surface }
+          : view,
+      );
+      rerender(<App />);
+    });
+    const current = getActiveSurfaceRealmScope();
+    expect(current).not.toBe(previous);
+    expect(current?.viewId).toBe("iso-navigate");
+    expect(() => current?.navigate("/settings")).toThrow(
+      SurfaceRealmDeniedError,
+    );
+    expect(window.location.pathname).toBe("/iso-navigate");
+  }, 60_000);
+
+  it("replaces the scope when a view ID moves to a different route", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-navigate");
+    const previous = getActiveSurfaceRealmScope();
+    mockAvailableViews = mockAvailableViews.map((view) =>
+      view.id === "iso-navigate" ? { ...view, path: "/second-route" } : view,
+    );
+    await navigate(rerender, "views", "/second-route");
+    expect(getActiveSurfaceRealmScope()).not.toBe(previous);
+    expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-navigate");
+  }, 60_000);
+
+  it("replaces the scope for authority and principal changes on the same view", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "views", "/iso-navigate");
+    for (const change of [
+      () => {
+        authorityState.agent = "agent-two";
+      },
+      () => {
+        authorityState.identityId = "second-user";
+      },
+      () => {
+        authorityState.sessionId = "second-session";
+      },
+      () => {
+        authorityState.cloudAuthenticated = true;
+      },
+      () => {
+        authorityState.cloudUserId = "cloud-user";
+      },
+    ]) {
+      const previous = getActiveSurfaceRealmScope();
+      await act(async () => {
+        change();
+        rerender(<App />);
+      });
+      expect(getActiveSurfaceRealmScope()).not.toBe(previous);
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-navigate");
+    }
   }, 60_000);
 
   it("scopes/blocks all four host-realm vectors across a fuzzed cross-view walk", async () => {

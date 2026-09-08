@@ -158,6 +158,7 @@ import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
 import { GlassStyles } from "./glass";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
+import { useActiveAgentAuthority } from "./hooks/useActiveAgentAuthority";
 import { useAgentSessionRecovery } from "./hooks/useAgentSessionRecovery";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useRole } from "./hooks/useRole";
@@ -1053,7 +1054,7 @@ function useActiveViewSurface({
   cloudAuthenticated: boolean;
 }): ActiveViewSurface {
   const registryVersion = useAppShellPageRegistryVersion();
-  return useMemo(() => {
+  const resolved = useMemo(() => {
     void registryVersion;
     return resolveActiveViewSurface({
       tab,
@@ -1076,6 +1077,22 @@ function useActiveViewSurface({
     tab,
     viewLayout,
   ]);
+  // Registry refreshes and unrelated page registrations may produce new input
+  // objects without changing this mounted surface. Replacing its broker scope
+  // would strand the navigation/storage helpers captured by its loaded bundle.
+  // Compare the complete resolved policy, including the capability Set.
+  const policyKey = JSON.stringify({
+    ...resolved,
+    manifest: {
+      ...resolved.manifest,
+      capabilities: [...resolved.manifest.capabilities].sort(),
+    },
+  });
+  const stable = useRef({ policyKey, surface: resolved });
+  if (stable.current.policyKey !== policyKey) {
+    stable.current = { policyKey, surface: resolved };
+  }
+  return stable.current.surface;
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -2969,7 +2986,9 @@ function AppContent() {
   )
     ? resolvedDynamicPage
     : null;
-  const { authenticated: cloudAuthenticated } = useSessionAuth();
+  const { authenticated: cloudAuthenticated, user: cloudUser } =
+    useSessionAuth();
+  const agentAuthority = useActiveAgentAuthority();
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -3022,11 +3041,44 @@ function AppContent() {
     overlayAppSurfaceActive,
     startupCoordinator.phase,
   ]);
-  useEffect(() => {
+  const authScopeKey =
+    authState.phase === "authenticated"
+      ? JSON.stringify({
+          phase: authState.phase,
+          identity: authState.identity?.id,
+          session: authState.session?.id,
+          access: authState.access,
+        })
+      : authState.phase;
+  // Equal presentation metadata must not retain a scope across a different
+  // route, runtime, principal, session, or authorization policy.
+  const scopeLifetime = useMemo(
+    () => ({
+      surface: activeViewSurface,
+      navigationPath,
+      agentAuthority,
+      authScopeKey,
+      cloudAuthenticated,
+      cloudUserId: cloudUser?.id,
+      managedCloudRuntime,
+    }),
+    [
+      activeViewSurface,
+      navigationPath,
+      agentAuthority,
+      authScopeKey,
+      cloudAuthenticated,
+      cloudUser?.id,
+      managedCloudRuntime,
+    ],
+  );
+  // Publish before DynamicViewLoader's passive bundle-import effect captures
+  // host externals, so a new view cannot bind the previous view's scope.
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
     const scope = new SurfaceRealmScope(
-      activeViewSurface.manifest,
-      activeViewSurface.viewId,
+      scopeLifetime.surface.manifest,
+      scopeLifetime.surface.viewId,
       window.localStorage,
       navigateBrowserPath,
     );
@@ -3035,7 +3087,7 @@ function AppContent() {
       scope.resetHostRealm();
       setActiveSurfaceRealmScope(null);
     };
-  }, [activeViewSurface]);
+  }, [scopeLifetime]);
 
   const [editingAction, setEditingAction] = useState<
     import("./api").CustomActionDef | null
