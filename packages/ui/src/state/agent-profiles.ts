@@ -327,10 +327,28 @@ export function upsertAndActivateAgentProfile(
   profile: Omit<AgentProfile, "id" | "createdAt">,
 ): AgentProfile {
   const registry = loadAgentProfileRegistry();
+  const merged = upsertProfileInRegistry(registry, profile);
+  saveAgentProfileRegistry(registry);
+  return merged;
+}
+
+function upsertProfileInRegistry(
+  registry: AgentProfileRegistry,
+  profile: Omit<AgentProfile, "id" | "createdAt">,
+): AgentProfile {
   const existingIdx = registry.profiles.findIndex((stored) =>
     sameProfileIdentity(stored, profile),
   );
-  if (existingIdx === -1) return addAgentProfile(profile);
+  if (existingIdx === -1) {
+    const added: AgentProfile = {
+      ...profile,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+    };
+    registry.profiles.push(added);
+    registry.activeProfileId = added.id;
+    return added;
+  }
   const merged: AgentProfile = {
     ...registry.profiles[existingIdx],
     label: profile.label || registry.profiles[existingIdx].label,
@@ -346,8 +364,53 @@ export function upsertAndActivateAgentProfile(
   };
   registry.profiles[existingIdx] = merged;
   registry.activeProfileId = merged.id;
-  saveAgentProfileRegistry(registry);
   return merged;
+}
+
+async function commitProfileRegistryDurably(
+  registry: AgentProfileRegistry,
+  previous: string | null,
+  revalidate: () => void,
+): Promise<void> {
+  const validate = () => {
+    revalidate();
+    if (window.localStorage.getItem(STORAGE_KEY) !== previous)
+      throw new Error("Credential profile registry changed");
+  };
+  await setStorageValue(STORAGE_KEY, JSON.stringify(registry), {
+    revalidate: validate,
+  });
+}
+
+/** Await the matching profile's protected write before recovery can report success. */
+export async function updateAgentProfileDurably(
+  id: string,
+  updates: Partial<Omit<AgentProfile, "id" | "createdAt">>,
+  revalidate: () => void,
+): Promise<AgentProfile> {
+  revalidate();
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const registry = readAgentProfileRegistry(false);
+  const index = registry.profiles.findIndex((profile) => profile.id === id);
+  if (index === -1)
+    throw new Error("Credential profile is no longer available");
+  const updated = { ...registry.profiles[index], ...updates };
+  registry.profiles[index] = updated;
+  await commitProfileRegistryDurably(registry, previous, revalidate);
+  return updated;
+}
+
+/** Pairing uses the same identity merge as the picker, but awaits durable publication. */
+export async function upsertAndActivateAgentProfileDurably(
+  profile: Omit<AgentProfile, "id" | "createdAt">,
+  revalidate: () => void,
+): Promise<AgentProfile> {
+  revalidate();
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const registry = readAgentProfileRegistry(false);
+  const updated = upsertProfileInRegistry(registry, profile);
+  await commitProfileRegistryDurably(registry, previous, revalidate);
+  return updated;
 }
 
 /** Preserve a cloud agent's platform identity when a profile becomes active. */
