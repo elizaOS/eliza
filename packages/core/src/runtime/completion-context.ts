@@ -18,9 +18,18 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
-		mode: { type: "string", enum: ["full", "selected"] },
+		mode: {
+			type: "string",
+			enum: ["full", "selected"],
+			description:
+				"selected is the normal completed relevance review for the final current request, including a verified empty selection; full is the fallback for unresolved applicable context, exhaustive current-request recall, or missing source set.",
+		},
 		sourceSetId: { type: "string" },
-		complete: { type: "boolean" },
+		complete: {
+			type: "boolean",
+			description:
+				"True only after reviewing all labeled prior user sources and including every applicable constraint, correction, referent and referenced pending intent. It certifies this source selection, not completion of future tool work.",
+		},
 		relevantSourceIds: { type: "array", items: { type: "string" } },
 		constraintSourceIds: { type: "array", items: { type: "string" } },
 		referentSourceIds: { type: "array", items: { type: "string" } },
