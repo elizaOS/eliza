@@ -10,6 +10,10 @@
  */
 // @vitest-environment jsdom
 
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  storeStewardPkceVerifier,
+} from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -103,6 +107,14 @@ function countTouchRows(scope: HTMLElement): number {
 }
 
 function renderSection(entry: string) {
+  if (harness.hasCallback) {
+    const expected = getStewardTabSessionAuthorityCoordinator().readSnapshot();
+    storeStewardPkceVerifier("verifier-1", "state-1", {
+      generation: expected.generation,
+      scope: expected.scope,
+      tokenFingerprint: null,
+    });
+  }
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <StewardLoginSection />
@@ -112,6 +124,8 @@ function renderSection(entry: string) {
 
 describe("StewardLoginSection — reserved loading geometry (#18256)", () => {
   beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
     harness.hasCallback = false;
     harness.code = null;
     harness.providers = () => new Promise(() => {});

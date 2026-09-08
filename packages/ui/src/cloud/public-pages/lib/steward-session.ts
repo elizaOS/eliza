@@ -10,13 +10,21 @@
 
 import {
   clearStoredStewardToken,
+  exchangeStewardCode,
+  getStewardTabSessionAuthorityCoordinator,
+  runStewardSessionAuthorityExclusive,
   STEWARD_NONCE_EXCHANGE_ENDPOINT,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   type StewardNonceExchangeResponse,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthorityKind,
+  type StewardSessionAuthorityWorkContext,
   StewardSessionError,
+  type StewardSessionNetworkOptions,
   type StewardSessionRequest,
   type StewardTelegramClaimConfirmationRequest,
+  type StewardTokenMutationOptions,
   sanitizeTelegramAccountClaimContinuation,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
@@ -30,6 +38,28 @@ import {
   markStewardServerCookieSynced,
 } from "../../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
+
+function withPublicSessionAuthority<T>(
+  kind: StewardSessionAuthorityKind,
+  options: StewardSessionNetworkOptions,
+  work: (authority: StewardSessionAuthorityWorkContext) => Promise<T>,
+): Promise<T> {
+  const expected =
+    options.expected ??
+    options.authority?.revalidate() ??
+    getStewardTabSessionAuthorityCoordinator().readSnapshot();
+  const run =
+    options.authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+  return run({
+    kind,
+    expectedToken: expected.token,
+    expectedGeneration: expected.generation,
+    expectedScope: expected.scope,
+    signal: options.signal,
+    timeoutMs: options.timeoutMs,
+    work,
+  });
+}
 
 export function resolveStewardAuthEndpoint(
   path: string,
@@ -88,46 +118,59 @@ async function readSessionError(response: Response): Promise<{
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
-  options?: {
+  options?: StewardTokenMutationOptions & {
     verifiedPhone?: string;
   },
 ): Promise<void> {
-  const request: StewardSessionRequest = {
-    token,
-    ...(refreshToken ? { refreshToken } : {}),
-    ...(options?.verifiedPhone ? { verifiedPhone: options.verifiedPhone } : {}),
-  };
-  const sessionEndpoint = resolveStewardAuthEndpoint(STEWARD_SESSION_ENDPOINT);
-  const response = await postAuthJson(
-    STEWARD_SESSION_ENDPOINT,
-    request,
-    "POST",
-    undefined,
-    sessionEndpoint,
+  await withPublicSessionAuthority(
+    "session-sync",
+    options ?? {},
+    async (authority) => {
+      const request: StewardSessionRequest = {
+        token,
+        ...(refreshToken ? { refreshToken } : {}),
+        ...(options?.verifiedPhone
+          ? { verifiedPhone: options.verifiedPhone }
+          : {}),
+      };
+      const sessionEndpoint = resolveStewardAuthEndpoint(
+        STEWARD_SESSION_ENDPOINT,
+      );
+      const response = await postAuthJson(
+        STEWARD_SESSION_ENDPOINT,
+        request,
+        "POST",
+        authority.signal,
+        sessionEndpoint,
+      );
+      authority.revalidate();
+
+      if (!response.ok) {
+        const body = await readSessionError(response);
+        authority.revalidate();
+        throw new Error(
+          body.error || "Could not establish an Eliza Cloud session.",
+        );
+      }
+
+      if (typeof window !== "undefined") {
+        // The server cookie is authoritative at this endpoint now. Record this
+        // exact token/endpoint pair before publishing canonical storage: that write
+        // can rerender the mounted Steward runtime, whose passive mirror may skip
+        // only an identical POST target. The module-private, one-shot marker cannot
+        // be forged through browser event detail.
+        markStewardServerCookieSynced(token, sessionEndpoint);
+        // The cookie boundary may be entered directly by an SDK callback or after
+        // the login page already persisted the same token. Canonical storage is
+        // idempotent, so both paths publish one authority transition in total.
+        await writeStoredStewardToken(token, { authority });
+        authority.revalidate();
+        window.dispatchEvent(
+          new CustomEvent("steward-token-sync", { detail: { token } }),
+        );
+      }
+    },
   );
-
-  if (!response.ok) {
-    const body = await readSessionError(response);
-    throw new Error(
-      body.error || "Could not establish an Eliza Cloud session.",
-    );
-  }
-
-  if (typeof window !== "undefined") {
-    // The server cookie is authoritative at this endpoint now. Record this
-    // exact token/endpoint pair before publishing canonical storage: that write
-    // can rerender the mounted Steward runtime, whose passive mirror may skip
-    // only an identical POST target. The module-private, one-shot marker cannot
-    // be forged through browser event detail.
-    markStewardServerCookieSynced(token, sessionEndpoint);
-    // The cookie boundary may be entered directly by an SDK callback or after
-    // the login page already persisted the same token. Canonical storage is
-    // idempotent, so both paths publish one authority transition in total.
-    await writeStoredStewardToken(token);
-    window.dispatchEvent(
-      new CustomEvent("steward-token-sync", { detail: { token } }),
-    );
-  }
 }
 
 /**
@@ -138,32 +181,65 @@ export async function syncStewardSessionCookie(
 export async function confirmTelegramAccountClaim(
   token: string,
   continuation: string,
+  options: StewardSessionNetworkOptions & { onConfirmed?: () => void } = {},
 ): Promise<void> {
   const telegramContinuation =
     sanitizeTelegramAccountClaimContinuation(continuation);
   if (!telegramContinuation) {
     throw new Error("Invalid Telegram account claim.");
   }
-  const request: StewardTelegramClaimConfirmationRequest = {
-    token,
-    telegramContinuation,
-    telegramClaimConfirmation: "explicit",
-  };
-  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
-  if (!response.ok) {
-    const body = await readSessionError(response);
-    throw new Error(body.error || "Could not connect this Telegram account.");
-  }
-  clearPendingOnboardingSessionIfMatches(
-    telegramContinuation,
-    TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-  );
-  if (typeof window !== "undefined") {
-    await writeStoredStewardToken(token);
-    window.dispatchEvent(
-      new CustomEvent("steward-token-sync", { detail: { token } }),
+  const expected =
+    options.expected ??
+    options.authority?.revalidate() ??
+    getStewardTabSessionAuthorityCoordinator().readSnapshot();
+  if (expected.token !== token) {
+    throw new StewardSessionAuthorityError(
+      "Your sign-in changed. Sign in again before connecting this Telegram account.",
+      "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
     );
   }
+  await withPublicSessionAuthority(
+    "session-sync",
+    { ...options, expected },
+    async (authority) => {
+      const request: StewardTelegramClaimConfirmationRequest = {
+        token,
+        telegramContinuation,
+        telegramClaimConfirmation: "explicit",
+      };
+      const endpoint = resolveStewardAuthEndpoint(STEWARD_SESSION_ENDPOINT);
+      authority.revalidate();
+      const response = await postAuthJson(
+        STEWARD_SESSION_ENDPOINT,
+        request,
+        "POST",
+        authority.signal,
+        endpoint,
+      );
+      authority.revalidate();
+      if (!response.ok) {
+        const body = await readSessionError(response);
+        authority.revalidate();
+        throw new Error(
+          body.error || "Could not connect this Telegram account.",
+        );
+      }
+      if (typeof window !== "undefined") {
+        markStewardServerCookieSynced(token, endpoint);
+        await writeStoredStewardToken(token, { authority });
+        authority.revalidate();
+        clearPendingOnboardingSessionIfMatches(
+          telegramContinuation,
+          TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+        );
+        window.dispatchEvent(
+          new CustomEvent("steward-token-sync", { detail: { token } }),
+        );
+        authority.revalidate();
+        options.onConfirmed?.();
+      }
+    },
+  );
 }
 
 /**
@@ -327,24 +403,16 @@ export function stripLegacyTokenHashFromAddressBar(): boolean {
  */
 export async function exchangeStewardCodeViaApi(
   code: string,
-  opts: { redirectUri?: string; tenantId?: string; codeVerifier?: string } = {},
+  opts: StewardSessionNetworkOptions & {
+    redirectUri?: string;
+    tenantId?: string;
+    codeVerifier?: string;
+  } = {},
 ): Promise<StewardNonceExchangeResponse> {
-  const response = await postAuthJson(STEWARD_NONCE_EXCHANGE_ENDPOINT, {
-    code,
-    ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
-    ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
-    ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
+  return exchangeStewardCode(code, {
+    ...opts,
+    endpoint: resolveStewardAuthEndpoint(STEWARD_NONCE_EXCHANGE_ENDPOINT),
   });
-
-  if (!response.ok) {
-    const body = await readSessionError(response);
-    throw new StewardSessionError(
-      body.error || "Could not complete Eliza Cloud sign-in.",
-      response.status,
-      body.code ?? null,
-    );
-  }
-  return (await response.json()) as StewardNonceExchangeResponse;
 }
 
 /**
@@ -352,34 +420,36 @@ export async function exchangeStewardCodeViaApi(
  * travels automatically; the server exchanges it with Steward and sets fresh
  * cookies. Throws `StewardSessionError` when the cookie is missing/revoked.
  */
-export async function refreshStewardSessionViaCookie(options?: {
-  signal?: AbortSignal;
-}): Promise<{
+export async function refreshStewardSessionViaCookie(
+  options: StewardSessionNetworkOptions = {},
+): Promise<{
   ok: true;
   expiresAt?: number;
   expiresIn?: number;
   token?: string;
 }> {
-  const response = await postAuthJson(
-    STEWARD_REFRESH_ENDPOINT,
-    undefined,
-    "POST",
-    options?.signal,
-  );
-  if (!response.ok) {
-    const body = await readSessionError(response);
-    throw new StewardSessionError(
-      body.error || "Could not refresh Eliza Cloud sign-in.",
-      response.status,
-      body.code ?? null,
+  return withPublicSessionAuthority("refresh", options, async (authority) => {
+    authority.revalidate();
+    const response = await postAuthJson(
+      STEWARD_REFRESH_ENDPOINT,
+      undefined,
+      "POST",
+      authority.signal,
     );
-  }
-  return (await response.json()) as {
-    ok: true;
-    expiresAt?: number;
-    expiresIn?: number;
-    token?: string;
-  };
+    authority.revalidate();
+    if (!response.ok) {
+      const body = await readSessionError(response);
+      authority.revalidate();
+      throw new StewardSessionError(
+        body.error || "Could not refresh Eliza Cloud sign-in.",
+        response.status,
+        body.code ?? null,
+      );
+    }
+    const result = (await response.json()) as RefreshedStewardSession;
+    authority.revalidate();
+    return result;
+  });
 }
 
 type RefreshedStewardSession = Awaited<
@@ -420,14 +490,21 @@ function waitForRecoveryDelay(
  */
 export async function recoverStewardEmailSessionViaCookie(
   expectedEmail: string,
-  options: {
-    signal?: AbortSignal;
+  options: StewardSessionNetworkOptions & {
     intervalMs?: number;
-    timeoutMs?: number;
+    onRecovered?: (
+      session: RefreshedStewardSession,
+      authority: StewardSessionAuthorityWorkContext,
+    ) => void | Promise<void>;
   } = {},
 ): Promise<RefreshedStewardSession | null> {
   const expected = normalizedEmail(expectedEmail);
-  if (!expected) return null;
+  if (!expected || options.signal?.aborted) return null;
+  const coordinator = getStewardTabSessionAuthorityCoordinator();
+  const original =
+    options.expected ??
+    options.authority?.revalidate() ??
+    coordinator.readSnapshot();
 
   const intervalMs = options.intervalMs ?? EMAIL_SESSION_RECOVERY_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? EMAIL_SESSION_RECOVERY_TIMEOUT_MS;
@@ -446,15 +523,53 @@ export async function recoverStewardEmailSessionViaCookie(
   try {
     while (!attempt.signal.aborted && Date.now() < deadline) {
       try {
-        const session = await refreshStewardSessionViaCookie({
+        const run = options.authority?.runExclusive ?? coordinator.runExclusive;
+        const session = await run({
+          kind: "refresh",
+          expectedGeneration: original.generation,
+          expectedScope: original.scope,
           signal: attempt.signal,
+          timeoutMs: Math.max(1, deadline - Date.now()),
+          work: async (authority) => {
+            const current = authority.revalidate();
+            // A same-email callback may legitimately publish from another tab
+            // during backoff. This is only a hint to attempt server verification,
+            // never a login receipt; logout/scope changes remain disqualifying.
+            const currentEmail = current.token
+              ? normalizedEmail(decodeJwtPayload(current.token)?.email)
+              : null;
+            if (current.token !== original.token && currentEmail !== expected) {
+              throw new StewardSessionAuthorityError(
+                "Email recovery was superseded by another sign-in.",
+                "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+              );
+            }
+            return authority.runExclusive({
+              kind: "refresh",
+              expectedToken: current.token,
+              expectedGeneration: original.generation,
+              expectedScope: original.scope,
+              work: async (held) => {
+                const recovered = await refreshStewardSessionViaCookie({
+                  authority: held,
+                });
+                held.revalidate();
+                const claims = recovered.token
+                  ? decodeJwtPayload(recovered.token)
+                  : null;
+                if (normalizedEmail(claims?.email) !== expected) return null;
+                await options.onRecovered?.(recovered, held);
+                held.revalidate();
+                return recovered;
+              },
+            });
+          },
         });
         // Re-check cancellation before accepting: a refresh that resolves
         // after the caller aborted or the deadline passed must not surface a
         // session the caller already stopped waiting for.
         if (attempt.signal.aborted || Date.now() >= deadline) return null;
-        const claims = session.token ? decodeJwtPayload(session.token) : null;
-        if (normalizedEmail(claims?.email) === expected) return session;
+        if (session) return session;
       } catch (error) {
         // error-policy:J4 a cancelled attempt resolves to the explicit null
         // "not recovered" state and an expected 401 keeps polling until the
@@ -493,24 +608,36 @@ function isRejectedCookieSession(error: unknown): boolean {
   );
 }
 
-async function clearRejectedCookieSession(): Promise<void> {
-  // The DELETE and subsequent token removal can each fail. Retire proof before
-  // either boundary so recovery can never reuse pre-clear cookie authority.
-  invalidateStewardServerCookieSyncMarker();
-  const response = await postAuthJson(
-    STEWARD_SESSION_ENDPOINT,
-    undefined,
-    "DELETE",
+async function clearRejectedCookieSession(
+  options: StewardSessionNetworkOptions,
+): Promise<void> {
+  await withPublicSessionAuthority(
+    "callback-restore",
+    options,
+    async (authority) => {
+      authority.revalidate();
+      // The DELETE and subsequent token removal can each fail. Retire proof before
+      // either boundary so recovery can never reuse pre-clear cookie authority.
+      invalidateStewardServerCookieSyncMarker();
+      const response = await postAuthJson(
+        STEWARD_SESSION_ENDPOINT,
+        undefined,
+        "DELETE",
+        authority.signal,
+      );
+      authority.revalidate();
+      if (!response.ok) {
+        const body = await readSessionError(response);
+        authority.revalidate();
+        throw new StewardSessionError(
+          body.error || "Could not reset the expired Eliza Cloud session.",
+          response.status,
+          body.code ?? null,
+        );
+      }
+      await clearStoredStewardToken({ authority });
+    },
   );
-  if (!response.ok) {
-    const body = await readSessionError(response);
-    throw new StewardSessionError(
-      body.error || "Could not reset the expired Eliza Cloud session.",
-      response.status,
-      body.code ?? null,
-    );
-  }
-  await clearStoredStewardToken();
 }
 
 /**
@@ -520,27 +647,36 @@ async function clearRejectedCookieSession(): Promise<void> {
  * response settles; a second auth rejection proves the cookie is stale enough
  * to clear before rendering a clean sign-in form.
  */
-export async function recoverStewardSessionViaCookie(): Promise<{
+export async function recoverStewardSessionViaCookie(
+  options: StewardSessionNetworkOptions = {},
+): Promise<{
   ok: true;
   expiresAt?: number;
   expiresIn?: number;
   token?: string;
 } | null> {
+  // Keep the original ticket across backoff: a replacement account or logout
+  // must invalidate both the retry and its potentially destructive cleanup.
+  const expected =
+    options.expected ??
+    options.authority?.revalidate() ??
+    getStewardTabSessionAuthorityCoordinator().readSnapshot();
+  const attemptOptions = { ...options, expected };
   try {
-    return await refreshStewardSessionViaCookie();
+    return await refreshStewardSessionViaCookie(attemptOptions);
   } catch (error) {
+    // error-policy:J4 only a documented cookie rejection permits one retry.
     if (!isRejectedCookieSession(error)) throw error;
   }
 
-  await new Promise((resolve) => {
-    setTimeout(resolve, DEAD_SESSION_RETRY_DELAY_MS);
-  });
+  await waitForRecoveryDelay(DEAD_SESSION_RETRY_DELAY_MS, options.signal);
 
   try {
-    return await refreshStewardSessionViaCookie();
+    return await refreshStewardSessionViaCookie(attemptOptions);
   } catch (error) {
+    // error-policy:J4 clear only a twice-rejected, unchanged session.
     if (!isRejectedCookieSession(error)) throw error;
-    await clearRejectedCookieSession();
+    await clearRejectedCookieSession(attemptOptions);
     return null;
   }
 }

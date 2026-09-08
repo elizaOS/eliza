@@ -12,6 +12,7 @@ import {
 } from "./agent-profiles";
 import {
   createPersistedActiveServer,
+  isPersistedActiveServerAllowed,
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
@@ -21,8 +22,23 @@ const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 export async function persistActiveServerCredential(
   token: string,
   pairedApiBase?: string,
+  options: { revalidate?: () => void } = {},
 ): Promise<void> {
   const activeServer = loadPersistedActiveServer();
+  let expectedServer = JSON.stringify(activeServer);
+  const expectedProfile = options.revalidate
+    ? JSON.stringify(getActiveProfile())
+    : null;
+  const validate = () => {
+    options.revalidate?.();
+    if (
+      options.revalidate &&
+      (JSON.stringify(loadPersistedActiveServer()) !== expectedServer ||
+        JSON.stringify(getActiveProfile()) !== expectedProfile)
+    )
+      throw new Error("Active credential selection changed");
+  };
+  validate();
   const explicitPairingBase = pairedApiBase?.trim() || null;
   const sameOriginPairingBase =
     (!activeServer || activeServer.kind === "local") &&
@@ -49,16 +65,28 @@ export async function persistActiveServerCredential(
       : null);
   if (credentialTarget) {
     const authenticatedServer = credentialTarget;
-    savePersistedActiveServer(authenticatedServer);
+    if (
+      options.revalidate &&
+      !isPersistedActiveServerAllowed(authenticatedServer)
+    )
+      throw new Error(
+        "Active credential target is outside the build-pinned runtime",
+      );
+    // Guarded recovery must not optimistically publish before the native
+    // acknowledgement. Other pairing callers retain their existing contract.
+    if (!options.revalidate) savePersistedActiveServer(authenticatedServer);
     // Native storage mirroring is normally fire-and-forget, but pairing reloads
     // immediately after this boundary. Await the authoritative Preferences write
     // so hydration cannot restore the pre-pair, tokenless server on the next boot.
     await setStorageValue(
       ACTIVE_SERVER_STORAGE_KEY,
       JSON.stringify(authenticatedServer),
+      options.revalidate ? { revalidate: validate } : undefined,
     );
+    expectedServer = JSON.stringify(authenticatedServer);
   }
 
+  validate();
   const activeProfile = getActiveProfile();
   const sameCredentialTarget =
     activeProfile &&

@@ -44,7 +44,13 @@ const authSpies = vi.hoisted(() => ({
 }));
 
 const sessionSpies = vi.hoisted(() => ({
-  storedToken: null as string | null,
+  get storedToken(): string | null {
+    return window.localStorage.getItem("steward_session_token");
+  },
+  set storedToken(value: string | null) {
+    if (value === null) window.localStorage.removeItem("steward_session_token");
+    else window.localStorage.setItem("steward_session_token", value);
+  },
   hasAuthedCookie: false,
   clear: vi.fn(),
   recover: vi.fn(),
@@ -74,13 +80,17 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
   return {
     ...actual,
     hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
-    readStoredStewardToken: () => sessionSpies.storedToken,
-    clearStoredStewardToken: async () => {
-      sessionSpies.storedToken = null;
+    clearStoredStewardToken: async (
+      options?: import("@elizaos/shared/steward-session-client").StewardTokenMutationOptions,
+    ) => {
+      await actual.clearStoredStewardToken(options);
       sessionSpies.clear();
     },
-    writeStoredStewardToken: (token: string) => {
-      sessionSpies.storedToken = token;
+    writeStoredStewardToken: async (
+      token: string,
+      options?: import("@elizaos/shared/steward-session-client").StewardTokenMutationOptions,
+    ) => {
+      await actual.writeStoredStewardToken(token, options);
       sessionSpies.write(token);
     },
     StewardSessionError: class StewardSessionError extends Error {
@@ -246,7 +256,11 @@ describe("StewardLoginSection phone login", () => {
     renderSection();
 
     await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(existingToken, null),
+      expect(sessionSpies.sync).toHaveBeenCalledWith(
+        existingToken,
+        null,
+        expect.objectContaining({ authority: expect.any(Object) }),
+      ),
     );
     expect(authSpies.refreshSession).not.toHaveBeenCalled();
   });
@@ -424,7 +438,11 @@ describe("StewardLoginSection phone login", () => {
     renderSection();
 
     await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(olderToken, null),
+      expect(sessionSpies.sync).toHaveBeenCalledWith(
+        olderToken,
+        null,
+        expect.objectContaining({ authority: expect.any(Object) }),
+      ),
     );
     expect(screen.queryByLabelText("Phone number")).toBeNull();
     expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();
@@ -445,12 +463,28 @@ describe("StewardLoginSection phone login", () => {
       exp: Math.floor(Date.now() / 1000) + 600,
     });
     sessionSpies.storedToken = olderToken;
-    sessionSpies.sync.mockReturnValueOnce(new Promise<void>(() => undefined));
+    sessionSpies.sync.mockImplementationOnce(
+      (_token, _refreshToken, { authority }) =>
+        new Promise<void>((_resolve, reject) => {
+          authority.signal.addEventListener(
+            "abort",
+            () =>
+              reject(
+                new DOMException("Cancelled recovery fixture", "AbortError"),
+              ),
+            { once: true },
+          );
+        }),
+    );
 
     renderSection("/login?error=oauth_failed&reason=server_error");
 
     await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(olderToken, null),
+      expect(sessionSpies.sync).toHaveBeenCalledWith(
+        olderToken,
+        null,
+        expect.objectContaining({ authority: expect.any(Object) }),
+      ),
     );
     expect(screen.queryByLabelText("Phone number")).toBeNull();
     expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();
@@ -475,7 +509,13 @@ describe("StewardLoginSection phone login", () => {
       expect(sessionSpies.sync).toHaveBeenCalledWith(
         "sms-session-token",
         "sms-refresh-token",
-        { verifiedPhone: "+14155552671" },
+        expect.objectContaining({
+          verifiedPhone: "+14155552671",
+          authority: expect.objectContaining({
+            revalidate: expect.any(Function),
+          }),
+          signal: expect.any(AbortSignal),
+        }),
       ),
     );
     expect(sessionSpies.write).toHaveBeenCalledWith("sms-session-token");

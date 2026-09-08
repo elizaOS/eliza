@@ -48,7 +48,9 @@ function emptyRegistry(): AgentProfileRegistry {
  * Attempt to migrate a single-agent `PersistedActiveServer` entry into a
  * profile registry.  Returns null if no prior server is found.
  */
-function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
+function migrateFromPersistedActiveServer(
+  persist: boolean,
+): AgentProfileRegistry | null {
   const raw = localStorage.getItem(ACTIVE_SERVER_KEY);
   if (!raw) return null;
 
@@ -88,7 +90,7 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
   };
 
   // Persist immediately so migration only runs once.
-  shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
+  if (persist) shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
   // Leave elizaos:active-server intact for rollback.
   return registry;
 }
@@ -96,6 +98,12 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
 /* ── Public API ──────────────────────────────────────────────────────── */
 
 export function loadAgentProfileRegistry(): AgentProfileRegistry {
+  return readAgentProfileRegistry(true);
+}
+
+function readAgentProfileRegistry(
+  persistMigration: boolean,
+): AgentProfileRegistry {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -105,8 +113,28 @@ export function loadAgentProfileRegistry(): AgentProfileRegistry {
       }
     }
     // No registry yet — try migrating from legacy single-server entry.
-    return migrateFromPersistedActiveServer() ?? emptyRegistry();
+    return (
+      migrateFromPersistedActiveServer(persistMigration) ?? emptyRegistry()
+    );
   }, emptyRegistry());
+}
+
+/** Materialize legacy or empty profiles durably before a first-run server can become a migration source. */
+export async function prepareAgentProfileRegistryDurably(
+  revalidate: () => void,
+): Promise<string> {
+  revalidate();
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const serialized = JSON.stringify(readAgentProfileRegistry(false));
+  const validate = () => {
+    revalidate();
+    if (window.localStorage.getItem(STORAGE_KEY) !== previous)
+      throw new Error("First-run profile selection changed");
+  };
+  validate();
+  if (serialized !== previous)
+    await setStorageValue(STORAGE_KEY, serialized, { revalidate: validate });
+  return serialized;
 }
 
 export function saveAgentProfileRegistry(
@@ -219,6 +247,37 @@ export function addAgentProfile(
   registry.profiles.push(full);
   if (options.activate !== false) registry.activeProfileId = full.id;
   saveAgentProfileRegistry(registry);
+  return full;
+}
+
+/** Publish a first-run profile only after the protected store acknowledges the still-owned registry write. */
+export async function addAgentProfileDurably(
+  profile: Omit<AgentProfile, "id" | "createdAt">,
+  revalidate: () => void,
+): Promise<AgentProfile> {
+  revalidate();
+  const registry = readAgentProfileRegistry(false);
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const full: AgentProfile = {
+    ...profile,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
+  const validate = () => {
+    revalidate();
+    if (window.localStorage.getItem(STORAGE_KEY) !== previous)
+      throw new Error("First-run profile selection changed");
+  };
+  validate();
+  await setStorageValue(
+    STORAGE_KEY,
+    JSON.stringify({
+      ...registry,
+      profiles: [...registry.profiles, full],
+      activeProfileId: full.id,
+    }),
+    { revalidate: validate },
+  );
   return full;
 }
 

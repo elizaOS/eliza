@@ -70,6 +70,44 @@ export function consumePendingOAuthReturnTo(): string | null {
   return sessionReturnTo ?? localReturnTo;
 }
 
+/** Capture this callback's intent without clearing a later login's destination. */
+export function capturePendingOAuthReturnTo(): {
+  returnTo: string | null;
+  consume: () => void;
+} {
+  const sources =
+    typeof window === "undefined"
+      ? []
+      : [() => window.sessionStorage, () => window.localStorage];
+  const records = sources.map((getStorage) => {
+    try {
+      const raw = getStorage().getItem(PENDING_OAUTH_RETURN_TO_KEY);
+      return { getStorage, raw, returnTo: parseStoredReturnTo(raw) };
+    } catch {
+      // error-policy:J3 denied storage cannot supply a trusted destination.
+      return null;
+    }
+  });
+  const selected = records.find((record) => record?.returnTo);
+  return {
+    returnTo: selected?.returnTo ?? null,
+    consume: () => {
+      for (const [index, getStorage] of sources.entries()) {
+        const captured = records[index];
+        if (!captured || (captured.returnTo && captured.raw !== selected?.raw))
+          continue;
+        try {
+          const storage = getStorage();
+          if (storage.getItem(PENDING_OAUTH_RETURN_TO_KEY) === captured.raw)
+            storage.removeItem(PENDING_OAUTH_RETURN_TO_KEY);
+        } catch {
+          // error-policy:J6 this completed callback only retires its own optional destination hint.
+        }
+      }
+    },
+  };
+}
+
 function safeSet(storage: Storage, value: string): void {
   try {
     storage.setItem(PENDING_OAUTH_RETURN_TO_KEY, value);

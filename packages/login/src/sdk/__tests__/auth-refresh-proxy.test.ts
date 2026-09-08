@@ -259,6 +259,165 @@ describe("LoginAuth authProxyUrl (SEC-018: HttpOnly refresh-token custody)", () 
     }
   });
 
+  test("an already-abandoned email callback sends no verification request", async () => {
+    const auth = new LoginAuth({
+      baseUrl: requireLoginValue(server, "server").baseUrl,
+      storage,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      auth.verifyEmailCallback("magic-token", "test@example.com", {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+    expect(requests).toHaveLength(0);
+    expect(auth.getSession()).toBeNull();
+  });
+
+  test("cancellation while waiting for host commit cannot publish the SDK session", async () => {
+    const auth = new LoginAuth({
+      baseUrl: requireLoginValue(server, "server").baseUrl,
+      storage,
+    });
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const pending = auth.verifyEmailCallback(
+      "magic-token",
+      "test@example.com",
+      {
+        signal: controller.signal,
+        commitSession: async (commit) => {
+          entered.resolve();
+          await release.promise;
+          return commit();
+        },
+      },
+    );
+    await entered.promise;
+    controller.abort();
+    release.resolve();
+    await expect(pending).rejects.toThrow();
+    expect(auth.getSession()).toBeNull();
+    expect(storage.getItem("steward_refresh_token")).toBeNull();
+  });
+
+  test("cancelled proxy custody retires its deposit before a newer sign-in can win", async () => {
+    const baseUrl = requireLoginValue(server, "server").baseUrl;
+    const auth = new LoginAuth({
+      baseUrl,
+      storage,
+      authProxyUrl: `${baseUrl}/proxy`,
+    });
+    const winnerStorage = new TestStorage();
+    const winner = new LoginAuth({
+      baseUrl,
+      storage: winnerStorage,
+      authProxyUrl: `${baseUrl}/proxy`,
+    });
+    const controller = new AbortController();
+    const deposited = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const originalFetch = globalThis.fetch;
+    let held = false;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const response = await originalFetch(input, init);
+      if (
+        String(input).endsWith("/proxy/session") &&
+        init?.method === "POST" &&
+        !held
+      ) {
+        held = true;
+        deposited.resolve();
+        await release.promise;
+      }
+      return response;
+    }) as typeof fetch;
+    try {
+      const pending = auth.verifyEmailCallback(
+        "magic-token",
+        "test@example.com",
+        { signal: controller.signal },
+      );
+      await deposited.promise;
+      controller.abort();
+      const winning = winner.verifyEmailCallback(
+        "new-magic-token",
+        "test@example.com",
+      );
+      release.resolve();
+      await expect(pending).rejects.toThrow();
+      await winning;
+      expect(auth.getSession()).toBeNull();
+      expect(winner.getSession()).not.toBeNull();
+      expect(
+        proxyRequests("/proxy/session").map((request) => request.method),
+      ).toEqual(["POST", "DELETE", "POST"]);
+    } finally {
+      release.resolve();
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("publishes the completed custody decision before releasing its proxy lock", async () => {
+    const baseUrl = requireLoginValue(server, "server").baseUrl;
+    const auth = new LoginAuth({
+      baseUrl,
+      storage,
+      authProxyUrl: `${baseUrl}/proxy`,
+    });
+    const winner = new LoginAuth({
+      baseUrl,
+      storage: new TestStorage(),
+      authProxyUrl: `${baseUrl}/proxy`,
+    });
+    const controller = new AbortController();
+    const locks = navigator.locks;
+    const request = locks.request.bind(locks);
+    let winning: Promise<unknown> | undefined;
+    let first = true;
+    Object.defineProperty(locks, "request", {
+      configurable: true,
+      value: (name: string, callback: () => Promise<unknown>) =>
+        request(name, async () => {
+          const result = await callback();
+          if (first) {
+            first = false;
+            controller.abort();
+            winning = winner.verifyEmailCallback(
+              "new-magic-token",
+              "test@example.com",
+            );
+          }
+          return result;
+        }),
+    });
+    try {
+      await expect(
+        auth.verifyEmailCallback("magic-token", "test@example.com", {
+          signal: controller.signal,
+        }),
+      ).resolves.toHaveProperty("token");
+      await winning;
+      expect(auth.getSession()).not.toBeNull();
+      expect(winner.getSession()).not.toBeNull();
+      expect(proxyRequests("/proxy/session").map((r) => r.method)).toEqual([
+        "POST",
+        "POST",
+      ]);
+    } finally {
+      await winning;
+      Object.defineProperty(locks, "request", {
+        configurable: true,
+        value: request,
+      });
+    }
+  });
+
   test("sign-in deposits the refresh token with the proxy, never with JS storage", async () => {
     const auth = new LoginAuth({
       baseUrl: requireLoginValue(server, "server").baseUrl,
@@ -339,6 +498,161 @@ describe("LoginAuth authProxyUrl (SEC-018: HttpOnly refresh-token custody)", () 
     expect(
       proxyRequests("/proxy/session", "DELETE").length,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  test.each([
+    { proxy: false, revoke: false },
+    { proxy: false, revoke: true },
+    { proxy: true, revoke: false },
+    { proxy: true, revoke: true },
+  ])(
+    "email completion preserves logout and a later login (%j)",
+    async ({ proxy, revoke }) => {
+      await server?.close();
+      let release!: () => void;
+      let started!: () => void;
+      const startedRequest = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const heldResponse = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const freshToken = fakeJwt({ userId: "fresh-session" });
+      server = await startServer(async (req) => {
+        requests.push(req);
+        if (req.path === "/auth/email/verify") {
+          if (req.bodyJson?.token === "held-link") {
+            started();
+            await heldResponse;
+          }
+          return {
+            json: {
+              ok: true,
+              token:
+                req.bodyJson?.token === "fresh-link" ? freshToken : fakeJwt(),
+              refreshToken: "rt-fixture",
+              user: TEST_USER,
+            },
+          };
+        }
+        return { json: { ok: true } };
+      });
+      const auth = new LoginAuth({
+        baseUrl: server.baseUrl,
+        storage,
+        ...(proxy ? { authProxyUrl: `${server.baseUrl}/proxy` } : {}),
+      });
+      storage.setItem("steward_session_token", fakeJwt());
+      const pending = auth.verifyEmailCallback("held-link", "test@example.com");
+      // Observe rejection immediately so the regression cannot create an unhandled promise.
+      const outcome = pending.then(
+        () => "accepted",
+        (error: Error) => error.message,
+      );
+      try {
+        await startedRequest;
+        if (revoke) await auth.revokeSession();
+        else auth.signOut();
+        await lockTail;
+        expect(auth.getToken()).toBeNull();
+        await auth.verifyEmailCallback("fresh-link", "test@example.com");
+        expect(auth.getToken()).toBe(freshToken);
+        release();
+        expect(await outcome).toMatch(/cancelled by sign-out/i);
+        expect(auth.getToken()).toBe(freshToken);
+        expect(proxyRequests("/proxy/session", "POST")).toHaveLength(
+          proxy ? 1 : 0,
+        );
+      } finally {
+        release();
+        await outcome;
+      }
+    },
+  );
+
+  test.each([false, true])(
+    "host authority rejection prevents SDK publication and proxy deposit (proxy=%s)",
+    async (proxy) => {
+      await server?.close();
+      server = await startServer(async (req) => {
+        requests.push(req);
+        return {
+          json: {
+            ok: true,
+            token: fakeJwt(),
+            refreshToken: "rt-fixture",
+            user: TEST_USER,
+          },
+        };
+      });
+      const transitions: unknown[] = [];
+      const auth = new LoginAuth({
+        baseUrl: server.baseUrl,
+        storage,
+        onSessionChange: (session) => {
+          transitions.push(session);
+        },
+        ...(proxy ? { authProxyUrl: `${server.baseUrl}/proxy` } : {}),
+      });
+      const lostAuthority = new Error("Host session was superseded");
+      await expect(
+        auth.verifyEmailCallback("proof", "fixture@example.test", {
+          commitSession: async () => {
+            throw lostAuthority;
+          },
+        }),
+      ).rejects.toBe(lostAuthority);
+      expect(auth.getToken()).toBeNull();
+      expect(storage.getItem("steward_refresh_token")).toBeNull();
+      expect(transitions).toEqual([]);
+      expect(proxyRequests("/proxy/session", "POST")).toHaveLength(0);
+    },
+  );
+
+  test("revalidates SDK logout when the host delays session commit after verification", async () => {
+    await server?.close();
+    server = await startServer(async (req) => {
+      requests.push(req);
+      return {
+        json: {
+          ok: true,
+          token: fakeJwt(),
+          refreshToken: "rt-fixture",
+          user: TEST_USER,
+        },
+      };
+    });
+    const auth = new LoginAuth({ baseUrl: server.baseUrl, storage });
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pending = auth.verifyEmailCallback("proof", "fixture@example.test", {
+      commitSession: async (commit) => {
+        entered();
+        await held;
+        return commit();
+      },
+    });
+    const outcome = pending.then(
+      () => "accepted",
+      (error: Error) => error.message,
+    );
+    try {
+      await waiting;
+      auth.signOut();
+      release();
+      expect(await outcome).toMatch(/cancelled by sign-out/i);
+      expect(auth.getToken()).toBeNull();
+      expect(storage.getItem("steward_refresh_token")).toBeNull();
+    } finally {
+      release();
+      await outcome;
+    }
   });
 
   test("refreshSession calls the proxy without a JS-held token", async () => {

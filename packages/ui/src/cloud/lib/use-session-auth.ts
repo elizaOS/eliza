@@ -15,7 +15,10 @@
 
 import { Capacitor } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/shared";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  readStoredStewardToken,
+  STEWARD_SESSION_CHANGE_EVENT,
+} from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
@@ -182,6 +185,13 @@ export function useSessionAuth(): SessionAuthState {
   );
 
   useEffect(() => {
+    // A provider validity change (including expiry without a token write)
+    // must also retire any older authenticated storage fallback.
+    if (!providerAuth.isAuthenticated)
+      setStorageUser(readStewardSessionFromStorage());
+  }, [providerAuth.isAuthenticated]);
+
+  useEffect(() => {
     const handler = () => {
       setStorageUser(readStewardSessionFromStorage());
       setApiKeyUser(readNativeApiKeySession());
@@ -189,10 +199,14 @@ export function useSessionAuth(): SessionAuthState {
     };
     handler();
     window.addEventListener("storage", handler);
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, handler);
+    window.addEventListener("pageshow", handler);
     window.addEventListener("steward-token-sync", handler);
     const timer = setTimeout(handler, 250);
     return () => {
       window.removeEventListener("storage", handler);
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, handler);
+      window.removeEventListener("pageshow", handler);
       window.removeEventListener("steward-token-sync", handler);
       clearTimeout(timer);
     };

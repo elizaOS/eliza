@@ -40,7 +40,10 @@ import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 vi.mock("./csrf-client", () => ({ fetchWithCsrf: vi.fn() }));
 vi.mock("../config/boot-config", () => ({ getBootConfig: vi.fn() }));
 vi.mock("@elizaos/shared", () => ({ getElizaApiToken: vi.fn() }));
-vi.mock("@elizaos/shared/steward-session-client", () => ({
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/steward-session-client")
+  >()),
   readStoredStewardToken: vi.fn(),
   writeStoredStewardToken: vi.fn(),
   clearStoredStewardToken: vi.fn(),
@@ -53,6 +56,9 @@ vi.mock("../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: vi.fn(),
 }));
 vi.mock("../platform", () => ({ isNative: false }));
+vi.mock("../state/persistence", () => ({
+  loadPersistedActiveServer: () => null,
+}));
 vi.mock("../state/shared-cloud-account-binding", () => ({
   clearSharedCloudAccountBinding: vi.fn(),
 }));
@@ -708,6 +714,19 @@ describe("authMe over plain HTTP boundaries", () => {
 
 describe("authMe against a managed shared-agent base", () => {
   beforeEach(() => {
+    const target = new EventTarget();
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      location: { origin: "http://localhost" },
+      addEventListener: target.addEventListener.bind(target),
+      removeEventListener: target.removeEventListener.bind(target),
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    getBootConfigMock.mockReturnValue({ branding: {} });
     fetchWithCsrfMock.mockReset();
     isManagedCloudSharedAgentBaseMock.mockReturnValue(true);
     isDesktopExternalApiBaseUrlMock.mockReturnValue(false);
@@ -790,10 +809,15 @@ describe("authMe against a managed shared-agent base", () => {
 
     const result = await authMe();
 
-    expect(refreshCloudStewardSessionMock).toHaveBeenCalledWith({
-      throwOnTransientHttpFailure: true,
-    });
-    expect(writeStoredStewardTokenMock).toHaveBeenCalledWith("fresh-stew");
+    expect(refreshCloudStewardSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        throwOnTransientHttpFailure: true,
+      }),
+    );
+    expect(writeStoredStewardTokenMock).toHaveBeenCalledWith(
+      "fresh-stew",
+      expect.objectContaining({ authority: expect.any(Object) }),
+    );
     expect(cloudTokenSecsRemainingMock).toHaveBeenCalledWith("fresh-stew");
     expect(result).toEqual({
       ok: true,
@@ -833,8 +857,13 @@ describe("authMe against a managed shared-agent base", () => {
 
     const result = await authMe();
 
-    expect(refreshCloudStewardSessionMock).toHaveBeenCalledWith();
-    expect(writeStoredStewardTokenMock).toHaveBeenCalledWith("renewed-stew");
+    expect(refreshCloudStewardSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ authority: expect.any(Object) }),
+    );
+    expect(writeStoredStewardTokenMock).toHaveBeenCalledWith(
+      "renewed-stew",
+      expect.objectContaining({ authority: expect.any(Object) }),
+    );
     expect(result).toEqual({
       ok: true,
       identity: { id: "cloud", displayName: "Eliza Cloud", kind: "machine" },

@@ -407,7 +407,15 @@ describe("StewardLoginSection OAuth launch", () => {
     });
     await waitFor(() =>
       expect(oauthState.syncedSessions).toEqual([
-        ["telegram-token", "telegram-refresh"],
+        [
+          "telegram-token",
+          "telegram-refresh",
+          expect.objectContaining({
+            authority: expect.objectContaining({
+              revalidate: expect.any(Function),
+            }),
+          }),
+        ],
       ]),
     );
   });

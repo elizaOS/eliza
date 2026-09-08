@@ -206,6 +206,15 @@ export function useStartupCoordinator(
   const [state, dispatch] = useReducer(startupReducer, INITIAL_STARTUP_STATE);
   const policy = useRef(detectPlatformPolicy()).current;
   const effectRunRef = useRef(0);
+  const restoreOwnerRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const cancelOwner = () => restoreOwnerRef.current?.abort();
+    window.addEventListener("pagehide", cancelOwner);
+    return () => {
+      cancelOwner();
+      window.removeEventListener("pagehide", cancelOwner);
+    };
+  }, []);
   // The reducer only carries `target` through phases that actively use it to
   // configure/start the runtime. Shell consumers still need the resolved
   // topology after hydration (for example, to expose Cloud management only
@@ -249,6 +258,14 @@ export function useStartupCoordinator(
     if (!d) return;
     effectRunRef.current += 1;
     const cancelled = { current: false };
+    // A new restore attempt supersedes detached work from a previous retry.
+    // Normal phase progression only ends the narrower phase lifetime below.
+    restoreOwnerRef.current?.abort();
+    const owner = new AbortController();
+    restoreOwnerRef.current = owner;
+    const lifetime = new AbortController();
+    const cancelRestore = () => lifetime.abort();
+    owner.signal.addEventListener("abort", cancelRestore, { once: true });
 
     // Boot-time runtime-mode reconciliation (issue #11030): a persisted
     // `eliza:mobile-runtime-mode` that is unusable in THIS build (e.g. a stale
@@ -265,7 +282,15 @@ export function useStartupCoordinator(
     enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot();
     // error-policy:J4 expected failures are dispatched inside the runner; an
     // unexpected rejection is translated to the visible startup error card.
-    runRestoringSession(d, dispatch, _ctx, cancelled).catch((err: unknown) => {
+    runRestoringSession(
+      d,
+      dispatch,
+      _ctx,
+      cancelled,
+      lifetime.signal,
+      owner.signal,
+    ).catch((err: unknown) => {
+      if (cancelled.current) return;
       logger.error(
         { err },
         "[useStartupCoordinator] restoring-session phase runner threw",
@@ -281,6 +306,8 @@ export function useStartupCoordinator(
 
     return () => {
       cancelled.current = true;
+      lifetime.abort();
+      owner.signal.removeEventListener("abort", cancelRestore);
     };
   }, [state.phase, depsReady]);
 

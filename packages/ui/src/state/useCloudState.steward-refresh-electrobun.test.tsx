@@ -61,9 +61,11 @@ describe("useCloudState — Electrobun Steward refresh endpoint", () => {
     renderHook(() => useCloudState(makeParams()));
 
     await waitFor(() =>
-      expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith({
-        endpoint: "https://api.eliza.app/api/auth/steward-refresh",
-      }),
+      expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpoint: "https://api.eliza.app/api/auth/steward-refresh",
+        }),
+      ),
     );
   });
 });

@@ -10,6 +10,7 @@
 
 import {
   registerStewardTokenRemoval,
+  STEWARD_LOGOUT_GENERATION_KEY,
   STEWARD_REFRESH_TOKEN_KEY,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
@@ -140,6 +141,74 @@ describe("clearStaleStewardSession", () => {
     localStorage.clear();
     invalidateStewardServerCookieSyncMarker();
   });
+
+  it.each(["write", "readback"] as const)(
+    "preserves account bindings and cookies when generation %s fails before token removal",
+    async (failurePhase) => {
+      localStorage.setItem(STEWARD_TOKEN_KEY, "still-durable-token");
+      savePersistedActiveServer({
+        id: "cloud:old-agent",
+        kind: "cloud",
+        label: "Eliza Cloud",
+        apiBase: "https://api.eliza.app/api/v1/eliza/agents/old-agent",
+        accessToken: "still-durable-token",
+      });
+      const storage = window.localStorage;
+      const owner = Object.hasOwn(storage, "setItem")
+        ? storage
+        : (Object.getPrototypeOf(storage) as Storage);
+      const get = storage.getItem.bind(storage);
+      const set = storage.setItem.bind(storage);
+      const failure = new DOMException(
+        "Storage unavailable",
+        "QuotaExceededError",
+      );
+      let generationWritten = false;
+      const setSpy = vi
+        .spyOn(owner, "setItem")
+        .mockImplementation((key, value) => {
+          if (key === STEWARD_LOGOUT_GENERATION_KEY) {
+            if (failurePhase === "write") throw failure;
+            generationWritten = true;
+          }
+          set(key, value);
+        });
+      const getSpy = vi.spyOn(owner, "getItem").mockImplementation((key) => {
+        if (key === STEWARD_LOGOUT_GENERATION_KEY && generationWritten)
+          throw failure;
+        return get(key);
+      });
+      let removed = false;
+      const unregister = registerStewardTokenRemoval(async () => {
+        removed = true;
+        storage.removeItem(STEWARD_TOKEN_KEY);
+      });
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(null, { status: 204 }));
+      try {
+        const result = await clearStaleStewardSession().catch(
+          (error: Error) => error,
+        );
+        expect(removed).toBe(false);
+        expect(loadPersistedActiveServer()?.accessToken).toBe(
+          "still-durable-token",
+        );
+        expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe("still-durable-token");
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+          name: "StewardSessionAuthorityError",
+          code: "STEWARD_SESSION_AUTHORITY_STORAGE_FAILED",
+          cause: failure,
+        });
+      } finally {
+        unregister();
+        getSpy.mockRestore();
+        setSpy.mockRestore();
+        fetchSpy.mockRestore();
+      }
+    },
+  );
 
   it("drops a shared Cloud agent selection so the next account resolves its own agent", async () => {
     savePersistedActiveServer({
@@ -275,14 +344,14 @@ describe("clearStaleStewardSession", () => {
 });
 
 describe("clearServerStewardSessionCookies", () => {
-  it("marks every cookie-clearing DELETE as a non-simple request", () => {
+  it("marks every cookie-clearing DELETE as a non-simple request", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(null, { status: 204 }));
 
     clearServerStewardSessionCookies();
 
-    expect(fetchSpy).toHaveBeenCalled();
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled());
     for (const [url, init] of fetchSpy.mock.calls) {
       expect(String(url)).toContain("/api/auth/steward-session");
       expect(init).toMatchObject({

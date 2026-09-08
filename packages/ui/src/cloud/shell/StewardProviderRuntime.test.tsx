@@ -50,7 +50,8 @@ vi.mock("../../login/index", () => ({
     verifyEmailCallback: async () => ({ token: "" }),
   }),
 }));
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/login", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/login")>()),
   LoginClient: class {},
 }));
 
@@ -92,6 +93,7 @@ function createMemoryStorage(): Storage {
 }
 
 let storage: Storage = createMemoryStorage();
+const originalLocks = Object.getOwnPropertyDescriptor(navigator, "locks");
 
 function stubFetchWith401s(): void {
   vi.stubGlobal(
@@ -140,6 +142,30 @@ function rerenderAuthenticated(view: ReturnType<typeof mount>): void {
 }
 
 beforeEach(() => {
+  // Serialize the real coordinator through a deterministic Web Locks boundary.
+  // The no-lock cases explicitly remove this capability before mounting.
+  let tail = Promise.resolve();
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (
+        _name: string,
+        options: { signal: AbortSignal },
+        callback: () => Promise<unknown>,
+      ) => {
+        const pending = tail.then(() => {
+          if (options.signal.aborted)
+            throw new DOMException("Aborted", "AbortError");
+          return callback();
+        });
+        tail = pending.then(
+          () => undefined,
+          () => undefined,
+        );
+        return pending;
+      },
+    },
+  });
   calls = [];
   stewardAuthState.isAuthenticated = false;
   stewardAuthState.user = null;
@@ -161,12 +187,254 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  if (originalLocks) Object.defineProperty(navigator, "locks", originalLocks);
+  else Reflect.deleteProperty(navigator, "locks");
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   window.sessionStorage.clear();
 });
 
 describe("AuthTokenSync", () => {
+  it("refreshes with a fresh page-return lifetime after abandoned HTTP settles", async () => {
+    const original = makeJwt({
+      sub: "return-fixture",
+      exp: Math.floor(Date.now() / 1000) - 1,
+    });
+    const abandoned = makeJwt({
+      sub: "abandoned-fixture",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const current = makeJwt({
+      sub: "return-fixture",
+      exp: Math.floor(Date.now() / 1000) + 7200,
+    });
+    storage.setItem(STEWARD_TOKEN_KEY, original);
+    const held = Promise.withResolvers<void>();
+    const requests: RequestInit[] = [];
+    const published: Array<string | null> = [];
+    const record = () => published.push(storage.getItem(STEWARD_TOKEN_KEY));
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, record);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!String(input).includes("steward-refresh"))
+          return Response.json({ ok: true });
+        requests.push(init ?? {});
+        if (requests.length === 1) {
+          await held.promise;
+          return Response.json({ token: abandoned });
+        }
+        return Response.json({ token: current });
+      }),
+    );
+    try {
+      mount();
+      await waitFor(() => expect(requests).toHaveLength(1));
+      act(() => window.dispatchEvent(new Event("pagehide")));
+      expect(requests[0].signal?.aborted).toBe(true);
+      await act(async () => {
+        window.dispatchEvent(new Event("storage"));
+        window.dispatchEvent(new Event("online"));
+        window.dispatchEvent(new Event("steward-unauthorized"));
+      });
+      expect(requests).toHaveLength(1);
+      act(() => window.dispatchEvent(new Event("pageshow")));
+      expect(requests).toHaveLength(1);
+      await act(async () => held.resolve());
+      await waitFor(() =>
+        expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(current),
+      );
+      expect(requests).toHaveLength(2);
+      expect(requests[1].signal).not.toBe(requests[0].signal);
+      expect(published).not.toContain(abandoned);
+    } finally {
+      held.resolve();
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, record);
+    }
+  });
+  it.each([3600, 60])(
+    "does not automatically mutate cookies without Web Locks (remaining=%s)",
+    async (seconds) => {
+      Object.defineProperty(navigator, "locks", {
+        configurable: true,
+        value: undefined,
+      });
+      storage.setItem(
+        STEWARD_TOKEN_KEY,
+        makeJwt({
+          sub: "fixture",
+          exp: Math.floor(Date.now() / 1000) + seconds,
+        }),
+      );
+      await act(async () => {
+        mount();
+      });
+      expect(calls).toHaveLength(0);
+      expect(storage.getItem(STEWARD_TOKEN_KEY)).not.toBeNull();
+    },
+  );
+  it.each(
+    ["steward-session", "steward-refresh"].flatMap((endpoint) =>
+      ["replacement", "pagehide"].map((end) => [endpoint, end]),
+    ),
+  )(
+    "does not publish an obsolete %s response after %s",
+    async (heldEndpoint, end) => {
+      const original = makeJwt({
+        sub: "old-account",
+        exp:
+          Math.floor(Date.now() / 1000) +
+          (heldEndpoint === "steward-refresh" ? -1 : 3600),
+      });
+      const replacement = makeJwt({
+        sub: "new-account",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+      storage.setItem(STEWARD_TOKEN_KEY, original);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let started = false;
+      let deletes = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (init?.method === "DELETE") {
+            deletes += 1;
+            return new Response(null, { status: 204 });
+          }
+          if (String(input).includes(heldEndpoint)) {
+            started = true;
+            await held;
+            if (heldEndpoint === "steward-refresh") {
+              return Response.json({ ok: true, token: replacement });
+            }
+            return Response.json({ code: "session_ended" }, { status: 401 });
+          }
+          return Response.json({ ok: true });
+        }),
+      );
+      try {
+        mount();
+        await waitFor(() => expect(started).toBe(true));
+        await act(async () => {
+          // Exercise the revalidation boundary while legacy callers are still
+          // being integrated: a changed canonical owner is never adopted.
+          if (end === "replacement")
+            storage.setItem(STEWARD_TOKEN_KEY, replacement);
+          else window.dispatchEvent(new Event("pagehide"));
+          release();
+        });
+        expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(
+          end === "replacement" ? replacement : original,
+        );
+        expect(deletes).toBe(0);
+      } finally {
+        release();
+      }
+    },
+  );
+
+  it("aborts held passive network work when its runtime unmounts", async () => {
+    storage.setItem(
+      STEWARD_TOKEN_KEY,
+      makeJwt({ sub: "u1", exp: Math.floor(Date.now() / 1000) + 3600 }),
+    );
+    let started = false;
+    let aborted = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        started = true;
+        return new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      }),
+    );
+    const view = mount();
+    await waitFor(() => expect(started).toBe(true));
+    view.unmount();
+    await waitFor(() => expect(aborted).toBe(true));
+  });
+
+  it.each(["steward-session", "steward-refresh"])(
+    "orders logout after an in-flight %s mutation without republishing authority afterward",
+    async (heldEndpoint) => {
+      const original = makeJwt({
+        sub: "ending-account",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+      const refreshed = makeJwt({
+        sub: "ending-account",
+        exp: Math.floor(Date.now() / 1000) + 7200,
+      });
+      storage.setItem(STEWARD_TOKEN_KEY, original);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let started = false;
+      let pendingMutation = false;
+      let overlappedDelete = false;
+      const transitions: string[] = [];
+      const listener = (event: Event) => {
+        transitions.push(
+          (event as CustomEvent<StewardSessionChangeDetail>).detail.state,
+        );
+      };
+      window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (init?.method === "DELETE") {
+            overlappedDelete ||= pendingMutation;
+            return new Response(null, { status: 204 });
+          }
+          if (url.includes(heldEndpoint)) {
+            started = true;
+            pendingMutation = true;
+            await held;
+            pendingMutation = false;
+            return Response.json({ ok: true, token: refreshed });
+          }
+          return Response.json({ ok: true });
+        }),
+      );
+      let logout: Promise<void> | undefined;
+      try {
+        mount();
+        if (heldEndpoint === "steward-refresh") {
+          act(() => window.dispatchEvent(new Event("steward-unauthorized")));
+        }
+        await waitFor(() => expect(started).toBe(true));
+        await act(async () => {
+          logout = clearStaleStewardSession();
+          // Allow a wrongly unlocked teardown to reach the HTTP boundary while
+          // the earlier response is deliberately held by this transport fixture.
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          release();
+          await logout;
+        });
+        expect(overlappedDelete).toBe(false);
+        expect(storage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+        expect(transitions.at(-1)).toBe("cleared");
+      } finally {
+        release();
+        await logout;
+        window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      }
+    },
+  );
+
   it("dedupes a direct-map explicit sync only at the identical endpoint", async () => {
     const token = makeJwt({
       sub: "u1",

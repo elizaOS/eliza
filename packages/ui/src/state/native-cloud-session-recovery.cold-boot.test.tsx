@@ -19,6 +19,7 @@ const clientMock = vi.hoisted(() => ({
   getCloudCompatAgents: vi.fn(),
   hasToken: vi.fn(() => true),
   getBaseUrl: vi.fn(() => "https://agent-123.elizacloud.ai"),
+  getAuthorityRevision: vi.fn(() => 0),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
 }));

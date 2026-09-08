@@ -3,12 +3,16 @@
 /** Exercises native credential migration and fail-closed storage behavior. */
 import {
   clearStoredStewardToken,
+  configureStoredStewardTokenScope,
+  readStoredStewardToken,
   replaceStoredStewardTokenIfCurrent,
+  STEWARD_PENDING_WRITE_KEY,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Captured once, before any test installs the storage-bridge proxy, so every
 // test can read/write "the raw disk" (bypassing whatever proxy state a prior
@@ -126,6 +130,15 @@ vi.mock("../surface-realm-channel", () => ({
 }));
 
 describe("native protected-storage bridge contract", () => {
+  let persistence: typeof import("../state/persistence");
+  beforeAll(async () => {
+    // Load the real shell graph during setup, not inside the five-second
+    // durable-deletion assertion. Cold transforms can consume that entire
+    // deadline under concurrent workspace builds; the operation keeps its
+    // original timeout and all before/after acknowledgement assertions.
+    persistence = await import("../state/persistence");
+  }, 30_000);
+
   beforeEach(() => {
     nativeStores.preferences.clear();
     nativeStores.secure.clear();
@@ -201,9 +214,329 @@ describe("native protected-storage bridge contract", () => {
       expect(nativeStores.secure.get("session.steward_token")).toBe(
         "durable-steward-token",
       );
+      // Canonical consumers see the verified native mirror even before the
+      // Web Storage proxy initializes; no plaintext copy is required.
+      expect(rawGetItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(readStoredStewardToken()).toBe("durable-steward-token");
       expect(transitions).toEqual(["present"]);
     } finally {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+  });
+
+  it.each(["set", "readback"])(
+    "retires a cancelled Steward write after the native %s settles",
+    async (stage) => {
+      const bridge = await import("./storage-bridge");
+      await clearStoredStewardToken();
+      nativeStores.operations.length = 0;
+      let release!: () => void;
+      let releaseReadback!: () => void;
+      nativeStores.secureSetWait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const readback = new Promise<void>((resolve) => {
+        releaseReadback = resolve;
+      });
+      const controller = new AbortController();
+      const transitions: string[] = [];
+      const listener = (event: Event) =>
+        transitions.push(
+          (event as CustomEvent<{ state: string }>).detail.state,
+        );
+      window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      const result = writeStoredStewardToken("cancelled-candidate", {
+        signal: controller.signal,
+      }).then(
+        () => "accepted",
+        (error: Error) => error.name,
+      );
+      try {
+        await vi.waitFor(() =>
+          expect(nativeStores.operations).toContain(
+            "set:start:session.steward_token",
+          ),
+        );
+        if (stage === "readback") {
+          const readsBeforeWrite = nativeStores.operations.filter(
+            (op) => op === "get:start:session.steward_token",
+          ).length;
+          nativeStores.secureGetWait = readback;
+          release();
+          await vi.waitFor(() =>
+            expect(
+              nativeStores.operations.filter(
+                (op) => op === "get:start:session.steward_token",
+              ),
+            ).toHaveLength(readsBeforeWrite + 1),
+          );
+          expect(nativeStores.secure.get("session.steward_token")).toBe(
+            "cancelled-candidate",
+          );
+        }
+        expect(readStoredStewardToken()).toBeNull();
+        controller.abort();
+        release();
+        releaseReadback();
+        expect(await result).toBe("StewardSessionAuthorityError");
+        expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+        expect(await bridge.getStorageValue(STEWARD_TOKEN_KEY)).toBeNull();
+        expect(readStoredStewardToken()).toBeNull();
+        expect(transitions).toEqual([]);
+      } finally {
+        release();
+        releaseReadback();
+        await result;
+        window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      }
+    },
+  );
+
+  it("preserves a queued newer native write while retiring the cancelled candidate", async () => {
+    const bridge = await import("./storage-bridge");
+    await clearStoredStewardToken();
+    nativeStores.operations.length = 0;
+    let release!: () => void;
+    nativeStores.secureSetWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const controller = new AbortController();
+    const result = writeStoredStewardToken("cancelled-candidate", {
+      signal: controller.signal,
+    }).then(
+      () => "accepted",
+      (error: Error) => error.name,
+    );
+    let newer: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() =>
+        expect(nativeStores.operations).toContain(
+          "set:start:session.steward_token",
+        ),
+      );
+      controller.abort();
+      newer = bridge.setStorageValue(STEWARD_TOKEN_KEY, "newer-owner");
+      release();
+      expect(await result).toBe("StewardSessionAuthorityError");
+      await newer;
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "newer-owner",
+      );
+      expect(readStoredStewardToken()).toBe("newer-owner");
+      expect(await bridge.getStorageValue(STEWARD_TOKEN_KEY)).toBe(
+        "newer-owner",
+      );
+    } finally {
+      release();
+      await result;
+      await newer;
+    }
+  });
+
+  it("restores the preceding native token when a replacement is cancelled", async () => {
+    await import("./storage-bridge");
+    await writeStoredStewardToken("previous-owner");
+    nativeStores.operations.length = 0;
+    let release!: () => void;
+    nativeStores.secureSetWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const controller = new AbortController();
+    const result = replaceStoredStewardTokenIfCurrent(
+      "previous-owner",
+      "cancelled-replacement",
+      { signal: controller.signal },
+    ).then(
+      () => "accepted",
+      (error: Error) => error.name,
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(nativeStores.operations).toContain(
+          "set:start:session.steward_token",
+        ),
+      );
+      controller.abort();
+      release();
+      expect(await result).toBe("StewardSessionAuthorityError");
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "previous-owner",
+      );
+      expect(readStoredStewardToken()).toBe("previous-owner");
+    } finally {
+      release();
+      await result;
+    }
+  });
+
+  it("keeps an unremoved cancelled candidate unavailable to direct native reads", async () => {
+    const bridge = await import("./storage-bridge");
+    await clearStoredStewardToken();
+    nativeStores.operations.length = 0;
+    let release!: () => void;
+    nativeStores.secureSetWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const controller = new AbortController();
+    const result = writeStoredStewardToken("unremoved-cancelled-candidate", {
+      signal: controller.signal,
+    }).then(
+      () => "accepted",
+      (error: Error) => error.name,
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(nativeStores.operations).toContain(
+          "set:start:session.steward_token",
+        ),
+      );
+      nativeStores.secureDeleteError = "denied";
+      controller.abort();
+      release();
+      expect(await result).not.toBe("accepted");
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "unremoved-cancelled-candidate",
+      );
+      expect(readStoredStewardToken()).toBeNull();
+      // An explicit re-read is a real hydration boundary, not just the old cache.
+      expect(await bridge.getStorageValue(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(readStoredStewardToken()).toBeNull();
+      expect(localStorage.getItem(STEWARD_PENDING_WRITE_KEY)).not.toBeNull();
+      // A separately authorized fresh write must replace, not adopt, the
+      // quarantined native credential even while old cleanup remains denied.
+      await writeStoredStewardToken("verified-newer-owner");
+      expect(readStoredStewardToken()).toBe("verified-newer-owner");
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "verified-newer-owner",
+      );
+      expect(localStorage.getItem(STEWARD_PENDING_WRITE_KEY)).toBeNull();
+    } finally {
+      release();
+      await result;
+      nativeStores.secureDeleteError = null;
+      await clearStoredStewardToken();
+    }
+  });
+
+  it("does not expose a candidate while failed journal cleanup is rolling back", async () => {
+    await import("./storage-bridge");
+    await clearStoredStewardToken();
+    nativeStores.operations.length = 0;
+    let release!: () => void;
+    nativeStores.secureDeleteWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = Storage.prototype.removeItem;
+    const removal = vi
+      .spyOn(Storage.prototype, "removeItem")
+      .mockImplementation(function (this: Storage, key) {
+        if (key === STEWARD_PENDING_WRITE_KEY)
+          throw new Error("Synthetic journal removal failure");
+        original.call(this, key);
+      });
+    const result = writeStoredStewardToken("uncommitted-candidate").then(
+      () => "accepted",
+      (error: Error) => error.name,
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(nativeStores.operations).toContain(
+          "delete:start:session.steward_token",
+        ),
+      );
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "uncommitted-candidate",
+      );
+      expect(readStoredStewardToken()).toBeNull();
+    } finally {
+      removal.mockRestore();
+      release();
+      expect(await result).not.toBe("accepted");
+    }
+    expect(readStoredStewardToken()).toBeNull();
+    expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+  });
+
+  it("reports an already committed native write as successful when cancellation follows publication", async () => {
+    await import("./storage-bridge");
+    await clearStoredStewardToken();
+    const controller = new AbortController();
+    const original = Storage.prototype.removeItem;
+    const removal = vi
+      .spyOn(Storage.prototype, "removeItem")
+      .mockImplementation(function (this: Storage, key) {
+        original.call(this, key);
+        if (key === STEWARD_PENDING_WRITE_KEY)
+          queueMicrotask(() => controller.abort());
+      });
+    try {
+      await expect(
+        writeStoredStewardToken("committed-owner", {
+          signal: controller.signal,
+        }),
+      ).resolves.toBeUndefined();
+      expect(controller.signal.aborted).toBe(true);
+      expect(readStoredStewardToken()).toBe("committed-owner");
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "committed-owner",
+      );
+      expect(localStorage.getItem(STEWARD_PENDING_WRITE_KEY)).toBeNull();
+    } finally {
+      removal.mockRestore();
+      await clearStoredStewardToken();
+    }
+  });
+
+  it("does not dispatch a native write when quarantine cannot be established", async () => {
+    await import("./storage-bridge");
+    await clearStoredStewardToken();
+    nativeStores.operations.length = 0;
+    const original = Storage.prototype.setItem;
+    const setter = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key, value) {
+        if (key === STEWARD_PENDING_WRITE_KEY)
+          throw new Error("Synthetic journal quota failure");
+        original.call(this, key, value);
+      });
+    try {
+      await expect(writeStoredStewardToken("not-dispatched")).rejects.toThrow();
+      expect(nativeStores.operations).not.toContain(
+        "set:start:session.steward_token",
+      );
+      expect(readStoredStewardToken()).toBeNull();
+    } finally {
+      setter.mockRestore();
+    }
+  });
+
+  it("rolls back the native token when its deployment scope cannot be published", async () => {
+    await import("./storage-bridge");
+    configureStoredStewardTokenScope("https://api.eliza.app");
+    await writeStoredStewardToken("production-owner");
+    configureStoredStewardTokenScope("https://api-staging.eliza.app");
+    const original = Storage.prototype.setItem;
+    const setter = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key, value) {
+        if (key === STEWARD_TOKEN_SCOPE_KEY && value === "eliza-cloud:staging")
+          throw new Error("Synthetic scope write failure");
+        original.call(this, key, value);
+      });
+    try {
+      await expect(
+        writeStoredStewardToken("staging-candidate"),
+      ).rejects.toThrow();
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "production-owner",
+      );
+      expect(localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY)).toBe(
+        "eliza-cloud:production",
+      );
+      expect(localStorage.getItem(STEWARD_PENDING_WRITE_KEY)).toBeNull();
+      expect(readStoredStewardToken()).toBeNull();
+    } finally {
+      setter.mockRestore();
     }
   });
 
@@ -280,6 +613,7 @@ describe("native protected-storage bridge contract", () => {
       await expect(staleRefresh).resolves.toBe(false);
       expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
       expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+      expect(readStoredStewardToken()).toBeNull();
       expect(transitions).toEqual(["cleared"]);
     } finally {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
@@ -618,7 +952,6 @@ describe("native protected-storage bridge contract", () => {
 
   it("does not finish active-server teardown before native deletion commits", async () => {
     const bridge = await import("./storage-bridge");
-    const persistence = await import("../state/persistence");
     // Production installs the native storage proxy before any auth/runtime
     // state is published. Model that boot boundary so synchronous persistence
     // readers observe the verified secure-store cache rather than raw disk.

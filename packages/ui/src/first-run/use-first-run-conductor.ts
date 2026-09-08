@@ -59,7 +59,9 @@
 
 import { logger } from "@elizaos/logger";
 import {
+  getStewardTabSessionAuthorityCoordinator,
   hasStewardAuthedCookie,
+  StewardSessionAuthorityError,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import * as React from "react";
@@ -98,6 +100,7 @@ import {
   createFirstRunTranscriptEpoch,
   observeFirstRunTranscriptEpoch,
 } from "../state/first-run-transcript-epoch";
+import { loadPersistedActiveServer } from "../state/persistence";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
@@ -544,6 +547,7 @@ export function useFirstRunConductor(): void {
   // popup/provision promise can never keep the busy latch or mutate the new
   // flow when it settles late.
   const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
+  const cloudPageHiddenRef = React.useRef(false);
   const pendingDedicatedAdoptionRef = React.useRef<{
     quote: DedicatedAdoptionConfirmationQuote;
     choiceText: string;
@@ -1170,6 +1174,7 @@ export function useFirstRunConductor(): void {
   const runCloudResume = React.useCallback(
     (resume: "cloud" | "hybrid") => {
       if (
+        cloudPageHiddenRef.current ||
         busyRef.current ||
         bindInFlightRef.current ||
         provisionedRef.current
@@ -1245,7 +1250,7 @@ export function useFirstRunConductor(): void {
       resumedForConnectionRef.current = false;
       return;
     }
-    if (resumedForConnectionRef.current) return;
+    if (cloudPageHiddenRef.current || resumedForConnectionRef.current) return;
     const resume = pendingCloudResumeRef.current;
     if (!resume) return;
     resumedForConnectionRef.current = true;
@@ -1731,11 +1736,15 @@ export function useFirstRunConductor(): void {
       pendingCloudResumeRef.current = "cloud";
       let tokenPoll: ReturnType<typeof setInterval> | null = null;
       let cancelled = false;
+      let pageHidden = false;
+      cloudPageHiddenRef.current = false;
+      let cookieRecoveryController: AbortController | null = null;
       const stopTokenPoll = () => {
         if (tokenPoll) clearInterval(tokenPoll);
         tokenPoll = null;
       };
       const resumeStoredToken = () => {
+        if (cancelled || pageHidden) return;
         if (provisionedRef.current) {
           stopTokenPoll();
           return;
@@ -1761,6 +1770,7 @@ export function useFirstRunConductor(): void {
       // THIS path only — a greeting was genuinely shown, so silently yanking
       // the conversation would read as broken.
       const seedSignInGreetingAndPoll = () => {
+        if (cancelled || pageHidden) return;
         const cloudApiBase =
           getBootConfig().cloudApiBase?.trim() || "https://eliza.app";
         void prepareDesktopCloudLoginSession(cloudApiBase, () =>
@@ -1771,7 +1781,7 @@ export function useFirstRunConductor(): void {
         startTokenPoll();
       };
       const onNativeResume = () => {
-        if (cancelled) return;
+        if (cancelled || pageHidden || cookieRecoveryController) return;
         startTokenPoll();
         resumeStoredToken();
       };
@@ -1781,6 +1791,152 @@ export function useFirstRunConductor(): void {
       };
       document.addEventListener(APP_RESUME_EVENT, onNativeResume);
       document.addEventListener("visibilitychange", onVisibilityChange);
+      const recoverCookieSession = async () => {
+        const controller = new AbortController();
+        cookieRecoveryController?.abort();
+        cookieRecoveryController = controller;
+        const selection = JSON.stringify(loadPersistedActiveServer());
+        const clientBase = client.getBaseUrl();
+        const clientRevision = client.getAuthorityRevision();
+        const cloudBase = getBootConfig().cloudApiBase;
+        let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
+        const isCurrent = () =>
+          !cancelled &&
+          !pageHidden &&
+          cookieRecoveryController === controller &&
+          !controller.signal.aborted &&
+          !busyRef.current &&
+          !bindInFlightRef.current &&
+          !provisionedRef.current &&
+          client.getBaseUrl() === clientBase &&
+          client.getAuthorityRevision() === clientRevision &&
+          getBootConfig().cloudApiBase === cloudBase &&
+          JSON.stringify(loadPersistedActiveServer()) === selection;
+        const validate = () => {
+          if (!isCurrent())
+            throw new StewardSessionAuthorityError(
+              "First-run recovery was superseded",
+              "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+            );
+        };
+        silentCloudEntryRef.current = true;
+        try {
+          const coordinator = getStewardTabSessionAuthorityCoordinator();
+          const expected = coordinator.readSnapshot();
+          const recovery = coordinator
+            .runExclusive({
+              kind: "refresh",
+              expectedToken: expected.token,
+              expectedGeneration: expected.generation,
+              expectedScope: expected.scope,
+              signal: controller.signal,
+              timeoutMs: FIRST_RUN_COOKIE_REFRESH_TIMEOUT_MS,
+              work: async (authority) => {
+                const validatePublication = () => {
+                  authority.revalidate();
+                  validate();
+                };
+                validatePublication();
+                const refreshed = await refreshCloudStewardSession({
+                  authority,
+                  timeoutMs: FIRST_RUN_COOKIE_REFRESH_TIMEOUT_MS,
+                });
+                validatePublication();
+                const token = refreshed?.token?.trim();
+                if (!token) return null;
+                await writeStoredStewardToken(token, {
+                  authority,
+                  beforePublish: validatePublication,
+                });
+                validatePublication();
+                return token;
+              },
+            })
+            .catch(() => {
+              // error-policy:J4 failed or superseded refresh never publishes a
+              // replacement session; the current entry can show its sign-in ask.
+              return null;
+            });
+          const token = await Promise.race([
+            recovery,
+            new Promise<null>((resolve) => {
+              refreshTimeout = setTimeout(
+                () => resolve(null),
+                FIRST_RUN_COOKIE_REFRESH_TIMEOUT_MS,
+              );
+            }),
+          ]);
+          if (!isCurrent()) return;
+          if (token) {
+            const published = { ...expected, token };
+            coordinator.assertSnapshot(published);
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+            validate();
+            coordinator.assertSnapshot(published);
+            greetAfterCloudAuthRef.current =
+              consumeCloudAuthFirstScreenGreeting();
+            runCloudResumeRef.current("cloud");
+            return;
+          }
+          silentCloudEntryRef.current = false;
+          seedSignInGreetingAndPoll();
+        } catch (error) {
+          // error-policy:J4 a failed publication/continuation remains an
+          // explicit sign-in recovery, never a completed onboarding session.
+          if (isCurrent()) {
+            logger.error(
+              { error },
+              "[first-run-conductor] could not recover Steward session",
+            );
+            silentCloudEntryRef.current = false;
+            seedSignInGreetingAndPoll();
+          }
+        } finally {
+          if (refreshTimeout) clearTimeout(refreshTimeout);
+          controller.abort();
+          if (cookieRecoveryController === controller) {
+            cookieRecoveryController = null;
+            // A changed target invalidates the attempt, not the user's ability
+            // to recover. Keep the current page actionable without reusing the
+            // departed target's token or silently starting another request.
+            if (
+              !cancelled &&
+              !pageHidden &&
+              !busyRef.current &&
+              !bindInFlightRef.current &&
+              !provisionedRef.current &&
+              silentCloudEntryRef.current
+            ) {
+              silentCloudEntryRef.current = false;
+              seedSignInGreetingAndPoll();
+            }
+          }
+        }
+      };
+      const onPagehide = () => {
+        pageHidden = true;
+        cloudPageHiddenRef.current = true;
+        cookieRecoveryController?.abort();
+        cookieRecoveryController = null;
+        stopTokenPoll();
+        activeCloudLoginCancelRef.current?.();
+      };
+      const onPageshow = () => {
+        if (!pageHidden || cancelled) return;
+        pageHidden = false;
+        cloudPageHiddenRef.current = false;
+        if (
+          busyRef.current ||
+          bindInFlightRef.current ||
+          provisionedRef.current
+        )
+          return;
+        if (hasUsableStoredStewardToken()) resumeStoredToken();
+        else if (hasStewardAuthedCookie()) void recoverCookieSession();
+        else seedSignInGreetingAndPoll();
+      };
+      window.addEventListener("pagehide", onPagehide);
+      window.addEventListener("pageshow", onPageshow);
       if (elizaCloudConnectedRef.current || hasUsableStoredStewardToken()) {
         greetAfterCloudAuthRef.current = consumeCloudAuthFirstScreenGreeting();
         silentCloudEntryRef.current = true;
@@ -1798,57 +1954,18 @@ export function useFirstRunConductor(): void {
         // 4s bound before the normal greeting appears. Web-only by
         // construction: native has no document cookie and carries the durable
         // token through the branch above.
-        silentCloudEntryRef.current = true;
-        void (async () => {
-          let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
-          // error-policy:J4 a failed/timed-out cookie refresh degrades to the
-          // normal sign-in greeting below; it never fabricates a session.
-          const refreshed = await Promise.race([
-            refreshCloudStewardSession().catch(() => null),
-            new Promise<null>((resolve) => {
-              refreshTimeout = setTimeout(
-                () => resolve(null),
-                FIRST_RUN_COOKIE_REFRESH_TIMEOUT_MS,
-              );
-            }),
-          ]);
-          if (refreshTimeout) clearTimeout(refreshTimeout);
-          if (cancelled) return;
-          if (refreshed?.token) {
-            try {
-              await writeStoredStewardToken(refreshed.token);
-            } catch (error) {
-              // error-policy:J4 a rejected protected-store write keeps the
-              // user visibly signed out instead of claiming a volatile login.
-              logger.error(
-                { error },
-                "[first-run-conductor] could not persist recovered Steward session",
-              );
-              silentCloudEntryRef.current = false;
-              seedSignInGreetingAndPoll();
-              return;
-            }
-            try {
-              window.dispatchEvent(new CustomEvent("steward-token-sync"));
-            } catch (error) {
-              void error;
-              // error-policy:J6 best-effort nudge — consumers re-read the
-              // stored token on their next tick regardless.
-            }
-            greetAfterCloudAuthRef.current =
-              consumeCloudAuthFirstScreenGreeting();
-            runCloudResumeRef.current("cloud");
-            return;
-          }
-          silentCloudEntryRef.current = false;
-          seedSignInGreetingAndPoll();
-        })();
+        void recoverCookieSession();
       } else {
         seedSignInGreetingAndPoll();
       }
       return () => {
         cancelled = true;
+        cloudPageHiddenRef.current = true;
+        cookieRecoveryController?.abort();
+        activeCloudLoginCancelRef.current?.();
         stopTokenPoll();
+        window.removeEventListener("pagehide", onPagehide);
+        window.removeEventListener("pageshow", onPageshow);
         document.removeEventListener(APP_RESUME_EVENT, onNativeResume);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         setFirstRunActionHandler(null);

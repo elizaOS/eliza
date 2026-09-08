@@ -8,7 +8,8 @@
 // call 401s on the dead token. Gating on the connection flag therefore
 // deadlocked expired-token users. These tests lock the presence-gated behavior.
 
-import { renderHook, waitFor } from "@testing-library/react";
+import { registerStewardTokenPersistence } from "@elizaos/shared/steward-session-client";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCloudState } from "./useCloudState";
 
@@ -89,6 +90,119 @@ describe("useCloudState — Steward refresh arms on stored-token presence", () =
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(valid);
+  });
+
+  it.each(["pagehide", "unmount"])(
+    "cancels the pending refresh request on %s",
+    async (departure) => {
+      const stale = makeJwt(-60);
+      localStorage.setItem(STEWARD_TOKEN_KEY, stale);
+      let release!: () => void;
+      let signal: AbortSignal | undefined;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      fetchMock.mockImplementation(async (_url, options: RequestInit) => {
+        signal = options.signal ?? undefined;
+        await held;
+        return { ok: true, json: async () => ({ token: makeJwt(3600) }) };
+      });
+      const mounted = renderHook(() => useCloudState(makeParams()));
+      try {
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        if (departure === "unmount") mounted.unmount();
+        else act(() => window.dispatchEvent(new Event("pagehide")));
+        expect(signal?.aborted).toBe(true);
+      } finally {
+        release();
+        await act(flush);
+        mounted.unmount();
+      }
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(stale);
+    },
+  );
+
+  it.each(["pagehide", "unmount"])(
+    "does not publish a refreshed token after %s during persistence",
+    async (departure) => {
+      const stale = makeJwt(-60);
+      localStorage.setItem(STEWARD_TOKEN_KEY, stale);
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let entered = false;
+      const publish = vi.fn();
+      const unregister = registerStewardTokenPersistence(
+        async (token, validate, scope) => {
+          entered = true;
+          await held;
+          validate();
+          scope.commit(() => {
+            localStorage.setItem(STEWARD_TOKEN_KEY, token);
+            publish();
+          });
+        },
+      );
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ token: makeJwt(3600) }),
+      });
+      const mounted = renderHook(() => useCloudState(makeParams()));
+      try {
+        await waitFor(() => expect(entered).toBe(true));
+        if (departure === "unmount") mounted.unmount();
+        else act(() => window.dispatchEvent(new Event("pagehide")));
+        release();
+        await act(flush);
+        expect(publish).not.toHaveBeenCalled();
+        expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(stale);
+      } finally {
+        release();
+        await act(flush);
+        mounted.unmount();
+        unregister();
+      }
+    },
+  );
+
+  it("starts a fresh attempt on pageshow without reviving the departed request", async () => {
+    const stale = makeJwt(-60);
+    const obsolete = makeJwt(1800);
+    const fresh = makeJwt(3600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, stale);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementationOnce(async () => {
+      await held;
+      return { ok: true, json: async () => ({ token: obsolete }) };
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ token: fresh }),
+    });
+    const mounted = renderHook(() => useCloudState(makeParams()));
+    try {
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      act(() => {
+        window.dispatchEvent(new Event("pagehide"));
+        window.dispatchEvent(new Event("pageshow"));
+      });
+      await act(flush);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(stale);
+      release();
+      await waitFor(() =>
+        expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(fresh),
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
+      await act(flush);
+      mounted.unmount();
+    }
   });
 
   it("does nothing when no Steward token is stored", async () => {

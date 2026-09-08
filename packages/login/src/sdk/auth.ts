@@ -72,6 +72,18 @@ const AUTH_PROXY_HEADERS = { [AUTH_PROXY_HEADER]: "1" } as const;
 const REFRESH_THRESHOLD_SECS = 120;
 const GUEST_EXPIRY_WARNING_DAYS = 30;
 
+interface PasskeyAttemptOptions {
+  /** Cancels pending HTTP; cannot undo a credential ceremony already dispatched. */
+  signal?: AbortSignal;
+  /** Host-owned intent check before every subsequent ceremony/request dispatch. */
+  assertActive?: () => void;
+}
+
+function assertPasskeyAttemptActive(options: PasskeyAttemptOptions): void {
+  options.signal?.throwIfAborted();
+  options.assertActive?.();
+}
+
 // ─── Minimal JWT decode (no verification — server already verified) ───────────
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
@@ -389,6 +401,16 @@ export class LoginAuth {
   private refreshPromise: Promise<LoginSession | null> | null = null;
   private rotationTail: Promise<void> = Promise.resolve();
   private sessionGeneration = 0;
+  private sessionLifetime = new AbortController();
+
+  private invalidateSessionGeneration(): void {
+    this.sessionGeneration += 1;
+    const previous = this.sessionLifetime;
+    this.sessionLifetime = new AbortController();
+    previous.abort(
+      new LoginApiError("Authentication was cancelled by sign-out", 0),
+    );
+  }
 
   constructor({
     baseUrl,
@@ -418,7 +440,7 @@ export class LoginAuth {
     if (this.authProxyUrl && isBrowser()) {
       window.addEventListener("storage", (event) => {
         if (event.key !== AUTH_LOGOUT_EPOCH_KEY) return;
-        this.sessionGeneration += 1;
+        this.invalidateSessionGeneration();
         this.clearLocalTokens();
         this.notifyListeners(null);
       });
@@ -676,7 +698,7 @@ export class LoginAuth {
   signOut(): void {
     // Invalidate any refresh already in flight so its eventual response cannot
     // resurrect a session after the user signed out.
-    this.sessionGeneration += 1;
+    this.invalidateSessionGeneration();
     this.publishLogoutEpoch();
     this.clearToken();
     this.notifyListeners(null);
@@ -748,7 +770,7 @@ export class LoginAuth {
   async revokeSession(): Promise<void> {
     const token = this.getToken();
     const refreshToken = this.getRefreshToken();
-    this.sessionGeneration += 1;
+    this.invalidateSessionGeneration();
     this.publishLogoutEpoch();
     await this.runSerializedRotation(async () =>
       this.revokeSessionOnce(token, refreshToken),
@@ -931,7 +953,7 @@ export class LoginAuth {
    */
   async signInWithPasskey(
     email: string,
-    _options: { fallbackToRegistration?: false } = {},
+    options: PasskeyAttemptOptions & { fallbackToRegistration?: false } = {},
   ): Promise<LoginAuthResult | LoginMfaRequiredResult> {
     if (!isBrowser()) {
       throw new LoginApiError(
@@ -940,6 +962,7 @@ export class LoginAuth {
       );
     }
 
+    assertPasskeyAttemptActive(options);
     // Dynamically import @simplewebauthn/browser — peer dep, may not be installed
     let browserLib: SimpleWebAuthnBrowser;
     try {
@@ -953,11 +976,13 @@ export class LoginAuth {
 
     // The endpoint is intentionally non-enumerating: an options response does
     // not prove that an account or credential exists.
+    assertPasskeyAttemptActive(options);
     const loginOptsRes = await authRequest<Record<string, unknown>>(
       this.baseUrl,
       "/auth/passkey/login/options",
       {
         method: "POST",
+        signal: options.signal,
         body: JSON.stringify({
           email,
           ...(this.tenantId ? { tenantId: this.tenantId } : {}),
@@ -965,9 +990,15 @@ export class LoginAuth {
       },
     );
 
+    assertPasskeyAttemptActive(options);
     if (!loginOptsRes.ok)
       throw new LoginApiError(loginOptsRes.error, loginOptsRes.status);
-    return this.completePasskeyLogin(email, loginOptsRes.data, browserLib);
+    return this.completePasskeyLogin(
+      email,
+      loginOptsRes.data,
+      browserLib,
+      options,
+    );
   }
 
   /**
@@ -988,11 +1019,12 @@ export class LoginAuth {
    */
   async addPasskey(
     email: string,
-    options: { emailGrant?: string } = {},
+    options: PasskeyAttemptOptions & { emailGrant?: string } = {},
   ): Promise<LoginAuthResult | LoginMfaRequiredResult> {
     if (!isBrowser()) {
       throw new LoginApiError("Passkeys require a browser environment.", 0);
     }
+    assertPasskeyAttemptActive(options);
     let browserLib: SimpleWebAuthnBrowser;
     try {
       browserLib = await import("@simplewebauthn/browser");
@@ -1002,13 +1034,15 @@ export class LoginAuth {
         0,
       );
     }
-    return this.completePasskeyRegister(email, browserLib, options.emailGrant);
+    assertPasskeyAttemptActive(options);
+    return this.completePasskeyRegister(email, browserLib, options);
   }
 
   private async completePasskeyLogin(
     email: string,
     options: unknown,
     lib: Pick<SimpleWebAuthnBrowser, "startAuthentication">,
+    attempt: PasskeyAttemptOptions,
   ): Promise<LoginAuthResult | LoginMfaRequiredResult> {
     const challengeId =
       options && typeof options === "object" && "challengeId" in options
@@ -1021,6 +1055,7 @@ export class LoginAuth {
       );
     }
 
+    assertPasskeyAttemptActive(attempt);
     let authResponse: unknown;
     try {
       // Server-provided options; types are validated by the WebAuthn browser library.
@@ -1036,11 +1071,13 @@ export class LoginAuth {
       );
     }
 
+    assertPasskeyAttemptActive(attempt);
     const verifyRes = await authRequest<LoginAuthExchangeResponse>(
       this.baseUrl,
       "/auth/passkey/login/verify",
       {
         method: "POST",
+        signal: attempt.signal,
         body: JSON.stringify({
           email,
           challengeId,
@@ -1050,6 +1087,7 @@ export class LoginAuth {
       },
     );
 
+    assertPasskeyAttemptActive(attempt);
     if (!verifyRes.ok) {
       throw new LoginApiError(verifyRes.error, verifyRes.status);
     }
@@ -1060,8 +1098,9 @@ export class LoginAuth {
   private async completePasskeyRegister(
     email: string,
     lib: Pick<SimpleWebAuthnBrowser, "startRegistration">,
-    emailGrant?: string,
+    attempt: PasskeyAttemptOptions & { emailGrant?: string },
   ): Promise<LoginAuthResult | LoginMfaRequiredResult> {
+    const { emailGrant } = attempt;
     // Fetch registration options. When an `emailGrant` is supplied (from
     // `verifyEmailOtp`), the login service accepts it in place of a session so a
     // brand-new, signed-out user can register their FIRST passkey — the
@@ -1075,11 +1114,13 @@ export class LoginAuth {
       );
     }
 
+    assertPasskeyAttemptActive(attempt);
     const regOptsRes = await authRequest<Record<string, unknown>>(
       this.baseUrl,
       "/auth/passkey/register/options",
       {
         method: "POST",
+        signal: attempt.signal,
         body: JSON.stringify({
           email,
           ...(emailGrant ? { emailGrant } : {}),
@@ -1089,6 +1130,7 @@ export class LoginAuth {
       sessionToken,
     );
 
+    assertPasskeyAttemptActive(attempt);
     if (!regOptsRes.ok) {
       throw new LoginApiError(
         regOptsRes.error,
@@ -1112,11 +1154,13 @@ export class LoginAuth {
       );
     }
 
+    assertPasskeyAttemptActive(attempt);
     const verifyRes = await authRequest<LoginAuthExchangeResponse>(
       this.baseUrl,
       "/auth/passkey/register/verify",
       {
         method: "POST",
+        signal: attempt.signal,
         body: JSON.stringify({
           email,
           response: regResponse,
@@ -1127,6 +1171,7 @@ export class LoginAuth {
       sessionToken,
     );
 
+    assertPasskeyAttemptActive(attempt);
     if (!verifyRes.ok) {
       throw new LoginApiError(verifyRes.error, verifyRes.status);
     }
@@ -1189,12 +1234,32 @@ export class LoginAuth {
   async verifyEmailCallback(
     token: string,
     email: string,
+    options: {
+      signal?: AbortSignal;
+      /** The host may serialize session publication under its captured authority. */
+      commitSession?: (
+        commit: () => Promise<LoginAuthResult | LoginMfaRequiredResult>,
+        candidate: LoginAuthExchangeResponse,
+        signal: AbortSignal,
+      ) => Promise<LoginAuthResult | LoginMfaRequiredResult>;
+    } = {},
   ): Promise<LoginAuthResult | LoginMfaRequiredResult> {
+    // Hosts must share this lifetime while establishing their canonical session,
+    // not just while publishing the SDK's final in-memory token.
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, this.sessionLifetime.signal])
+      : this.sessionLifetime.signal;
+    signal.throwIfAborted();
+    // Verification can settle after logout and a new login. Capture before the
+    // request, not when storeAndReturn begins securing the returned credentials.
+    const generation = this.sessionGeneration;
+    const logoutEpoch = this.authProxyUrl ? this.readLogoutEpoch() : null;
     const res = await authRequest<LoginAuthExchangeResponse>(
       this.baseUrl,
       "/auth/email/verify",
       {
         method: "POST",
+        signal,
         body: JSON.stringify({
           token,
           email,
@@ -1203,11 +1268,26 @@ export class LoginAuth {
       },
     );
 
+    signal.throwIfAborted();
     if (!res.ok) {
       throw new LoginApiError(res.error, res.status);
     }
 
-    return await this.storeExchangeResponse(res.data);
+    const commit = async () => {
+      signal.throwIfAborted();
+      if (
+        generation !== this.sessionGeneration ||
+        (this.authProxyUrl &&
+          logoutEpoch !== undefined &&
+          this.readLogoutEpoch() !== logoutEpoch)
+      ) {
+        throw new LoginApiError("Authentication was cancelled by sign-out", 0);
+      }
+      return this.storeExchangeResponse(res.data, signal);
+    };
+    return options.commitSession
+      ? options.commitSession(commit, res.data, signal)
+      : commit();
   }
 
   async verifyEmailSignInCode(
@@ -2682,13 +2762,17 @@ export class LoginAuth {
    * completed the whole sign-in is aborted rather than silently downgrading to
    * JS-readable token storage.
    */
-  private async depositRefreshToken(refreshToken: string): Promise<void> {
+  private async depositRefreshToken(
+    refreshToken: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const proxyUrl = this.authProxyUrl;
     if (!proxyUrl) return;
     let res: Awaited<ReturnType<typeof authRequest>>;
     try {
       res = await authRequest(proxyUrl, "/session", {
         method: "POST",
+        signal,
         headers: AUTH_PROXY_HEADERS,
         body: JSON.stringify({ refreshToken }),
       });
@@ -2708,7 +2792,9 @@ export class LoginAuth {
     refreshToken: string,
     user: LoginUser,
     expiresIn = 900,
+    signal?: AbortSignal,
   ): Promise<LoginAuthResult> {
+    signal?.throwIfAborted();
     if (!token) {
       throw new LoginApiError(
         "Auth response did not include a session token",
@@ -2722,7 +2808,8 @@ export class LoginAuth {
     if (refreshToken) {
       if (this.authProxyUrl) {
         // HttpOnly cookie custody — never written to JS-readable storage.
-        await this.runProxyMutation(async () => {
+        return this.runProxyMutation(async () => {
+          signal?.throwIfAborted();
           if (
             generation !== this.sessionGeneration ||
             (logoutEpoch !== undefined &&
@@ -2733,8 +2820,16 @@ export class LoginAuth {
               0,
             );
           }
-          await this.depositRefreshToken(refreshToken);
+          try {
+            await this.depositRefreshToken(refreshToken, signal);
+          } catch (error) {
+            // error-policy:J2 an aborted deposit may already have reached the
+            // proxy; retire it under the same mutation lock before rethrowing.
+            if (signal?.aborted) await this.deleteProxyCookieUnlocked();
+            throw error;
+          }
           if (
+            signal?.aborted ||
             generation !== this.sessionGeneration ||
             (logoutEpoch !== undefined &&
               this.readLogoutEpoch() !== logoutEpoch)
@@ -2743,11 +2838,18 @@ export class LoginAuth {
             // out. Remove it while still holding the origin mutation lock so
             // the stale authentication cannot resurrect the browser session.
             await this.deleteProxyCookieUnlocked();
+            signal?.throwIfAborted();
             throw new LoginApiError(
               "Authentication was cancelled by sign-out",
               0,
             );
           }
+          // The cookie and SDK session become committed under the same lock.
+          // A later cancellation cannot reject an already-completed custody
+          // decision or erase a newer login after the lock has been released.
+          this.storage.setItem(STORAGE_KEY, token);
+          this.notifyListeners(sessionFromToken(token, user));
+          return { token, refreshToken, expiresIn, user };
         });
       } else {
         this.storage.setItem(REFRESH_TOKEN_KEY, refreshToken);
@@ -2756,6 +2858,7 @@ export class LoginAuth {
     // Persist the access token only after the refresh token is safely in its
     // final custody location. In proxy mode a failed deposit must leave no
     // partially authenticated local session behind.
+    signal?.throwIfAborted();
     this.storage.setItem(STORAGE_KEY, token);
     const session = sessionFromToken(token, user);
     this.notifyListeners(session);
@@ -2764,7 +2867,9 @@ export class LoginAuth {
 
   private async storeExchangeResponse(
     data: LoginAuthExchangeResponse,
+    signal?: AbortSignal,
   ): Promise<LoginAuthResult | LoginMfaRequiredResult> {
+    signal?.throwIfAborted();
     if (data.mfaRequired) {
       if (!data.mfa) {
         throw new LoginApiError(
@@ -2784,6 +2889,7 @@ export class LoginAuth {
       data.refreshToken ?? "",
       data.user,
       data.expiresIn,
+      signal,
     );
   }
 

@@ -58,9 +58,11 @@ const mocks = vi.hoisted(() => ({
     submitFirstRun: vi.fn(async () => undefined),
     getFirstRunStatus: vi.fn(async () => ({ complete: false })),
     getBaseUrl: vi.fn(() => ""),
+    getAuthorityRevision: vi.fn(() => 0),
+    onAuthorityChange: vi.fn((_listener: () => void) => () => {}),
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
-    getRestAuthToken: vi.fn(() => null),
+    getRestAuthToken: vi.fn((): string | null => null),
     fetch: vi.fn(async () => {
       throw new Error("no network in test");
     }),
@@ -297,6 +299,14 @@ beforeEach(() => {
   // provider pick, so default it to the popup-blocked (null) signal.
   vi.spyOn(window, "open").mockReturnValue(null);
   mocks.client.listLocalAgentBackups.mockResolvedValue([]);
+  mocks.client.getBaseUrl.mockReturnValue("");
+  mocks.client.getRestAuthToken.mockReturnValue(null);
+  mocks.client.setBaseUrl.mockImplementation((base: string | null) => {
+    mocks.client.getBaseUrl.mockReturnValue(base ?? "");
+  });
+  mocks.client.setToken.mockImplementation((token: string | null) => {
+    mocks.client.getRestAuthToken.mockReturnValue(token);
+  });
   mocks.client.getCloudCompatAgents.mockResolvedValue({
     success: true,
     data: [],

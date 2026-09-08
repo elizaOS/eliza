@@ -22,6 +22,7 @@ import {
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
+import { setStorageValue } from "../bridge/storage-bridge";
 import {
   clearPendingCloudHandoff,
   loadPendingCloudHandoff,
@@ -48,12 +49,15 @@ import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "../state";
+import { addAgentProfileDurably } from "../state/agent-profiles";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
+import { isPersistedActiveServerAllowed } from "../state/persistence";
 import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
 import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
+import { createCloudContinuationAuthority } from "./cloud-continuation-authority";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
 import {
   buildFirstRunSubmitPlan,
@@ -797,63 +801,117 @@ export async function listOrAutoProvisionCloudAgent(
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
   ports.signal?.throwIfAborted();
-  syncIdentity(sourceDraft, ports);
-  ports.setRuntimeState(
-    "firstRunRuntimeTarget",
-    firstRunRuntimeTarget("cloud"),
-  );
-  ports.setRuntimeState("firstRunProvider", "elizacloud");
-  if (!getCloudAuthToken(client)) {
-    if (ports.allowInteractiveCloudLogin === false) {
+  let capturedAuthority = getCloudAuthToken(client)
+    ? createCloudContinuationAuthority(client, ports.signal)
+    : null;
+  try {
+    syncIdentity(sourceDraft, ports);
+    capturedAuthority?.revalidate();
+    ports.setRuntimeState(
+      "firstRunRuntimeTarget",
+      firstRunRuntimeTarget("cloud"),
+    );
+    ports.setRuntimeState("firstRunProvider", "elizacloud");
+    capturedAuthority?.revalidate();
+    if (!getCloudAuthToken(client)) {
+      if (ports.allowInteractiveCloudLogin === false) {
+        return { kind: "needs-cloud-login" };
+      }
+      // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
+      // it can seed the waiting turn and arm the bounded recovery deadline.
+      ports.onInteractiveLogin?.();
+      await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
+      ports.onInteractiveLoginComplete?.();
+      ports.signal?.throwIfAborted();
+    }
+    const authToken = getCloudAuthToken(client) ?? "";
+    if (!authToken) {
       return { kind: "needs-cloud-login" };
     }
-    // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
-    // it can seed the waiting turn and arm the bounded recovery deadline.
-    ports.onInteractiveLogin?.();
-    await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
-    ports.onInteractiveLoginComplete?.();
+    // The join flow persists durable local state; a deadline-abandoned attempt
+    // stops HERE (#19255) so it cannot race a newer attempt's join.
     ports.signal?.throwIfAborted();
+    const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
+    const authority =
+      capturedAuthority ??
+      createCloudContinuationAuthority(client, ports.signal);
+    capturedAuthority = authority;
+    authority.revalidate();
+    await authority.prepareProfiles();
+    let firstRunReady = false;
+    const selected = await runJoinFlow({
+      client: {
+        ensurePersonalDedicatedEliza: (options) =>
+          client.ensurePersonalDedicatedEliza(options),
+        setBaseUrl: (base) =>
+          authority.commitClient(() => client.setBaseUrl(base), { base }),
+        setToken: (token) =>
+          authority.commitClient(() => client.setToken(token), { token }),
+      },
+      effects: {
+        savePersistedActiveServer: async (server) => {
+          authority.revalidate();
+          const target = createPersistedActiveServer(server);
+          if (!isPersistedActiveServerAllowed(target))
+            throw new Error(
+              "First-run target is outside the build-pinned runtime",
+            );
+          await setStorageValue(
+            "elizaos:active-server",
+            JSON.stringify(target),
+            { revalidate: authority.revalidate },
+          );
+          authority.acceptServer(target);
+        },
+        // The outer finish owns profile durability and the final completion
+        // gate; join readiness alone must not make a partial native write final.
+        savePersistedFirstRunComplete: (complete) => {
+          firstRunReady = complete;
+        },
+      },
+      cloudApiBase,
+      authToken,
+      signal: authority.signal,
+      revalidate: authority.revalidate,
+      onProgress: (status, detail) => {
+        authority.revalidate();
+        ports.onStatus?.(detail ?? status, status);
+        authority.revalidate();
+      },
+      ...(ports.requestDedicatedAdoptionConfirmation
+        ? {
+            requestDedicatedAdoptionConfirmation:
+              ports.requestDedicatedAdoptionConfirmation,
+          }
+        : {}),
+    });
+    authority.revalidate();
+    const profile = await addAgentProfileDurably(
+      {
+        kind: "cloud",
+        label: selected.agentName,
+        cloudAgentId: selected.agentId,
+        cloudRuntimeAgentId: selected.activeAgentId,
+        cloudRuntime: selected.runtime,
+        apiBase: selected.apiBase,
+        accessToken: authToken,
+      },
+      authority.revalidate,
+    );
+    authority.acceptProfile(profile);
+    persistMobileRuntimeModeForServerTarget("elizacloud");
+    clearForceFreshFirstRun();
+    clearPersistedFirstRunState();
+    ports.onStatus?.(null);
+    authority.revalidate();
+    if (!firstRunReady) throw new Error("First-run join did not complete");
+    savePersistedFirstRunComplete(true);
+    authority.revalidate();
+    ports.completeFirstRun("chat");
+    return { kind: "done" };
+  } finally {
+    capturedAuthority?.dispose();
   }
-  const authToken = getCloudAuthToken(client) ?? "";
-  if (!authToken) {
-    return { kind: "needs-cloud-login" };
-  }
-  // The join flow persists durable local state; a deadline-abandoned attempt
-  // stops HERE (#19255) so it cannot race a newer attempt's join.
-  ports.signal?.throwIfAborted();
-  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
-  const selected = await runJoinFlow({
-    client,
-    effects: {
-      savePersistedActiveServer,
-      savePersistedFirstRunComplete,
-    },
-    cloudApiBase,
-    authToken,
-    signal: ports.signal,
-    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
-    ...(ports.requestDedicatedAdoptionConfirmation
-      ? {
-          requestDedicatedAdoptionConfirmation:
-            ports.requestDedicatedAdoptionConfirmation,
-        }
-      : {}),
-  });
-  addAgentProfile({
-    kind: "cloud",
-    label: selected.agentName,
-    cloudAgentId: selected.agentId,
-    cloudRuntimeAgentId: selected.activeAgentId,
-    cloudRuntime: selected.runtime,
-    apiBase: selected.apiBase,
-    accessToken: authToken,
-  });
-  persistMobileRuntimeModeForServerTarget("elizacloud");
-  clearForceFreshFirstRun();
-  clearPersistedFirstRunState();
-  ports.onStatus?.(null);
-  ports.completeFirstRun("chat");
-  return { kind: "done" };
 }
 
 // ── Router entry — validate + route by runtime ───────────────────────────────

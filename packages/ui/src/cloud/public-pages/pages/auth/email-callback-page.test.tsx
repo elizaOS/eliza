@@ -14,15 +14,10 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { LocalStewardAuthValue } from "../../../shell/StewardProviderShared";
 
 const callbackState = vi.hoisted(() => ({
-  verifyEmailCallback:
-    vi.fn<
-      (
-        token: string,
-        email: string,
-      ) => Promise<{ token: string; refreshToken?: string }>
-    >(),
+  verifyEmailCallback: vi.fn<LocalStewardAuthValue["verifyEmailCallback"]>(),
   resend: vi.fn(),
   publishComplete: vi.fn(),
   isAuthenticated: false,
@@ -48,7 +43,34 @@ vi.mock("../../../../components/primitives", async () => {
 // public route produces (#9881-class).
 vi.mock("../../../shell/StewardProvider", async () => {
   const { createContext } = await import("react");
+  const { getStewardTabSessionAuthorityCoordinator } = await import(
+    "@elizaos/shared/steward-session-client"
+  );
   const LocalStewardAuthContext = createContext<unknown>(null);
+  const verifyEmailCallback: LocalStewardAuthValue["verifyEmailCallback"] =
+    async (token, email, expected, signal, beforeCommit) => {
+      const result = await callbackState.verifyEmailCallback(
+        token,
+        email,
+        expected,
+        signal,
+        beforeCommit,
+      );
+      const coordinator = getStewardTabSessionAuthorityCoordinator();
+      const original = expected ?? coordinator.readSnapshot();
+      return coordinator.runExclusive({
+        kind: "callback-restore",
+        expectedToken: original.token,
+        expectedGeneration: original.generation,
+        expectedScope: original.scope,
+        signal,
+        work: async (authority) => {
+          await beforeCommit?.(result, authority);
+          authority.revalidate();
+          return result;
+        },
+      });
+    };
   return {
     LocalStewardAuthContext,
     StewardAuthProvider: ({ children }: { children: ReactNode }) => (
@@ -61,7 +83,7 @@ vi.mock("../../../shell/StewardProvider", async () => {
             session: null,
             signOut: () => {},
             getToken: () => "",
-            verifyEmailCallback: callbackState.verifyEmailCallback,
+            verifyEmailCallback,
           }}
         >
           {children}
@@ -76,9 +98,21 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
-vi.mock("../../lib/steward-session", () => ({
-  syncStewardSessionCookie: sessionSpies.sync,
-}));
+vi.mock("../../lib/steward-session", async () => {
+  const { writeStoredStewardToken } = await import(
+    "@elizaos/shared/steward-session-client"
+  );
+  return {
+    syncStewardSessionCookie: async (
+      ...args: Parameters<
+        typeof import("../../lib/steward-session").syncStewardSessionCookie
+      >
+    ) => {
+      await sessionSpies.sync(...args);
+      await writeStoredStewardToken(args[0], { authority: args[2]?.authority });
+    },
+  };
+});
 vi.mock("../../lib/steward-email-login", () => ({
   startStewardEmailLogin: callbackState.resend,
 }));
@@ -152,6 +186,9 @@ describe("EmailCallbackPage", () => {
       expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
         "url-secret-token",
         "url-person@example.com",
+        { generation: "0:none", scope: null, token: null },
+        expect.any(AbortSignal),
+        expect.any(Function),
       ),
     );
     const visibleParams = new URLSearchParams(window.location.search);
@@ -185,6 +222,9 @@ describe("EmailCallbackPage", () => {
       expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
         "tok",
         "a@b.co",
+        { generation: "0:none", scope: null, token: null },
+        expect.any(AbortSignal),
+        expect.any(Function),
       ),
     );
   });
@@ -223,6 +263,9 @@ describe("EmailCallbackPage", () => {
     expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
       "strict-token",
       "strict@example.com",
+      { generation: "0:none", scope: null, token: null },
+      expect.any(AbortSignal),
+      expect.any(Function),
     );
   });
 
@@ -338,6 +381,12 @@ describe("EmailCallbackPage", () => {
     expect(sessionSpies.sync).toHaveBeenCalledWith(
       "private-session-token",
       "private-refresh-token",
+      {
+        authority: expect.objectContaining({
+          signal: expect.any(AbortSignal),
+          revalidate: expect.any(Function),
+        }),
+      },
     );
     expect(sessionSpies.sync.mock.invocationCallOrder[0]).toBeLessThan(
       callbackState.publishComplete.mock.invocationCallOrder[0],
@@ -406,6 +455,9 @@ describe("EmailCallbackPage", () => {
     expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
       "replayed-token",
       "person@example.com",
+      { generation: "0:none", scope: null, token: null },
+      expect.any(AbortSignal),
+      expect.any(Function),
     );
     expect(sessionSpies.sync).not.toHaveBeenCalled();
     expect(callbackState.publishComplete).not.toHaveBeenCalled();

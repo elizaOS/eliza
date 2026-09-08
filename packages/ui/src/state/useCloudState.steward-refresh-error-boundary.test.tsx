@@ -55,7 +55,7 @@ function armStewardRefresh(): void {
 }
 
 describe("useCloudState — Steward refresh endpoint error boundary", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear();
     setBootConfig({
       branding: {},
@@ -66,14 +66,11 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
       token: "fresh",
     });
     clientCloudMocks.replaceStoredStewardTokenIfCurrent.mockReset();
+    const realSession = await vi.importActual<
+      typeof import("@elizaos/shared/steward-session-client")
+    >("@elizaos/shared/steward-session-client");
     clientCloudMocks.replaceStoredStewardTokenIfCurrent.mockImplementation(
-      async (expectedToken: string, replacementToken: string) => {
-        if (localStorage.getItem(STEWARD_TOKEN_KEY) !== expectedToken) {
-          return false;
-        }
-        localStorage.setItem(STEWARD_TOKEN_KEY, replacementToken);
-        return true;
-      },
+      realSession.replaceStoredStewardTokenIfCurrent,
     );
     clientCloudMocks.resolveDirectCloudAuthApiBase.mockReset();
     clientCloudMocks.resolveDirectCloudAuthApiBase.mockImplementation(
@@ -90,9 +87,11 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
     armStewardRefresh();
 
     await waitFor(() =>
-      expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith({
-        endpoint: "https://api.example.com/api/auth/steward-refresh",
-      }),
+      expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpoint: "https://api.example.com/api/auth/steward-refresh",
+        }),
+      ),
     );
   });
 
@@ -102,9 +101,11 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
     armStewardRefresh();
 
     await waitFor(() =>
-      expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith({
-        endpoint: undefined,
-      }),
+      expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpoint: undefined,
+        }),
+      ),
     );
   });
 
@@ -149,6 +150,7 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
   });
 
   it("does not restore a refreshed token after logout wins the race", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     let releaseRefresh: (value: { token: string }) => void = () => {};
     clientCloudMocks.refreshCloudStewardSession.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -164,13 +166,18 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
     releaseRefresh({ token: "stale-refreshed-token" });
 
     await waitFor(() =>
-      expect(
-        clientCloudMocks.replaceStoredStewardTokenIfCurrent,
-      ).toHaveBeenCalledWith(
-        "near-expiry-steward-jwt",
-        "stale-refreshed-token",
+      expect(warn).toHaveBeenCalledWith(
+        {
+          err: expect.objectContaining({
+            code: "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+          }),
+        },
+        "[useCloudState] steward session refresh failed",
       ),
     );
+    expect(
+      clientCloudMocks.replaceStoredStewardTokenIfCurrent,
+    ).not.toHaveBeenCalled();
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 });

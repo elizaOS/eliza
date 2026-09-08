@@ -29,24 +29,32 @@ const sessionSpies = vi.hoisted(() => ({
   sync: vi.fn(),
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  STEWARD_TOKEN_KEY: "steward_session_token",
-  registerStewardTokenPersistence: vi.fn(),
-  registerStewardTokenRemoval: vi.fn(),
-  hasStewardAuthedCookie: () => false,
-  readStoredStewardToken: () => sessionSpies.storedToken,
-  writeStoredStewardToken: (token: string) => {
-    sessionSpies.storedToken = token;
-    sessionSpies.write(token);
-  },
-  StewardSessionError: class StewardSessionError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@elizaos/shared/steward-session-client")
+    >();
+  return {
+    ...actual,
+    hasStewardAuthedCookie: () => false,
+    readStoredStewardToken: () => sessionSpies.storedToken,
+    writeStoredStewardToken: async (
+      token: string,
+      options?: import("@elizaos/shared/steward-session-client").StewardTokenMutationOptions,
+    ) => {
+      await actual.writeStoredStewardToken(token, options);
+      sessionSpies.storedToken = token;
+      sessionSpies.write(token);
+    },
+    StewardSessionError: class StewardSessionError extends Error {
+      status: number;
+      constructor(message: string, status: number) {
+        super(message);
+        this.status = status;
+      }
+    },
+  };
+});
 
 vi.mock("@elizaos/login", () => ({
   LoginAuth: class {
@@ -119,6 +127,7 @@ describe("StewardLoginSection — legacy #token= hash link (W5-013)", () => {
   beforeEach(() => {
     hashLinkState.stripHash.mockReturnValue(true);
     sessionSpies.storedToken = null;
+    window.localStorage.clear();
     sessionSpies.sync.mockResolvedValue(undefined);
     window.localStorage.clear();
   });

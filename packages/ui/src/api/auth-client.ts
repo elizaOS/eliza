@@ -12,8 +12,11 @@ import type { RoleGateRole } from "@elizaos/core";
 import { getElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
+  getStewardTabSessionAuthorityCoordinator,
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  StewardSessionAuthorityError,
+  StewardTokenPersistenceError,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
@@ -21,6 +24,7 @@ import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
 import { isNative } from "../platform";
+import { loadPersistedActiveServer } from "../state/persistence";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 import { rememberCsrfTokenForUrl } from "./auth/csrf-cookie";
@@ -398,73 +402,139 @@ export async function authMe(): Promise<AuthMeResult> {
   // shell "authenticated", allowing protected pollers and chat sends to loop
   // on 401 while stale agent content remained visible.
   if (isManagedCloudSharedAgentBase(authBase())) {
-    let token = readStoredStewardToken()?.trim();
-    const hasNativeOwnerApiKey =
-      (isNative || isElectrobunRuntime()) &&
-      Boolean(
-        normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
-          normalizeCloudApiKeyToken(getElizaApiToken()),
-      );
-    if (!token && !hasNativeOwnerApiKey && hasStewardAuthedCookie()) {
-      try {
-        const refreshed = await refreshCloudStewardSession({
-          throwOnTransientHttpFailure: true,
-        });
-        token = refreshed?.token?.trim() || undefined;
-        if (token) await writeStoredStewardToken(token);
-      } catch {
-        // error-policy:J1 a transport, throttle, or server outage is not
-        // authoritative logout; preserve the binding and expose unavailability.
-        // "cloud_unavailable" (not "server_error") keeps this outcome out of
-        // the local-agent boot 503 retry budget so one transient refresh never
-        // becomes an amplified POST storm against a throttling endpoint.
-        return { ok: false, status: 503, reason: "cloud_unavailable" };
-      }
-    }
-    const secondsRemaining = token ? cloudTokenSecsRemaining(token) : null;
-    if (
-      token &&
-      secondsRemaining !== null &&
-      secondsRemaining <= 0 &&
-      !hasNativeOwnerApiKey
-    ) {
-      try {
-        const refreshed = await refreshCloudStewardSession();
-        token = refreshed?.token?.trim() || undefined;
-        if (token) await writeStoredStewardToken(token);
-      } catch {
-        // error-policy:J1 this auth boundary translates a failed terminal
-        // refresh into the same explicit signed-out state as a rejected one.
-        token = undefined;
-      }
-      if (!token) {
-        await clearStoredStewardToken();
-        clearSharedCloudAccountBinding();
-      }
-    }
-    if (!token && !hasNativeOwnerApiKey) {
-      clearSharedCloudAccountBinding();
-      return {
-        ok: false,
-        status: 401,
-        reason: "remote_auth_required",
-        access: {
-          mode: "remote",
-          passwordConfigured: false,
-          ownerConfigured: true,
+    const lifetime = new AbortController();
+    const cancel = () => lifetime.abort();
+    window.addEventListener("pagehide", cancel);
+    try {
+      const coordinator = getStewardTabSessionAuthorityCoordinator();
+      const expected = coordinator.readSnapshot();
+      let selection = JSON.stringify(loadPersistedActiveServer());
+      let base = authBase();
+      return await coordinator.runExclusive<AuthMeResult>({
+        kind: "refresh",
+        expectedToken: expected.token,
+        expectedGeneration: expected.generation,
+        expectedScope: expected.scope,
+        signal: lifetime.signal,
+        timeoutMs: 30_000,
+        work: async (authority) => {
+          const validate = () => {
+            authority.revalidate();
+            if (
+              authBase() !== base ||
+              JSON.stringify(loadPersistedActiveServer()) !== selection
+            )
+              throw new StewardSessionAuthorityError(
+                "Auth recovery target was replaced",
+                "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+              );
+          };
+          const clearBinding = () => {
+            validate();
+            clearSharedCloudAccountBinding();
+            selection = JSON.stringify(loadPersistedActiveServer());
+            base = authBase();
+          };
+          validate();
+          let token = readStoredStewardToken()?.trim();
+          const hasNativeOwnerApiKey =
+            (isNative || isElectrobunRuntime()) &&
+            Boolean(
+              normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
+                normalizeCloudApiKeyToken(getElizaApiToken()),
+            );
+          if (!token && !hasNativeOwnerApiKey && hasStewardAuthedCookie()) {
+            try {
+              const refreshed = await refreshCloudStewardSession({
+                throwOnTransientHttpFailure: true,
+                authority,
+              });
+              validate();
+              token = refreshed?.token?.trim() || undefined;
+              if (token)
+                await writeStoredStewardToken(token, {
+                  authority,
+                  beforePublish: validate,
+                });
+              validate();
+            } catch {
+              // error-policy:J1 a transport, throttle, or server outage is not
+              // authoritative logout; preserve the binding and expose unavailability.
+              // "cloud_unavailable" (not "server_error") keeps this outcome out of
+              // the local-agent boot 503 retry budget so one transient refresh never
+              // becomes an amplified POST storm against a throttling endpoint.
+              return { ok: false, status: 503, reason: "cloud_unavailable" };
+            }
+          }
+          const secondsRemaining = token
+            ? cloudTokenSecsRemaining(token)
+            : null;
+          if (
+            token &&
+            secondsRemaining !== null &&
+            secondsRemaining <= 0 &&
+            !hasNativeOwnerApiKey
+          ) {
+            try {
+              const refreshed = await refreshCloudStewardSession({ authority });
+              validate();
+              token = refreshed?.token?.trim() || undefined;
+              if (token)
+                await writeStoredStewardToken(token, {
+                  authority,
+                  beforePublish: validate,
+                });
+              validate();
+            } catch (error) {
+              // error-policy:J1 this auth boundary translates a failed terminal
+              // refresh into signed-out state only while the original session owns
+              // the recovery. A cancelled or failed write is not authoritative logout.
+              validate();
+              if (error instanceof StewardTokenPersistenceError) throw error;
+              token = undefined;
+            }
+            if (!token) {
+              validate();
+              await clearStoredStewardToken({ authority });
+              clearBinding();
+            }
+          }
+          if (!token && !hasNativeOwnerApiKey) {
+            clearBinding();
+            return {
+              ok: false,
+              status: 401,
+              reason: "remote_auth_required",
+              access: {
+                mode: "remote",
+                passwordConfigured: false,
+                ownerConfigured: true,
+              },
+            };
+          }
+          return {
+            ok: true,
+            identity: {
+              id: "cloud",
+              displayName: "Eliza Cloud",
+              kind: "machine",
+            },
+            session: { id: "cloud", kind: "machine", expiresAt: null },
+            access: {
+              mode: "session",
+              passwordConfigured: true,
+              ownerConfigured: true,
+            },
+          };
         },
-      };
+      });
+    } catch {
+      // error-policy:J1 stale/cancelled recovery is unavailable, not evidence
+      // that the current account or agent binding should be removed.
+      return { ok: false, status: 503, reason: "cloud_unavailable" };
+    } finally {
+      window.removeEventListener("pagehide", cancel);
     }
-    return {
-      ok: true,
-      identity: { id: "cloud", displayName: "Eliza Cloud", kind: "machine" },
-      session: { id: "cloud", kind: "machine", expiresAt: null },
-      access: {
-        mode: "session",
-        passwordConfigured: true,
-        ownerConfigured: true,
-      },
-    };
   }
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet — we catch and

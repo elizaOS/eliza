@@ -31,8 +31,13 @@
  */
 
 import { logger } from "@elizaos/logger";
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  STEWARD_SESSION_CHANGE_EVENT,
+  StewardSessionAuthorityError,
+} from "@elizaos/shared/steward-session-client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 import {
   cloudTokenSecsRemaining,
@@ -161,23 +166,29 @@ function NativeStewardAuthProvider({
 }: {
   children: ReactNode;
 }): React.JSX.Element {
-  const [token, setToken] = useState<string | null>(() =>
-    readStoredStewardToken(),
-  );
+  const [session, setSession] = useState(() => ({
+    token: readStoredStewardToken(),
+  }));
 
   useEffect(() => {
-    const sync = () => setToken(readStoredStewardToken());
+    // A page can return after expiry without any change to the stored token.
+    // Recompute validity without remounting its router or live forms.
+    const sync = () => setSession({ token: readStoredStewardToken() });
     window.addEventListener("storage", sync);
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, sync);
+    window.addEventListener("pageshow", sync);
     window.addEventListener("steward-token-sync", sync);
     window.addEventListener("steward-unauthorized", sync);
     return () => {
       window.removeEventListener("storage", sync);
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, sync);
+      window.removeEventListener("pageshow", sync);
       window.removeEventListener("steward-token-sync", sync);
       window.removeEventListener("steward-unauthorized", sync);
     };
   }, []);
 
-  const value = useMemo(() => buildStewardAuthValue(token), [token]);
+  const value = buildStewardAuthValue(session.token);
 
   return (
     <LocalStewardAuthContext.Provider value={value}>
@@ -265,50 +276,114 @@ function ApplicationsRoutes(): React.JSX.Element {
  * mount it lazily (`registerAppShellPage({ id: "cloud-apps", … })`).
  */
 export default function NativeAppsStudio(): React.JSX.Element {
-  const [booted, setBooted] = useState(false);
+  const [bootRevision, setBootRevision] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
-    const boot = async () => {
-      const token = readStoredStewardToken()?.trim() ?? null;
-      if (shouldRefreshBeforeRender(token)) {
-        const refreshed = await Promise.race([
-          // error-policy:J4 a failed pre-render refresh keeps the stored
-          // token; expiry surfaces through the studio's own auth error path.
-          refreshCloudStewardSession({
-            endpoint: resolveNativeStewardRefreshEndpoint(),
-          }).catch(() => null),
-          new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), PRE_RENDER_REFRESH_TIMEOUT_MS),
-          ),
-        ]);
-        if (!cancelled && refreshed?.token) {
-          await writeStoredStewardToken(refreshed.token);
-          // Let the auth context + any storage listeners pick up the fresh JWT.
-          try {
-            window.dispatchEvent(new CustomEvent("steward-token-sync"));
-          } catch {
-            // best-effort
-          }
-        }
-      }
-      if (!cancelled) setBooted(true);
+    let disposed = false;
+    let hidden = false;
+    let active: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cancel = () => {
+      active?.abort();
+      clearTimeout(timer);
     };
-    void boot().catch((error) => {
-      // error-policy:J4 the studio boots into its ordinary signed-out/error
-      // state when protected token rotation cannot be persisted durably.
-      logger.error(
-        { error },
-        "[NativeAppsStudio] could not persist refreshed Steward session",
-      );
-      if (!cancelled) setBooted(true);
-    });
+    const boot = () => {
+      cancel();
+      const lifetime = new AbortController();
+      active = lifetime;
+      // Only the initial mount waits behind the fallback. A page-return
+      // refresh must preserve the live router, detail tab and unsaved inputs.
+      let finished = false;
+      const finish = () => {
+        if (!disposed && !hidden && active === lifetime && !finished) {
+          finished = true;
+          // Re-render the local auth provider even if refresh failed without
+          // changing the token: it may have expired while the request waited.
+          setBootRevision((revision) => revision + 1);
+        }
+      };
+      // The visible deadline does not release the session hold of an
+      // unabortable native request/write; late work settles under cancellation.
+      const deadline = setTimeout(() => {
+        lifetime.abort();
+        finish();
+      }, PRE_RENDER_REFRESH_TIMEOUT_MS);
+      timer = deadline;
+      const refresh = async () => {
+        const token = readStoredStewardToken()?.trim() ?? null;
+        if (!shouldRefreshBeforeRender(token)) return;
+        const coordinator = getStewardTabSessionAuthorityCoordinator();
+        const expected = coordinator.readSnapshot();
+        const cloudBase = getBootConfig().cloudApiBase;
+        const endpoint = resolveNativeStewardRefreshEndpoint();
+        await coordinator.runExclusive({
+          kind: "refresh",
+          signal: lifetime.signal,
+          expectedToken: expected.token,
+          expectedGeneration: expected.generation,
+          expectedScope: expected.scope,
+          timeoutMs: PRE_RENDER_REFRESH_TIMEOUT_MS,
+          work: async (authority) => {
+            const validate = () => {
+              authority.revalidate();
+              if (getBootConfig().cloudApiBase !== cloudBase)
+                throw new StewardSessionAuthorityError(
+                  "The Applications Cloud destination changed",
+                  "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+                );
+            };
+            validate();
+            const refreshed = await refreshCloudStewardSession({
+              endpoint,
+              authority,
+            });
+            validate();
+            if (!refreshed?.token) return;
+            await writeStoredStewardToken(refreshed.token, {
+              authority,
+              beforePublish: validate,
+            });
+            validate();
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          },
+        });
+      };
+      void refresh()
+        .catch((error) => {
+          // error-policy:J4 retain the prior durable session on failed refresh;
+          // expiry is rendered by the studio's existing signed-out/error gate.
+          if (!lifetime.signal.aborted)
+            logger.warn(
+              { error },
+              "[NativeAppsStudio] session refresh unavailable",
+            );
+        })
+        .finally(() => {
+          clearTimeout(deadline);
+          finish();
+        });
+    };
+    const hide = () => {
+      hidden = true;
+      cancel();
+    };
+    const show = () => {
+      if (!hidden || disposed) return;
+      hidden = false;
+      boot();
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    boot();
     return () => {
-      cancelled = true;
+      disposed = true;
+      cancel();
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
     };
   }, []);
 
-  if (!booted) {
+  if (bootRevision === 0) {
     return (
       <StudioSurface>
         <StudioBootFallback />

@@ -14,8 +14,11 @@ import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
 import {
   registerStewardTokenPersistence,
+  registerStewardTokenReader,
   registerStewardTokenRemoval,
+  STEWARD_PENDING_WRITE_KEY,
   STEWARD_TOKEN_KEY,
+  type StewardTokenScopePublication,
 } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
@@ -120,6 +123,50 @@ const PROTECTED_STORAGE_KIND = new Map<string, DesktopSecureStoreKind>([
 const protectedStorageCache = new Map<string, string>();
 const protectedStorageMutationVersion = new Map<string, number>();
 const protectedStorageMutationTail = new Map<string, Promise<void>>();
+// Contains only an operation identifier, never a credential. A surviving marker
+// makes an interrupted native write unavailable on the next renderer startup.
+let activeStewardWrite: string | null = null;
+const activeGuardedWrites = new Map<string, string>();
+
+/** Non-secret interruption marker for guarded runtime/profile persistence. */
+function protectedPendingKey(key: string): string {
+  return `eliza:protected-storage-pending:${key}`;
+}
+
+function pendingProtectedWrite(key: string): string | null {
+  return window.localStorage.getItem(protectedPendingKey(key));
+}
+
+function clearPendingProtectedWrite(
+  key: string,
+  expected: string | null,
+): void {
+  if (expected === null || pendingProtectedWrite(key) !== expected) return;
+  runAsPrivilegedShell(() =>
+    window.localStorage.removeItem(protectedPendingKey(key)),
+  );
+  if (pendingProtectedWrite(key) === expected)
+    throw new Error("Protected write quarantine could not be cleared");
+}
+
+function pendingStewardWrite(): string | null {
+  return window.localStorage.getItem(STEWARD_PENDING_WRITE_KEY);
+}
+
+function clearPendingStewardWrite(expected: string | null): void {
+  if (expected === null || pendingStewardWrite() !== expected) return;
+  runAsPrivilegedShell(() =>
+    window.localStorage.removeItem(STEWARD_PENDING_WRITE_KEY),
+  );
+  if (pendingStewardWrite() === expected)
+    throw new Error("Steward write quarantine could not be cleared");
+}
+
+function readProtectedToken(): string | null {
+  const pending = pendingStewardWrite();
+  if (pending !== null && pending !== activeStewardWrite) return null;
+  return protectedStorageCache.get(STEWARD_TOKEN_KEY) ?? null;
+}
 
 function markProtectedStorageMutation(key: string): number {
   const version = (protectedStorageMutationVersion.get(key) ?? 0) + 1;
@@ -153,15 +200,24 @@ function serializedProtectedStoreSet(
   value: string,
 ): Promise<boolean> {
   return serializeProtectedStorageMutation(key, async () => {
+    const pending = key === STEWARD_TOKEN_KEY ? pendingStewardWrite() : null;
+    const guardedPending = pendingProtectedWrite(key);
     if (!(await protectedStoreSet(key, value))) return false;
-    return (await protectedStoreGet(key)) === value;
+    if ((await protectedStoreGet(key)) !== value) return false;
+    if (key === STEWARD_TOKEN_KEY) clearPendingStewardWrite(pending);
+    clearPendingProtectedWrite(key, guardedPending);
+    return true;
   });
 }
 
 function serializedProtectedStoreDelete(key: string): Promise<void> {
-  return serializeProtectedStorageMutation(key, () =>
-    protectedStoreDelete(key),
-  );
+  return serializeProtectedStorageMutation(key, async () => {
+    const pending = key === STEWARD_TOKEN_KEY ? pendingStewardWrite() : null;
+    const guardedPending = pendingProtectedWrite(key);
+    await protectedStoreDelete(key);
+    if (key === STEWARD_TOKEN_KEY) clearPendingStewardWrite(pending);
+    clearPendingProtectedWrite(key, guardedPending);
+  });
 }
 
 function isProtectedStorageHost(): boolean {
@@ -415,39 +471,53 @@ export async function initializeStorageBridge(): Promise<void> {
   if (isProtectedStorageHost()) {
     for (const key of PROTECTED_STORAGE_KIND.keys()) {
       try {
-        const protectedValue = await protectedStoreGet(key);
-        if (protectedValue !== null) {
-          protectedStorageCache.set(key, protectedValue);
+        await serializeProtectedStorageMutation(key, async () => {
+          const version = protectedStorageMutationVersion.get(key);
+          if (
+            (key === STEWARD_TOKEN_KEY && pendingStewardWrite() !== null) ||
+            pendingProtectedWrite(key) !== null
+          ) {
+            // A previous renderer did not acknowledge this credential. Neither
+            // native hydration nor legacy migration may promote it to authority.
+            protectedStorageCache.delete(key);
+            return;
+          }
+          const protectedValue = await protectedStoreGet(key);
+          if (protectedValue !== null) {
+            if (protectedStorageMutationVersion.get(key) === version)
+              protectedStorageCache.set(key, protectedValue);
+            originalRemoveItem(key);
+            if (isNativePlatform()) {
+              const { Preferences } = await loadPreferences();
+              await Preferences.remove({ key });
+            }
+            return;
+          }
+
+          const preferenceValue = isNativePlatform()
+            ? await readPreferenceWithTimeout(key)
+            : null;
+          const legacyValue = preferenceValue ?? originalGetItem(key);
+          if (legacyValue === null) return;
+
+          const stored = await protectedStoreSet(key, legacyValue);
+          const verified = stored ? await protectedStoreGet(key) : null;
+          if (verified !== legacyValue) {
+            protectedStoreResponded = false;
+            logger.error(
+              { key },
+              "[StorageBridge] protected-storage migration did not verify",
+            );
+            return;
+          }
+          if (protectedStorageMutationVersion.get(key) === version)
+            protectedStorageCache.set(key, legacyValue);
           originalRemoveItem(key);
           if (isNativePlatform()) {
             const { Preferences } = await loadPreferences();
             await Preferences.remove({ key });
           }
-          continue;
-        }
-
-        const preferenceValue = isNativePlatform()
-          ? await readPreferenceWithTimeout(key)
-          : null;
-        const legacyValue = preferenceValue ?? originalGetItem(key);
-        if (legacyValue === null) continue;
-
-        protectedStorageCache.set(key, legacyValue);
-        const stored = await protectedStoreSet(key, legacyValue);
-        const verified = stored ? await protectedStoreGet(key) : null;
-        if (verified !== legacyValue) {
-          protectedStoreResponded = false;
-          logger.error(
-            { key },
-            "[StorageBridge] protected-storage migration did not verify",
-          );
-          continue;
-        }
-        originalRemoveItem(key);
-        if (isNativePlatform()) {
-          const { Preferences } = await loadPreferences();
-          await Preferences.remove({ key });
-        }
+        });
       } catch (err) {
         protectedStoreResponded = false;
         logger.error(
@@ -556,6 +626,10 @@ function setupStorageProxy(): void {
   // Override getItem
   const secureGetItem = (key: string): string | null => {
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+      const pending = pendingProtectedWrite(key);
+      if (pending !== null && activeGuardedWrites.get(key) !== pending)
+        return null;
+      if (key === STEWARD_TOKEN_KEY) return readProtectedToken();
       return protectedStorageCache.get(key) ?? null;
     }
     // For synced keys, prefer the cache (which was loaded from Preferences)
@@ -674,9 +748,20 @@ function setupStorageProxy(): void {
  */
 export async function getStorageValue(key: string): Promise<string | null> {
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
-    const value = await protectedStoreGet(key);
-    if (value !== null) protectedStorageCache.set(key, value);
-    return value ?? protectedStorageCache.get(key) ?? null;
+    return serializeProtectedStorageMutation(key, async () => {
+      if (
+        (key === STEWARD_TOKEN_KEY && pendingStewardWrite() !== null) ||
+        pendingProtectedWrite(key) !== null
+      )
+        return null;
+      const version = protectedStorageMutationVersion.get(key);
+      const value = await protectedStoreGet(key);
+      if (protectedStorageMutationVersion.get(key) === version) {
+        if (value === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, value);
+      }
+      return value;
+    });
   }
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     const { Preferences } = await loadPreferences();
@@ -692,9 +777,72 @@ export async function getStorageValue(key: string): Promise<string | null> {
 export async function setStorageValue(
   key: string,
   value: string,
+  options: { revalidate?: () => void } = {},
 ): Promise<void> {
+  options.revalidate?.();
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
     const mutationVersion = markProtectedStorageMutation(key);
+    if (options.revalidate) {
+      const revalidate = options.revalidate;
+      await serializeProtectedStorageMutation(key, async () => {
+        const validate = () => {
+          revalidate();
+          if (protectedStorageMutationVersion.get(key) !== mutationVersion)
+            throw new Error("Protected storage write was superseded");
+        };
+        validate();
+        const previous =
+          pendingProtectedWrite(key) === null
+            ? await protectedStoreGet(key)
+            : null;
+        validate();
+        // A surviving marker made this old cache unavailable. Starting a new
+        // writer may expose only that unavailable state, not resurrect it.
+        if (pendingProtectedWrite(key) !== null)
+          protectedStorageCache.delete(key);
+        const writeId = crypto.randomUUID();
+        runAsPrivilegedShell(() =>
+          window.localStorage.setItem(protectedPendingKey(key), writeId),
+        );
+        if (pendingProtectedWrite(key) !== writeId)
+          throw new Error("Protected write quarantine did not round-trip");
+        activeGuardedWrites.set(key, writeId);
+        try {
+          if (!(await protectedStoreSet(key, value)))
+            throw new Error(`Protected storage rejected write for ${key}`);
+          validate();
+          if ((await protectedStoreGet(key)) !== value)
+            throw new Error("Protected storage write did not round-trip");
+          validate();
+          clearPendingProtectedWrite(key, writeId);
+          protectedStorageCache.set(key, value);
+        } catch (error) {
+          // error-policy:J2 native transport may finish after cancellation.
+          // Compensate within this key's existing queue before newer writers
+          // proceed; never replace their already-published renderer cache.
+          activeGuardedWrites.delete(key);
+          if (previous === null) await protectedStoreDelete(key);
+          else if (!(await protectedStoreSet(key, previous)))
+            throw new Error("Protected storage rollback was rejected", {
+              cause: error,
+            });
+          if ((await protectedStoreGet(key)) !== previous)
+            throw new Error("Protected storage rollback did not round-trip", {
+              cause: error,
+            });
+          if (protectedStorageMutationVersion.get(key) === mutationVersion) {
+            if (previous === null) protectedStorageCache.delete(key);
+            else protectedStorageCache.set(key, previous);
+          }
+          clearPendingProtectedWrite(key, writeId);
+          throw error;
+        } finally {
+          if (activeGuardedWrites.get(key) === writeId)
+            activeGuardedWrites.delete(key);
+        }
+      });
+      return;
+    }
     if (!(await serializedProtectedStoreSet(key, value))) {
       throw new Error(`Protected storage rejected write for ${key}`);
     }
@@ -748,7 +896,100 @@ export function isStorageBridgeInitialized(): boolean {
   return initialized;
 }
 
-registerStewardTokenRemoval(() => removeStorageValue(STEWARD_TOKEN_KEY));
-registerStewardTokenPersistence((token) =>
-  setStorageValue(STEWARD_TOKEN_KEY, token),
+/** Keep native rollback in the same queue as the write it compensates. */
+async function persistStewardToken(
+  token: string,
+  revalidate: () => void,
+  scope: StewardTokenScopePublication,
+): Promise<void> {
+  if (!isProtectedStorageHost()) {
+    revalidate();
+    const previous = window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    try {
+      scope.commit(() =>
+        runAsPrivilegedShell(() => {
+          window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+          if (window.localStorage.getItem(STEWARD_TOKEN_KEY) !== token)
+            throw new Error("Browser Steward token did not round-trip");
+        }),
+      );
+    } catch (error) {
+      // error-policy:J2 preserve the complete browser token/scope pair on failure.
+      runAsPrivilegedShell(() => {
+        if (previous === null)
+          window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+        else window.localStorage.setItem(STEWARD_TOKEN_KEY, previous);
+      });
+      scope.rollback();
+      throw error;
+    }
+    return;
+  }
+  const key = STEWARD_TOKEN_KEY;
+  const version = markProtectedStorageMutation(key);
+  await serializeProtectedStorageMutation(key, async () => {
+    revalidate();
+    const previous =
+      pendingStewardWrite() === null ? await protectedStoreGet(key) : null;
+    revalidate();
+    if (pendingStewardWrite() !== null) protectedStorageCache.delete(key);
+    const writeId = crypto.randomUUID();
+    runAsPrivilegedShell(() =>
+      window.localStorage.setItem(STEWARD_PENDING_WRITE_KEY, writeId),
+    );
+    if (pendingStewardWrite() !== writeId)
+      throw new Error("Steward write quarantine did not round-trip");
+    activeStewardWrite = writeId;
+    try {
+      if (!(await protectedStoreSet(key, token))) {
+        throw new Error("Protected storage rejected Steward token write");
+      }
+      revalidate();
+      if ((await protectedStoreGet(key)) !== token) {
+        throw new Error("Protected Steward token did not round-trip");
+      }
+      revalidate();
+      if (protectedStorageMutationVersion.get(key) !== version)
+        throw new Error("Protected Steward write was superseded");
+      scope.commit(() => {
+        clearPendingStewardWrite(writeId);
+        protectedStorageCache.set(key, token);
+      });
+    } catch (error) {
+      // error-policy:J2 a native write may have happened despite rejection or
+      // abandonment. Restore its predecessor before any queued writer proceeds.
+      // No reader may use the active-writer bypass during asynchronous rollback.
+      activeStewardWrite = null;
+      if ((await protectedStoreGet(key)) !== previous) {
+        if (previous === null) await protectedStoreDelete(key);
+        else if (!(await protectedStoreSet(key, previous))) {
+          throw new Error("Protected Steward rollback was rejected", {
+            cause: error,
+          });
+        }
+        if ((await protectedStoreGet(key)) !== previous) {
+          throw new Error("Protected Steward rollback did not round-trip", {
+            cause: error,
+          });
+        }
+      }
+      scope.rollback();
+      if (protectedStorageMutationVersion.get(key) === version) {
+        if (previous === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, previous);
+      }
+      clearPendingStewardWrite(writeId);
+      throw error;
+    } finally {
+      if (activeStewardWrite === writeId) activeStewardWrite = null;
+    }
+  });
+}
+
+registerStewardTokenReader(() =>
+  isProtectedStorageHost()
+    ? readProtectedToken()
+    : window.localStorage.getItem(STEWARD_TOKEN_KEY),
 );
+registerStewardTokenRemoval(() => removeStorageValue(STEWARD_TOKEN_KEY));
+registerStewardTokenPersistence(persistStewardToken);

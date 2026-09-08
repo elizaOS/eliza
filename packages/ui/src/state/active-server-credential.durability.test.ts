@@ -76,6 +76,7 @@ describe("persistActiveServerCredential native durability", () => {
     expect(mocks.setStorageValue).toHaveBeenCalledWith(
       "elizaos:active-server",
       JSON.stringify(authenticatedServer),
+      undefined,
     );
     expect(completed).toBe(false);
 

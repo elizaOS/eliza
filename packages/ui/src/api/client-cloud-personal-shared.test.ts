@@ -5,6 +5,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createCloudContinuationAuthority } from "../first-run/cloud-continuation-authority";
 
 const { capacitorHttpRequestMock, capacitorState } = vi.hoisted(() => ({
   capacitorHttpRequestMock: vi.fn(),
@@ -343,6 +344,84 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
+
+  it.each(["session", "client"])(
+    "does not dispatch activation after %s changes during the quote request",
+    async (change) => {
+      localStorage.clear();
+      localStorage.setItem("steward_session_token", "original-account-token");
+      const client = new ElizaClient();
+      const authority = createCloudContinuationAuthority(client);
+      let release!: () => void;
+      let quoteEntered!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise<void>((resolve) => {
+        quoteEntered = resolve;
+      });
+      const requests: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          requests.push(`${init?.method ?? "GET"} ${url}`);
+          if (url.endsWith("/api/v1/eliza/personal"))
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                identity: {
+                  id: "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b",
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
+              },
+            });
+          if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+            quoteEntered();
+            await held;
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                quoteId: "a".repeat(64),
+                canActivate: true,
+                activation: { state: "available" },
+              },
+            });
+          }
+          throw new Error(`Unexpected request ${url}`);
+        }),
+      );
+      const result = client.ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "original-account-token",
+        signal: authority.signal,
+        revalidate: authority.revalidate,
+      });
+      // Observe immediately: an authority event can abort fetch before release.
+      const rejection = result.catch((error: unknown) => error);
+      try {
+        await entered;
+        if (change === "session")
+          localStorage.setItem(
+            "steward_session_token",
+            "replacement-account-token",
+          );
+        else client.setToken("replacement-client-token");
+        release();
+        expect(await rejection).toBeInstanceOf(Error);
+        expect(requests.some((request) => request.startsWith("POST "))).toBe(
+          false,
+        );
+        expect(loadPersistedActiveServer()).toBeNull();
+      } finally {
+        release();
+        await rejection;
+        authority.dispose();
+        localStorage.clear();
+      }
+    },
+  );
 
   it("creates one fresh Dedicated target without entering adoption and completes cutover", async () => {
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
@@ -3020,8 +3099,8 @@ describe("verifyDirectCloudStewardSession", () => {
         cloudApiBase: "https://api-staging.eliza.app",
         stewardToken,
       }),
-    ).resolves.toMatchObject({
-      status: { connected: false, reason: "auth-rejected" },
+    ).rejects.toMatchObject({
+      code: "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
     });
     expect(localStorage.getItem("steward_session_token")).toBe(
       "rotated-steward-token",
