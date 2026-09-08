@@ -87,6 +87,10 @@ export function ViewBackButton({
  * section, they do not nest two.
  */
 export function ViewHeader({
+  title,
+  onBack,
+  backLabel,
+  showBack = true,
   right,
   className,
 }: {
@@ -103,19 +107,46 @@ export function ViewHeader({
   right?: ReactNode;
   className?: string;
 }) {
-  // Views no longer repeat a page title and launcher/back button above their
-  // content. Keep real page actions (Add, filters, etc.) available without an
-  // empty header row when a view has no actions.
-  if (!right) return null;
+  // Title is centered over the FULL header width, not within a grid track, so
+  // it stays optically centered regardless of how wide the back button or the
+  // trailing actions are (#13451: view title is centered in the header). The
+  // controls float at the edges of a `relative` row and the `<h1>` is a
+  // non-responsive `absolute inset-x-0` centered layer. It uses a single,
+  // static `absolute` (unlike the responsive position variants that
+  // historically did not survive the app's Tailwind build). The title reserves
+  // symmetric side room (`px-12`, wider than the icon back button) and
+  // truncates, so a long title never slides under the edge controls; the flex
+  // controls sit above it (`z-10`, pointer-events on) and stay clickable while
+  // the title layer is `pointer-events-none`.
+  //
+  // Nested navigation (a Settings section returning to its hub at a compact
+  // viewport, #30916) relies on this back control: the sub-view passes
+  // `onBack`/`backLabel` but no trailing `right` actions, so the header must
+  // still render its leading `ViewBackButton`. `showBack={false}` opts a view
+  // with no meaningful "back" out of the control entirely. Section bodies keep
+  // their headings visually removed (the redesign's intentional removal of
+  // repeated page headings); this single header title is the canonical one.
   return (
-    <div
-      data-testid="view-actions"
+    <header
+      data-testid="view-header"
       className={cn(
-        "flex shrink-0 items-center justify-end gap-2 px-3 py-2 sm:px-4",
+        "relative flex min-h-14 shrink-0 items-center justify-between gap-1 px-3 py-2.5 sm:gap-2 sm:px-4",
         className,
       )}
     >
-      {right}
-    </div>
+      {showBack ? (
+        <ViewBackButton onBack={onBack} label={backLabel} />
+      ) : (
+        <span aria-hidden />
+      )}
+      <h1 className="pointer-events-none absolute inset-x-0 mx-auto max-w-[calc(100%-6rem)] truncate px-12 text-center text-lg font-semibold tracking-tight text-txt-strong">
+        {title}
+      </h1>
+      {right ? (
+        <div className="relative z-10">{right}</div>
+      ) : (
+        <span aria-hidden />
+      )}
+    </header>
   );
 }

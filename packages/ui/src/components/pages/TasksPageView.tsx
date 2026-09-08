@@ -24,7 +24,6 @@ import { dispatchChatClose } from "../../events";
 import {
   FramedPage,
   FramedPageBody,
-  FramedPageHeader,
   FramedPageNavigation,
 } from "../../layouts/framed-page";
 import { getWindowNavigationPath } from "../../navigation";
@@ -173,8 +172,10 @@ export function TasksPageView() {
   );
   return (
     <ShellViewAgentSurface viewId="tasks">
+      {/* The shell renders the single "Projects" `ViewHeader` (App.tsx builtin
+         tab header); this view owns only its segmented control + body so the
+         two do not stack a duplicate title/back row ("one header per view"). */}
       <FramedPage gutterOwner="framed-page" data-testid="tasks-view">
-        <FramedPageHeader title="Projects" />
         <FramedPageNavigation className="flex items-center justify-between gap-2 pt-4 pb-2">
           {segmentControl}
           {segment === "apps" ? (

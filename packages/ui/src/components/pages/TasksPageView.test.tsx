@@ -4,8 +4,9 @@
 // Structural tests for the consolidated Projects surface (#13565 views-redesign
 // epic, #17031 My Apps consolidation): the Projects nav tab hosts the
 // coding-agent tasks panel AND the app inventory behind one segmented control
-// under the shared, uniform `ViewHeader`. We assert (a) the shell `ViewHeader`
-// renders with the centered "Projects" title and its icon-only back button,
+// under the shell's shared `ViewHeader`. We assert (a) this view renders only
+// its own segmented control and no redundant title/launcher-back row (the shell
+// owns the single "Projects" header, so the view must not stack a second one),
 // (b) the tasks panel is mounted in `fullPage` mode so it suppresses its own
 // internal title row, (c) the Apps segment renders the reused app-management
 // surface plus the cloud-gated Cloud Applications studio row, and (d) retired
