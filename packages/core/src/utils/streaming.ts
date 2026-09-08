@@ -1079,11 +1079,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	}
 
 	private appendVisibleAndEmit(field: string, value: string): void {
-		const next = `${this.fieldContents.get(field) ?? ""}${value}`;
-		this.fieldContents.set(field, next);
 		const previous = this.emittedContent.get(field) ?? "";
-		let chunk = next.slice(previous.length);
+		// `fieldContents` holds the well-formed emitted prefix followed by at most
+		// one raw high surrogate held back from the previous emission (see below).
+		// Appending `value` lets a held lead unit rejoin its trailing low half.
+		const raw = `${this.fieldContents.get(field) ?? ""}${value}`;
+		let chunk = raw.slice(previous.length);
 		if (!chunk) {
+			this.fieldContents.set(field, raw);
 			return;
 		}
 		// Never split a surrogate pair across chunks. When the tail of this chunk
@@ -1092,16 +1095,32 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		// time, or as literal code units split across a `push()` boundary), hold it
 		// back so the trailing low surrogate joins it on the next emission. Both the
 		// escaped and literal paths funnel through here, so buffering once fixes
-		// both. `emittedContent` therefore stays well-formed and is the running
-		// join of emitted chunks; the held code unit is flushed at end-of-stream.
+		// both. The held unit is kept raw in `fieldContents` and flushed at
+		// end-of-stream if its low half never arrives.
+		let pending = "";
 		if (isHighSurrogate(chunk.charCodeAt(chunk.length - 1))) {
+			pending = chunk.slice(-1);
 			chunk = chunk.slice(0, -1);
-			if (!chunk) {
-				return;
-			}
+		}
+		// Holding back only the final high surrogate leaves interior unpaired
+		// surrogates in the releasable prefix — an interior lone high not followed
+		// by a low (`A\ud83dB`) or an isolated low (`A\ude00B`). Replace those with
+		// U+FFFD so every emitted chunk, and the accumulated value handed to
+		// `onChunk`, is well-formed UTF-16. The replacement is 1:1 by code unit, so
+		// the length-based emission cursor (`previous.length`) stays valid.
+		chunk = toWellFormedUnicode(chunk);
+		if (!chunk) {
+			// Nothing releasable yet; keep the raw pending surrogate stored so it can
+			// pair on the next push or be flushed at end-of-stream.
+			this.fieldContents.set(field, previous + pending);
+			return;
 		}
 		const emitted = previous + chunk;
 		this.emittedContent.set(field, emitted);
+		// Stored content mirrors the well-formed emitted value plus the still-raw
+		// pending high surrogate, so validated field content never carries an
+		// interior lone surrogate.
+		this.fieldContents.set(field, emitted + pending);
 		this.config.onChunk(chunk, field, emitted, this.streamRevision);
 		this.emitEvent({
 			eventType: "chunk",

@@ -542,6 +542,72 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		expect(chunks.join("")).toBe("Hi \ufffd");
 	});
 
+	// Regression for the P2 review finding: withholding only a *trailing* high
+	// surrogate leaves interior unpaired surrogates in the releasable prefix. An
+	// interior lone high followed by ASCII (`A\ud83dB`) previously shipped as a
+	// malformed `\ud83dB` chunk. Every chunk and the accumulated callback value
+	// must be well-formed, with the lone unit replaced by U+FFFD.
+	it("replaces an interior lone high surrogate followed by more text", () => {
+		const chunks: string[] = [];
+		const accumulated: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk, _field, acc) => {
+				chunks.push(chunk);
+				accumulated.push(acc);
+			},
+		});
+
+		// A single JSON escape for a lone high surrogate immediately followed by an
+		// ASCII `B`. The `B` releases the prefix, so the high surrogate can never
+		// pair and must be sanitized rather than emitted raw.
+		extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"A\\ud83dB","facts":[]}',
+		);
+		extractor.flush();
+
+		for (const c of chunks) {
+			expect(c.isWellFormed()).toBe(true);
+		}
+		for (const a of accumulated) {
+			expect(a.isWellFormed()).toBe(true);
+		}
+		expect(chunks.join("")).toBe("A\ufffdB");
+		expect(accumulated[accumulated.length - 1]).toBe("A\ufffdB");
+	});
+
+	// Regression for the P2 review finding: an isolated *low* surrogate is never
+	// held back (only high surrogates are), so on `develop` it shipped raw and
+	// malformed. It must be replaced by U+FFFD in both the chunk and the
+	// accumulated value.
+	it("replaces an isolated low surrogate", () => {
+		const chunks: string[] = [];
+		const accumulated: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk, _field, acc) => {
+				chunks.push(chunk);
+				accumulated.push(acc);
+			},
+		});
+
+		extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"A\\ude00B","facts":[]}',
+		);
+		extractor.flush();
+
+		for (const c of chunks) {
+			expect(c.isWellFormed()).toBe(true);
+		}
+		for (const a of accumulated) {
+			expect(a.isWellFormed()).toBe(true);
+		}
+		expect(chunks.join("")).toBe("A\ufffdB");
+		expect(accumulated[accumulated.length - 1]).toBe("A\ufffdB");
+	});
+
 	it("keeps ASCII/BMP text byte-identical (no surrogate handling regression)", () => {
 		const chunks: string[] = [];
 		const extractor = new ResponseSkeletonStreamExtractor({
