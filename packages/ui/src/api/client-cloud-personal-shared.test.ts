@@ -351,7 +351,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       localStorage.clear();
       localStorage.setItem("steward_session_token", "original-account-token");
       const client = new ElizaClient();
-      const authority = createCloudContinuationAuthority(client);
+      const authority = await createCloudContinuationAuthority(client);
       let release!: () => void;
       let quoteEntered!: () => void;
       const held = new Promise<void>((resolve) => {

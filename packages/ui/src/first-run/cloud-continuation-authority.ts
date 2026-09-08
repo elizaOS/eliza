@@ -6,6 +6,7 @@ import {
   StewardSessionAuthorityError,
 } from "@elizaos/shared/steward-session-client";
 import type { ElizaClient } from "../api/client-base";
+import { captureStorageMutationAuthority } from "../bridge/storage-bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
   getActiveProfile,
@@ -14,8 +15,14 @@ import {
 import { loadPersistedActiveServer } from "../state/persistence";
 
 /** Capture after authentication, before the first account/agent request. */
-export function createCloudContinuationAuthority(
-  client: ElizaClient,
+export async function createCloudContinuationAuthority(
+  client: Pick<
+    ElizaClient,
+    | "getBaseUrl"
+    | "getAuthorityRevision"
+    | "getRestAuthToken"
+    | "onAuthorityChange"
+  >,
   parentSignal?: AbortSignal,
 ) {
   const coordinator = getStewardTabSessionAuthorityCoordinator();
@@ -72,11 +79,39 @@ export function createCloudContinuationAuthority(
   window.addEventListener("steward-token-sync", onChange);
   window.addEventListener("storage", onChange);
 
+  const dispose = () => {
+    parentSignal?.removeEventListener("abort", abortFromParent);
+    unsubscribe();
+    window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, onChange);
+    window.removeEventListener("steward-token-sync", onChange);
+    window.removeEventListener("storage", onChange);
+  };
+  let nativeAuthority: Awaited<
+    ReturnType<typeof captureStorageMutationAuthority>
+  >;
+  try {
+    nativeAuthority = await captureStorageMutationAuthority(revalidate);
+    revalidate();
+  } catch (error) {
+    // error-policy:J2 release subscriptions when initial native capture fails.
+    dispose();
+    throw error;
+  }
+
   return {
     signal,
     revalidate,
+    storageOptions: { revalidate, nativeAuthority },
+    async assertNative() {
+      revalidate();
+      await nativeAuthority?.assertCurrent();
+      revalidate();
+    },
     async prepareProfiles() {
-      profile = await prepareAgentProfileRegistryDurably(revalidate);
+      profile = await prepareAgentProfileRegistryDurably(
+        revalidate,
+        nativeAuthority,
+      );
       revalidate();
     },
     /** Client setters emit synchronously; only this owned write may advance its captured revision. */
@@ -129,12 +164,6 @@ export function createCloudContinuationAuthority(
       profile = window.localStorage.getItem("elizaos:agent-profiles");
       revalidate();
     },
-    dispose() {
-      parentSignal?.removeEventListener("abort", abortFromParent);
-      unsubscribe();
-      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, onChange);
-      window.removeEventListener("steward-token-sync", onChange);
-      window.removeEventListener("storage", onChange);
-    },
+    dispose,
   };
 }

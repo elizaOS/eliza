@@ -805,16 +805,16 @@ export async function listOrAutoProvisionCloudAgent(
 ): Promise<FirstRunFinishOutcome> {
   ports.signal?.throwIfAborted();
   let capturedAuthority = getCloudAuthToken(client)
-    ? createCloudContinuationAuthority(client, ports.signal)
+    ? await createCloudContinuationAuthority(client, ports.signal)
     : null;
   try {
     if (ports.revertLocalRuntimeBeforeCloud) {
       const preparation =
         capturedAuthority ??
-        createCloudContinuationAuthority(client, ports.signal);
+        (await createCloudContinuationAuthority(client, ports.signal));
       try {
         await revertLocalRuntimeCommitmentBeforeCloud({
-          revalidate: preparation.revalidate,
+          ...preparation.storageOptions,
           acceptClearedServer: () => preparation.acceptServer(null),
         });
         preparation.revalidate();
@@ -851,10 +851,11 @@ export async function listOrAutoProvisionCloudAgent(
     const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
     const authority =
       capturedAuthority ??
-      createCloudContinuationAuthority(client, ports.signal);
+      (await createCloudContinuationAuthority(client, ports.signal));
     capturedAuthority = authority;
     authority.revalidate();
     await authority.prepareProfiles();
+    await authority.assertNative();
     let firstRunReady = false;
     const selected = await runJoinFlow({
       client: {
@@ -876,7 +877,7 @@ export async function listOrAutoProvisionCloudAgent(
           await setStorageValue(
             "elizaos:active-server",
             JSON.stringify(target),
-            { revalidate: authority.revalidate },
+            authority.storageOptions,
           );
           authority.acceptServer(target);
         },
@@ -914,8 +915,10 @@ export async function listOrAutoProvisionCloudAgent(
         accessToken: authToken,
       },
       authority.revalidate,
+      authority.storageOptions.nativeAuthority,
     );
     authority.acceptProfile(profile);
+    await authority.assertNative();
     persistMobileRuntimeModeForServerTarget("elizacloud");
     clearForceFreshFirstRun();
     clearPersistedFirstRunState();

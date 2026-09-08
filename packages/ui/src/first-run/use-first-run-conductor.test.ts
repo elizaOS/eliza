@@ -1125,7 +1125,8 @@ describe("useFirstRunConductor", () => {
   it("keeps native Settings recovery retryable until the window opens, then returns the overlay to chat", async () => {
     windowWithElectrobun.__electrobunWindowId = 1;
     // Native credentials come from the secure bridge or paired client, never
-    // the plaintext browser fixture. This test owns Settings recovery only.
+    // the plaintext browser fixture. With no native RPC this must fail before
+    // account lookup, while still exposing the same retryable Settings escape.
     mocks.client.getRestAuthToken.mockReturnValue("cloud-token");
     localStorage.setItem(
       "elizaos:agent-profiles",
@@ -1134,9 +1135,6 @@ describe("useFirstRunConductor", () => {
         activeProfileId: null,
         profiles: [],
       }),
-    );
-    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
-      new Error("Couldn't reach Eliza Cloud"),
     );
     const spies = seedAppStore();
     const { transcript, turn, unmount } = renderConductor();
@@ -1150,7 +1148,16 @@ describe("useFirstRunConductor", () => {
     mocks.openDesktopSettingsWindow.mockRejectedValueOnce(
       new Error("Window unavailable"),
     );
-    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledOnce();
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(
+      transcript.current.some(
+        (message) =>
+          message.id.startsWith("first-run:error:") &&
+          message.text.includes(
+            "Desktop credential transaction did not acknowledge",
+          ),
+      ),
+    ).toBe(true);
     tryHandleFirstRunAction("__first_run__:error:settings");
     await waitFor(() => {
       expect(
