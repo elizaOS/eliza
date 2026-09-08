@@ -7,7 +7,7 @@
  * (#29569). Real filesystem, no mocks.
  */
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 
 async function importFromSpacedCheckout(moduleName, run) {
-  const base = mkdtempSync(join(tmpdir(), "lifeops-root-"));
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "lifeops-root-")));
   try {
     const repo = join(base, "sp ace", "repo");
     const scripts = join(repo, "scripts", "lifeops");
