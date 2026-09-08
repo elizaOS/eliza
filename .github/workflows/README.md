@@ -46,8 +46,10 @@ their evidence can be reused.
 After the exact aggregate succeeds, `develop-full.yml` hands its SHA and run ID
 to the non-cancelable, dispatch-only `develop-reconcile.yml` authority. The
 reconciler revalidates the successful Develop Full push and its exact manifests,
-then records agent-image, Cloud staging, apps-worker staging, and provisioning-
-worker staging effects in GitHub Deployments. `.github/develop-effects.json`
+then records agent-image, apps-worker staging, provisioning-worker staging, and
+Cloud staging effects in GitHub Deployments. Both daemons deploy before the
+Cloud release runs its live renderer gate, so that gate verifies the current
+release against its provisioning and app workers. `.github/develop-effects.json`
 binds every effect to its validation-surface digests, immutable workflow bytes,
 and typed inputs. A current exact success is idempotent; matching prior input is
 re-ledgered for the current SHA. An interrupted dispatch is resumed only when
@@ -123,6 +125,11 @@ title check cover narrower contracts. None replaces the required
 `All Tests Passed` aggregate.
 Representative examples:
 
+- `cloud-tests.yml` distributes the complete unit manifest across four jobs with
+  `ELIZA_CLOUD_TEST_SHARD=index/total`. Each API unit file runs in a fresh process
+  to isolate module mocks and request bindings. The Vitest-only suites run once
+  on shard 1; every unit shard must succeed. Omit the shard variable for the full
+  local `bun run test:cloud` lane.
 - `gitleaks.yml` scans the develop tip inside Develop Full. `pr-static-smoke.yml` owns the
   equivalent diff-scoped pull-request secret scan on a hosted runner.
 - `quality.yml` supplies the extended homepage build and workspace format gate
@@ -333,13 +340,14 @@ exists for the exact new head (the canonical-source guard reports
 `superseded=true`, every deploy job skips, and no certification is uploaded).
 Ancestry without a successor run, production staleness, divergence, or any
 unverifiable source still fails the run. After every successful, non-superseded
-automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
-14-day immutable certification whose JSON names the repository, workflow,
+`develop` Cloud release, `cloud-cf-deploy.yml` uploads a 14-day immutable
+certification whose JSON names the repository, workflow,
 source SHA, root Git tree, run/attempt, environment, and deterministic artifact
 name. A production dispatch checks out the exact requested `main` SHA and must
 resolve that tree's non-expired artifact from a completed successful
-`push`/`develop` run before the protected `production` approval job is even
-reachable. The artifact id, GitHub digest, owning run, payload, current workflow
+`develop` run admitted by `push` or `workflow_dispatch` before the protected
+`production` approval job is even reachable. The artifact id, GitHub digest,
+owning run, payload, current workflow
 bytes, and expiry are all checked. Different merge commits are accepted only
 when their root trees are byte-identical; `force` never bypasses this gate.
 
@@ -365,13 +373,20 @@ pair only when it matches the protected `staging` GitHub Environment secret
 `TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
 from production. The receipt is the lowercase SHA-256 of the framed bytes
 `elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
+`staging-approval` is the policy-only admission checkpoint for `develop`, not a
+third runtime or a Git branch. The `staging` Environment owns staging runtime
+configuration; `production` deploys certified `main` trees. Deployment branch
+policies must allow `develop` for staging approval and `main` for production.
+
 The protected staging entry job reads the receipt directly and verifies that the
 existing Worker has both Telegram binding names before any release mutation. It
 emits only a safe staging preserve-authority result; the reusable release
-receives that result and the already-admitted public pair, never the receipt,
-bot token, or webhook secret. This keeps a repository or organization secret
-from substituting for Environment authority or crossing the reusable-workflow
-boundary. The `deploy-api` job preserves a staging binding whose GitHub source
+receives that result and the already-admitted public pair, never the receipt.
+The caller maps both Telegram credential names to literal empty strings. This
+enables GitHub to resolve the selected Environment's secrets inside the reusable
+job while keeping repository and organization values out of that boundary.
+Omitting a name prevents its Environment secret from reaching the called job.
+The `deploy-api` job preserves a staging binding whose GitHub source
 is blank, then verifies its name again after the atomic Worker deploy. For
 production, the already-approved `production` authorization job verifies the
 live bot token against the canonical public identity and the deploy hard-fails
@@ -413,6 +428,32 @@ Cloud Worker and Railway tunnel proxy. Configure one environment-owned value
 per environment; `cloud-cf-deploy.yml` publishes it to the Worker and
 `deploy-tunnel-proxy.yml` publishes the same value to Railway. Neither workflow
 reads a value back from a provider.
+
+## Staging provisioning diagnostics
+
+The provisioning-worker workflow also accepts `mode=diagnose`, dispatched from
+`develop` with `environment=staging` and the exact `expected_worker_sha` currently
+installed on the host. This mode skips deployment and rejects deployment SHA or
+reconciler inputs. It takes a shared read lease on the existing deployment lock,
+checks source and process identity before and after collection, and reports only
+the official running-process image digest plus fixed worker-journal categories.
+It does not restart services, write host files, or change database state.
+
+The protected Personal preview emits `canonicalContainerNameSha256`, derived
+from the provider's canonical naming function inside the account-scoped read.
+Pass the selected target's digest as `target_container_sha256` to correlate
+timeout messages and complete health-diagnostic frames without exposing its ID.
+The digest is optional; an omitted digest leaves target attribution unavailable.
+Only closed container state, health, exit-code, auth-marker and boot-error
+categories are emitted. Console frames must be complete and adjacent; unexpected
+interleaving or unsupported escaping is counted as unparsed. These are historical
+log observations, not proof of the container's current state or image.
+
+The journal receipt covers at most the last 10,000 records from 24 hours. Counts
+are worker-wide, may include other provisioning attempts, and do not establish
+an individual agent's failure cause. Raw logs, process environment, hostnames,
+agent identifiers, and private image references are never emitted. A failed or
+unstable read fails the diagnostic instead of certifying a partial observation.
 
 ## Maintenance and assistance
 

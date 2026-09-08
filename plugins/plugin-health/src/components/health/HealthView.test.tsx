@@ -160,14 +160,14 @@ describe("HealthView (fetch-driven)", () => {
     await screen.findByText("network down");
     fireEvent.click(agent("retry"));
 
-    await screen.findByText("None");
+    await screen.findByText("No sleep data yet");
     expect(fetchHistory).toHaveBeenCalledTimes(2);
   });
 
   it("renders the empty (connect-a-source) state when no episodes exist", async () => {
     render(<HealthView fetchers={makeFetchers(emptyHistory())} />);
 
-    await screen.findByText("None");
+    await screen.findByText("No sleep data yet");
     expect(screen.queryByText("14d empty")).toBeNull();
   });
 
@@ -236,7 +236,11 @@ describe("HealthView (fetch-driven)", () => {
       expect.any(AbortSignal),
     );
 
-    fireEvent.click(agent("window-30"));
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    fireEvent.keyDown(agent("health-range-filter"), { key: "Enter" });
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Last 30 days" }),
+    );
 
     await waitFor(() => expect(fetchers.fetchHistory).toHaveBeenCalledTimes(2));
     expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(

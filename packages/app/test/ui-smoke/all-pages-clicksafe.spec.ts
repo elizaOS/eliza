@@ -229,8 +229,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // recoverable unavailable state instead of presenting a healthy launcher.
     readyChecks: [
       {
-        selector:
-          '[data-view-status="unavailable"][data-view-id="rolodex"]',
+        selector: '[data-view-status="unavailable"][data-view-id="rolodex"]',
       },
     ],
     timeoutMs: 60_000,

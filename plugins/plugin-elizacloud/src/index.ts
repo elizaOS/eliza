@@ -357,7 +357,7 @@ export const elizaOSCloudPlugin: Plugin = {
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "CloudView",
-      surface: { capabilities: ["agent-surface"] },
+      surface: { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
       tags: ["cloud", "billing", "credits", "account", "api-keys", "agents"],
       visibleInManager: true,
       desktopTabEnabled: true,
@@ -386,9 +386,9 @@ export const elizaOSCloudPlugin: Plugin = {
         {
           name: "ELIZAOS_CLOUD_test_url_and_api_key_validation",
           fn: async (runtime: IAgentRuntime) => {
-            const data = await createCloudApiClient(runtime).get<{
+            const data = await createCloudApiClient(runtime).requestData<{
               data?: Array<Record<string, never>>;
-            }>("/models");
+            }>("GET", "/models");
             logger.log(
               {
                 data: data.data?.length ?? "N/A",

@@ -1,3 +1,7 @@
+/**
+ * Exercises latency probes through real SSE parsing and controlled HTTP responses,
+ * including complete-output nonce verification and privacy-safe result records.
+ */
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -5,6 +9,7 @@ import {
   buildDedicatedStreamRequest,
   buildOpenAiRequestBody,
   buildProofPrompt,
+  consumeAgentEvent,
   consumeOpenAiEvent,
   parseProbeCase,
   parseServerTiming,
@@ -450,6 +455,7 @@ test("probeOpenAi reduces HTTP and network errors to safe metadata", async () =>
     type: "invalid_request_error",
     code: "bad_model",
   });
+  assert.equal(http.status, 400);
   assert.doesNotMatch(JSON.stringify(http), /private upstream detail/);
 
   const network = await probeOpenAi({
@@ -742,4 +748,117 @@ test("paired CLI reports proof misses without a numeric acceptance gate", async 
     delete testEnv.TEST_DIRECT_CHAT_KEY;
     delete testEnv.TEST_GATEWAY_CHAT_KEY;
   }
+});
+
+test("agent snapshots replace prior output without repeating terminal text", async () => {
+  for (const events of [
+    [
+      { type: "token", fullText: "proof" },
+      { type: "done", fullText: "proof" },
+    ],
+    [{ type: "done", fullText: "proof" }],
+    [
+      { type: "token", delta: "obsolete" },
+      { type: "token", fullText: "pr", delta: "must not be appended" },
+      { type: "token", delta: "oof" },
+      { type: "done", fullText: "proof" },
+    ],
+  ]) {
+    const response = openAiSse(events, { done: false });
+    const result = await readSse(response.body, 0, consumeAgentEvent, () => 10);
+    assert.equal(result.outputText, "proof");
+    assert.equal(result.outputCharacters, 5);
+    assert.equal(result.firstTokenMs, 10);
+    assert.equal(result.terminal.type, "done");
+    assert.equal(result.malformedEvents, 0);
+  }
+});
+
+test("empty snapshots do not start visible timing and can clear prior output", async () => {
+  const response = openAiSse(
+    [
+      { type: "token", fullText: "" },
+      { type: "token", fullText: "visible" },
+      { type: "done", fullText: "" },
+    ],
+    { done: false },
+  );
+  let time = 0;
+  const result = await readSse(
+    response.body,
+    0,
+    consumeAgentEvent,
+    () => ++time,
+  );
+  assert.equal(result.firstEventMs, 1);
+  assert.equal(result.firstTokenMs, 2);
+  assert.equal(result.outputText, "");
+  assert.equal(result.outputCharacters, 0);
+});
+
+test("dedicated snapshot reply verifies proof without exposing generated text", async () => {
+  let requests = 0;
+  const result = await probeDedicated({
+    agentId: "snapshot-agent",
+    baseUrl: "https://agent.example",
+    apiKey: "private-key",
+    proof: "snapshot-proof",
+    timeoutMs: 5_000,
+    sequence: 1,
+    keepConversation: true,
+    fetchImpl: async () => {
+      if (++requests === 1)
+        return Response.json({ conversation: { id: "snapshot-conversation" } });
+      return openAiSse(
+        [
+          { type: "status", kind: "thinking" },
+          { type: "token", fullText: "snapshot-proof" },
+          { type: "done", fullText: "snapshot-proof" },
+        ],
+        { done: false },
+      );
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.proofMatched, true);
+  assert.equal(result.outputCharacters, "snapshot-proof".length);
+  assert.equal(typeof result.firstTokenMs, "number");
+  assert.doesNotMatch(JSON.stringify(result), /private-key|snapshot-proof/);
+});
+
+test("an error terminal preserves snapshot evidence but cannot pass the probe", async () => {
+  let requests = 0;
+  const result = await probeDedicated({
+    agentId: "snapshot-agent",
+    baseUrl: "https://agent.example",
+    apiKey: "private-key",
+    proof: "partial-proof",
+    timeoutMs: 5_000,
+    sequence: 1,
+    keepConversation: true,
+    fetchImpl: async () => {
+      if (++requests === 1)
+        return Response.json({ conversation: { id: "failed-conversation" } });
+      return openAiSse(
+        [
+          { type: "token", fullText: "partial-proof" },
+          {
+            type: "error",
+            fullText: "partial-proof",
+            error: "private failure details",
+          },
+        ],
+        { done: false },
+      );
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.cleanCompletion, false);
+  assert.equal(result.proofMatched, true);
+  assert.equal(result.outputCharacters, "partial-proof".length);
+  assert.equal(result.terminalType, "error");
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /private-key|partial-proof|private failure details/,
+  );
 });

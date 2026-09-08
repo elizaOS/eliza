@@ -1,97 +1,51 @@
 #!/usr/bin/env node
 /**
- * Runs the cloud API e2e suite (packages/cloud/api/test/e2e) — wired as
- * `test:cloud:integration` at the repo root. Splits test files into db-only
- * and server-backed lanes, gives known-interfering files isolated bun
- * invocations, and supplies the local test-auth secrets and port config the
- * suite expects.
+ * Runs the cloud API integration suite against either a fully owned local
+ * Worker/PGlite pair or an explicitly configured external Worker. Managed
+ * runs isolate every socket and mutable state directory, and retain child
+ * handles so teardown can never adopt or terminate another run's processes.
  */
 
-import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  cleanupRunContext,
+  createIsolatedRunState,
+  createManagedRunContext,
+  createOwnedChildRegistry,
+  externalApiHealthy,
+  installSignalTeardown,
+  spawnOwnedChild,
+  startOwnedApi,
+  startOwnedPGlite,
+  stopOwnedChild,
+  withPreservedTeardown,
+} from "./integration-harness-lifecycle.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 const cloudApiRoot = path.join(repoRoot, "packages/cloud/api");
 const integrationRoot = path.join(repoRoot, "packages/cloud/api/test/e2e");
-const testCwd = path.join(repoRoot, ".tmp/cloud-integration-bun");
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 
 const preloadPath = path.join(integrationRoot, "preload.ts");
-const serverPreload = preloadPath;
-const dbPreload = preloadPath;
 const timeoutMs = process.env.CLOUD_INTEGRATION_TIMEOUT_MS || "120000";
-
-/**
- * Reserve an OS-assigned free port. Shared self-hosted runners host several
- * concurrent jobs on one machine; a fixed 8787 meant this runner could adopt a
- * DIFFERENT job's wrangler as "its" healthy server (its own wrangler then died
- * with EADDRINUSE), and the suite collapsed mid-run when that foreign job
- * finished and tore its server down. Only used when the caller did not pin a
- * port or target URL.
- */
-function reserveFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => resolve(String(port)));
-    });
-  });
-}
-
-const callerPinnedTarget = Boolean(
-  process.env.API_DEV_PORT ||
-    process.env.TEST_API_BASE_URL?.trim() ||
-    process.env.TEST_BASE_URL?.trim(),
-);
-const apiPort = callerPinnedTarget
-  ? process.env.API_DEV_PORT || "8787"
-  : await reserveFreePort();
-const baseUrl =
-  process.env.TEST_API_BASE_URL?.trim() ||
-  process.env.TEST_BASE_URL?.trim() ||
-  `http://localhost:${apiPort}`;
-const integrationEnv = {
-  ...process.env,
-  API_DEV_PORT: apiPort,
-  TEST_API_BASE_URL: baseUrl,
-  TEST_BASE_URL: baseUrl,
-  TEST_SERVER_SCRIPT: process.env.TEST_SERVER_SCRIPT || "dev",
-  PLAYWRIGHT_TEST_AUTH: process.env.PLAYWRIGHT_TEST_AUTH || "true",
-  PLAYWRIGHT_TEST_AUTH_SECRET:
-    process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret",
-  AGENT_TEST_BOOTSTRAP_ADMIN: process.env.AGENT_TEST_BOOTSTRAP_ADMIN || "true",
-  PAYOUT_STATUS_SKIP_LIVE_BALANCE:
-    process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
-  CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
-  INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
-  // Wallet-signature authentication uses an atomic consume-once nonce. The
-  // local Worker lane has no external Redis binding, so exercise that real
-  // authentication boundary with the repository's explicit in-memory test
-  // backend instead of failing closed before signature verification.
-  MOCK_REDIS: process.env.MOCK_REDIS || "1",
-  // The workflow-level cloud default disables optional caches. This suite
-  // deliberately tests cache-backed authentication, so the explicit test
-  // backend above must remain enabled inside both the Worker and test process.
-  CACHE_ENABLED: "true",
-};
-
 const isolatedServerFiles = new Set([
   "packages/cloud/api/test/e2e/agent-token-flow.test.ts",
   "packages/cloud/api/test/e2e/group-j-documents.test.ts",
 ]);
-const isolatedDbFiles = new Set([]);
+const isolatedDbFiles = new Set();
 
-fs.mkdirSync(testCwd, { recursive: true });
-fs.writeFileSync(
-  path.join(testCwd, "bunfig.toml"),
-  "[test]\ntimeout = 60000\ncoverage = false\n",
-);
+class IntegrationBatchError extends Error {
+  constructor(label, exitCode, signal) {
+    super(
+      `[cloud-integration] ${label} failed (${signal ? `signal ${signal}` : `exit ${exitCode}`})`,
+    );
+    this.name = "IntegrationBatchError";
+    this.exitCode = exitCode || 1;
+  }
+}
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -115,21 +69,89 @@ function isDbOnlyFile(file) {
   );
 }
 
-function run(label, preload, files) {
-  if (files.length === 0) {
-    return;
-  }
+function writeBunfig(testCwd) {
+  fs.writeFileSync(
+    path.join(testCwd, "bunfig.toml"),
+    "[test]\ntimeout = 60000\ncoverage = false\n",
+  );
+}
+
+function configuredExternalBaseUrl() {
+  return (
+    process.env.TEST_API_BASE_URL?.trim() ||
+    process.env.TEST_BASE_URL?.trim() ||
+    null
+  );
+}
+
+function configuredExternalDatabaseUrl() {
+  return (
+    process.env.TEST_DATABASE_URL?.trim() ||
+    process.env.DATABASE_URL?.trim() ||
+    null
+  );
+}
+
+function buildIntegrationEnv({ context, baseUrl, databaseUrl }) {
+  return {
+    ...process.env,
+    NODE_ENV: "test",
+    CLOUD_E2E: "1",
+    ...(context.apiPort ? { API_DEV_PORT: String(context.apiPort) } : {}),
+    TEST_API_BASE_URL: baseUrl,
+    TEST_BASE_URL: baseUrl,
+    DATABASE_URL: databaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
+    TEST_SERVER_SCRIPT: process.env.TEST_SERVER_SCRIPT || "dev",
+    PLAYWRIGHT_TEST_AUTH: process.env.PLAYWRIGHT_TEST_AUTH || "true",
+    PLAYWRIGHT_TEST_AUTH_SECRET:
+      process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret",
+    AGENT_TEST_BOOTSTRAP_ADMIN:
+      process.env.AGENT_TEST_BOOTSTRAP_ADMIN || "true",
+    PAYOUT_STATUS_SKIP_LIVE_BALANCE:
+      process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
+    CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
+    INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
+    // Wallet-signature authentication uses an atomic consume-once nonce. The
+    // isolated local Worker lane uses the repository's explicit test backend.
+    MOCK_REDIS: process.env.MOCK_REDIS || "1",
+    // This suite deliberately exercises cache-backed authentication even when
+    // a workflow-level default disables optional caches.
+    CACHE_ENABLED: "true",
+    ELIZA_CLOUD_LOCAL_API_URL: baseUrl,
+    ELIZA_API_DEV_VARS_PATH: context.devVarsPath,
+    DEV_CLOUD_WRANGLER_PERSIST_TO: context.wranglerPersistPath,
+    WRANGLER_CACHE_DIR: context.wranglerCachePath,
+    WRANGLER_LOG_PATH: context.wranglerLogPath,
+    WRANGLER_SEND_METRICS: "false",
+    MINIFLARE_CACHE_DIR: context.miniflareCachePath,
+    ELIZA_STATE_DIR: context.stateDir,
+    TMPDIR: context.tempDir,
+    TMP: context.tempDir,
+    TEMP: context.tempDir,
+    CLOUD_INTEGRATION_RUN_ID: context.runId,
+  };
+}
+
+async function runBatch({
+  label,
+  files,
+  testCwd,
+  integrationEnv,
+  childRegistry,
+}) {
+  if (files.length === 0) return;
 
   console.log(
     `[cloud-integration] START ${label} (${files.length} file${files.length === 1 ? "" : "s"})`,
   );
-  const result = spawnSync(
+  const child = spawnOwnedChild(
     bun,
     [
       "test",
       "--max-concurrency=1",
       "--preload",
-      preload,
+      preloadPath,
       ...files.map((file) => path.join(repoRoot, file)),
       "--timeout",
       timeoutMs,
@@ -140,118 +162,147 @@ function run(label, preload, files) {
       stdio: "inherit",
     },
   );
+  if (!childRegistry.publish(`integration test batch: ${label}`, child)) {
+    await stopOwnedChild(child, "cancelled integration test batch");
+    throw childRegistry.signal.reason;
+  }
 
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
-  console.log(`[cloud-integration] PASS ${label}`);
-}
-
-async function isServerHealthy() {
-  try {
-    const response = await fetch(`${baseUrl}/api/health`, {
-      signal: AbortSignal.timeout(1_000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForServer(child) {
-  const deadline = Date.now() + 90_000;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(
-        `[cloud-integration] API server exited before becoming healthy (code ${child.exitCode})`,
-      );
-    }
-    if (await isServerHealthy()) {
-      // A health 200 alone is not proof OUR server answered it: a zombie
-      // process from a previous run can hold the port, answer health, and
-      // then die mid-suite while our wrangler exits with EADDRINUSE. Only
-      // accept health responses while our child is still alive.
-      if (child.exitCode !== null) {
-        throw new Error(
-          `[cloud-integration] API server exited (code ${child.exitCode}) but ${baseUrl} still answers health — a stale process holds port ${apiPort}. Kill it and retry.`,
-        );
-      }
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-  }
-  throw new Error(
-    "[cloud-integration] Timed out waiting for API server health",
+  await withPreservedTeardown(
+    async () => {
+      const { code, signal } = await new Promise((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", (code, signal) => resolve({ code, signal }));
+      });
+      if (code !== 0) throw new IntegrationBatchError(label, code, signal);
+      console.log(`[cloud-integration] PASS ${label}`);
+    },
+    async () => {
+      await stopOwnedChild(child, "integration test batch");
+      childRegistry.forget(child);
+    },
   );
 }
 
-function isPortOccupied(port) {
-  const lsof = spawnSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], {
-    encoding: "utf8",
-  });
-  return lsof.status === 0 && lsof.stdout.trim().length > 0;
-}
-
-async function ensureServer() {
-  if (process.env.REQUIRE_E2E_SERVER === "0") {
-    return null;
-  }
-  if (await isServerHealthy()) {
-    return null;
-  }
-  if (process.env.TEST_API_BASE_URL || process.env.TEST_BASE_URL) {
-    throw new Error("[cloud-integration] Configured API server is not healthy");
-  }
-  if (isPortOccupied(apiPort)) {
+export async function main() {
+  const externalBaseUrl = configuredExternalBaseUrl();
+  const requiresServer = process.env.REQUIRE_E2E_SERVER !== "0";
+  const managed = !externalBaseUrl;
+  const context = managed
+    ? await createManagedRunContext({
+        apiPort: process.env.CLOUD_INTEGRATION_API_PORT,
+        pglitePort: process.env.CLOUD_INTEGRATION_PGLITE_PORT,
+      })
+    : createIsolatedRunState();
+  const baseUrl = managed
+    ? context.baseUrl
+    : (externalBaseUrl ?? "http://127.0.0.1:8787");
+  const databaseUrl = managed
+    ? context.databaseUrl
+    : configuredExternalDatabaseUrl();
+  if (!databaseUrl) {
+    cleanupRunContext(context);
     throw new Error(
-      `[cloud-integration] Port ${apiPort} is already bound by a process that does not answer ${baseUrl}/api/health — a stale server from a previous run is holding the port. Kill it and retry.`,
+      "[cloud-integration] external mode requires TEST_DATABASE_URL or DATABASE_URL",
     );
   }
 
-  console.log(`[cloud-integration] START API dev server at ${baseUrl}`);
-  const child = spawn(bun, ["run", integrationEnv.TEST_SERVER_SCRIPT], {
-    cwd: cloudApiRoot,
-    env: integrationEnv,
-    stdio: "inherit",
+  const integrationEnv = buildIntegrationEnv({
+    context,
+    baseUrl,
+    databaseUrl,
   });
-  await waitForServer(child);
-  return child;
-}
+  writeBunfig(context.testCwd);
 
-function stopServer(child) {
-  if (!child || child.exitCode !== null) {
-    return;
+  const childRegistry = createOwnedChildRegistry();
+  let teardownPromise = null;
+  const teardown = () => {
+    teardownPromise ??= (async () => {
+      await childRegistry.stopAll();
+      cleanupRunContext(context);
+    })();
+    return teardownPromise;
+  };
+  const removeSignalHandlers = installSignalTeardown(teardown);
+
+  try {
+    await withPreservedTeardown(async () => {
+      if (managed) {
+        console.log(
+          `[cloud-integration] run ${context.runId} owns API ${baseUrl}, PGlite ${context.host}:${context.pglitePort}, and ${context.runRoot}`,
+        );
+        await startOwnedPGlite(context, {
+          bun,
+          repoRoot,
+          env: {
+            ...integrationEnv,
+            PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS || "64",
+          },
+          signal: childRegistry.signal,
+          onSpawn: (child) => childRegistry.publish("PGlite server", child),
+        });
+        if (requiresServer) {
+          console.log(
+            `[cloud-integration] START owned API server at ${baseUrl}`,
+          );
+          await startOwnedApi(context, {
+            bun,
+            cloudApiRoot,
+            env: integrationEnv,
+            testServerScript: integrationEnv.TEST_SERVER_SCRIPT,
+            signal: childRegistry.signal,
+            onSpawn: (child) => childRegistry.publish("API server", child),
+          });
+        }
+      } else if (requiresServer && !(await externalApiHealthy(baseUrl))) {
+        throw new Error(
+          `[cloud-integration] configured external API server is not healthy at ${baseUrl}`,
+        );
+      } else {
+        console.log(
+          `[cloud-integration] using explicit external API/DB; this run will not stop either service`,
+        );
+      }
+
+      const allFiles = walk(integrationRoot);
+      const serverFiles = allFiles.filter(
+        (file) =>
+          !isDbOnlyFile(file) &&
+          !isolatedServerFiles.has(file) &&
+          !isolatedDbFiles.has(file),
+      );
+      const dbFiles = allFiles.filter(
+        (file) =>
+          isDbOnlyFile(file) &&
+          !isolatedServerFiles.has(file) &&
+          !isolatedDbFiles.has(file),
+      );
+      const run = (label, files) =>
+        runBatch({
+          label,
+          files,
+          testCwd: context.testCwd,
+          integrationEnv,
+          childRegistry,
+        });
+
+      await run("server-backed integration", serverFiles);
+      for (const file of isolatedServerFiles) {
+        await run(file, [file]);
+      }
+      await run("db/service integration", dbFiles);
+      for (const file of isolatedDbFiles) {
+        await run(file, [file]);
+      }
+    }, teardown);
+  } finally {
+    removeSignalHandlers();
   }
-  child.kill("SIGTERM");
 }
 
-const allFiles = walk(integrationRoot);
-const serverFiles = allFiles.filter(
-  (file) =>
-    !isDbOnlyFile(file) &&
-    !isolatedServerFiles.has(file) &&
-    !isolatedDbFiles.has(file),
-);
-const dbFiles = allFiles.filter(
-  (file) =>
-    isDbOnlyFile(file) &&
-    !isolatedServerFiles.has(file) &&
-    !isolatedDbFiles.has(file),
-);
-
-const server = await ensureServer();
-try {
-  run("server-backed integration", serverPreload, serverFiles);
-  for (const file of isolatedServerFiles) {
-    run(file, serverPreload, [file]);
-  }
-} finally {
-  stopServer(server);
-}
-run("db/service integration", dbPreload, dbFiles);
-for (const file of isolatedDbFiles) {
-  run(file, dbPreload, [file]);
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    // error-policy:J1 CLI boundary reports failure after owned-state teardown.
+    console.error(error);
+    process.exitCode = error?.exitCode || 1;
+  });
 }

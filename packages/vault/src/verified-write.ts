@@ -109,3 +109,45 @@ export async function writeSensitiveValueIfAbsentVerified(
     return inserted;
   });
 }
+
+/** What the vault holds for a key after an if-absent mirror attempt. */
+export type MirrorSensitiveValueOutcome =
+  | "inserted"
+  | "present-equal"
+  | "present-differs";
+
+/**
+ * Mirror a sensitive value into the vault only when the key is absent, and
+ * report what the vault holds afterwards. An inserted value is proven by exact
+ * read-back like every other protected write. An existing entry that differs
+ * from `value` is a reported state, not an error: this helper is for callers
+ * that keep their plaintext source (process.env mirroring), so nothing is
+ * discarded and the older vault value is a reconciliation signal for the
+ * operator, not a lost secret. Callers that replace their plaintext with a
+ * vault reference must keep using {@link writeSensitiveValueIfAbsentVerified},
+ * whose mismatch failure is what protects the plaintext from being dropped.
+ */
+export async function mirrorSensitiveValueIfAbsent(
+  vault: Vault,
+  key: string,
+  value: string,
+  opts: Omit<SetOptions, "sensitive"> = {},
+): Promise<MirrorSensitiveValueOutcome> {
+  return serializeVaultKeyWrite(vault, key, async () => {
+    const inserted = await vault.setIfAbsent(key, value, {
+      ...opts,
+      sensitive: true,
+    });
+    if (inserted) {
+      await verifyExactReadBack(vault, key, value, opts.caller);
+      return "inserted";
+    }
+    let existing: string;
+    try {
+      existing = await vault.reveal(key, verificationCaller(opts.caller));
+    } catch (cause) {
+      throw new VaultWriteVerificationError(key, { cause });
+    }
+    return existing === value ? "present-equal" : "present-differs";
+  });
+}

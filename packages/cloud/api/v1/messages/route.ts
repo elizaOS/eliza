@@ -912,6 +912,7 @@ app.post("/", async (c) => {
             executionCtx,
             admissionSnapshot,
             credential: credentialGuard.credentialForAdmission(),
+            atomicProviderBoundary: true,
           });
           settleReservation = admission.settle;
           settleUnknownReservation = admission.settleUnknown;
@@ -989,6 +990,7 @@ app.post("/", async (c) => {
           executionCtx,
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: Boolean(executionCtx),
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
@@ -1143,6 +1145,51 @@ app.post("/", async (c) => {
           await settleUnknownReservation?.();
         }
       });
+      const denial = resolveInferenceCredentialAdmissionDenial(error, {
+        route: "messages",
+        traceId,
+      });
+      if (denial) {
+        return attachPreforwardTelemetry(
+          anthropicError(denial.type, denial.message, denial.status),
+        );
+      }
+      if (error instanceof InsufficientCreditsError) {
+        return attachPreforwardTelemetry(
+          anthropicError(
+            "billing_error",
+            `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+            402,
+          ),
+        );
+      }
+      if (
+        error instanceof InferenceAdmissionUnavailableError ||
+        error instanceof InferenceBalanceCacheWarmingError
+      ) {
+        logger.error(
+          "[Messages API] provider-boundary admission failed closed",
+          {
+            traceId,
+            requestId,
+            model,
+            phase: "provider_dispatch",
+            errorName: error.name,
+            error: error.message,
+            cause:
+              error.cause instanceof Error
+                ? `${error.cause.name}: ${error.cause.message}`
+                : undefined,
+          },
+        );
+        return attachPreforwardTelemetry(
+          anthropicError(
+            "api_error",
+            "Inference admission is temporarily unavailable. Retry shortly.",
+            503,
+          ),
+        );
+      }
       const message = error instanceof Error ? error.message : String(error);
       // A provider-configuration failure (unknown model / unconfigured gateway)
       // carries internal setup guidance in its message — return a clean,

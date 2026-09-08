@@ -38,6 +38,7 @@ import {
   stopMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
+import { resolveBundledSkillsDir } from "./bundled-skills.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
@@ -49,12 +50,10 @@ import {
   resolveConnectorSecretSettings,
   resolveOptimizedPromptIntegrityKey,
 } from "./operations/vault-bridge.ts";
-import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
+import { loadOptionalPlugin } from "./optional-plugin-loader.ts";
 import {
-  hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
-  optionalPluginImportSpecifier,
 } from "./optional-plugins.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 import {
@@ -83,6 +82,7 @@ import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
+  hydrateConfigEnvForBoot,
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
 import {
@@ -97,7 +97,10 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
-export { isEnvKeyAllowedForForwarding } from "./runtime-settings.ts";
+export {
+  hydrateConfigEnvForBoot,
+  isEnvKeyAllowedForForwarding,
+} from "./runtime-settings.ts";
 
 import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
 import { STATIC_ELIZA_PLUGIN_LOADERS } from "./plugin-types.ts";
@@ -177,7 +180,11 @@ import {
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
-import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
+import {
+  type AgentHostBridge,
+  getAgentHostBridge,
+  hasDurableHostVault,
+} from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
 // pool, build variant) are INJECTED downward by the app-core host via
@@ -294,7 +301,6 @@ import {
   createDevCloudConfigAuthorityView,
   createDevCloudRuntimeSettingsAuthorityOverlay,
   isDevCloudEnvOwnedKey,
-  isDevCloudInternalEnvKey,
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import {
@@ -402,75 +408,6 @@ async function loadRequiredPluginSql(): Promise<
   }
 }
 
-function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
-  if (!packageName.startsWith("@elizaos/plugin-")) return null;
-  const shortName = packageName.slice("@elizaos/".length);
-  // Runtime-app plugins keep their Plugin object at ./plugin (src/plugin.ts),
-  // not the root barrel — mirror the importSubpath override here so the
-  // workspace-source fallback loads the same module the literal import does.
-  const subpath = OPTIONAL_STATIC_PLUGIN_OVERRIDES[packageName]?.importSubpath;
-  const entryFile = subpath ? `${subpath.slice(2)}.ts` : "index.ts";
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (let depth = 0; depth < 14; depth += 1) {
-    const candidate = path.join(dir, "plugins", shortName, "src", entryFile);
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-// Literal-specifier importers so Bun.build inlines each optional plugin into
-// the mobile bundle live in optional-plugin-imports.generated.ts, code-generated
-// from OPTIONAL_STATIC_PLUGIN_PACKAGES (optional-plugins.ts). Adding a plugin to
-// the descriptor table is enough; optional-plugins.test.ts fails if it lacks a
-// generated importer. Plugins not in the map (e.g. desktop-only gitpathologist)
-// load through a bare dynamic import from a node_modules/desktop install.
-const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
-  // Bun 1.3.x can resolve a literal dynamic import nested in the generated
-  // importer map through the package's `bun`/dist condition when launched with
-  // both `--no-install` and `--conditions=eliza-source`, even though a direct
-  // import and import.meta.resolve() select the source condition. Make the
-  // operator's explicit source request authoritative so dev boot never runs a
-  // stale dist artifact after a source edit. Packaged/mobile processes do not
-  // carry this condition and keep using the literal importers below.
-  if (
-    hasElizaSourceRuntimeCondition() &&
-    isWorkspacePluginSourceFallbackAllowed()
-  ) {
-    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-    if (sourceEntry) {
-      logger.debug(
-        `[eliza] Loading ${packageName} from explicitly requested workspace source at ${sourceEntry}`,
-      );
-      return await import(pathToFileURL(sourceEntry).href);
-    }
-  }
-
-  try {
-    const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
-    if (importer) return await importer();
-    return await import(optionalPluginImportSpecifier(packageName));
-  } catch {
-    if (isWorkspacePluginSourceFallbackAllowed()) {
-      const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-      if (sourceEntry) {
-        try {
-          logger.debug(
-            `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
-          );
-          return await import(pathToFileURL(sourceEntry).href);
-        } catch {
-          // Missing or unbuildable optional plugins are omitted from
-          // STATIC_ELIZA_PLUGINS.
-        }
-      }
-    }
-    return null;
-  }
-};
-
 // IMPORTANT: Do NOT pull plugin modules in via top-level `await` at module scope.
 //
 // Bun.build (and any cross-module top-level-await scheduling that follows the
@@ -521,7 +458,10 @@ function getOptionalPlugin(packageName: string): Promise<unknown> {
   const cache = _optionalPluginCache;
   const cached = cache.get(packageName);
   if (cached) return cached;
-  const promise = loadOptionalPlugin(packageName);
+  const promise = loadOptionalPlugin(
+    packageName,
+    path.dirname(fileURLToPath(import.meta.url)),
+  );
   cache.set(packageName, promise);
   return promise;
 }
@@ -1946,40 +1886,6 @@ function assertPersistentDatabaseRequired(
     throw new Error(
       `Eliza requires persistent database storage and does not permit ALLOW_NO_DATABASE (agent ${runtime.agentId}). Remove ALLOW_NO_DATABASE from config/env and use @elizaos/plugin-sql.`,
     );
-  }
-}
-
-function isElizaCloudManagedProcessEnvKey(key: string): boolean {
-  const upper = key.toUpperCase();
-  return isDevCloudEnvOwnedKey(upper) || isDevCloudInternalEnvKey(upper);
-}
-
-/**
- * Hydrate user-owned config environment values without allowing persisted
- * state to forge launcher authority or repopulate launcher-owned Cloud keys.
- * @internal Exported for regression tests.
- */
-export function hydrateConfigEnvForBoot(
-  config: Pick<ElizaConfig, "env">,
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  if (
-    !config.env ||
-    typeof config.env !== "object" ||
-    Array.isArray(config.env)
-  ) {
-    return;
-  }
-  const hydrateEntries = (values: Record<string, unknown>): void => {
-    for (const [key, value] of Object.entries(values)) {
-      if (isElizaCloudManagedProcessEnvKey(key)) continue;
-      if (typeof value === "string" && !env[key]) env[key] = value;
-    }
-  };
-  hydrateEntries(config.env as Record<string, unknown>);
-  const vars = (config.env as Record<string, unknown>).vars;
-  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-    hydrateEntries(vars as Record<string, unknown>);
   }
 }
 
@@ -4293,7 +4199,9 @@ export async function startEliza(
     const { sharedVault } = await importAppCoreRuntime();
     const vault = sharedVault();
 
-    if (!process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY) {
+    // Standalone hosts without a durable vault use the baseline prompts;
+    // the no-op bridge cannot persist an integrity key for optimized prompts.
+    if (!process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY && hasDurableHostVault()) {
       process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY =
         await resolveOptimizedPromptIntegrityKey(vault);
     }
@@ -4784,20 +4692,12 @@ export async function startEliza(
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   })();
 
-  // 7a. Resolve bundled skills directory from @elizaos/skills so
-  //     plugin-agent-skills auto-loads them on startup.
-  let bundledSkillsDir: string | null = null;
-  try {
-    const { getSkillsDir } = (await import("@elizaos/skills")) as {
-      getSkillsDir: () => string;
-    };
-    bundledSkillsDir = getSkillsDir();
-    logger.debug(`[eliza] Bundled skills dir: ${bundledSkillsDir}`);
-  } catch {
-    logger.debug(
-      "[eliza] @elizaos/skills not available — bundled skills will not be loaded",
-    );
-  }
+  const bundledSkillsDir = await resolveBundledSkillsDir();
+  logger.debug(
+    bundledSkillsDir === null
+      ? "[eliza] @elizaos/skills is not installed; bundled skills are unavailable"
+      : `[eliza] Bundled skills dir: ${bundledSkillsDir}`,
+  );
 
   // Workspace skills directory (highest precedence for overrides)
   const workspaceSkillsDir = workspaceDir ? `${workspaceDir}/skills` : null;

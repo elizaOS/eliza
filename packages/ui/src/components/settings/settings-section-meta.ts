@@ -150,13 +150,15 @@ export const SETTINGS_NON_CATALOG_SECTION_META = [
     id: "desktop-integration",
     defaultLabel: "Desktop app",
     group: "system",
-    aliases: ["desktop", "startup", "dock", "tray"],
-  },
-  {
-    id: "shortcuts",
-    defaultLabel: "Shortcuts",
-    group: "system",
-    aliases: ["hotkeys", "keyboard"],
+    aliases: [
+      "desktop",
+      "startup",
+      "dock",
+      "tray",
+      "shortcuts",
+      "hotkeys",
+      "keyboard",
+    ],
   },
   {
     id: "cloud-overview",

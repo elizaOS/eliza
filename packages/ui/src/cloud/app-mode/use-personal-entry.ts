@@ -3,10 +3,12 @@
  * rowless personal rollout a clean account has ZERO `/api/v1/eliza/agents`
  * rows, so entry can no longer treat sandbox rows as the only proof that chat
  * can boot. This hook resolves the signed-in account's authoritative personal
- * Cloud binding (`cloud:personal:<uuid>`) by running the same read-only
- * `runJoinFlow` controller `/join` uses: it validates the identity against the
- * current Steward session token (never trusting localStorage alone), persists
- * the authoritative binding, and never provisions or starts paid compute.
+ * Cloud binding (`cloud:personal:<uuid>`) by running the same `runJoinFlow`
+ * controller `/join` uses. It validates the identity against the current
+ * Steward session token (never trusting localStorage alone) and persists the
+ * authoritative binding. If an existing Dedicated target requires explicit
+ * adoption consent, this headless entry attempt fails closed and routes to
+ * `/join`, which owns the visible quote review and confirmation gesture.
  *
  * Callers gate on `enabled` so the request only fires for the rowless case;
  * resolution failure surfaces as a query error and the entry gate falls back

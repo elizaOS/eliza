@@ -625,9 +625,32 @@ export function VaultWorkspace({
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-2"
       >
         {!isReady || !backends || !preferences || !installMethods ? (
-          <div className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
-            <Loader2 className="size-4 animate-spin" aria-hidden /> Loading…
-          </div>
+          !loading && error ? (
+            <Banner
+              variant="error"
+              aria-live="polite"
+              data-testid="vault-modal-error"
+              action={
+                <SettingsActionButton
+                  agentId="vault-load-retry"
+                  agentLabel="Retry loading the vault"
+                  agentGroup="secrets"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => void load()}
+                >
+                  Retry
+                </SettingsActionButton>
+              }
+            >
+              {error}
+            </Banner>
+          ) : (
+            <div className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
+              <Loader2 className="size-4 animate-spin" aria-hidden /> Loading…
+            </div>
+          )
         ) : (
           <>
             {error && (
@@ -660,7 +683,7 @@ export function VaultWorkspace({
                 ))}
               </TabsList>
 
-              <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+              <div className="eliza-chat-scroll mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
                 <TabsContent
                   value="overview"
                   className="mt-0"

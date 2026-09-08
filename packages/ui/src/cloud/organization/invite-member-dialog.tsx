@@ -20,7 +20,7 @@
 
 import { AlertCircle, Copy, Link2, Loader2, Mail, UserCog } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import {
   Dialog,
   DialogContent,

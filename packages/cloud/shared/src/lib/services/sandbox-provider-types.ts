@@ -55,6 +55,9 @@ export type SandboxHealthVerdict =
   | "transport_unresolved"
   | "ingress_unresolved";
 
+/** Candidate probes retain pre-cutover placement; canonical probes follow committed placement. */
+export type SandboxHealthContext = { kind: "candidate" } | { kind: "canonical" };
+
 export interface SandboxHealthOutcome {
   ready: boolean;
   verdict: SandboxHealthVerdict;
@@ -69,6 +72,22 @@ export interface SandboxHealthOutcome {
 export type SandboxDeletionStopOutcome =
   | { kind: "not-running-proven" }
   | { kind: "not-running-unresolved"; reason: "node-unreachable" };
+
+/**
+ * Exact container placement captured by the lifecycle transaction before a
+ * destructive delete leaves its database ownership boundary. SSH authority
+ * may be carried by an exact caller or hydrated from the captured node ID.
+ */
+export interface SandboxDeletionLocator {
+  sandboxId: string;
+  agentId: string;
+  nodeId: string;
+  containerName: string;
+  hostname?: string;
+  sshPort?: number;
+  sshUser?: string;
+  hostKeyFingerprint?: string;
+}
 
 export interface SandboxReplacementCleanupLocator {
   sandboxId: string;
@@ -256,7 +275,10 @@ export interface SandboxProvider {
    * the workload is not running. The deletion workflow owns capacity release,
    * so an unresolved outcome completes deletion without authorizing release.
    */
-  stopForDeletion(sandboxId: string): Promise<SandboxDeletionStopOutcome>;
+  stopForDeletion(
+    sandboxId: string,
+    locator?: SandboxDeletionLocator,
+  ): Promise<SandboxDeletionStopOutcome>;
   /**
    * Retires a sandbox before a replacement is allowed to start. Unlike the
    * ordinary delete-oriented stop path, this must reject whenever the provider
@@ -287,7 +309,7 @@ export interface SandboxProvider {
       "sandboxId" | "nodeId" | "containerName" | "vpnNodeId"
     >,
   ): Promise<void>;
-  checkHealth(handle: SandboxHandle): Promise<boolean>;
+  checkHealth(handle: SandboxHandle, context?: SandboxHealthContext): Promise<boolean>;
   /**
    * Richer readiness probe that distinguishes a genuine `not_ready` from a
    * unresolved transport/managed-ingress exhaustion (see
@@ -295,7 +317,10 @@ export interface SandboxProvider {
    * Optional so providers that cannot fail at a transport layer (memory/local)
    * need not implement it; callers fall back to `checkHealth` when absent.
    */
-  checkHealthDetailed?(handle: SandboxHandle): Promise<SandboxHealthOutcome>;
+  checkHealthDetailed?(
+    handle: SandboxHandle,
+    context?: SandboxHealthContext,
+  ): Promise<SandboxHealthOutcome>;
   runCommand?(sandboxId: string, cmd: string, args?: string[]): Promise<string>;
   /** Tail container logs from the sandbox runtime (e.g. `docker logs --tail N`). */
   fetchLogs?(sandboxId: string, tail: number): Promise<string>;

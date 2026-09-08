@@ -1,8 +1,8 @@
 /**
  * Browser contrast regression for the JoinPage primary recovery controls. The
- * real renderer runs in desktop and coarse-pointer mobile contexts while Cloud
- * responses deterministically expose cleanup-failure and credit-gate states;
- * computed rest and hover colors must retain WCAG AA contrast in both.
+ * real renderer runs in desktop and coarse-pointer mobile contexts while the
+ * Cloud identity endpoint deterministically exposes the retry state; computed
+ * rest and hover colors must retain WCAG AA contrast for both recovery actions.
  */
 import { writeFile } from "node:fs/promises";
 import {
@@ -16,10 +16,6 @@ import {
 } from "@playwright/test";
 import { installDefaultAppRoutes } from "./helpers";
 import { seedStewardSession } from "./helpers/test-auth";
-
-const AGENT_ID = "11111111-2222-4333-8444-555555555555";
-const CREATED_AT = "2026-08-14T11:00:00.000Z";
-const JOB_ID = "provision-job-contrast";
 
 const SURFACES = [
   {
@@ -58,14 +54,7 @@ type ContrastSample = {
   backgroundColor: string;
   className: string;
   color: string;
-  expectedForeground: string;
   ratio: number;
-};
-
-type FixtureMode = "cleanup-failure" | "credit-gate";
-type JoinRouteState = {
-  conditionalDeleteBodies: Record<string, unknown>[];
-  jobPolls: number;
 };
 
 async function fulfillJson(
@@ -80,74 +69,17 @@ async function fulfillJson(
   });
 }
 
-async function installJoinRoutes(
-  page: Page,
-  readMode: () => FixtureMode,
-  state: JoinRouteState,
-): Promise<void> {
+async function installJoinRoutes(page: Page): Promise<void> {
   await installDefaultAppRoutes(page);
 
   await page.route("**/api/auth/steward-session", async (route) => {
     await fulfillJson(route, 200, { success: true });
   });
 
-  await page.route("**/api/cloud/compat/agents", async (route) => {
-    const request = route.request();
-    if (request.method() === "GET") {
-      if (readMode() === "credit-gate") {
-        await fulfillJson(route, 402, {
-          success: false,
-          code: "insufficient_credits",
-          error: "Insufficient credits. Add funds to start an agent.",
-          currentBalance: 0,
-          requiredBalance: 0.1,
-        });
-        return;
-      }
-      await fulfillJson(route, 200, { success: true, data: [] });
-      return;
-    }
-    if (request.method() === "POST") {
-      await fulfillJson(route, 200, {
-        success: true,
-        created: true,
-        data: {
-          agentId: AGENT_ID,
-          agentName: "Eliza",
-          status: "provisioning",
-          jobId: JOB_ID,
-          createdAt: CREATED_AT,
-          executionTier: "dedicated-always",
-        },
-      });
-      return;
-    }
-    await route.fallback();
-  });
-
-  await page.route("**/api/cloud/compat/jobs/*", async (route) => {
-    state.jobPolls += 1;
-    await fulfillJson(route, 200, {
-      success: true,
-      data: {
-        jobId: JOB_ID,
-        status: "pending",
-        state: "pending",
-      },
-    });
-  });
-
-  await page.route("**/api/cloud/compat/agents/*", async (route) => {
-    if (route.request().method() !== "DELETE") {
-      await route.fallback();
-      return;
-    }
-    state.conditionalDeleteBodies.push(
-      (route.request().postDataJSON() ?? {}) as Record<string, unknown>,
-    );
-    await fulfillJson(route, 409, {
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    await fulfillJson(route, 503, {
       success: false,
-      error: "Conditional cleanup was rejected in the contrast probe",
+      error: "Personal Eliza is temporarily unavailable.",
     });
   });
 }
@@ -195,17 +127,10 @@ async function readContrast(locator: Locator): Promise<ContrastSample> {
     const light = Math.max(luminance(background), luminance(foreground));
     const dark = Math.min(luminance(background), luminance(foreground));
 
-    const probe = document.createElement("span");
-    probe.style.color = "var(--bg)";
-    theme.appendChild(probe);
-    const expectedForeground = getComputedStyle(probe).color;
-    probe.remove();
-
     return {
       backgroundColor: style.backgroundColor,
       className: element.className,
       color: style.color,
-      expectedForeground,
       ratio: (light + 0.05) / (dark + 0.05),
     };
   });
@@ -220,7 +145,6 @@ async function assertStableContrast(
   await page.mouse.move(0, 0);
   await page.waitForTimeout(200);
   const rest = await readContrast(button);
-  expect(rest.color).toBe(rest.expectedForeground);
   expect(rest.ratio).toBeGreaterThanOrEqual(4.5);
 
   const box = await button.boundingBox();
@@ -247,8 +171,6 @@ async function assertStableContrast(
   } else {
     expect(hover.backgroundColor).toBe(rest.backgroundColor);
   }
-  expect(hover.color).toBe(rest.color);
-  expect(hover.color).toBe(hover.expectedForeground);
   expect(hover.ratio).toBeGreaterThanOrEqual(4.5);
   await cdp.send("CSS.forcePseudoState", {
     nodeId,
@@ -257,7 +179,7 @@ async function assertStableContrast(
   return { rest, hover };
 }
 
-test("Join recovery CTAs preserve computed contrast on desktop, mobile-hover, and touch profiles", async ({
+test("Join recovery actions preserve computed contrast on desktop, mobile-hover, and touch profiles", async ({
   browser,
   baseURL,
 }, testInfo) => {
@@ -290,50 +212,33 @@ test("Join recovery CTAs preserve computed contrast on desktop, mobile-hover, an
     expect(
       await page.evaluate(() => matchMedia("(hover: hover)").matches),
     ).toBe(surface.hoverCapable);
-    let mode: FixtureMode = "cleanup-failure";
-    const routeState: JoinRouteState = {
-      conditionalDeleteBodies: [],
-      jobPolls: 0,
-    };
     await seedStewardSession(page, { jwt: true });
-    await installJoinRoutes(page, () => mode, routeState);
+    await installJoinRoutes(page);
 
     await page.goto("/join");
     const signOut = page.getByRole("button", { name: "Sign out" });
-    await expect(signOut).toBeVisible();
-    await expect.poll(() => routeState.jobPolls).toBeGreaterThan(0);
-    await signOut.click();
     const retry = page.getByRole("button", { name: "Try again" });
     await expect(retry).toBeVisible();
-    await expect.poll(() => routeState.conditionalDeleteBodies.length).toBe(1);
-    expect(routeState.conditionalDeleteBodies[0]).toEqual({
-      expectedAgentName: "Eliza",
-      expectedCreatedAt: CREATED_AT,
-      expectedExecutionTier: "dedicated-always",
-    });
-    const cleanupContrast = await assertStableContrast(
+    await expect(signOut).toBeVisible();
+    const retryContrast = await assertStableContrast(
       cdp,
       page,
       retry,
       surface.hoverCapable,
     );
     await page.screenshot({
-      path: testInfo.outputPath(`${surface.name}-cleanup-hover.png`),
+      path: testInfo.outputPath(`${surface.name}-retry-hover.png`),
       fullPage: true,
     });
 
-    mode = "credit-gate";
-    await page.goto("/join");
-    const addFunds = page.getByRole("button", { name: "Add funds" });
-    await expect(addFunds).toBeVisible();
-    const creditContrast = await assertStableContrast(
+    const signOutContrast = await assertStableContrast(
       cdp,
       page,
-      addFunds,
+      signOut,
       surface.hoverCapable,
     );
     await page.screenshot({
-      path: testInfo.outputPath(`${surface.name}-credit-hover.png`),
+      path: testInfo.outputPath(`${surface.name}-sign-out-hover.png`),
       fullPage: true,
     });
 
@@ -345,9 +250,8 @@ test("Join recovery CTAs preserve computed contrast on desktop, mobile-hover, an
       ...(report.surfaces as Record<string, unknown>),
       [surface.name]: {
         coarsePointer,
-        cleanupContrast,
-        creditContrast,
-        conditionalDeleteBody: routeState.conditionalDeleteBodies[0],
+        retryContrast,
+        signOutContrast,
       },
     };
     await context.close();

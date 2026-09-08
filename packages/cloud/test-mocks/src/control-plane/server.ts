@@ -140,6 +140,14 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     workspaceFiles: {} as Record<string, string>,
   };
 
+  const runtimeSandboxForRequest = (c: Context): Sandbox | undefined => {
+    const auth = c.req.header("authorization") ?? c.req.header("Authorization");
+    const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+    const apiKey = c.req.header("x-api-key")?.trim() ?? "";
+    if (bearer && apiKey && bearer !== apiKey) return undefined;
+    return store.getSandboxByRuntimeToken(bearer || apiKey);
+  };
+
   app.use("*", async (c, next) => {
     if (c.req.path === "/health") return next();
     if (
@@ -155,6 +163,15 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (c.req.path.startsWith("/api/v1/admin/")) return next();
     // Compat endpoints are public stubs.
     if (c.req.path.startsWith("/api/compat/")) return next();
+    // A Dedicated runtime is rooted at health_url's origin. The mock multiplexes
+    // many runtimes under one origin, so route that root surface by the exact
+    // per-agent token without exposing the token on serialized sandbox state.
+    if (
+      c.req.path.startsWith("/api/conversations/") &&
+      runtimeSandboxForRequest(c)
+    ) {
+      return next();
+    }
     if (expectedAuxToken) {
       const aux = c.req.header("x-container-control-plane-token")?.trim();
       if (aux !== expectedAuxToken) {
@@ -537,6 +554,22 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
               userId,
               agentId,
             });
+            const existingAgent = await agentSandboxesRepository.findByIdAndOrg(
+              agentId,
+              organizationId,
+            );
+            const runtimeToken =
+              existingAgent?.environment_vars &&
+              typeof existingAgent.environment_vars === "object" &&
+              !Array.isArray(existingAgent.environment_vars) &&
+              typeof (existingAgent.environment_vars as Record<string, unknown>)
+                .ELIZA_API_TOKEN === "string"
+                ? (existingAgent.environment_vars as Record<string, string>)
+                    .ELIZA_API_TOKEN
+                : "";
+            if (runtimeToken.trim()) {
+              store.bindSandboxRuntimeToken(sandbox.id, runtimeToken);
+            }
             store.updateSandbox(sandbox.id, { status: "running" });
             const container = store.createContainer({
               name: agentName,
@@ -620,6 +653,14 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   app.get("/api/health", (c) =>
     c.json({ success: true, status: "ok", ready: true }),
   );
+
+  app.all("/api/conversations/*", async (c) => {
+    const sandbox = runtimeSandboxForRequest(c);
+    if (!sandbox) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const target = new URL(c.req.url);
+    target.pathname = `/api/compat/agents/${encodeURIComponent(sandbox.id)}${target.pathname}`;
+    return app.fetch(new Request(target, c.req.raw));
+  });
   app.post("/api/snapshot", (c) => c.json(runtimeState));
   app.post("/api/restore", async (c) => {
     const body = (await c.req.json().catch(() => null)) as Partial<

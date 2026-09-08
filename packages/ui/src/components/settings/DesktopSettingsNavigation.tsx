@@ -6,7 +6,6 @@
 import { Check } from "lucide-react";
 import { useCallback, useRef } from "react";
 
-import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import type { GroupedSettingsSections } from "./settings-sections";
 
@@ -29,7 +28,6 @@ export function DesktopSettingsNavigation({
   grouped,
   activeId,
   onSelect,
-  onBack,
   settingsLabel,
   label,
 }: DesktopSettingsNavigationProps): React.JSX.Element {
@@ -60,22 +58,6 @@ export function DesktopSettingsNavigation({
       data-testid="desktop-settings-navigation"
       className="flex h-full min-h-0 w-60 min-w-60 max-w-60 shrink-0 flex-col overflow-hidden border-r border-border/60 bg-[var(--settings-panel)]"
     >
-      <div className="grid h-12 shrink-0 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center border-b border-border/50 px-2">
-        {onBack ? (
-          <ViewBackButton
-            onBack={onBack}
-            label="Back to launcher"
-            className="shrink-0 text-muted hover:!bg-[var(--settings-fill)] hover:text-txt-strong focus-visible:!bg-[var(--settings-fill)] focus-visible:!ring-2 focus-visible:!ring-inset focus-visible:!ring-[var(--settings-ring)]"
-          />
-        ) : (
-          <span aria-hidden />
-        )}
-        <span className="truncate text-center text-sm font-semibold text-txt-strong">
-          {settingsLabel}
-        </span>
-        <span aria-hidden />
-      </div>
-
       <div
         data-scroll-cert-scroller
         className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-3 py-4"

@@ -85,6 +85,15 @@ export const calendarPlugin: Plugin = {
       tags: ["calendar", "schedule", "events"],
       responseContext: { primaryContext: "calendar" },
       relatedActions: ["CALENDAR", "CALENDAR_SOURCES", "CONFLICT_DETECT"],
+      scopedActions: [
+        {
+          name: "VIEW_CALENDAR_SELECT_VISIBLE_DAY",
+          description:
+            "Show the agenda for a day in the currently displayed calendar grid. Requires date in YYYY-MM-DD format. Reading or searching events does not select a day in the UI; use this action to show it. For a date outside the displayed grid, navigate the calendar month controls first.",
+          parameters: ["date"],
+          steps: [{ kind: "agent-click", target: "calendar-day-{{date}}" }],
+        },
+      ],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

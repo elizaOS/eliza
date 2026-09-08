@@ -408,6 +408,8 @@ export interface BrowserWorkspaceCommand {
 }
 
 export interface BrowserWorkspaceCommandResult {
+  /** BrowserService target that executed the command (for example workspace). */
+  targetId?: string;
   mode: BrowserWorkspaceMode;
   subaction: BrowserWorkspaceSubaction;
   tab?: BrowserWorkspaceTab;

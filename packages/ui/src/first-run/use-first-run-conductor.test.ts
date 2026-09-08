@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
 
 const mocks = vi.hoisted(() => ({
+  openDesktopSettingsWindow: vi.fn(async () => undefined),
   client: {
     listLocalAgentBackups: vi.fn(
       async (): Promise<LocalAgentBackupMetadata[]> => [],
@@ -88,6 +89,11 @@ const mocks = vi.hoisted(() => ({
 Object.assign(mocks.client, {
   ensurePersonalDedicatedEliza: mocks.client.getPersonalSharedEliza,
 });
+
+vi.mock("../utils/desktop-workspace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/desktop-workspace")>()),
+  openDesktopSettingsWindow: mocks.openDesktopSettingsWindow,
+}));
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -272,9 +278,15 @@ function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
  * seeded onboarding turns are observable exactly as the overlay would render
  * them. `setConversationMessages` applies functional updaters for real.
  */
-function renderConductor(options?: { cloudOnly?: boolean }) {
+function renderConductor(options?: {
+  cloudOnly?: boolean;
+  statefulTranscript?: boolean;
+}) {
   const transcript: { current: ConversationMessage[] } = { current: [] };
-  const value: ConversationMessagesValue = {
+  let replaceTranscript = (messages: ConversationMessage[]) => {
+    transcript.current = messages;
+  };
+  const staticValue: ConversationMessagesValue = {
     conversationMessages: [],
     removeConversationMessage: () => {},
     prependConversationMessages: () => {},
@@ -283,7 +295,13 @@ function renderConductor(options?: { cloudOnly?: boolean }) {
         typeof updater === "function" ? updater(transcript.current) : updater;
     },
   };
-  const wrapper = ({ children }: { children: React.ReactNode }) =>
+  const BrandingWrapper = ({
+    children,
+    conversationValue,
+  }: {
+    children?: React.ReactNode;
+    conversationValue: ConversationMessagesValue;
+  }) =>
     React.createElement(
       BrandingContext.Provider,
       {
@@ -294,14 +312,40 @@ function renderConductor(options?: { cloudOnly?: boolean }) {
       },
       React.createElement(
         ConversationMessagesCtx.Provider,
-        { value },
+        { value: conversationValue },
         children,
       ),
     );
+  const StaticWrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(
+      BrandingWrapper,
+      { conversationValue: staticValue },
+      children,
+    );
+  const StatefulWrapper = ({ children }: { children: React.ReactNode }) => {
+    const [messages, setMessages] = React.useState<ConversationMessage[]>([]);
+    transcript.current = messages;
+    replaceTranscript = setMessages;
+    const value = React.useMemo<ConversationMessagesValue>(
+      () => ({
+        conversationMessages: messages,
+        removeConversationMessage: () => {},
+        prependConversationMessages: () => {},
+        setConversationMessages: setMessages,
+      }),
+      [messages],
+    );
+    return React.createElement(
+      BrandingWrapper,
+      { conversationValue: value },
+      children,
+    );
+  };
+  const wrapper = options?.statefulTranscript ? StatefulWrapper : StaticWrapper;
   const utils = renderHook(() => useFirstRunConductor(), { wrapper });
   const turn = (id: string): ConversationMessage | undefined =>
     transcript.current.find((message) => message.id === id);
-  return { transcript, turn, ...utils };
+  return { transcript, turn, replaceTranscript, ...utils };
 }
 
 async function waitForTurn(
@@ -319,6 +363,7 @@ async function waitForTurn(
 beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
+  mocks.openDesktopSettingsWindow.mockResolvedValue(undefined);
   // jsdom's window.open is unimplemented and logs a console error the setup
   // gate would flag; the flow launchers claim a real popup on every runtime /
   // provider pick, so default it to the popup-blocked (null) signal. Tests
@@ -978,6 +1023,42 @@ describe("useFirstRunConductor", () => {
     );
     await waitForTurn(turn, "first-run:tutorial");
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("keeps native Settings recovery retryable until the window opens, then returns the overlay to chat", async () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
+      new Error("Couldn't reach Eliza Cloud"),
+    );
+    const spies = seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    tryHandleFirstRunAction("__first_run__:runtime:cloud");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) => m.id.startsWith("first-run:error:")),
+      ).toBe(true);
+    });
+    mocks.openDesktopSettingsWindow.mockRejectedValueOnce(
+      new Error("Window unavailable"),
+    );
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.text.includes("Settings could not open"),
+        ),
+      ).toBe(true);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
+    tryHandleFirstRunAction("__first_run__:error:settings");
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
+    expect(mocks.openDesktopSettingsWindow).toHaveBeenCalledTimes(2);
+    expect(spies.setTab).not.toHaveBeenCalledWith("settings");
     unmount();
   });
 
@@ -1831,6 +1912,82 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
+  it("restores pending Dedicated consent after server history replaces the onboarding transcript", async () => {
+    const quoteId = "c".repeat(64);
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options: Record<string, unknown>) => {
+        const request = options.requestDedicatedAdoptionConfirmation as (
+          quote: Record<string, unknown>,
+          context: { reason: "initial"; signal?: AbortSignal },
+        ) => Promise<Record<string, unknown> | null>;
+        await request(
+          {
+            quoteId,
+            dedicatedAgentId: "00000000-0000-4000-8000-000000000021",
+            adoptionState: "available",
+            status: "stopped",
+            startsCompute: true,
+            hourlyRateUsd: 0.01,
+            dailyRateUsd: 0.24,
+            minimumBalanceUsd: 0.72,
+            minimumRunwayDays: 3,
+            balanceUsd: 10,
+            deficitUsd: 0,
+            stateDisposition: "verified_backup_present",
+            canAdopt: true,
+            requiresCatalogRestore: false,
+            requiresConfirmation: true,
+            action: "adopt_existing_dedicated",
+          },
+          { reason: "initial", signal: options.signal as AbortSignal },
+        );
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: "00000000-0000-4000-8000-000000000021",
+          agentName: "Eliza Cloud",
+          apiBase: "https://dedicated.example.test",
+          runtime: "dedicated" as const,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { replaceTranscript, transcript, unmount } = renderConductor({
+      statefulTranscript: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.text.includes("Use your existing Dedicated agent?"),
+        ),
+      ).toBe(true);
+    });
+    act(() => {
+      replaceTranscript([
+        {
+          id: "server-history",
+          role: "assistant",
+          text: "Persisted server history",
+          timestamp: 1,
+        } as ConversationMessage,
+      ]);
+    });
+    await waitFor(() => {
+      expect(transcript.current.map((message) => message.id)).toContain(
+        "first-run:dedicated-adoption",
+      );
+    });
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
+    ).toBe(true);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
+    unmount();
+  });
+
   it("a connected cloud-only session binds the personal Eliza regardless of the Settings selection (#19511: preference is gone)", async () => {
     localStorage.setItem(
       "elizaos:active-server",
@@ -2219,6 +2376,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       ).toBe(true);
     });
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(spies.handleInteractiveCloudLogin).not.toHaveBeenCalled();
 
     // No runaway: give any residual auto-resume loop a window, then prove the
     // provisioning was attempted a bounded number of times and does not keep
@@ -2756,7 +2914,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
 
     // The OAuth-only deadline must not govern this already-authenticated
     // Personal/Dedicated activation. Its own client contract owns the longer
-    // six-minute bound.
+    // bounded cold-start window.
     await act(async () => vi.advanceTimersByTimeAsync(90_000));
     expect(signalA?.aborted).toBe(false);
     expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(

@@ -337,6 +337,7 @@ export const lifeAuditEvents = appLifeopsPgSchema.table(
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     eventType: text("event_type").notNull(),
+    idempotencyKey: text("idempotency_key"),
     ownerType: text("owner_type").notNull(),
     ownerId: text("owner_id").notNull(),
     reason: text("reason").notNull().default(""),
@@ -346,6 +347,11 @@ export const lifeAuditEvents = appLifeopsPgSchema.table(
     createdAt: text("created_at").notNull(),
   },
   (t) => [
+    unique("uq_life_audit_events_operation").on(
+      t.agentId,
+      t.eventType,
+      t.idempotencyKey,
+    ),
     index("idx_life_audit_events_owner").on(
       t.agentId,
       t.ownerType,

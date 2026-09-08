@@ -2,7 +2,7 @@
 
 import { Loader2, PhoneCall } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { ApiError, api } from "../../../cloud/lib/api-client";
 import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../../../utils/cloud-agent-base";
 import { Button } from "../../ui/button";

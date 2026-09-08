@@ -2,7 +2,9 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  classifyApplicationState,
   classifyContainerLogs,
+  classifyHostRuntimeState,
   classifyRuntimeProcessState,
   classifyTailscaleStatus,
 } from "./managed-dedicated-mesh-state-diagnostic";
@@ -87,6 +89,51 @@ describe("managed Dedicated mesh-state diagnostic", () => {
       tailscaleUpProcessPresent: false,
       forceNoise443Enabled: false,
       stuckCliEscapePresent: false,
+    });
+  });
+
+  test("retains only closed application listener and runtime-mode facts", () => {
+    expect(
+      classifyApplicationState(
+        "health=unreachable\nroot=response\ncloud_provisioned=true\napi_expose_port=false",
+      ),
+    ).toEqual({
+      health: "unreachable",
+      root: "response",
+      cloudProvisioned: true,
+      apiExposePortEnabled: false,
+    });
+    expect(classifyApplicationState("health=private-status")).toEqual({
+      health: "unknown",
+      root: "unknown",
+      cloudProvisioned: null,
+      apiExposePortEnabled: null,
+    });
+  });
+
+  test("retains only closed Docker host configuration and service facts", () => {
+    expect(
+      classifyHostRuntimeState(
+        "live_restore=true\ndocker_service=active\ncontainerd_service=active",
+      ),
+    ).toEqual({
+      liveRestoreConfigured: true,
+      dockerServiceActive: true,
+      containerdServiceActive: true,
+    });
+    expect(classifyHostRuntimeState("private-host-output")).toEqual({
+      liveRestoreConfigured: null,
+      dockerServiceActive: null,
+      containerdServiceActive: null,
+    });
+    expect(
+      classifyHostRuntimeState(
+        "live_restore=false\ndocker_service=inactive\ncontainerd_service=failed",
+      ),
+    ).toEqual({
+      liveRestoreConfigured: false,
+      dockerServiceActive: false,
+      containerdServiceActive: false,
     });
   });
 });

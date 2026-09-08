@@ -95,11 +95,11 @@ describe("terminal action effect proof", () => {
       options(),
     );
 
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: true,
-      userFacingText: "hello",
-      verifiedUserFacing: false,
-      userFacingEffectReceiptIds: [`terminal-run:${dispatchedRunId}`],
+
+      modelReplyRequired: true,
       effectReceipts: [
         {
           receiptId: `terminal-run:${dispatchedRunId}`,
@@ -369,11 +369,12 @@ describe("terminal action effect proof", () => {
       options("false"),
     );
 
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: false,
       error: "TERMINAL_EXECUTION_FAILED",
-      userFacingText: "The command failed with exit code 7.",
-      verifiedUserFacing: true,
+
+      modelReplyRequired: true,
       effectReceipts: [
         {
           outcome: "failed",
@@ -407,20 +408,16 @@ describe("terminal action effect proof", () => {
       options("git ls-remote --heads https://github.com/elizaOS/eliza develop"),
     );
 
-    // Kept as the deterministic fallback relay…
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: true,
-      userFacingText:
-        "ebcf7fff00000000000000000000000000000000\trefs/heads/develop",
     });
-    // …but never verbatim-verified: that stamp is what let the relay ship the
-    // raw SHA line as a standalone leading paragraph before the natural reply.
     expect(
       (result as { verifiedUserFacing?: boolean }).verifiedUserFacing,
-    ).toBe(false);
+    ).toBeUndefined();
   });
 
-  it("keeps the deterministic empty-stdout success sentence verified", async () => {
+  it("leaves empty-stdout success wording to the model", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
@@ -435,13 +432,14 @@ describe("terminal action effect proof", () => {
       options("true"),
     );
 
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: true,
-      userFacingText: "The command finished successfully with exit code 0.",
-      verifiedUserFacing: true,
+
+      modelReplyRequired: true,
     });
   });
-  it("summarizes multiline stdout without marking it canonical", async () => {
+  it("retains multiline stdout as evidence without a canned summary", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
@@ -456,16 +454,16 @@ describe("terminal action effect proof", () => {
       options("printf 'first\\nsecond\\n'"),
     );
 
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: true,
-      userFacingText:
-        "The command finished (exit 0) with 2 lines of output; ask me about specifics instead of dumping it into chat.",
-      verifiedUserFacing: false,
+
+      modelReplyRequired: true,
     });
     expect(result?.text).toContain("first\nsecond");
   });
 
-  it("summarizes carriage-return-delimited stdout", async () => {
+  it("retains carriage-return-delimited stdout for the model", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
@@ -480,14 +478,14 @@ describe("terminal action effect proof", () => {
       options("printf 'first\\rsecond'"),
     );
 
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
       success: true,
-      userFacingText:
-        "The command finished (exit 0) with 2 lines of output; ask me about specifics instead of dumping it into chat.",
-      verifiedUserFacing: false,
+
+      modelReplyRequired: true,
     });
   });
-  it("summarizes single-line stdout over the relay limit", async () => {
+  it("retains long single-line stdout without a canned relay", async () => {
     const stdout = "x".repeat(201);
     vi.stubGlobal(
       "fetch",
@@ -503,15 +501,14 @@ describe("terminal action effect proof", () => {
       options("generate-long-output"),
     );
 
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
-      userFacingText:
-        "The command finished (exit 0) with 1 line of output; ask me about specifics instead of dumping it into chat.",
-      verifiedUserFacing: false,
+      modelReplyRequired: true,
     });
     expect(result?.text).toContain(stdout);
   });
 
-  it("relays a single line at the exact size limit without marking it canonical", async () => {
+  it("keeps short stdout in evidence rather than posting it directly", async () => {
     const stdout = "x".repeat(200);
     vi.stubGlobal(
       "fetch",
@@ -527,13 +524,13 @@ describe("terminal action effect proof", () => {
       options("generate-bounded-output"),
     );
 
+    expect(result?.userFacingText).toBeUndefined();
     expect(result).toMatchObject({
-      userFacingText: stdout,
-      verifiedUserFacing: false,
+      modelReplyRequired: true,
     });
   });
 
-  it("keeps action-owned empty and stderr statuses canonical", async () => {
+  it("leaves empty and stderr response wording to the model", async () => {
     const cases = [
       {
         override: { stdout: "" },
@@ -558,9 +555,9 @@ describe("terminal action effect proof", () => {
         undefined,
         options(),
       );
+      expect(result?.userFacingText).toBeUndefined();
       expect(result).toMatchObject({
-        userFacingText: testCase.text,
-        verifiedUserFacing: true,
+        modelReplyRequired: true,
       });
     }
   });

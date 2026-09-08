@@ -47,8 +47,8 @@ across `@elizaos/plugin-reminders` and the shared scheduled-task runner.
   repointed to `app_goals` in the same carve — so a single owner backs every
   reader. The cross-schema writes to `app_lifeops.life_task_definitions` (the
   spine FK-nullout in `deleteGoal`) and `app_lifeops.life_audit_events` (audit)
-  stay on `app_lifeops`. Reaches the DB through the self-contained
-  `src/db/sql.ts` helpers.
+  stay on `app_lifeops`. Reaches the DB through `src/db/sql.ts`, which resolves the goals database
+  and delegates SQL primitives to `@elizaos/shared/db/raw-sql`.
 - **`goal-grounding.ts`** / **`goal-semantic-evaluator.ts`** — goal grounding
   metadata + the LLM-backed `evaluateGoalProgressWithLlm`. PA re-exports these
   from here for back-compat (`plugin-personal-assistant/src/lifeops/goal-grounding.ts`
@@ -96,7 +96,7 @@ src/
   db/
     index.ts                     Re-exports schema
     schema.ts                    Drizzle pgSchema('app_goals')
-    sql.ts                       Self-contained raw-SQL helpers (runtime DB)
+    sql.ts                       Goals runtime DB boundary and shared SQL exports
     goals-repository.ts          GoalsRepository (raw SQL over app_goals.life_goal_*)
   components/
     goals/
@@ -156,9 +156,10 @@ with import-cycle checks and parity tests across both plugins.
   `@elizaos/plugin-sql` loaded first. PA auto-registers this plugin
   (`ensureLifeOpsGoalsPluginRegistered`) so `app_goals` exists and the migration
   runs whenever PA is loaded.
-- **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
-  back-end carries no PA dependency). Keep it in sync only if a correctness fix
-  applies to both; do not add goals-specific logic.
+- **`src/db/sql.ts` resolves the goals runtime database** and preserves the
+  existing domain imports as shared SQL re-exports. Common value encoding and
+  complete row validation belong to `@elizaos/shared/db/raw-sql`; the plugin
+  does not depend on personal-assistant SQL glue.
 - **Only OWNER_GOALS is registered here.** Routines, reminders, and alarms are
   PA-owned owner actions; this package owns the goal CRUD/domain service.
 - **View bundles separately.** `build:views` (Vite) produces

@@ -75,6 +75,8 @@ app.post("/", async (c) => {
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
+  let providerRequestId: string | undefined;
+  let providerModel: string | undefined;
   try {
     const candidate = c.executionCtx;
     executionCtx =
@@ -293,6 +295,7 @@ app.post("/", async (c) => {
     }
 
     const model = request.model;
+    providerModel = model;
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
     const billingSource = resolveEmbeddingProviderSource();
@@ -316,6 +319,7 @@ app.post("/", async (c) => {
     const estimatedInputTokens = estimateTokens(inputText);
 
     const requestId = crypto.randomUUID();
+    providerRequestId = requestId;
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
     try {
       const admission = await admitOrganizationInference({
@@ -335,6 +339,7 @@ app.post("/", async (c) => {
         executionCtx,
         admissionSnapshot,
         credential: credentialGuard.credentialForAdmission(),
+        atomicProviderBoundary: Boolean(executionCtx),
       });
       settleReservation = admission.settle;
       settleUnknown = admission.settleUnknown;
@@ -669,6 +674,44 @@ app.post("/", async (c) => {
           },
         },
         credentialDenial.status,
+      );
+    }
+
+    if (error instanceof InsufficientCreditsError) {
+      return c.json(
+        {
+          error: {
+            message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+            type: "insufficient_quota",
+            code: "insufficient_balance",
+          },
+        },
+        402,
+      );
+    }
+    if (error instanceof InferenceAdmissionUnavailableError) {
+      logger.error("[Embeddings] provider-boundary admission failed closed", {
+        traceId: c.get("traceId") ?? c.get("requestId"),
+        requestId: providerRequestId,
+        model: providerModel,
+        phase: "provider_dispatch",
+        error: error.message,
+        cause:
+          error.cause instanceof Error
+            ? `${error.cause.name}: ${error.cause.message}`
+            : undefined,
+      });
+      return c.json(
+        {
+          error: {
+            message:
+              "Inference admission is temporarily unavailable. Retry shortly.",
+            type: "service_unavailable",
+            code: "inference_admission_unavailable",
+          },
+        },
+        503,
+        { "Retry-After": "1" },
       );
     }
 

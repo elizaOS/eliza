@@ -9,6 +9,7 @@ describe("checkout", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -74,6 +75,50 @@ describe("checkout", () => {
           },
         ),
       ).rejects.toThrow(StripeCheckoutError);
+    });
+
+    it.each([
+      null,
+      [],
+      {},
+      { url: 42 },
+      { url: { href: "https://checkout.stripe.com" } },
+      { url: "" },
+    ])(
+      "rejects malformed successful response %j before returning a redirect",
+      async (body) => {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () => Response.json(body)),
+        );
+        await expect(
+          createStripeCheckoutSession(
+            {
+              hardwareSku: "SKU-PRO-1",
+              hardwareColor: "black",
+              returnUrl: "https://elizaos.ai/order/success",
+            },
+            { apiBaseUrl: "https://api.eliza.app" },
+          ),
+        ).rejects.toBeInstanceOf(StripeCheckoutError);
+      },
+    );
+
+    it("rejects an unreadable JSON response as a checkout failure", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("not JSON", { status: 200 })),
+      );
+      await expect(
+        createStripeCheckoutSession(
+          {
+            hardwareSku: "SKU-PRO-1",
+            hardwareColor: "black",
+            returnUrl: "https://elizaos.ai/order/success",
+          },
+          { apiBaseUrl: "https://api.eliza.app" },
+        ),
+      ).rejects.toBeInstanceOf(StripeCheckoutError);
     });
 
     it("throws StripeCheckoutError with default message when response body is not JSON or missing url", async () => {

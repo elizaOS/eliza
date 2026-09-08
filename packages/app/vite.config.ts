@@ -50,6 +50,7 @@ import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.m
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
+import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -1842,7 +1843,7 @@ const VENDOR_CRYPTO_TEST =
 // import the crypto chunk and form an init-order cycle (the wagmi 3.x `connect`
 // / `ConnectorUnavailableReconnectingError` TDZ crash).
 const VENDOR_WALLET_TEST =
-  /\/node_modules\/(wagmi|@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet|mipd|eventemitter3)(\/|$)/;
+  /\/node_modules\/(wagmi|@wagmi\/[^/]+|viem|@rainbow-me\/[^/]+|@walletconnect\/[^/]+|@reown\/[^/]+|@coinbase\/wallet[^/]*|mipd|eventemitter3)(\/|$)/;
 
 // Solana wallet/web3 stack — also folded into `vendor-crypto` (it imports the
 // same bn.js/buffer core).
@@ -2782,6 +2783,10 @@ export const INVALID_TRACER_PROVIDER = {};
       "buffer",
     ],
     alias: [
+      {
+        find: /^@elizaos\/login$/,
+        replacement: path.resolve(elizaRoot, "packages/login/src/sdk/index.ts"),
+      },
       {
         find: /^@homepage\//,
         replacement: `${path.resolve(here, "../homepage/src")}/`,
@@ -3725,14 +3730,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // as an authority mismatch, stranding a local browser on Pairing/Login.
         changeOrigin: false,
         xfwd: true,
-        configure: (proxy) => {
-          proxy.on("error", (_err, _req, res) => {
-            if (!res.headersSent) {
-              res.writeHead(502, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: "API server unavailable" }));
-            }
-          });
-        },
+        configure: configureDevApiProxy,
       },
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,

@@ -29,9 +29,10 @@ test.beforeEach(async ({ page }) => {
 test("every spatial-view button renders a >=44px hit target on touch viewports", async ({
   page,
 }) => {
-  // /inbox and /relationships render the decomposed spatial views whose
-  // filter chips are the primary mobile tap surfaces (#11144 lineage).
-  for (const path of ["/inbox", "/relationships"]) {
+  // /inbox renders the decomposed spatial view whose filter chips are the
+  // primary mobile tap surfaces (#11144 lineage). Relationships now uses its
+  // dedicated collection; the all-views geometry gate covers that surface.
+  for (const path of ["/inbox"]) {
     await openAppPath(page, path);
     const buttons = page.locator(
       '[data-spatial-surface] button[data-spatial-kind="button"]',

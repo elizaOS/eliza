@@ -5,6 +5,7 @@
  * channels keep their unread-for-triage fallback (#22055). Deterministic —
  * pure aggregation over literal InboundMessage fixtures.
  */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
 import { buildInbox } from "./aggregate";
@@ -80,17 +81,72 @@ describe("x_dm unread derivation", () => {
     expect(inbox.messages[0]?.unread).toBe(true);
   });
 
-  it("rejects a non-finite timestamp instead of fabricating inbox recency", () => {
-    expect(() =>
-      build([
+  describe("timestamp boundary", () => {
+    it.each([
+      ["NaN", Number.NaN],
+      ["positive infinity", Number.POSITIVE_INFINITY],
+      ["negative infinity", Number.NEGATIVE_INFINITY],
+      ["finite but outside the Date range", Number.MAX_VALUE],
+      ["just above the Date range", 8_640_000_000_000_001],
+      ["just below the Date range", -8_640_000_000_000_001],
+      ["undefined", undefined],
+      ["null", null],
+      ["numeric string", String(NOW)],
+      ["invalid string", "not-a-timestamp"],
+      ["invalid object", {}],
+    ])("rejects %s with the typed producer-data error", (_label, timestamp) => {
+      const messages = [
+        xDm({
+          id: "dm-invalid",
+          timestamp: timestamp as number,
+        }),
+      ];
+
+      expect(() => build(messages)).toThrow(ElizaError);
+      expect(() => build(messages)).toThrowError(
+        expect.objectContaining({
+          code: "INBOX_MESSAGE_TIMESTAMP_INVALID",
+          context: { messageId: "dm-invalid", source: "x_dm" },
+        }),
+      );
+    });
+
+    it("rejects a missing timestamp property", () => {
+      const { timestamp: _timestamp, ...message } = xDm({});
+      expect(() => build([message as InboundMessage])).toThrowError(
+        expect.objectContaining({ code: "INBOX_MESSAGE_TIMESTAMP_INVALID" }),
+      );
+    });
+
+    it.each([
+      [0, "1970-01-01T00:00:00.000Z"],
+      [-1, "1969-12-31T23:59:59.999Z"],
+      [-8_640_000_000_000_000, "-271821-04-20T00:00:00.000Z"],
+      [8_640_000_000_000_000, "+275760-09-13T00:00:00.000Z"],
+      [NOW, "2026-08-18T12:00:00.000Z"],
+      [Date.parse("2026-08-18T07:00:00.000-05:00"), "2026-08-18T12:00:00.000Z"],
+    ])("preserves valid epoch %s as %s", (timestamp, receivedAt) => {
+      const inbox = build([xDm({ timestamp })]);
+
+      expect(inbox.messages[0]?.receivedAt).toBe(receivedAt);
+    });
+
+    it("rejects a mixed thread instead of fabricating a date for one message", () => {
+      const messages = [
         xDm({
           id: "dm-invalid",
           threadId: "conv-mixed",
           timestamp: Number.NaN,
         }),
-      ]),
-    ).toThrow(
-      expect.objectContaining({ code: "INBOX_MESSAGE_TIMESTAMP_INVALID" }),
-    );
+        xDm({
+          id: "dm-valid",
+          threadId: "conv-mixed",
+          timestamp: NOW,
+        }),
+      ];
+      expect(() => build(messages)).toThrowError(
+        expect.objectContaining({ code: "INBOX_MESSAGE_TIMESTAMP_INVALID" }),
+      );
+    });
   });
 });

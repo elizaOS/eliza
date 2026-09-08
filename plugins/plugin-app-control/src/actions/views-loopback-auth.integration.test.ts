@@ -5,11 +5,13 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { runWithStreamingContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAppControlClient } from "../client/api.js";
 import { createAgentSwitchAction } from "./agent-switch.js";
 import { createBackgroundAction } from "./background.js";
 import { createModelSwitchAction } from "./model-switch.js";
+import { setNavigationConstraint } from "./navigation-execution.js";
 import { createSettingsAction } from "./settings.js";
 import { createViewsAction } from "./views.js";
 import {
@@ -436,6 +438,63 @@ describe("authenticated view loopback requests", () => {
 		}
 	});
 
+	it("preserves distinct planner step targets despite the original calendar clause", async () => {
+		const server = await startAuthenticatedViewsServer("step-token");
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_AUTH_TOKEN = "step-token";
+		const client = createViewsClient();
+		const message = {
+			id: "step-turn",
+			entityId: "user-1",
+			roomId: "room-1",
+			agentId: "agent-1",
+			content: { text: "Open calendar, draft an event, then open notes" },
+		} as never;
+		const first = await runWithStreamingContext(
+			{ messageId: "step-turn" },
+			() => {
+				setNavigationConstraint(message, "allow", "requested");
+				return runViewsShow({
+					client,
+					message,
+					options: {
+						view: "calendar",
+						navigationIntent: "planner-step",
+						navigationStepId: "calendar-step",
+					},
+				});
+			},
+		);
+		const second = await runWithStreamingContext(
+			{ messageId: "step-turn" },
+			() => {
+				setNavigationConstraint(message, "allow", "requested");
+				return runViewsShow({
+					client,
+					message,
+					options: {
+						view: "notes",
+						navigationIntent: "planner-step",
+						navigationStepId: "notes-step",
+					},
+				});
+			},
+		);
+		expect(
+			server.requests
+				.filter((request) => request.method === "POST")
+				.map((request) => request.pathname),
+		).toEqual(["/api/views/calendar/navigate", "/api/views/notes/navigate"]);
+		expect(first.data).toMatchObject({
+			navigation: { viewId: "calendar", stepId: "calendar-step" },
+		});
+		expect(second.data).toMatchObject({
+			navigation: { viewId: "notes", stepId: "notes-step" },
+		});
+		expect(first.modelReplyRequired).toBe(true);
+		expect(second.modelReplyRequired).toBe(true);
+	});
+
 	it("authenticates the show action's direct navigate path with the legacy key", async () => {
 		const token = "views-show-legacy-token";
 		const server = await startAuthenticatedViewsServer(token);
@@ -449,6 +508,7 @@ describe("authenticated view loopback requests", () => {
 		};
 		const result = await runViewsShow({
 			client,
+			options: { action: "show", view: "settings" },
 			message: {
 				entityId: "user-1",
 				roomId: "room-1",
@@ -509,7 +569,6 @@ describe("authenticated view loopback requests", () => {
 			text: "interaction complete",
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
-			modelReplyFallback: "interaction complete",
 			turnComplete: false,
 			effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
 			userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
@@ -570,7 +629,7 @@ describe("authenticated view loopback requests", () => {
 				capability: "get-agent-state",
 			},
 		});
-		expect(result.modelReplyFallback).toBe(result.text);
+		expect(result).not.toHaveProperty("modelReplyFallback");
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(result).not.toHaveProperty("verifiedUserFacing");
 		const plannerState = JSON.stringify(result.data);
@@ -619,7 +678,7 @@ describe("authenticated view loopback requests", () => {
 			// an evaluator echo of the diagnostic.
 			transcriptVisibility: "internal",
 		});
-		expect(result).not.toHaveProperty("turnComplete");
+		expect(result.turnComplete).toBe(false);
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(
 			(result as { verifiedUserFacing?: boolean }).verifiedUserFacing,

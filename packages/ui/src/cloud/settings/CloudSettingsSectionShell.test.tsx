@@ -40,7 +40,13 @@ vi.mock("../billing/data/billing-data", () => ({
   },
   useBillingUser: () => ({
     isAuthenticated: true,
-    isLoading: false,
+    isReady: true,
+    isPending: false,
+    isFetching: false,
+    isPaused: false,
+    isFetchedAfterMount: true,
+    isError: false,
+    error: null,
     user: { id: "user-1", organization_id: "org-1" },
   }),
   useInvoice: (id: string | undefined) => {
@@ -68,7 +74,10 @@ vi.mock("../billing/data/billing-data", () => ({
         paid_at: "2026-08-23T08:00:00.000Z",
       },
       error: null,
-      isLoading: false,
+      isPending: false,
+      isFetching: false,
+      isPaused: false,
+      isFetchedAfterMount: true,
     };
   },
 }));

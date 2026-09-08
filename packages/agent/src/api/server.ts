@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
+import { registerInProcessApi } from "./in-process-api.ts";
 
 function tokenMatches(expected: string, provided: string): boolean {
   const expectedBuf = Buffer.from(expected);
@@ -398,6 +399,7 @@ import {
 } from "../services/agent-export.ts";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
+import type { ConnectorSetupServiceInstance } from "../services/connector-setup-service.ts";
 import {
   type CoreManagerLike,
   isCoreManagerLike,
@@ -4005,6 +4007,7 @@ export async function startApiServer(opts?: {
           onRestart,
           onRuntimeActivated,
           onRuntimeSwapped: () => {
+            bindInProcessApi();
             bindRuntimeStreams(state.runtime);
             wireModelRegistrationBroadcast(state.runtime);
             void wireCoordinatorBridgesWhenReady(state, {
@@ -4031,6 +4034,15 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     },
   });
+  let unregisterInProcessApi: (() => void) | undefined;
+  const bindInProcessApi = () => {
+    unregisterInProcessApi?.();
+    unregisterInProcessApi =
+      opts?.skipListen && state.runtime
+        ? registerInProcessApi(state.runtime, routeKernel)
+        : undefined;
+  };
+  bindInProcessApi();
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
   await opts?.configureServer?.(server);
   // W9-AGENT-01: the WS upgrade handler delegates the device-bridge path to
@@ -4121,6 +4133,26 @@ export async function startApiServer(opts?: {
       detachRuntimeStreams();
       detachRuntimeStreams = null;
     }
+    let active = true;
+    const unsubscribe: Array<() => void> = [];
+    detachRuntimeStreams = () => {
+      active = false;
+      for (const detach of unsubscribe) detach();
+    };
+
+    // Registration is lazy: a synchronous lookup can miss the service at
+    // startup. Bind each runtime once it loads, and detach on swap or close.
+    if (runtime?.hasService("connector-setup")) {
+      void runtime
+        .getServiceLoadPromise("connector-setup")
+        .then((service) => {
+          if (!active) return;
+          const setup = service as ConnectorSetupServiceInstance;
+          setup.setBroadcastWs(broadcastWs);
+          unsubscribe.push(() => setup.setBroadcastWs(null));
+        })
+        .catch((error) => runtime.reportError("api.connectorBroadcast", error));
+    }
     const svc = getAgentEventSvc(runtime);
     if (!svc) {
       if (runtime) {
@@ -4159,10 +4191,7 @@ export async function startApiServer(opts?: {
       });
     });
 
-    detachRuntimeStreams = () => {
-      unsubAgentEvents();
-      unsubHeartbeat();
-    };
+    unsubscribe.push(unsubAgentEvents, unsubHeartbeat);
   };
 
   // ── Deferred startup work (non-blocking) ────────────────────────────────
@@ -5013,20 +5042,6 @@ export async function startApiServer(opts?: {
 
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
-  // Wire up ConnectorSetupService broadcastWs so connector plugins
-  // Pairing connectors such as WhatsApp can broadcast events via the service.
-  if (state.runtime) {
-    try {
-      const setupSvc = state.runtime.getService("connector-setup") as {
-        setBroadcastWs?: (
-          fn: ((data: Record<string, unknown>) => void) | null,
-        ) => void;
-      } | null;
-      setupSvc?.setBroadcastWs?.(state.broadcastWs);
-    } catch {
-      // non-fatal — service may not be registered yet
-    }
-  }
 
   // Broadcast status every 5 seconds
   const statusInterval = setInterval(broadcastStatus, 5000);
@@ -5168,6 +5183,7 @@ export async function startApiServer(opts?: {
       );
     });
     state.runtime = rt;
+    bindInProcessApi();
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
@@ -5349,7 +5365,10 @@ export async function startApiServer(opts?: {
   ]) {
     serverResources.add(resource);
   }
-  const stopServerSideResources = (): Promise<void> => serverResources.close();
+  const stopServerSideResources = (): Promise<void> => {
+    unregisterInProcessApi?.();
+    return serverResources.close();
+  };
   // Local-agent IPC mode: skip binding a TCP listener entirely. Routes and the
   // in-process dispatchRoute kernel are already wired (server built above), so
   // an IPC transport (stdio bridge / Capacitor / Electrobun RPC) can drive them

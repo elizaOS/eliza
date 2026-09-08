@@ -56,6 +56,10 @@ The generated publish manifest rewrites every source-facing condition to
 compiled JavaScript and declarations in `dist/`, so the release tarball never
 publishes TypeScript source as runtime code.
 
+The repository runs this package's tests serially because they rebuild and
+temporarily remove `dist/` while checking consumer resolution. Concurrent
+workspace tests may still be importing that compiled package.
+
 ## Usage
 
 Runtime code imports the templates through `@elizaos/core`, which re-exports them and provides `composePrompt` to fill the `{{...}}` placeholders:

@@ -20,15 +20,23 @@ const CHUNK_RELOAD_AT_KEY = "eliza:chunk-reload-attempted-at";
 const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
 
 export function isChunkLoadError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const message = error.message ?? "";
-  return (
-    error.name === "ChunkLoadError" ||
-    message.includes("Failed to fetch dynamically imported module") ||
-    message.includes("Importing a module script failed") ||
-    message.includes("error loading dynamically imported module") ||
-    /Expected a JavaScript-or-Wasm module script/.test(message)
-  );
+  const seen = new Set<Error>();
+  while (error instanceof Error && !seen.has(error)) {
+    seen.add(error);
+    const message = error.message;
+    if (
+      error.name === "ChunkLoadError" ||
+      message.startsWith("Unable to preload CSS for ") ||
+      message.includes("Failed to fetch dynamically imported module") ||
+      message.includes("Importing a module script failed") ||
+      message.includes("error loading dynamically imported module") ||
+      /Expected a JavaScript-or-Wasm module script/.test(message)
+    ) {
+      return true;
+    }
+    error = error.cause;
+  }
+  return false;
 }
 
 /**
@@ -45,19 +53,20 @@ export function tryChunkReloadRecovery(): boolean {
       window.sessionStorage.getItem(CHUNK_RELOAD_AT_KEY) ?? "0",
     );
   } catch {
-    // error-policy:J3 storage denied (private mode) → an unreadable marker is
-    // explicitly "never attempted"; worst case is one extra reload.
-    lastAttempt = 0;
+    // error-policy:J4 unavailable cooldown state leaves recovery to the
+    // explicit Reload control instead of risking a loop across documents.
+    return false;
   }
   if (Date.now() - lastAttempt < RELOAD_COOLDOWN_MS) return false;
   try {
     window.sessionStorage.setItem(CHUNK_RELOAD_AT_KEY, String(Date.now()));
   } catch (err) {
-    // error-policy:J6 marker write is best-effort; without it we may reload
-    // once more than intended, never loop (the navigation itself rate-limits).
+    // error-policy:J4 an unpersisted attempt cannot bound the next document;
+    // keep the existing manual Reload control available instead.
     logger.debug(
       `[ChunkLoadRecovery] could not persist reload marker: ${err instanceof Error ? err.message : String(err)}`,
     );
+    return false;
   }
   window.location.reload();
   return true;

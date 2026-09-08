@@ -10,6 +10,7 @@
  * access gates, credential refs) are never accepted from HTTP bodies, and
  * secret-shaped metadata keys are stripped on write and redacted on read.
  */
+
 import type http from "node:http";
 import {
   CONNECTOR_JSON_UNBOUNDED,
@@ -31,6 +32,7 @@ import {
   parseCanonicalInteger,
   type ReadJsonBodyOptions,
 } from "@elizaos/shared";
+import { extractRows } from "@elizaos/shared/db/raw-sql";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import {
@@ -645,25 +647,6 @@ interface ConnectorAccountAuditReader {
   getDatabase?: () => {
     execute?: (query: unknown) => Promise<unknown>;
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function extractRows(value: unknown): Record<string, unknown>[] {
-  if (Array.isArray(value)) {
-    return value
-      .map(asRecord)
-      .filter((row): row is Record<string, unknown> => row !== null);
-  }
-  const record = asRecord(value);
-  if (!record || !Array.isArray(record.rows)) return [];
-  return record.rows
-    .map(asRecord)
-    .filter((row): row is Record<string, unknown> => row !== null);
 }
 
 function sqlQuote(value: string): string {

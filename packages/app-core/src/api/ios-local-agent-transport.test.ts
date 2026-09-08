@@ -1,5 +1,5 @@
 /**
- * Unit tests for the app-core iOS in-process local-agent transport bridge,
+ * Compatibility tests for the app-core entrypoint of the shared iOS transport,
  * driving `handleIosLocalAgentNativeRequest`, the fetch bridge, and the ITTP
  * transport with hoisted Capacitor / build-variant / kernel mocks. Covers
  * full-Bun native dispatch + start, the ITTP dev fallback, network-policy
@@ -1249,5 +1249,55 @@ describe("iOS local agent transport bridge", () => {
         path: "https://agent.example/api/status",
       }),
     ).rejects.toThrow("path that starts with /");
+  });
+  it("shares primed runtime and coalesces watchdog recovery across host/client entrypoints", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_STRICT", "1");
+    vi.stubGlobal("localStorage", { getItem: () => "local" });
+    const target = new EventTarget();
+    vi.stubGlobal(
+      "window",
+      Object.assign(target, {
+        location: { href: "capacitor://localhost/" },
+        navigator: { userAgent: "vitest" },
+      }),
+    );
+    const restarting = Promise.withResolvers<{ ok: boolean }>();
+    const start = vi.fn(() => restarting.promise);
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        body: "shared runtime",
+      },
+    }));
+    const host = await import("./ios-local-agent-transport");
+    const ui = await import("@elizaos/ui/api/ios-local-agent-transport");
+    host.primeIosFullBunRuntime({
+      start,
+      call,
+      getStatus: async () => ({ ready: true, engine: "bun" }),
+    });
+    host.installIosLocalAgentNativeRequestBridge();
+    ui.installIosLocalAgentFetchBridge();
+    host.installIosLocalAgentFetchBridge();
+    expect(
+      await (await fetch("eliza-local-agent://ipc/api/health")).text(),
+    ).toBe("shared runtime");
+    expect(call).toHaveBeenCalledTimes(1);
+
+    target.dispatchEvent(new Event("eliza:local-agent-restart-requested"));
+    target.dispatchEvent(new Event("eliza:local-agent-restart-requested"));
+    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    const pending = ui.handleIosLocalAgentNativeRequest({
+      path: "/api/health",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(call).toHaveBeenCalledTimes(1);
+    restarting.resolve({ ok: true });
+    expect((await pending).body).toBe("shared runtime");
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(ui.getIosNativeAgentBootProgress().phase).toBe("ready");
   });
 });

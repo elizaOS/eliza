@@ -75,6 +75,7 @@ describe("runFlatProviderOperation", () => {
 
     expect(events).toEqual(["admit", "mark", "provider", "settle"]);
     expect(admitOrganizationInference.mock.calls.at(-1)?.[0].credential).toBe(credential);
+    expect(admitOrganizationInference.mock.calls.at(-1)?.[0].atomicProviderBoundary).toBe(true);
   });
 
   test("reuses one exact deferred credential across multiple atomic admissions", async () => {

@@ -23,11 +23,12 @@
 import { ElizaError, isModelOutputLimitFinishReason } from "@elizaos/core";
 import { generateText } from "ai";
 import type { Bindings } from "../../../types/cloud-worker-env";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../../models/catalog";
 import { getLanguageModel, ProviderConfigurationError } from "../../providers/language-model";
 import { safeFetch } from "../../security/safe-fetch";
 import { isAllowedBlooioMediaUrl } from "./blooio-media-allowlist";
 
-export const INBOUND_MEDIA_VISION_MODEL = "gemma-4-31b";
+export const INBOUND_MEDIA_VISION_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 export const MAX_INBOUND_MEDIA_IMAGES = 4;
 // Mirrors the Telegram voice ceiling: keeps the fetched copies bounded in a
 // 128 MiB Worker isolate while covering ordinary conversational photos.

@@ -31,8 +31,6 @@ import {
   type CalendarViewMode,
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
-import { CalendarSourceHealth } from "./CalendarSourceHealth.js";
-import { CalendarSourceManager } from "./CalendarSourceManager.js";
 import { EventEditorDrawer } from "./EventEditorDrawer.js";
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -456,6 +454,9 @@ function AllDayBandCell({
             size="micro"
             align="start"
             data-state={selected ? "on" : "off"}
+            data-agent-id={`calendar-event-${event.id}`}
+            data-agent-role="button"
+            data-agent-label={event.title}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -570,6 +571,9 @@ function DayColumnGrid({
             variant="selection"
             size="content"
             data-state={isSelected ? "on" : "off"}
+            data-agent-id={`calendar-event-${event.id}`}
+            data-agent-role="button"
+            data-agent-label={`${event.title} ${formatTimeOfDay(event.startAt)}`}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -677,7 +681,7 @@ function TimeGrid({
         >
           <div
             aria-hidden
-            className="flex items-center justify-end px-2 text-[10px] font-medium text-muted/70"
+            className="flex items-center justify-end px-2 text-[10px] font-medium text-muted"
           >
             all-day
           </div>
@@ -702,7 +706,7 @@ function TimeGrid({
           {hours.map(({ hour, label }) => (
             <div
               key={hour}
-              className="absolute right-2 text-[10px] font-medium text-muted/70"
+              className="absolute right-2 text-[10px] font-medium text-muted"
               style={{
                 top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX - 6}px`,
               }}
@@ -1173,7 +1177,7 @@ export function CalendarSection({
   return (
     <>
       <section
-        className="flex h-full min-h-0 flex-col gap-4"
+        className="flex min-h-full flex-col gap-4"
         data-testid="lifeops-calendar-section"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1194,7 +1198,7 @@ export function CalendarSection({
               </Button>
               <Button
                 variant="ghostMuted"
-                size="dense"
+                size="touch"
                 ref={todayNav.ref}
                 type="button"
                 onClick={calendar.goToToday}
@@ -1236,6 +1240,7 @@ export function CalendarSection({
             <Button
               ref={newEvent.ref}
               size="dense"
+              variant="accentDarkHover"
               className="shrink-0"
               onClick={() => {
                 setCreateDefaultDate(new Date(calendar.windowStart));
@@ -1252,24 +1257,12 @@ export function CalendarSection({
 
         {proactiveLine ? (
           <p
-            className="-mt-1 text-[13px] text-muted/70"
+            className="-mt-1 text-[13px] text-muted"
             data-testid="lifeops-calendar-proactive"
           >
             {proactiveLine}
           </p>
         ) : null}
-
-        <CalendarSourceHealth
-          status={calendar.status}
-          sources={calendar.sources}
-          refreshing={calendar.refreshing}
-          onRefresh={() => void calendar.refresh()}
-        />
-
-        <CalendarSourceManager
-          sourceHealth={calendar.sources}
-          onSelectionChanged={() => void calendar.refresh()}
-        />
 
         {calendar.error ? (
           <div

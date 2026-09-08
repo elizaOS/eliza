@@ -144,6 +144,12 @@ describe("resolveBuiltinBackgroundPolicy: legacy parity", () => {
     expect(resolveBuiltinBackgroundPolicy("views", "/views/thing")).toBeNull();
   });
 
+  it("memories uses an opaque reading surface", () => {
+    expect(resolveBuiltinBackgroundPolicy("memories", "/apps/memories")).toBe(
+      "opaque",
+    );
+  });
+
   it("apps is shared only at /apps, else null", () => {
     expect(resolveBuiltinBackgroundPolicy("apps", "/apps")).toBe("shared");
     expect(resolveBuiltinBackgroundPolicy("apps", "/apps/tasks")).toBeNull();
@@ -153,7 +159,6 @@ describe("resolveBuiltinBackgroundPolicy: legacy parity", () => {
     ["voice", "/voice"],
     ["settings", "/settings"],
     ["files", "/apps/files"],
-    ["memories", "/apps/memories"],
     ["some-plugin-tab", "/plugin"],
     ["triggers", "/automations"],
   ] as const)("%s @ %s -> null (no builtin policy)", (tab, path) => {

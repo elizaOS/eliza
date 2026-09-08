@@ -51,6 +51,7 @@ import {
   type CloudLiveDedicatedConsentGate,
   CloudLiveOptionalActionDeadlineError,
   type CloudLivePersonalIdentityRecovery,
+  CloudLiveRequiredActionUnavailableError,
   clickCloudLiveOptionalAction,
   createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
@@ -59,6 +60,8 @@ import {
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 import {
+  CLOUD_LIVE_CONTINUITY_IDENTITY_TIMEOUT_MS,
+  CLOUD_LIVE_FIRST_IDENTITY_TIMEOUT_MS,
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   type CloudLivePreIdentityDiagnostic,
   type CloudLiveTrajectoryPhase,
@@ -89,11 +92,6 @@ const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 const REQUIRE_NAMED_WARMING =
   process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
 
-const PERSONAL_DEDICATED_ACTIVATION_TIMEOUT_MS = 6 * 60_000;
-const PERSONAL_IDENTITY_COMMIT_MARGIN_MS = 30_000;
-const PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS =
-  PERSONAL_DEDICATED_ACTIVATION_TIMEOUT_MS + PERSONAL_IDENTITY_COMMIT_MARGIN_MS;
-
 // This lane deliberately places a real Cloud bearer in browser storage.
 // Playwright traces record init-script arguments and request headers, while
 // screenshots/video can retain private model content. This credentialed lane
@@ -123,7 +121,7 @@ async function clickIfVisible(
 async function chooseCloudRuntime(
   page: Page,
   onRuntimeChoiceState?: (
-    state: "attempt" | "success" | "timeout",
+    state: "attempt" | "success" | "timeout" | "unavailable",
   ) => Promise<void>,
 ): Promise<void> {
   await onRuntimeChoiceState?.("attempt");
@@ -135,12 +133,15 @@ async function chooseCloudRuntime(
         action: "runtime-cloud",
         offerTimeoutMs: 30_000,
         actionTimeoutMs: 30_000,
+        required: true,
       },
     );
     if (clicked) await onRuntimeChoiceState?.("success");
   } catch (error) {
     if (error instanceof CloudLiveOptionalActionDeadlineError) {
       await onRuntimeChoiceState?.("timeout");
+    } else if (error instanceof CloudLiveRequiredActionUnavailableError) {
+      await onRuntimeChoiceState?.("unavailable");
     }
     throw error;
   }
@@ -578,6 +579,7 @@ async function resolvePersonalIdentity(
   page: Page,
   dedicatedConsentGate: CloudLiveDedicatedConsentGate,
   dedicatedNetworkAudit: CloudLiveNetworkAudit,
+  identityTimeoutMs: number,
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
   existingDedicatedAdoptionProof?: DedicatedAdoptionConsentProof,
@@ -593,7 +595,7 @@ async function resolvePersonalIdentity(
       chooseRuntimeAction: () => chooseCloudRuntime(page),
     });
     const confirmationChoices = page.locator(
-      '[data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
+      '[data-testid="dedicated-adoption-confirm"], [data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
     );
     const binding = await waitForCloudLivePersonalIdentity({
       readBinding: () => readActiveBinding(page),
@@ -613,6 +615,7 @@ async function resolvePersonalIdentity(
         performConfirmation: async (confirmation) => {
           const testId = await confirmation.getAttribute("data-testid");
           if (
+            testId === "dedicated-adoption-confirm" ||
             testId?.startsWith(
               "choice-__first_run__:dedicated-adoption:confirm",
             )
@@ -646,7 +649,7 @@ async function resolvePersonalIdentity(
           return "activation";
         },
       },
-      timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
+      timeoutMs: identityTimeoutMs,
       runtimeCloudGraceMs: 15_000,
       onRecovery,
     });
@@ -663,12 +666,11 @@ async function resolvePersonalIdentity(
 }
 
 test.describe("real cloud login + personal identity + chat", () => {
-  // This single contract contains two independently bounded Personal identity
-  // resolutions (2 x 390s), two 240s history proofs, protected renderer
-  // boot twice, and one 180s live-chat proof. A 15-minute aggregate timeout can
-  // therefore close a healthy browser before the later phase-specific bounds
-  // adjudicate. Keep the test below its 45-minute workflow job while allowing
-  // every fail-closed phase to report its own result.
+  // The first identity join can own a real 15-minute Dedicated cold provision
+  // plus commit margin. The fresh-context continuity join cannot provision
+  // again, so it keeps a tighter bound. Together they consume at most half of
+  // this 35-minute test and preserve the other half for boot, chat, and history
+  // while the workflow retains its 10-minute setup reserve.
   test.setTimeout(CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS);
   test.skip(
     !CLOUD_LIVE_ENABLED && !REQUIRE_NAMED_WARMING,
@@ -787,6 +789,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       runtimeCloudActionAttemptCount: 0,
       runtimeCloudActionSuccessCount: 0,
       runtimeCloudActionTimeoutCount: 0,
+      runtimeCloudActionUnavailableCount: 0,
       runtimeCloudRecoveryVisibleCount: 0,
       personalIdentityRetryVisibleCount: 0,
     };
@@ -916,6 +919,31 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.uninspectableDedicatedAdoptionQuoteResponseBodyCount,
           dedicatedAdoptionConfirmationPostRequestCount:
             audit.dedicatedAdoptionConfirmationPostRequestCount,
+          dedicatedAdoptionConfirmationPostResponseCount:
+            audit.dedicatedAdoptionConfirmationPostResponseCount,
+          failedDedicatedAdoptionConfirmationPostRequestCount:
+            audit.failedDedicatedAdoptionConfirmationPostRequestCount,
+          pendingDedicatedAdoptionConfirmationPostRequestCount:
+            audit.pendingDedicatedAdoptionConfirmationPostRequestCount,
+          dedicatedAdoptionConfirmationResponseStatus:
+            audit.dedicatedAdoptionConfirmationResponseStatus,
+          dedicatedAdoptionConfirmationResponseCode:
+            audit.dedicatedAdoptionConfirmationResponseCode,
+          dedicatedAdoptionConfirmationElapsedMs:
+            audit.dedicatedAdoptionConfirmationElapsedMs,
+          dedicatedProvisionJobGetRequestCount:
+            audit.dedicatedProvisionJobGetRequestCount,
+          dedicatedProvisionJobGetResponseCount:
+            audit.dedicatedProvisionJobGetResponseCount,
+          failedDedicatedProvisionJobGetRequestCount:
+            audit.failedDedicatedProvisionJobGetRequestCount,
+          pendingDedicatedProvisionJobGetRequestCount:
+            audit.pendingDedicatedProvisionJobGetRequestCount,
+          dedicatedProvisionJobResponseStatus:
+            audit.dedicatedProvisionJobResponseStatus,
+          dedicatedProvisionJobResponseCode:
+            audit.dedicatedProvisionJobResponseCode,
+          dedicatedProvisionJobStatus: audit.dedicatedProvisionJobStatus,
           ...dedicatedConsentGate.snapshot(),
         };
       };
@@ -935,8 +963,10 @@ test.describe("real cloud login + personal identity + chat", () => {
             runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
           } else if (state === "success") {
             runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
-          } else {
+          } else if (state === "timeout") {
             runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
+          } else {
+            runtimeChoiceCounters.runtimeCloudActionUnavailableCount += 1;
           }
           await writePreIdentityDiagnostic();
         });
@@ -954,6 +984,7 @@ test.describe("real cloud login + personal identity + chat", () => {
           page,
           dedicatedConsentGate,
           primaryAudit,
+          CLOUD_LIVE_FIRST_IDENTITY_TIMEOUT_MS,
           false,
           async (recovery) => {
             if (recovery === "runtime-cloud") {
@@ -1324,6 +1355,7 @@ test.describe("real cloud login + personal identity + chat", () => {
           freshPage,
           dedicatedConsentGate,
           freshAudit,
+          CLOUD_LIVE_CONTINUITY_IDENTITY_TIMEOUT_MS,
         ).catch((cause: unknown) =>
           rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
             await enterTrajectoryPhase(

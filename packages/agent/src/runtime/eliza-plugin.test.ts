@@ -14,8 +14,9 @@
  * behavior* and produces the coverage the text-only guard cannot.
  */
 
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, type Memory, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { validateToolArgs } from "../../../core/src/actions/validate-tool-args.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
@@ -186,5 +187,81 @@ describe("createElizaPlugin — dispose lifecycle", () => {
     const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
     await expect(disposeOf(plugin)(runtime)).resolves.toBeUndefined();
     vi.restoreAllMocks();
+  });
+});
+
+describe("promoted MEMORY tool contracts", () => {
+  const memoryId = "8f57e93e-b652-4ae0-8653-d86baa67a16b" as UUID;
+  function actionNamed(name: string) {
+    const action = createElizaPlugin().actions?.find(
+      (entry) => entry.name === name,
+    );
+    if (!action) throw new Error(`Missing ${name}`);
+    return action;
+  }
+
+  it("rejects the observed missing-text update and accepts either target form", () => {
+    const update = actionNamed("MEMORY_UPDATE");
+    expect(
+      validateToolArgs(update, { memoryId, confirm: true }).errors,
+    ).toContain("Missing required argument 'text'");
+    for (const target of [{ memoryId }, { query: "Silver Heron" }]) {
+      expect(
+        validateToolArgs(update, {
+          ...target,
+          text: "Silver Heron review day is Friday.",
+          confirm: true,
+        }).valid,
+      ).toBe(true);
+    }
+    expect(validateToolArgs(update, { memoryId, text: "Friday" }).valid).toBe(
+      false,
+    );
+    expect(validateToolArgs(actionNamed("MEMORY_CREATE"), {}).valid).toBe(
+      false,
+    );
+    expect(
+      validateToolArgs(actionNamed("MEMORY_DELETE"), { memoryId }).valid,
+    ).toBe(false);
+    expect(
+      validateToolArgs(actionNamed("MEMORY_SEARCH"), { query: "Silver Heron" })
+        .valid,
+    ).toBe(true);
+    expect(
+      actionNamed("MEMORY").parameters?.find((p) => p.name === "text")
+        ?.required,
+    ).toBe(false);
+  });
+
+  it("dispatches a valid promoted update without losing replacement text", async () => {
+    const runtime = new AgentRuntime({ character: { name: "Eliza" } });
+    let stored: Memory = {
+      id: memoryId,
+      agentId: runtime.agentId,
+      entityId: "1f6f565c-00c4-0952-bfa6-a8af23e74913" as UUID,
+      roomId: "b1e84986-c1e5-0109-ad54-092e36867860" as UUID,
+      content: { text: "Silver Heron review day is Tuesday." },
+    };
+    vi.spyOn(runtime, "getMemoryById").mockImplementation(async () => stored);
+    const write = vi
+      .spyOn(runtime, "updateMemory")
+      .mockImplementation(async (change) => {
+        stored = { ...stored, ...change };
+        return true;
+      });
+    const action = actionNamed("MEMORY_UPDATE");
+    const parameters = {
+      memoryId,
+      text: "Silver Heron review day is Friday.",
+      confirm: true,
+    };
+    const checked = validateToolArgs(action, parameters);
+    expect(checked.valid).toBe(true);
+    const result = await action.handler(runtime, stored, undefined, {
+      parameters,
+    });
+    expect(result?.success).toBe(true);
+    expect(write).toHaveBeenCalledOnce();
+    expect(stored.content.text).toBe("Silver Heron review day is Friday.");
   });
 });

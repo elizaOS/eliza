@@ -26,9 +26,9 @@ import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as aiBillingRecordsActual from "@/lib/services/ai-billing-records";
 import { InferenceAdmissionDispatchMarkError } from "@/lib/services/inference-admission-gate";
 import * as teamCredentialPoolActual from "@/lib/services/team-credential-pool";
-
 // The REAL settler — explicitly NOT mocked; reservation math is under test.
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
+import * as loggerActual from "@/lib/utils/logger";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -119,6 +119,17 @@ mock.module("@/lib/services/team-credential-pool", () => ({
   }),
 }));
 
+const errorCalls: Array<{ message: string; context: unknown }> = [];
+mock.module("@/lib/utils/logger", () => ({
+  ...loggerActual,
+  logger: {
+    ...loggerActual.logger,
+    error(message: string, context?: unknown) {
+      errorCalls.push({ message, context });
+    },
+  },
+}));
+
 // Import the route AFTER the mocks so it binds to the stubs.
 const {
   default: chatCompletionsRouter,
@@ -162,6 +173,7 @@ afterAll(() => {
     "@/lib/services/team-credential-pool",
     () => teamCredentialPoolActual,
   );
+  mock.module("@/lib/utils/logger", () => loggerActual);
   globalThis.fetch = realFetch;
   for (const key of ENV_KEYS) {
     if (savedEnv[key] === undefined) delete process.env[key];
@@ -177,6 +189,7 @@ beforeEach(() => {
   aiBillingRecord.mockClear();
   poolRecordUse.mockClear();
   poolRecordProviderFailure.mockClear();
+  errorCalls.length = 0;
   fetchMock.mockClear();
   generateTextImpl = null;
   streamTextImpl = null;
@@ -311,6 +324,7 @@ function callNonStreaming(
   settlement?: {
     settle(actualCost: number): Promise<unknown>;
     settleUnknown(): Promise<unknown>;
+    markProviderDispatched?(): Promise<void>;
   },
 ) {
   return handleNonStreamingRequest(
@@ -342,6 +356,8 @@ function callNonStreaming(
     null,
     false,
     undefined,
+    undefined,
+    settlement?.markProviderDispatched,
   );
 }
 
@@ -760,6 +776,41 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
     });
   });
 
+  test("SDK streaming and non-streaming both stop before provider work when atomic admission fails", async () => {
+    const denial = new InferenceAdmissionDispatchMarkError(
+      "combined admission denied before provider work",
+    );
+    const markProviderDispatched = async () => {
+      throw denial;
+    };
+
+    await expect(
+      callStreaming(async () => null, {
+        request: {
+          ...QUALIFYING_REQUEST,
+          tools: [
+            {
+              type: "function",
+              function: { name: "get_weather", parameters: {} },
+            },
+          ],
+        },
+        markProviderDispatched,
+      }),
+    ).rejects.toBe(denial);
+    await expect(
+      callNonStreaming("zai-glm-4.7", "none", undefined, {
+        settle: async () => null,
+        settleUnknown: async () => null,
+        markProviderDispatched,
+      }),
+    ).rejects.toBe(denial);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
   test("SDK non-streaming keeps the admitted estimate when billing fails after provider output", async () => {
     generateTextImpl = () => ({
       text: "Hello",
@@ -995,7 +1046,7 @@ describe("passthrough streaming — upstream errors settle by provable outcome",
         JSON.stringify({
           error: { message: "queue is saturated", type: "rate_limit_error" },
         }),
-        { status: 429 },
+        { status: 429, headers: { "x-request-id": "provider-req-429" } },
       );
 
     const res = await callStreaming(settle, {});
@@ -1012,6 +1063,17 @@ describe("passthrough streaming — upstream errors settle by provable outcome",
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
     expect(billUsage).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
+    expect(errorCalls).toContainEqual({
+      message: "[Chat Completions] Passthrough upstream error status",
+      context: {
+        model: MODEL,
+        provider: "cerebras-api",
+        traceId: "req-1",
+        providerRequestId: "provider-req-429",
+        upstreamStatus: 429,
+        mappedStatus: 429,
+      },
+    });
   });
 
   test("redacts an echoed prompt cache key from an upstream error", async () => {
@@ -1085,9 +1147,40 @@ describe("passthrough streaming — upstream errors settle by provable outcome",
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.actualCosts).toEqual([ledger.hold]);
     expect(billUsage).not.toHaveBeenCalled();
+    expect(errorCalls).toContainEqual({
+      message: "[Chat Completions] Passthrough upstream fetch failed",
+      context: {
+        model: MODEL,
+        provider: "cerebras-api",
+        traceId: "req-1",
+        error: "network down",
+      },
+    });
   });
 
-  test("dispatch acknowledgement failure cancels before the provider is invoked", async () => {
+  test("accepted response without a body logs the trace and sanitized provider request id", async () => {
+    fetchImpl = async () =>
+      new Response(null, {
+        status: 200,
+        headers: { "x-request-id": "provider req<missing-body>" },
+      });
+
+    const res = await callStreaming(async () => null, {});
+
+    expect(res.status).toBe(503);
+    expect(errorCalls).toContainEqual({
+      message:
+        "[Chat Completions] Passthrough upstream returned an accepted response without a stream body",
+      context: {
+        model: MODEL,
+        provider: "cerebras-api",
+        traceId: "req-1",
+        providerRequestId: "provider_req_missing-body_",
+      },
+    });
+  });
+
+  test("dispatch acknowledgement failure escapes to the route cancellation boundary", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);
     let unknownSettles = 0;
@@ -1095,23 +1188,24 @@ describe("passthrough streaming — upstream errors settle by provable outcome",
       throw new Error("provider fetch must not run");
     };
 
-    const res = await callStreaming(settle, {
-      markProviderDispatched: async () => {
-        throw new InferenceAdmissionDispatchMarkError(
-          "dispatch acknowledgement remained ambiguous",
-        );
-      },
-      settleUnknown: async () => {
-        unknownSettles++;
-        return null;
-      },
-    });
+    await expect(
+      callStreaming(settle, {
+        markProviderDispatched: async () => {
+          throw new InferenceAdmissionDispatchMarkError(
+            "dispatch acknowledgement remained ambiguous",
+          );
+        },
+        settleUnknown: async () => {
+          unknownSettles++;
+          return null;
+        },
+      }),
+    ).rejects.toBeInstanceOf(InferenceAdmissionDispatchMarkError);
 
-    expect(res.status).toBe(503);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(unknownSettles).toBe(0);
-    expect(ledger.actualCosts).toEqual([0]);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.actualCosts).toEqual([]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
   });
 
   test("partial output followed by an in-stream error retains the admitted estimate", async () => {

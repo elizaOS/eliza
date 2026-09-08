@@ -33,12 +33,14 @@ import {
   invalidateOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
-import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-billing-deferred";
 import {
   getGateBalanceHint,
   InferenceBalanceCacheWarmingError,
 } from "./inference-billing-fast-path";
-import type { InferenceCredentialCheck } from "./inference-credential-revocation";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+} from "./inference-credential-revocation";
 
 export interface AppInferenceAdmissionExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -63,6 +65,8 @@ export interface AppInferenceAdmissionParams {
   admissionSnapshot?: InferenceAdmissionSnapshot;
   /** Strong standing proof consumed atomically by the app balance lease. */
   credential?: InferenceCredentialCheck;
+  /** Commit the balance lease with dispatch at an audited provider boundary. */
+  atomicProviderBoundary?: boolean;
 }
 
 export interface AppInferenceAdmission {
@@ -114,28 +118,14 @@ function refreshBalanceHintAfterSettlement(organizationId: string): Promise<void
     .getOrganizationBalanceSnapshot(organizationId)
     .then(async (snapshot) => {
       await writeOrgBalanceHint(organizationId, snapshot.balanceUsd, balanceAt, snapshot.revision);
-      clearOrgAdmissionRefused(organizationId);
     })
-    .catch(async (error) => {
-      markOrgAdmissionRefused(organizationId);
-      let invalidationError: unknown;
-      try {
-        await invalidateOrgBalanceHint(organizationId);
-      } catch (cause) {
-        invalidationError = cause;
-      }
+    .catch((error) => {
       logger.warn("[AppInferenceAdmission] Balance-hint refresh failed", {
         organizationId,
         error: error instanceof Error ? error.message : String(error),
       });
-      if (invalidationError !== undefined) {
-        throw new AggregateError(
-          [error, invalidationError],
-          "Balance refresh and fail-closed invalidation both failed",
-        );
-      }
-      // error-policy:J2 the database settlement is complete, but cache repair
-      // must remain retryable before the refusal guard can be cleared.
+      // error-policy:J2 the database settlement is complete. The caller owns
+      // the one fail-closed invalidation and preserves this cache-write cause.
       throw error;
     })
     .finally(() => {
@@ -149,7 +139,6 @@ async function blockAppAdmissionAfterFailure(
   organizationId: string,
   failure: unknown,
 ): Promise<never> {
-  markOrgAdmissionRefused(organizationId);
   try {
     await invalidateOrgBalanceHint(organizationId);
   } catch (invalidationError) {
@@ -228,6 +217,7 @@ export async function admitAppInferenceCacheOnly(
       },
       ...(params.credential ? { credential: params.credential } : {}),
       executionCtx: params.executionCtx,
+      deferCommitUntilDispatch: params.atomicProviderBoundary === true,
     });
   } catch (error) {
     if (error instanceof InferenceAdmissionLeaseRejectedError) {
@@ -246,6 +236,26 @@ export async function admitAppInferenceCacheOnly(
   let settlement: Promise<CreditReconciliationResult | null> | null = null;
   let firstActualBaseCostUsd: number | null = null;
   let usageProjectionTransactionId: string | null = null;
+  const markProviderDispatched = async (): Promise<void> => {
+    try {
+      await markInferenceAdmissionLeaseDispatched(inferenceLease);
+    } catch (error) {
+      // error-policy:J2 preserve provider-boundary admission failures as the
+      // public app billing errors already handled by transport callers.
+      if (error instanceof InferenceCredentialRevokedError) throw error;
+      if (error instanceof InferenceAdmissionLeaseRejectedError) {
+        throw new InsufficientCreditsError(
+          error.requiredUsd,
+          error.availableUsd,
+          "cached_balance_gate",
+        );
+      }
+      if (error instanceof InferenceAdmissionGateUnavailableError) {
+        throw new InferenceBalanceCacheWarmingError(error);
+      }
+      throw error;
+    }
+  };
 
   const settle = async (actualBaseCostUsd: number): Promise<CreditReconciliationResult | null> => {
     let reservation: Awaited<ReturnType<typeof appCreditsService.reserveInferenceCredits>>;
@@ -266,7 +276,6 @@ export async function admitAppInferenceCacheOnly(
       usageProjectionTransactionId = reservation.reservationTransactionId ?? null;
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
-        markOrgAdmissionRefused(params.organizationId);
         await invalidateOrgBalanceHint(params.organizationId);
         return {
           reservedAmount: 0,
@@ -293,8 +302,12 @@ export async function admitAppInferenceCacheOnly(
     if (firstActualBaseCostUsd === null) firstActualBaseCostUsd = actualBaseCostUsd;
     if (settlement) return settlement;
     const current = (async () => {
+      if ((firstActualBaseCostUsd ?? 0) === 0 && !inferenceLease.providerDispatched) {
+        await settleInferenceAdmissionLease(inferenceLease, 0, 0);
+        return null;
+      }
       if ((firstActualBaseCostUsd ?? 0) > 0) {
-        await markInferenceAdmissionLeaseDispatched(inferenceLease);
+        await markProviderDispatched();
       }
       const reconciliation = await settle(firstActualBaseCostUsd ?? 0);
       const actualTotalCostUsd =
@@ -341,6 +354,6 @@ export async function admitAppInferenceCacheOnly(
     estimatedTotalCostUsd,
     settle: settleTerminal,
     settleUnknown: () => settleTerminal(reservedBaseCostUsd),
-    markProviderDispatched: () => markInferenceAdmissionLeaseDispatched(inferenceLease),
+    markProviderDispatched,
   };
 }

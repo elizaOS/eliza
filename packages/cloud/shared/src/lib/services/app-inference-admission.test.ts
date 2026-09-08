@@ -17,6 +17,13 @@ class TestInsufficientCreditsError extends Error {
   }
 }
 
+class TestInferenceAdmissionLeaseRejectedError extends Error {
+  readonly requiredUsd = 1;
+  readonly availableUsd = 0;
+}
+
+class TestInferenceAdmissionGateUnavailableError extends Error {}
+
 let cachedBalanceUsd = 100;
 let gateError: Error | null = null;
 let gateReads = 0;
@@ -36,8 +43,6 @@ let reserveImpl: (params: { estimatedBaseCost: number; idempotencyKey: string })
 let invalidations = 0;
 let hintWrites: number[] = [];
 let hintWriteError: Error | null = null;
-let refusalMarks: string[] = [];
-let refusalClears: string[] = [];
 let authoritativeBalanceUsd = 80;
 let usageProjections: string[] = [];
 const acquireInferenceAdmissionLease = mock(
@@ -49,6 +54,7 @@ const acquireInferenceAdmissionLease = mock(
   }),
 );
 const settleInferenceAdmissionLease = mock(async () => undefined);
+const markInferenceAdmissionLeaseDispatched = mock(async () => undefined);
 
 mock.module("./app-credits", () => ({
   appCreditsService: {
@@ -111,27 +117,15 @@ mock.module("./inference-admission-gate", () => ({
     balanceBackedUsd: actualCostUsd,
     gateConsumedUsd: actualCostUsd,
   }),
-  InferenceAdmissionGateUnavailableError: class InferenceAdmissionGateUnavailableError extends Error {},
-  InferenceAdmissionLeaseRejectedError: class InferenceAdmissionLeaseRejectedError extends Error {
-    readonly requiredUsd = 1;
-    readonly availableUsd = 0;
-  },
-  markInferenceAdmissionLeaseDispatched: async () => undefined,
+  InferenceAdmissionGateUnavailableError: TestInferenceAdmissionGateUnavailableError,
+  InferenceAdmissionLeaseRejectedError: TestInferenceAdmissionLeaseRejectedError,
+  markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 }));
 
 mock.module("./app-usage-projections", () => ({
   projectAppUsageForDebit: async (transactionId: string) => {
     usageProjections.push(transactionId);
-  },
-}));
-
-mock.module("./inference-billing-deferred", () => ({
-  clearOrgAdmissionRefused: (organizationId: string) => {
-    refusalClears.push(organizationId);
-  },
-  markOrgAdmissionRefused: (organizationId: string) => {
-    refusalMarks.push(organizationId);
   },
 }));
 
@@ -194,11 +188,10 @@ beforeEach(() => {
   invalidations = 0;
   hintWrites = [];
   hintWriteError = null;
-  refusalMarks = [];
-  refusalClears = [];
   usageProjections = [];
   acquireInferenceAdmissionLease.mockClear();
   settleInferenceAdmissionLease.mockClear();
+  markInferenceAdmissionLeaseDispatched.mockClear();
   authoritativeBalanceUsd = 80;
   reserveImpl = async () => ({
     reservedAmount: 1.2,
@@ -208,6 +201,45 @@ beforeEach(() => {
 });
 
 describe("admitAppInferenceCacheOnly", () => {
+  test("opts into the atomic provider-boundary lease only when requested", async () => {
+    const admission = await admitAppInferenceCacheOnly({
+      ...params({ waitUntil: () => undefined }),
+      atomicProviderBoundary: true,
+    });
+    expect(acquireInferenceAdmissionLease.mock.calls[0]?.[0]).toMatchObject({
+      deferCommitUntilDispatch: true,
+    });
+    expect(markInferenceAdmissionLeaseDispatched).not.toHaveBeenCalled();
+
+    await admission.markProviderDispatched();
+    expect(markInferenceAdmissionLeaseDispatched).toHaveBeenCalledTimes(1);
+  });
+
+  test("a late atomic balance denial releases locally without authoritative accounting", async () => {
+    markInferenceAdmissionLeaseDispatched.mockRejectedValueOnce(
+      new TestInferenceAdmissionLeaseRejectedError(),
+    );
+    const admission = await admitAppInferenceCacheOnly({
+      ...params({ waitUntil: () => undefined }),
+      atomicProviderBoundary: true,
+    });
+
+    await expect(admission.markProviderDispatched()).rejects.toMatchObject({
+      name: "InsufficientCreditsError",
+      required: 1,
+      available: 0,
+      reason: "cached_balance_gate",
+    });
+    await expect(admission.settle(0)).resolves.toBeNull();
+
+    expect(reserveCalls).toBe(0);
+    expect(settleInferenceAdmissionLease).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "request-1" }),
+      0,
+      0,
+    );
+  });
+
   test("uses the Durable Object lease as the sole pre-dispatch WAL", async () => {
     const credential = {
       kind: "api_key" as const,
@@ -263,6 +295,7 @@ describe("admitAppInferenceCacheOnly", () => {
     expect(reserveCalls).toBe(0);
 
     const settlement = admission.settle(0.4);
+    await Promise.resolve();
     await Promise.resolve();
     expect(reserveCalls).toBe(1);
     expect(
@@ -369,11 +402,11 @@ describe("admitAppInferenceCacheOnly", () => {
     expect(reconciled).toEqual([0.4, 0.4]);
     expect(reserveArgs.map((call) => call.estimatedBaseCost)).toEqual([1, 1]);
     expect(reserveArgs.map((call) => call.idempotencyKey)).toEqual(["request-1", "request-1"]);
-    expect(refusalMarks).toEqual(["org-1"]);
-    expect(refusalClears).toEqual(["org-1"]);
+    expect(invalidations).toBe(1);
+    expect(hintWrites).toEqual([80]);
   });
 
-  test("an unconfirmed post-settlement hint write retains refusal until cache repair", async () => {
+  test("an unconfirmed post-settlement hint write invalidates until cache repair", async () => {
     let reconcileCalls = 0;
     reserveImpl = async () => ({
       reservedAmount: 1.2,
@@ -393,15 +426,14 @@ describe("admitAppInferenceCacheOnly", () => {
     const admission = await admitAppInferenceCacheOnly(params({ waitUntil: () => undefined }));
 
     await expect(admission.settle(0.4)).rejects.toThrow("cache write unconfirmed");
-    expect(refusalMarks).toContain("org-1");
-    expect(refusalClears).toHaveLength(0);
+    expect(invalidations).toBe(1);
 
     hintWriteError = null;
     await expect(admission.settle(9)).resolves.toMatchObject({ actualCost: 0.4 });
     expect(reconcileCalls).toBe(2);
     expect(reserveArgs.map((call) => call.estimatedBaseCost)).toEqual([1, 1]);
     expect(reserveArgs.map((call) => call.idempotencyKey)).toEqual(["request-1", "request-1"]);
-    expect(refusalClears).toEqual(["org-1"]);
+    expect(hintWrites).toEqual([80]);
   });
 
   test("client key reuse cannot dedupe two server request dispatches", async () => {
@@ -488,8 +520,6 @@ describe("admitAppInferenceCacheOnly", () => {
     expect(reserveArgs.map((call) => call.idempotencyKey)).toEqual(["request-1"]);
     expect(creatorEarningsWrites).toBe(0);
     expect(invalidations).toBe(1);
-    expect(refusalMarks).toEqual(["org-1"]);
-    expect(refusalClears).toEqual([]);
   });
 
   test("reservation refusal with uncollectable actual cost reports zero collection and no earnings", async () => {

@@ -19,6 +19,7 @@ export {
   getFeaturePolicy,
   getFeaturePolicyMap,
   isCloudConnected,
+  RoutingPolicyError,
   type RuntimeSettings,
   resolveCloudRoute,
   resolveFeatureCloudRoute,

@@ -54,7 +54,7 @@ const OWNER_LIFE_ACTIONS = [
   "review",
 ] as const;
 
-type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number];
+type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number] | "reopen";
 const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
 const OWNER_FINANCE_ACTIONS = [
   "dashboard",
@@ -205,7 +205,7 @@ function makeOwnerLifeAction(args: {
       {
         name: "target",
         description:
-          "Existing item id/title for update/delete/complete/skip/snooze/review.",
+          "Existing item id/title for update/delete/complete/skip/snooze or a single-item review. For review of all items, omit target or use an empty string; do not send the literal string null.",
         required: false,
         aliases: ["query", "item", "task", "reminder", "id", "which"],
         schema: { type: "string" as const },
@@ -216,6 +216,14 @@ function makeOwnerLifeAction(args: {
         required: false,
         aliases: ["snoozeMinutes", "durationMinutes"],
         schema: { type: "number" as const },
+      },
+      {
+        name: "idempotencyKey",
+        description:
+          "Create-definition operation identity: reuse the same key and request when retrying; use distinct keys only for intentionally separate items, even if their content is identical. For other operations or unkeyed creation, omit this field or send an empty string. Whitespace-only tool values also mean omission.",
+        required: false,
+        modelOmissionSentinels: [""],
+        schema: { type: "string" as const, minLength: 1, maxLength: 256 },
       },
       {
         name: "confirmed",
@@ -432,17 +440,18 @@ export const ownerTodosAction: Action = {
     name: "OWNER_TODOS",
     similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
     description:
-      "Owner todos: create/update/delete/complete/skip/snooze/review personal.",
+      "Owner todos: create/update/delete/complete/reopen/skip/snooze/review personal.",
     descriptionCompressed:
-      "owner todos: action=create|update|delete|complete|skip|snooze|review",
+      "owner todos: action=create|update|delete|complete|reopen|skip|snooze|review",
     defaultKind: "definition",
+    actions: [...OWNER_LIFE_ACTIONS, "reopen"],
   }),
   name: "OWNER_TODOS",
   similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
   description:
-    "Owner todos: create/update/delete/complete/skip/snooze/review personal.",
+    "Owner todos: create/update/delete/complete/reopen/skip/snooze/review personal.",
   descriptionCompressed:
-    "owner todos: action=create|update|delete|complete|skip|snooze|review",
+    "owner todos: action=create|update|delete|complete|reopen|skip|snooze|review",
 };
 
 const OWNER_ROUTINE_ACTIONS = [

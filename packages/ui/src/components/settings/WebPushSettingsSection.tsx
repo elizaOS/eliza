@@ -1,17 +1,13 @@
 /**
- * Notifications settings section — minimal, tasteful web-push toggle for the
- * installed iOS PWA (16.4+). Uses the shared SettingsSwitchRow so the toggle
- * stays agent-addressable; the whole behavior lives in `useWebPush`. This is
- * intentionally a single toggle + status copy, not new elaborate UX: it lets
- * the user turn on push and reflects the coarse state, degrading gracefully
- * everywhere push isn't available (unsupported browser, non-standalone,
- * unconfigured VAPID).
+ * Provides a native notification delivery test and browser push opt-in.
+ * Native permissions remain in the device permission rows; the test never
+ * requests another grant or substitutes an in-app toast for OS delivery.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { Capacitor } from "@capacitor/core";
 import { BellRing } from "lucide-react";
 import { useCallback, useState } from "react";
-import { invokeDesktopBridgeRequest } from "../../bridge";
+import { deliverSystemNotification } from "../../bridge/notification-delivery";
 import { isDesktopPlatform } from "../../platform";
 import { useWebPush } from "../../state/notifications/useWebPush";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
@@ -71,6 +67,7 @@ export function WebPushSettingsSection() {
   const [testBusy, setTestBusy] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const view = describeState(state);
+  const native = isDesktopPlatform() || Capacitor.isNativePlatform();
 
   const onToggle = useCallback(
     (checked: boolean) => {
@@ -86,30 +83,24 @@ export function WebPushSettingsSection() {
     setTestBusy(true);
     setTestError(null);
     try {
-      const acknowledgement = await invokeDesktopBridgeRequest<{ id: string }>({
-        rpcMethod: "desktopShowNotification",
-        ipcChannel: "desktop:showNotification",
-        params: {
-          title: "Eliza Test Notification",
-          body: "Notifications from the Eliza desktop app are working.",
-        },
+      const channel = await deliverSystemNotification({
+        id: `notification-test-${crypto.randomUUID()}`,
+        title: "Eliza Test Notification",
+        body: "Notifications from Eliza are working.",
+        priority: "normal",
+        requestPermission: false,
       });
-      if (
-        acknowledgement === null ||
-        typeof acknowledgement?.id !== "string" ||
-        acknowledgement.id.length === 0
-      ) {
-        throw new ElizaError(
-          "The desktop app cannot send a test notification.",
-          { code: "DESKTOP_NOTIFICATION_METHOD_UNAVAILABLE" },
+      if (channel === "none") {
+        setTestError(
+          "Cannot send a system notification. Check notification access above and in your device settings.",
         );
       }
     } catch (cause) {
-      // error-policy:J4 the desktop test action renders a visible failure.
+      // error-policy:J4 the notification test renders a visible failure.
       setTestError(
         cause instanceof Error
           ? cause.message
-          : "The desktop app cannot send a test notification.",
+          : "Cannot send a system notification.",
       );
     } finally {
       setTestBusy(false);
@@ -118,25 +109,27 @@ export function WebPushSettingsSection() {
 
   return (
     <SettingsStack>
-      <SettingsGroup title="Notifications">
-        <SettingsSwitchRow
-          agentId="notifications-push-toggle"
-          agentLabel="Toggle push notifications"
-          icon={BellRing}
-          label={view.label}
-          description={error ?? view.description}
-          checked={view.on}
-          disabled={!view.canToggle || busy || !ready}
-          agentStatus={
-            view.canToggle ? (view.on ? "on" : "off") : "unavailable"
-          }
-          onCheckedChange={onToggle}
-        />
-      </SettingsGroup>
-      {isDesktopPlatform() ? (
+      {!native && (
+        <SettingsGroup title="Notifications">
+          <SettingsSwitchRow
+            agentId="notifications-push-toggle"
+            agentLabel="Toggle push notifications"
+            icon={BellRing}
+            label={view.label}
+            description={error ?? view.description}
+            checked={view.on}
+            disabled={!view.canToggle || busy || !ready}
+            agentStatus={
+              view.canToggle ? (view.on ? "on" : "off") : "unavailable"
+            }
+            onCheckedChange={onToggle}
+          />
+        </SettingsGroup>
+      )}
+      {native ? (
         <SettingsGroup
           title="System notification"
-          footer="Verify that the desktop app can show system notifications."
+          footer="Send a test banner. Your device controls its placement and may silence it during Focus or Do Not Disturb."
         >
           <div className="px-5 py-3">
             <SettingsActionButton

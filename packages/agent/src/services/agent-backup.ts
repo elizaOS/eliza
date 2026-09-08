@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, timeInferenceSpan } from "@elizaos/core";
 import { createKmsClient, systemKey } from "@elizaos/core/security/kms";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
@@ -1481,8 +1481,15 @@ export async function listLocalAgentBackups(
   agentId?: string,
 ): Promise<LocalAgentBackupMetadata[]> {
   const root = localBackupsDir();
-  if (!(await pathExists(root))) return [];
-  const entries = await fs.readdir(root, { withFileTypes: true });
+  if (
+    !(await timeInferenceSpan("local-backups:directory-stat", () =>
+      pathExists(root),
+    ))
+  )
+    return [];
+  const entries = await timeInferenceSpan("local-backups:directory-list", () =>
+    fs.readdir(root, { withFileTypes: true }),
+  );
   const backups: LocalAgentBackupMetadata[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(LOCAL_BACKUP_EXTENSION))

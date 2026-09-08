@@ -268,6 +268,7 @@ import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
+import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
 import { BrowserBridgePluginService } from "./service.js";
 import {
   BLOCK_RULE_RECONCILE_TASK_NAME,
@@ -721,6 +722,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   // unless the operator explicitly disables passive mode.
   passiveConnectorsByDefault: true,
   schema: lifeOpsSchema,
+  routes: personalAssistantRoutesPlugin.routes,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via
@@ -1176,8 +1178,8 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and
-    // runs the WS5 background-planner observability loop — owner-facing
-    // proactive dispatch (GM/GN, nudges, check-ins) is owned by the
+    // learned schedule facts, without planning actions or creating approvals.
+    // Owner-facing proactive dispatch (GM/GN, nudges, check-ins) is owned by the
     // scheduled-task runner via the first-run defaults pack + default-pack
     // catalog below. ELIZA_DISABLE_PROACTIVE_AGENT keeps its historical
     // semantics: it gates this worker (never the spine-seeded records).

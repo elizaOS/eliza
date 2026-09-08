@@ -35,6 +35,7 @@ export const LIFEOPS_DEFINITION_STATUSES = [
   "active",
   "paused",
   "archived",
+  "completed",
 ] as const;
 export type LifeOpsDefinitionStatus =
   (typeof LIFEOPS_DEFINITION_STATUSES)[number];
@@ -2053,6 +2054,22 @@ export interface LifeOpsCapabilitiesStatus {
   summary: LifeOpsCapabilitiesSummary;
 }
 
+/** A Todo target is a stored unscheduled definition or an existing scheduled occurrence. */
+export interface LifeOpsTodoView {
+  id: string;
+  targetKind: "definition" | "occurrence";
+  title: string;
+  status: "pending" | "in_progress" | "completed";
+  dueDate: string | null;
+  progress: LifeOpsOccurrenceView["progress"];
+}
+
+export interface LifeOpsDefinitionTransitionResult {
+  definition: LifeOpsTaskDefinition;
+  replayed: boolean;
+  auditId: string | null;
+}
+
 export interface LifeOpsOverviewSection {
   occurrences: LifeOpsOccurrenceView[];
   goals: LifeOpsGoalDefinition[];
@@ -3333,6 +3350,8 @@ export interface LifeOpsXPostResponse {
 }
 
 export interface CreateLifeOpsDefinitionRequest {
+  /** Stable caller operation identity. Reuse for retries; use distinct keys for intentional copies. */
+  idempotencyKey?: string;
   ownership?: LifeOpsOwnershipInput;
   kind: LifeOpsDefinitionKind;
   title: string;
@@ -3405,6 +3424,12 @@ export interface LifeOpsDefinitionRecord {
   definition: LifeOpsTaskDefinition;
   reminderPlan: LifeOpsReminderPlan | null;
   performance: LifeOpsDefinitionPerformance;
+}
+
+/** Creation result distinguishes a new commit from a durable replay. */
+export interface LifeOpsDefinitionCreationResult
+  extends LifeOpsDefinitionRecord {
+  idempotency: { key: string | null; replayed: boolean };
 }
 
 export interface LifeOpsGoalRecord {

@@ -1,4 +1,4 @@
-/** Verifies the AppModeEntryRoute gate — auth gating, the chat-floor routing table (any agents → the same-origin chat app with ZERO pairing traffic), and the rowless personal-entry path (zero sandbox rows → the authoritative personal binding is resolved in place; /join is only the resolution-failure fallback) — through the package's configured test harness (jsdom, real render, hand-rolled fetch stub; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
+/** Verifies the AppModeEntryRoute gate — auth gating, the chat-floor routing table (any agents → the same-origin chat app with ZERO pairing traffic), and the rowless personal-entry path (zero sandbox rows → the authenticated personal identity completes Dedicated activation or reconciliation before chat mounts; /join is the resolution-failure fallback) — through the package's configured test harness (jsdom, real render, real ElizaClient, hand-rolled Cloud transport; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
 // @vitest-environment jsdom
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
@@ -70,6 +70,8 @@ interface StubRoutes {
   agents: () => Response | Promise<Response>;
   /** Response for GET <cloud>/api/v1/eliza/personal (rowless personal entry). */
   personal?: () => Response;
+  /** Responses after Shared identity resolution enters the Dedicated contract. */
+  personalDedicated?: (url: string, init?: RequestInit) => Response | undefined;
 }
 
 const realFetch = globalThis.fetch;
@@ -120,6 +122,10 @@ function stubNetwork(routes: StubRoutes): void {
     }
     if (routes.personal && url.endsWith("/api/v1/eliza/personal")) {
       return Promise.resolve(routes.personal());
+    }
+    const personalDedicatedResponse = routes.personalDedicated?.(url, init);
+    if (personalDedicatedResponse) {
+      return Promise.resolve(personalDedicatedResponse);
     }
     return Promise.resolve(
       new Response(JSON.stringify({ error: `unstubbed ${url}` }), {
@@ -478,13 +484,82 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
 describe("AppModeEntryRoute — rowless personal entry", () => {
   const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
+  const DEDICATED_ID = "00000000-0000-4000-8000-000000000002";
+  const DEDICATED_BASE = `https://${DEDICATED_ID}.cloud.eliza.app`;
+  const ACTIVATION_QUOTE_ID = "a".repeat(64);
 
-  function personalOk(id = PERSONAL_ID): () => Response {
+  function personalSharedOk(id = PERSONAL_ID): () => Response {
     return () =>
       jsonResponse(200, {
         success: true,
         data: { identity: { id, displayName: "Eliza", runtime: "shared" } },
       });
+  }
+
+  function personalDedicatedOk(
+    activation: "fresh" | "running",
+  ): Pick<StubRoutes, "personal" | "personalDedicated"> {
+    return {
+      personal: personalSharedOk(),
+      personalDedicated: (url, init) => {
+        const method = init?.method ?? "GET";
+        if (url.endsWith("/upgrade-tier") && method === "GET") {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: ACTIVATION_QUOTE_ID,
+              canActivate: true,
+              activation:
+                activation === "fresh"
+                  ? { state: "available" }
+                  : {
+                      state: "in_progress",
+                      dedicatedAgentId: DEDICATED_ID,
+                      status: "running",
+                    },
+            },
+          });
+        }
+        if (
+          activation === "fresh" &&
+          url.endsWith("/upgrade-tier") &&
+          method === "POST"
+        ) {
+          const body = JSON.parse(String(init?.body));
+          if (
+            body.action !== "activate_dedicated" ||
+            body.quoteId !== ACTIVATION_QUOTE_ID
+          ) {
+            return jsonResponse(400, { error: "activation quote mismatch" });
+          }
+          return jsonResponse(202, {
+            success: true,
+            data: { dedicatedAgentId: DEDICATED_ID },
+          });
+        }
+        if (url.endsWith("/upgrade-tier/cutover") && method === "POST") {
+          const body = JSON.parse(String(init?.body));
+          if (body.dedicatedAgentId !== DEDICATED_ID) {
+            return jsonResponse(400, { error: "cutover target mismatch" });
+          }
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              personalElizaId: PERSONAL_ID,
+              activeAgentId: DEDICATED_ID,
+              runtime: "dedicated",
+              apiBase: DEDICATED_BASE,
+              importedMessages: 0,
+            },
+          });
+        }
+        return undefined;
+      },
+    };
+  }
+
+  function personalDedicatedRequests(): string[] {
+    return fetchLog.filter((line) => line.includes("/upgrade-tier"));
   }
 
   function bindPersonal(id = PERSONAL_ID): void {
@@ -502,12 +577,12 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     publishPersonalEntryHandoff(authToken, {
       personalElizaId: PERSONAL_ID,
       agentId: PERSONAL_ID,
-      activeAgentId: "00000000-0000-4000-8000-000000000002",
+      activeAgentId: DEDICATED_ID,
       agentName: "Eliza",
-      apiBase: "https://api.eliza.app",
-      runtime: "shared",
+      apiBase: DEDICATED_BASE,
+      runtime: "dedicated",
     });
-    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    stubNetwork({ agents: agentsOk([]), personal: personalSharedOk() });
     renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
@@ -523,39 +598,51 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     publishPersonalEntryHandoff("different-session-token", {
       personalElizaId: PERSONAL_ID,
       agentId: PERSONAL_ID,
-      activeAgentId: "00000000-0000-4000-8000-000000000002",
+      activeAgentId: DEDICATED_ID,
       agentName: "Eliza",
-      apiBase: "https://api.eliza.app",
-      runtime: "shared",
+      apiBase: DEDICATED_BASE,
+      runtime: "dedicated",
     });
-    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    stubNetwork({ agents: agentsOk([]), ...personalDedicatedOk("running") });
     renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
     expect(
       fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
     ).toHaveLength(1);
+    expect(personalDedicatedRequests()).toHaveLength(2);
     expect(assignedUrls).toEqual([]);
   });
 
   it("clean account with a matching personal binding → chat, no /join bounce, no reload (the #19360 loop)", async () => {
     signIn();
     bindPersonal();
-    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    stubNetwork({ agents: agentsOk([]), ...personalDedicatedOk("running") });
     renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
     expect(screen.queryByTestId("join-page")).toBeNull();
+    expect(
+      personalDedicatedRequests().map((line) => line.split(" ")[0]),
+    ).toEqual(["GET", "POST"]);
     expect(assignedUrls).toEqual([]);
   });
 
   it("fresh browser, clean account → authoritative binding persists and chat mounts without a document reload", async () => {
     signIn();
-    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    stubNetwork({ agents: agentsOk([]), ...personalDedicatedOk("fresh") });
     renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
-    expect(loadPersistedActiveServer()?.id).toBe(`cloud:${PERSONAL_ID}`);
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: `cloud:${PERSONAL_ID}`,
+      apiBase: DEDICATED_BASE,
+      cloudRuntimeAgentId: DEDICATED_ID,
+      cloudRuntime: "dedicated",
+    });
+    expect(
+      personalDedicatedRequests().map((line) => line.split(" ")[0]),
+    ).toEqual(["GET", "POST", "POST"]);
     expect(screen.queryByTestId("join-page")).toBeNull();
     expect(assignedUrls).toEqual([]);
   });
@@ -563,11 +650,19 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
   it("stale cross-account binding is repaired to the authenticated identity before any boot", async () => {
     signIn();
     bindPersonal("personal:00000000-0000-5000-8000-0000000000ff");
-    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    stubNetwork({ agents: agentsOk([]), ...personalDedicatedOk("running") });
     renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
-    expect(loadPersistedActiveServer()?.id).toBe(`cloud:${PERSONAL_ID}`);
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: `cloud:${PERSONAL_ID}`,
+      apiBase: DEDICATED_BASE,
+      cloudRuntimeAgentId: DEDICATED_ID,
+      cloudRuntime: "dedicated",
+    });
+    expect(
+      personalDedicatedRequests().map((line) => line.split(" ")[0]),
+    ).toEqual(["GET", "POST"]);
     expect(assignedUrls).toEqual([]);
   });
 
@@ -609,7 +704,7 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
 
   it("rowless Cloud management stays reachable without touching the personal identity endpoint", async () => {
     signIn();
-    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    stubNetwork({ agents: agentsOk([]), personal: personalSharedOk() });
     renderEntry("/cloud/billing");
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();

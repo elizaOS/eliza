@@ -21,7 +21,7 @@ import { type CloudServer, makeRuntime, startCloudServer } from "./cloud-account
  */
 function makeCreditRuntime(options: { balance?: number; fail?: boolean }): IAgentRuntime {
   const client = {
-    get: vi.fn(async () => {
+    requestData: vi.fn(async () => {
       if (options.fail) throw new Error("billing down");
       return { data: { balance: options.balance ?? 7.5 } };
     }),

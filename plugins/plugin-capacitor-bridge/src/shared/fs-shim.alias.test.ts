@@ -9,6 +9,8 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -67,7 +69,7 @@ describe("installMobileFsShim alias acceptance (real shim, Bun subprocess)", () 
 			`try { sandboxedPath("/data/data/other.pkg/files/x"); } catch { out.otherPkgBlocked = true; }`,
 			`console.log(JSON.stringify(out));`,
 		].join("\n");
-		const stdout = execFileSync("bun", ["-e", script], {
+		const stdout = execFileSync(process.execPath, ["-e", script], {
 			encoding: "utf8",
 			timeout: 30_000,
 		});
@@ -79,5 +81,42 @@ describe("installMobileFsShim alias acceptance (real shim, Bun subprocess)", () 
 			escapeBlocked: true,
 			otherPkgBlocked: true,
 		});
+	});
+
+	it("accepts an explicit packaged read-only root without allowing writes", () => {
+		const fixtureRoot = mkdtempSync(nodePath.join(tmpdir(), "eliza-fs-shim-"));
+		const workspaceRoot = nodePath.join(fixtureRoot, "workspace");
+		const publicRoot = nodePath.join(fixtureRoot, "App.app", "public");
+		const registryPath = nodePath.join(publicRoot, "generated-registry.json");
+		mkdirSync(workspaceRoot, { recursive: true });
+		mkdirSync(publicRoot, { recursive: true });
+		const expectedRegistry = '{"registry":{"fixture":{"version":"1.2.3"}}}\n';
+		writeFileSync(registryPath, expectedRegistry);
+
+		try {
+			const script = [
+				`(async () => {`,
+				`const { installMobileFsShim } = await import(${JSON.stringify(SHIM_PATH)});`,
+				`installMobileFsShim(${JSON.stringify(workspaceRoot)}, { readOnlyRoots: [${JSON.stringify(publicRoot)}] });`,
+				`const fs = require("node:fs");`,
+				`const out = { before: fs.readFileSync(${JSON.stringify(registryPath)}, "utf8"), writeBlocked: false, after: "" };`,
+				`try { fs.writeFileSync(${JSON.stringify(registryPath)}, "changed"); } catch (error) { out.writeBlocked = error?.code === "EACCES"; }`,
+				`out.after = fs.readFileSync(${JSON.stringify(registryPath)}, "utf8");`,
+				`console.log(JSON.stringify(out));`,
+				`})().catch((error) => { console.error(error); process.exitCode = 1; });`,
+			].join("\n");
+			const stdout = execFileSync(process.execPath, ["-e", script], {
+				encoding: "utf8",
+				timeout: 30_000,
+			});
+			const lastLine = stdout.trim().split("\n").at(-1) ?? "";
+			expect(JSON.parse(lastLine)).toEqual({
+				before: expectedRegistry,
+				writeBlocked: true,
+				after: expectedRegistry,
+			});
+		} finally {
+			rmSync(fixtureRoot, { recursive: true, force: true });
+		}
 	});
 });

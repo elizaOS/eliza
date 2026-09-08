@@ -1,28 +1,32 @@
 #!/usr/bin/env bun
 /**
- * Measures the complete production chat path against Cerebras Gemma 4 31B.
+ * Measures the complete production chat path against a configured Cerebras model.
  *
  * A real PGLite-backed AgentRuntime processes every turn through providers,
  * model routing, streaming, persistence, delivery, and lifecycle events. The
  * report retains synthetic prompts and outputs so reviewers can verify that
  * each live response was distinct rather than served by a fabricated fallback.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  type AgentRuntime,
   buildInferenceTimingDevPayload,
   ChannelType,
   createMessageMemory,
   drainPostDeliveryTasks,
+  ElizaError,
   EventType,
   type InferenceFlowStage,
   type InferenceHistogramSummary,
   InferenceTurnTimer,
   inferenceTimingRegistry,
   isSensitiveKeyName,
+  isTextGenerationModelType,
   type Memory,
   type ModelEventPayload,
   ModelType,
@@ -32,10 +36,61 @@ import {
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
+import { shutdownRuntime } from "../src/runtime/eliza.ts";
+import {
+  applyCacheExperiment,
+  type CacheExperimentMode,
+  expectedConversationCacheKey,
+  measuredProviderFetch,
+  type ProviderWireEvidence,
+  requireRealEmbeddingConfig,
+  runChatCondition,
+  verifyCacheExperimentWire,
+} from "./cerebras-chat-flow-experiment.ts";
 
-const DEFAULT_MODEL = "gemma-4-31b";
 const DEFAULT_SAMPLES = 30;
 const DEFAULT_WARMUPS = 3;
+
+export interface BenchmarkTeardown {
+  status: "success" | "failed";
+  error: string | null;
+}
+
+/** Publish complete measurements only after strict owned shutdown has settled. */
+export async function finalizeBenchmarkReport<
+  T extends { status: "success" | "failed" },
+>(
+  report: T,
+  shutdown: () => Promise<void>,
+  publish: (
+    report: Omit<T, "status"> & {
+      status: "success" | "failed";
+      teardown: BenchmarkTeardown;
+    },
+  ) => Promise<void>,
+): Promise<void> {
+  let failure: ElizaError | null = null;
+  try {
+    await shutdown();
+  } catch (cause) {
+    // error-policy:J1 Retain failed teardown alongside all measurements before failing the CLI.
+    failure = new ElizaError("Benchmark runtime teardown failed", {
+      code: "BENCHMARK_TEARDOWN_FAILED",
+      cause,
+    });
+  }
+  await publish({
+    ...report,
+    status: failure ? "failed" : report.status,
+    teardown: {
+      status: failure ? "failed" : "success",
+      error: failure
+        ? `${failure.message}: ${failure.cause instanceof Error ? failure.cause.message : String(failure.cause)}`
+        : null,
+    },
+  });
+  if (failure) throw failure;
+}
 const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
   ".ts",
   ".tsx",
@@ -52,6 +107,7 @@ const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
 // is assembled dynamically by the real PGLite test-runtime factory.
 const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/agent/scripts/cerebras-chat-flow-latency.ts",
+  "packages/agent/scripts/cerebras-chat-flow-experiment.ts",
   "packages/agent/src",
   "packages/cloud/routing/src",
   "packages/core/src",
@@ -114,14 +170,127 @@ export interface PromptCacheTelemetry {
 }
 
 export interface ModelInputContext {
-  phase: "warmup" | "sample" | "cancellation";
+  phase: "warmup" | "sample" | "cancellation" | "isolation";
   index?: number;
   proof: string;
+  roomId?: string;
+  modelInvocationId?: string;
+  expectedCacheKey?: string | null;
+}
+
+type ChatResult = Awaited<ReturnType<typeof generateChatResponse>>;
+type PersistedTurnResponse = {
+  id: string;
+  entityId: string;
+  roomId: string;
+  text: string;
+  returnedByMessageService: boolean;
+};
+
+interface ChatTurnReceipt {
+  index: number;
+  roomId: string;
+  observedIdleMs: number | null;
+  proof: string;
+  prompt: string;
+  output: string;
+  wallMs: number;
+  firstVisibleTextMs: number | null;
+  backgroundTasks: number;
+  backgroundQuiescenceMs: number;
+  totalToQuiescenceMs: number;
+  streamedOutput: string;
+  streamedCharacters: number;
+  outputCharacters: number;
+  usage: ChatResult["usage"];
+  modelUsages: ModelUsageEvidence[];
+  failureKind: ChatResult["failureKind"] | null;
+  persistedResponse: PersistedTurnResponse;
+}
+
+export interface BenchmarkTurnObservation<T> {
+  context: ModelInputContext;
+  status: "running" | "success" | "failed";
+  stage:
+    | "dispatch"
+    | "response-validation"
+    | "post-delivery"
+    | "usage-validation"
+    | "persistence-validation"
+    | "complete";
+  elapsedMs: number | null;
+  observedIdleMs: number | null;
+  firstVisibleTextMs: number | null;
+  wallMs: number | null;
+  backgroundQuiescenceMs: number | null;
+  totalToQuiescenceMs: number | null;
+  output: string | null;
+  streamedOutput: string;
+  persistedResponse: PersistedTurnResponse | null;
+  receipt: T | null;
+  error: string | null;
+}
+
+/** Keeps completed and partial turn evidence when a later check rejects the run. */
+export async function observeBenchmarkTurn<T>(
+  observations: BenchmarkTurnObservation<T>[],
+  context: ModelInputContext,
+  execute: (observation: BenchmarkTurnObservation<T>) => Promise<T>,
+): Promise<T> {
+  const startedAt = performance.now();
+  const observation: BenchmarkTurnObservation<T> = {
+    context: { ...context },
+    status: "running",
+    stage: "dispatch",
+    elapsedMs: null,
+    observedIdleMs: null,
+    firstVisibleTextMs: null,
+    wallMs: null,
+    backgroundQuiescenceMs: null,
+    totalToQuiescenceMs: null,
+    output: null,
+    streamedOutput: "",
+    persistedResponse: null,
+    receipt: null,
+    error: null,
+  };
+  observations.push(observation);
+  try {
+    const receipt = await execute(observation);
+    observation.receipt = receipt;
+    observation.stage = "complete";
+    observation.status = "success";
+    return receipt;
+  } catch (error) {
+    // error-policy:J2 Retain the failed stage and partial evidence before rethrowing the same failure.
+    observation.status = "failed";
+    observation.error = error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally {
+    observation.elapsedMs = rounded(performance.now() - startedAt);
+  }
+}
+
+/** Waits for every in-flight room before serializing failure evidence or tearing down SQL. */
+export async function settleBenchmarkChecks<T>(
+  checks: Promise<T>[],
+): Promise<T[]> {
+  const results = await Promise.allSettled(checks);
+  const errors = results.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (errors.length > 0)
+    throw new AggregateError(errors, "Concurrent benchmark checks failed");
+  return results.map((result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  });
 }
 
 export interface ModelInputEvidence {
   context: ModelInputContext | null;
   modelType: string;
+  experimentOutcome?: "applied" | "rejected";
   prompt?: string;
   messages?: unknown;
   promptSegments?: unknown;
@@ -163,7 +332,7 @@ function redactEvidenceValue(value: unknown, seen: WeakSet<object>): unknown {
   return redacted;
 }
 
-function jsonEvidence(value: unknown): unknown {
+export function jsonEvidence(value: unknown): unknown {
   return JSON.parse(
     JSON.stringify(redactEvidenceValue(value, new WeakSet<object>())),
   );
@@ -465,7 +634,7 @@ function stageHistograms(
   );
 }
 
-function configuredModelEnvironment(model: string): void {
+export function configuredModelEnvironment(model: string): void {
   process.env.ELIZA_PROVIDER = "cerebras";
   process.env.CEREBRAS_BASE_URL =
     process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
@@ -480,7 +649,11 @@ async function main(): Promise<void> {
   if (!apiKey) {
     throw new Error("CEREBRAS_API_KEY is required for live latency evidence");
   }
-  const model = process.env.ELIZA_CEREBRAS_CHAT_MODEL?.trim() || DEFAULT_MODEL;
+  const model = process.env.ELIZA_CEREBRAS_CHAT_MODEL?.trim();
+  if (!model)
+    throw new Error(
+      "Set ELIZA_CEREBRAS_CHAT_MODEL to an independently verified available model",
+    );
   const sampleCount = positiveIntegerSetting(
     "ELIZA_CEREBRAS_CHAT_SAMPLES",
     DEFAULT_SAMPLES,
@@ -489,30 +662,253 @@ async function main(): Promise<void> {
     "ELIZA_CEREBRAS_CHAT_WARMUPS",
     DEFAULT_WARMUPS,
   );
+  const sourceRevision = sourceRevisionEvidence();
+  const nativeEmbedding =
+    process.env.ELIZA_CEREBRAS_EMBEDDING_MODE === "native";
+  const embedding = nativeEmbedding
+    ? {
+        endpoint: "native://fused",
+        model: process.env.LOCAL_EMBEDDING_MODEL?.trim() || "",
+        dimensions: positiveIntegerSetting("LOCAL_EMBEDDING_DIMENSIONS", 384),
+      }
+    : requireRealEmbeddingConfig(process.env);
+  let nativeProvenance: {
+    modelPath: string;
+    modelSha256: string;
+    libraryPath: string;
+    librarySha256: string;
+  } | null = null;
+  let bootNative: ((runtime: AgentRuntime) => Promise<void>) | undefined;
+  if (nativeEmbedding) {
+    const modelsDir = process.env.MODELS_DIR?.trim();
+    if (!modelsDir || !embedding.model)
+      throw new Error(
+        "Native embeddings require explicit MODELS_DIR and LOCAL_EMBEDDING_MODEL",
+      );
+    const { resolveFusedEmbeddingBundleRoot } = await import(
+      "../../../plugins/plugin-local-inference/src/runtime/fused-embedding-bundle.ts"
+    );
+    const { resolveFusedLibraryPath } = await import(
+      "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts"
+    );
+    const { ensureLocalInferenceHandler } = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
+    const bundle = resolveFusedEmbeddingBundleRoot({
+      modelsDir,
+      model: embedding.model,
+    });
+    const libraryPath = bundle ? resolveFusedLibraryPath(bundle) : null;
+    if (!libraryPath)
+      throw new Error("Installed fused embedding library/model unavailable");
+    const modelPath = join(modelsDir, embedding.model);
+    nativeProvenance = {
+      modelPath,
+      libraryPath,
+      modelSha256: createHash("sha256")
+        .update(await readFile(modelPath))
+        .digest("hex"),
+      librarySha256: createHash("sha256")
+        .update(await readFile(libraryPath))
+        .digest("hex"),
+    };
+    bootNative = ensureLocalInferenceHandler;
+  }
+  const cacheMode = process.env.ELIZA_CEREBRAS_CACHE_MODE?.trim();
+  if (
+    cacheMode !== "existing" &&
+    cacheMode !== "automatic" &&
+    cacheMode !== "conversation"
+  ) {
+    throw new Error(
+      "ELIZA_CEREBRAS_CACHE_MODE must explicitly select existing, automatic or conversation",
+    );
+  }
+  const pathKind = process.env.ELIZA_CEREBRAS_CHAT_PATH?.trim();
+  if (pathKind !== "direct" && pathKind !== "gateway") {
+    throw new Error(
+      "ELIZA_CEREBRAS_CHAT_PATH must identify direct or gateway execution",
+    );
+  }
+  const gatewaySourceRevision =
+    process.env.ELIZA_CEREBRAS_GATEWAY_SOURCE_REVISION?.trim();
+  if (
+    pathKind === "gateway" &&
+    !/^[a-f0-9]{40}$/.test(gatewaySourceRevision ?? "")
+  ) {
+    throw new Error(
+      "Gateway evidence requires an attested ELIZA_CEREBRAS_GATEWAY_SOURCE_REVISION",
+    );
+  }
+  const condition = process.env.ELIZA_CEREBRAS_CHAT_CONDITION?.trim();
+  if (
+    condition !== "rolling-history" &&
+    condition !== "fresh-room" &&
+    condition !== "post-idle"
+  ) {
+    throw new Error(
+      "ELIZA_CEREBRAS_CHAT_CONDITION must select rolling-history, fresh-room or post-idle",
+    );
+  }
+  const idleMs =
+    condition === "post-idle"
+      ? positiveIntegerSetting("ELIZA_CEREBRAS_CHAT_IDLE_MS", 360_000)
+      : 0;
+  const keyCapabilityConfirmed =
+    process.env.ELIZA_CEREBRAS_CACHE_KEY_CAPABILITY_CONFIRMED === "true";
+  if (cacheMode !== "automatic" && !keyCapabilityConfirmed) {
+    throw new Error(
+      "Confirm account prompt_cache_key capability before a keyed live run",
+    );
+  }
   configuredModelEnvironment(model);
+  const endpoint = new URL(process.env.CEREBRAS_BASE_URL as string);
+  if (
+    !["http:", "https:"].includes(endpoint.protocol) ||
+    endpoint.username ||
+    endpoint.password ||
+    endpoint.search ||
+    endpoint.hash
+  ) {
+    throw new Error(
+      "Text endpoint must be HTTP(S) without embedded credentials, query or fragment",
+    );
+  }
 
+  // OpenAI's null-input initialization probe sizes the SQL vector column;
+  // real native calls below explicitly select the canonical native provider.
+  if (nativeEmbedding)
+    process.env.OPENAI_EMBEDDING_DIMENSIONS = String(embedding.dimensions);
   const { default: openaiPlugin } = await import(
     "../../../plugins/plugin-openai/index.ts"
   );
-  const { runtime, cleanup } = await createTestRuntime({
+  process.stderr.write("[cerebras-benchmark] initializing runtime\n");
+  const previousPgliteDir = process.env.PGLITE_DATA_DIR;
+  const { runtime, pgliteDir } = await createTestRuntime({
     characterName: "CerebrasLatencyAudit",
     plugins: [openaiPlugin],
+    embeddingDimensions: embedding.dimensions,
+    removePgliteDirOnCleanup: false,
   });
+  const originalFetch = globalThis.fetch;
+  const wireEvidence: ProviderWireEvidence[] = [];
+  const modelContext = new AsyncLocalStorage<ModelInputContext>();
+  globalThis.fetch = measuredProviderFetch(
+    originalFetch,
+    {
+      text: process.env.CEREBRAS_BASE_URL as string,
+      embedding: embedding.endpoint,
+    },
+    () => modelContext.getStore() ?? null,
+    (evidence) => wireEvidence.push(evidence),
+  );
+  const returnedChatResponses: Array<{
+    context: ModelInputContext;
+    text: string;
+    streamedText: string;
+  }> = [];
+  const runStartedAt = performance.now();
+  let runStage = "initialization";
+  const turnObservations: BenchmarkTurnObservation<ChatTurnReceipt>[] = [];
+  const modelInputs: ModelInputEvidence[] = [];
+  const modelExecutions: Array<{
+    modelType: string;
+    context: ModelInputContext | null;
+    durationMs: number;
+    outcome: "success" | "error";
+  }> = [];
+  let finalReport: { status: "success" | "failed" } = { status: "failed" };
+  let runFailure: { error: unknown } | null = null;
   try {
-    const modelUsageEvents: ModelEventPayload[] = [];
+    if (bootNative) {
+      process.stderr.write(
+        "[cerebras-benchmark] booting canonical native embeddings\n",
+      );
+      await bootNative(runtime);
+    }
+    process.stderr.write("[cerebras-benchmark] runtime ready\n");
+    const modelUsageEvents: Array<{
+      payload: ModelEventPayload;
+      context: ModelInputContext | null;
+    }> = [];
     runtime.registerEvent(EventType.MODEL_USED, async (payload) => {
-      modelUsageEvents.push(payload);
+      modelUsageEvents.push({
+        payload,
+        context: modelContext.getStore() ?? null,
+      });
     });
-    const modelInputs: ModelInputEvidence[] = [];
-    let activeModelInputContext: ModelInputContext | null = null;
     const measuredUseModel = runtime.useModel.bind(runtime);
-    runtime.useModel = (async (modelType, params) => {
-      if (modelType === ModelType.RESPONSE_HANDLER) {
-        modelInputs.push(
-          captureModelInput(modelType, params, activeModelInputContext),
-        );
+    runtime.useModel = (async (modelType, params, provider) => {
+      const activeModelInputContext = modelContext.getStore() ?? null;
+      const isTextModel = isTextGenerationModelType(modelType);
+      const context = activeModelInputContext
+        ? {
+            ...activeModelInputContext,
+            modelInvocationId: randomUUID(),
+            expectedCacheKey: null as string | null,
+          }
+        : null;
+      const startedAt = performance.now();
+      let outcome: "success" | "error" = "error";
+      try {
+        let measuredParams = params;
+        if (isTextModel) {
+          let experimentOutcome: "applied" | "rejected" = "rejected";
+          try {
+            measuredParams = applyCacheExperiment(params, {
+              mode: cacheMode as CacheExperimentMode,
+              keyCapabilityConfirmed,
+              agentId: runtime.agentId,
+              conversationId: activeModelInputContext?.roomId ?? roomId,
+              model,
+              stage: String(modelType),
+            });
+            if (context && cacheMode === "conversation")
+              context.expectedCacheKey =
+                expectedConversationCacheKey(measuredParams);
+            experimentOutcome = "applied";
+          } finally {
+            modelInputs.push({
+              ...captureModelInput(modelType, measuredParams, context),
+              experimentOutcome,
+            });
+          }
+        }
+        const invoke = () =>
+          measuredUseModel(
+            modelType,
+            measuredParams,
+            nativeEmbedding && modelType === ModelType.TEXT_EMBEDDING
+              ? "eliza-local-inference"
+              : provider,
+          );
+        const result = await (context
+          ? modelContext.run(context, invoke)
+          : invoke());
+        if (nativeEmbedding && modelType === ModelType.TEXT_EMBEDDING) {
+          if (
+            !Array.isArray(result) ||
+            result.length !== embedding.dimensions ||
+            !result.every(
+              (value) => typeof value === "number" && Number.isFinite(value),
+            ) ||
+            !result.some((value) => value !== 0)
+          ) {
+            throw new Error("Native embedding returned an invalid vector");
+          }
+          if (wireEvidence.some((wire) => wire.kind === "embedding"))
+            throw new Error("Native embedding unexpectedly fell back to HTTP");
+        }
+        outcome = "success";
+        return result;
+      } finally {
+        modelExecutions.push({
+          modelType: String(modelType),
+          context,
+          durationMs: performance.now() - startedAt,
+          outcome,
+        });
       }
-      return await measuredUseModel(modelType, params);
     }) as typeof runtime.useModel;
     const worldId = randomUUID() as UUID;
     const roomId = randomUUID() as UUID;
@@ -535,13 +931,37 @@ async function main(): Promise<void> {
     });
     await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
 
-    const runTurn = async (index: number, warmup: boolean) => {
-      const proof = `SPEED-${warmup ? "W" : "S"}-${index}`;
-      const prompt = `Reply with exactly ${proof} and no other text.`;
+    const lastRoomCompletion = new Map<string, number>();
+    const prepareRoom = async () => {
+      const id = randomUUID() as UUID;
+      await runtime.ensureConnection({
+        entityId,
+        roomId: id,
+        worldId,
+        worldName: "Cerebras latency audit",
+        userName: "Latency auditor",
+        name: "Latency auditor",
+        source: "cerebras_latency_audit",
+        channelId: id,
+        type: ChannelType.DM,
+      });
+      await runtime.ensureParticipantInRoom(runtime.agentId, id);
+      return id;
+    };
+    const runTurn = async (
+      index: number,
+      warmup: boolean,
+      turnRoomId: string = roomId,
+      fixture?: { proof: string; prompt: string },
+    ) => {
+      const proof = fixture?.proof ?? `SPEED-${warmup ? "W" : "S"}-${index}`;
+      const prompt =
+        fixture?.prompt ??
+        `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`;
       const message = createMessageMemory({
         id: randomUUID() as UUID,
         entityId,
-        roomId,
+        roomId: turnRoomId as UUID,
         content: {
           text: prompt,
           source: "client_chat",
@@ -551,140 +971,253 @@ async function main(): Promise<void> {
       const streamed: string[] = [];
       const usageEventOffset = modelUsageEvents.length;
       const startedAt = performance.now();
-      activeModelInputContext = {
-        phase: warmup ? "warmup" : "sample",
+      const previousCompletedAt = lastRoomCompletion.get(turnRoomId);
+      const observedIdleMs =
+        previousCompletedAt === undefined
+          ? null
+          : startedAt - previousCompletedAt;
+      let firstTextAt: number | null = null;
+      const context: ModelInputContext = {
+        phase: fixture ? "isolation" : warmup ? "warmup" : "sample",
         index,
         proof,
+        roomId: turnRoomId,
       };
-      let result: Awaited<ReturnType<typeof generateChatResponse>>;
-      try {
-        result = await generateChatResponse(
-          runtime,
-          message as Memory,
-          runtime.character.name,
-          {
-            onChunk: (chunk) => {
-              streamed.push(chunk);
-            },
-          },
-        );
-      } finally {
-        activeModelInputContext = null;
-      }
-      const wallMs = performance.now() - startedAt;
-      const turnUsageEvents = modelUsageEvents.slice(usageEventOffset);
-      const modelUsagePayload = turnUsageEvents[0];
-      if (turnUsageEvents.length !== 1 || !modelUsagePayload) {
-        throw new Error(
-          `Expected one MODEL_USED event for ${proof}, observed ${turnUsageEvents.length}`,
-        );
-      }
-      const modelUsage = modelUsageEvidence(modelUsagePayload, model);
-      const streamedText = streamed.join("");
-      try {
-        verifyProofResponse(result.text, proof);
-        verifyProofResponse(streamedText, proof);
-        verifyExactResponseParity(streamedText, result.text);
-      } catch (cause) {
-        throw new Error(
-          `Live chat proof validation failed: ${JSON.stringify({
-            proof,
-            result,
+      return observeBenchmarkTurn(
+        turnObservations,
+        context,
+        async (observation) => {
+          observation.observedIdleMs = observedIdleMs;
+          let result: Awaited<ReturnType<typeof generateChatResponse>>;
+          result = await modelContext.run(context, () =>
+            generateChatResponse(
+              runtime,
+              message as Memory,
+              runtime.character.name ?? "CerebrasLatencyAudit",
+              {
+                onChunk: (chunk) => {
+                  if (chunk.length > 0 && firstTextAt === null)
+                    firstTextAt = performance.now();
+                  streamed.push(chunk);
+                  observation.streamedOutput += chunk;
+                  observation.firstVisibleTextMs =
+                    firstTextAt === null
+                      ? null
+                      : rounded(firstTextAt - startedAt);
+                },
+              },
+            ),
+          );
+          const wallMs = performance.now() - startedAt;
+          const streamedText = streamed.join("");
+          observation.wallMs = rounded(wallMs);
+          observation.output = result.text;
+          observation.stage = "response-validation";
+          returnedChatResponses.push({
+            context: { ...context },
+            text: result.text,
             streamedText,
-            wallMs: rounded(wallMs),
-          })}`,
-          { cause },
-        );
-      }
-      const quiescenceStartedAt = performance.now();
-      const backgroundTasks = await drainPostDeliveryTasks(runtime);
-      const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
-      const totalToQuiescenceMs = performance.now() - startedAt;
-      const recentMessages = await runtime.getMemories({
-        roomId,
-        tableName: "messages",
-        limit: 12,
-      });
-      const persistedResponse = recentMessages.find((memory) => {
-        const text = (memory.content as { text?: unknown }).text;
-        return (
-          memory.entityId === runtime.agentId &&
-          typeof text === "string" &&
-          text === result.text
-        );
-      });
-      if (!persistedResponse?.id) {
-        throw new Error(
-          `Live assistant response was not persisted: ${JSON.stringify({
+          });
+          try {
+            verifyProofResponse(result.text, proof);
+            verifyProofResponse(streamedText, proof);
+            verifyExactResponseParity(streamedText, result.text);
+          } catch (cause) {
+            throw new Error(
+              `Live chat proof validation failed: ${JSON.stringify({
+                proof,
+                result,
+                streamedText,
+                wallMs: rounded(wallMs),
+              })}`,
+              { cause },
+            );
+          }
+          observation.stage = "post-delivery";
+          const quiescenceStartedAt = performance.now();
+          const backgroundTasks = await drainPostDeliveryTasks(runtime);
+          const backgroundQuiescenceMs =
+            performance.now() - quiescenceStartedAt;
+          const totalToQuiescenceMs = performance.now() - startedAt;
+          observation.backgroundQuiescenceMs = rounded(backgroundQuiescenceMs);
+          observation.totalToQuiescenceMs = rounded(totalToQuiescenceMs);
+          const failedModels = modelExecutions.filter(
+            (execution) =>
+              execution.context?.proof === proof &&
+              execution.outcome === "error",
+          );
+          if (failedModels.length > 0) {
+            throw new Error(
+              `Model execution failed during ${proof}, including post-delivery work: ${failedModels.map((execution) => execution.modelType).join(", ")}`,
+            );
+          }
+          observation.stage = "usage-validation";
+          const turnUsageEvents = modelUsageEvents
+            .slice(usageEventOffset)
+            .filter(
+              (event) =>
+                event.context?.proof === proof &&
+                event.payload.type !== ModelType.TEXT_EMBEDDING,
+            )
+            .map((event) => event.payload);
+          if (turnUsageEvents.length === 0)
+            throw new Error(`No live MODEL_USED event for ${proof}`);
+          const modelUsages = turnUsageEvents.map((event) =>
+            modelUsageEvidence(event, model),
+          );
+          observation.stage = "persistence-validation";
+          const recentMessages = await runtime.getMemories({
+            roomId: turnRoomId as UUID,
+            tableName: "messages",
+            limit: 12,
+          });
+          const persistedResponse = recentMessages.find((memory) => {
+            const text = (memory.content as { text?: unknown }).text;
+            return (
+              memory.entityId === runtime.agentId &&
+              typeof text === "string" &&
+              text === result.text
+            );
+          });
+          if (!persistedResponse?.id) {
+            throw new Error(
+              `Live assistant response was not persisted: ${JSON.stringify({
+                proof,
+                output: result.text,
+                returnedPersistenceIds:
+                  result.persistedResponseMessageIds ?? [],
+              })}`,
+            );
+          }
+          observation.persistedResponse = {
+            id: persistedResponse.id,
+            entityId: persistedResponse.entityId,
+            roomId: persistedResponse.roomId,
+            text: (persistedResponse.content as { text: string }).text,
+            returnedByMessageService:
+              result.persistedResponseMessageIds?.includes(
+                persistedResponse.id,
+              ) ?? false,
+          };
+          if (
+            result.persistedResponseMessageIds?.length &&
+            !result.persistedResponseMessageIds.includes(persistedResponse.id)
+          ) {
+            throw new Error(
+              `Returned persistence ids do not contain the exact assistant memory: ${JSON.stringify(
+                {
+                  proof,
+                  persistedResponseId: persistedResponse.id,
+                  returnedPersistenceIds: result.persistedResponseMessageIds,
+                },
+              )}`,
+            );
+          }
+          lastRoomCompletion.set(turnRoomId, performance.now());
+          return {
+            index,
+            roomId: turnRoomId,
+            observedIdleMs,
             proof,
+            prompt,
             output: result.text,
-            returnedPersistenceIds: result.persistedResponseMessageIds ?? [],
-          })}`,
-        );
-      }
-      if (
-        result.persistedResponseMessageIds?.length &&
-        !result.persistedResponseMessageIds.includes(persistedResponse.id)
-      ) {
-        throw new Error(
-          `Returned persistence ids do not contain the exact assistant memory: ${JSON.stringify(
-            {
-              proof,
-              persistedResponseId: persistedResponse.id,
-              returnedPersistenceIds: result.persistedResponseMessageIds,
+            wallMs: rounded(wallMs),
+            firstVisibleTextMs:
+              firstTextAt === null ? null : rounded(firstTextAt - startedAt),
+            backgroundTasks,
+            backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
+            totalToQuiescenceMs: rounded(totalToQuiescenceMs),
+            streamedOutput: streamedText,
+            streamedCharacters: streamedText.length,
+            outputCharacters: result.text.length,
+            usage: result.usage,
+            modelUsages,
+            failureKind: result.failureKind ?? null,
+            persistedResponse: {
+              id: persistedResponse.id,
+              entityId: persistedResponse.entityId,
+              roomId: persistedResponse.roomId,
+              text: (persistedResponse.content as { text: string }).text,
+              returnedByMessageService:
+                result.persistedResponseMessageIds?.includes(
+                  persistedResponse.id,
+                ) ?? false,
             },
-          )}`,
-        );
-      }
-      return {
-        index,
-        proof,
-        prompt,
-        output: result.text,
-        wallMs: rounded(wallMs),
-        backgroundTasks,
-        backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
-        totalToQuiescenceMs: rounded(totalToQuiescenceMs),
-        streamedOutput: streamedText,
-        streamedCharacters: streamedText.length,
-        outputCharacters: result.text.length,
-        usage: result.usage,
-        modelUsage,
-        failureKind: result.failureKind ?? null,
-        persistedResponse: {
-          id: persistedResponse.id,
-          entityId: persistedResponse.entityId,
-          roomId: persistedResponse.roomId,
-          text: (persistedResponse.content as { text: string }).text,
-          returnedByMessageService:
-            result.persistedResponseMessageIds?.includes(
-              persistedResponse.id,
-            ) ?? false,
+          };
         },
-      };
+      );
     };
 
+    runStage = "warmup";
     for (let index = 0; index < warmupCount; index += 1) {
       await runTurn(index, true);
     }
     inferenceTimingRegistry.reset();
 
-    const turns = [];
-    for (let index = 0; index < sampleCount; index += 1) {
-      turns.push(await runTurn(index, false));
-    }
+    runStage = "workload";
+    const samples = await runChatCondition({
+      condition,
+      samples: sampleCount,
+      idleMs,
+      initialRoom: roomId,
+      prepareRoom,
+      runTurn,
+      wait: async (milliseconds) => {
+        process.stderr.write(
+          `Waiting ${milliseconds}ms before resuming ${sampleCount} separately primed rooms.\n`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, milliseconds));
+        inferenceTimingRegistry.reset();
+      },
+    });
+    const turns = samples.map((sample) => sample.value);
     const chatTelemetry = buildInferenceTimingDevPayload(sampleCount);
     if (chatTelemetry.turns.length !== sampleCount) {
       throw new Error(
         `Expected ${sampleCount} timed turns, observed ${chatTelemetry.turns.length}`,
       );
     }
-    if (turns.some((turn) => turn.usage.llmCalls !== 1)) {
+    if (turns.some((turn) => !turn.usage || turn.usage.llmCalls < 1)) {
       throw new Error(
-        "Every benchmark turn must make exactly one live LLM call",
+        "Every benchmark turn must report actual live model usage",
       );
     }
 
+    const isolationRooms = await Promise.all([prepareRoom(), prepareRoom()]);
+    const isolationProofs = [
+      `PARCEL-A-${randomUUID()}`,
+      `PARCEL-B-${randomUUID()}`,
+    ];
+    runStage = "isolation-priming";
+    const isolationPriming = await settleBenchmarkChecks(
+      isolationRooms.map((room, index) => {
+        const proof = isolationProofs[index];
+        if (!proof) throw new Error("Missing room isolation fixture");
+        return runTurn(index, true, room, {
+          proof,
+          prompt: `My parcel reference for this conversation is ${proof}. Confirm the reference so I know you have it.`,
+        });
+      }),
+    );
+    runStage = "isolation-resumption";
+    const isolationResumption = await settleBenchmarkChecks(
+      isolationRooms.map((room, index) => {
+        const proof = isolationProofs[index];
+        if (!proof) throw new Error("Missing room isolation fixture");
+        return runTurn(index, false, room, {
+          proof,
+          prompt:
+            "What parcel reference did I give you earlier in this conversation?",
+        });
+      }),
+    );
+    for (const [index, turn] of isolationResumption.entries()) {
+      const otherProof = isolationProofs[1 - index];
+      if (otherProof && turn.output.includes(otherProof))
+        throw new Error("Concurrent recall leaked the other room's reference");
+    }
+
+    runStage = "cancellation";
     const cancellationProof = `CANCEL-${randomUUID()}`;
     const cancellationMessage = createMessageMemory({
       id: randomUUID() as UUID,
@@ -706,8 +1239,8 @@ async function main(): Promise<void> {
     let liveModelInvocationObserved = false;
     let invokedModelType: string | null = null;
     let modelSignalWasAlreadyAborted = false;
-    runtime.useModel = (async (modelType, params) => {
-      const pending = originalUseModel(modelType, params);
+    runtime.useModel = (async (modelType, params, provider) => {
+      const pending = originalUseModel(modelType, params, provider);
       if (
         !liveModelInvocationObserved &&
         modelType === ModelType.RESPONSE_HANDLER
@@ -729,22 +1262,24 @@ async function main(): Promise<void> {
 
     const cancellationStartedAt = performance.now();
     let cancellationError: unknown;
-    activeModelInputContext = {
+    const cancellationContext: ModelInputContext = {
       phase: "cancellation",
       proof: cancellationProof,
+      roomId,
     };
     try {
-      await generateChatResponse(
-        runtime,
-        cancellationMessage as Memory,
-        runtime.character.name,
-        { abortSignal: cancellationController.signal },
+      await modelContext.run(cancellationContext, () =>
+        generateChatResponse(
+          runtime,
+          cancellationMessage as Memory,
+          runtime.character.name ?? "CerebrasLatencyAudit",
+          { abortSignal: cancellationController.signal },
+        ),
       );
       throw new Error("Cancellation probe unexpectedly completed");
     } catch (error) {
       cancellationError = error;
     } finally {
-      activeModelInputContext = null;
       runtime.useModel = originalUseModel;
       if (cancellationTimer) clearTimeout(cancellationTimer);
     }
@@ -816,6 +1351,7 @@ async function main(): Promise<void> {
       ),
     };
 
+    runStage = "provider-sweep";
     const registeredProviderNames = runtime.providers.map(
       (provider) => provider.name,
     );
@@ -852,28 +1388,104 @@ async function main(): Promise<void> {
     }
     const providerSweepTelemetry = buildInferenceTimingDevPayload(sampleCount);
 
+    const successfulEmbeddingCalls = modelExecutions.filter(
+      (call) =>
+        call.modelType === ModelType.TEXT_EMBEDDING &&
+        call.outcome === "success",
+    );
+    if (
+      successfulEmbeddingCalls.length === 0 ||
+      (!nativeEmbedding &&
+        !wireEvidence.some(
+          (wire) => wire.kind === "embedding" && wire.status === 200,
+        ))
+    ) {
+      throw new Error(
+        "No successful real embedding execution and matching wire request observed; this run cannot certify production embedding timing",
+      );
+    }
+    for (const turn of turns) {
+      if (
+        !wireEvidence.some(
+          (wire) => wire.kind === "text" && wire.context?.proof === turn.proof,
+        )
+      ) {
+        throw new Error(`Missing actual SDK wire request for ${turn.proof}`);
+      }
+    }
+    runStage = "wire-verification";
+    const validatedWireRequests = verifyCacheExperimentWire(
+      wireEvidence,
+      cacheMode,
+    );
     const report = {
+      status: "success" as const,
+      turnObservations,
       generatedAt: new Date().toISOString(),
-      sourceRevision: sourceRevisionEvidence(),
+      sourceRevision,
       runtime: "AgentRuntime + plugin-sql/PGLite + plugin-openai",
       endpoint: process.env.CEREBRAS_BASE_URL,
       model,
-      reasoningEffort: "omitted (Gemma 4 has no reasoning-effort control)",
-      embeddingMode:
-        "plugin-openai deterministic local token/bigram feature hashing (Cerebras exposes no embedding endpoint)",
+      reasoningEffort:
+        process.env.OPENAI_REASONING_EFFORT?.trim() || "provider-default",
+      embedding: { ...embedding, nativeProvenance },
+      cacheExperiment: {
+        mode: cacheMode,
+        keyCapabilityConfirmed,
+        validatedWireRequests,
+      },
+      workload: {
+        condition,
+        requestedIdleMs: idleMs,
+        cacheTemperature:
+          "Only provider-reported cached token counts establish reuse; fresh-room is not asserted cold",
+      },
+      errorRatePercent: 0,
+      errorRateScope:
+        "All samples passed; any failure aborts this command and cannot produce a successful report",
+      wireEvidence,
+      modelExecutions,
+      path: {
+        kind: pathKind,
+        gatewaySourceRevision: gatewaySourceRevision ?? null,
+      },
+      providerQueueMs: null,
+      providerQueueAvailability: "not reported by this transport",
+      acousticFirstAudioMs: null,
+      acousticAvailability:
+        "this command exercises text chat, not a voice renderer",
+      firstVisibleTextMs: distribution(
+        turns.flatMap((turn) =>
+          turn.firstVisibleTextMs === null ? [] : [turn.firstVisibleTextMs],
+        ),
+      ),
       execution:
         "production generateChatResponse path with streaming, persistence, and distinct proof validation",
       warmups: warmupCount,
       samples: sampleCount,
       registeredProviders: registeredProviderNames,
       wallMs: distribution(turns.map((turn) => turn.wallMs)),
+      wallMsBoundary:
+        "generateChatResponse command return including its room post-delivery drain",
+      backgroundQuiescenceBoundary:
+        "additional residual drain after generateChatResponse already drained room tasks",
+      wireAttemptStats: {
+        total: wireEvidence.length,
+        http429: wireEvidence.filter((wire) => wire.status === 429).length,
+        transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
+          .length,
+      },
       backgroundQuiescenceMs: distribution(
         turns.map((turn) => turn.backgroundQuiescenceMs),
       ),
       totalToQuiescenceMs: distribution(
         turns.map((turn) => turn.totalToQuiescenceMs),
       ),
-      promptCache: promptCacheTelemetry(turns),
+      promptCache: promptCacheTelemetry(
+        turns.flatMap((turn) =>
+          turn.modelUsages.map((modelUsage) => ({ modelUsage })),
+        ),
+      ),
       stageHistograms: stageHistograms(chatTelemetry.flows),
       derivedHistograms: chatTelemetry.derivedHistograms satisfies Record<
         string,
@@ -882,6 +1494,10 @@ async function main(): Promise<void> {
       spanHistograms: chatTelemetry.spanHistograms,
       providerTelemetry: chatTelemetry.providers,
       modelInputs,
+      concurrentRoomRecall: {
+        priming: isolationPriming,
+        resumption: isolationResumption,
+      },
       cancellationProbe,
       allProviderSweep: {
         execution:
@@ -895,13 +1511,54 @@ async function main(): Promise<void> {
       inferenceTurns: chatTelemetry.turns,
       flows: chatTelemetry.flows,
     };
-    const json = `${JSON.stringify(report, null, 2)}\n`;
-    const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();
-    if (reportPath) await writeFile(reportPath, json, "utf8");
-    process.stdout.write(json);
+    finalReport = report;
+  } catch (error) {
+    // error-policy:J1 Preserve the failed run until teardown and terminal publication finish.
+    runFailure = { error };
+    const report = {
+      status: "failed" as const,
+      sourceRevision,
+      model,
+      pathKind,
+      condition,
+      cacheMode,
+      embedding: { ...embedding, nativeProvenance },
+      wireEvidence,
+      modelInputs,
+      modelExecutions,
+      returnedChatResponses,
+      turnObservations,
+      requestedSamples: sampleCount,
+      requestedWarmups: warmupCount,
+      requestedIdleMs: idleMs,
+      failedStage: runStage,
+      elapsedMs: rounded(performance.now() - runStartedAt),
+      error: error instanceof Error ? error.message : String(error),
+    };
+    finalReport = report;
   } finally {
-    await cleanup();
+    try {
+      await finalizeBenchmarkReport(
+        finalReport,
+        () => shutdownRuntime(runtime, "Cerebras benchmark shutdown"),
+        async (report) => {
+          const json = `${JSON.stringify(jsonEvidence({ ...report, databaseDirectory: pgliteDir }), null, 2)}\n`;
+          const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();
+          if (reportPath)
+            await writeFile(reportPath, json, {
+              encoding: "utf8",
+              mode: 0o600,
+            });
+          process.stdout.write(json);
+        },
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousPgliteDir === undefined) delete process.env.PGLITE_DATA_DIR;
+      else process.env.PGLITE_DATA_DIR = previousPgliteDir;
+    }
   }
+  if (runFailure) throw runFailure.error;
 }
 
 // error-policy:J1 CLI boundary translates failure into a non-zero process.

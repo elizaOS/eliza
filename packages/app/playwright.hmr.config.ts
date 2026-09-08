@@ -59,8 +59,12 @@ export default defineConfig({
       ELIZA_PORT: String(uiPort),
       ELIZA_STATE_DIR: stateDir,
       ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE || "eliza-hmr",
+      // Keep this local fixture from inheriting staging/default Cloud auth,
+      // which can navigate the page away before Vite delivers its update.
+      ELIZA_DEV_CLOUD_TARGET: "offline",
       // Keep the API process watcher off (HMR under test is Vite's, not the
       // API's), quiet logs, and skip optional camera deps in CI.
+      ELIZA_DEV_CLOUD_TARGET: "offline",
       ELIZA_DEV_NO_WATCH: "1",
       ELIZA_DEV_QUIET_LOGS: "1",
       ELIZA_NO_VISION_DEPS: "1",

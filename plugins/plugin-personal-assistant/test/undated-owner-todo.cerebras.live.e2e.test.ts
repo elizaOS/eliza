@@ -349,8 +349,38 @@ describeIf(suiteEnabled)("Live: undated owner-todo boundary", () => {
     }
   }, LIVE_RUNTIME_BOOT_TIMEOUT_MS + 30_000);
 
-  afterEach(async () => {
+  afterEach(async ({ task }) => {
+    const artifactDir = process.env.ELIZA_LIVE_TEST_ARTIFACT_DIR?.trim();
+    const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
+    const preserveFailure = async () => {
+      if (
+        task.result?.state === "fail" &&
+        artifactDir &&
+        wireCapture &&
+        cerebrasKey
+      ) {
+        // Preserve rejected provider calls too: a pre-receipt failure must not
+        // erase the transport evidence needed to distinguish a harness or model
+        // boundary failure from a missing persisted domain effect.
+        await writeCerebrasEvidenceArtifacts({
+          artifactDirectory: path.join(
+            artifactDir,
+            `failure-${crypto.randomUUID()}`,
+          ),
+          calls: wireCapture.calls,
+          trajectories: [],
+          receipts: [],
+          secrets: [cerebrasKey],
+          metadata: {
+            issue: 24104,
+            status: "failed-before-complete-acceptance",
+            evidenceHead: process.env.ELIZA_LIVE_EVIDENCE_HEAD ?? "local",
+          },
+        });
+      }
+    };
     const results = await Promise.allSettled([
+      preserveFailure(),
       runtime?.close(),
       wireCapture?.close(),
     ]);

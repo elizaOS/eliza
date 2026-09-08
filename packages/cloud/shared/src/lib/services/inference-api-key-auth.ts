@@ -11,7 +11,6 @@ import { type UserWithOrganization, usersRepository } from "../../db/repositorie
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { Organization } from "../../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "../api/errors";
-import { apiKeysService } from "./api-keys";
 import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 export interface InferenceApiKeyAuthTimingObserver {
@@ -53,8 +52,9 @@ async function findUser(userId: string): Promise<UserWithOrganization | undefine
 }
 
 /**
- * Preserve the general API-key boundary's error classes, messages, ordering,
- * and usage accounting while exposing per-hop timings to bounded telemetry.
+ * Preserve the general API-key boundary's error classes, messages, and
+ * ordering while exposing per-hop timings to bounded telemetry. The caller
+ * owns retained usage accounting after the authorization result is consumed.
  */
 export async function requireInferenceApiKeyWithOrg(
   rawKey: string,
@@ -108,7 +108,6 @@ export async function requireInferenceApiKeyWithOrg(
     reject(options, new ForbiddenError("Organization is inactive"), "organization_inactive");
   }
 
-  void apiKeysService.incrementUsageDebounced(apiKey.id);
   return {
     user: user as InferenceApiKeyAuthResult["user"],
     apiKey,

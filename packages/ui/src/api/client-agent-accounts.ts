@@ -58,7 +58,7 @@ export interface AccountOAuthStartResult {
 
 declare module "./client-base" {
   interface ElizaClient {
-    listAccounts(): Promise<AccountsListResponse>;
+    listAccounts(init?: RequestInit): Promise<AccountsListResponse>;
     createApiKeyAccount(
       providerId: LinkedAccountProviderId,
       body: { label: string; apiKey: string },
@@ -102,11 +102,14 @@ declare module "./client-base" {
   }
 }
 
-ElizaClient.prototype.listAccounts = async function (this: ElizaClient) {
+ElizaClient.prototype.listAccounts = async function (this: ElizaClient, init) {
   // The agent is a separate process on an operator-controlled host, so its
   // reply is untrusted input: validate the shape once here rather than letting
   // a malformed provider list surface as undefined fields in the panel.
-  const response = await this.fetch<unknown>("/api/accounts");
+  const response =
+    init === undefined
+      ? await this.fetch<unknown>("/api/accounts")
+      : await this.fetch<unknown>("/api/accounts", init);
   return parseAccountsListResponse(response);
 };
 

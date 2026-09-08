@@ -573,6 +573,113 @@ describe("checked-in workflow authority", () => {
     }
   });
 
+  test("the release gate observes completed worker deployments for its own source", async () => {
+    const checkedIn = JSON.parse(
+      readFileSync(path.join(repoRoot, ".github/develop-effects.json"), "utf8"),
+    ) as ReturnType<typeof registry>;
+    async function rollout(config: ReturnType<typeof registry>) {
+      const expected = manifests().expected;
+      expected.surfaces = [
+        ...new Set(config.effects.flatMap((effect) => effect.surfaces)),
+      ]
+        .sort()
+        .map((id) => ({ id, inputDigest: sha256(id) }));
+      const observed = {
+        ...manifests().observed,
+        surfaces: expected.surfaces.map((surface) =>
+          createEvidence(expected, surface.id, NOW, 24),
+        ),
+      };
+      const effects = buildEffectPlans({
+        expected,
+        observed,
+        registry: config,
+        repoRoot,
+      });
+      const ready = new Map<string, string>();
+      const runs = new Map<
+        number,
+        {
+          event: string;
+          head_sha: string;
+          path: string;
+          status: string;
+          conclusion: string;
+          workflow: string;
+        }
+      >();
+      let nextId = 1;
+      let releaseAccepted = false;
+      const api = {
+        request: async (
+          method: string,
+          endpoint: string,
+          body?: { inputs?: Record<string, string> },
+        ) => {
+          if (method === "GET" && endpoint.startsWith("/deployments?"))
+            return [];
+          if (method === "POST" && endpoint === "/deployments")
+            return { id: nextId++ };
+          if (method === "POST" && endpoint.endsWith("/statuses")) return {};
+          const dispatch = endpoint.match(
+            /^\/actions\/workflows\/([^/]+)\/dispatches$/,
+          );
+          if (method === "POST" && dispatch) {
+            const workflow = decodeURIComponent(dispatch[1]);
+            const source =
+              body?.inputs?.source_sha ?? body?.inputs?.deployment_sha;
+            if (!source) throw new Error("Missing downstream source");
+            let accepted = true;
+            if (workflow === "cloud-cf-deploy.yml") {
+              accepted =
+                ready.get("deploy-apps-worker.yml") === source &&
+                ready.get("deploy-eliza-provisioning-worker.yml") === source;
+              releaseAccepted = accepted;
+            }
+            const id = nextId++;
+            runs.set(id, {
+              workflow,
+              event: "workflow_dispatch",
+              head_sha: source,
+              path: `.github/workflows/${workflow}`,
+              status: "completed",
+              conclusion: accepted ? "success" : "failure",
+            });
+            return { workflow_run_id: id };
+          }
+          const poll = endpoint.match(/^\/actions\/runs\/(\d+)$/);
+          if (method === "GET" && poll) {
+            const run = runs.get(Number(poll[1]));
+            if (!run) throw new Error("Unknown downstream run");
+            if (run.conclusion === "success")
+              ready.set(run.workflow, run.head_sha);
+            return run;
+          }
+          throw new Error(`Unexpected request ${method} ${endpoint}`);
+        },
+      };
+      for (const effect of effects.plans) {
+        await reconcileEffect(api, effect, {
+          ledgerVersion: config.ledgerVersion,
+          repository: "owner/repo",
+          serverUrl: "https://github.com",
+          sourceRunId: "42",
+          sourceSha: SOURCE_SHA,
+        });
+      }
+      return releaseAccepted;
+    }
+    await expect(rollout(checkedIn)).resolves.toBe(true);
+    const earlyRelease = [...checkedIn.effects].sort(
+      (left, right) =>
+        Number(right.id === "cloud-staging") -
+        Number(left.id === "cloud-staging"),
+    );
+    await expect(
+      rollout({ ...checkedIn, effects: earlyRelease }),
+    ).rejects.toThrow("cloud-staging: downstream run concluded failure");
+  });
+
   test("the handoff requires a successful aggregate and exact run-id response", () => {
     const developFull = readWorkflow("develop-full.yml");
     expect(developFull).toContain("needs.complete.result == 'success'");

@@ -110,7 +110,21 @@ vi.mock(
   },
 );
 
-// Baseline git capture uses execFile; make it a no-op so spawns don't hang.
+// These suites own ACP transport behavior; Git baseline capture is covered by
+// real-repository workspace-diff tests and remains an explicit boundary here.
+vi.mock("../../src/services/workspace-diff.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/workspace-diff.js")
+    >();
+  return {
+    ...actual,
+    captureBaselineSha: async () => undefined,
+    captureBaselineDirty: async () => [],
+    captureBaselineUntracked: async () => [],
+  };
+});
+
 vi.mock("node:child_process", () => ({
   exec: vi.fn(),
   execFile: vi.fn(

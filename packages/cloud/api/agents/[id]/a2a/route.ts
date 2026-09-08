@@ -461,6 +461,7 @@ async function handleChat(
       executionCtx: authUser.executionCtx,
       admissionSnapshot: authUser.admissionSnapshot,
       credential: authUser.credentialForAdmission?.(),
+      atomicProviderBoundary: Boolean(authUser.executionCtx),
     });
   } catch (error) {
     // error-policy:J1 the route boundary translates the expected credit
@@ -606,9 +607,30 @@ async function handleChat(
       : admission.settle(0);
     if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
     else await terminal;
+    if (error instanceof InsufficientCreditsError) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32003,
+            message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+          },
+          id: rpcId,
+        },
+        402,
+      );
+    }
+    if (asGenerativeCacheApiError(error)) {
+      return a2aAuthError(c, error, rpcId);
+    }
     logger.error("[Agent A2A] Error generating response", {
       error: error instanceof Error ? error.message : "Unknown error",
       agentId: character.id,
+      phase: providerDispatchStarted ? "provider" : "provider_dispatch",
+      cause:
+        error instanceof Error && error.cause instanceof Error
+          ? `${error.cause.name}: ${error.cause.message}`
+          : undefined,
     });
     return c.json({
       jsonrpc: "2.0",

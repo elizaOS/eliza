@@ -70,7 +70,7 @@ describe("scheduledTaskScheduleLabel", () => {
         anchorKey: "wake.confirmed",
         offsetMinutes: 0,
       }),
-    ).toBe("On wake.confirmed");
+    ).toBe("When you wake up");
     expect(scheduledTaskScheduleLabel({ kind: "manual" })).toBe("Manual");
   });
 });

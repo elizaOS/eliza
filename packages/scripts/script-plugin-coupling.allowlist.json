@@ -62,6 +62,7 @@
       "plugins/plugin-meetings",
       "plugins/plugin-scheduling",
       "plugins/plugin-notes",
+      "plugins/plugin-sql",
       "plugins/plugin-telegram",
       "plugins/plugin-wallet",
       "plugins/plugin-whatsapp",
@@ -181,7 +182,7 @@
   },
   {
     "file": "packages/scripts/vitest/unit.config.ts",
-    "tokens": ["@elizaos/plugin-anthropic", "@elizaos/plugin-cli"],
+    "tokens": ["@elizaos/plugin-anthropic"],
     "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
   },
   {

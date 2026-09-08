@@ -20,8 +20,12 @@ no-op instead of changing state twice.
 | Entry | Host | Storage | UI | Default role gates |
 |---|---|---|---|---|
 | `@elizaos/plugin-todos` | Node `AgentRuntime` | `runtime.db` from `@elizaos/plugin-sql` | Includes `TodosView` | action `ADMIN`, provider `USER` |
-| `@elizaos/plugin-todos/plugin` | Node `AgentRuntime` | `runtime.db` from `@elizaos/plugin-sql` | None | action `ADMIN`, provider `USER` |
+| `@elizaos/plugin-todos/plugin` default | Node `AgentRuntime` | `runtime.db` from `@elizaos/plugin-sql` | Dashboard metadata, no React imports | action `ADMIN`, provider `USER` |
 | `@elizaos/plugin-todos/edge` | Worker/edge `AgentRuntime` | Host-injected `TodoStore` | None | action/provider `GUEST` |
+
+The named `todosRuntimePlugin` export remains a headless Node descriptor. Both
+default Node entries use the same view declaration, so normal host loading via
+`/plugin` discovers Todos without importing its React components.
 
 The edge role gate is intended for a server-owned Shared-agent boundary. The
 host must authenticate the principal and derive `agentId`, `entityId`, room,

@@ -1,11 +1,4 @@
-/**
- * Unit coverage for scheduleUpdateNotification, the fire-and-forget CLI
- * startup update check. Drives the real export: the one-shot `notified`
- * guard, checkOnStart / CI / TTY gates, malformed-config resilience, the
- * stderr notice (including non-stable channel suffix), and the J6 swallow
- * of a failed registry check. `@elizaos/agent` I/O is stubbed so the suite
- * never reads eliza.json or hits npm; the notifier itself is not mocked.
- */
+/** Tests CLI update notices with deterministic registry/config fixtures and a captured terminal. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const agent = vi.hoisted(() => ({
@@ -291,34 +284,32 @@ describe("scheduleUpdateNotification", () => {
     }
   });
 
-  it("continues with defaults when loadElizaConfig throws", async () => {
+  it("surfaces malformed configuration instead of performing a default update check", async () => {
+    const failure = new Error("malformed eliza.json");
     agent.loadElizaConfig.mockImplementation(() => {
-      throw new Error("malformed eliza.json");
+      throw failure;
     });
     const { scheduleUpdateNotification } = await loadNotifier();
-    const capture = captureStderrWrite();
-    try {
-      scheduleUpdateNotification();
-      await flush();
-      expect(agent.checkForUpdate).toHaveBeenCalledTimes(1);
-      expect(agent.resolveChannel).toHaveBeenCalledWith(undefined);
-      expect(writtenText(capture.chunks)).toContain("1.0.0 -> 1.1.0");
-    } finally {
-      capture.restore();
-    }
+    expect(() => scheduleUpdateNotification()).toThrow(failure);
+    expect(agent.checkForUpdate).not.toHaveBeenCalled();
   });
 
-  it("swallows a rejected checkForUpdate without writing", async () => {
-    agent.checkForUpdate.mockRejectedValue(new Error("registry unreachable"));
+  it("reports registry failures without blocking the CLI", async () => {
+    const failure = new Error("registry unreachable");
+    agent.checkForUpdate.mockRejectedValue(failure);
     const { scheduleUpdateNotification } = await loadNotifier();
-    const capture = captureStderrWrite();
+    const { logger } = await import("@elizaos/core");
+    const warning = vi.spyOn(logger, "warn").mockImplementation(() => {});
     try {
       scheduleUpdateNotification();
-      await flush();
-      expect(agent.checkForUpdate).toHaveBeenCalledTimes(1);
-      expect(capture.chunks).toEqual([]);
+      await vi.waitFor(() =>
+        expect(warning).toHaveBeenCalledWith(
+          { error: failure },
+          "[UpdateNotifier] Update check failed",
+        ),
+      );
     } finally {
-      capture.restore();
+      warning.mockRestore();
     }
   });
 

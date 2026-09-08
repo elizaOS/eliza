@@ -170,8 +170,16 @@ export default defineConfig({
 			// "<coreSrc>/index.node.ts/client-public" (ENOTDIR) instead of the
 			// subpath source module.
 			{
+				find: /^@elizaos\/core\/errors$/,
+				replacement: path.join(coreSrc, "errors.ts"),
+			},
+			{
 				find: /^@elizaos\/core\/client-public$/,
 				replacement: path.join(coreSrc, "client-public.ts"),
+			},
+			{
+				find: /^@elizaos\/core\/errors$/,
+				replacement: path.join(coreSrc, "errors.ts"),
 			},
 			{
 				find: "@elizaos/core",
@@ -185,6 +193,15 @@ export default defineConfig({
 			{
 				find: "@elizaos/cloud-routing",
 				replacement: path.join(cloudRoutingSrc, "index.ts"),
+			},
+			// Core's src also re-exports `@elizaos/prompts`, which likewise has no
+			// dist build in this lane — anchor it to source for the same reason.
+			{
+				find: "@elizaos/prompts",
+				replacement: path.resolve(
+					__dirname,
+					"../../packages/prompts/src/index.ts",
+				),
 			},
 			{
 				find: "@elizaos/logger",

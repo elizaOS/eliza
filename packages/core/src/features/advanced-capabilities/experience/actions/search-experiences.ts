@@ -211,6 +211,8 @@ export const searchExperiencesAction: Action = {
 			`[SearchExperiencesAction] Returned ${experiences.length} experiences for query "${queryLogView(query)}"`,
 		);
 
+		// An empty search is still a valid result. The planner, not the match
+		// count, decides whether the user's remaining work is complete.
 		return {
 			success: true,
 			text,
@@ -235,7 +237,6 @@ export const searchExperiencesAction: Action = {
 				experienceSearchQuery: queryLogView(query),
 				experienceSearchCount: String(experiences.length),
 			},
-			continueChain: experiences.length > 0,
 		};
 	},
 };

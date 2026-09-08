@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { getPgliteClientForTests } from "../../client";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -48,6 +49,7 @@ import { settleComputeRateSegments } from "../compute-billing-segments";
 import { containerBillingRepository } from "../container-billing";
 import { containersRepository } from "../containers";
 import { jobsRepository } from "../jobs";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 const PGLITE_TIMEOUT = 60_000;
 let ready = true;
@@ -74,6 +76,7 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     await dbWrite.execute(
       sql.raw(`CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2103,7 +2106,7 @@ describe("compute billing recovery", () => {
   test("funding restored under the stop-decision locks reactivates without a provider job", async () => {
     const { org, user } = await seed("10.000000");
     const containerId = "00000000-0000-4000-8000-000000000002";
-    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.execute(sql`INSERT INTO containers
       (id, name, project_name, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
        last_billed_at, lifecycle_revision, created_at, updated_at)
@@ -2121,14 +2124,18 @@ describe("compute billing recovery", () => {
     const outcome = await enqueueContainerStopOnce({ containerId, organizationId: org.id });
     expect(outcome).toMatchObject({ requested: false, reason: "funding_restored" });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
-    const row = await dbWrite.execute(
-      sql`SELECT billing_status, scheduled_shutdown_at, last_billed_at
-          FROM containers WHERE id = ${containerId}`,
-    );
-    expect(row.rows[0]).toMatchObject({
+    const [row] = await dbWrite
+      .select({
+        billing_status: containers.billing_status,
+        scheduled_shutdown_at: containers.scheduled_shutdown_at,
+        last_billed_at: containers.last_billed_at,
+      })
+      .from(containers)
+      .where(eq(containers.id, containerId));
+    expect(row).toMatchObject({
       billing_status: "active",
       scheduled_shutdown_at: null,
-      last_billed_at: "2026-08-19 01:00:00",
+      last_billed_at: periodStart,
     });
   });
 
@@ -2144,7 +2151,7 @@ describe("compute billing recovery", () => {
       available_balance: "10.0000",
     });
     const containerId = "00000000-0000-4000-8000-000000000006";
-    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.execute(sql`INSERT INTO containers
       (id, name, project_name, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
        last_billed_at, lifecycle_revision, created_at, updated_at)
@@ -2164,12 +2171,16 @@ describe("compute billing recovery", () => {
       enqueueContainerStopOnce({ containerId, organizationId: org.id }),
     ).resolves.toMatchObject({ requested: false, reason: "funding_restored" });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
-    const row = await dbWrite.execute(
-      sql`SELECT billing_status, last_billed_at FROM containers WHERE id = ${containerId}`,
-    );
-    expect(row.rows[0]).toMatchObject({
+    const [row] = await dbWrite
+      .select({
+        billing_status: containers.billing_status,
+        last_billed_at: containers.last_billed_at,
+      })
+      .from(containers)
+      .where(eq(containers.id, containerId));
+    expect(row).toMatchObject({
       billing_status: "active",
-      last_billed_at: "2026-08-19 01:00:00",
+      last_billed_at: periodStart,
     });
   });
 

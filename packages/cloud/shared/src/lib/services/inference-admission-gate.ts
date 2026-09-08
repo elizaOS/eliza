@@ -17,7 +17,11 @@ import type {
 } from "../../types/cloud-worker-env";
 import { getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { type CreditReconciliationResult, creditsService } from "./credits";
+import {
+  type CreditReconciliationResult,
+  creditsService,
+  type InferenceBalanceFence,
+} from "./credits";
 import type { InferenceAdmissionRecoveryContext } from "./inference-admission-recovery";
 import {
   type InferenceCredentialCheck,
@@ -34,6 +38,8 @@ const RATE_LIMIT_GATE_MAX_ATTEMPTS = 2;
 const LEASE_GATE_MAX_ATTEMPTS = 2;
 const DISPATCH_GATE_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
+const SETTLEMENT_FENCE_GATE_TIMEOUT_MS = 1_500;
+const SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS = 3;
 const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
 const RATE_LIMIT_WARM_MAX_ENTRIES = 4_096;
 
@@ -51,8 +57,15 @@ interface DispatchResponse {
   dispatched: boolean;
 }
 
+interface LeaseDispatchResponse extends LeaseResponse, DispatchResponse {}
+
 interface ReleaseResponse {
   released: boolean;
+}
+
+interface SettlementFenceResponse {
+  settlementFenced: boolean;
+  estimatedCostUsd: number;
 }
 
 interface HydrateResponse {
@@ -81,6 +94,17 @@ export interface InferenceAdmissionLease {
    * It is destroyed as soon as dispatch acknowledgement is received.
    */
   preProviderCancellationToken?: string;
+  /**
+   * Immutable lease body retained locally until the provider-boundary commit.
+   * Only explicitly audited callers use this mode; legacy callers still
+   * acquire a durable `leased` record before this object is returned.
+   */
+  preparedDispatch?: {
+    path: "/lease-dispatched" | "/lease-dispatched-authorized";
+    body: Record<string, unknown>;
+    executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    state: "prepared" | "ambiguous" | "rejected";
+  };
 }
 
 export class InferenceAdmissionGateUnavailableError extends Error {
@@ -207,6 +231,16 @@ async function parseLeaseResponse(response: Response): Promise<LeaseResponse> {
   }
 }
 
+async function parseLeaseDispatchResponse(response: Response): Promise<LeaseDispatchResponse> {
+  const lease = await parseLeaseResponse(response);
+  if ((lease as Partial<LeaseDispatchResponse>).dispatched !== true) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission gate returned an invalid combined dispatch response",
+    );
+  }
+  return lease as LeaseDispatchResponse;
+}
+
 async function parseSettleResponse(response: Response): Promise<SettleResponse> {
   try {
     const value = await response.json();
@@ -247,6 +281,32 @@ async function parseLeaseTransitionResponse<Field extends "dispatched" | "releas
     // error-policy:J3 malformed transition responses never advance a lease.
     throw new InferenceAdmissionGateUnavailableError(
       `Inference admission gate returned invalid ${field} JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function parseSettlementFenceResponse(response: Response): Promise<SettlementFenceResponse> {
+  try {
+    const value = await response.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as Record<string, unknown>).settlementFenced !== true ||
+      !Number.isFinite((value as Record<string, unknown>).estimatedCostUsd) ||
+      ((value as Record<string, unknown>).estimatedCostUsd as number) <= 0
+    ) {
+      throw new TypeError("response does not confirm the settlement fence");
+    }
+    return value as SettlementFenceResponse;
+  } catch (error) {
+    // error-policy:J2 preserve malformed acknowledgement details in the typed transport failure.
+    // A committed transition can lose its response. Treat malformed 2xx as
+    // acknowledgement ambiguity so the caller replays the monotonic request.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid settlement-fence JSON: ${
         error instanceof Error ? error.message : String(error)
       }`,
       { cause: error },
@@ -561,6 +621,8 @@ export async function acquireInferenceAdmissionLease(params: {
   /** Strong standing proof fused into the lease transaction when supplied. */
   credential?: InferenceCredentialCheck;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /** Commit the balance lease atomically with dispatch at an audited provider boundary. */
+  deferCommitUntilDispatch?: boolean;
 }): Promise<InferenceAdmissionLease> {
   const balanceUsd = finiteNonNegative(params.balanceUsd, "balanceUsd");
   const estimatedCostUsd = finiteNonNegative(params.estimatedCostUsd, "estimatedCostUsd");
@@ -593,6 +655,23 @@ export async function acquireInferenceAdmissionLease(params: {
         }
       : {}),
   };
+  const preProviderCancellationToken = crypto.randomUUID();
+  if (params.deferCommitUntilDispatch) {
+    return {
+      organizationId: params.organizationId,
+      requestId: params.requestId,
+      estimatedCostUsd,
+      gate: stub,
+      providerDispatched: false,
+      preProviderCancellationToken,
+      preparedDispatch: {
+        path: params.credential ? "/lease-dispatched-authorized" : "/lease-dispatched",
+        body,
+        executionCtx: params.executionCtx,
+        state: "prepared",
+      },
+    };
+  }
   let response: Response | undefined;
   for (let attempt = 1; attempt <= LEASE_GATE_MAX_ATTEMPTS; attempt += 1) {
     try {
@@ -649,7 +728,50 @@ export async function acquireInferenceAdmissionLease(params: {
     estimatedCostUsd,
     gate: stub,
     providerDispatched: false,
-    preProviderCancellationToken: crypto.randomUUID(),
+    preProviderCancellationToken,
+  };
+}
+
+/**
+ * Keep the serialized admission authority ahead of the eventually-consistent
+ * KV projection during post-provider billing. Same-revision updates can only
+ * lower the ceiling; authoritative newer revisions advance it normally.
+ */
+async function publishInferenceAdmissionBalance(
+  lease: InferenceAdmissionLease,
+  balanceUsd: number,
+  balanceRevision: string,
+): Promise<void> {
+  const safeBalance = finiteNonNegative(balanceUsd, "balanceUsd");
+  if (!/^(0|[1-9]\d*)$/.test(balanceRevision)) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission balance fence revision is invalid",
+    );
+  }
+  const response = await gateFetch(
+    lease.organizationId,
+    "/hydrate",
+    { balanceUsd: safeBalance, balanceRevision },
+    lease.gate,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
+  if (!response.ok) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission balance fence failed with status ${response.status}`,
+    );
+  }
+  await parseHydrateResponse(response);
+}
+
+/** Build the two-stage live-settlement fence bound to one active lease. */
+export function createInferenceAdmissionBalanceFence(
+  lease: InferenceAdmissionLease,
+): InferenceBalanceFence {
+  return {
+    lowerCommittedBalance: async (balanceUsd, balanceRevision) =>
+      publishInferenceAdmissionBalance(lease, balanceUsd, balanceRevision),
+    publishAuthoritativeBalance: async (balanceUsd, balanceRevision) =>
+      publishInferenceAdmissionBalance(lease, balanceUsd, balanceRevision),
   };
 }
 
@@ -692,7 +814,7 @@ export function inferenceSettlementAmounts(
   return { balanceBackedUsd, gateConsumedUsd };
 }
 
-/** Persist dispatch intent immediately before invoking the upstream provider. */
+/** Commit a prepared lease or persist legacy dispatch intent immediately before provider work. */
 export async function markInferenceAdmissionLeaseDispatched(
   lease: InferenceAdmissionLease,
 ): Promise<void> {
@@ -705,50 +827,169 @@ export async function markInferenceAdmissionLeaseDispatched(
   }
 
   let lastAmbiguousError: unknown;
+  const prepared = lease.preparedDispatch;
+  let mayHaveCommitted = prepared?.state === "ambiguous";
+  const path = prepared?.path ?? "/dispatch";
+  const body = prepared
+    ? { ...prepared.body, preProviderCancellationToken: cancellationToken }
+    : {
+        requestId: lease.requestId,
+        preProviderCancellationToken: cancellationToken,
+      };
+  if (prepared) prepared.state = "ambiguous";
   for (let attempt = 1; attempt <= DISPATCH_GATE_MAX_ATTEMPTS; attempt += 1) {
     let response: Response;
     try {
       response = await gateFetch(
         lease.organizationId,
-        "/dispatch",
-        {
-          requestId: lease.requestId,
-          preProviderCancellationToken: cancellationToken,
-        },
+        path,
+        body,
         lease.gate,
         AbortSignal.timeout(DISPATCH_GATE_TIMEOUT_MS),
       );
     } catch (error) {
+      mayHaveCommitted = true;
+      lastAmbiguousError = error;
+      if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    if (prepared && response.status === 403) {
+      // A later denial cannot erase a prior acknowledgement-ambiguous commit.
+      if (!mayHaveCommitted) prepared.state = "rejected";
+      let reason = "revoked";
+      try {
+        const payload = (await response.json()) as { reason?: unknown };
+        if (typeof payload.reason === "string") reason = payload.reason;
+      } catch {
+        // error-policy:J3 malformed denial output remains a fail-closed generic revocation.
+      }
+      throw new InferenceCredentialRevokedError(reason);
+    }
+    if (prepared && response.status === 402) {
+      if (!mayHaveCommitted) prepared.state = "rejected";
+      const payload = await parseLeaseResponse(response);
+      throw new InferenceAdmissionLeaseRejectedError(payload.requiredUsd, payload.availableUsd);
+    }
+    if (prepared && response.status === 503) {
+      const code = await readGateErrorCode(response);
+      if (
+        attempt === DISPATCH_GATE_MAX_ATTEMPTS &&
+        code === "inference_admission_gate_uninitialized" &&
+        prepared.executionCtx
+      ) {
+        scheduleGateHydration(lease.organizationId, lease.gate, prepared.executionCtx);
+      }
+      const error = new InferenceAdmissionDispatchMarkError(
+        `Inference admission gate combined dispatch failed with status ${response.status}`,
+      );
+      mayHaveCommitted = true;
       lastAmbiguousError = error;
       if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
       break;
     }
     if (!response.ok) {
+      if (prepared && response.status < 500 && !mayHaveCommitted) {
+        prepared.state = "rejected";
+      }
       const error = new InferenceAdmissionDispatchMarkError(
         `Inference admission gate dispatch failed with status ${response.status}`,
       );
       if (response.status < 500) throw error;
+      mayHaveCommitted = true;
       lastAmbiguousError = error;
       if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
       break;
     }
     try {
-      await parseLeaseTransitionResponse(response, "dispatched");
+      if (prepared) await parseLeaseDispatchResponse(response);
+      else await parseLeaseTransitionResponse(response, "dispatched");
     } catch (error) {
       // A valid 2xx transport with an unreadable body can still follow a
       // committed dispatch. Replaying the same capability resolves ambiguity.
+      mayHaveCommitted = true;
       lastAmbiguousError = error;
       if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
       break;
     }
     lease.providerDispatched = true;
     lease.preProviderCancellationToken = undefined;
+    lease.preparedDispatch = undefined;
     return;
   }
   // error-policy:J2 all attempts remain ambiguous. The capability stays on
   // the lease so a live error settlement can prove no provider was invoked.
   throw new InferenceAdmissionDispatchMarkError(
     `Inference admission gate dispatch acknowledgement remained ambiguous after ${DISPATCH_GATE_MAX_ATTEMPTS} attempts`,
+    { cause: lastAmbiguousError },
+  );
+}
+
+/**
+ * Before post-provider billing mutates money, widen the durable lease to the
+ * known actual cost. The DO transition is monotonic and idempotent, so an
+ * acknowledgement-ambiguous call is replayed and billing never starts until a
+ * valid acknowledgement confirms the durable exposure.
+ */
+export async function fenceInferenceAdmissionLeaseForSettlement(
+  lease: InferenceAdmissionLease,
+  knownActualCostUsd: number,
+): Promise<void> {
+  if (!lease.providerDispatched) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission settlement fence requires a dispatched lease",
+    );
+  }
+  const targetEstimateUsd = Math.max(
+    lease.estimatedCostUsd,
+    finiteNonNegative(knownActualCostUsd, "knownActualCostUsd"),
+  );
+  let lastAmbiguousError: unknown;
+  for (let attempt = 1; attempt <= SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS; attempt += 1) {
+    let response: Response;
+    try {
+      response = await gateFetch(
+        lease.organizationId,
+        "/settlement-fence",
+        {
+          requestId: lease.requestId,
+          estimatedCostUsd: targetEstimateUsd,
+        },
+        lease.gate,
+        AbortSignal.timeout(SETTLEMENT_FENCE_GATE_TIMEOUT_MS),
+      );
+    } catch (error) {
+      // error-policy:J2 retry the idempotent fence, then rethrow with the last acknowledgement failure.
+      lastAmbiguousError = error;
+      if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    if (!response.ok) {
+      const error = new InferenceAdmissionGateUnavailableError(
+        `Inference admission settlement fence failed with status ${response.status}`,
+      );
+      if (response.status < 500) throw error;
+      lastAmbiguousError = error;
+      if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    try {
+      const payload = await parseSettlementFenceResponse(response);
+      if (payload.estimatedCostUsd + 0.0000001 < targetEstimateUsd) {
+        throw new InferenceAdmissionGateUnavailableError(
+          "Inference admission settlement fence acknowledged a lower estimate",
+        );
+      }
+      lease.estimatedCostUsd = Math.max(lease.estimatedCostUsd, payload.estimatedCostUsd);
+      return;
+    } catch (error) {
+      // error-policy:J2 retry the idempotent fence, then rethrow with the last acknowledgement failure.
+      lastAmbiguousError = error;
+      if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+  }
+  throw new InferenceAdmissionGateUnavailableError(
+    `Inference admission settlement-fence acknowledgement remained ambiguous after ${SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS} attempts`,
     { cause: lastAmbiguousError },
   );
 }
@@ -761,6 +1002,14 @@ export async function releaseInferenceAdmissionLease(
     throw new InferenceAdmissionGateUnavailableError(
       "Dispatched inference work cannot be released without accounting",
     );
+  }
+  if (
+    lease.preparedDispatch?.state === "prepared" ||
+    lease.preparedDispatch?.state === "rejected"
+  ) {
+    lease.preProviderCancellationToken = undefined;
+    lease.preparedDispatch = undefined;
+    return;
   }
   const response = await gateFetch(
     lease.organizationId,
@@ -775,6 +1024,18 @@ export async function releaseInferenceAdmissionLease(
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
   if (!response.ok) {
+    if (
+      lease.preparedDispatch?.state === "ambiguous" &&
+      response.status === 409 &&
+      (await readGateErrorCode(response)) === "inference_admission_lease_not_found"
+    ) {
+      // The combined request may have failed before reaching the Durable
+      // Object. No lease and no provider invocation is already the requested
+      // zero-cost terminal state, so cleanup is idempotently complete.
+      lease.preProviderCancellationToken = undefined;
+      lease.preparedDispatch = undefined;
+      return;
+    }
     throw new InferenceAdmissionGateUnavailableError(
       `Inference admission gate release failed with status ${response.status}`,
     );

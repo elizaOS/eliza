@@ -16,7 +16,8 @@
     "./personal-shared-failure": "./src/personal-shared-failure.ts",
     "./response-attempts": "./src/response-attempts.ts",
     "./telegram-connector": "./src/telegram-connector.ts",
-    "./telegram-delivery": "./src/telegram-delivery.ts"
+    "./telegram-delivery": "./src/telegram-delivery.ts",
+    "./bounded-fetch": "./src/bounded-fetch.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

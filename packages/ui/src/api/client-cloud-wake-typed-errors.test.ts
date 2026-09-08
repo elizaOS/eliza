@@ -109,7 +109,7 @@ describe("waitForCloudAgentRunning — typed non-transient failures", () => {
     expect(wake.agentId).toBe("agent-1");
     expect(wake.message).toMatch(/HTTP 402/);
     expect(wake.message).toMatch(/about 30s/);
-    // Never fell through to the six-minute poll.
+    // Never fell through to the bounded cold-start poll.
     expect(client.getCloudCompatAgent).not.toHaveBeenCalled();
   });
 

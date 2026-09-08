@@ -5,8 +5,14 @@
  * model/context failure behavior. Runtime doubles stand in for IAgentRuntime;
  * the module under test is not mocked.
  */
-import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import type {
+  ActionResult,
+  GroundedActionReply,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { ModelType, NoModelProviderConfiguredError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractActionResultsFromState,
@@ -42,6 +48,7 @@ function runtimeForReply(options?: {
 }): IAgentRuntime {
   const runtime: Record<string, unknown> = {
     getMemories: vi.fn(async () => []),
+    reportError: vi.fn(),
     character: options?.character ?? { name: "TestAgent" },
   };
   if (options?.useModel !== null) {
@@ -68,7 +75,12 @@ async function renderWith(options: {
   context?: Record<string, unknown>;
   additionalRules?: string[];
   preferCharacterVoice?: boolean;
-}): Promise<{ reply: string; prompt: string; useModel: unknown }> {
+}): Promise<{
+  reply: string | undefined;
+  outcome: GroundedActionReply;
+  prompt: string;
+  useModel: unknown;
+}> {
   let prompt = "";
   const useModel =
     options.useModel === null
@@ -86,7 +98,7 @@ async function renderWith(options: {
   if (options.useModel === null) {
     delete (runtime as { useModel?: unknown }).useModel;
   }
-  const reply = await renderGroundedActionReply({
+  const outcome = await renderGroundedActionReply({
     runtime,
     message: { content: { text: options.messageText ?? "add milk" } } as Memory,
     state: options.state,
@@ -98,7 +110,12 @@ async function renderWith(options: {
     additionalRules: options.additionalRules,
     preferCharacterVoice: options.preferCharacterVoice,
   });
-  return { reply, prompt, useModel };
+  return {
+    reply: outcome.kind === "model" ? outcome.text : undefined,
+    outcome,
+    prompt,
+    useModel,
+  };
 }
 
 afterEach(() => {
@@ -426,15 +443,55 @@ describe("summarizeRecentActionHistory", () => {
 });
 
 describe("renderGroundedActionReply", () => {
-  it("returns the fallback when useModel is missing", async () => {
-    const { reply } = await renderWith({
+  it("returns unavailable without fallback when useModel is missing", async () => {
+    const { reply, outcome } = await renderWith({
       useModel: null,
       fallback: "Canonical fallback.",
     });
-    expect(reply).toBe("Canonical fallback.");
+    expect(reply).toBeUndefined();
+    expect(outcome).toMatchObject({
+      kind: "unavailable",
+      failure: { kind: "no_provider", transient: false },
+    });
   });
 
-  it("propagates a model failure instead of fabricating fallback success", async () => {
+  it("returns unavailable when the runtime has no model provider", async () => {
+    const { reply, outcome } = await renderWith({
+      useModel: vi.fn(async () => {
+        throw new NoModelProviderConfiguredError();
+      }) as IAgentRuntime["useModel"],
+      fallback: "Canonical fallback.",
+    });
+    expect(reply).toBeUndefined();
+    expect(outcome).toMatchObject({
+      kind: "unavailable",
+      failure: { kind: "no_provider", transient: false },
+    });
+  });
+
+  it("reports an intentionally disabled model capability without erasing the action", async () => {
+    await expect(
+      renderWith({
+        useModel: vi.fn(async () => {
+          throw new NoModelProviderConfiguredError(
+            "Canonical service routing does not configure llmText.",
+            "capability-disabled",
+          );
+        }) as IAgentRuntime["useModel"],
+        fallback: "Canonical fallback.",
+      }),
+    ).resolves.toMatchObject({
+      outcome: {
+        kind: "unavailable",
+        failure: {
+          code: "GROUNDED_REPLY_CAPABILITY_DISABLED",
+          transient: false,
+        },
+      },
+    });
+  });
+
+  it("reports a model failure instead of fabricating fallback success", async () => {
     await expect(
       renderWith({
         useModel: vi.fn(async () => {
@@ -442,7 +499,13 @@ describe("renderGroundedActionReply", () => {
         }) as IAgentRuntime["useModel"],
         fallback: "Canonical fallback.",
       }),
-    ).rejects.toThrow("model down");
+    ).resolves.toMatchObject({
+      reply: undefined,
+      outcome: {
+        kind: "unavailable",
+        failure: { code: "GROUNDED_REPLY_GENERATION_FAILED" },
+      },
+    });
   });
 
   it("rejects when useModel emits a non-string", async () => {
@@ -453,7 +516,12 @@ describe("renderGroundedActionReply", () => {
         })) as unknown as IAgentRuntime["useModel"],
         fallback: "Canonical fallback.",
       }),
-    ).rejects.toMatchObject({ code: "GROUNDED_REPLY_OUTPUT_INVALID" });
+    ).resolves.toMatchObject({
+      outcome: {
+        kind: "unavailable",
+        failure: { code: "GROUNDED_REPLY_OUTPUT_INVALID" },
+      },
+    });
   });
 
   it("rejects remaining structured schema-key replies", async () => {
@@ -468,7 +536,12 @@ describe("renderGroundedActionReply", () => {
           useModel: vi.fn(async () => output) as IAgentRuntime["useModel"],
           fallback: "Canonical fallback.",
         }),
-      ).rejects.toMatchObject({ code: "GROUNDED_REPLY_OUTPUT_INVALID" });
+      ).resolves.toMatchObject({
+        outcome: {
+          kind: "unavailable",
+          failure: { code: "GROUNDED_REPLY_OUTPUT_INVALID" },
+        },
+      });
     }
   });
 
@@ -568,8 +641,11 @@ describe("renderGroundedActionReply", () => {
   it("rejects circular context instead of substituting a partial string", async () => {
     const context: Record<string, unknown> = { label: "loop" };
     context.self = context;
-    await expect(renderWith({ context })).rejects.toMatchObject({
-      code: "GROUNDED_REPLY_CONTEXT_INVALID",
+    await expect(renderWith({ context })).resolves.toMatchObject({
+      outcome: {
+        kind: "unavailable",
+        failure: { code: "GROUNDED_REPLY_CONTEXT_INVALID" },
+      },
     });
   });
 
@@ -633,5 +709,54 @@ describe("renderGroundedActionReply", () => {
     expect(prompt).toContain(
       'Complete conversation: ["User: repeat this","User: repeat this","User: repeat this"]',
     );
+  });
+
+  it("returns a non-replayable status without canonical fallback on a structural provider error", async () => {
+    // A 429 surfaces from the AI SDK as a RetryError wrapping the APICallError
+    // on .lastError; the committed action's grounded reply must not be lost.
+    const retryError = Object.assign(
+      new Error("Failed after 3 attempts. Last error: Too Many Requests"),
+      {
+        name: "AI_RetryError",
+        lastError: Object.assign(new Error("Too Many Requests"), {
+          statusCode: 429,
+        }),
+      },
+    );
+    const useModel = vi.fn(async () => {
+      throw retryError;
+    }) as IAgentRuntime["useModel"];
+    const { reply, outcome } = await renderWith({
+      useModel,
+      fallback: "Created “Gym session” for Tuesday at 7:00 AM.",
+    });
+    expect(reply).toBeUndefined();
+    expect(outcome).toMatchObject({
+      kind: "unavailable",
+      failure: { kind: "rate_limited", transient: false },
+    });
+    expect(JSON.stringify(outcome)).not.toContain("Created “Gym session”");
+    expect(useModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports non-provider presentation failures without throwing after action settlement", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("boom");
+    }) as IAgentRuntime["useModel"];
+    const runtime = runtimeForReply({ useModel });
+    const outcome = await renderGroundedActionReply({
+      runtime,
+      message: { content: { text: "continue" } } as Memory,
+      state: undefined,
+      intent: "continue",
+      domain: "calendar",
+      scenario: "committed",
+      fallback: "x",
+    });
+    expect(outcome).toMatchObject({
+      kind: "unavailable",
+      failure: { code: "GROUNDED_REPLY_GENERATION_FAILED" },
+    });
+    expect(runtime.reportError).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,7 +10,16 @@
  * `requireAuthOrApiKeyWithOrg` (same pattern as eliza-agents-restore-body-guard).
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { installOrganizationPolicyTestSchema } from "@/db/repositories/organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -216,6 +225,10 @@ beforeAll(async () => {
     for (const ddl of TIER_UPGRADE_TEST_TABLES) {
       await dbWrite.execute(ddl);
     }
+    const { getPgliteClientForTests } = await import("@/db/client");
+    await installOrganizationPolicyTestSchema((query) =>
+      getPgliteClientForTests().exec(query),
+    );
     const { userCharacters } = await import("@/db/schemas/user-characters");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
 
@@ -366,7 +379,10 @@ function cutover(agentId: string, dedicatedAgentId: string) {
   );
 }
 
-async function upgrade(agentId: string) {
+async function upgrade(
+  agentId: string,
+  executionCtx?: Parameters<Hono<AppEnv>["request"]>[3],
+) {
   const quoted = await quote(agentId);
   const body = (await quoted
     .clone()
@@ -385,7 +401,40 @@ async function upgrade(agentId: string) {
       }),
     },
     ENV,
+    executionCtx,
   );
+}
+
+async function upgradeWithRetainedNudge(agentId: string, failure?: Error) {
+  const { provisioningJobService } = await import(
+    "@/lib/services/provisioning-jobs"
+  );
+  const pending = Promise.withResolvers<void>();
+  const trigger = spyOn(
+    provisioningJobService,
+    "triggerImmediate",
+  ).mockReturnValue(pending.promise);
+  const retained: Promise<unknown>[] = [];
+  const executionCtx = {
+    waitUntil: (promise: Promise<unknown>) => retained.push(promise),
+    passThroughOnException: () => undefined,
+    props: {},
+  };
+  try {
+    const response = await upgrade(agentId, executionCtx);
+    expect(response.status).toBe(202);
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(retained).toHaveLength(1);
+    // The response is available while dispatch is unresolved. The Worker owns
+    // its completion, including failures after the durable job was committed.
+    if (failure) pending.reject(failure);
+    else pending.resolve();
+    await Promise.all(retained);
+    return response;
+  } finally {
+    pending.resolve();
+    trigger.mockRestore();
+  }
 }
 
 describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
@@ -825,7 +874,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(pgliteReady).toBe(true);
     await setOrgBalance(ORG_A, "10");
 
-    const res = await upgrade(SHARED_A);
+    const res = await upgradeWithRetainedNudge(SHARED_A);
     expect(res.status).toBe(202);
     const body = (await res.json()) as {
       success: boolean;
@@ -940,6 +989,41 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       .where(eq(jobs.agent_id, target.id));
     expect(jobRows.length).toBe(1);
     expect(body.data.jobId).toBe(jobRows[0]?.id ?? "");
+  });
+
+  test("retains a failed reactivation nudge without losing the new durable job", async () => {
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxesRepository } = await import(
+      "@/db/repositories/agent-sandboxes"
+    );
+    const { jobs } = await import("@/db/schemas/jobs");
+    const target = (
+      await agentSandboxesRepository.listByOrganization(ORG_A)
+    ).find(
+      (agent) =>
+        (agent.agent_config as Record<string, unknown> | null)
+          ?.__agentUpgradedFrom === SHARED_A,
+    );
+    if (!target) throw new Error("The funded activation target is missing");
+    await agentSandboxesRepository.update(target.id, { status: "stopped" });
+    await dbWrite
+      .update(jobs)
+      .set({ status: "failed" })
+      .where(eq(jobs.agent_id, target.id));
+    const response = await upgradeWithRetainedNudge(
+      SHARED_A,
+      new Error("control plane unavailable"),
+    );
+    const body = (await response.json()) as {
+      data: { dedicatedAgentId: string; jobId: string };
+    };
+    expect(body.data.dedicatedAgentId).toBe(target.id);
+    const [job] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, body.data.jobId));
+    expect(job?.agent_id).toBe(target.id);
+    expect(job?.status).toBe("pending");
   });
 
   test("concurrent upgrades atomically converge on one target, one job, one credential set", async () => {
@@ -1487,7 +1571,11 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       markerObservedAtCommit = undefined;
       cutoverCoordinatorOperations.length = 0;
       const commitRefused = await cutover(PERSONAL_C, CUTOVER_TARGET);
-      expect(commitRefused.status).toBeGreaterThanOrEqual(500);
+      expect(commitRefused.status).toBe(503);
+      expect(await commitRefused.json()).toMatchObject({
+        success: false,
+        code: "shared_history_unavailable",
+      });
       const [afterCommitFailure] = await dbWrite
         .select()
         .from(agentSandboxes)

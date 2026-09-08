@@ -1,11 +1,6 @@
-/**
- * Stable common surface for `@elizaos/ui`.
- *
- * Feature domains are published through explicit subpaths so importing a
- * primitive never evaluates the app shell, clients, cloud console, native
- * bridges, or feature registries. New exports belong on their owning subpath;
- * this root remains limited to the canonical design-system primitives.
- */
+/** Exposes the canonical UI primitives and first-party login components and hooks. */
 
 export * from "./components/primitives/index";
 export { cn } from "./lib/utils";
+export * from "./login/index";
+export * from "./login/wallet/index";

@@ -1,4 +1,8 @@
-/** Verifies App navigate-view event wiring through the package's configured test harness. */
+/**
+ * Verifies rendered App navigation with deterministic service/page fixtures.
+ * Launcher-back cases compose the real AppProvider navigation hooks, history,
+ * and surface-realm guards; older event cases retain their tab spy.
+ */
 // @vitest-environment jsdom
 
 /**
@@ -21,15 +25,58 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type * as React from "react";
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentButton, getViewRegistry } from "./agent-surface";
 import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
+import { DEFAULT_BRANDING } from "./config/branding-base";
+import { BrandingContext } from "./config/branding-react.hooks";
+import type { AuthStatusState } from "./hooks/useAuthStatus";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import {
+  getWindowNavigationPath,
+  resolveInitialTabForPath,
+  type Tab,
+} from "./navigation";
 import { resetUiRegistryHostForTests } from "./registry-host";
-import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
+import { useNavigationPathSync } from "./state/useAppProviderEffects";
+import { useNavigationState } from "./state/useNavigationState";
+import {
+  getActiveSurfaceRealmScope,
+  SurfaceRealmDeniedError,
+} from "./surface-realm-broker";
 import { shellHistory } from "./surface-realm-channel";
+
+const NavigationHarnessContext = React.createContext<{
+  tab: Tab;
+  setTab: ReturnType<typeof useNavigationState>["setTab"];
+  navigation: ReturnType<typeof useNavigationState>["navigation"];
+} | null>(null);
+
+function AppWithRealNavigation() {
+  // Match AppProvider's actual state + navigation composition. No test event
+  // listener or manual rerender may stand in for the production path sync.
+  const [tab, setTabRaw] = React.useState<Tab>(() =>
+    resolveInitialTabForPath(getWindowNavigationPath(), "chat"),
+  );
+  const [, setAppsSubTab] = React.useState<"browse" | "running" | "games">(
+    "browse",
+  );
+  const { setTab, navigation } = useNavigationState({
+    tab,
+    setTabRaw,
+    uiShellMode: "native",
+    hasActiveGameRun: false,
+    setAppsSubTab,
+  });
+  useNavigationPathSync({ tab, setTabRaw });
+  return (
+    <NavigationHarnessContext.Provider value={{ tab, setTab, navigation }}>
+      <App />
+    </NavigationHarnessContext.Provider>
+  );
+}
 
 const appState = vi.hoisted(() => ({
   backendConnectionState: "connected",
@@ -53,9 +100,27 @@ const authStatusMock = vi.hoisted(() => ({
   use: vi.fn(),
 }));
 
-const cloudOriginMock = vi.hoisted(() => ({
-  agentless: false,
-}));
+const authenticatedAuthStatus = vi.hoisted(
+  () =>
+    ({
+      phase: "authenticated",
+      identity: {
+        id: "test-user",
+        displayName: "Test User",
+        kind: "owner",
+      },
+      session: {
+        id: "test-session",
+        kind: "local",
+        expiresAt: null,
+      },
+      access: {
+        mode: "local",
+        passwordConfigured: true,
+        ownerConfigured: true,
+      },
+    }) satisfies AuthStatusState,
+);
 
 const cloudSessionState = vi.hoisted(() => ({
   authenticated: false,
@@ -315,12 +380,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
     return {
       state:
         authStatusMock.phase === "authenticated"
-          ? {
-              phase: "authenticated",
-              identity: { id: "test-user" },
-              session: { id: "test-session" },
-              access: {},
-            }
+          ? authenticatedAuthStatus
           : { phase: authStatusMock.phase },
       refetch: authStatusMock.refetch,
     };
@@ -339,12 +399,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // same static phase in AuthStatusState shape.
   getAuthStatusSnapshot: () =>
     authStatusMock.phase === "authenticated"
-      ? {
-          phase: "authenticated",
-          identity: { id: "test-user" },
-          session: { id: "test-session" },
-          access: {},
-        }
+      ? authenticatedAuthStatus
       : { phase: "unauthenticated" },
   subscribeAuthStatus: () => vi.fn(),
 }));
@@ -358,15 +413,6 @@ vi.mock("./cloud/lib/use-session-auth", () => ({
       : null,
   }),
 }));
-
-vi.mock("./utils/cloud-agent-base", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./utils/cloud-agent-base")>();
-  return {
-    ...actual,
-    isElizaCloudControlPlaneAgentlessBase: () => cloudOriginMock.agentless,
-  };
-});
 
 vi.mock("./first-run/use-first-run-conductor", () => ({
   FirstRunConductorMount: () => <div data-testid="first-run-conductor-mount" />,
@@ -455,15 +501,19 @@ vi.mock("./state", async () => {
     uiTheme: "light",
     uiThemeMode: "system",
   });
+  function useAppValue() {
+    const navigation = React.useContext(NavigationHarnessContext);
+    return { ...getAppValue(), ...navigation };
+  }
   return {
     ACCENT_PRESETS,
-    useApp: () => getAppValue(),
+    useApp: useAppValue,
     useAppSelector: <T,>(
-      selector: (s: ReturnType<typeof getAppValue>) => T,
-    ): T => selector(getAppValue()),
+      selector: (s: ReturnType<typeof useAppValue>) => T,
+    ): T => selector(useAppValue()),
     useAppSelectorShallow: <T,>(
-      selector: (s: ReturnType<typeof getAppValue>) => T,
-    ): T => selector(getAppValue()),
+      selector: (s: ReturnType<typeof useAppValue>) => T,
+    ): T => selector(useAppValue()),
   };
 });
 
@@ -584,6 +634,33 @@ function navigateView(detail: Record<string, unknown>) {
   });
 }
 
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
+
+function setWindowLocation(url: string): void {
+  const parsed = new URL(url);
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      href: parsed.href,
+      origin: parsed.origin,
+      protocol: parsed.protocol,
+      host: parsed.host,
+      hostname: parsed.hostname,
+      port: parsed.port,
+      pathname: parsed.pathname,
+      search: parsed.search,
+      hash: parsed.hash,
+      assign: vi.fn(),
+      replace: vi.fn(),
+      reload: vi.fn(),
+      toString: () => parsed.href,
+    },
+  });
+}
+
 describe("App navigate-view event wiring", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
@@ -591,6 +668,7 @@ describe("App navigate-view event wiring", () => {
     // App with first-run complete and covers the surfaces under test — mark it
     // already shown.
     window.localStorage.setItem("eliza:permissions-primed", "1");
+    window.localStorage.removeItem("steward_session_token");
     setBootConfig(DEFAULT_BOOT_CONFIG);
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
@@ -601,7 +679,6 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "chat";
     appState.plugins = [];
     authStatusMock.phase = "authenticated";
-    cloudOriginMock.agentless = false;
     cloudSessionState.authenticated = false;
     mediaQueryState.matches = false;
     electrobunRuntimeState.enabled = true;
@@ -623,22 +700,61 @@ describe("App navigate-view event wiring", () => {
     cleanup();
     resetUiRegistryHostForTests();
     vi.unstubAllGlobals();
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, "location", originalLocationDescriptor);
+    }
   });
 
-  it("keeps an unauthenticated shared Cloud app inside first-run onboarding", () => {
+  it("keeps the exact branded staging Pages alias inside first-run onboarding", () => {
     window.history.replaceState(null, "", "/?shellMode=full");
+    setWindowLocation("https://develop.eliza-app.pages.dev/?shellMode=full");
     appState.firstRunComplete = false;
     appState.startupPhase = "first-run-required";
     authStatusMock.phase = "unauthenticated";
-    cloudOriginMock.agentless = true;
+    window.localStorage.setItem(
+      "steward_session_token",
+      "existing-steward-session",
+    );
 
-    render(<App />);
+    render(
+      <BrandingContext.Provider
+        value={{ ...DEFAULT_BRANDING, cloudOnly: true }}
+      >
+        <App />
+      </BrandingContext.Provider>,
+    );
 
     expect(authStatusMock.use).toHaveBeenCalledWith(
       expect.objectContaining({ skip: true }),
     );
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
+  });
+
+  it.each([
+    ["unbranded Pages alias", "https://develop.eliza-app.pages.dev/", false],
+    ["arbitrary branded self-host", "https://agent.example.com/", true],
+  ])("keeps the App auth gate for an %s", (_name, origin, cloudOnly) => {
+    window.history.replaceState(null, "", "/?shellMode=full");
+    setWindowLocation(`${origin}?shellMode=full`);
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    authStatusMock.phase = "unauthenticated";
+    window.localStorage.setItem(
+      "steward_session_token",
+      "existing-steward-session",
+    );
+
+    render(
+      <BrandingContext.Provider value={{ ...DEFAULT_BRANDING, cloudOnly }}>
+        <App />
+      </BrandingContext.Provider>,
+    );
+
+    expect(authStatusMock.use).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: false }),
+    );
+    expect(screen.queryByTestId("first-run-conductor-mount")).toBeNull();
   });
 
   it("restores a deep route after an auth-startup retry commits the default chat path", async () => {
@@ -1031,6 +1147,75 @@ describe("App navigate-view event wiring", () => {
     expect(getByTestId("view-header").textContent).toContain("Signed Normal");
   });
 
+  it.each([
+    { strictMode: false, entry: "direct" },
+    { strictMode: true, entry: "direct" },
+    { strictMode: false, entry: "navigate-view" },
+    { strictMode: true, entry: "navigate-view" },
+  ])(
+    "returns from Notes to the launcher through guarded history navigation ($entry, StrictMode=$strictMode)",
+    async ({ strictMode, entry }) => {
+      electrobunRuntimeState.enabled = false;
+      registerAppShellPage({
+        id: "notes",
+        pluginId: "@elizaos/plugin-notes",
+        label: "Notes",
+        path: "/notes",
+        surface: { header: "normal", capabilities: [] },
+        Component: () => (
+          <section aria-label="Notes fixture">A saved note</section>
+        ),
+      });
+      window.history.replaceState(
+        null,
+        "",
+        entry === "direct" ? "/notes" : "/views",
+      );
+      render(
+        strictMode ? (
+          <React.StrictMode>
+            <AppWithRealNavigation />
+          </React.StrictMode>
+        ) : (
+          <AppWithRealNavigation />
+        ),
+      );
+      if (entry === "navigate-view") {
+        await screen.findByTestId("launcher-surface");
+        navigateView({ viewId: "notes", viewPath: "/notes" });
+      }
+
+      await screen.findByRole("region", { name: "Notes fixture" });
+      expect(screen.getByRole("heading", { name: "Notes" })).toBeTruthy();
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe("notes");
+      // Prove the guard is armed, not just that a scope-shaped object exists.
+      expect(() => window.history.pushState(null, "", "/views")).toThrow(
+        SurfaceRealmDeniedError,
+      );
+      expect(window.location.pathname).toBe("/notes");
+
+      fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe("/views");
+        expect(screen.getByTestId("launcher-surface")).toBeTruthy();
+        expect(
+          screen.queryByRole("region", { name: "Notes fixture" }),
+        ).toBeNull();
+        expect(screen.queryByRole("heading", { name: "Notes" })).toBeNull();
+        expect(getActiveSurfaceRealmScope()?.viewId).not.toBe("notes");
+      });
+      // A second real browser event must not resurrect stale provider tab state.
+      act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+      expect(window.location.pathname).toBe("/views");
+      expect(screen.getByTestId("launcher-surface")).toBeTruthy();
+      expect(
+        screen.queryByRole("region", { name: "Notes fixture" }),
+      ).toBeNull();
+      expect(appState.setTab).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps modal remote pages headerless without treating them as fullscreen", async () => {
     mockAvailableViews.push(modalView);
     appState.tab = "apps";
@@ -1411,6 +1596,25 @@ describe("App navigate-view event wiring", () => {
     expect(loader.getAttribute("data-frame-url")).toBe(
       "/api/views/sandboxed-frame/frame.html",
     );
+  });
+
+  it("keeps an unavailable registered route in its loader for retry instead of the view manager", async () => {
+    mockAvailableViews.push({
+      ...remoteLedgerView,
+      id: "unavailable-ledger",
+      path: "/unavailable-ledger",
+      available: false,
+    });
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/unavailable-ledger");
+    render(<App />);
+    await waitFor(() => {
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({ viewId: "unavailable-ledger" }),
+        undefined,
+      );
+    });
+    expect(window.location.pathname).toBe("/unavailable-ledger");
   });
 
   it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {

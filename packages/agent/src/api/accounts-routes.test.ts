@@ -6,7 +6,7 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
+import { ElizaError, LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
 import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -736,6 +736,50 @@ describe("accounts routes", () => {
       },
     });
   });
+
+  it.each(["anthropic_usage.invalid_shape", "anthropic_usage.invalid_json"])(
+    "does not fall back to a healthy inline probe after malformed subscription usage (%s)",
+    async (code) => {
+      const existing = {
+        ...linkedAccount,
+        providerId: "anthropic-subscription",
+        health: "rate-limited",
+        healthDetail: { until: Date.now() + 60_000 },
+        usage: { refreshedAt: 100, sessionPct: 91, weeklyPct: 72 },
+      };
+      fakes.poolAccounts = [existing];
+      fakes.pool.refreshUsage.mockRejectedValueOnce(
+        new ElizaError('Anthropic usage response field "limits" was invalid', {
+          code,
+          severity: "fatal",
+        }),
+      );
+      const fetchMock = vi.fn(async () =>
+        Promise.resolve(new Response("{}", { status: 200 })),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const refreshed = makeContext(
+          "POST",
+          "/api/accounts/anthropic-subscription/account-1/refresh-usage",
+        );
+
+        await handleAccountsRoutes(refreshed.ctx);
+
+        expect(refreshed.errorCalls).toEqual([
+          {
+            message: 'Anthropic usage response field "limits" was invalid',
+            status: 502,
+          },
+        ]);
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(fakes.pool.upsert).not.toHaveBeenCalled();
+        expect(fakes.poolAccounts).toEqual([existing]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it("starts and controls OAuth flows and validates the status stream", async () => {
     const started = makeContext(

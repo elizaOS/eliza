@@ -1,6 +1,6 @@
 /**
- * Exercises authoritative organization-tier calculation with deterministic
- * database seams and a counted cache seam, including corrupt persisted data.
+ * Exercises the real legacy selector and tier-cache orchestration with a
+ * deterministic primary policy seam, including corrupt selector inputs.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -15,27 +15,45 @@ type RpmOverride = {
 let tierSourceCreditTotal: unknown = "0";
 let override: RpmOverride | undefined;
 let cacheWrites = 0;
+let cacheWrite: () => Promise<void>;
 
-mock.module("../../db/helpers", () => ({
-  dbRead: {
-    select: () => ({
-      from: () => ({
-        where: async () => [{ tierSourceCreditTotal }],
-      }),
-    }),
-  },
+const authority = {
+  generation: "0",
+  source: "legacy" as const,
+  sourceSubscriptionId: null,
+  sourceRevision: null,
+  projectionRevision: null,
+  catalogVersion: null,
+  effectiveFrom: "2026-01-01T00:00:00.000Z",
+  effectiveUntil: null,
+};
+const readPolicy = async (orgId: string) => {
+  const { resolveOrgTierFromSourceValues } = await import("./org-rate-limits");
+  return {
+    authority,
+    tierSourceCreditTotal,
+    tier: resolveOrgTierFromSourceValues(orgId, tierSourceCreditTotal, override).tierData,
+  };
+};
+mock.module("./organization-policy-admission", () => ({
+  withOrganizationPolicyAdmission: async (
+    orgId: string,
+    _authority: typeof authority | undefined,
+    action: (policy: Awaited<ReturnType<typeof readPolicy>>) => Promise<unknown>,
+  ) => action(await readPolicy(orgId)),
 }));
-
-mock.module("../../db/repositories/org-rate-limit-overrides", () => ({
-  orgRateLimitOverridesRepository: {
-    findByOrganizationId: async () => override,
-  },
+mock.module("./organization-quota-policy", () => ({
+  readOrganizationQuotaPolicy: readPolicy,
+  requireOrganizationRateTier: (policy: { tier: import("./org-rate-limits").OrgTierData }) =>
+    policy.tier,
 }));
 
 mock.module("../cache/client", () => ({
   cache: {
-    set: async () => {
+    setWithOutcome: async () => {
       cacheWrites += 1;
+      await cacheWrite();
+      return { kind: "written" as const, backend: "memory" as const };
     },
     get: async () => null,
     getWithOutcome: async () => ({ kind: "miss" as const }),
@@ -56,6 +74,7 @@ beforeEach(() => {
   tierSourceCreditTotal = "0";
   override = undefined;
   cacheWrites = 0;
+  cacheWrite = async () => undefined;
 });
 
 describe("authoritative organization rate-limit tier reads", () => {
@@ -91,11 +110,30 @@ describe("authoritative organization rate-limit tier reads", () => {
     };
 
     await expect(readOrgTierFromSources("org-observation-only")).resolves.toEqual({
+      authority,
       tierName: "custom",
       completionsRpm: 240,
       embeddingsRpm: 200,
       standardRpm: 60,
       strictRpm: 20,
+    });
+    expect(cacheWrites).toBe(0);
+  });
+
+  test.each([
+    ["never settles", () => new Promise<void>(() => undefined)],
+    ["rejects", () => Promise.reject(new Error("cache unavailable"))],
+  ])("source reads do not join a tier cache write that %s", async (_name, behavior) => {
+    tierSourceCreditTotal = "7.25";
+    cacheWrite = behavior;
+
+    await expect(readOrgTierFromSources("org-observation-only")).resolves.toEqual({
+      authority,
+      tierName: "paid",
+      completionsRpm: 120,
+      embeddingsRpm: 200,
+      standardRpm: 60,
+      strictRpm: 10,
     });
     expect(cacheWrites).toBe(0);
   });

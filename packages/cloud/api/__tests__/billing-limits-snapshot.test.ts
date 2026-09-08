@@ -43,6 +43,36 @@ const readPrimaryAccountBillingSnapshot = mock(
   async (organizationId: string) => {
     seenOrgIds.push(organizationId);
     return {
+      subscription: { state: "none" as const },
+      policyObservedAt: "2026-08-20T12:00:00.000Z",
+      policyLimits: {
+        characters: {
+          status: "available" as const,
+          limit: 5n,
+          source: "policy",
+        },
+        sandboxes: {
+          status: "available" as const,
+          limit: 20n,
+          source: "policy",
+        },
+        nonEagerSandboxes: {
+          status: "available" as const,
+          limit: 5n,
+          source: "policy",
+        },
+        containers: {
+          status: "available" as const,
+          limit: 5n,
+          source: "policy",
+        },
+        apps: { status: "available" as const, limit: 25n, source: "policy" },
+        storage: {
+          status: "available" as const,
+          limit: 1000n,
+          source: "policy",
+        },
+      },
       observedAt: "2026-08-20T12:00:00.000Z",
       organization: {
         creditBalance: "15.000000",

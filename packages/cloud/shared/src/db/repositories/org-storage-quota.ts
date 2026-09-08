@@ -1,11 +1,20 @@
-// Persists org storage quota records for cloud services through the shared DB boundary.
+/** Reserves storage against transaction-current organization policy and records explicitly authorized storage overrides. */
+
 import { eq, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../helpers";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../../lib/services/organization-quota-policy";
+import { dbRead, dbWrite, writeTransaction } from "../helpers";
 import {
   type NewOrgStorageQuota,
   type OrgStorageQuota,
   orgStorageQuota,
 } from "../schemas/org-storage-quota";
+import {
+  advanceOrganizationPolicyGeneration,
+  lockOrganizationPolicy,
+} from "./organization-policy-generation";
 
 export type { NewOrgStorageQuota, OrgStorageQuota };
 
@@ -45,30 +54,35 @@ export class OrgStorageQuotaRepository {
       throw new Error("OrgStorageQuotaRepository.tryReserveBytes: bytes must be non-negative");
     }
 
-    await dbWrite
-      .insert(orgStorageQuota)
-      .values({
-        organization_id: organizationId,
-        bytes_used: 0n,
-        bytes_limit: DEFAULT_ORG_STORAGE_BYTES_LIMIT,
-      })
-      .onConflictDoNothing();
+    return writeTransaction(async (tx) => {
+      await lockOrganizationPolicy(tx, organizationId);
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+      const ceiling = requireOrganizationResourceLimit(policy, "storage");
+      await tx
+        .insert(orgStorageQuota)
+        .values({
+          organization_id: organizationId,
+          bytes_used: 0n,
+          bytes_limit: DEFAULT_ORG_STORAGE_BYTES_LIMIT,
+        })
+        .onConflictDoNothing();
 
-    const updated = await dbWrite
-      .update(orgStorageQuota)
-      .set({
-        bytes_used: sql`${orgStorageQuota.bytes_used} + ${bytes}`,
-        updated_at: new Date(),
-      })
-      .where(
-        sql`${orgStorageQuota.organization_id} = ${organizationId} AND ${orgStorageQuota.bytes_used} + ${bytes} <= ${orgStorageQuota.bytes_limit}`,
-      )
-      .returning({ bytes_used: orgStorageQuota.bytes_used });
+      const updated = await tx
+        .update(orgStorageQuota)
+        .set({
+          bytes_used: sql`${orgStorageQuota.bytes_used} + ${bytes}`,
+          updated_at: new Date(),
+        })
+        .where(
+          sql`${orgStorageQuota.organization_id} = ${organizationId} AND ${orgStorageQuota.bytes_used} + ${bytes} <= ${ceiling}`,
+        )
+        .returning({ bytes_used: orgStorageQuota.bytes_used });
 
-    if (updated.length === 0) {
-      return null;
-    }
-    return updated[0].bytes_used;
+      if (updated.length === 0) {
+        return null;
+      }
+      return updated[0].bytes_used;
+    });
   }
 
   /**
@@ -93,21 +107,36 @@ export class OrgStorageQuotaRepository {
    * Inserts a default-counter row if missing so the limit takes effect
    * even before the org's first write.
    */
-  async setBytesLimit(organizationId: string, bytesLimit: bigint): Promise<void> {
+  async setBytesLimit(organizationId: string, bytesLimit: bigint, actor: string): Promise<void> {
     if (bytesLimit < 0n) {
       throw new Error("OrgStorageQuotaRepository.setBytesLimit: bytesLimit must be non-negative");
     }
-    await dbWrite
-      .insert(orgStorageQuota)
-      .values({
-        organization_id: organizationId,
-        bytes_used: 0n,
-        bytes_limit: bytesLimit,
-      })
-      .onConflictDoUpdate({
-        target: orgStorageQuota.organization_id,
-        set: { bytes_limit: bytesLimit, updated_at: new Date() },
-      });
+    await writeTransaction(async (tx) => {
+      await lockOrganizationPolicy(tx, organizationId);
+      const [before] = await tx
+        .select()
+        .from(orgStorageQuota)
+        .where(eq(orgStorageQuota.organization_id, organizationId));
+      await tx
+        .insert(orgStorageQuota)
+        .values({
+          organization_id: organizationId,
+          bytes_used: 0n,
+          bytes_limit: bytesLimit,
+          limit_override_authorized: true,
+        })
+        .onConflictDoUpdate({
+          target: orgStorageQuota.organization_id,
+          set: { bytes_limit: bytesLimit, limit_override_authorized: true, updated_at: new Date() },
+        });
+      if (!before?.limit_override_authorized || before.bytes_limit !== bytesLimit)
+        await advanceOrganizationPolicyGeneration(tx, {
+          organizationId,
+          actor,
+          reason: "storage_override_updated",
+          change: { bytesLimit: bytesLimit.toString() },
+        });
+    });
   }
 }
 

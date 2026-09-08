@@ -269,6 +269,12 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(browserStep.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY }}",
     );
+    expect(
+      browserStep.env?.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION,
+    ).toBe("1");
+    expect(deployedJob.if).toContain(
+      "inputs.run_deployed_renderer_staging == true",
+    );
     expect(browserStep.run).toContain(
       "--config playwright.cloud-deployed.config.ts",
     );

@@ -485,6 +485,7 @@ declare module "./client-base" {
     ): Promise<{
       text: string;
       agentName: string;
+      interrupted?: boolean;
       transcriptVisibility?: "internal";
       blocks?: ContentBlock[];
       noResponseReason?: "ignored";
@@ -523,10 +524,13 @@ declare module "./client-base" {
       onToolEvent?: (event: ChatToolCallEvent) => void,
       /** Additive: caller-supplied idempotency key reused across an auto-retry. */
       clientMessageId?: string,
+      /** Settled receipts before terminal bookkeeping; the stream stays open. */
+      onReplyReady?: (actionResults: ChatActionResultSummary[]) => void,
     ): Promise<{
       text: string;
       agentName: string;
       completed: boolean;
+      interrupted?: boolean;
       transcriptVisibility?: "internal";
       /** Agent reasoning/thought for this turn, when the model emitted one. */
       reasoning?: string;
@@ -1112,7 +1116,9 @@ ElizaClient.prototype.getConversationMessages = async function (
   return {
     messages: response.messages.map((message) => {
       if (message.role !== "assistant") return message;
-      const text = this.normalizeAssistantText(message.text);
+      const text = this.normalizeAssistantText(message.text, {
+        interrupted: message.interrupted,
+      });
       return text === message.text ? message : { ...message, text };
     }),
     ...(typeof response.hasMore === "boolean"
@@ -1309,6 +1315,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
   const response = await this.fetch<{
     text: string;
     agentName: string;
+    interrupted?: boolean;
     transcriptVisibility?: "internal";
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
@@ -1331,7 +1338,9 @@ ElizaClient.prototype.sendConversationMessage = async function (
     text:
       response.noResponseReason === "ignored"
         ? ""
-        : this.normalizeAssistantText(response.text),
+        : this.normalizeAssistantText(response.text, {
+            interrupted: response.interrupted,
+          }),
   };
 };
 
@@ -1347,6 +1356,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   onStatus?,
   onToolEvent?,
   clientMessageId?,
+  onReplyReady?,
 ) {
   return this.streamChatEndpoint(
     `/api/conversations/${encodeURIComponent(id)}/messages/stream`,
@@ -1359,6 +1369,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     onStatus,
     onToolEvent,
     clientMessageId,
+    onReplyReady,
   );
 };
 

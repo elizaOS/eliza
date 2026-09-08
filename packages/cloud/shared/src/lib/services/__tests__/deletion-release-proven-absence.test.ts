@@ -16,8 +16,8 @@
  * `_provider` seam.
  *
  * The abandon case overrides `runBoundedSandboxStop` rather than stalling a real
- * stop past `SANDBOX_DELETE_STOP_TIMEOUT_MS` (120s, not env-tunable): that would
- * make the suite two minutes slower and timing-dependent for no added coverage.
+ * stop past `SANDBOX_DELETE_STOP_TIMEOUT_MS` (240s, not env-tunable): that would
+ * make the suite four minutes slower and timing-dependent for no added coverage.
  * The timer itself is exercised by the provider suites; what is under test here
  * is what `deleteAgent` does with a tagged timeout, which is exactly the
  * branch a future refactor could silently drop.
@@ -29,6 +29,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -81,6 +82,8 @@ beforeAll(async () => {
     for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
       await dbWrite.execute(ddl);
     }
+    const { getPgliteClientForTests } = await import("../../../db/client");
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     await dbWrite.execute(`CREATE TABLE IF NOT EXISTS "docker_nodes" (
       "id" uuid NOT NULL DEFAULT gen_random_uuid(),
       "node_id" text NOT NULL,

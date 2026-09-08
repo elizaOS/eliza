@@ -28,7 +28,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
   authPhase: "loading",
+  cloudOnly: false,
   firstRunComplete: false,
+  handleCloudLoginRecovery: vi.fn(async () => undefined),
   startupPhase: "first-run-required",
 }));
 
@@ -140,8 +142,12 @@ vi.mock("./hooks/useAuthStatus", () => ({
       appState.authPhase === "authenticated"
         ? {
             phase: "authenticated",
-            identity: { id: "test-user" },
-            session: { id: "test-session" },
+            identity: {
+              id: "first-run-test-user",
+              displayName: "First-run test owner",
+              kind: "owner",
+            },
+            session: { id: "first-run-test-session" },
             access: {},
           }
         : { phase: appState.authPhase },
@@ -184,6 +190,7 @@ vi.mock("./state", () => {
     firstRunComplete: appState.firstRunComplete,
     firstRunName: "",
     gameOverlayEnabled: false,
+    handleCloudLoginRecovery: appState.handleCloudLoginRecovery,
     handlePluginToggle: vi.fn(),
     loadDropStatus: vi.fn(async () => undefined),
     ownerName: "Test Owner",
@@ -229,6 +236,11 @@ vi.mock("./state", () => {
 
 vi.mock("./config/boot-config-react.hooks", () => ({
   useBootConfig: () => ({}),
+}));
+
+vi.mock("./config/branding", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config/branding")>()),
+  useBranding: () => ({ cloudOnly: appState.cloudOnly }),
 }));
 
 vi.mock("./components/shell/ShellControllerContext", () => ({
@@ -351,7 +363,9 @@ import { App } from "./App";
 describe("App chat-overlay first-run composition", () => {
   beforeEach(() => {
     appState.authPhase = "loading";
+    appState.cloudOnly = false;
     appState.firstRunComplete = false;
+    appState.handleCloudLoginRecovery.mockClear();
     appState.startupPhase = "first-run-required";
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
@@ -386,6 +400,22 @@ describe("App chat-overlay first-run composition", () => {
         '[data-testid="first-run-conductor-mount"]',
       ),
     ).not.toBeNull();
+  });
+
+  it("keeps Cloud first run inside the real chat shell", () => {
+    window.history.replaceState(null, "", "/");
+    appState.cloudOnly = true;
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+
+    expect(shell.queryByTestId("startup-screen")).toBeNull();
+    expect(shell.getByTestId("chat-overlay")).toBeTruthy();
+    expect(shell.getByTestId("first-run-conductor-mount")).toBeTruthy();
+    expect(appState.handleCloudLoginRecovery).not.toHaveBeenCalled();
   });
 
   it("bypasses the StartupScreen gate and renders no app chrome during first-run", () => {
@@ -623,6 +653,33 @@ describe("App chat-overlay first-run composition", () => {
 
     expect(overlayMock.handledReleases).toBe(1);
     shell.rerender(<App />);
+    expect(overlayMock.handledReleases).toBe(1);
+  });
+
+  it("keeps a mounted chooser transcript pinned after startup becomes ready but before the tutorial pick", () => {
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe("true");
+
+    // Cloud binding can advance startup to ready before the user answers the
+    // final tutorial-or-skip choice. The committed transcript remains the
+    // first-run authority, so this intermediate phase must not collapse it.
+    appState.startupPhase = "ready";
+    shell.rerender(<App />);
+    expect(appState.firstRunComplete).toBe(false);
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe("true");
+    expect(overlayMock.handledReleases).toBe(0);
+
+    // Only the actual tutorial pick releases onboarding into normal chat.
+    appState.firstRunComplete = true;
+    shell.rerender(<App />);
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe(
+      "false",
+    );
     expect(overlayMock.handledReleases).toBe(1);
   });
 

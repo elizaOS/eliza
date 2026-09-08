@@ -20,6 +20,19 @@ import path from "node:path";
 import type { AnalysisDocument, AnalyzerResult } from "../analyzers/types.ts";
 import { EvidenceError } from "../errors.ts";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAnalysisDocument(value: unknown): value is AnalysisDocument {
+  return (
+    isRecord(value) &&
+    value.schema === 1 &&
+    typeof value.artifact === "string" &&
+    isRecord(value.results)
+  );
+}
+
 /** Read an existing analysis document, or start a fresh one for `artifact`. */
 function loadOrInit(analysisPath: string, artifact: string): AnalysisDocument {
   let raw: string;
@@ -51,19 +64,22 @@ function loadOrInit(analysisPath: string, artifact: string): AnalysisDocument {
       { code: "ANALYSIS_MERGE_CORRUPT", cause, context: { analysisPath } },
     );
   }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    (parsed as { schema?: unknown }).schema !== 1 ||
-    typeof (parsed as { results?: unknown }).results !== "object" ||
-    (parsed as { results?: unknown }).results === null
-  ) {
+  if (!isAnalysisDocument(parsed)) {
     throw new EvidenceError(
       `analysis document has an unexpected shape: ${analysisPath}`,
       { code: "ANALYSIS_MERGE_CORRUPT", context: { analysisPath } },
     );
   }
-  return parsed as AnalysisDocument;
+  if (parsed.artifact !== artifact) {
+    throw new EvidenceError(
+      `analysis document describes a different artifact: ${analysisPath}`,
+      {
+        code: "ANALYSIS_MERGE_ARTIFACT_MISMATCH",
+        context: { analysisPath, artifact, existingArtifact: parsed.artifact },
+      },
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -86,7 +102,8 @@ export function mergeAnalyzerResult(params: {
 
   return withAnalysisLock(analysisPath, () => {
     const document = loadOrInit(analysisPath, artifact);
-    document.results[analyzerId] = result;
+    // Computed own properties preserve analyzer IDs such as "__proto__" on disk.
+    document.results = { ...document.results, [analyzerId]: result };
 
     const tmp = path.join(
       dir,

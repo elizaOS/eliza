@@ -20,6 +20,7 @@ import {
 } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Hono } from "hono";
+import { installOrganizationPolicyTestSchema } from "@/db/repositories/organization-policy-test-fixture";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import type { AccountBillingSnapshot } from "../../shared/src/types/account-billing-snapshot";
 
@@ -70,8 +71,15 @@ const REGISTRY_LOGOUT_COMMAND = "docker logout 'ghcr.io' >/dev/null 2>&1";
 const IMAGE_PULL_COMMAND = "docker pull 'ghcr.io/elizaos/eliza:stable'";
 const IMAGE_INSPECT_COMMAND =
   "docker image inspect --format '{{json .RepoDigests}}' 'ghcr.io/elizaos/eliza:stable'";
-const NETWORK_ENSURE_COMMAND =
-  "docker network inspect 'containers-isolated' >/dev/null 2>&1 || docker network create --driver bridge 'containers-isolated' >/dev/null 2>&1 || docker network inspect 'containers-isolated' >/dev/null";
+const NETWORK_ENSURE_COMMAND = [
+  "set -eu",
+  "if docker network inspect 'containers-isolated' >/dev/null 2>&1; then exit 0; fi",
+  "if docker network create --driver bridge 'containers-isolated' >/dev/null 2>&1; then exit 0; fi",
+  "if docker network inspect 'containers-isolated' >/dev/null 2>&1; then exit 0; fi",
+  'if ! docker info >/dev/null 2>&1; then echo "[docker-network] daemon-unavailable" >&2; exit 70; fi',
+  'echo "[docker-network] ensure-failed" >&2',
+  "exit 71",
+].join("; ");
 const DOCKER_CREATE_COMMAND_PATTERN =
   /(?:^|; )docker create --name 'cloud-container-(?<containerId>[0-9a-f]{32})' --restart unless-stopped --network 'containers-isolated' --cpus 1\.75 --memory 1792m --cap-drop=ALL --security-opt no-new-privileges --pids-limit=512 -p (?<hostPort>[0-9]+):3000 --env-file "\$env_file" 'ghcr\.io\/elizaos\/eliza:stable'$/;
 const DOCKER_START_COMMAND_PATTERN =
@@ -426,6 +434,10 @@ beforeAll(async () => {
     "@/db/client"
   ));
   await pushIntegrationSchema();
+  const { getPgliteClientForTests } = await import("@/db/client");
+  await installOrganizationPolicyTestSchema((query) =>
+    getPgliteClientForTests().exec(query),
+  );
 
   await dbWrite.insert(schemas.organizations).values({
     id: ORGANIZATION_ID,

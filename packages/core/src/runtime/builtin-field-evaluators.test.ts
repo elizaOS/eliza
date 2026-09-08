@@ -94,6 +94,26 @@ describe("contextsFieldEvaluator", () => {
 });
 
 describe("intentsFieldEvaluator", () => {
+	it("preserves all distinct outcomes of a compound request", () => {
+		const intents = [
+			"open notes",
+			"update note body",
+			"open calendar",
+			"create event",
+			"open browser",
+			"read page",
+		];
+		expect(intentsFieldEvaluator.parse(intents)).toEqual(intents);
+		expect(
+			candidateActionNamesFieldEvaluator.parse([
+				"VIEWS",
+				"NOTES",
+				"CALENDAR",
+				"BROWSER",
+			]),
+		).toEqual(["VIEWS", "NOTES", "CALENDAR", "BROWSER"]);
+	});
+
 	it("lowercases, trims, and strips trailing sentence punctuation", () => {
 		expect(intentsFieldEvaluator.parse(["  Schedule Meeting!? "])).toEqual([
 			"schedule meeting",
@@ -149,6 +169,15 @@ describe("candidateActionNamesFieldEvaluator", () => {
 });
 
 describe("replyTextFieldEvaluator", () => {
+	it("requires navigation acknowledgements to name the destination", () => {
+		expect(replyTextFieldEvaluator.description).toContain(
+			"For UI navigation, mention the requested destination",
+		);
+		expect(replyTextFieldEvaluator.schema.description).toContain(
+			"UI navigation must name the destination",
+		);
+	});
+
 	it("passes ordinary prose through unchanged", () => {
 		expect(replyTextFieldEvaluator.parse("On it.")).toBe("On it.");
 		expect(replyTextFieldEvaluator.parse("hello there")).toBe("hello there");
@@ -190,17 +219,18 @@ describe("replyTextFieldEvaluator", () => {
 });
 
 describe("replyEffectStatusFieldEvaluator", () => {
-	it("normalizes the two applied states case-insensitively", () => {
+	it("normalizes pending and terminal effect states case-insensitively", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("APPLIED")).toBe("applied");
 		expect(replyEffectStatusFieldEvaluator.parse(" Non_Applied ")).toBe(
 			"non_applied",
 		);
 		expect(replyEffectStatusFieldEvaluator.parse("none")).toBe("none");
+		expect(replyEffectStatusFieldEvaluator.parse(" PENDING ")).toBe("pending");
 	});
 
 	it("maps everything unrecognized — including 'NONE' — to none", () => {
 		expect(replyEffectStatusFieldEvaluator.parse("NONE")).toBe("none");
-		expect(replyEffectStatusFieldEvaluator.parse("pending")).toBe("none");
+		expect(replyEffectStatusFieldEvaluator.parse("unrecognized")).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse("")).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse(null)).toBe("none");
 		expect(replyEffectStatusFieldEvaluator.parse(7)).toBe("none");

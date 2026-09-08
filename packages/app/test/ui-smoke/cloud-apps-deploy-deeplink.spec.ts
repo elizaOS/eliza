@@ -30,7 +30,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
-import { seedStewardSession } from "./helpers/test-auth";
+import { seedStewardSession, setStewardSession } from "./helpers/test-auth";
 
 const EVIDENCE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -175,7 +175,16 @@ test.beforeEach(async ({ page }) => {
   // boot drives cloud onboarding through GET /api/v1/eliza/personal, which this
   // spec's cloud mock deliberately does not serve — the deep-link contract under
   // test assumes an already-set-up shell, not the onboarding flow.
-  await seedAppStorage(page);
+  await seedAppStorage(page, {
+    "eliza:ui-shell-mode": "web",
+    "elizaos:active-server": JSON.stringify({
+      id: "cloud:deploy-proof",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://api.eliza.app/api/v1",
+      accessToken: "shared-agent-token",
+    }),
+  });
   // Instrument the navigate-view bus BEFORE boot: the listener count is the
   // explicit shell-ready boundary the deep-link dispatch below waits on, and
   // the dispatch count backs the single-delivery assertion — a real OS deep
@@ -228,6 +237,16 @@ test("eliza://apps/deploy intent mounts the Apps studio and submits repo/ref dep
   await installCloudApiMocks(page, unmocked, deployRequests);
 
   await openAppPath(page, "/");
+  // Desktop startup reconciles protected storage after document-start seeds.
+  // Restore the canonical session at the live boundary the Apps studio reads.
+  await setStewardSession(page, {
+    jwt: true,
+    subject: "user-deploy-proof",
+    userId: "user-deploy-proof",
+  });
+  await page.evaluate(() =>
+    window.dispatchEvent(new CustomEvent("steward-token-sync")),
+  );
 
   // The seeded completed first-run can surface the one-time "Set up Eliza"
   // permissions dialog, whose modal inerts the page behind it — dismiss it

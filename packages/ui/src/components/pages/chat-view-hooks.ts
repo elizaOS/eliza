@@ -91,7 +91,11 @@ export function mapUiLanguageToSpeechLocale(uiLanguage: string): string {
 function findLatestAssistantMessage(messages: ConversationMessage[]) {
   return [...messages]
     .reverse()
-    .find((message) => message.role === "assistant" && message.text.trim());
+    .find(
+      (message) =>
+        message.role === "assistant" &&
+        (message.interrupted || message.text.trim()),
+    );
 }
 
 /* ── Companion speech memory ───────────────────────────────────────── */
@@ -632,6 +636,21 @@ export function useChatVoiceController(options: {
     }
     const latestAssistant = findLatestAssistantMessage(conversationMessages);
     if (!latestAssistant) return;
+    // An interrupted terminal record is not speech, even when it retains
+    // partial text. Keep empty outcomes from selecting an older answer too.
+    if (latestAssistant.interrupted) {
+      const queued = companionBootstrapAutoSpeakRef.current;
+      if (
+        queued &&
+        (queued.messageId === latestAssistant.id ||
+          !conversationMessages.some(
+            (message) => message.id === queued.messageId,
+          ))
+      ) {
+        stopSpeaking();
+      }
+      return;
+    }
     // Single utterance per turn: provisional text is an in-flight action
     // callback the turn's final reply may replace — speech cannot be
     // retracted, so speaking it plus the reply is the voice "double-speak"
@@ -790,6 +809,7 @@ export function useChatVoiceController(options: {
     conversationMessages,
     isGameModal,
     queueAssistantSpeech,
+    stopSpeaking,
     voice.isListening,
     voiceBootstrapTick,
     voiceUnlockedGeneration,

@@ -18,10 +18,7 @@
  * own "Knowledge" header rather than rendering under this "Character" one.
  */
 
-import {
-  FramedPageHeader,
-  FramedPageNavigation,
-} from "../../layouts/framed-page";
+import { FramedPageNavigation } from "../../layouts/framed-page";
 import {
   navigateToSectionPath,
   normalizeSectionPath,
@@ -71,7 +68,7 @@ function activeCharacterTabId(path: string): string {
 }
 
 /**
- * The Character family header + section strip. Renders for every `/character/*`
+ * The Character section strip. Renders for every `/character/*`
  * route and the Relationships alias; the shell mounts it in the workspace nav
  * slot (like `WalletSectionNav`) so the four sections read as one family.
  */
@@ -82,8 +79,7 @@ export function CharacterSectionNav({
 }): React.JSX.Element {
   return (
     <>
-      <FramedPageHeader title="Character" />
-      <FramedPageNavigation className="overflow-x-auto">
+      <FramedPageNavigation className="overflow-x-auto pt-4">
         <SectionTabStrip
           entries={CHARACTER_SECTION_TABS}
           activeId={activeCharacterTabId(activePath)}

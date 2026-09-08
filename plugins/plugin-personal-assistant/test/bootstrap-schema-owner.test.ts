@@ -1,32 +1,27 @@
 /**
  * Verifies LifeOps schema bootstrap preserves the host `eliza` plugin's full
  * schema owner instead of replacing it with a partial knowledge-graph schema.
- * Adapter migration and compatibility-column checks are deterministic mocks.
+ * Migration registration is mocked; compatibility probes use a real empty PGlite database.
  */
+import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LifeOpsRepository } from "../src/lifeops/repository";
 
-const ENSURE_METHODS = [
-  "ensureActivitySignalColumns",
-  "ensureSchedulingNegotiationColumns",
-  "ensureReminderReviewColumns",
-  "ensureBrowserBridgeCompanionTokenColumns",
-  "ensureConnectorAccountColumns",
-  "ensureGmailSyncColumns",
-  "ensureInboxCacheIndexes",
-  "ensureWorkflowRunIdempotencyKey",
-] as const;
-
-afterEach(() => {
+let pg: PGlite | undefined;
+afterEach(async () => {
+  await pg?.close();
+  pg = undefined;
   vi.restoreAllMocks();
 });
 
 describe("LifeOpsRepository schema owner bootstrap", () => {
   it("reuses the runtime eliza plugin's authoritative full schema", async () => {
-    for (const method of ENSURE_METHODS) {
-      vi.spyOn(LifeOpsRepository, method).mockResolvedValue(undefined);
-    }
+    pg = new PGlite();
+    await pg.exec(
+      "CREATE SCHEMA app_lifeops; CREATE TABLE app_lifeops.life_audit_events (agent_id TEXT, event_type TEXT)",
+    );
     const runPluginMigrations = vi.fn(async () => {});
     const fullElizaSchema = {
       knowledgeGraphEntities: { id: "graph" },
@@ -34,6 +29,7 @@ describe("LifeOpsRepository schema owner bootstrap", () => {
     };
     const runtime = {
       adapter: {
+        db: drizzle(pg),
         isReady: async () => true,
         runPluginMigrations,
       },

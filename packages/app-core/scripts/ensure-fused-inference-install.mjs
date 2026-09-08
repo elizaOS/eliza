@@ -16,18 +16,18 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveSetupStateDir } from "./lib/setup-state-dir.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(scriptDir, "..", "..", "..");
 
 export const FUSED_EMBEDDING_ARTIFACT = Object.freeze({
-  filename: "gte-small_fp16.gguf",
-  repo: "ChristianAzinn/gte-small-gguf",
-  revision: "208c4701ee35ad296b92918e02c03aebfaa6be6f",
-  sha256: "6c3d85a9af8ef795854d28cd25fa14bbf1638243d6c094d6f4c673b50b69271d",
+  filename: "bge-small-en-v1.5-f16.gguf",
+  repo: "CompendiumLabs/bge-small-en-v1.5-gguf",
+  revision: "d32f8c040ea3b516330eeb75b72bcc2d3a780ab7",
+  sha256: "f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999",
   size: 67_308_128,
 });
 
@@ -61,23 +61,6 @@ function runChecked(command, args, options = {}) {
   }
 }
 
-function resolveStateDir(env) {
-  const explicit = env.ELIZA_STATE_DIR?.trim();
-  if (explicit) {
-    return path.isAbsolute(explicit)
-      ? explicit
-      : path.join(os.homedir(), explicit);
-  }
-  const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
-  const xdg = env.XDG_STATE_HOME?.trim();
-  if (xdg) {
-    return path.isAbsolute(xdg)
-      ? path.join(xdg, namespace)
-      : path.join(os.homedir(), xdg, namespace);
-  }
-  return path.join(os.homedir(), ".local", "state", namespace);
-}
-
 export function resolveEmbeddingArtifactPath({
   env = process.env,
   repoRoot = defaultRepoRoot,
@@ -85,7 +68,7 @@ export function resolveEmbeddingArtifactPath({
   const configured = env.MODELS_DIR?.trim();
   const modelsDir = configured
     ? path.resolve(repoRoot, configured)
-    : path.join(resolveStateDir(env), "models");
+    : path.join(resolveSetupStateDir(env), "models");
   return path.join(modelsDir, FUSED_EMBEDDING_ARTIFACT.filename);
 }
 
@@ -267,6 +250,18 @@ export async function ensureFusedInferenceInstall({
   );
   run(bunExecutable, [stageScript, "--ensure"], { cwd: repoRoot, env });
   const embedding = await ensureEmbedding({ env, repoRoot, fetchImpl });
+  run(
+    bunExecutable,
+    [
+      "--conditions=eliza-source",
+      path.join(
+        repoRoot,
+        "packages/app-core/scripts/verify-fused-embedding.mjs",
+      ),
+      embedding.path,
+    ],
+    { cwd: repoRoot, env },
+  );
   log("fused desktop inference and embedding model are installed and current");
   return { status: "ready", embedding };
 }

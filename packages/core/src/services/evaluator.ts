@@ -8,11 +8,17 @@
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../errors.ts";
+import {
+	computePrefixHashes,
+	hashStableJson,
+} from "../runtime/context-hash.ts";
 import {
 	stringifyForDiagnostics,
 	stringifyForModel,
 } from "../runtime/json-output.ts";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
+import { buildProviderCachePlan } from "../runtime/provider-cache-plan.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
@@ -24,17 +30,25 @@ import type {
 	JSONSchema,
 	JsonValue,
 	Memory,
+	PromptSegment,
 	RegisteredEvaluator,
 	Service,
 	State,
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
+import { ChannelType } from "../types/primitives.ts";
 import { Service as BaseService } from "../types/service.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../utils/well-formed.ts";
+import { CONVERSATION_MESSAGES_HEADER_PREFIX } from "../utils.ts";
+import {
+	formatRecentMessages,
+	getRoomTranscript,
+	ROOM_TRANSCRIPT_HEADING,
+} from "./evaluator-transcript.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -53,6 +67,31 @@ function stringifyForPrompt(value: unknown): string {
 }
 
 function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
+	if (
+		isRecord(raw) &&
+		typeof raw.text === "string" &&
+		Array.isArray(raw.toolCalls) &&
+		("finishReason" in raw || "usage" in raw || "providerMetadata" in raw)
+	) {
+		// Native text handlers return a transport envelope, not evaluator fields.
+		// A partial/tool-call completion must never commit extraction side effects.
+		// Google GenAI's native result retains its documented uppercase STOP.
+		const completed =
+			raw.finishReason === "stop" || raw.finishReason === "STOP";
+		if (!completed || raw.toolCalls.length > 0) {
+			throw new ElizaError(
+				"Evaluator model did not complete normally; no effects were applied",
+				{
+					code: "EVALUATOR_INCOMPLETE_OUTPUT",
+					context: {
+						finishReason: raw.finishReason,
+						toolCallCount: raw.toolCalls.length,
+					},
+				},
+			);
+		}
+		raw = raw.text;
+	}
 	if (isRecord(raw)) return raw;
 	if (typeof raw !== "string") return null;
 	try {
@@ -63,6 +102,21 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
 		// JSON is an explicit invalid result.
 		return null;
 	}
+}
+
+/**
+ * Whether the composed state carries the RECENT_MESSAGES conversation block:
+ * detected on that provider's own text, never on arbitrary state text, so a
+ * message quoting the heading cannot suppress the transcript.
+ */
+function hasProviderConversationBlock(state: State): boolean {
+	const providers = isRecord(state.data) ? state.data.providers : undefined;
+	const recent = isRecord(providers) ? providers.RECENT_MESSAGES : undefined;
+	return (
+		isRecord(recent) &&
+		typeof recent.text === "string" &&
+		recent.text.includes(CONVERSATION_MESSAGES_HEADER_PREFIX)
+	);
 }
 
 function mergeStates(base: State | undefined, providerState: State): State {
@@ -102,10 +156,10 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
 	};
 }
 
-type PromptSection = {
-	name: string;
-	description: string;
-	body: string;
+type RenderedEvaluatorPrompt = {
+	prompt: string;
+	promptSegments: PromptSegment[];
+	providerOptions: ReturnType<typeof buildProviderCachePlan>["providerOptions"];
 };
 
 function renderSharedContext(params: {
@@ -121,12 +175,7 @@ function renderSharedContext(params: {
 		return text || fallback;
 	};
 
-	return `# Task: Post-turn evaluation
-
-Evaluate just-finished turn for ${agentName}.
-
-Return exactly one JSON object. No prose, markdown fences, XML, hidden reasoning.
-One top-level property per active evaluator. Use only provided context. Nothing to record => empty shape.
+	return `Evaluate just-finished turn for ${agentName}.
 
 ## Shared Turn Context
 
@@ -146,32 +195,11 @@ ${part("responseTexts")}
 Action results:
 ${part("actionResults", "[]")}
 
+${ROOM_TRANSCRIPT_HEADING} (complete, oldest first):
+${part("roomTranscript")}
+
 Provider context:
 ${part("providerContext")}
-`;
-}
-
-function renderEvaluatorSection(section: PromptSection): string {
-	const content = toWellFormedUnicode(
-		[section.description, "", section.body].join("\n"),
-	);
-	return [
-		`### ${section.name}`,
-		content,
-		"",
-		`Put result under "${section.name}".`,
-	].join("\n");
-}
-
-function renderPrompt(
-	sharedContext: string,
-	evaluatorSections: string,
-): string {
-	return `${sharedContext}
-
-## Active Evaluators
-
-${evaluatorSections}
 `;
 }
 
@@ -179,9 +207,12 @@ function buildPrompt(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
+	/** Complete room transcript, or null when the read failed this turn. */
+	roomTranscript: Memory[] | null;
 	active: PreparedEntry[];
 	options: EvaluatorRunOptions;
-}): string {
+	schema: JSONSchema;
+}): RenderedEvaluatorPrompt {
 	const { runtime, message, state, active, options } = params;
 	const agentName = runtime.character.name ?? "Agent";
 	const latestMessage = message.content.text ?? "";
@@ -195,34 +226,113 @@ function buildPrompt(params: {
 		? state.data.actionResults
 		: undefined;
 	const providerContext = state.text.trim() || "(none)";
+	// The RECENT_MESSAGES provider renders the canonical complete room
+	// conversation (same retained rows, same hygiene and dedupe as
+	// getRoomTranscript, plus names, timestamps, attachments and actions). When
+	// that block is in provider context the room conversation is already in
+	// this prompt once; the transcript slot points at it instead of embedding a
+	// second, plainer copy (live 2026-09-06: three copies per call, 107K tokens,
+	// the provider limit reachable as the room grows).
+	const providerConversationRendered = hasProviderConversationBlock(state);
 	// The merged evaluator prompt uses complete model projections while the
 	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
 		latestMessage,
 		responseTexts,
 		actionResults: Array.isArray(actionResults)
-			? renderActionResultsForModel(actionResults as ActionResult[], {
-					header: "",
-				}).text
+			? renderActionResultsForModel(actionResults as ActionResult[]).text
 			: stringifyForPrompt(actionResults ?? []),
 		providerContext,
+		// Rendered once here; sections refer to it instead of embedding their
+		// own copy (live 2026-09-05: five copies of the room history per call).
+		// A failed transcript read leaves sections on their own copies so the
+		// failure isolates per evaluator exactly as before.
+		roomTranscript: providerConversationRendered
+			? `rendered once below in Provider context under "${CONVERSATION_MESSAGES_HEADER_PREFIX}N retained)" (complete, deduped, oldest first)`
+			: params.roomTranscript === null
+				? "(unavailable this turn)"
+				: formatRecentMessages(params.roomTranscript),
+	};
+	const shared = {
+		roomTranscriptRendered:
+			providerConversationRendered || params.roomTranscript !== null,
+		actionResultsText: sharedParts.actionResults,
 	};
 
-	const sections: PromptSection[] = active.map(({ evaluator, prepared }) => {
-		const section = evaluator.prompt({
-			runtime,
-			message,
-			state,
-			options,
-			prepared,
+	const stable: PromptSegment[] = [
+		{
+			content:
+				"# Task: Post-turn evaluation\n\nReturn exactly one JSON object. No prose, markdown fences, XML, hidden reasoning.\nOne top-level property per active evaluator. Use only provided context. Nothing to record => empty shape.\n\n## Active Evaluator Instructions\n\n",
+			stable: true,
+		},
+	];
+	const dynamic: PromptSegment[] = [];
+	for (const { evaluator, prepared } of active) {
+		const context = { runtime, message, state, options, prepared, shared };
+		const full = evaluator.prompt(context);
+		const segments = evaluator.promptSegments?.(context) ?? [
+			{ content: full, stable: false },
+		];
+		if (segments.map((segment) => segment.content).join("") !== full) {
+			throw new ElizaError(
+				"Evaluator prompt segments must preserve the complete prompt",
+				{
+					code: "EVALUATOR_PROMPT_SEGMENTS_MISMATCH",
+					context: { evaluator: evaluator.name },
+				},
+			);
+		}
+		let dynamicStarted = false;
+		for (const segment of segments) {
+			if (!segment.stable) dynamicStarted = true;
+			else if (dynamicStarted) {
+				throw new ElizaError(
+					"Evaluator stable instructions must precede dynamic context",
+					{
+						code: "EVALUATOR_PROMPT_SEGMENT_ORDER_INVALID",
+						context: { evaluator: evaluator.name },
+					},
+				);
+			}
+		}
+		let previousContent = "";
+		for (const [index, current] of segments.entries()) {
+			if (current.content.length === 0) continue;
+			if (
+				/[\uD800-\uDBFF]$/.test(previousContent) &&
+				/^[\uDC00-\uDFFF]/.test(current.content)
+			) {
+				throw new ElizaError(
+					"Evaluator prompt segments must not split a Unicode code point",
+					{
+						code: "EVALUATOR_PROMPT_SEGMENT_BOUNDARY_INVALID",
+						context: { evaluator: evaluator.name, segmentIndex: index },
+					},
+				);
+			}
+			previousContent = current.content;
+		}
+		stable.push({
+			content: `### ${evaluator.name}\n${evaluator.description}\n\n${segments
+				.filter((segment) => segment.stable)
+				.map((segment) => segment.content)
+				.join("")}\nPut result under "${evaluator.name}".\n\n`,
+			stable: true,
 		});
-		return {
-			name: evaluator.name,
-			description: evaluator.description,
-			body: section,
-		};
+		dynamic.push({
+			content: `### ${evaluator.name}\n${segments
+				.filter((segment) => !segment.stable)
+				.map((segment) => segment.content)
+				.join("")}\n\n`,
+			stable: false,
+		});
+	}
+	// JSON-object and plain-output providers do not carry an enforceable schema
+	// on the wire. Keep the complete contract visible to every model path.
+	stable.push({
+		content: `## Output JSON Schema\n${stringifyForModel(params.schema)}\n\n`,
+		stable: true,
 	});
-
 	const sharedContext = renderSharedContext({
 		runtime,
 		message,
@@ -230,8 +340,42 @@ function buildPrompt(params: {
 		options,
 		parts: sharedParts,
 	});
-	const evaluatorSections = sections.map(renderEvaluatorSection).join("\n\n");
-	return renderPrompt(sharedContext, evaluatorSections);
+	const promptSegments = [
+		...stable,
+		{
+			content: `${sharedContext}\n\n## Active Evaluators\n\n`,
+			stable: false,
+		},
+		...dynamic,
+	].map((segment) => ({
+		...segment,
+		content: toWellFormedUnicode(segment.content),
+	}));
+	const prefixHashes = computePrefixHashes(
+		promptSegments.filter((segment) => segment.stable),
+	);
+	const prefixHash = hashStableJson({
+		prefix: prefixHashes.at(-1)?.hash,
+		schema: params.schema,
+	});
+	// This identifies content/schema, not the selected provider or model. Model
+	// affinity remains the backend's responsibility; the benchmark scopes its
+	// optional verified routing hint separately to the actual selected model.
+	const plan = buildProviderCachePlan({
+		prefixHash,
+		segmentHashes: computePrefixHashes(promptSegments).map(
+			(entry) => entry.segmentHash,
+		),
+		promptSegments,
+		conversationId: `${runtime.agentId}:${message.roomId}:post_turn`,
+	});
+	return {
+		prompt: promptSegments.map((segment) => segment.content).join(""),
+		promptSegments,
+		// Automatic cloud prefix reuse needs ordered text, not an account-gated
+		// routing hint. Keep canonical local metadata without enabling new hints.
+		providerOptions: { eliza: plan.providerOptions.eliza },
+	};
 }
 
 // Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider
@@ -295,24 +439,28 @@ const SCHEMA_UNSUPPORTED_STREAK_THRESHOLD = 2;
 
 async function generateEvaluationOutput(params: {
 	runtime: IAgentRuntime;
-	prompt: string;
+	rendered: RenderedEvaluatorPrompt;
 	schema: JSONSchema;
 }): Promise<unknown> {
-	const { runtime, prompt, schema } = params;
-	const messages = [{ role: "user" as const, content: prompt }];
+	const { runtime, rendered, schema } = params;
+	const modelInput = {
+		messages: [{ role: "user" as const, content: rendered.prompt }],
+		promptSegments: rendered.promptSegments,
+		providerOptions: rendered.providerOptions,
+	};
 	// Post-turn evaluation runs on the SMALL model: it is a cheap, frequent,
 	// structured extraction/classification pass (all active evaluators share one
 	// merged call), not generation — the large model is wasted cost here,
 	// especially for local-first tiers.
 	const requestJsonObject = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			messages,
+			...modelInput,
 			responseFormat: { type: "json_object" },
 			temperature: 0,
 		});
 	const requestPlain = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			messages,
+			...modelInput,
 			temperature: 0,
 		});
 	const afterJsonObjectRejected = async (
@@ -340,7 +488,7 @@ async function generateEvaluationOutput(params: {
 
 	try {
 		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-			messages,
+			...modelInput,
 			responseSchema: schema,
 			responseFormat: { type: "json_object" },
 			temperature: 0,
@@ -542,17 +690,24 @@ export class EvaluatorService extends BaseService {
 
 	private async readEvaluatorOutput(params: {
 		evaluatorId: string;
-		prompt: string;
+		rendered: RenderedEvaluatorPrompt;
 		schema: JSONSchema;
 	}): Promise<{ output: Record<string, unknown> | null; error?: string }> {
-		const { evaluatorId, prompt, schema } = params;
-		let raw: unknown;
+		const { evaluatorId, rendered, schema } = params;
 		try {
-			raw = await generateEvaluationOutput({
+			const raw = await generateEvaluationOutput({
 				runtime: this.runtime,
-				prompt,
+				rendered,
 				schema,
 			});
+			const output = coerceObjectOutput(raw);
+			if (!output) {
+				throw new ElizaError("Evaluator model returned non-object output", {
+					code: "EVALUATOR_INVALID_OUTPUT",
+					context: { evaluatorId },
+				});
+			}
+			return { output };
 		} catch (error) {
 			// error-policy:J1 Evaluator execution returns an explicit failed
 			// result and emits its completion failure.
@@ -565,21 +720,12 @@ export class EvaluatorService extends BaseService {
 			);
 			this.runtime.reportError("EvaluatorService.evaluate", error, {
 				evaluatorId,
+				// Optional reflection failure is recorded above; it must not create
+				// owner recovery work after the chat/action already completed.
+				diagnosticOnly: true,
 			});
 			return { output: null, error: messageText };
 		}
-
-		const output = coerceObjectOutput(raw);
-		if (!output) {
-			const messageText = "Evaluator model returned non-object output";
-			await this.emitEvaluatorCompleted(
-				evaluatorId,
-				false,
-				new Error(messageText),
-			);
-			return { output: null, error: messageText };
-		}
-		return { output };
 	}
 
 	private async processPreparedEntries(params: {
@@ -774,11 +920,18 @@ export class EvaluatorService extends BaseService {
 			return this.skippedResult({ errors });
 		}
 
-		const composedState = await this.composeEvaluatorState(
-			message,
-			state,
-			active,
-		);
+		const [composedState, roomTranscript] = await Promise.all([
+			this.composeEvaluatorState(message, state, active),
+			getRoomTranscript(this.runtime, message).catch((error: unknown) => {
+				// error-policy:J7 the shared transcript is a dedupe of what each
+				// evaluator reads for itself; its failure is reported and the
+				// sections fall back to their own reads, which isolate per evaluator.
+				this.runtime.reportError("EvaluatorService.roomTranscript", error, {
+					roomId: message.roomId,
+				});
+				return null;
+			}),
+		]);
 		const preparedEntries = await this.collectPreparedEntries(
 			active,
 			message,
@@ -792,6 +945,17 @@ export class EvaluatorService extends BaseService {
 				errors,
 			});
 		}
+
+		const schema = buildMergedSchema(preparedEntries);
+		const rendered = buildPrompt({
+			runtime: this.runtime,
+			message,
+			state: composedState,
+			roomTranscript,
+			active: preparedEntries,
+			options,
+			schema,
+		});
 
 		const evaluatorId =
 			uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
@@ -811,17 +975,9 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const prompt = buildPrompt({
-			runtime: this.runtime,
-			message,
-			state: composedState,
-			active: preparedEntries,
-			options,
-		});
-		const schema = buildMergedSchema(preparedEntries);
 		const { output, error } = await this.readEvaluatorOutput({
 			evaluatorId,
-			prompt,
+			rendered,
 			schema,
 		});
 		if (!output) {
@@ -859,12 +1015,19 @@ export async function runPostTurnEvaluators(
 	state?: State,
 	options: EvaluatorRunOptions = {},
 ): Promise<EvaluatorRunResult | null> {
-	// On mobile (single on-device GPU context, single-threaded agent) the
-	// post-turn reflection pass is a 256-512 token generation that serializes on
-	// the SAME engine as the user reply and blocks the next inbound turn for
-	// ~30-64s. Skip it on android/ios — reflection's value at the 2B local tier
-	// is marginal and not worth the per-turn latency. Desktop/server keep it.
-	if (isMobilePlatform()) {
+	// Realtime voice and mobile local inference both require the room to admit the
+	// next utterance immediately after the visible reply. Post-turn reflection is
+	// optional model work, but the host deliberately drains room-state tasks before
+	// releasing that room. Running reflection here therefore serializes the next
+	// utterance behind another generation; a malformed provider response can keep
+	// the room occupied until the runtime watchdog fires. Voice still runs the
+	// complete response/action pipeline above, including ALWAYS_AFTER actions; only
+	// this post-delivery reflection call is skipped.
+	if (
+		isMobilePlatform() ||
+		message.content.channelType === ChannelType.VOICE_DM ||
+		message.content.channelType === ChannelType.VOICE_GROUP
+	) {
 		return null;
 	}
 	try {

@@ -93,32 +93,32 @@ describe("CapabilitiesSection proactive-suggestions control", () => {
     ).toBe("false");
   });
 
-  it("defaults to subtle and persists the selected level via updateConfig", async () => {
+  it("defaults to off and persists the selected level via updateConfig", async () => {
     clientMock.getConfig.mockResolvedValue({ env: {} });
     const user = userEvent.setup();
 
     render(<CapabilitiesSection />);
 
     const group = await screen.findByTestId("capability-proactive-suggestions");
-    // No persisted value → the gate's `subtle` default is active.
+    // No persisted value → the gate's `off` default is active.
     await waitFor(() => {
       expect(
         within(group)
-          .getByRole("button", { name: "Subtle" })
+          .getByRole("button", { name: "Off" })
           .getAttribute("aria-pressed"),
       ).toBe("true");
     });
 
-    await user.click(within(group).getByRole("button", { name: "Off" }));
+    await user.click(within(group).getByRole("button", { name: "Subtle" }));
 
     await waitFor(() => {
       expect(clientMock.updateConfig).toHaveBeenCalledWith({
-        env: { ELIZA_PROACTIVE_INTERACTIONS: "off" },
+        env: { ELIZA_PROACTIVE_INTERACTIONS: "subtle" },
       });
     });
     expect(
       within(group)
-        .getByRole("button", { name: "Off" })
+        .getByRole("button", { name: "Subtle" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
   });

@@ -1,4 +1,6 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+/** Verifies immutable uploads through real storage adapters with scripted R2 and local S3 transports. */
+
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from "bun:test";
 import {
   MAX_IMMUTABLE_PUT_ATTEMPTS,
   MAX_IMMUTABLE_SINGLE_PUT_BYTES,
@@ -230,6 +232,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   setRuntimeR2Bucket(null);
   resetObjectStorageClientForTests();
   clearStorageEnv();
@@ -445,6 +448,8 @@ describe("Worker R2 immutable exact-key upload", () => {
   });
 
   test("bounds a hung provider PUT with the absolute deadline and never starts HEAD", async () => {
+    jest.useFakeTimers();
+    const providerEntered = Promise.withResolvers<void>();
     const key = "agent-sandbox-backups/private-org/operation-hung/chunk-0001";
     let putCalls = 0;
     let headCalls = 0;
@@ -459,12 +464,13 @@ describe("Worker R2 immutable exact-key upload", () => {
       },
       async put() {
         putCalls += 1;
+        providerEntered.resolve();
         return new Promise<never>(() => undefined);
       },
       async delete() {},
     });
 
-    await expectLifecycleError(
+    const completed = expectLifecycleError(
       putImmutableObject({
         key,
         body: bytes(61, 62),
@@ -472,6 +478,9 @@ describe("Worker R2 immutable exact-key upload", () => {
       }),
       "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
     );
+    await providerEntered.promise;
+    jest.advanceTimersByTime(15);
+    await completed;
     expect(putCalls).toBe(1);
     expect(headCalls).toBe(0);
   });
@@ -504,12 +513,15 @@ describe("Worker R2 immutable exact-key upload", () => {
   });
 
   test("bounds the post-write verification HEAD with the same deadline", async () => {
+    jest.useFakeTimers();
+    const providerEntered = Promise.withResolvers<void>();
     const key = "agent-sandbox-backups/private-org/operation-hung-head/chunk-0001";
     let headCalls = 0;
     process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
     setRuntimeR2Bucket({
       async head() {
         headCalls += 1;
+        providerEntered.resolve();
         return new Promise<never>(() => undefined);
       },
       async get() {
@@ -528,7 +540,7 @@ describe("Worker R2 immutable exact-key upload", () => {
       async delete() {},
     });
 
-    await expectLifecycleError(
+    const completed = expectLifecycleError(
       putImmutableObject({
         key,
         body: bytes(65),
@@ -536,10 +548,15 @@ describe("Worker R2 immutable exact-key upload", () => {
       }),
       "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
     );
+    await providerEntered.promise;
+    jest.advanceTimersByTime(15);
+    await completed;
     expect(headCalls).toBe(1);
   });
 
   test("does not start a retry after the shared deadline expires in backoff", async () => {
+    jest.useFakeTimers();
+    const providerEntered = Promise.withResolvers<void>();
     const key = "agent-sandbox-backups/private-org/operation-backoff-deadline/chunk-0001";
     let putCalls = 0;
     process.env.STORAGE_HEAVY_PAYLOADS_BUCKET = "runtime-private-backups";
@@ -552,12 +569,13 @@ describe("Worker R2 immutable exact-key upload", () => {
       },
       async put() {
         putCalls += 1;
+        providerEntered.resolve();
         throw providerFailure(503);
       },
       async delete() {},
     });
 
-    await expectLifecycleError(
+    const completed = expectLifecycleError(
       putImmutableObject({
         key,
         body: bytes(66),
@@ -565,6 +583,10 @@ describe("Worker R2 immutable exact-key upload", () => {
       }),
       "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
     );
+    await providerEntered.promise;
+    await Promise.resolve();
+    jest.advanceTimersByTime(10);
+    await completed;
     expect(putCalls).toBe(1);
   });
 

@@ -16,6 +16,7 @@ const ENV = { STEWARD_JWT_SECRET: SECRET };
 const memoryCache = new Map<string, unknown>();
 let distributedCacheValue: unknown = null;
 let tokenSequence = 0;
+let cacheReadFailure: Error | null = null;
 
 mock.module("../../db/helpers", () => ({
   dbRead: {},
@@ -27,7 +28,10 @@ mock.module("../../db/helpers", () => ({
 
 mock.module("../cache/client", () => ({
   cache: {
-    get: async () => distributedCacheValue,
+    get: async () => {
+      if (cacheReadFailure) throw cacheReadFailure;
+      return distributedCacheValue;
+    },
     set: async () => undefined,
     del: async () => undefined,
   },
@@ -45,6 +49,7 @@ mock.module("../cache/in-memory-lru-cache", () => ({
       memoryCache.delete(key);
     }
     clear() {
+      cacheReadFailure = null;
       memoryCache.clear();
     }
   },
@@ -80,13 +85,33 @@ async function verify(token: string) {
 
 describe("verifyStewardTokenCached — token lifecycle claims", () => {
   beforeEach(() => {
+    cacheReadFailure = null;
     memoryCache.clear();
     distributedCacheValue = null;
   });
 
   afterEach(() => {
+    cacheReadFailure = null;
     memoryCache.clear();
     distributedCacheValue = null;
+  });
+
+  test("strict logout verification distinguishes an unavailable cache from a rejected JWT", async () => {
+    const token = await mint({ exp: Math.floor(Date.now() / 1000) + 600 });
+    cacheReadFailure = new Error("verification cache unavailable");
+    await expect(
+      verifyStewardTokenCached(ENV, token, { throwOnUnavailable: true }),
+    ).rejects.toMatchObject({ code: "STEWARD_VERIFICATION_UNAVAILABLE", cause: cacheReadFailure });
+    expect(await verify(token)).toBeNull();
+    cacheReadFailure = null;
+    expect(await verifyStewardTokenCached(ENV, token, { throwOnUnavailable: true })).toMatchObject({
+      userId: "steward-user-1",
+    });
+    const expired = await mint({
+      iat: Math.floor(Date.now() / 1000) - 7200,
+      exp: Math.floor(Date.now() / 1000) - 3600,
+    });
+    expect(await verifyStewardTokenCached(ENV, expired, { throwOnUnavailable: true })).toBeNull();
   });
 
   test("accepts a token minted at the standard Steward access-token TTL", async () => {

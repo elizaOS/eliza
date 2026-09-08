@@ -112,6 +112,7 @@ function message(id: string, text: string): Memory {
 async function invoke(
   actor: Memory,
   params: Record<string, unknown>,
+  directReply = true,
 ): Promise<{ delivered: Content[]; result: ActionResult }> {
   const delivered: Content[] = [];
   const result = await executePlannedToolCall(
@@ -128,12 +129,19 @@ async function invoke(
     { name: calendarAction.name, params },
     { actions: [calendarAction] },
   );
-  expect(delivered, JSON.stringify(result)).toHaveLength(1);
-  expect(delivered[0]).toMatchObject({
-    text: result.userFacingText,
-    effectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
-  });
-  expect(result.verifiedUserFacing).toBe(true);
+  if (directReply) {
+    expect(delivered, JSON.stringify(result)).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({
+      text: result.userFacingText,
+      effectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
+    });
+    expect(result.verifiedUserFacing).toBe(true);
+  } else {
+    expect(delivered).toEqual([]);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.userFacingText).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+  }
   expect(result.effectReceipts).toHaveLength(1);
   return { delivered, result };
 }
@@ -222,12 +230,14 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       },
       outcome: "noop",
       operation: "calendar.feed.read",
+      directReply: false,
     },
     {
       name: "bulk preview",
       params: { action: "bulk_reschedule" },
       outcome: "preview",
       operation: "calendar.bulk_reschedule.preview",
+      directReply: true,
     },
     {
       name: "availability read",
@@ -238,6 +248,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       },
       outcome: "noop",
       operation: "calendar.check_availability.read",
+      directReply: true,
     },
     {
       name: "slot preview",
@@ -249,6 +260,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       },
       outcome: "preview",
       operation: "calendar.propose_times.preview",
+      directReply: true,
     },
   ])("binds $name to its persisted calendar snapshot", async (testCase) => {
     const { result } = await invoke(
@@ -263,6 +275,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           : `Run ${testCase.name}.`,
       ),
       testCase.params,
+      testCase.directReply,
     );
     expect(result.effectReceipts?.[0]).toMatchObject({
       operation: testCase.operation,

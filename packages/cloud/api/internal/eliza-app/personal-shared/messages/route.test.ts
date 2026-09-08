@@ -620,7 +620,7 @@ describe("personal Shared messaging deliveries", () => {
       const response = await request(
         valid,
         "Bearer test-secret",
-        "22222222-2222-4222-8222-222222222222",
+        "22222222222242228222222222222222",
       );
 
       expect(response.status).toBe(500);
@@ -632,7 +632,7 @@ describe("personal Shared messaging deliveries", () => {
       expect(errorLog).toHaveBeenCalledWith(
         "[personal-shared-messaging] delivery failed",
         {
-          traceId: "22222222-2222-4222-8222-222222222222",
+          traceId: "22222222222242228222222222222222",
           stage: "shared_runtime",
           errorName: "TypeError",
           retryable: false,

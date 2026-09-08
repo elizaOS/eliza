@@ -1,17 +1,31 @@
 /**
- * Contract tests for the archive-overlay retirement (#16290): the checked-in
- * static asset manifest must match a pristine checkout (no implicit artifact
- * sync may be needed to make it green), and the overlay-only assets retired
- * with the eliza-archive sync must not resurface — neither as files nor as
- * references from production source. Runs against the real repository tree
- * and the real generator; no mocks.
+ * Contract tests for source-owned static asset inventory. The suite exercises
+ * the real repository and homepage copy producer, temporary Git checkouts, and
+ * standalone filesystem roots so ignored build output cannot alter a source
+ * manifest while real additions and deletions remain visible.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { validateStaticAssetManifest } from "../lib/static-asset-manifest.mjs";
+import {
+  HOMEPAGE_PUBLIC_ASSETS,
+  syncHomepageAssets,
+} from "../../../app/scripts/sync-homepage-assets.mjs";
+import {
+  buildStaticAssetManifest,
+  validateStaticAssetManifest,
+  writeStaticAssetManifest,
+} from "../lib/static-asset-manifest.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -20,6 +34,22 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
+
+function writeFixtureFile(rootDir: string, relativePath: string): void {
+  const absolutePath = path.join(rootDir, relativePath);
+  mkdirSync(path.dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, `${relativePath}\n`);
+}
+
+function createGitFixture(): string {
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "eliza-static-assets-"));
+  execFileSync("git", ["init", "--quiet", rootDir]);
+  return rootDir;
+}
+
+function stageFixturePaths(rootDir: string, ...relativePaths: string[]): void {
+  execFileSync("git", ["-C", rootDir, "add", "--", ...relativePaths]);
+}
 
 /**
  * Assets that existed only in the retired eliza-archive overlay. They have no
@@ -166,4 +196,101 @@ describe("static asset manifest contract (#16290)", () => {
       });
     expect(offenders).toEqual([]);
   }, 30_000);
+
+  it("stays valid after the real homepage asset producer copies ignored output", async () => {
+    const rootDir = createGitFixture();
+    try {
+      writeFixtureFile(rootDir, ".gitignore");
+      writeFileSync(
+        path.join(rootDir, ".gitignore"),
+        "packages/app/public/**\n",
+      );
+      for (const relativePath of HOMEPAGE_PUBLIC_ASSETS) {
+        writeFixtureFile(
+          rootDir,
+          path.join("packages/homepage/public", relativePath),
+        );
+      }
+      stageFixturePaths(rootDir, ".gitignore", "packages/homepage/public");
+      writeStaticAssetManifest(rootDir);
+
+      await syncHomepageAssets({
+        sourceRoot: path.join(rootDir, "packages/homepage/public"),
+        destinationRoot: path.join(rootDir, "packages/app/public"),
+      });
+
+      expect(validateStaticAssetManifest(rootDir).ok).toBe(true);
+      expect(
+        HOMEPAGE_PUBLIC_ASSETS.every((relativePath) =>
+          existsSync(path.join(rootDir, "packages/app/public", relativePath)),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects non-ignored additions and missing tracked assets", () => {
+    const rootDir = createGitFixture();
+    try {
+      const trackedAsset = "packages/app/public/tracked.txt";
+      writeFixtureFile(rootDir, trackedAsset);
+      stageFixturePaths(rootDir, trackedAsset);
+      writeStaticAssetManifest(rootDir);
+
+      const addedAsset = "packages/app/public/added.txt";
+      writeFixtureFile(rootDir, addedAsset);
+      expect(validateStaticAssetManifest(rootDir).ok).toBe(false);
+
+      unlinkSync(path.join(rootDir, addedAsset));
+      unlinkSync(path.join(rootDir, trackedAsset));
+      expect(validateStaticAssetManifest(rootDir).ok).toBe(false);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("includes present tracked assets even when an ignore rule matches", () => {
+    const rootDir = createGitFixture();
+    try {
+      const trackedAsset = "packages/app/public/tracked.txt";
+      writeFixtureFile(rootDir, trackedAsset);
+      stageFixturePaths(rootDir, trackedAsset);
+      writeFixtureFile(rootDir, ".gitignore");
+      writeFileSync(path.join(rootDir, ".gitignore"), `${trackedAsset}\n`);
+
+      expect(buildStaticAssetManifest(rootDir).app).toContain(trackedAsset);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails explicitly when checkout Git metadata cannot be read", () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "eliza-static-assets-"));
+    try {
+      mkdirSync(path.join(rootDir, ".git"));
+      expect(() => buildStaticAssetManifest(rootDir)).toThrow(
+        /Failed to inventory checkout assets/,
+      );
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retains filesystem discovery for standalone archive roots", () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "eliza-static-assets-"));
+    try {
+      const appAsset = "packages/app/public/archive-app.txt";
+      const homepageAsset = "packages/homepage/public/archive-homepage.txt";
+      writeFixtureFile(rootDir, appAsset);
+      writeFixtureFile(rootDir, homepageAsset);
+
+      expect(buildStaticAssetManifest(rootDir)).toEqual({
+        app: [appAsset],
+        homepage: [homepageAsset],
+      });
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
 });

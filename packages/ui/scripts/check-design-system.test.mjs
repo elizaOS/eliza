@@ -1,7 +1,10 @@
 /** Verifies deterministic, fail-closed design-system compliance accounting. */
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   analyzeTokenRoleClasses,
   applyExceptions,
@@ -18,6 +21,7 @@ import {
   findUnderusedButtonAxes,
   findUnderusedCardVariants,
   indexPaintedCssClasses,
+  isGovernedSource,
   RULES,
   renderComplianceMarkdown,
   resolvesToCanonical,
@@ -28,6 +32,117 @@ import {
   validateExceptions,
   validatePublicCardVariantCompatibility,
 } from "./check-design-system.mjs";
+import {
+  buildInventory,
+  listMaintainedSourceFiles,
+} from "./find-duplicate-components.mjs";
+
+test("hidden cached React and CSS cannot change maintained inventory or compliance", () => {
+  const fixture = fs.mkdtempSync(
+    fileURLToPath(new URL("./.molecule-binding-inventory-", import.meta.url)),
+  );
+  const cacheRoot = fileURLToPath(new URL("./.vite/", import.meta.url));
+  const createdCacheRoot = !fs.existsSync(cacheRoot);
+  fs.mkdirSync(cacheRoot, { recursive: true });
+  const cache = fs.mkdtempSync(path.join(cacheRoot, "inventory-"));
+  const now = new Date("2026-08-24T00:00:00Z");
+  try {
+    const inventory = buildInventory();
+    const compliance = buildComplianceReport({ now });
+    for (const directory of [fixture, cache]) {
+      fs.writeFileSync(
+        path.join(directory, "cached.tsx"),
+        'export function CachedButton() { return <button className="cached-control">Cached</button>; }',
+      );
+      fs.writeFileSync(
+        path.join(directory, "cached.js"),
+        'import { createElement } from "react"; export function CachedInput() { return createElement("input"); }',
+      );
+      fs.writeFileSync(
+        path.join(directory, "cached.css"),
+        ".cached-control { color: blue; background: black; }",
+      );
+    }
+    assert.deepEqual(buildInventory(), inventory);
+    assert.deepEqual(buildComplianceReport({ now }), compliance);
+    assert.ok(
+      listMaintainedSourceFiles().includes(
+        fileURLToPath(new URL("../.storybook/preview.tsx", import.meta.url)),
+      ),
+      "maintained Storybook previews must remain governed",
+    );
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+    fs.rmSync(cache, { recursive: true, force: true });
+    if (createdCacheRoot) fs.rmdirSync(cacheRoot);
+  }
+});
+
+test("Vite dependency cache is excluded from the maintained source boundary", () => {
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL("../../app/.vite/deps/vendor.tsx", import.meta.url),
+      ),
+    ),
+    false,
+  );
+});
+
+test("generated mobile platform bundles and staging roots are outside governed source", () => {
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../agent/dist-mobile-ios/agent-bundle.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/ios/App/App/public/agent/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../app/android/app/src/main/assets/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL("../../app/electrobun/src/Widget.tsx", import.meta.url),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    isGovernedSource(
+      fileURLToPath(
+        new URL(
+          "../../app-core/platforms/electrobun/src/Widget.tsx",
+          import.meta.url,
+        ),
+      ),
+    ),
+    true,
+  );
+});
 
 test("atomic consolidation ledger survives relabel, deletion, and reintroduction", () => {
   const componentId = "packages/ui/src/example.tsx:ExampleButton";
@@ -547,6 +662,18 @@ test("raw flat and outlined card recipes are independently order-normalized", ()
 });
 
 test("token roles reject raw colors, wrong channels, and unconstrained transitions", () => {
+  for (const role of ["action", "field", "surface"]) {
+    assert.deepEqual(
+      analyzeTokenRoleClasses({
+        className: "rounded-search hover:bg-bg-card-hover",
+        role,
+      }),
+      [],
+    );
+    assert.ok(
+      analyzeTokenRoleClasses({ className: "rounded-[1rem]", role }).length,
+    );
+  }
   assert.deepEqual(
     analyzeTokenRoleClasses({
       className:

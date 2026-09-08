@@ -41,6 +41,28 @@ type RuntimeProcessState = {
   stuckCliEscapePresent: boolean;
 };
 
+type ApplicationState = {
+  health: "accepted" | "response" | "unreachable" | "unknown";
+  root: "accepted" | "response" | "unreachable" | "unknown";
+  cloudProvisioned: boolean | null;
+  apiExposePortEnabled: boolean | null;
+};
+
+type HostRuntimeState = {
+  liveRestoreConfigured: boolean | null;
+  dockerServiceActive: boolean | null;
+  containerdServiceActive: boolean | null;
+};
+
+function outputFacts(output: string): Map<string, string> {
+  return new Map(
+    output
+      .split("\n")
+      .map((line) => line.trim().split("=", 2))
+      .filter((pair): pair is [string, string] => pair.length === 2),
+  );
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -108,12 +130,7 @@ export function classifyContainerLogs(output: string): {
 export function classifyRuntimeProcessState(
   output: string,
 ): RuntimeProcessState {
-  const facts = new Map(
-    output
-      .split("\n")
-      .map((line) => line.trim().split("=", 2))
-      .filter((pair): pair is [string, string] => pair.length === 2),
-  );
+  const facts = outputFacts(output);
   const pid1 = facts.get("pid1");
   return {
     pid1:
@@ -129,6 +146,44 @@ export function classifyRuntimeProcessState(
     forceNoise443Enabled: facts.get("force_noise_443") === "enabled",
     stuckCliEscapePresent: facts.get("stuck_cli_escape") === "present",
   };
+}
+
+/** Retain only closed localhost-listener and runtime-mode facts. */
+export function classifyApplicationState(output: string): ApplicationState {
+  const facts = outputFacts(output);
+  const classifyProbe = (
+    value: string | undefined,
+  ): ApplicationState["health"] =>
+    value === "accepted" || value === "response" || value === "unreachable"
+      ? value
+      : "unknown";
+  return {
+    health: classifyProbe(facts.get("health")),
+    root: classifyProbe(facts.get("root")),
+    cloudProvisioned: booleanFact(facts.get("cloud_provisioned")),
+    apiExposePortEnabled: booleanFact(facts.get("api_expose_port")),
+  };
+}
+
+/** Retain only closed Docker host configuration and service-health facts. */
+export function classifyHostRuntimeState(output: string): HostRuntimeState {
+  const facts = outputFacts(output);
+  const serviceActive = (value: string | undefined): boolean | null => {
+    if (value === "active") return true;
+    return value !== undefined &&
+      ["inactive", "failed", "activating", "deactivating"].includes(value)
+      ? false
+      : null;
+  };
+  return {
+    liveRestoreConfigured: booleanFact(facts.get("live_restore")),
+    dockerServiceActive: serviceActive(facts.get("docker_service")),
+    containerdServiceActive: serviceActive(facts.get("containerd_service")),
+  };
+}
+
+function booleanFact(value: string | undefined): boolean | null {
+  return value === "true" ? true : value === "false" ? false : null;
 }
 
 async function observe(
@@ -229,6 +284,10 @@ async function run(suffix: string): Promise<void> {
       ssh,
       `docker inspect --format '{{json .State}}' ${id}`,
     );
+    const hostRuntime = await observe(
+      ssh,
+      `python3 -c 'import json; print("live_restore=true" if json.load(open("/etc/docker/daemon.json")).get("live-restore") is True else "live_restore=false")' 2>/dev/null || echo live_restore=unknown; printf 'docker_service=%s\\n' "$(systemctl is-active docker.service 2>/dev/null || true)"; printf 'containerd_service=%s\\n' "$(systemctl is-active containerd.service 2>/dev/null || true)"`,
+    );
     const processState = await observe(
       ssh,
       `docker exec ${id} sh -c 'test -S /tmp/tailscaled.sock && echo socket=present || echo socket=absent; pgrep -x tailscaled >/dev/null && echo daemon=present || echo daemon=absent'`,
@@ -274,6 +333,27 @@ async function run(suffix: string): Promise<void> {
           "$pid1" "$agent" "$entrypoint" "$tailscale_up" "$force_noise_443" "$stuck_cli_escape"
       '`,
     );
+    const application = await observe(
+      ssh,
+      `docker exec ${id} sh -c '
+        port="\${PORT:-\${APP_PORT:-\${ELIZA_PORT:-2138}}}"
+        classify_url() {
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$1" 2>/dev/null || true)
+          case "$code" in
+            200|301|302|401) printf accepted ;;
+            000|"") printf unreachable ;;
+            *) printf response ;;
+          esac
+        }
+        health=$(classify_url "http://127.0.0.1:$port/api/health")
+        root=$(classify_url "http://127.0.0.1:$port/")
+        [ "\${ELIZA_CLOUD_PROVISIONED:-}" = "1" ] && cloud_provisioned=true || cloud_provisioned=false
+        case "\${ELIZA_API_EXPOSE_PORT:-}" in 1|true) api_expose_port=true ;; *) api_expose_port=false ;; esac
+        printf "health=%s\\nroot=%s\\ncloud_provisioned=%s\\napi_expose_port=%s\\n" \
+          "$health" "$root" "$cloud_provisioned" "$api_expose_port"
+      '`,
+      15_000,
+    );
     const image = await observe(
       ssh,
       `docker inspect --format '{{.Config.Image}}' ${id}`,
@@ -308,16 +388,26 @@ async function run(suffix: string): Promise<void> {
     const tailscale = classifyTailscaleStatus(status.output);
     const logSignals = classifyContainerLogs(logs.output);
     const runtimeState = classifyRuntimeProcessState(runtime.output);
+    const applicationState = classifyApplicationState(application.output);
+    const hostRuntimeState = classifyHostRuntimeState(hostRuntime.output);
+    const health = record(state?.Health);
+    const dockerHealth =
+      typeof health?.Status === "string" &&
+      ["starting", "healthy", "unhealthy", "none"].includes(health.Status)
+        ? health.Status
+        : "unknown";
     // biome-ignore lint/suspicious/noUndeclaredEnvVars: the protected worker EnvironmentFile owns this deployment value.
     const configuredImage = process.env.ELIZA_AGENT_IMAGE?.trim();
     console.log(
       `MESH_DIAGNOSTIC=${JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 4,
         targetCount: 1,
+        host: hostRuntimeState,
         container: {
           inspect: inspect.ok ? "success" : "error",
           status: containerStatus,
           exitCode,
+          health: dockerHealth,
           imageMatchesConfigured:
             image.ok && configuredImage
               ? image.output.trim() === configuredImage
@@ -335,6 +425,7 @@ async function run(suffix: string): Promise<void> {
         },
         logs: logSignals,
         runtime: runtimeState,
+        application: applicationState,
       })}`,
     );
   } finally {

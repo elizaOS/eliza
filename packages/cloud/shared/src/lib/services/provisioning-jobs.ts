@@ -3744,21 +3744,16 @@ export class ProvisioningJobService {
   }
 
   /**
-   * Best-effort kick of the provisioning worker without waiting for the
-   * next cron tick. Fire-and-forget — the cron is the safety net.
-   *
-   * The cron endpoint is idempotent (FOR UPDATE SKIP LOCKED) so calling
-   * it concurrently with the scheduled invocation is safe.
+   * Best-effort kick of the provisioning worker without waiting for its next
+   * daemon poll. Callers running inside a Worker must register this promise
+   * with `waitUntil`; the durable job and daemon poll remain authoritative.
    */
   async triggerImmediate(env?: {
-    CRON_SECRET?: string;
     CONTAINER_CONTROL_PLANE_TOKEN?: string;
     CONTAINER_CONTROL_PLANE_URL?: string;
     CONTAINER_SIDECAR_URL?: string;
     DATABASE_URL?: string;
     HETZNER_CONTAINER_CONTROL_PLANE_URL?: string;
-    NEXT_PUBLIC_API_URL?: string;
-    NEXT_PUBLIC_APP_URL?: string;
   }): Promise<void> {
     const controlPlaneBaseUrl =
       env?.CONTAINER_CONTROL_PLANE_URL ??
@@ -3776,7 +3771,7 @@ export class ProvisioningJobService {
         const target = new URL(controlPlaneBaseUrl);
         target.pathname = "/api/v1/cron/process-provisioning-jobs";
         target.search = "?limit=5";
-        await fetch(target, {
+        const response = await fetch(target, {
           method: "POST",
           headers: {
             "x-container-control-plane-token": controlPlaneToken,
@@ -3785,34 +3780,22 @@ export class ProvisioningJobService {
           },
           signal: AbortSignal.timeout(120_000),
         });
+        if (!response.ok) {
+          throw new ElizaError("The provisioning control plane rejected the immediate nudge", {
+            code: "PROVISIONING_IMMEDIATE_TRIGGER_REJECTED",
+            context: {
+              target: "control-plane",
+              status: response.status,
+            },
+          });
+        }
         return;
       } catch (err) {
         logger.debug("[provisioning-jobs] direct triggerImmediate failed", {
           error: jobErrorText(err),
         });
+        throw err;
       }
-    }
-
-    const cronSecret = env?.CRON_SECRET ?? process.env.CRON_SECRET;
-    const baseUrl =
-      env?.NEXT_PUBLIC_API_URL ??
-      env?.NEXT_PUBLIC_APP_URL ??
-      process.env.NEXT_PUBLIC_API_URL ??
-      process.env.NEXT_PUBLIC_APP_URL;
-    if (!cronSecret || !baseUrl) return;
-    try {
-      await fetch(`${baseUrl}/api/v1/cron/process-provisioning-jobs?limit=5`, {
-        method: "POST",
-        headers: {
-          "x-cron-secret": cronSecret,
-          "user-agent": "agent-provision-trigger/1.0",
-        },
-        signal: AbortSignal.timeout(3_000),
-      });
-    } catch (err) {
-      logger.debug("[provisioning-jobs] triggerImmediate fire-and-forget failed", {
-        error: jobErrorText(err),
-      });
     }
   }
 
@@ -6568,7 +6551,11 @@ export class ProvisioningJobService {
               },
         );
       }
-      throw new Error(provisionError);
+      throw new ElizaError(provisionError, {
+        code: "AGENT_PROVISION_FAILED",
+        context: { jobId: job.id, agentId: data.agentId },
+        cause: provResult.failureCause,
+      });
     }
 
     const jobResult: AgentProvisionJobResult = {

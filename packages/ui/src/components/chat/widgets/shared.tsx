@@ -60,7 +60,7 @@ export function WidgetSection({
         {onTitleClick ? (
           <Button
             variant={isHome ? "weatherPrompt" : "transparent"}
-            size="content"
+            size="touch"
             align="start"
             onClick={onTitleClick}
             className="min-w-0 flex-1"

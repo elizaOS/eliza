@@ -2514,6 +2514,76 @@
       "when": 1796083200002,
       "tag": "0375_voice_clone_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 359,
+      "version": "7",
+      "when": 1796083200003,
+      "tag": "0376_outreachr_delegations",
+      "breakpoints": true
+    },
+    {
+      "idx": 360,
+      "version": "7",
+      "when": 1796083200004,
+      "tag": "0377_agent_backup_restore_v3_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 361,
+      "version": "7",
+      "when": 1796083200005,
+      "tag": "0378_agent_backup_restore_v3_candidate_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 362,
+      "version": "7",
+      "when": 1796083200006,
+      "tag": "0379_subscription_account_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1796083200007,
+      "tag": "0380_organization_policy_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 364,
+      "version": "7",
+      "when": 1796083200008,
+      "tag": "0381_app_billing_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 365,
+      "version": "7",
+      "when": 1796083200009,
+      "tag": "0382_subscription_notice_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 366,
+      "version": "7",
+      "when": 1796083200010,
+      "tag": "0383_subscription_cancellation_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 367,
+      "version": "7",
+      "when": 1796083200011,
+      "tag": "0384_subscription_cancellation_undo",
+      "breakpoints": true
+    },
+    {
+      "idx": 368,
+      "version": "7",
+      "when": 1796083200012,
+      "tag": "0385_subscription_reconciliation",
+      "breakpoints": true
     }
   ]
 }

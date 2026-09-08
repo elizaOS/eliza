@@ -14,7 +14,33 @@
  * Everything else is mocked at the module boundary.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import * as quotaPolicyActual from "@/lib/services/organization-quota-policy";
+import { purchasedCreditPolicyFixture } from "./purchased-credit-policy-fixture";
+
+// These route billing fixtures model purchased-credit funding with no subscription.
+// The primary policy reader is the external boundary; reservation, provider health,
+// settlement and reconciliation below remain the real implementations.
+let policyLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  policyLookup = spyOn(
+    quotaPolicyActual,
+    "readOrganizationQuotaPolicy",
+  ).mockResolvedValue(purchasedCreditPolicyFixture());
+});
+afterEach(() => {
+  policyLookup.mockRestore();
+});
+
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import * as aiPricingActual from "@/lib/services/ai-pricing";

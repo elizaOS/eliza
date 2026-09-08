@@ -37,16 +37,16 @@ describe("disabled-first restore API boundary", () => {
       path,
       source: readFileSync(path, "utf8"),
     }));
-    const production = sources.map(({ source }) => source).join("\n");
     for (const forbidden of [
       "queryAgentBackupRestoreCommitOutcome",
       "markAgentBackupRestoreVerified",
       "runAgentBackupRestoreCoordinator",
       "dispatchAgentBackupRestore",
     ]) {
-      expect(production, `Unexpected provisional restore surface: ${forbidden}`).not.toContain(
-        forbidden,
-      );
+      expect(
+        sources.filter(({ source }) => source.includes(forbidden)).map(({ path }) => path),
+        `Unexpected provisional restore surface: ${forbidden}`,
+      ).toEqual([]);
     }
     const approvedProductionSources: Readonly<Record<string, readonly string[]>> = {
       acquireAgentBackupRestoreLease: ["/db/repositories/agent-backup-restore-lease.ts"],
@@ -171,9 +171,10 @@ describe("disabled-first restore API boundary", () => {
       "commitAgentBackupRestore",
     ]) {
       const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
-      const occurrences = sources.flatMap(({ path, source }) =>
-        symbolBoundary.test(source) ? [path] : [],
+      const matchingSources = sources.filter(
+        ({ source }) => source.includes(symbol) && symbolBoundary.test(source),
       );
+      const occurrences = matchingSources.map(({ path }) => path);
       const allowedSuffixes = approvedProductionSources[symbol];
       expect(allowedSuffixes, `${symbol} must have an explicit source allowlist`).toBeDefined();
       expect(
@@ -182,8 +183,8 @@ describe("disabled-first restore API boundary", () => {
           .sort(),
         `${symbol} gained an unapproved production source`,
       ).toEqual([...(allowedSuffixes ?? [])].sort());
-      const invocationLikeOccurrences = production.match(
-        new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
+      const invocationLikeOccurrences = matchingSources.flatMap(
+        ({ source }) => source.match(new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g")) ?? [],
       );
       const expectedInvocationLikeOccurrences =
         symbol === "loadCurrentAgentVaultKeyAuthority"
@@ -238,16 +239,17 @@ describe("disabled-first restore API boundary", () => {
     } as const;
     for (const [symbol, expectedPaths] of Object.entries(lockedExactHelperCallSites)) {
       const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
-      const actualPaths = sources
-        .flatMap(({ path, source }) =>
-          symbolBoundary.test(source) ? [path.slice(REPOSITORY_ROOT.length + 1)] : [],
-        )
+      const matchingSources = sources.filter(
+        ({ source }) => source.includes(symbol) && symbolBoundary.test(source),
+      );
+      const actualPaths = matchingSources
+        .map(({ path }) => path.slice(REPOSITORY_ROOT.length + 1))
         .sort();
       expect(actualPaths, `${symbol} gained a production import or call site`).toEqual(
         [...expectedPaths].sort(),
       );
-      const invocationLikeOccurrences = production.match(
-        new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
+      const invocationLikeOccurrences = matchingSources.flatMap(
+        ({ source }) => source.match(new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g")) ?? [],
       );
       expect(
         invocationLikeOccurrences ?? [],

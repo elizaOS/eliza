@@ -15,6 +15,7 @@ import { useAgentElement } from "../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
 import { SettingsInputRow } from "./settings-agent-rows";
@@ -342,12 +343,14 @@ function WalletKeysSectionBody() {
 
   const onDelete = useCallback(
     async (entry: VaultEntryMeta) => {
-      const ok = window.confirm(
-        t("walletkeys.deleteConfirm", {
+      const ok = await confirmDesktopAction({
+        title: t("common.delete"),
+        type: "warning",
+        message: t("walletkeys.deleteConfirm", {
           key: entry.key,
           defaultValue: 'Delete wallet key "{{key}}"? This cannot be undone.',
         }),
-      );
+      });
       if (!ok) return;
       const res = await client.rawRequest(
         `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,

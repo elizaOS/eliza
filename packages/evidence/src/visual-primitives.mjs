@@ -14,7 +14,6 @@ import { mkdirSync } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import sharp from "sharp";
 import { brandColorFractions } from "./analyzers/brand.ts";
 import { dominantPalette as analyzeDominantPalette } from "./analyzers/color.ts";
@@ -481,11 +480,11 @@ export function resetTesseractProbe() {
 /**
  * OCR a single PNG, or report an explicit unavailable result.
  *
- * Whole-page segmentation is the cheap first pass. When that pass is weak, a
- * bounded high-contrast upscale plus sparse-text segmentation gets one second
- * chance; this is particularly important for mobile screenshots whose labels
- * are only a dozen source pixels tall. A semantic gate that finds required
- * content missing may request that same bounded second pass with
+ * Whole-page segmentation is the cheap first pass. When that pass is weak,
+ * bounded thresholded and grayscale upscales with sparse-text segmentation
+ * provide complementary fallbacks, especially for mobile screenshots whose
+ * labels are only a dozen source pixels tall. A semantic gate that finds required
+ * content missing may request those same bounded fallback passes with
  * `alwaysTryFallback`; confidence alone cannot prove that the first transcript
  * captured the labels under review. The selected transcript, confidence, every
  * attempted transcript, and independent pixel-blank diagnostics remain in the
@@ -504,13 +503,13 @@ export async function ocrImage(pngPath, opts = {}) {
   if (primaryOutcome.status === "rejected") {
     return {
       available: false,
-      reason: `${engine.label} failed: ${truncateWellFormed(toWellFormedUnicode(errorMessage(primaryOutcome.reason)), 200)}`,
+      reason: `${engine.label} failed: ${errorMessage(primaryOutcome.reason).slice(0, 200).toWellFormed()}`,
     };
   }
   if (imageOutcome.status === "rejected") {
     return {
       available: false,
-      reason: `pixel diagnostics failed: ${truncateWellFormed(toWellFormedUnicode(errorMessage(imageOutcome.reason)), 200)}`,
+      reason: `pixel diagnostics failed: ${errorMessage(imageOutcome.reason).slice(0, 200).toWellFormed()}`,
     };
   }
   const primaryRecognition = primaryOutcome.value;
@@ -521,38 +520,34 @@ export async function ocrImage(pngPath, opts = {}) {
     opts.alwaysTryFallback === true ||
     !isReliableOcrAttempt(attempts[0], confidenceFloor)
   ) {
-    const fallbackRecognition = await buildHighContrastOcrInput(pngPath)
-      .then((fallbackInput) =>
-        recognizeWithEngine(
-          engine,
-          fallbackInput,
-          lang,
-          timeoutMs,
-          "sparse-high-contrast",
-        ),
+    for (const mode of ["sparse-high-contrast", "sparse-grayscale"]) {
+      const fallbackRecognition = await (mode === "sparse-high-contrast"
+        ? buildHighContrastOcrInput(pngPath)
+        : buildGrayscaleOcrInput(pngPath)
       )
-      .catch((err) => {
-        // error-policy:J1 OCR primitive boundary — a failed fallback is retained
-        // as a diagnostic while the successful primary pass remains inspectable.
-        return { error: err instanceof Error ? err.message : String(err) };
-      });
-    if ("error" in fallbackRecognition) {
-      attempts.push({
-        mode: "sparse-high-contrast",
-        ok: false,
-        reason: fallbackRecognition.error,
-        text: "",
-        words: 0,
-        chars: 0,
-        meanConfidence: 0,
-      });
-    } else {
-      attempts.push(
-        buildOcrAttempt("sparse-high-contrast", fallbackRecognition),
-      );
+        .then((fallbackInput) =>
+          recognizeWithEngine(engine, fallbackInput, lang, timeoutMs, mode),
+        )
+        .catch((err) => {
+          // error-policy:J1 OCR primitive boundary — a failed fallback is retained
+          // as a diagnostic while the successful primary pass remains inspectable.
+          return { error: err instanceof Error ? err.message : String(err) };
+        });
+      if ("error" in fallbackRecognition) {
+        attempts.push({
+          mode,
+          ok: false,
+          reason: fallbackRecognition.error,
+          text: "",
+          words: 0,
+          chars: 0,
+          meanConfidence: 0,
+        });
+      } else {
+        attempts.push(buildOcrAttempt(mode, fallbackRecognition));
+      }
     }
   }
-
   const selected = selectOcrAttempt(attempts, confidenceFloor);
   return {
     available: true,
@@ -720,7 +715,7 @@ function runSystemTesseract(bin, input, lang, timeoutMs, mode) {
   return new Promise((resolve, reject) => {
     const readsStdin = Buffer.isBuffer(input);
     const inputArg = readsStdin ? "stdin" : input;
-    const pageSegMode = mode === "sparse-high-contrast" ? "11" : "3";
+    const pageSegMode = mode.startsWith("sparse-") ? "11" : "3";
     const child = spawn(
       bin,
       [inputArg, "stdout", "-l", lang, "--psm", pageSegMode, "tsv"],
@@ -838,7 +833,7 @@ async function getPackagedWorker(lang, timeoutMs, mode) {
       timeoutMs,
       `tesseract.js worker initialization timed out after ${timeoutMs}ms`,
     );
-    if (mode === "sparse-high-contrast") {
+    if (mode.startsWith("sparse-")) {
       if (!tesseract.PSM?.SPARSE_TEXT) {
         await worker.terminate();
         throw new Error("tesseract.js sparse-text segmentation is unavailable");
@@ -881,6 +876,30 @@ async function buildHighContrastOcrInput(pngPath) {
     .threshold(OCR_FALLBACK_THRESHOLD)
     .png()
     .toBuffer();
+}
+
+async function buildGrayscaleOcrInput(pngPath) {
+  const metadata = await sharp(pngPath).metadata();
+  if (!metadata.width || metadata.width <= 0) {
+    throw new Error("OCR image has no positive pixel width");
+  }
+  const { channels } = await sharp(pngPath).stats();
+  const luminance =
+    channels.length >= 3
+      ? 0.2126 * channels[0].mean +
+        0.7152 * channels[1].mean +
+        0.0722 * channels[2].mean
+      : channels[0].mean;
+  let input = sharp(pngPath)
+    .resize({
+      width: Math.min(OCR_FALLBACK_MAX_WIDTH, metadata.width * 2),
+      kernel: sharp.kernel.lanczos3,
+    })
+    .grayscale();
+  // Preserve muted antialiased labels that thresholding erases. Correct only
+  // glyph polarity, not alpha: inverting opacity would make RGBA text vanish.
+  if (luminance < 128) input = input.negate({ alpha: false });
+  return input.png().toBuffer();
 }
 
 function buildOcrAttempt(mode, recognition) {

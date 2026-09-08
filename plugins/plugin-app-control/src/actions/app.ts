@@ -208,6 +208,9 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		routingHint:
 			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching, stopping, or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|stop|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. Building/hosting/publishing a NEW web app, web page, or interactive HTML the user wants a live link for ('teach me with an interactive page', 'host it and give me the link') is APP action=create — it builds and, when a publish target is configured, publishes with a live link; do not route that to a generic coding task or a Cloud deploy. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
 		suppressPostActionContinuation: true,
+		// Optional create-choice bindings must remain absent on ordinary calls.
+		// Runtime schema validation still rejects invalid supplied arguments.
+		toolSchemaStrict: false,
 
 		parameters: [
 			{
@@ -298,6 +301,13 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				name: "editTarget",
 				description:
 					"Skip the picker and edit this installed app directly (create mode).",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "taskId",
+				description:
+					"Exact pending APP create-choice task ID from app_control_choices. Required when more than one app creation is pending; use with choice.",
 				required: false,
 				schema: { type: "string" },
 			},

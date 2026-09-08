@@ -147,7 +147,7 @@ function renderOverlay(
   render(<ChatOverlay controller={controller} slash={slash} />);
   expect(
     (screen.getByLabelText("message") as HTMLTextAreaElement).placeholder,
-  ).toBe("Message Eliza");
+  ).toBe("Hey Eliza…");
   return {
     controller,
     input: screen.getByLabelText("message") as HTMLInputElement,
@@ -226,22 +226,27 @@ describe("ChatOverlay slash commands", () => {
     expect(input.value).toBe("");
   });
 
-  it("natural navigation stays inert when the feature flag is off", () => {
+  it("keeps exact natural navigation model-owned", () => {
     const slash = makeSlash();
     const { input, controller } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "open settings" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(controller.send).toHaveBeenCalledWith("open settings");
     expect(slash.navigateSettings).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
   });
 
-  it("feature-flagged natural navigation preserves the model-authored turn", () => {
+  it("keeps non-exact navigation requests model-owned", () => {
     const slash = makeSlash({ naturalShortcutsEnabled: true });
     const { input, controller } = renderOverlay(slash);
-    fireEvent.change(input, { target: { value: "open settings" } });
+    fireEvent.change(input, {
+      target: { value: "open settings and explain every option" },
+    });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
-    expect(controller.send).toHaveBeenCalledWith("open settings");
+    expect(slash.navigateSettings).not.toHaveBeenCalled();
+    expect(controller.send).toHaveBeenCalledWith(
+      "open settings and explain every option",
+    );
     expect(input.value).toBe("");
   });
 

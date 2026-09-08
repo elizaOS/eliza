@@ -6,11 +6,26 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+	isUnsafeUserVisibleText,
 	looksLikeEvaluatorEnvelopeJson,
 	parsePlannerOutput,
 } from "../planner-loop";
 
 describe("planner output user-visible safety", () => {
+	it.each(["string", "native"])(
+		"rejects the recorded fake messageToUser action in %s output without executing it",
+		(shape) => {
+			const envelope =
+				'{"action":"messageToUser","args":{"message":"Done. The note is updated."}}';
+			const output = parsePlannerOutput(
+				shape === "string" ? envelope : { text: envelope, toolCalls: [] },
+			);
+			expect(output.messageToUser).toBeUndefined();
+			expect(output.toolCalls).toEqual([]);
+			expect(isUnsafeUserVisibleText(envelope)).toBe(true);
+		},
+	);
+
 	it("consumes evaluator control JSON from native text instead of exposing it as reply text", () => {
 		const output = parsePlannerOutput({
 			text: JSON.stringify({

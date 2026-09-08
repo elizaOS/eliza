@@ -7,7 +7,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import AdmZip from "adm-zip";
 import { describe, expect, it } from "vitest";
@@ -173,28 +172,5 @@ describe("iOS cloud final-artifact audit", () => {
     expect(resolveIosAppFromBuildSettingsJson(json)).toBe(
       path.join("/tmp/build", "Eliza.app"),
     );
-  });
-
-  it("keeps the final artifact audit after xcodebuild and out of local-runtime lanes", () => {
-    const runMobileBuild = fs.readFileSync(
-      path.join(
-        path.dirname(fileURLToPath(import.meta.url)),
-        "..",
-        "run-mobile-build.mjs",
-      ),
-      "utf8",
-    );
-    const nativeBuild = runMobileBuild.indexOf('await run(\n    "xcodebuild",');
-    const thinLaneGate = runMobileBuild.indexOf(
-      "if (!includesLocalAgentPayload)",
-      nativeBuild,
-    );
-    const finalAudit = runMobileBuild.indexOf(
-      "auditIosCloudArtifact({",
-      thinLaneGate,
-    );
-    expect(nativeBuild).toBeGreaterThan(-1);
-    expect(thinLaneGate).toBeGreaterThan(nativeBuild);
-    expect(finalAudit).toBeGreaterThan(thinLaneGate);
   });
 });

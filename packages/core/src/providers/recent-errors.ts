@@ -55,6 +55,31 @@ export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
 	"PROVIDER_COMPOSITION_ABORTED",
 	"TURN_ABORTED",
 ]);
+/**
+ * Model-provider throttling reported through `runtime.reportError` (post-turn
+ * evaluator "Failed after 3 attempts … Too Many Requests", grounded-reply
+ * "Tokens per minute limit exceeded"). Like the quiet scheduler codes these are
+ * operator-facing and self-healing — the agent cannot act on a rate limit —
+ * and narrating them is self-defeating: every rendered 429 (with its
+ * response-body context) re-enters the next prompt of the very bucket that is
+ * throttled (live 2026-09-05: ~80K chars of provider-limit diagnostics in one
+ * Stage-1 prompt). They stay logged and escalated; they are not model context.
+ */
+const PROVIDER_THROTTLE_PATTERN =
+	/too many requests|rate[ _-]?limit|tokens? per minute|requests? per minute|\b429\b/i;
+
+export function isProviderThrottleReport(
+	entry: Pick<ReportedError, "message" | "context">,
+): boolean {
+	if (PROVIDER_THROTTLE_PATTERN.test(entry.message)) return true;
+	const context = entry.context;
+	if (!context) return false;
+	const status =
+		(context as { status?: unknown }).status ??
+		(context as { providerError?: { status?: unknown } }).providerError?.status;
+	return status === 429;
+}
+
 const EMPTY_RESULT: ProviderResult = {
 	data: { recentErrors: [] },
 	values: { recentErrors: "" },
@@ -94,6 +119,7 @@ function selectRecentErrors(
 		// Internal scheduler plumbing is self-healing / operator-facing, never
 		// narrated into chat (#SHADOW-ACCOUNT-DEBUG). Still logged + escalated.
 		if (QUIET_ERROR_CODES.has(entry.code)) continue;
+		if (isProviderThrottleReport(entry)) continue;
 		const existing = newestByCode.get(entry.code);
 		if (!existing || entry.at >= existing.at) {
 			newestByCode.set(entry.code, entry);

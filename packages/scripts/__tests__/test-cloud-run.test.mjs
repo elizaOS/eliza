@@ -38,6 +38,7 @@ import {
   runBatches,
   runCommandWithWatchdog,
   runPreflightStep,
+  selectTestShard,
   terminateProcessTree,
   walkTests,
   windowsTaskkillInvocation,
@@ -125,6 +126,26 @@ describe("formatBatchFiles", () => {
     expect(formatBatchFiles(batch, root)).toBe(
       `  - ${join("packages", "a", "x.test.ts")}\n  - ${join("packages", "b", "y.spec.ts")}`,
     );
+  });
+});
+
+describe("CI batch sharding", () => {
+  it("rejects malformed or empty shard selections before any dispatch", () => {
+    const batches = [["a"], ["b"]];
+    for (const value of [
+      "",
+      "0/2",
+      "2/1",
+      "1/0",
+      "1/3",
+      "1/2/3",
+      "1/9007199254740992",
+    ]) {
+      expect(() => selectTestShard(batches, value)).toThrow(
+        "ELIZA_CLOUD_TEST_SHARD",
+      );
+    }
+    expect(selectTestShard(batches, undefined)).toBe(batches);
   });
 });
 

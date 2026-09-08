@@ -12,6 +12,10 @@ import {
   buildAuditViewCases,
 } from "../ui-smoke/aesthetic-audit-view-cases";
 import {
+  normalize,
+  positiveExpectationMatches,
+} from "../ui-smoke/ocr-content-rules";
+import {
   resolveViewOcrPolicy,
   VIEW_OCR_POLICIES,
 } from "../ui-smoke/ocr-view-expectations";
@@ -105,29 +109,6 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     }
   });
 
-  it("keeps separate connected and signed-out Cloud semantic contracts", () => {
-    expect(resolveViewOcrPolicy("plugin-cloud-gui")).toEqual({
-      kind: "expectation",
-      expectation: {
-        requireAll: ["Eliza Cloud"],
-        requireAny: ["Credits", "Hosted agents", "API keys", "Connected"],
-      },
-    });
-    expect(resolveViewOcrPolicy("plugin-cloud-signed-out-gui")).toEqual({
-      kind: "expectation",
-      expectation: {
-        requireAll: ["Eliza Cloud", "Connect in Settings"],
-        requireAny: [
-          "credits",
-          "hosted agents",
-          "API keys",
-          "billing",
-          "Connect in Settings",
-        ],
-      },
-    });
-  });
-
   it("recognizes plugin-owned Contacts by stable empty-state content", () => {
     const policy = resolveViewOcrPolicy("plugin-contacts-gui");
     expect(policy.kind).toBe("expectation");
@@ -140,6 +121,49 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
       "phone, or email",
       "search",
     ]);
+  });
+
+  it("recognizes headerless workspaces without accepting unrelated content", () => {
+    for (const [slug, text] of [
+      ["builtin-apps", "Tasks Apps No apps installed yet"],
+      ["builtin-automations", "New Show All (0) Nothing scheduled yet"],
+      ["builtin-documents", "Library Add No documents yet"],
+      ["builtin-documents", "Library Add All 1 Docs 1 Quarterly Plan.md"],
+      [
+        "builtin-character-skills",
+        "Personality Relationships Skills Experience 0 proposed No learned skills yet",
+      ],
+      [
+        "builtin-experience",
+        "Personality Relationships Skills Experience Captured 0",
+      ],
+      [
+        "builtin-vault",
+        "Encrypted credentials and references available to this agent",
+      ],
+    ]) {
+      const policy = resolveViewOcrPolicy(slug);
+      if (policy.kind !== "expectation")
+        throw new Error("Expected a workspace policy");
+      expect(
+        positiveExpectationMatches(normalize(text), policy.expectation),
+        slug,
+      ).toBe(true);
+      expect(
+        positiveExpectationMatches(
+          "Settings Wallet Projects",
+          policy.expectation,
+        ),
+        slug,
+      ).toBe(false);
+      expect(
+        positiveExpectationMatches(
+          normalize("Loading view"),
+          policy.expectation,
+        ),
+        slug,
+      ).toBe(false);
+    }
   });
 
   it("fails closed for an unknown captured slug", () => {

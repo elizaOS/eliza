@@ -16,7 +16,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fetchCodexUsage } from "@elizaos/auth/codex-usage";
-import { resolveStateDir } from "@elizaos/core";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 
 /**
@@ -65,30 +65,117 @@ function normalizeResetTimestamp(value: unknown): number | undefined {
 }
 
 interface AnthropicUsageWindow {
-  utilization?: number;
-  resets_at?: string | number;
+  utilization?: unknown;
+  resets_at?: unknown;
 }
 
 interface AnthropicUsageLimitScope {
-  model?: { display_name?: string };
+  model?: { display_name?: unknown };
 }
 
 interface AnthropicUsageLimit {
-  kind?: string;
-  group?: string;
-  percent?: number;
-  resets_at?: string | number;
-  scope?: AnthropicUsageLimitScope;
+  kind?: unknown;
+  group?: unknown;
+  percent?: unknown;
+  resets_at?: unknown;
+  scope?: AnthropicUsageLimitScope | null;
 }
 
 interface AnthropicUsagePayload {
-  five_hour_utilization?: number;
-  five_hour_resets_at?: string | number;
-  seven_day_utilization?: number;
-  seven_day_resets_at?: string | number;
+  five_hour_utilization?: unknown;
+  five_hour_resets_at?: unknown;
+  seven_day_utilization?: unknown;
+  seven_day_resets_at?: unknown;
   five_hour?: AnthropicUsageWindow;
   seven_day?: AnthropicUsageWindow;
   limits?: AnthropicUsageLimit[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function invalidAnthropicUsageShape(field: string): never {
+  throw new ElizaError(
+    `Anthropic usage response field "${field}" was invalid`,
+    {
+      code: "anthropic_usage.invalid_shape",
+      severity: "fatal",
+      context: { field },
+    },
+  );
+}
+
+function parseOptionalRecord(
+  value: unknown,
+  field: string,
+): Record<string, unknown> | undefined {
+  // Providers use null for unavailable optional windows and model scopes.
+  if (value === undefined || value === null) return undefined;
+  return isRecord(value) ? value : invalidAnthropicUsageShape(field);
+}
+
+function parseNullableRecord(
+  value: unknown,
+  field: string,
+): Record<string, unknown> | null | undefined {
+  if (value === null) return null;
+  return parseOptionalRecord(value, field);
+}
+
+function parseAnthropicUsageWindow(
+  value: unknown,
+  field: string,
+): AnthropicUsageWindow | undefined {
+  const record = parseOptionalRecord(value, field);
+  if (record === undefined) return undefined;
+  return {
+    utilization: record.utilization,
+    resets_at: record.resets_at,
+  };
+}
+
+function parseAnthropicUsageLimits(
+  value: unknown,
+): AnthropicUsageLimit[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return invalidAnthropicUsageShape("limits");
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) return invalidAnthropicUsageShape(`limits[${index}]`);
+    const scope = parseNullableRecord(entry.scope, `limits[${index}].scope`);
+    const model = parseOptionalRecord(
+      scope?.model,
+      `limits[${index}].scope.model`,
+    );
+    return {
+      kind: entry.kind,
+      group: entry.group,
+      percent: entry.percent,
+      resets_at: entry.resets_at,
+      scope:
+        scope === undefined || scope === null
+          ? scope
+          : {
+              model:
+                model === undefined
+                  ? undefined
+                  : { display_name: model.display_name },
+            },
+    };
+  });
+}
+
+function parseAnthropicUsagePayload(value: unknown): AnthropicUsagePayload {
+  if (!isRecord(value)) return invalidAnthropicUsageShape("root");
+  return {
+    five_hour_utilization: value.five_hour_utilization,
+    five_hour_resets_at: value.five_hour_resets_at,
+    seven_day_utilization: value.seven_day_utilization,
+    seven_day_resets_at: value.seven_day_resets_at,
+    five_hour: parseAnthropicUsageWindow(value.five_hour, "five_hour"),
+    seven_day: parseAnthropicUsageWindow(value.seven_day, "seven_day"),
+    limits: parseAnthropicUsageLimits(value.limits),
+  };
 }
 
 /**
@@ -118,7 +205,19 @@ export async function pollAnthropicUsage(
   if (!res.ok) {
     throw new Error(`Anthropic usage probe failed: HTTP ${res.status}`);
   }
-  const payload = (await res.json()) as AnthropicUsagePayload;
+  let rawPayload: unknown;
+  try {
+    rawPayload = await res.json();
+  } catch (cause) {
+    // error-policy:J2 preserve the provider JSON decoding failure as a typed
+    // boundary error so callers cannot mistake it for missing optional data.
+    throw new ElizaError("Anthropic usage response was not JSON", {
+      code: "anthropic_usage.invalid_json",
+      severity: "fatal",
+      cause,
+    });
+  }
+  const payload = parseAnthropicUsagePayload(rawPayload);
 
   const fiveHour = payload.five_hour;
   const sevenDay = payload.seven_day;
@@ -151,7 +250,9 @@ export async function pollAnthropicUsage(
       const pct = utilizationToPct(limit.percent, false);
       if (pct === undefined) continue;
       const resetsAt = normalizeResetTimestamp(limit.resets_at);
-      const modelName = limit.scope?.model?.display_name?.trim();
+      const displayName = limit.scope?.model?.display_name;
+      const modelName =
+        typeof displayName === "string" ? displayName.trim() : undefined;
       if (modelName) {
         weeklyModelBuckets[modelName] = {
           pct,

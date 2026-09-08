@@ -342,10 +342,11 @@ export function shouldUseSameTabCloudLogin(
 export function buildSameTabCloudLoginPath(location?: {
   pathname: string;
   search: string;
+  hash?: string;
 }): string {
   const loc =
     location ?? (typeof window !== "undefined" ? window.location : undefined);
-  const current = loc ? `${loc.pathname}${loc.search}` : "";
+  const current = loc ? `${loc.pathname}${loc.search}${loc.hash ?? ""}` : "";
   const returnTo =
     current.startsWith("/") &&
     !current.startsWith("//") &&

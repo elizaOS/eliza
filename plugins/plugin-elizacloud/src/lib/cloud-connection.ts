@@ -1,3 +1,4 @@
+/** Resolves Cloud credentials, connection state, and billing against the configured deployment. */
 import {
   isCloudInferenceSelectedInConfig,
   isElizaSettingsDebugEnabled,
@@ -26,7 +27,6 @@ import {
   scrubCloudSecretsFromEnv,
 } from "./cloud-secrets";
 
-const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 export const CLOUD_BILLING_URL =
   "https://cloud.eliza.app/cloud/billing";
 
@@ -87,6 +87,7 @@ const CLOUD_AUTH_CLEAR_METHODS = [
 
 type CloudClientLike = {
   get?: (path: string) => Promise<unknown>;
+  requestData?: (method: "GET", path: string) => Promise<unknown>;
 };
 
 export type CloudAuthLike = {
@@ -220,10 +221,7 @@ function resolvePersistedCloudIdentity(runtime: AgentRuntime | null): {
 }
 
 export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
-  return (
-    resolveCanonicalCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL) ??
-    DEFAULT_CLOUD_API_BASE_URL
-  );
+  return resolveCanonicalCloudApiBaseUrl(rawBaseUrl);
 }
 
 export function resolveCloudApiKey(
@@ -428,15 +426,31 @@ export async function fetchCloudCredits(
   }
 
   const cloudClient = snapshot.cloudAuth?.getClient?.();
-  if (snapshot.authConnected && typeof cloudClient?.get === "function") {
+  if (
+    snapshot.authConnected &&
+    (typeof cloudClient?.requestData === "function" ||
+      typeof cloudClient?.get === "function")
+  ) {
     try {
-      const creditResponse = (await cloudClient.get("/credits/balance")) as {
-        balance?: unknown;
-        data?: { balance?: unknown };
-      };
+      const creditResponse =
+        typeof cloudClient.requestData === "function"
+          ? await cloudClient.requestData("GET", "/credits/balance")
+          : await cloudClient.get?.("/credits/balance");
+      const nestedData =
+        typeof creditResponse === "object" && creditResponse !== null
+          ? Reflect.get(creditResponse, "data")
+          : undefined;
       const rawBalance =
-        coerceCloudBalance(creditResponse?.balance) ??
-        coerceCloudBalance(creditResponse?.data?.balance);
+        coerceCloudBalance(
+          typeof creditResponse === "object" && creditResponse !== null
+            ? Reflect.get(creditResponse, "balance")
+            : undefined,
+        ) ??
+        coerceCloudBalance(
+          typeof nestedData === "object" && nestedData !== null
+            ? Reflect.get(nestedData, "balance")
+            : undefined,
+        );
 
       if (typeof rawBalance === "number") {
         return withCreditFlags(rawBalance, topUpUrl);

@@ -155,6 +155,20 @@ Connector credentials and domain-specific settings belong to their owning plugin
 - Deferred task initialization occurs after `runtime.initPromise`; failures must remain observable in logs, runtime error reporting, or the initialization-failure cache.
 - Use `src/lifeops/service-mixin-*.ts` for new LifeOps service capabilities and keep `src/lifeops/service.ts` as composition.
 
+## Undated todo state
+
+Undated owner todos use the existing `life_task_definitions` record with
+`cadence.kind = "unscheduled"`. `completed` is an additive definition status
+restricted to those task records. Existing status columns are unconstrained text;
+no DDL or historical row rewrite is required. Scheduled definitions continue to
+complete through occurrences, and must not enter this definition status.
+
+The definition-domain transition locks the scoped row and commits its status and
+audit together. Same-state calls are no-ops, and stale opposite transitions fail
+rather than overwriting a newer revision. Route and owner-action consumers share
+this transition. The Todo projection tags real target IDs as `definition` or
+`occurrence`; undated definitions have no synthesized date or occurrence.
+
 ## Verification
 
 Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run the relevant package lanes above, then exercise the real connector, scheduler, database, approval, or UI boundary changed. Inspect scheduled-task records, database rows, logs, trajectories, and rendered behavior; mocked success is not evidence for a real integration.

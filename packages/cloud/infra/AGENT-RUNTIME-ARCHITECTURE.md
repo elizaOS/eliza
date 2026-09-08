@@ -259,7 +259,7 @@ validation or exposing the key.
 | Staging admission | the canary identity was below the hosting-runway threshold | Cleared: run `33280890733` created one Dedicated row/job; the failure moved into provisioning |
 | Steward bootstrap | worker called a retired platform agent-registration route and received 404 before Docker create | Fixed: canonical Eliza-minted JWT/JWKS auth; protected signer reconciled to the worker |
 | Headscale key identity | tagged pre-auth keys also carried a user, which conflicts with Headscale v0.28 tag-as-identity | Fixed: `tag:agent` keys omit user ownership; mixed input is rejected before network I/O |
-| Headscale observation | an arbitrary stale host `VPN_REGISTRATION_TIMEOUT_MS` made the worker abandon a join before the container's own 120-second bound | Fixed: deploy and source enforce a minimum 180-second control-plane observation budget |
+| Headscale observation | the deployed `VPN_REGISTRATION_TIMEOUT_MS` was shorter than the container's 300-second join bound and rejected by the source validator | Deployment supplies the source's required minimum 360-second control-plane observation budget |
 | Container mesh classifier | the entrypoint treated ordinary fresh-daemon `NeedsLogin` and `machineAuthorized=false` transition records as terminal interactive auth | Fixed: only an AuthURL, `NeedsMachineAuth`, or an explicit invalid/expired/used-key result is terminal; transient login remains under the bounded join observation |
 | Current staging provision | database and Docker are proven; the repaired image still requires a digest-pinned staging cold-path canary | Acceptance pending in the live deployment record below |
 | Failed replacement deletion | the API rejected every lifecycle job, including exact conditional cleanup, whenever a failed provision retained a replacement locator | Fixed: exact conditional delete owns the row, then the daemon proves that replacement absent before deleting the serving generation; ordinary lifecycle requests remain blocked |
@@ -851,6 +851,63 @@ share runtime identity, storage ownership, health, or fallback semantics.
    exact checkout, migration, build, systemd restart, router health, and worker
    health. Same-SHA retries include the target commit relative to its parent,
    avoiding an empty-bundle failure.
+9. **Headscale success was observed through an unordered address array.**
+   Headscale v0.28 exposes repeated `ip_addresses`; their order is not an IPv4
+   contract. The client now selects and validates the canonical tailnet IPv4,
+   persists the exact node id, and requires the id/name/tag registration tuple
+   to converge. This removes IPv6-first and wrong-node false positives without
+   exposing a mesh address through the owner API.
+10. **The container and worker disagreed about the mesh-join deadline.** The
+    container originally abandoned `tailscale up` before the outer worker's
+    observer had completed, while a registered node could still take time to
+    appear in the local netmap. Managed containers now receive a 300-second
+    join budget, the worker observes the exact Headscale registration for 360
+    seconds, and the provider limits local-IP observations by a 130-second elapsed
+    budget, including command execution and retry delays. Reconnecting SSH
+    can add its bounded 10-second handshake. The budgets stop repeated slow
+    commands from extending this stage indefinitely.
+11. **Deletion reused a cancellation-damaged SSH session.** A command timeout
+    closes its channel, not necessarily the underlying pooled connection. A
+    later force-remove could therefore inherit an unusable session, and every
+    `agent_delete` retry could repeat the same transport failure. Destructive
+    teardown now owns an isolated SSH session; a transport-level graceful-stop
+    failure disconnects before the authoritative `docker rm -f`, and the
+    session is always closed after the operation.
+12. **General runtime hydration was incorrectly a prerequisite for
+    teardown.** A cold provision can persist its node and container identity
+    before bridge and web ports are assigned. After a worker restart, deletion
+    used the ordinary runtime hydrator, rejected those missing ports, and could
+    never reach Docker even when the container was already absent. Teardown now
+    rehydrates only its durable node/container/SSH authority. VPN cleanup uses
+    an observed registration identity; container names and mutable display
+    names cannot reconstruct that authority after a restart. Runtime operations
+    retain the strict port requirement.
+
+Automatic Docker recovery requires a successful runtime `LiveRestoreEnabled`
+read before any daemon restart. An on-disk setting may not have been reloaded,
+so configuration alone is not proof. A fully unresponsive daemon requires
+operator recovery; failed safety probes preserve the original teardown failure
+and its capacity ownership. Recovery never restarts containerd.
+
+### 2026-09-03 retained-canary investigation
+
+The capacity guard found exactly one retained canary, suffix
+`r33717318238a1`, and correctly refused to create a replacement. Two cleanup
+attempts on the prior worker generation ended in `deletion_failed`. Read-only
+diagnostic `33724790121` then established the closed facts: one database row,
+`dedicated-always`, tenant database `ready`, durable sandbox/node/container and
+Headscale locators, no replacement locator, no exact Docker container on the
+host, and one offline exact Headscale node. The control plane itself was
+healthy and routed the recorded peer through `tailscale0`; the stale peer was
+offline and unreachable. This is teardown-state divergence, not a missing
+tenant database or a Shared-runtime fallback.
+
+The cleanup failure also exposed an observability weakness: the outer job
+stored only `Failed to delete sandbox`, hiding whether resolution, SSH connect,
+Docker command, or database commit failed. Exact diagnostics now classify
+Docker command timeout, SSH connect timeout, connection error, Headscale
+inventory, peer routing, lifecycle events, and container state without
+publishing tenant identifiers, hostnames, addresses, or error payloads.
 
 ### Database findings
 

@@ -748,6 +748,12 @@ function parseView(object, context, owner, builtin) {
   const id = literalString(object, "id", context, { required: true });
   const label = literalString(object, "label", context, { required: true });
   const route = literalString(object, "path", context);
+  const fallbackFor = literalString(object, "fallbackFor", context);
+  if (fallbackFor && !builtin) {
+    throw new Error(
+      "[plugin-view-inventory] only built-in views may declare fallbackFor",
+    );
+  }
   const declaredModalities = literalStringArray(object, "modalities", context);
   const viewType = literalString(object, "viewType", context);
   const modalities = declaredModalities ?? [viewType ?? "gui"];
@@ -821,6 +827,7 @@ function parseView(object, context, owner, builtin) {
     visibleInManager:
       literalBoolean(object, "visibleInManager", context) ?? false,
     builtin,
+    fallbackFor,
   };
 }
 
@@ -871,7 +878,7 @@ function parseBuiltin(context) {
   };
 }
 
-function parsePlugin(context, owner) {
+function parsePlugin(context, owner, seenDeclarations) {
   const views = [];
   const sources = [];
   for (const root of enumeratePluginRoots(context)) {
@@ -882,6 +889,12 @@ function parsePlugin(context, owner) {
       );
     }
     if (declaration.kind === "absent") continue;
+    // A package may expose the runtime manifest directly and through a public
+    // composition barrel. Inventory the originating views declaration once,
+    // while retaining collision checks for distinct declarations and entries.
+    const declarationKey = `${owner}:${declaration.context.source}:${declaration.node.pos}`;
+    if (seenDeclarations.has(declarationKey)) continue;
+    seenDeclarations.add(declarationKey);
     const resolved = resolvedArray(
       declaration.expression,
       declaration.context,
@@ -931,6 +944,22 @@ function assertNoCollisions(views) {
         const key = `${modality}:${normalize(value)}`;
         const previous = seen.get(key);
         if (previous) {
+          const fallback = previous.builtin
+            ? previous
+            : view.builtin
+              ? view
+              : null;
+          const plugin = previous.builtin ? view : previous;
+          if (
+            fallback &&
+            !plugin.builtin &&
+            fallback.fallbackFor === plugin.owner &&
+            fallback.id === plugin.id &&
+            fallback.route === plugin.route
+          ) {
+            seen.set(key, plugin);
+            continue;
+          }
           throw new Error(
             `[plugin-view-inventory] duplicate ${field} "${value}" for ${modality}: ${previous.owner} ${previous.source}:${previous.line} and ${view.owner} ${view.source}:${view.line}`,
           );
@@ -948,6 +977,7 @@ export function discoverPluginViewInventory({
 }) {
   const cache = new Map();
   const inventory = { views: [], sources: [] };
+  const seenDeclarations = new Set();
   const reachablePlugins = runtimeReachablePluginFiles(repoRoot, files, cache);
   for (const source of files) {
     if (source !== BUILTIN_SOURCE && !PLUGIN_SOURCE.test(source)) continue;
@@ -956,7 +986,7 @@ export function discoverPluginViewInventory({
     const parsed =
       source === BUILTIN_SOURCE
         ? parseBuiltin(context)
-        : parsePlugin(context, pluginOwner(repoRoot, source));
+        : parsePlugin(context, pluginOwner(repoRoot, source), seenDeclarations);
     inventory.views.push(...parsed.views);
     inventory.sources.push(...parsed.sources);
   }

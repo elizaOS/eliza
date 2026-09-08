@@ -1,73 +1,46 @@
 # @elizaos/shared
 
-Shared cross-platform contract library for [elizaOS](https://github.com/elizaOS/eliza).
+Shared contracts, configuration, utilities, and brand assets used by the agent,
+application hosts, UI, Cloud services, and plugins. This workspace depends on
+`@elizaos/core` and `@elizaos/registry`; it is not an independent foundation below
+them.
 
-## What it is
+## Entry points
 
-`@elizaos/shared` is the lowest-level internal library in the elizaOS monorepo that can be safely imported by both server-side (Node.js/Bun) and browser/React code. It contains:
+The [package manifest](package.json) defines the public exports. Choose the entry
+that matches the consumer's runtime:
 
-- **HTTP API contracts** — typed request/response shapes for every agent API route
-- **Configuration schema** — `ElizaConfig` and ~150 named sub-types covering agents, connectors, gateway, models, memory, TTS, auth, and more
-- **Runtime environment resolution** — port and security config derived from env vars (`ELIZA_PORT`, `ELIZA_API_PORT`, `ELIZA_API_TOKEN`, etc.)
-- **Eliza Cloud session helpers** — `syncStewardSession`, `exchangeStewardCode`, and the full Steward auth contract
-- **Local-inference metadata** — model catalog (`MODEL_CATALOG`), Eliza-1 tier IDs, GPU profile matching, network policy, manifest signature verification, and voice model versioning
-- **Brand tokens and assets** — canonical colors, font stacks, external URLs, and static brand assets for all elizaOS surfaces
-- **Custom event constants** — typed `eliza:*` DOM event name constants used across app, bridge, and component layers
-- **Shared utilities** — error formatting, rate limiter, streaming text, trajectory format, env parsing, and more
-
-## Who uses it
-
-Direct dependents: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-frontend`, `@elizaos/homepage-source`, `@elizaos/browser-bridge-extension`, and `@elizaos/cloud-shared`.
-
-## Installation
-
-This package is part of the elizaOS monorepo and is consumed via workspace linking. It is also published to npm under the `alpha` dist-tag:
-
-```bash
-npm install @elizaos/shared@alpha
-```
-
-## Usage
+- The root barrel combines contracts with runtime helpers, including Node-only
+  Cloud TTS helpers. Browser use depends on the host's bundler configuration; it
+  is not proof that every root export is browser-safe.
+- `@elizaos/shared/brand` owns shared brand constants; `@elizaos/shared/brand.css`
+  exposes the stylesheet.
+- `@elizaos/shared/local-inference` exposes model metadata and cross-platform
+  policies. Filesystem verification and routing persistence use the separate
+  `/local-inference/verify` and `/local-inference/routing-preferences` exports.
+- `@elizaos/shared/steward-session-client` owns browser session synchronization.
+  Refresh credentials use the HttpOnly cookie; clearing legacy local storage
+  does not make it an active credential source.
 
 ```ts
-// Root barrel — safe for server and browser
-import { resolveRuntimePorts, ElizaConfig } from "@elizaos/shared";
-
-// Sub-path imports for heavier modules
-import { syncStewardSession } from "@elizaos/shared/steward-session-client";
-import { MODEL_CATALOG, GPU_PROFILES } from "@elizaos/shared/local-inference";
+import type { ElizaConfig } from "@elizaos/shared";
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
-import "@elizaos/shared/brand.css";
+import { syncStewardSession } from "@elizaos/shared/steward-session-client";
 ```
 
-## Key sub-path exports
+## Development
 
-| Import path | Contents |
-|---|---|
-| `@elizaos/shared` | Root barrel — all runtime-safe exports |
-| `@elizaos/shared/steward-session-client` | Eliza Cloud auth session helpers |
-| `@elizaos/shared/local-inference` | Model catalog, GPU profiles, inference types |
-| `@elizaos/shared/brand` | Brand tokens, external URLs |
-| `@elizaos/shared/brand.css` | CSS custom properties |
-| `@elizaos/shared/brand-classic.css` | Eliza Classic CSS custom properties |
-| `@elizaos/shared/character-presets` | Built-in character preset definitions |
-| `@elizaos/shared/runtime-env` | Port and security config resolvers |
-| `@elizaos/shared/config/allowed-hosts` | Allowed-hosts config helper |
-| `@elizaos/shared/contracts/synthetic-environment-lease` | Lease, generation, receipt, and guarded-write contract for synthetic environments |
-
-Synthetic environment leases and subprocess control envelopes share the exact
-namespace checked by `isSyntheticEnvironmentNamespace`: 1-512 non-control
-characters with no leading/trailing whitespace normalization.
-
-## Building
+From the repository root:
 
 ```bash
-bun run --cwd packages/shared build       # full build (i18n + dist)
-bun run --cwd packages/shared typecheck   # type check only
-bun run --cwd packages/shared test        # run tests
+bun run --cwd packages/shared build
+bun run --cwd packages/shared typecheck
+bun run --cwd packages/shared lint:check
+bun run --cwd packages/shared test
 ```
 
-## Constraints
+Build and typecheck regenerate keyword data from `src/i18n/keywords/`. Edit those
+inputs, not `src/i18n/generated/`. Brand assets live in `assets/`; the `sync`
+script copies them into consumer public directories.
 
-- The root barrel (`src/index.ts`) must remain importable in both browser and Node.js. Do not add Node.js-only or value-level React imports to it. The only React reference is a type-only `import type { ReactNode }` in `src/config/config-catalog.ts`, which is erased at compile time.
-- Do not import from `@elizaos/agent` inside this package — it creates an ESM cycle that breaks server boot. See comments in `src/config/config.ts`.
+See [CLAUDE.md](CLAUDE.md) for ownership and contribution details.

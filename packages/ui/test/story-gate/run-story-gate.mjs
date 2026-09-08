@@ -757,6 +757,8 @@ async function main() {
       deviceScaleFactor: 1,
       reducedMotion: "reduce",
       colorScheme: "dark",
+      // Keep local Date arithmetic aligned with the shim's UTC formatting.
+      timezoneId: "UTC",
     });
     while (cursor < stories.length) {
       const story = stories[cursor++];

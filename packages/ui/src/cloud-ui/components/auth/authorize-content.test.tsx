@@ -5,7 +5,7 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 /**
  * Component tests for AuthorizeContent, the app-authorize consent screen. Drives
  * the signed-in and signed-out branches and the OAuth-start / cancel-redirect
- * paths against a mocked `@stwd/react` auth hook (deterministic; no live Steward
+ * paths against a mocked `@elizaos/ui` auth hook (deterministic; no live Steward
  * backend), asserting on rendered controls and redirect behaviour in jsdom.
  */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -50,14 +50,14 @@ const searchParamsRef = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@stwd/react", () => ({
+vi.mock("../../../login/index", () => ({
   DiscordIcon: ({ size }: { size?: number }) => (
     <svg aria-hidden="true" data-size={size} data-testid="discord-icon" />
   ),
   GoogleIcon: ({ size }: { size?: number }) => (
     <svg aria-hidden="true" data-size={size} data-testid="google-icon" />
   ),
-  StewardLogin: ({
+  LoginForm: ({
     showDiscord,
     showGoogle,
     title,
@@ -99,6 +99,7 @@ vi.mock("../../runtime/image", () => ({
 }));
 
 import { AuthorizeContent } from "./authorize-content";
+import { APP_AUTH_RETURN_TO_KEY } from "./authorize-return";
 
 function mockAppFetch() {
   vi.stubGlobal(
@@ -176,6 +177,9 @@ describe("AuthorizeContent", () => {
     });
     expect(authorizeButton.className).toContain("hover:bg-accent-hover");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(window.localStorage.getItem(APP_AUTH_RETURN_TO_KEY)).toBe(
+      "http://localhost/",
+    );
   });
 
   it("retires explicit-sync proof before raw SDK sign-out when the token is unreadable", async () => {
@@ -247,6 +251,7 @@ describe("AuthorizeContent", () => {
     expect(
       screen.queryByRole("button", { name: "Authorize Demo App" }),
     ).toBeNull();
+    expect(window.localStorage.getItem(APP_AUTH_RETURN_TO_KEY)).toBeNull();
   });
 
   it("hands off to native-app custom scheme redirect URIs", async () => {

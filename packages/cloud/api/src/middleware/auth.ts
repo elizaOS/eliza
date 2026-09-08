@@ -28,6 +28,8 @@ import { parseRemoteHostCredential } from "../../v1/remote/host-auth";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
+  // This product boundary validates its registered BFF secret plus one-time code or revocable grant.
+  "/api/v1/outreachr",
   "/api/health",
   "/api/i18n/locale",
   "/api/og",

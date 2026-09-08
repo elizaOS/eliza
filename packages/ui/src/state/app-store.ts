@@ -24,6 +24,7 @@
  */
 
 import { useCallback, useRef, useSyncExternalStore } from "react";
+import type { ActionNoticeFn } from "./action-notice";
 import type { AppContextValue } from "./internal";
 
 type Listener = () => void;
@@ -45,6 +46,11 @@ if (!appStoreGlobal.__ELIZAOS_UI_APP_STORE__) {
 }
 
 const store = appStoreGlobal.__ELIZAOS_UI_APP_STORE__;
+
+/** Route non-React feedback producers to the active shell when it owns this window. */
+export function getActionNoticeSink(): ActionNoticeFn | null {
+  return store.value?.setActionNotice ?? null;
+}
 
 /**
  * Keep the snapshot fresh during the provider's render (top-down, before any

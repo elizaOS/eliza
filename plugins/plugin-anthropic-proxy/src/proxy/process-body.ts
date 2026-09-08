@@ -1,6 +1,12 @@
 /**
  * Forward request body pipeline. Mirrors processBody() in proxy.js v2.2.3
- * layer-by-layer, in the same order, with the same string operations.
+ * layer-by-layer, in the same order, with the same string operations, except
+ * that `stripThinkingParameters` removes only the root object's own `thinking`
+ * property (depth 1), brace-matches the parameter value, and skips
+ * insignificant whitespace around the separator comma so removal never emits
+ * malformed JSON regardless of key position or pretty-printing and never
+ * corrupts a nested `thinking` field carried by tool inputs or tool schemas.
+ * That is a deliberate correctness divergence, not drift to reconcile away.
  *
  * Layers (in processing order):
  *   2. String trigger sanitization       (sanitize.ts)
@@ -57,28 +63,85 @@ function stripThinkingParameters(value: string): {
   value: string;
   count: number;
 } {
-  const marker = '"thinking":';
   const out: string[] = [];
-  let cursor = 0;
+  let cursor = 0; // start of the not-yet-emitted region
   let count = 0;
-  while (cursor < value.length) {
-    const keyStart = value.indexOf(marker, cursor);
-    if (keyStart < 0) break;
-    let objectStart = keyStart + marker.length;
-    while (objectStart < value.length && value[objectStart]?.trim() === "") {
-      objectStart += 1;
-    }
-    if (value[objectStart] !== "{") {
-      out.push(value.slice(cursor, keyStart + 1));
-      cursor = keyStart + 1;
+  // Structural nesting depth over `{`/`[`. The request body's root object is
+  // depth 1, so Anthropic's own top-level `thinking` request parameter is the
+  // only `"thinking"` key encountered at depth === 1. Keys nested inside
+  // messages, tool inputs, or tool schemas sit at depth >= 2 and MUST survive
+  // unchanged — stripping them silently corrupts replayed tool arguments that
+  // legitimately carry a `thinking` field. See PR #29167 review.
+  let depth = 0;
+  let i = 0;
+  while (i < value.length) {
+    const c = value[i];
+    if (c === '"') {
+      // Consume the whole string token so `{`/`}`/`,` inside it never move the
+      // depth counter or masquerade as a separator.
+      const stringStart = i;
+      i += 1;
+      while (i < value.length) {
+        const cc = value[i];
+        if (cc === "\\") {
+          i += 2;
+          continue;
+        }
+        if (cc === '"') {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      // A `"thinking"` string is the removable request parameter only when it
+      // is a key of the root object (depth === 1) whose value is an object.
+      if (depth === 1 && value.slice(stringStart, i) === '"thinking"') {
+        let j = i;
+        while (j < value.length && value[j]?.trim() === "") j += 1;
+        if (value[j] === ":") {
+          j += 1;
+          while (j < value.length && value[j]?.trim() === "") j += 1;
+          if (value[j] === "{") {
+            // Brace-match the value (tracking string/escape state) so a nested
+            // object or a `}` inside a string does not end the removal early
+            // and leave orphaned syntax on the wire. `findMatchingObjectEnd`
+            // returns the index just past the matching `}`.
+            const objectEnd = findMatchingObjectEnd(value, j);
+            if (objectEnd >= 0) {
+              // Consume the leading comma when present; otherwise (first key of
+              // the object) consume the trailing comma so removal never leaves
+              // a dangling separator such as `{,"system":...}` that
+              // api.anthropic.com rejects. Both scans skip insignificant
+              // whitespace so pretty-printed bodies (where the char adjacent to
+              // the key is a space or newline, not the comma) are handled the
+              // same as minified ones.
+              let leading = stringStart - 1;
+              while (leading > cursor && value[leading]?.trim() === "") leading -= 1;
+              const hasLeadingComma = leading >= cursor && value[leading] === ",";
+              const removalStart = hasLeadingComma ? leading : stringStart;
+              let removalEnd = objectEnd;
+              if (!hasLeadingComma) {
+                let trailing = removalEnd;
+                while (trailing < value.length && value[trailing]?.trim() === "") {
+                  trailing += 1;
+                }
+                if (value[trailing] === ",") removalEnd = trailing + 1;
+              }
+              out.push(value.slice(cursor, removalStart));
+              cursor = removalEnd;
+              count += 1;
+              // Skip the removed span; its braces are balanced so depth is
+              // unchanged.
+              i = removalEnd;
+            }
+          }
+        }
+      }
       continue;
     }
-    const objectEnd = value.indexOf("}", objectStart + 1);
-    if (objectEnd < 0) break;
-    const removalStart = keyStart > cursor && value[keyStart - 1] === "," ? keyStart - 1 : keyStart;
-    out.push(value.slice(cursor, removalStart));
-    cursor = objectEnd + 1;
-    count += 1;
+    if (c === "{" || c === "[") depth += 1;
+    else if (c === "}" || c === "]") depth -= 1;
+    i += 1;
   }
   out.push(value.slice(cursor));
   return { value: out.join(""), count };

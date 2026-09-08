@@ -25,7 +25,9 @@ interface CloudAuthIdentityService {
 
 interface CloudAuthCreditsService {
   isAuthenticated: () => boolean;
-  getClient: () => { get: <T>(path: string) => Promise<T> };
+  getClient: () => {
+    requestData: <T>(method: "GET", path: string) => Promise<T>;
+  };
 }
 
 export interface CloudConfigLike {
@@ -214,8 +216,10 @@ export async function handleCloudStatusRoutes(
     }
 
     const client = cloudAuth.getClient();
-    const creditResponse =
-      await client.get<Record<string, unknown>>("/credits/balance");
+    const creditResponse = await client.requestData<Record<string, unknown>>(
+      "GET",
+      "/credits/balance",
+    );
     const balance =
       coerceCloudBalance(creditResponse?.balance) ??
       coerceCloudBalance(

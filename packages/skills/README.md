@@ -1,6 +1,6 @@
 # @elizaos/skills
 
-Bundled skills and skill loading utilities for elizaOS agents.
+Bundled skills and skill loading utilities for Eliza agents.
 
 ## Overview
 
@@ -33,7 +33,7 @@ const skillsPath = getSkillsDir();
 ```typescript
 import { loadSkills, loadSkillsFromDir } from "@elizaos/skills";
 
-// Load from all default locations (bundled + managed + project)
+// Load bundled, managed, curated active, and project skills.
 const { skills, diagnostics } = loadSkills();
 
 // Load from a specific directory
@@ -49,7 +49,6 @@ const result = loadSkillsFromDir({
 import { formatSkillsForPrompt } from "@elizaos/skills";
 
 const prompt = formatSkillsForPrompt(skills);
-// Returns a compact structured skills section for system prompt
 ```
 
 ### Build Command Specs
@@ -73,13 +72,25 @@ model attribution.
 
 ## Skill Discovery
 
-Skills are loaded from multiple locations in precedence order (later overrides earlier):
+The public `loadSkills()` utility merges these locations in order (later overrides earlier):
 
 1. **Bundled skills** - Included in this package (`skills/`)
 2. **Managed skills** - User-installed skills (`<stateDir>/skills/`)
 3. **Curated/active** - Human- or agent-promoted skills (`<stateDir>/skills/curated/active/`)
 4. **Project skills** - Project-local skills (`<cwd>/.elizaos/skills/`)
 5. **Explicit paths** - Via `skillPaths` option
+
+`agentDir` selects the state root for managed and curated stores; otherwise it
+is resolved at call time. `managedSkillsDir` changes only the managed scan.
+Automatic managed scanning excludes curated stores and their symlink aliases;
+curated active is loaded separately. Explicit `skillPaths` may select drafts.
+Set `includeDefaults: false` to load only explicit paths.
+
+`ELIZAOS_BUNDLED_SKILLS_DIR` selects a readable bundled-skill directory. A
+nonempty invalid path throws `BUNDLED_SKILLS_OVERRIDE_INVALID`; an empty directory
+is valid. Blank or unset values use normal discovery. Call
+`clearSkillsDirCache()` after changing a previously resolved setting.
+
 
 ## Skill Format
 

@@ -229,6 +229,13 @@ const vitestInlineDeps = [
 
 const vitestResolveAlias: ModuleAlias[] = [
   {
+    find: /^@elizaos\/login$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages/login/src/sdk/index.ts",
+    ),
+  },
+  {
     // Resolve @elizaos/logger to source (it is re-exported by source-aliased
     // @elizaos/core); avoids depending on logger's dist being built per test job.
     find: /^@elizaos\/logger$/,
@@ -423,6 +430,13 @@ const vitestResolveAlias: ModuleAlias[] = [
           ),
         },
         {
+          find: /^@elizaos\/core\/errors$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts") ? "errors.ts" : "errors.js",
+          ),
+        },
+        {
           // Same story for the atomic-json subpath (agent's
           // app-package-modules imports it directly).
           find: /^@elizaos\/core\/atomic-json$/,
@@ -443,6 +457,15 @@ const vitestResolveAlias: ModuleAlias[] = [
             elizaCoreEntry.endsWith(".ts")
               ? "client-public.ts"
               : "client-public.js",
+          ),
+        },
+        {
+          // Keep the UI client's error class in the same core module tree;
+          // the broad alias would resolve this as index.node.ts/errors.
+          find: /^@elizaos\/core\/errors$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts") ? "errors.ts" : "errors.js",
           ),
         },
         {

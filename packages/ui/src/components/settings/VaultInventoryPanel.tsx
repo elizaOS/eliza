@@ -512,11 +512,11 @@ const EntryRow = memo(function EntryRow({
     const hideWhenBackgrounded = () => {
       if (document.visibilityState === "hidden") hideRevealedValue();
     };
-    const id = setTimeout(hideRevealedValue, 10_000);
+    const id = window.setTimeout(hideRevealedValue, 10_000);
     window.addEventListener("blur", hideRevealedValue);
     document.addEventListener("visibilitychange", hideWhenBackgrounded);
     return () => {
-      clearTimeout(id);
+      window.clearTimeout(id);
       window.removeEventListener("blur", hideRevealedValue);
       document.removeEventListener("visibilitychange", hideWhenBackgrounded);
     };

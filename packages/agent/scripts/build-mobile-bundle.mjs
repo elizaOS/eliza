@@ -488,7 +488,6 @@ if (TARGET === "ios-jsc") {
 // let them bundle. The mobile plugin filter still strips them out of the
 // runtime load set, so they don't try to register at boot.
 const optionalPluginStubs = {
-  "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
   // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
@@ -1945,7 +1944,11 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
 // Copy contrib extension tarballs. They live one dir above the bundle on
 // device (Phase A handles placement); we surface them in dist-mobile/ so the
 // asset pipeline can pick them up.
-for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
+for (const asset of [
+  "vector.tar.gz",
+  "fuzzystrmatch.tar.gz",
+  "pg_trgm.tar.gz",
+]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
     console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);

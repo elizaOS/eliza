@@ -19,7 +19,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { type FormEvent, useCallback, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import { ApiKeyEmptyState } from "../../cloud-ui/components/api-key-empty-state";
 import {
   type ApiKeyDisplay,

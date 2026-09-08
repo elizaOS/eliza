@@ -8,4 +8,4 @@
 import "./styles/styles.css";
 import "./styles/brand-gold.css";
 import "./cloud-ui/index.css";
-import "@stwd/react/styles.css";
+import "@elizaos/ui/styles/login.css";

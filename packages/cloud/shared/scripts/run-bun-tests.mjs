@@ -27,6 +27,7 @@ import {
   buildTestBatchArgs,
   buildTestBatches,
   classifyBunTestExit,
+  DEFAULT_PROCESS_ISOLATED_SUITES,
   DEFAULT_QUARANTINED_SUITES,
   extractCrashExcerpt,
   hasExplicitTestFileFilter,
@@ -296,7 +297,10 @@ function writeCrashCapture({ attempt, maxAttempts, args, result, reason }) {
 async function runShardedPass(testFiles, quarantinedSuites) {
   const batchSizes = resolveTestBatchSizes(process.env);
   const pgliteFiles = testFiles.filter(isPgliteTestFile);
-  const batches = buildTestBatches(testFiles, pgliteFiles, batchSizes);
+  const processIsolatedFiles = testFiles.filter((file) =>
+    DEFAULT_PROCESS_ISOLATED_SUITES.includes(file),
+  );
+  const batches = buildTestBatches(testFiles, pgliteFiles, batchSizes, processIsolatedFiles);
   console.log(
     `[run-bun-tests] sequential process sharding: ${testFiles.length} file(s), ${batches.length} child process(es), ` +
       `ordinary batch=${batchSizes.ordinary}, PGlite batch=${batchSizes.pglite} (${pgliteFiles.length} PGlite-heavy file(s))`,

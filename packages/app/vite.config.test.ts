@@ -6,6 +6,7 @@ import os from "node:os";
 import path, { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
+import { configureDevApiProxy } from "./vite/dev-http-proxy";
 import appViteConfig, {
   ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
   androidCloudCuratedAssetsPlugin,
@@ -266,6 +267,7 @@ describe("app shell local connection policy", () => {
     }
 
     expect(apiProxy.changeOrigin).toBe(false);
+    expect(apiProxy.configure).toBe(configureDevApiProxy);
   });
 
   test("permits paired Android transports whose private-LAN host is selected at runtime", () => {

@@ -16,14 +16,15 @@
  * vs. yolo execution policy for shell tools); do not conflate.
  */
 
-import { statSync } from "node:fs";
 import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
 import * as zod from "zod";
-import { loadEffectiveElizaConfig } from "../../config/config.ts";
-import { resolveConfigPath } from "../../config/paths.ts";
+import {
+  type EffectiveElizaConfigSnapshot,
+  loadEffectiveElizaConfigSnapshot,
+} from "../../config/config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -132,48 +133,45 @@ export function resolveRuntimeMode(
 }
 
 /**
- * Disk-backed resolver with an mtime-keyed cache. A persisted mode change
- * still applies to the next request without a restart (the settings write
- * bumps the config file's mtime, invalidating the cache), but the pre-dispatch
- * route guard no longer pays a full four-file config load per request — under
- * a client request storm that read amplification alone pinned the API core
- * (observed live: ~40 config loads/second, 130% CPU).
+ * Cache the loader-owned effective config revision, not just the canonical
+ * file. Identity changes apply immediately; file changes are checked within
+ * one second. Unchanged requests never reconstruct the config/include graph.
  */
 let cachedSnapshot: RuntimeModeSnapshot | null = null;
-let cachedConfigMtimeMs = -1;
+let cachedConfig: EffectiveElizaConfigSnapshot | null = null;
 let cachedStatAtMs = 0;
 const SNAPSHOT_STAT_INTERVAL_MS = 1_000;
 
-function currentConfigMtimeMs(): number {
-  try {
-    return statSync(resolveConfigPath()).mtimeMs;
-  } catch {
-    // Missing config file: defaults apply; represent as a stable sentinel so
-    // the cache still works and creation of the file invalidates it.
-    return 0;
-  }
-}
-
 function resolveSnapshotCached(): RuntimeModeSnapshot {
   const now = Date.now();
-  if (cachedSnapshot && now - cachedStatAtMs < SNAPSHOT_STAT_INTERVAL_MS) {
+  const checkFiles =
+    now < cachedStatAtMs || now - cachedStatAtMs >= SNAPSHOT_STAT_INTERVAL_MS;
+  try {
+    if (cachedSnapshot && cachedConfig?.isCurrent({ checkFiles })) {
+      if (checkFiles) cachedStatAtMs = now;
+      return cachedSnapshot;
+    }
+    // Invalidate before loading: a missing/malformed source must not cause a
+    // later request inside the stat interval to reuse the previous authority.
+    cachedConfig = null;
+    cachedSnapshot = null;
+    const config = loadEffectiveElizaConfigSnapshot();
+    cachedSnapshot = resolveRuntimeMode(parseRuntimeModeConfig(config.config));
+    cachedConfig = config;
+    cachedStatAtMs = now;
     return cachedSnapshot;
+  } catch (error) {
+    // error-policy:J2 preserve loader errors without retaining stale authority.
+    cachedConfig = null;
+    cachedSnapshot = null;
+    throw error;
   }
-  const mtimeMs = currentConfigMtimeMs();
-  cachedStatAtMs = now;
-  if (!cachedSnapshot || mtimeMs !== cachedConfigMtimeMs) {
-    cachedConfigMtimeMs = mtimeMs;
-    cachedSnapshot = resolveRuntimeMode(
-      parseRuntimeModeConfig(loadEffectiveElizaConfig()),
-    );
-  }
-  return cachedSnapshot;
 }
 
 /** Test-only: drop the snapshot cache so config edits apply immediately. */
 export function __resetRuntimeModeSnapshotCacheForTests(): void {
   cachedSnapshot = null;
-  cachedConfigMtimeMs = -1;
+  cachedConfig = null;
   cachedStatAtMs = 0;
 }
 

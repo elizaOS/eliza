@@ -195,9 +195,31 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.history.replaceState({}, "", "/");
 });
 
 describe("TrajectoryLoggerView — GUI wrapper", () => {
+  it("loads a pinned URL without polling other turns and allows reloading it", async () => {
+    installFetch();
+    window.history.replaceState({}, "", `/?trajectory=${LAST_ID}`);
+    render(<TrajectoryLoggerView />);
+    await screen.findByRole("region", { name: "Recorded trajectory" });
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+      `/api/trajectories/${LAST_ID}`,
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Load turn" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Follow live" }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([url]) =>
+            String(url).startsWith("/api/trajectories?"),
+          ),
+      ).toBe(true),
+    );
+  });
   it("renders the SpatialSurface-wrapped spatial view", async () => {
     installFetch();
     // The view bundle host (DynamicViewLoader) mounts the registered wrapper
