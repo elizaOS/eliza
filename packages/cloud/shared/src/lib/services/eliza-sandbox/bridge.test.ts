@@ -138,6 +138,10 @@ describe("ElizaSandboxService shared runtime bridge", () => {
           {
             CEREBRAS_API_KEY: "",
             OPENAI_API_KEY: "",
+            OPENROUTER_API_KEY: "",
+            ANTHROPIC_API_KEY: "",
+            BITROUTER_API_KEY: "",
+            GROQ_API_KEY: "",
           },
           () =>
             new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
@@ -188,6 +192,10 @@ describe("ElizaSandboxService shared runtime bridge", () => {
           {
             CEREBRAS_API_KEY: "",
             OPENAI_API_KEY: "",
+            OPENROUTER_API_KEY: "",
+            ANTHROPIC_API_KEY: "",
+            BITROUTER_API_KEY: "",
+            GROQ_API_KEY: "",
           },
           () =>
             new ElizaSandboxService().bridgeStream(sandbox.id, sandbox.organization_id, {

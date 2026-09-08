@@ -234,10 +234,7 @@ const sharedMessageSchema = z.union([
       .trim()
       .min(1)
       .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
-    providerMessageIds: z
-      .array(z.string().trim().min(1).max(160))
-      .min(1)
-      .max(8),
+    providerMessageIds: z.array(z.string().trim().min(1).max(160)).min(1),
     leaseToken: z.string().uuid(),
     authority: groupDeliveryAuthoritySchema,
   }),
