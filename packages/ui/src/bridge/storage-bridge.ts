@@ -14,12 +14,14 @@ import { Capacitor } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core/errors";
 import { logger } from "@elizaos/logger";
 import {
+  getStewardTokenDeploymentScope,
   registerStewardTokenPersistence,
   registerStewardTokenReader,
   registerStewardTokenRemoval,
   STEWARD_PENDING_WRITE_KEY,
   STEWARD_TOKEN_KEY,
   type StewardTokenScopePublication,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
@@ -171,7 +173,45 @@ function clearPendingStewardWrite(expected: string | null): void {
 function readProtectedToken(): string | null {
   const pending = pendingStewardWrite();
   if (pending !== null && pending !== activeStewardWrite) return null;
-  return protectedStorageCache.get(STEWARD_TOKEN_KEY) ?? null;
+  const value = protectedStorageCache.get(STEWARD_TOKEN_KEY) ?? null;
+  return !isNativePlatform() && isElectrobunRuntime()
+    ? readDesktopStewardToken(value)
+    : value;
+}
+
+/** Native storage spans renderer origins, so token and environment must be one protected payload. */
+function desktopStewardPayload(token: string, scope: string | null): string {
+  if (!scope || scope.startsWith("invalid:"))
+    throw new ElizaError("Desktop session environment is unavailable", {
+      code: "NATIVE_STORE_RECOVERY_REQUIRED",
+    });
+  return JSON.stringify({ schema: "eliza.steward-token/v1", token, scope });
+}
+
+/** Legacy unscoped tokens are preserved but cannot inherit the current renderer's environment. */
+function readDesktopStewardToken(value: string | null): string | null {
+  if (value === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    // error-policy:J3 unscoped legacy or malformed payload requires a new verified login.
+    return null;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("schema" in parsed) ||
+    parsed.schema !== "eliza.steward-token/v1" ||
+    !("token" in parsed) ||
+    typeof parsed.token !== "string" ||
+    !("scope" in parsed) ||
+    typeof parsed.scope !== "string" ||
+    parsed.scope.startsWith("invalid:") ||
+    parsed.scope !== getStewardTokenDeploymentScope()
+  )
+    return null;
+  return parsed.token;
 }
 
 function markProtectedStorageMutation(key: string): number {
@@ -577,6 +617,22 @@ function setupStorageProxy(): void {
   const { prototypeSetItem, prototypeGetItem, prototypeRemoveItem } =
     nativeStorage;
   const secureSetItem = (key: string, value: string): void => {
+    if (
+      key === STEWARD_TOKEN_KEY &&
+      !isNativePlatform() &&
+      isElectrobunRuntime()
+    ) {
+      originalRemoveItem(key);
+      // error-policy:J4 synchronous legacy callers cannot observe durable failure;
+      // retain the verified mirror and report it instead of optimistic login.
+      void writeStoredStewardToken(value).catch((err) => {
+        logger.error(
+          { err, key },
+          "[StorageBridge] canonical desktop token write failed",
+        );
+      });
+      return;
+    }
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
       // Web Storage is synchronous, so this legacy-compatible surface remains
       // explicitly optimistic. Security-critical producers use the awaited
@@ -766,7 +822,11 @@ export async function getStorageValue(key: string): Promise<string | null> {
         if (value === null) protectedStorageCache.delete(key);
         else protectedStorageCache.set(key, value);
       }
-      return value;
+      return key === STEWARD_TOKEN_KEY &&
+        !isNativePlatform() &&
+        isElectrobunRuntime()
+        ? readDesktopStewardToken(value)
+        : value;
     });
   }
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
@@ -931,6 +991,18 @@ export async function setStorageValue(
   options: StorageMutationOptions = {},
 ): Promise<void> {
   options.revalidate?.();
+  if (
+    key === STEWARD_TOKEN_KEY &&
+    !isNativePlatform() &&
+    isElectrobunRuntime()
+  ) {
+    await writeStoredStewardToken(value, {
+      beforePublish: options.revalidate,
+      signal: options.signal,
+      nativeAuthority: options.nativeAuthority,
+    });
+    return;
+  }
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
     if (options.revalidate) {
       await mutateProtectedStorageValue(
@@ -1010,11 +1082,94 @@ export function isStorageBridgeInitialized(): boolean {
   return initialized;
 }
 
-/** Keep native rollback in the same queue as the write it compensates. */
+/** Publish a desktop token only through the operation's native receipt and captured authority. */
+async function persistDesktopStewardToken(
+  token: string,
+  revalidate: () => void,
+  scope: StewardTokenScopePublication,
+  signal: AbortSignal,
+): Promise<void> {
+  const payload = desktopStewardPayload(token, scope.deploymentScope);
+  const key = STEWARD_TOKEN_KEY;
+  const version = markProtectedStorageMutation(key);
+  await serializeProtectedStorageMutation(key, async () => {
+    const validate = () => {
+      revalidate();
+      if (protectedStorageMutationVersion.get(key) !== version)
+        throw new ElizaError("Protected Steward write was superseded", {
+          code: "NATIVE_STORE_SUPERSEDED",
+        });
+    };
+    const authority =
+      scope.nativeAuthority ??
+      (await captureStorageMutationAuthority(validate));
+    if (!authority)
+      throw new ElizaError("Desktop token authority is unavailable", {
+        code: "NATIVE_STORE_RECOVERY_REQUIRED",
+      });
+    validate();
+    const writeId = crypto.randomUUID();
+    runAsPrivilegedShell(() =>
+      window.localStorage.setItem(STEWARD_PENDING_WRITE_KEY, writeId),
+    );
+    if (pendingStewardWrite() !== writeId)
+      throw new ElizaError("Steward write quarantine did not round-trip", {
+        code: "NATIVE_STORE_QUARANTINE_FAILED",
+      });
+    const withOwnMirror = <T>(operation: () => T): T => {
+      activeStewardWrite = writeId;
+      try {
+        return operation();
+      } finally {
+        activeStewardWrite = null;
+      }
+    };
+    let scopeAttempted = false;
+    try {
+      const published = await mutateDesktopSecureSlot(
+        "session.steward_token",
+        payload,
+        () => withOwnMirror(validate),
+        authority.expected("session.steward_token"),
+        signal,
+      );
+      withOwnMirror(() => {
+        validate();
+        scopeAttempted = true;
+        scope.commit(() => {
+          authority.acceptOwned("session.steward_token", published);
+          clearPendingStewardWrite(writeId);
+          protectedStorageCache.set(key, payload);
+        });
+      });
+    } catch (error) {
+      // error-policy:J2 only the helper may reconcile its owned native receipt.
+      // A sealed token cannot be blindly restored if renderer scope publication
+      // fails; keep it quarantined for explicit recovery instead.
+      if (protectedStorageMutationVersion.get(key) === version)
+        protectedStorageCache.delete(key);
+      if (pendingStewardWrite() === null) {
+        runAsPrivilegedShell(() =>
+          window.localStorage.setItem(STEWARD_PENDING_WRITE_KEY, writeId),
+        );
+        if (pendingStewardWrite() !== writeId)
+          throw new ElizaError("Steward recovery quarantine is unavailable", {
+            code: "NATIVE_STORE_QUARANTINE_FAILED",
+            cause: error,
+          });
+      }
+      if (scopeAttempted) scope.rollback();
+      throw error;
+    }
+  });
+}
+
+/** Delegate desktop ownership to native receipts; mobile retains its serialized compensation boundary. */
 async function persistStewardToken(
   token: string,
   revalidate: () => void,
   scope: StewardTokenScopePublication,
+  signal: AbortSignal,
 ): Promise<void> {
   if (!isProtectedStorageHost()) {
     revalidate();
@@ -1037,6 +1192,10 @@ async function persistStewardToken(
       scope.rollback();
       throw error;
     }
+    return;
+  }
+  if (!isNativePlatform() && isElectrobunRuntime()) {
+    await persistDesktopStewardToken(token, revalidate, scope, signal);
     return;
   }
   const key = STEWARD_TOKEN_KEY;

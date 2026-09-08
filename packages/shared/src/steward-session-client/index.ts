@@ -13,6 +13,7 @@
  */
 
 import { classifyElizaHostname } from "../elizacloud/domain-contract.js";
+import type { RendererSecureStorageAuthority } from "../types/index.js";
 import { STEWARD_ACTIVE_SCOPE_KEY, STEWARD_TOKEN_KEY } from "./session-keys.js";
 import {
   getStewardTabSessionAuthorityCoordinator,
@@ -59,10 +60,15 @@ type StewardTokenPersistence = (
   token: string,
   revalidate: () => void,
   scope: StewardTokenScopePublication,
+  signal: AbortSignal,
 ) => Promise<void>;
 
 /** Metadata is part of the host's guarded write/rollback transaction. */
 export interface StewardTokenScopePublication {
+  /** Captured environment identity for hosts whose credential store spans browser origins. */
+  readonly deploymentScope: string | null;
+  /** Preserve a workflow's earlier native capture instead of acquiring fresh authority at persistence. */
+  readonly nativeAuthority?: RendererSecureStorageAuthority;
   /** Publish the host mirror synchronously after scope persistence and final authority validation. */
   commit(publishToken: () => void): void;
   rollback(): void;
@@ -82,6 +88,7 @@ export interface StewardTokenMutationOptions {
 }
 
 export interface StewardTokenWriteOptions extends StewardTokenMutationOptions {
+  nativeAuthority?: RendererSecureStorageAuthority;
   /** Synchronous caller-owned target check at the final guarded publication. */
   beforePublish?: () => void;
 }
@@ -416,6 +423,14 @@ function configuredLoopbackStewardScope(): string | null {
   return window.localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY);
 }
 
+/** Environment identity for durable native token records; unknown origins remain unavailable. */
+export function getStewardTokenDeploymentScope(): string | null {
+  if (typeof window === "undefined") return null;
+  return isLoopbackRenderedApp()
+    ? configuredLoopbackStewardScope()
+    : stewardScopeForBase(window.location.href);
+}
+
 /**
  * Reads the canonical access token. Returns `null` for SSR or a missing token;
  * storage access failures propagate so callers cannot mistake them for logout.
@@ -437,11 +452,14 @@ async function persistStoredStewardToken(
   ctx: StewardSessionAuthorityWorkContext,
   onPublished: () => void,
   beforePublish?: () => void,
+  nativeAuthority?: RendererSecureStorageAuthority,
 ): Promise<void> {
   try {
     const previousScope = window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY);
     let published = false;
     const scope: StewardTokenScopePublication = {
+      deploymentScope: requiredScope ?? getStewardTokenDeploymentScope(),
+      nativeAuthority,
       commit: (publishToken) => {
         ctx.completeTokenWrite(token, () => {
           beforePublish?.();
@@ -472,7 +490,7 @@ async function persistStoredStewardToken(
       },
     };
     if (stewardTokenPersistence) {
-      await stewardTokenPersistence(token, ctx.revalidate, scope);
+      await stewardTokenPersistence(token, ctx.revalidate, scope, ctx.signal);
       if (!published)
         throw new Error("Steward persistence did not publish token scope");
     } else {
@@ -528,6 +546,7 @@ export async function writeStoredStewardToken(
           if (!wasCurrent) dispatchStewardSessionChange("present");
         },
         options.beforePublish,
+        options.nativeAuthority,
       );
     },
     "token-write",
@@ -560,6 +579,7 @@ export async function replaceStoredStewardTokenIfCurrent(
             if (current !== token) dispatchStewardSessionChange("present");
           },
           options.beforePublish,
+          options.nativeAuthority,
         );
         return true;
       },

@@ -26,6 +26,16 @@ export interface RendererSecureSnapshot {
   authority: Record<RendererSecureSlot, string>;
 }
 
+/** A workflow's captured native baseline, advanced only by its acknowledged writes. */
+export interface RendererSecureStorageAuthority {
+  expected(kind: RendererSecureSlot): RendererSecureSnapshot;
+  acceptOwned(
+    kind: RendererSecureSlot,
+    published: RendererSecureSnapshot,
+  ): void;
+  assertCurrent(): Promise<void>;
+}
+
 export interface RendererSecureReceipt {
   operationId: string;
   revision: string;
