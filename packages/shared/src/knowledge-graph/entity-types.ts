@@ -6,8 +6,8 @@
  * is the special `self` Entity.
  *
  * Canonical home: `@elizaos/shared`. The DB-backed `EntityStore` lives in
- * `@elizaos/plugin-personal-assistant`; the `LifeOpsEntity` wire contract in
- * `@elizaos/shared/contracts/personal-assistant` re-exports these shapes.
+ * `@elizaos/agent`'s `KnowledgeGraphService`; personal-assistant compatibility
+ * shims and the `LifeOpsEntity` wire contract re-export these shapes.
  */
 
 /**

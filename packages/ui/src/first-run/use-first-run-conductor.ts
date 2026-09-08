@@ -82,7 +82,7 @@ import {
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
-import { APP_RESUME_EVENT, dispatchChatPrefill } from "../events";
+import { APP_RESUME_EVENT } from "../events";
 import {
   ACCENT_PRESETS,
   useAppSelector,
@@ -142,9 +142,9 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "./first-run-greeting";
 import {
+  handoffPendingFirstRunText,
   readPendingFirstRunText,
   setPendingFirstRunTextReleaseHandler,
-  takePendingFirstRunText,
   writePendingFirstRunText,
 } from "./first-run-pending-text";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
@@ -590,12 +590,11 @@ export function useFirstRunConductor(): void {
     // must not roll it back to an older durable prefix. On a cold mount the ref
     // was initialized from that same durable copy.
     const pending = pendingFirstRunTextRef.current;
-    const durable = takePendingFirstRunText();
+    const durable = readPendingFirstRunText();
     if (pending.length === 0 && durable.length > 0) pending.push(...durable);
     if (pending.length === 0) return;
     pendingFirstRunTextRef.current = [];
-    const text = pending.join("\n\n");
-    queueMicrotask(() => dispatchChatPrefill({ text, select: true }));
+    handoffPendingFirstRunText(pending);
   }, []);
   // Re-offered choice turns have the same collision risk: a user can reject
   // two unavailable options before the wall clock advances.

@@ -20,8 +20,6 @@
  * projectId to the host so the task list stays unfiltered exactly like today.
  */
 
-// Direct subpath (mirrors the sibling panels): the browser barrel doesn't
-// reliably re-export the newer dropdown-menu primitives.
 import {
   Button,
   DropdownMenu,

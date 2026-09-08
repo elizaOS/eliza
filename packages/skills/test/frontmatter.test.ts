@@ -28,6 +28,52 @@ description: A test skill
     assert.strictEqual(result.body, "# Body content");
   });
 
+  for (const [label, yaml, expected] of [
+    [
+      "literal block",
+      `description: |\n  ${"[".repeat(40)}`,
+      { description: `${"[".repeat(40)}\n` },
+    ],
+    [
+      "inline comment",
+      `name: example # ${"{".repeat(40)}`,
+      { name: "example" },
+    ],
+    [
+      "plain scalar",
+      `description: Read ${"[".repeat(40)} literal markers`,
+      { description: `Read ${"[".repeat(40)} literal markers` },
+    ],
+    [
+      "indented scalar",
+      `description:\n${" ".repeat(80)}valid scalar`,
+      { description: "valid scalar" },
+    ],
+  ] as const) {
+    it(`preserves complete skill metadata and body containing ${label}`, () => {
+      const body = `# Complete body 🟠\n${"full instruction\n".repeat(100)}Final instruction`;
+      const result = parseFrontmatter(`---\n${yaml}\n---\n${body}`);
+      assert.deepStrictEqual(result.frontmatter, expected);
+      assert.equal(result.body, body);
+    });
+  }
+
+  it("rejects malformed YAML before composing a deeply nested tail", () => {
+    const malformed = `---\nkey: ]\nvalue: ${"[".repeat(10_000)}leaf${"]".repeat(10_000)}\n---\nComplete body`;
+    assert.throws(
+      () => parseFrontmatter(malformed),
+      (error: unknown) => {
+        assert.ok(error instanceof ElizaError);
+        assert.equal(error.code, INVALID_SKILL_FRONTMATTER_YAML);
+        assert.deepStrictEqual(error.context, {
+          parser: "yaml",
+          reason: "invalid-yaml",
+        });
+        return true;
+      },
+    );
+  });
+
   it("returns empty frontmatter when none present", () => {
     const content = "# Just a body";
     const result = parseFrontmatter(content);
@@ -45,7 +91,8 @@ Body`;
   });
 
   it("handles opening delimiter with trailing whitespace", () => {
-    const content = "---   \nname: test-trailing\ndescription: Test\n--- \nBody";
+    const content =
+      "---   \nname: test-trailing\ndescription: Test\n--- \nBody";
     const result = parseFrontmatter<SkillFrontmatter>(content);
     assert.strictEqual(result.frontmatter.name, "test-trailing");
     assert.strictEqual(result.frontmatter.description, "Test");
@@ -75,11 +122,14 @@ Body`;
   it("rejects a typo'd ---- separator instead of swallowing frontmatter into the body", () => {
     const content =
       '---\ndescription: "A skill"\nname: my-skill\n----\nversion: 2\n---\nBody';
-    assert.throws(() => parseFrontmatter(content), (error: unknown) => {
-      assert.ok(error instanceof ElizaError);
-      assert.equal(error.code, INVALID_SKILL_FRONTMATTER_YAML);
-      return true;
-    });
+    assert.throws(
+      () => parseFrontmatter(content),
+      (error: unknown) => {
+        assert.ok(error instanceof ElizaError);
+        assert.equal(error.code, INVALID_SKILL_FRONTMATTER_YAML);
+        return true;
+      },
+    );
   });
 
   it("preserves a dashes rule inside the body after a valid closer", () => {

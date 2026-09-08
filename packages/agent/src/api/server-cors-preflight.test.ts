@@ -82,10 +82,14 @@ async function runPreflightHarness(port: number): Promise<
   }
 
   try {
-    const { stdout } = await execFileAsync(bun, [HARNESS_PATH, String(port)], {
-      timeout: 120_000,
-      env: { ...process.env },
-    });
+    const { stdout } = await execFileAsync(
+      bun,
+      ["--conditions=eliza-source", HARNESS_PATH, String(port)],
+      {
+        timeout: 120_000,
+        env: { ...process.env },
+      },
+    );
     const lastLine = stdout.trim().split("\n").filter(Boolean).at(-1) ?? "{}";
     return JSON.parse(lastLine);
   } catch (err) {

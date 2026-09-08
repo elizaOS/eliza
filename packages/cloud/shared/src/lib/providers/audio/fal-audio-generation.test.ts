@@ -6,7 +6,9 @@
  */
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { generateFalAudio } from "./fal-audio-generation";
+import { generateFalAudioWithFetch } from "./fal-audio-generation";
+
+const fetchImpl = globalThis.fetch;
 
 interface MockState {
   submitBodies: Array<Record<string, unknown>>;
@@ -59,13 +61,16 @@ const apiKeys = {
 
 describe("generateFalAudio — music", () => {
   test("maps music input and returns the hosted audio", async () => {
-    const result = await generateFalAudio({
-      kind: "music",
-      model: "fal-ai/minimax-music/v2.6",
-      prompt: "upbeat synthwave",
-      durationSeconds: 60,
-      apiKeys,
-    });
+    const result = await generateFalAudioWithFetch(
+      {
+        kind: "music",
+        model: "fal-ai/minimax-music/v2.6",
+        prompt: "upbeat synthwave",
+        durationSeconds: 60,
+        apiKeys,
+      },
+      fetchImpl,
+    );
 
     expect(result.source).toBe("hosted");
     if (result.source !== "hosted") throw new Error("expected hosted");
@@ -85,13 +90,16 @@ describe("generateFalAudio — music", () => {
   });
 
   test("instrumental music does not force the lyrics optimizer", async () => {
-    await generateFalAudio({
-      kind: "music",
-      model: "fal-ai/minimax-music/v2.6",
-      prompt: "x",
-      instrumental: true,
-      apiKeys,
-    });
+    await generateFalAudioWithFetch(
+      {
+        kind: "music",
+        model: "fal-ai/minimax-music/v2.6",
+        prompt: "x",
+        instrumental: true,
+        apiKeys,
+      },
+      fetchImpl,
+    );
 
     expect(state.submitBodies[0]).toMatchObject({ is_instrumental: true });
     expect(state.submitBodies[0]).not.toHaveProperty("lyrics_optimizer");
@@ -100,14 +108,17 @@ describe("generateFalAudio — music", () => {
 
 describe("generateFalAudio — sfx", () => {
   test("stable-audio style input: prompt + seconds_total + seed only", async () => {
-    await generateFalAudio({
-      kind: "sfx",
-      model: "fal-ai/stable-audio-25/text-to-audio",
-      prompt: "rain on a tin roof",
-      durationSeconds: 12,
-      seed: 3,
-      apiKeys,
-    });
+    await generateFalAudioWithFetch(
+      {
+        kind: "sfx",
+        model: "fal-ai/stable-audio-25/text-to-audio",
+        prompt: "rain on a tin roof",
+        durationSeconds: 12,
+        seed: 3,
+        apiKeys,
+      },
+      fetchImpl,
+    );
 
     expect(state.submitBodies[0]).toEqual({
       prompt: "rain on a tin roof",
@@ -121,12 +132,15 @@ describe("generateFalAudio — sfx", () => {
       audio_file: { url: `${base}/media/alt.wav`, content_type: "audio/wav" },
     };
 
-    const result = await generateFalAudio({
-      kind: "sfx",
-      model: "fal-ai/stable-audio-25/text-to-audio",
-      prompt: "x",
-      apiKeys,
-    });
+    const result = await generateFalAudioWithFetch(
+      {
+        kind: "sfx",
+        model: "fal-ai/stable-audio-25/text-to-audio",
+        prompt: "x",
+        apiKeys,
+      },
+      fetchImpl,
+    );
     if (result.source !== "hosted") throw new Error("expected hosted");
     expect(result.url).toBe(`${base}/media/alt.wav`);
     expect(result.contentType).toBe("audio/wav");
@@ -138,12 +152,15 @@ describe("generateFalAudio — sfx", () => {
       seed: 123,
     };
 
-    const result = await generateFalAudio({
-      kind: "sfx",
-      model: "fal-ai/stable-audio-25/text-to-audio",
-      prompt: "x",
-      apiKeys,
-    });
+    const result = await generateFalAudioWithFetch(
+      {
+        kind: "sfx",
+        model: "fal-ai/stable-audio-25/text-to-audio",
+        prompt: "x",
+        apiKeys,
+      },
+      fetchImpl,
+    );
     if (result.source !== "hosted") throw new Error("expected hosted");
     expect(result.url).toBe(`${base}/media/stable-audio.wav`);
   });
@@ -152,12 +169,15 @@ describe("generateFalAudio — sfx", () => {
     state.responseBody = { detail: "nothing here" };
 
     await expect(
-      generateFalAudio({
-        kind: "sfx",
-        model: "fal-ai/stable-audio-25/text-to-audio",
-        prompt: "x",
-        apiKeys,
-      }),
+      generateFalAudioWithFetch(
+        {
+          kind: "sfx",
+          model: "fal-ai/stable-audio-25/text-to-audio",
+          prompt: "x",
+          apiKeys,
+        },
+        fetchImpl,
+      ),
     ).rejects.toThrow(/returned no audio URL/);
   });
 });

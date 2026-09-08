@@ -176,12 +176,9 @@ export async function generateStage1Decision(
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
-			// Use `roomId` as the conversation id for local-inference slot
-			// pinning. Cloud providers ignore it; local backends route
-			// every turn of the same room to the same KV slot, which is
-			// the dominant cache reuse signal for chat.
+			// Keep shared-room agents and pipeline stages on separate cache slots.
 			conversationId: args.message.roomId
-				? String(args.message.roomId)
+				? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
 				: undefined,
 		}),
 		buildModelInputBudget({

@@ -10,12 +10,9 @@
  * still hold the owner's finance rows in `app_lifeops`, so on first boot we
  * copy them across — once, idempotently, and WITHOUT ever touching the source.
  *
- * Guards (per table, independently):
- *   1. Skip if the source table does not exist (fresh install / already dropped).
- *   2. Skip if the target table is non-empty (migration already ran, or the
- *      plugin owns live data).
- *   3. Otherwise copy every source row that is not already present in the
- *      target (a doubly-safe NOT EXISTS guard on the primary key).
+ * Existing completion markers and populated owner tables remain authoritative.
+ * Only a fresh import into an empty target is copied and verified; the durable
+ * receipt prevents later owner deletions from replaying stale legacy rows.
  *
  * The source table is never dropped. A security sweep does alter Plaid rows in
  * both schemas after copying: retired plaintext access tokens are removed and
@@ -24,7 +21,12 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { executeSql, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
+import {
+  assertCarveOutProjectionComplete,
+  type CarveOutDatabase,
+  createDrizzleCarveOutDatabase,
+  runCarveOutMigration,
+} from "@elizaos/plugin-sql";
 
 export const FINANCES_LOG_PREFIX = "[Finances]";
 export const FINANCES_MIGRATION_SERVICE_TYPE = "finances_migration";
@@ -55,7 +57,11 @@ export type SqlExecutor = (
 export interface TableMigrationResult {
   table: MigratedFinanceTable;
   /** `"copied"` ran the INSERT; otherwise the reason it was skipped. */
-  outcome: "copied" | "source-missing" | "target-non-empty";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated";
 }
 
 function quoteIdent(name: string): string {
@@ -74,6 +80,11 @@ async function sourceTableExists(
   return rows[0]?.present === true || rows[0]?.present === "true";
 }
 
+/**
+ * Copy a single table from `app_lifeops` to `app_finances`, applying the three
+ * guards. Pure aside from the injected executor — the unit tests drive this
+ * directly.
+ */
 async function targetTableIsEmpty(
   exec: SqlExecutor,
   table: MigratedFinanceTable,
@@ -84,11 +95,6 @@ async function targetTableIsEmpty(
   return rows[0]?.empty === true || rows[0]?.empty === "true";
 }
 
-/**
- * Copy a single table from `app_lifeops` to `app_finances`, applying the three
- * guards. Pure aside from the injected executor — the unit tests drive this
- * directly.
- */
 export async function migrateFinanceTable(
   exec: SqlExecutor,
   table: MigratedFinanceTable,
@@ -109,8 +115,15 @@ export async function migrateFinanceTable(
        SELECT s.* FROM ${source} AS s
        WHERE NOT EXISTS (
          SELECT 1 FROM ${target} AS t WHERE t.id = s.id
-       )`,
+       )
+       ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
   );
+  await assertCarveOutProjectionComplete(exec, {
+    migrationKey: `finances/${table}/v2`,
+    source: { schema: SOURCE_SCHEMA, table },
+    target: { schema: TARGET_SCHEMA, table },
+    keyColumns: ["id"],
+  });
   return { table, outcome: "copied" };
 }
 
@@ -120,12 +133,24 @@ export async function migrateFinanceTable(
  * not yet applied. Returns the per-table outcome for observability/testing.
  */
 export async function migrateFinanceTables(
-  exec: SqlExecutor,
+  database: CarveOutDatabase,
 ): Promise<TableMigrationResult[]> {
-  await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
+  await database.execute(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_FINANCE_TABLES) {
-    results.push(await migrateFinanceTable(exec, table));
+    const receipt = await runCarveOutMigration(database, {
+      key: `finances/${table}/v2`,
+      previousKeys: [`finances/${table}/v1`],
+      sourceTables: [{ schema: SOURCE_SCHEMA, table }],
+      run: (execute) => migrateFinanceTable(execute, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : { table, outcome: "already-migrated" },
+    );
   }
   return results;
 }
@@ -197,6 +222,11 @@ export async function reconcileLegacyProviderTransactionDuplicates(
   return deleted.length;
 }
 
+type RuntimeDb = {
+  execute: (query: unknown) => Promise<unknown>;
+  transaction<T>(operation: (transaction: RuntimeDb) => Promise<T>): Promise<T>;
+};
+
 function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
   const db = runtime.db as RuntimeDb | undefined;
   if (!db || typeof db.execute !== "function") {
@@ -227,9 +257,9 @@ export class FinancesMigrationService extends Service {
 
   private async run(): Promise<void> {
     const db = getRuntimeDb(this.runtime);
-    const exec: SqlExecutor = (statement) => executeSql(db, statement);
-
-    const results = await migrateFinanceTables(exec);
+    const database = await createDrizzleCarveOutDatabase(db);
+    const results = await migrateFinanceTables(database);
+    const exec = database.execute;
     await scrubLegacyPlaidCredentials(exec);
     const reconciledProviderTransactionVersions =
       await reconcileLegacyProviderTransactionDuplicates(exec);

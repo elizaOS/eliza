@@ -15,6 +15,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
+import { registerPendingFirstRunTextConsumer } from "./first-run-pending-text";
 
 const mocks = vi.hoisted(() => ({
   openDesktopSettingsWindow: vi.fn(async () => undefined),
@@ -160,7 +161,7 @@ vi.mock("../state/cloud-login-launch", async (importOriginal) => {
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { DEFAULT_BRANDING } from "../config/branding-base";
 import { BrandingContext } from "../config/branding-react.hooks";
-import { APP_RESUME_EVENT, CHAT_PREFILL_EVENT } from "../events";
+import { APP_RESUME_EVENT } from "../events";
 import { __setAppValueForTests } from "../state/app-store";
 import {
   ConversationMessagesCtx,
@@ -927,7 +928,12 @@ describe("useFirstRunConductor", () => {
     first.unmount();
     localStorage.setItem("steward_session_token", "cloud-token");
     const prefill = vi.fn();
-    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
+    const unregisterPrefill = registerPendingFirstRunTextConsumer(
+      (text, acknowledge) => {
+        prefill({ detail: { text, select: true } });
+        acknowledge();
+      },
+    );
     const secondSpies = seedAppStore({ elizaCloudConnected: true });
     const second = renderConductor();
     try {
@@ -957,7 +963,7 @@ describe("useFirstRunConductor", () => {
       expect(prefill).toHaveBeenCalledTimes(1);
       third.unmount();
     } finally {
-      window.removeEventListener(CHAT_PREFILL_EVENT, prefill);
+      unregisterPrefill();
     }
   });
 
@@ -2804,7 +2810,12 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
   it("restores every complete typed request to the real composer after setup", async () => {
     seedAppStore();
     const prefill = vi.fn();
-    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
+    const unregisterPrefill = registerPendingFirstRunTextConsumer(
+      (text, acknowledge) => {
+        prefill({ detail: { text, select: true } });
+        acknowledge();
+      },
+    );
     const { turn, unmount } = renderConductor();
     try {
       await waitForTurn(turn, "first-run:greeting");
@@ -2837,7 +2848,7 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
         ),
       );
     } finally {
-      window.removeEventListener(CHAT_PREFILL_EVENT, prefill);
+      unregisterPrefill();
       unmount();
     }
   });

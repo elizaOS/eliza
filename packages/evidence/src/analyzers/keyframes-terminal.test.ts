@@ -26,7 +26,6 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 async function makeVideo(
   name: string,
   colors: string[],
-  sparse = false,
   audioTail = false,
 ): Promise<string> {
   if (!ffmpeg.available) throw new Error(ffmpeg.reason);
@@ -35,7 +34,7 @@ async function makeVideo(
   const filter =
     colors.length === 1
       ? "[0:v]null[v]"
-      : `${colors.map((_, index) => `[${index}:v]`).join("")}concat=n=${colors.length}:v=1${sparse ? ",setpts=N*5/TB" : ""}[v]`;
+      : `${colors.map((_, index) => `[${index}:v]`).join("")}concat=n=${colors.length}:v=1[v]`;
   await execFileAsync(
     ffmpeg.bin,
     [
@@ -130,7 +129,6 @@ describe.skipIf(!ffmpeg.available)("actual terminal video frame", () => {
     const video = await makeVideo(
       "audio-tail",
       ["color=c=lime:s=64x64:r=10:d=0.1"],
-      false,
       true,
     );
     const probe = join(dir, "tail-probe.png");
@@ -163,24 +161,20 @@ describe.skipIf(!ffmpeg.available)("actual terminal video frame", () => {
     {
       name: "single-frame",
       colors: ["color=c=lime:s=64x64:r=10:d=0.1"],
-      sparse: false,
     },
     {
       name: "sparse-tail",
       colors: [
-        "color=c=red:s=64x64:r=10:d=0.1",
-        "color=c=lime:s=64x64:r=10:d=0.1",
+        // Encode the sparse cadence directly so FFmpeg retains both states.
+        "color=c=red:s=64x64:r=1/5:d=5",
+        "color=c=lime:s=64x64:r=1/5:d=5",
       ],
-      sparse: true,
     },
-  ])(
-    "extracts the actual last pixel for $name",
-    async ({ name, colors, sparse }) => {
-      const video = await makeVideo(name, colors, sparse);
-      const frames = await extractKeyframes(video, join(dir, name));
-      const last = frames.find((frame) => frame.kind === "last");
-      if (!last) throw new Error("Extractor did not return a last frame");
-      await expectGreen(last.file);
-    },
-  );
+  ])("extracts the actual last pixel for $name", async ({ name, colors }) => {
+    const video = await makeVideo(name, colors);
+    const frames = await extractKeyframes(video, join(dir, name));
+    const last = frames.find((frame) => frame.kind === "last");
+    if (!last) throw new Error("Extractor did not return a last frame");
+    await expectGreen(last.file);
+  });
 });

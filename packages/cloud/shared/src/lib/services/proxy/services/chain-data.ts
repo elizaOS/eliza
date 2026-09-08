@@ -1,4 +1,4 @@
-// Coordinates cloud service chain data behavior behind route handlers.
+/** Translates chain data queries into provider requests with read-only replay policy. */
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";
 import { retryFetch } from "../fetch";
@@ -175,6 +175,7 @@ export const chainDataHandler: ServiceHandler = async ({ body }) => {
       const url = `${baseUrl}${path}?${queryParams.toString()}`;
 
       const response = await retryFetch({
+        replayPolicy: "idempotent",
         url,
         init: {
           method: "GET",
@@ -220,6 +221,7 @@ export const chainDataHandler: ServiceHandler = async ({ body }) => {
     const url = `${baseUrl}${path}`;
 
     const response = await retryFetch({
+      replayPolicy: "idempotent",
       url,
       init: {
         method: "POST",

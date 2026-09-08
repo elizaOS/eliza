@@ -83,6 +83,7 @@ import type {
   WorkbenchVfsSnapshot,
 } from "./client-types";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 
 type DocumentListOptions = {
   limit?: number;
@@ -1000,6 +1001,7 @@ async function invokeLocalDesktopChatRpc<T>(
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
   if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
     isDesktopExternalApiBaseUrl(baseUrl) ||
     isRemoteRelayRestAdapterBase(baseUrl)
   ) {

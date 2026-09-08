@@ -1,7 +1,7 @@
 {
   "id": "imessage",
   "name": "iMessage",
-  "description": "iMessage connector for native macOS Messages or Blooio-hosted conversations and message automation.",
+  "description": "iMessage connector using native macOS Messages or an authenticated, channel-isolated Blooio transport for hosted agents.",
   "npmName": "@elizaos/plugin-imessage",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -16,12 +16,23 @@
   ],
   "config": {
     "IMESSAGE_TRANSPORT": {
-      "type": "string",
-      "required": false,
+      "type": "select",
+      "required": true,
       "sensitive": false,
+      "default": "native",
       "label": "Transport",
-      "help": "Message transport: native on macOS or blooio for a hosted bridge",
-      "advanced": false
+      "help": "Use native for the local macOS Messages app, or blooio for a hosted agent with a Blooio API channel.",
+      "advanced": false,
+      "options": [
+        {
+          "value": "native",
+          "label": "Native macOS Messages"
+        },
+        {
+          "value": "blooio",
+          "label": "Blooio hosted transport"
+        }
+      ]
     },
     "IMESSAGE_DB_PATH": {
       "type": "file-path",
@@ -75,35 +86,51 @@
     },
     "IMESSAGE_BLOOIO_API_KEY": {
       "type": "secret",
-      "required": false,
+      "required": true,
       "sensitive": true,
       "label": "Blooio API Key",
       "help": "Blooio API key used when IMESSAGE_TRANSPORT is blooio",
-      "advanced": false
+      "advanced": false,
+      "visible": {
+        "key": "IMESSAGE_TRANSPORT",
+        "equals": "blooio"
+      }
     },
     "IMESSAGE_BLOOIO_WEBHOOK_SECRET": {
       "type": "secret",
-      "required": false,
+      "required": true,
       "sensitive": true,
       "label": "Blooio Webhook Secret",
       "help": "Signing secret for Blooio webhook verification",
-      "advanced": false
+      "advanced": false,
+      "visible": {
+        "key": "IMESSAGE_TRANSPORT",
+        "equals": "blooio"
+      }
     },
     "IMESSAGE_BLOOIO_FROM_NUMBER": {
       "type": "string",
-      "required": false,
+      "required": true,
       "sensitive": false,
       "label": "Blooio From Number",
       "help": "Blooio sender phone number in E.164 format",
-      "advanced": false
+      "advanced": false,
+      "visible": {
+        "key": "IMESSAGE_TRANSPORT",
+        "equals": "blooio"
+      }
     },
     "IMESSAGE_BLOOIO_CHANNEL_ID": {
       "type": "string",
-      "required": false,
+      "required": true,
       "sensitive": false,
       "label": "Blooio Channel ID",
-      "help": "Blooio channel that owns the configured sender number",
-      "advanced": false
+      "help": "Exact Blooio channel accepted for inbound webhooks and used by the configured sender number",
+      "advanced": false,
+      "visible": {
+        "key": "IMESSAGE_TRANSPORT",
+        "equals": "blooio"
+      }
     }
   },
   "render": {
@@ -120,14 +147,19 @@
     ]
   },
   "resources": {
-    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#imessage-macos-only"
+    "setupGuideUrl": "https://docs.eliza.ai/tracks/agent/connect-channels#imessage-native-or-blooio"
   },
   "dependsOn": [],
   "kind": "connector",
   "subtype": "messaging",
   "auth": {
-    "kind": "token",
-    "credentialKeys": []
+    "kind": "credentials",
+    "credentialKeys": [
+      "IMESSAGE_BLOOIO_API_KEY",
+      "IMESSAGE_BLOOIO_WEBHOOK_SECRET",
+      "IMESSAGE_BLOOIO_FROM_NUMBER",
+      "IMESSAGE_BLOOIO_CHANNEL_ID"
+    ]
   },
   "channels": [
     "imessage",

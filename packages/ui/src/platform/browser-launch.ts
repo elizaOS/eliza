@@ -68,6 +68,9 @@ function normalizeLaunchApiBase(
   };
   try {
     const parsed = new URL(trimmed);
+    if (parsed.username || parsed.password) {
+      throw new Error("URL credentials are not supported");
+    }
     if (
       isTrustedRestoreApiBaseUrl(parsed.toString()) ||
       (options.kind === "cloud" &&

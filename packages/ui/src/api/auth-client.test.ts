@@ -69,6 +69,9 @@ vi.mock("./client-cloud", () => ({
   cloudTokenSecsRemaining: vi.fn(),
   refreshCloudStewardSession: vi.fn(),
 }));
+vi.mock("./desktop-local-api-base", () => ({
+  isDesktopLocalApiBaseUrl: vi.fn(() => true),
+}));
 vi.mock("./desktop-external-api-base", () => ({
   isDesktopExternalApiBaseUrl: vi.fn(),
 }));
@@ -435,6 +438,7 @@ describe("authLogout", () => {
 
 describe("authMe over plain HTTP boundaries", () => {
   beforeEach(() => {
+    getBootConfigMock.mockReturnValue({ branding: {} });
     fetchWithCsrfMock.mockReset();
     isManagedCloudSharedAgentBaseMock.mockReturnValue(false);
     isDesktopExternalApiBaseUrlMock.mockReturnValue(false);

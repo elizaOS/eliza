@@ -1,4 +1,4 @@
-/** Locks protected Telegram identity attestation ahead of every release mutation. */
+/** Locks caller-admitted Telegram identity and downstream proofs ahead of release mutation. */
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -15,6 +15,7 @@ interface WorkflowStep {
 
 interface WorkflowJob {
   needs?: string | string[];
+  outputs?: Record<string, string>;
   steps: WorkflowStep[];
 }
 
@@ -34,6 +35,10 @@ function namedStep(job: WorkflowJob, name: string): WorkflowStep {
   const step = job.steps.find((candidate) => candidate.name === name);
   if (!step) throw new Error(`Missing workflow step: ${name}`);
   return step;
+}
+
+function githubExpression(body: string): string {
+  return `\${{ ${body} }}`;
 }
 
 function expectBashSyntax(step: WorkflowStep): void {
@@ -59,19 +64,25 @@ describe("protected Telegram identity workflow contract", () => {
       "Validate caller-admitted Telegram public identity",
     );
     expect(migrate.needs).toBe("resolve-pages-environment-config");
+    expect(resolver.outputs).toMatchObject({
+      telegram_bot_id: expect.stringContaining("steps.telegram.outputs.bot_id"),
+      telegram_bot_username: expect.stringContaining(
+        "steps.telegram.outputs.bot_username",
+      ),
+    });
     expect(select.env).toMatchObject({
-      RELEASE_RUN_ATTEMPT: expect.stringContaining("github.run_attempt"),
-      TARGET_ENVIRONMENT: expect.stringContaining("inputs.target_environment"),
-      TELEGRAM_AUTHORITY_RUN_ATTEMPT: expect.stringContaining(
+      RELEASE_RUN_ATTEMPT: githubExpression("github.run_attempt"),
+      TARGET_ENVIRONMENT: githubExpression("inputs.target_environment"),
+      TELEGRAM_AUTHORITY_RUN_ATTEMPT: githubExpression(
         "inputs.telegram_authority_run_attempt",
       ),
-      ADMITTED_TELEGRAM_BOT_ID: expect.stringContaining(
+      ADMITTED_TELEGRAM_BOT_ID: githubExpression(
         "inputs.admitted_telegram_bot_id",
       ),
-      ADMITTED_TELEGRAM_BOT_USERNAME: expect.stringContaining(
+      ADMITTED_TELEGRAM_BOT_USERNAME: githubExpression(
         "inputs.admitted_telegram_bot_username",
       ),
-      TELEGRAM_RUNTIME_AUTHORITY: expect.stringContaining(
+      TELEGRAM_RUNTIME_AUTHORITY: githubExpression(
         "inputs.telegram_runtime_authority",
       ),
     });
@@ -80,6 +91,33 @@ describe("protected Telegram identity workflow contract", () => {
     expect(select.run).toContain("TELEGRAM_RUNTIME_AUTHORITY");
     expect(select.run).toContain("ADMITTED_TELEGRAM_BOT_ID");
     expect(select.run).toContain("ADMITTED_TELEGRAM_BOT_USERNAME");
+    expect(select.run).toContain(
+      "staging:staging-protected-receipt-and-existing-bindings",
+    );
+    expect(select.run).toContain("production:production-live-attested");
+    expect(select.run).toContain(
+      'printf \'bot_id=%s\\n\' "$resolved_bot_id" >> "$GITHUB_OUTPUT"',
+    );
+
+    const rejectStale = namedStep(
+      deploy,
+      "Reject stale Telegram configuration authority",
+    );
+    expect(rejectStale.env).toMatchObject({
+      ADMITTED_TELEGRAM_BOT_ID: expect.stringContaining(
+        "needs.resolve-pages-environment-config.outputs.telegram_bot_id",
+      ),
+      ADMITTED_TELEGRAM_BOT_USERNAME: expect.stringContaining(
+        "needs.resolve-pages-environment-config.outputs.telegram_bot_username",
+      ),
+      RELEASE_RUN_ATTEMPT: githubExpression("github.run_attempt"),
+      TELEGRAM_AUTHORITY_RUN_ATTEMPT: githubExpression(
+        "inputs.telegram_authority_run_attempt",
+      ),
+    });
+    expect(rejectStale.run).toContain(
+      '[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ]',
+    );
 
     const prepare = namedStep(
       deploy,
@@ -96,16 +134,29 @@ describe("protected Telegram identity workflow contract", () => {
     expect(prepare.run).toContain(
       "Staging can preserve the existing Telegram credentials",
     );
+    expect(prepare.env?.ELIZA_APP_TELEGRAM_BOT_TOKEN).toBe(
+      githubExpression(
+        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'BOT_TOKEN')]",
+      ),
+    );
+    expect(prepare.env?.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET).toBe(
+      githubExpression(
+        "secrets[format('{0}{1}', 'ELIZA_APP_TELEGRAM_', 'WEBHOOK_SECRET')]",
+      ),
+    );
     expect(prepare.run).toContain('queue_secret "$name"');
     expect(publish.run).toContain("ELIZA_APP_TELEGRAM_BOT_ID");
     expect(publish.run).toContain("ELIZA_APP_TELEGRAM_BOT_USERNAME");
+    expect(deploy.steps.indexOf(rejectStale)).toBeLessThan(
+      deploy.steps.indexOf(prepare),
+    );
     expect(deploy.steps.indexOf(readiness)).toBeGreaterThan(
       deploy.steps.indexOf(publish),
     );
     expect(readiness.run).toContain(
       "/api/eliza-app/webhook/telegram/readiness",
     );
-    for (const step of [select, prepare, readiness]) {
+    for (const step of [select, rejectStale, prepare, readiness]) {
       expectBashSyntax(step);
     }
   });

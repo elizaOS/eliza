@@ -31,7 +31,7 @@ mock.module("../../lib/services/inference-credential-revocation", () => ({
   setInferenceSubjectActive: async () => undefined,
 }));
 mock.module("../../lib/services/admin", () => ({
-  adminService: { shouldBlockUser: async () => false },
+  adminService: { shouldBlockUserConsistent: async () => false },
 }));
 mock.module("../../lib/services/content-moderation", () => ({
   contentModerationService: { shouldBlockUser: async () => false },
@@ -66,13 +66,6 @@ beforeAll(async () => {
     DELETE FROM organization_entitlements WHERE organization_id='${ORG}';
     UPDATE organizations SET stripe_customer_id='cus_snapshot' WHERE id='${ORG}';
 `);
-  const noticeMigration = await readFile(
-    new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
-    "utf8",
-  );
-  for (const statement of noticeMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await pg.exec(statement);
-  }
   const customerMigration = await readFile(
     new URL("../migrations/0267_stripe_customer_attempts.sql", import.meta.url),
     "utf8",

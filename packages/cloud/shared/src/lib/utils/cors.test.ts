@@ -24,10 +24,11 @@ describe("getCorsHeaders", () => {
     expect(headers["Access-Control-Allow-Credentials"]).toBe("true");
   });
 
-  test("reflects the exact develop Pages staging alias only", () => {
-    const headers = getCorsHeaders("https://develop.eliza-app.pages.dev");
+  test.each(["develop", "staging"])("reflects the exact %s Pages alias only", (branch) => {
+    const origin = `https://${branch}.eliza-app.pages.dev`;
+    const headers = getCorsHeaders(origin);
 
-    expect(headers["Access-Control-Allow-Origin"]).toBe("https://develop.eliza-app.pages.dev");
+    expect(headers["Access-Control-Allow-Origin"]).toBe(origin);
     expect(getCorsHeaders("https://random.eliza-app.pages.dev")).not.toHaveProperty(
       "Access-Control-Allow-Origin",
     );

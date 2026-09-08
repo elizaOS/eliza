@@ -4,11 +4,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../events";
 import {
   __TEST_ONLY__,
   clearPendingFirstRunText,
+  handoffPendingFirstRunText,
   readPendingFirstRunText,
+  registerPendingFirstRunTextConsumer,
   releasePendingFirstRunText,
   setPendingFirstRunTextReleaseHandler,
   takePendingFirstRunText,
@@ -36,6 +37,7 @@ describe("pending first-run text", () => {
   beforeEach(() => stubLocalStorage());
   afterEach(() => {
     setPendingFirstRunTextReleaseHandler(null);
+    clearPendingFirstRunText();
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: undefined,
@@ -76,23 +78,43 @@ describe("pending first-run text", () => {
     expect(readPendingFirstRunText()).toEqual([]);
   });
 
-  it("releases the durable requests to the composer exactly once", async () => {
-    const prefill = vi.fn<(event: Event) => void>();
-    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
-    writePendingFirstRunText(["first request", "second\nline"]);
-
+  it("retains requests across absent and unmounted consumers until acknowledgement", () => {
+    const requests = ["first request", "second\nline"];
+    writePendingFirstRunText(requests);
     releasePendingFirstRunText();
-    await Promise.resolve();
+    expect(readPendingFirstRunText()).toEqual(requests);
+    const delivered: string[] = [];
+    const unregister = registerPendingFirstRunTextConsumer((text) =>
+      delivered.push(text),
+    );
+    expect(delivered).toEqual([requests.join("\n\n")]);
+    expect(readPendingFirstRunText()).toEqual(requests);
+    unregister();
+    const unregisterNext = registerPendingFirstRunTextConsumer(
+      (text, acknowledge) => {
+        delivered.push(text);
+        acknowledge();
+      },
+    );
+    expect(delivered).toEqual([requests.join("\n\n"), requests.join("\n\n")]);
+    expect(readPendingFirstRunText()).toEqual([]);
     releasePendingFirstRunText();
-    await Promise.resolve();
+    expect(delivered).toHaveLength(2);
+    unregisterNext();
+  });
 
-    expect(prefill).toHaveBeenCalledTimes(1);
-    expect(
-      (prefill.mock.calls[0][0] as CustomEvent<ChatPrefillEventDetail>).detail,
-    ).toEqual({
-      text: "first request\n\nsecond\nline",
-      select: true,
-    });
+  it("does not let an older acknowledgement clear a newer complete batch", () => {
+    const acknowledgements: Array<() => void> = [];
+    const unregister = registerPendingFirstRunTextConsumer(
+      (_text, acknowledge) => acknowledgements.push(acknowledge),
+    );
+    handoffPendingFirstRunText(["first"]);
+    handoffPendingFirstRunText(["first", "second"]);
+    acknowledgements[0]();
+    expect(readPendingFirstRunText()).toEqual(["first", "second"]);
+    acknowledgements[1]();
+    expect(readPendingFirstRunText()).toEqual([]);
+    unregister();
   });
 
   it("prefers the active conductor's lossless in-memory release seam", () => {

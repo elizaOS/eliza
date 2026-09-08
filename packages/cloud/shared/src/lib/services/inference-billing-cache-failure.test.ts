@@ -12,7 +12,10 @@
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     isAvailable: () => false,
     async setIfNotExists() {
@@ -31,6 +34,8 @@ mock.module("../cache/client", () => ({
     async scanByPrefix() {
       return [];
     },
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

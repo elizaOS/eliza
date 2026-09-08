@@ -25,6 +25,33 @@ const describeOf = (compat: ReturnType<typeof compatFor>, schema: JSONSchema7): 
   String(compat.transformToolSchema(schema).description ?? "");
 
 describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22118)", () => {
+  it("rejects cyclic, deeply nested and oversized schemas through the production Cloud facade", () => {
+    const cyclic: JSONSchema7 = { type: "object", properties: {} };
+    cyclic.properties = { again: cyclic };
+    let deep: JSONSchema7 = { type: "string" };
+    for (let level = 0; level < 40; level++) deep = { type: "array", items: deep };
+    const oversized: JSONSchema7 = { type: "string", description: "完整".repeat(100_000) };
+    for (const model of ["gemini-2.0-flash", "o3-mini", "claude-sonnet-4"]) {
+      for (const schema of [cyclic, deep, oversized]) {
+        expect(() => compatFor(model).transformToolSchema(schema)).toThrow(
+          expect.objectContaining({ code: "MCP_TOOL_SCHEMA_UNBOUNDED" }),
+        );
+      }
+    }
+  });
+
+  it("preserves complete supported Unicode descriptions and stripped constraints", () => {
+    const description = "完整模型说明 🟠 ".repeat(1_000);
+    const schema: JSONSchema7 = { type: "number", description, minimum: 0, maximum: 17 };
+    for (const model of ["gemini-2.0-flash", "o3-mini"]) {
+      const result = compatFor(model).transformToolSchema(schema);
+      expect(String(result.description).startsWith(description)).toBe(true);
+      expect(String(result.description)).toContain(">= 0");
+      expect(String(result.description)).toContain("<= 17");
+      expect(schema).toEqual({ type: "number", description, minimum: 0, maximum: 17 });
+    }
+  });
+
   describe("provider-wide collection boundary", () => {
     it("does not duplicate a supported additionalProperties keyword into OpenAI prose", () => {
       const out = compatFor("gpt-4o").transformToolSchema({
@@ -125,18 +152,15 @@ describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22
       expect(text).not.toContain("multiple of 0");
     });
 
-    it("identifies non-finite numeric values instead of JSON-coercing them to null", () => {
+    it("rejects non-JSON numeric constraints before producing model-facing schema", () => {
       const schema = {
         type: "number",
         minimum: Number.POSITIVE_INFINITY,
         maximum: Number.NaN,
       } as unknown as JSONSchema7;
-      const text = describeOf(google(), schema);
-
-      expect(text).toContain('"minimum":"[non-finite number: Infinity]"');
-      expect(text).toContain('"maximum":"[non-finite number: NaN]"');
-      expect(text).not.toContain('"minimum":null');
-      expect(text).not.toContain('"maximum":null');
+      expect(() => google().transformToolSchema(schema)).toThrow(
+        expect.objectContaining({ code: "MCP_TOOL_SCHEMA_UNBOUNDED" }),
+      );
     });
 
     it("preserves a stripped closed-object constraint", () => {
@@ -233,18 +257,15 @@ describe("cloud MCP tool-compatibility constraint rendering (#22068, #22115, #22
       expect(text).not.toContain("multiple of -2");
     });
 
-    it("identifies non-finite numeric values instead of JSON-coercing them to null", () => {
+    it("rejects non-JSON numeric constraints before producing model-facing schema", () => {
       const schema = {
         type: "number",
         exclusiveMinimum: Number.NEGATIVE_INFINITY,
         multipleOf: Number.NaN,
       } as unknown as JSONSchema7;
-      const text = describeOf(reasoning(), schema);
-
-      expect(text).toContain('"exclusiveMinimum":"[non-finite number: -Infinity]"');
-      expect(text).toContain('"multipleOf":"[non-finite number: NaN]"');
-      expect(text).not.toContain('"exclusiveMinimum":null');
-      expect(text).not.toContain('"multipleOf":null');
+      expect(() => reasoning().transformToolSchema(schema)).toThrow(
+        expect.objectContaining({ code: "MCP_TOOL_SCHEMA_UNBOUNDED" }),
+      );
     });
 
     it("keeps empty enums in the unrendered tail and renders non-empty enums exactly", () => {
