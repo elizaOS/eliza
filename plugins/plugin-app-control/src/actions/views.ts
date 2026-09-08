@@ -1878,9 +1878,13 @@ function normalizeLooseTerm(value: string): string {
 		.trim();
 }
 
-function textMentionsTerm(normalizedText: string, term: string): boolean {
+function textMentionsTerm(
+	normalizedText: string,
+	term: string,
+	minimumLength = 3,
+): boolean {
 	const normalizedTerm = normalizeLooseTerm(term);
-	if (normalizedTerm.length < 3) return false;
+	if (normalizedTerm.length < minimumLength) return false;
 	const re = new RegExp(`(?:^|\\W)${escapeRegExp(normalizedTerm)}(?:\\W|$)`);
 	return re.test(normalizedText);
 }
@@ -1979,32 +1983,55 @@ function resolveLayoutTargets(
 	}
 
 	const requestText = viewRequestText(text);
-	const lower = requestText.toLowerCase();
 	const normalizedText = normalizeLooseTerm(requestText);
-	const textResolved: ViewSummary[] = [];
+	const identityResolved: ViewSummary[] = [];
+	const tagResolved: ViewSummary[] = [];
 	for (const view of views) {
-		const id = view.id.toLowerCase();
-		const label = view.label.toLowerCase();
-		const normalizedLabel = normalizeLooseTerm(label);
+		const normalizedLabel = normalizeLooseTerm(view.label);
 		const labelIsGenericSurface = VIEW_SURFACE_TOKENS.has(normalizedLabel);
-		const terms = [
-			id,
-			...(labelIsGenericSurface ? [] : [label]),
-			...(view.tags ?? []).filter(
-				(tag) => !VIEW_SURFACE_TOKENS.has(normalizeLooseTerm(tag)),
-			),
-		];
 		if (
-			lower.includes(id) ||
-			(!labelIsGenericSurface && label.length >= 3 && lower.includes(label)) ||
-			terms.some((term) => textMentionsTerm(normalizedText, term))
+			textMentionsTerm(normalizedText, view.id, 1) ||
+			(!labelIsGenericSurface && textMentionsTerm(normalizedText, view.label))
 		) {
-			textResolved.push(view);
+			identityResolved.push(view);
+		} else if (
+			(view.tags ?? []).some(
+				(tag) =>
+					!VIEW_SURFACE_TOKENS.has(normalizeLooseTerm(tag)) &&
+					textMentionsTerm(normalizedText, tag),
+			)
+		) {
+			tagResolved.push(view);
 		}
 	}
 
 	const explicitUnique = uniqueByViewId(explicitResolved);
-	const textUnique = uniqueByViewId(textResolved);
+	const identityUnique = uniqueByViewId(identityResolved);
+	const identityIds = new Set(identityUnique.map((view) => view.id));
+	const declaredIdentities = explicitUnique.filter((view) =>
+		identityIds.has(view.id),
+	);
+	// A complete declared subset belongs to this step. Other named views may
+	// be excluded by the user or belong to a later step; their mere occurrence
+	// must not expand the action. Likewise, trim unmentioned names from polluted
+	// planner options when the user supplies a complete exact pair.
+	if (declaredIdentities.length >= 2) return declaredIdentities;
+	// A complete step can name its targets only in structured arguments. Other
+	// prose identities may be exclusions, so do not union or substitute them.
+	if (explicitUnique.length >= 2) return explicitUnique;
+	// A named pair owns its layout membership even when the planner supplied
+	// extra targets. Broad tags in another clause (including a data restriction
+	// such as "leave reminders unchanged") must not add unrelated panes.
+	if (identityUnique.length >= 2) return identityUnique;
+	// Preserve legacy tag/alias resolution only when neither the user nor the
+	// structured step identifies a complete layout, e.g. "notes and calender".
+	const mentionedIds = new Set([
+		...identityIds,
+		...tagResolved.map((view) => view.id),
+	]);
+	const textUnique = uniqueByViewId(
+		views.filter((view) => mentionedIds.has(view.id)),
+	);
 	return textUnique.length >= 2
 		? textUnique
 		: textUnique.length === 1 && explicitUnique.length <= 1
@@ -2312,7 +2339,7 @@ async function runViewsClose({
 async function runViewsLayout({
 	client,
 	message,
-	mode,
+	mode: requestedMode,
 	options,
 	viewType,
 	callback,
@@ -2327,6 +2354,12 @@ async function runViewsLayout({
 	// Security-unwrapped user words — never the raw (possibly enveloped)
 	// content.text; the envelope's warning contains verbs the extractors match.
 	const text = userRequestMessageText(message);
+	// The shell renders tile mode as a grid. An explicit row/column request
+	// must carry split mode as well as its orientation to reach that renderer.
+	const mode =
+		requestedMode === "tile" && readLayoutValue("", options) !== "grid"
+			? "split"
+			: requestedMode;
 	const views = await client.listViews({ viewType });
 	const placement =
 		mode === "split" ? readPlacementValue(text, options) : undefined;

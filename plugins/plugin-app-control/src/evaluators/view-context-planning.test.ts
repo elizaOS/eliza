@@ -11,6 +11,7 @@ import {
 	runWithStreamingContext,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { navigationDispatchBlock } from "../actions/navigation-execution.js";
 import {
 	parseContextualNavigationIntent,
 	viewContextPlanningEvaluator,
@@ -63,12 +64,14 @@ afterEach(async () => {
 function context(
 	text: string,
 	decision: object,
+	onModel?: () => void,
 ): ResponseHandlerEvaluatorContext {
 	return {
 		runtime: {
 			actions: [{ name: "VIEWS" }],
 			reportError: () => undefined,
 			useModel: async (_type: string, request: { prompt: string }) => {
+				onModel?.();
 				prompts.push(request.prompt);
 				return JSON.stringify(decision);
 			},
@@ -95,12 +98,16 @@ function context(
 	} as unknown as ResponseHandlerEvaluatorContext;
 }
 async function run(ctx: ResponseHandlerEvaluatorContext) {
-	return runWithStreamingContext({ messageId: ctx.message.id }, () =>
-		runResponseHandlerEvaluators({
+	return runWithStreamingContext({ messageId: ctx.message.id }, async () => {
+		const result = await runResponseHandlerEvaluators({
 			...ctx,
 			evaluators: [viewContextPlanningEvaluator],
-		}),
-	);
+		});
+		return {
+			...result,
+			navigationBlock: navigationDispatchBlock(ctx.message, true),
+		};
+	});
 }
 
 describe("same-turn contextual navigation", () => {
@@ -198,6 +205,54 @@ describe("same-turn contextual navigation", () => {
 		expect(prompts[0]).not.toContain("Restricted account details");
 		expect(prompts[0]).not.toContain('"id":"offline"');
 	});
+	it.each([
+		"Open only the Observatory. Do not open other views or create, edit, or delete any records.",
+		"Put the Observatory and Notes side by side horizontally. Only these two views; do not change any notes or other data.",
+	])(
+		"carries a scoped requested destination into the planner: %s",
+		async (text) => {
+			const ctx = context(
+				text,
+				{
+					disposition: "requested",
+					viewId: "observatory",
+					reason: "requested destination within the permitted scope",
+				},
+				() => {
+					expect(navigationDispatchBlock(ctx.message, true)).toBe("forbidden");
+				},
+			);
+			const result = await run(ctx);
+			expect(result.errors).toEqual([]);
+			expect(result.navigationBlock).toBeUndefined();
+			expect(prompts[0]).toContain(JSON.stringify(text));
+			expect(ctx.message.content.text).toBe(text);
+			expect(ctx.messageHandler.plan.candidateActions).toEqual([
+				"CALENDAR",
+				"VIEWS",
+			]);
+			expect(ctx.messageHandler.plan.deterministicToolCall).toBeUndefined();
+			expect(requestedPaths).toEqual(["/api/views"]);
+		},
+	);
+	it.each([
+		"Describe an Observatory and Notes layout, but stay on the current screen and do not navigate.",
+		"Do not open the Observatory. Explain it here instead.",
+	])(
+		"keeps a forbidden model decision fail closed at dispatch: %s",
+		async (text) => {
+			const ctx = context(text, {
+				disposition: "forbidden",
+				reason: "requested navigation is prohibited",
+			});
+			const result = await run(ctx);
+			expect(result.errors).toEqual([]);
+			expect(result.navigationBlock).toBe("forbidden");
+			expect(prompts[0]).toContain(JSON.stringify(text));
+			expect(ctx.messageHandler.plan.candidateActions).toEqual(["CALENDAR"]);
+			expect(requestedPaths).toEqual(["/api/views"]);
+		},
+	);
 	it("preserves a long multilingual request including its late navigation constraint", async () => {
 		const text = `${"Full observation context. ".repeat(1000)}追加してください。ただし画面を変えないでください。`;
 		const ctx = context(text, {
@@ -221,6 +276,7 @@ describe("same-turn contextual navigation", () => {
 			});
 			const result = await run(ctx);
 			expect(result.errors).toHaveLength(1);
+			expect(result.navigationBlock).toBe("forbidden");
 			expect(ctx.messageHandler.plan.candidateActions).toEqual(["CALENDAR"]);
 			expect(requestedPaths).toEqual(["/api/views"]);
 		});
