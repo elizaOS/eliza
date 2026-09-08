@@ -3211,6 +3211,10 @@ async function handleSend(
 					acceptance: "partial",
 					responseMessageId: disposition.providerMessageId,
 					providerMessageIds: disposition.receipt.providerMessageIds,
+					// Absent discriminator documents the provider default; the structured
+					// surface states it explicitly so metadata consumers cannot misread
+					// local-effect markers as provider-backed ids.
+					evidenceKind: disposition.receipt.evidenceKind ?? "provider",
 					replayed: disposition.replayed,
 					persistenceStatus: disposition.receipt.persistence.status,
 					newDelivery: !disposition.replayed,
@@ -3245,6 +3249,7 @@ async function handleSend(
 					acceptance: "accepted",
 					responseMessageId: providerMessageId,
 					providerMessageIds: disposition.receipt.providerMessageIds,
+					evidenceKind: disposition.receipt.evidenceKind ?? "provider",
 					persistenceStatus: disposition.receipt.persistence.status,
 					replayed: disposition.replayed,
 					newDelivery: !disposition.replayed,
@@ -3309,6 +3314,7 @@ async function handleSend(
 					acceptance: "accepted",
 					responseMessageId: providerMessageId,
 					providerMessageIds,
+					evidenceKind: disposition.receipt?.evidenceKind ?? "provider",
 					persistenceStatus: "failed",
 					persistenceCode: persistence.code,
 					persistenceMessage: persistence.message,

@@ -666,6 +666,15 @@ describe("MESSAGE op=send delivery evidence", () => {
 			acceptance: "partial",
 			newDelivery: true,
 		});
+		// The structured surface must agree with the guidance text: ids
+		// carried from a local-effect receipt are labelled as such so a
+		// metadata consumer cannot misread them as provider-backed.
+		expect(result.data).toMatchObject({
+			providerMessageIds: [
+				"imessage-effect:9c1e5b1a-0000-4000-8000-000000000001:send",
+			],
+			evidenceKind: "local-effect",
+		});
 		expect(result.text).toMatch(/do not retry blindly/i);
 		expect(result.text).toMatch(/no provider message ids to reconcile/i);
 		expect(result.text).toContain("reached the target");
@@ -707,6 +716,8 @@ describe("MESSAGE op=send delivery evidence", () => {
 			persistenceStatus: "failed",
 			newDelivery: true,
 		});
+		// Structured surface labels local-effect ids (persistence-failure path).
+		expect(result.data).toMatchObject({ evidenceKind: "local-effect" });
 		expect(result.text).toMatch(/do not resend/i);
 		expect(result.text).toMatch(/no provider message ids to reconcile/i);
 		expect(result.text).toContain("reached its target");
@@ -743,6 +754,8 @@ describe("MESSAGE op=send delivery evidence", () => {
 			newDelivery: true,
 			persisted: false,
 		});
+		// Structured surface labels local-effect ids (outbound-record path).
+		expect(result.data).toMatchObject({ evidenceKind: "local-effect" });
 		expect(result.text).toMatch(/do not resend/i);
 		expect(result.text).toContain("the requested local outbound record failed");
 		expect(result.text).toMatch(/no provider message ids to reconcile/i);

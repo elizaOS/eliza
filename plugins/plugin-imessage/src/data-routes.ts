@@ -295,6 +295,20 @@ async function handleSendMessage(
     ...(body.mediaUrl ? [body.mediaUrl.trim()] : []),
     ...(body.mediaUrls ?? []).map((url) => url.trim()),
   ];
+  // A repeated URL is an ambiguous duplicate request, not a multi-part send:
+  // fail closed before the first external send rather than attaching the same
+  // file twice (same-URL check from the #23104 review follow-up).
+  if (new Set(mediaUrls).size !== mediaUrls.length) {
+    res
+      .status(400)
+      .json(
+        buildSetupError(
+          "bad_request",
+          "mediaUrl/mediaUrls must not request the same attachment URL twice; duplicate requested parts are rejected instead of sent twice"
+        )
+      );
+    return;
+  }
 
   if (!to && !chatId) {
     res.status(400).json(buildSetupError("bad_request", "either to or chatId is required"));

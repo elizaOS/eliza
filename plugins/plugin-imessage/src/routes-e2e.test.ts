@@ -458,6 +458,30 @@ describe("plugin-imessage data routes (real dispatch)", () => {
     expect(calls.sent[0]?.mediaUrls).toEqual(["/media/legacy.png", "/media/a.png", "/media/b.png"]);
   });
 
+  it("POST /api/imessage/messages rejects duplicate parts across mediaUrl and mediaUrls with 400", async () => {
+    // Same URL requested through both forms is ambiguous duplicate input,
+    // not a two-part send: the fail-closed boundary rejects it before the
+    // first external send instead of attaching the same file twice.
+    const calls: ImessageServiceCalls = {
+      sent: [],
+      addContact: [],
+      updateContact: [],
+      deleteContact: [],
+    };
+    const base = await startServer(makeRuntime({ imessage: { connected: true }, calls }));
+    const res = await sendJson(base, "POST", "/api/imessage/messages", {
+      to: "+155****1111",
+      text: "duplicate part",
+      mediaUrl: "/media/legacy.png",
+      mediaUrls: ["/media/legacy.png"],
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "duplicate"
+    );
+    expect(calls.sent).toHaveLength(0);
+  });
+
   it("POST /api/imessage/messages rejects a blank legacy mediaUrl with 400", async () => {
     const calls: ImessageServiceCalls = {
       sent: [],

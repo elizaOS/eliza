@@ -166,6 +166,27 @@ describe("iMessage send-handler receipt truthfulness", () => {
     expect(first.receipt.evidenceKind).toBe("local-effect");
   });
 
+  it("returns not_delivered, never an empty-id partial receipt, when the first chunk fails", async () => {
+    // I3 mutation pin (attentionhead + ss251 reviews): a first-text-chunk
+    // failure reaches the handler with delivered.effectStamps === []. The
+    // effectStamps.length > 0 guard must route it to not_delivered — without
+    // it the handler would build a partially_delivered receipt with
+    // providerMessageIds: [], violating the readonly [string, ...string[]]
+    // contract and producing a receipt isSendHandlerReceipt rejects.
+    const sendMessage = vi.fn(async () => ({
+      success: false,
+      error: "AppleScript error: first chunk rejected",
+      delivered: { textChunks: 0, attachments: 0, effectStamps: [] },
+    }));
+    const reg = captureRegistration({ sendMessage });
+    const outcome = await reg.sendHandler(undefined, target, contentWith("only chunk", []));
+
+    expect(outcome.kind).toBe("not_delivered");
+    if (outcome.kind !== "not_delivered") return;
+    expect(outcome.code).toBe("IMESSAGE_SEND_FAILED");
+    expect(outcome.message).toBe("AppleScript error: first chunk rejected");
+  });
+
   it("issues a locally generated unique stamp regardless of the service's messageId", async () => {
     const sendMessage = vi.fn(async () => ({
       success: true,

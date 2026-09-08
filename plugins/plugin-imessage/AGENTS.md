@@ -25,7 +25,7 @@ Adds iMessage send/receive capability through either local macOS Messages or Blo
 
 *Data routes* (`src/data-routes.ts`):
 - `GET    /api/imessage/messages` — recent messages (`?chatId=&limit=`)
-- `POST   /api/imessage/messages` — send a message (`{ to|chatId, text, mediaUrl? }`)
+- `POST   /api/imessage/messages` — send a message (`{ to|chatId, text, mediaUrl?|mediaUrls? }`; legacy singular first, duplicate URLs rejected)
 - `POST   /api/imessage/webhook/blooio` — signed Blooio `message.received` delivery
 - `GET    /api/imessage/chats` — list chats (DMs + groups) from chat.db
 - `GET    /api/imessage/contacts` — list Apple Contacts (full detail)
