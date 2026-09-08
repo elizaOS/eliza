@@ -15,6 +15,106 @@ function invalidReply(cause?: unknown): ElizaError {
   });
 }
 
+const slots: RendererSecureSlot[] = [
+  "session.device_auth",
+  "session.steward_token",
+  "runtime.active_server",
+  "runtime.agent_profiles",
+];
+
+function superseded(): ElizaError {
+  return new ElizaError("The native account or runtime selection changed", {
+    code: "NATIVE_STORE_SUPERSEDED",
+    severity: "ephemeral",
+  });
+}
+
+function copySnapshot(
+  snapshot: RendererSecureSnapshot,
+): RendererSecureSnapshot {
+  return { ...snapshot, authority: { ...snapshot.authority } };
+}
+
+/** An individual continuation's baseline, advanced only by its acknowledged writes. */
+export interface DesktopStorageAuthority {
+  expected(kind: RendererSecureSlot): RendererSecureSnapshot;
+  acceptOwned(
+    kind: RendererSecureSlot,
+    published: RendererSecureSnapshot,
+  ): void;
+  assertCurrent(): Promise<void>;
+}
+
+/** Capture before starting account requests, rejecting an already-stale renderer mirror. */
+export async function captureDesktopStorageAuthority(
+  values: ReadonlyMap<RendererSecureSlot, string | null>,
+  revalidate: () => void,
+): Promise<DesktopStorageAuthority> {
+  const snapshots = new Map<RendererSecureSlot, RendererSecureSnapshot>();
+  let vector: RendererSecureSnapshot["authority"] | undefined;
+  for (const kind of slots) {
+    revalidate();
+    const result = await request({ operation: "read", kind });
+    if (result.operation !== "read") throw invalidReply();
+    revalidate();
+    if (
+      result.snapshot.value !== values.get(kind) ||
+      (vector &&
+        slots.some(
+          (slot) => vector?.[slot] !== result.snapshot.authority[slot],
+        ))
+    )
+      throw superseded();
+    vector = { ...result.snapshot.authority };
+    snapshots.set(kind, copySnapshot(result.snapshot));
+  }
+  const expected = (kind: RendererSecureSlot) => {
+    const snapshot = snapshots.get(kind);
+    if (!snapshot) throw invalidReply();
+    return copySnapshot(snapshot);
+  };
+  return {
+    expected,
+    acceptOwned(kind, published) {
+      const previous = expected(kind);
+      if (
+        slots.some(
+          (slot) =>
+            slot !== kind &&
+            previous.authority[slot] !== published.authority[slot],
+        )
+      )
+        throw superseded();
+      // Carry the acknowledged revision, never a later read that can adopt ABA
+      // or another writer. All slot expectations share this one updated vector.
+      for (const slot of slots) {
+        const snapshot = slot === kind ? published : expected(slot);
+        snapshots.set(slot, {
+          ...snapshot,
+          authority: { ...published.authority },
+        });
+      }
+    },
+    async assertCurrent() {
+      revalidate();
+      const result = await request({
+        operation: "read",
+        kind: "session.device_auth",
+      });
+      if (result.operation !== "read") throw invalidReply();
+      revalidate();
+      const captured = expected("session.device_auth");
+      if (
+        slots.some(
+          (slot) =>
+            captured.authority[slot] !== result.snapshot.authority[slot],
+        )
+      )
+        throw superseded();
+    },
+  };
+}
+
 async function verifyPublication(
   kind: RendererSecureSlot,
   published: RendererSecureSnapshot,
@@ -43,10 +143,20 @@ export async function mutateDesktopSecureSlot(
   kind: RendererSecureSlot,
   value: string | null,
   revalidate: () => void,
+  expected?: RendererSecureSnapshot,
 ): Promise<RendererSecureSnapshot> {
   revalidate();
   const read = await request({ operation: "read", kind });
   if (read.operation !== "read") throw invalidReply();
+  if (
+    expected &&
+    (read.snapshot.revision !== expected.revision ||
+      read.snapshot.value !== expected.value ||
+      slots.some(
+        (slot) => read.snapshot.authority[slot] !== expected.authority[slot],
+      ))
+  )
+    throw superseded();
   revalidate();
   const operationId = crypto.randomUUID();
   let sealDispatched = false;

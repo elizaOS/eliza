@@ -16,6 +16,7 @@
  */
 
 import { logger } from "@elizaos/logger";
+import type { DesktopStorageAuthority } from "../bridge/desktop-secure-store-transaction";
 import { getAgentPlugin } from "../bridge/native-plugins";
 import { removeStorageValue } from "../bridge/storage-bridge";
 import { isAndroid, isIOS } from "../platform/init";
@@ -101,6 +102,7 @@ export async function revertLocalRuntimeCommitment(): Promise<ClearedLocalRuntim
 /** Finish an explicitly requested Local → Cloud cleanup before capturing the next runtime target. */
 export async function revertLocalRuntimeCommitmentBeforeCloud(options: {
   revalidate: () => void;
+  nativeAuthority?: DesktopStorageAuthority;
   acceptClearedServer: () => void;
 }): Promise<void> {
   options.revalidate();
@@ -122,6 +124,7 @@ export async function revertLocalRuntimeCommitmentBeforeCloud(options: {
   ) {
     await removeStorageValue("elizaos:active-server", {
       revalidate,
+      nativeAuthority: options.nativeAuthority,
     });
     // Advance only the exact deletion this guarded transaction acknowledged.
     // A newer selected server must fail the caller's expected-null check.

@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@elizaos/logger";
+import type { DesktopStorageAuthority } from "../bridge/desktop-secure-store-transaction";
 import { setStorageValue } from "../bridge/storage-bridge";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
@@ -122,6 +123,7 @@ function readAgentProfileRegistry(
 /** Materialize legacy or empty profiles durably before a first-run server can become a migration source. */
 export async function prepareAgentProfileRegistryDurably(
   revalidate: () => void,
+  nativeAuthority?: DesktopStorageAuthority,
 ): Promise<string> {
   revalidate();
   const previous = window.localStorage.getItem(STORAGE_KEY);
@@ -133,7 +135,10 @@ export async function prepareAgentProfileRegistryDurably(
   };
   validate();
   if (serialized !== previous)
-    await setStorageValue(STORAGE_KEY, serialized, { revalidate: validate });
+    await setStorageValue(STORAGE_KEY, serialized, {
+      revalidate: validate,
+      nativeAuthority,
+    });
   return serialized;
 }
 
@@ -254,6 +259,7 @@ export function addAgentProfile(
 export async function addAgentProfileDurably(
   profile: Omit<AgentProfile, "id" | "createdAt">,
   revalidate: () => void,
+  nativeAuthority?: DesktopStorageAuthority,
 ): Promise<AgentProfile> {
   revalidate();
   const registry = readAgentProfileRegistry(false);
@@ -276,7 +282,7 @@ export async function addAgentProfileDurably(
       profiles: [...registry.profiles, full],
       activeProfileId: full.id,
     }),
-    { revalidate: validate },
+    { revalidate: validate, nativeAuthority },
   );
   return full;
 }
