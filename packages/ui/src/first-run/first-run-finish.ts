@@ -916,6 +916,7 @@ export async function listOrAutoProvisionCloudAgent(
       },
       authority.revalidate,
       authority.storageOptions.nativeAuthority,
+      authority.signal,
     );
     authority.acceptProfile(profile);
     await authority.assertNative();

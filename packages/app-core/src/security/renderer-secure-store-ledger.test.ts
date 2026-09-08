@@ -56,6 +56,28 @@ afterEach(() => {
 });
 
 describe("native immutable payload ledger", () => {
+  it("rejects seal when its owner is cancelled during the native payload write", async () => {
+    const receipt = await a.prepare(
+      vault,
+      slot,
+      await a.read(vault, slot),
+      "cancelled-target",
+      randomUUID(),
+    );
+    await a.commit(vault, slot, receipt);
+    const controller = new AbortController();
+    const set = native.set;
+    native.set = async (id, key, value) => {
+      const result = await set(id, key, value);
+      if (value.includes('"state":"sealed"')) controller.abort();
+      return result;
+    };
+    await expect(
+      a.seal(vault, slot, receipt, controller.signal),
+    ).rejects.toThrow();
+    await a.rollback(vault, slot, receipt);
+    expect((await b.read(vault, slot)).value).toBe("legacy-target");
+  });
   it("keeps a newer migrated vault usable after an older initializer writes its marker late", async () => {
     const alternate = "late-migration-fixture";
     const first = new RendererSecureStoreLedger(directory, native, 40);

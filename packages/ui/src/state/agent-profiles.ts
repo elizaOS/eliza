@@ -124,6 +124,7 @@ function readAgentProfileRegistry(
 export async function prepareAgentProfileRegistryDurably(
   revalidate: () => void,
   nativeAuthority?: DesktopStorageAuthority,
+  signal?: AbortSignal,
 ): Promise<string> {
   revalidate();
   const previous = window.localStorage.getItem(STORAGE_KEY);
@@ -138,6 +139,7 @@ export async function prepareAgentProfileRegistryDurably(
     await setStorageValue(STORAGE_KEY, serialized, {
       revalidate: validate,
       nativeAuthority,
+      signal,
     });
   return serialized;
 }
@@ -260,6 +262,7 @@ export async function addAgentProfileDurably(
   profile: Omit<AgentProfile, "id" | "createdAt">,
   revalidate: () => void,
   nativeAuthority?: DesktopStorageAuthority,
+  signal?: AbortSignal,
 ): Promise<AgentProfile> {
   revalidate();
   const registry = readAgentProfileRegistry(false);
@@ -282,7 +285,7 @@ export async function addAgentProfileDurably(
       profiles: [...registry.profiles, full],
       activeProfileId: full.id,
     }),
-    { revalidate: validate, nativeAuthority },
+    { revalidate: validate, nativeAuthority, signal },
   );
   return full;
 }
