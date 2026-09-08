@@ -1,9 +1,10 @@
 /** Owns the desktop renderer's four credential slots through the native transaction ledger, including legacy callers and conditional publication requests. */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import type {
   RendererSecureTransactionRequest,
   RendererSecureTransactionResult,
 } from "@elizaos/shared/types";
+import { deriveAgentVaultId } from "../../../src/security/agent-vault-id";
 import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { RendererSecureStoreLedger } from "../../../src/security/renderer-secure-store-ledger";
 import {
@@ -90,22 +91,48 @@ function receipt(input: unknown): RendererSecureReceipt {
   };
 }
 
-/** Trusted composition inputs only; no renderer chooses a directory, vault or backend. */
-export function createRendererSecureStoreRpc(options: {
+interface RendererSecureStoreOptions {
   directory: string;
   vault: string;
   store: Pick<PlatformSecureStore, "get" | "set">;
-}) {
+}
+
+/** Pair trusted installation storage and its opaque credential namespace. */
+export function resolveRendererSecureStoreInstallation(
+  directory: string,
+  store: Pick<PlatformSecureStore, "get" | "set">,
+): RendererSecureStoreOptions {
+  // A missing leaf below a symlink ancestor has no realpath yet. Establish it
+  // before choosing the vault so a restart cannot silently select another id.
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const canonicalDirectory = realpathSync(directory);
+  return {
+    directory: canonicalDirectory,
+    vault: deriveAgentVaultId(canonicalDirectory),
+    store,
+  };
+}
+
+/** Trusted composition inputs only; deferred host configuration is resolved once after environment bootstrap, never from renderer parameters. */
+export function createRendererSecureStoreRpc(
+  options: RendererSecureStoreOptions | (() => RendererSecureStoreOptions),
+) {
+  let resolved: RendererSecureStoreOptions | undefined;
+  const configuration = () => {
+    resolved ??= { ...(typeof options === "function" ? options() : options) };
+    return resolved;
+  };
   let host: Promise<RendererSecureStoreTransactions> | undefined;
   function load(): Promise<RendererSecureStoreTransactions> {
     if (!host) {
       const initialize = async () => {
-        mkdirSync(options.directory, { recursive: true, mode: 0o700 });
+        const configured = configuration();
+        mkdirSync(configured.directory, { recursive: true, mode: 0o700 });
         const ledger = new RendererSecureStoreLedger(
-          options.directory,
-          options.store,
+          configured.directory,
+          configured.store,
         );
-        await ledger.migrateLegacy(options.vault);
+        await ledger.migrateLegacy(configured.vault);
         return new RendererSecureStoreTransactions(ledger.store, ledger);
       };
       host = initialize().catch((error) => {
@@ -119,7 +146,10 @@ export function createRendererSecureStoreRpc(options: {
   return {
     secureStoreGet: async (params: { kind: unknown }) => {
       const selected = kind(params?.kind);
-      const current = await (await load()).read(options.vault, selected);
+      const current = await (await load()).read(
+        configuration().vault,
+        selected,
+      );
       return current.value === null
         ? { ok: false as const, reason: "not_found" as const }
         : { ok: true as const, value: current.value };
@@ -127,12 +157,12 @@ export function createRendererSecureStoreRpc(options: {
     secureStoreSet: async (params: { kind: unknown; value: unknown }) => {
       const selected = kind(params?.kind),
         next = value(params?.value);
-      await (await load()).write(options.vault, selected, next);
+      await (await load()).write(configuration().vault, selected, next);
       return { ok: true as const };
     },
     secureStoreDelete: async (params: { kind: unknown }) => {
       const selected = kind(params?.kind);
-      await (await load()).write(options.vault, selected, null);
+      await (await load()).write(configuration().vault, selected, null);
       return { ok: true as const };
     },
     secureStoreTransaction: async (
@@ -146,7 +176,10 @@ export function createRendererSecureStoreRpc(options: {
         case "read":
           return {
             operation: "read",
-            snapshot: await (await load()).read(options.vault, selected),
+            snapshot: await (await load()).read(
+              configuration().vault,
+              selected,
+            ),
           };
         case "prepare": {
           const expected = snapshot(params.expected),
@@ -155,7 +188,7 @@ export function createRendererSecureStoreRpc(options: {
           return {
             operation: "prepare",
             receipt: await (await load()).prepare(
-              options.vault,
+              configuration().vault,
               selected,
               expected,
               next,
@@ -168,7 +201,7 @@ export function createRendererSecureStoreRpc(options: {
           return {
             operation: "lookup",
             receipt: await (await load()).lookup(
-              options.vault,
+              configuration().vault,
               selected,
               operationId,
             ),
@@ -181,12 +214,16 @@ export function createRendererSecureStoreRpc(options: {
             operation = params.operation;
           const protocol = await load();
           if (operation === "rollback") {
-            await protocol.rollback(options.vault, selected, token);
+            await protocol.rollback(configuration().vault, selected, token);
             return { operation };
           }
           return {
             operation,
-            snapshot: await protocol[operation](options.vault, selected, token),
+            snapshot: await protocol[operation](
+              configuration().vault,
+              selected,
+              token,
+            ),
           };
         }
         default:
