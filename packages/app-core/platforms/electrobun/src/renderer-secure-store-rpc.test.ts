@@ -1,23 +1,35 @@
 /** Exercises the renderer RPC handlers against the real native ledger with an isolated in-memory credential backend, not Electrobun or OS-keychain acceptance. */
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
+import { deriveAgentVaultId } from "../../../src/security/agent-vault-id";
 import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
-import { createRendererSecureStoreRpc } from "./renderer-secure-store-rpc";
+import {
+  createRendererSecureStoreRpc,
+  resolveRendererSecureStoreInstallation,
+} from "./renderer-secure-store-rpc";
 
 let directory: string;
 let a: ReturnType<typeof createRendererSecureStoreRpc>;
 let b: ReturnType<typeof createRendererSecureStoreRpc>;
 let nativeCalls: number;
 let denyWrites: boolean;
+let store: Pick<PlatformSecureStore, "get" | "set">;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "eliza-native-rpc-test-"));
   const values = new Map<string, string>();
   nativeCalls = 0;
   denyWrites = false;
-  const store: Pick<PlatformSecureStore, "get" | "set"> = {
+  store = {
     get: async (id, key) => {
       nativeCalls++;
       const value = values.get(JSON.stringify([id, key]));
@@ -38,6 +50,56 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
+});
+
+it("retains credentials across restart when the new state directory is under a symlink parent", async () => {
+  const realParent = join(directory, "real-parent"),
+    linkedParent = join(directory, "linked-parent");
+  mkdirSync(realParent);
+  symlinkSync(
+    realParent,
+    linkedParent,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const absentLeaf = join(linkedParent, "new-installation");
+  const first = createRendererSecureStoreRpc(() =>
+    resolveRendererSecureStoreInstallation(absentLeaf, store),
+  );
+  await first.secureStoreSet({
+    kind: "session.steward_token",
+    value: "survives-restart",
+  });
+  const restarted = createRendererSecureStoreRpc(() =>
+    resolveRendererSecureStoreInstallation(realpathSync(absentLeaf), store),
+  );
+  expect(
+    await restarted.secureStoreGet({ kind: "session.steward_token" }),
+  ).toEqual({ ok: true, value: "survives-restart" });
+});
+
+it("resolves installation configuration after bootstrap and pins that same namespace for every request", async () => {
+  let selected = join(directory, "before-bootstrap");
+  let resolutions = 0;
+  const deferred = createRendererSecureStoreRpc(() => {
+    resolutions++;
+    return { directory: selected, vault: deriveAgentVaultId(selected), store };
+  });
+  selected = join(directory, "configured-installation");
+  await store.set(
+    deriveAgentVaultId(selected),
+    "session.steward_token",
+    "configured-fixture",
+  );
+  expect(
+    await deferred.secureStoreGet({ kind: "session.steward_token" }),
+  ).toEqual({ ok: true, value: "configured-fixture" });
+  expect(existsSync(join(directory, "before-bootstrap"))).toBe(false);
+  selected = join(directory, "unrelated-later-installation");
+  expect(
+    await deferred.secureStoreGet({ kind: "session.steward_token" }),
+  ).toEqual({ ok: true, value: "configured-fixture" });
+  expect(resolutions).toBe(1);
+  expect(existsSync(selected)).toBe(false);
 });
 
 it("propagates failed logical deletion and retains the original renderer credential", async () => {
