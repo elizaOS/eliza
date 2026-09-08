@@ -231,6 +231,54 @@ export function buildTrajectoryCallText(
   };
 }
 
+/** Detail responses may omit the list endpoint's usage rollups. Fall back only
+ * to complete recorded call usage, never prompt lengths or a partial sum. */
+export function trajectoryDetailTokenCount(
+  trajectory:
+    | Partial<
+        Pick<
+          TrajectoryDetailResult["trajectory"],
+          "totalPromptTokens" | "totalCompletionTokens" | "llmCallCount"
+        >
+      >
+    | undefined,
+  calls: readonly Pick<
+    TrajectoryLlmCall,
+    "promptTokens" | "completionTokens"
+  >[],
+): number | undefined {
+  const isCount = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
+  const completeCalls =
+    Number.isInteger(trajectory?.llmCallCount) &&
+    trajectory?.llmCallCount === calls.length;
+  const sumUsage = (
+    aggregate: unknown,
+    field: "promptTokens" | "completionTokens",
+  ): number | undefined => {
+    if (isCount(aggregate)) return aggregate;
+    if (!completeCalls) return undefined;
+    if (calls.length === 0) {
+      return trajectory?.llmCallCount === 0 ? 0 : undefined;
+    }
+    let total = 0;
+    for (const call of calls) {
+      const value = call[field];
+      if (!isCount(value)) return undefined;
+      total += value;
+    }
+    return total;
+  };
+  const prompt = sumUsage(trajectory?.totalPromptTokens, "promptTokens");
+  const completion = sumUsage(
+    trajectory?.totalCompletionTokens,
+    "completionTokens",
+  );
+  return prompt === undefined || completion === undefined
+    ? undefined
+    : prompt + completion;
+}
+
 function isNativeToolCallEvent(
   event: TrajectoryEvent,
 ): event is NativeToolCallEvent {
@@ -510,6 +558,7 @@ export function TrajectoryDetailView({
   const llmCalls = detail?.llmCalls ?? [];
   const providerAccesses = detail?.providerAccesses ?? [];
   const trajectory = detail?.trajectory;
+  const tokenCount = trajectoryDetailTokenCount(trajectory, llmCalls);
   // The whole event pipeline (several O(n) dedupeEvents + the O(n log n)
   // buildTimelineEvents + cache/context derivations) was rebuilt in the render
   // body on EVERY render — filter clicks, hover, any state change — over a
@@ -717,10 +766,10 @@ export function TrajectoryDetailView({
             { label: "Model calls", value: trajectory.llmCallCount },
             {
               label: "Tokens",
-              value: formatTrajectoryTokenCount(
-                trajectory.totalPromptTokens + trajectory.totalCompletionTokens,
-                { emptyLabel: "0" },
-              ),
+              value:
+                tokenCount === undefined
+                  ? "—"
+                  : formatTrajectoryTokenCount(tokenCount, { emptyLabel: "0" }),
             },
             { label: "Provider reads", value: trajectory.providerAccessCount },
           ].map((metric) => (
