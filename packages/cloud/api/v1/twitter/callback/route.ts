@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 twitter callback route traffic with route-local auth expectations.
+/** Completes X OAuth callbacks and projects only verified identities as connected. */
 import { Hono } from "hono";
 import { cache } from "@/lib/cache/client";
 import {
@@ -22,11 +22,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
-function redirectErrorDetail(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/\s+/g, " ").trim().slice(0, 240);
-}
 
 app.get("/", async (c) => {
   const oauthToken = c.req.query("oauth_token");
@@ -166,9 +161,10 @@ app.get("/", async (c) => {
         state.codeVerifier,
         state.redirectUri,
       );
-    } catch (error) {
+    } catch {
+      // error-policy:J1 translate provider failures without exposing response details.
       logger.error("[Twitter Callback] Failed to exchange OAuth2 token", {
-        error: redirectErrorDetail(error),
+        errorCode: "token_exchange_failed",
         organizationId: state.organizationId,
       });
       return redirectTo(
@@ -332,9 +328,10 @@ app.get("/", async (c) => {
       state.oauthTokenSecret,
       oauthVerifier,
     );
-  } catch (error) {
+  } catch {
+    // error-policy:J1 translate provider failures without exposing response details.
     logger.error("[Twitter Callback] Failed to exchange token", {
-      error: redirectErrorDetail(error),
+      errorCode: "token_exchange_failed",
       organizationId: state.organizationId,
     });
     return redirectTo(

@@ -143,62 +143,26 @@ function parseVerifiedTwitterIdentity(value: unknown): VerifiedTwitterIdentity |
   const data = Reflect.get(value, "data");
   if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
 
-  const username = Reflect.get(data, "username");
-  const userId = Reflect.get(data, "id");
-  if (
-    typeof username !== "string" ||
-    username.trim().length === 0 ||
-    typeof userId !== "string" ||
-    userId.trim().length === 0
-  ) {
-    return null;
-  }
+  const identity = normalizeXProviderIdentity({
+    username: Reflect.get(data, "username"),
+    userId: Reflect.get(data, "id"),
+  });
+  if (!identity) return null;
 
   const avatarUrl = Reflect.get(data, "profile_image_url");
   const normalizedAvatarUrl =
     typeof avatarUrl === "string" && avatarUrl.trim().length > 0 ? avatarUrl.trim() : undefined;
 
   return {
-    username: username.trim(),
-    userId: userId.trim(),
+    ...identity,
     ...(normalizedAvatarUrl ? { avatarUrl: normalizedAvatarUrl } : {}),
   };
-}
-
-function addTwitterApiErrorPart(parts: string[], value: unknown): void {
-  if (typeof value === "string" && value.trim().length > 0) {
-    parts.push(value.trim());
-  }
 }
 
 function getTwitterApiErrorStatus(error: unknown): number | null {
   if (!(error instanceof Error)) return null;
   const errorShape = error as TwitterApiErrorShape;
   return errorShape.data?.status ?? errorShape.code ?? null;
-}
-
-function formatTwitterApiError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error)) return fallback;
-  const errorShape = error as TwitterApiErrorShape;
-  const parts = [error.message || fallback];
-
-  addTwitterApiErrorPart(parts, errorShape.data?.detail);
-  addTwitterApiErrorPart(parts, errorShape.data?.title);
-  addTwitterApiErrorPart(parts, errorShape.data?.error);
-
-  const errors = Array.isArray(errorShape.data?.errors) ? errorShape.data.errors : [];
-  for (const item of errors) {
-    addTwitterApiErrorPart(parts, item.detail);
-    addTwitterApiErrorPart(parts, item.message);
-    addTwitterApiErrorPart(parts, item.title);
-
-    const nestedErrors = Array.isArray(item.errors) ? item.errors : [];
-    for (const nested of nestedErrors) {
-      addTwitterApiErrorPart(parts, nested.message);
-    }
-  }
-
-  return [...new Set(parts)].join(" - ");
 }
 
 async function getRoleCredentials(
@@ -345,7 +309,7 @@ export interface TwitterConnectionStatus {
     userId?: string;
   };
   /** Stable, redacted classification for provider identity verification failures. */
-  errorCode?: "provider_identity_verification_failed";
+  errorCode?: typeof X_PROVIDER_IDENTITY_VERIFICATION_FAILED;
   error?: string;
 }
 
@@ -527,16 +491,7 @@ class TwitterAutomationService {
 
     try {
       const me = await client.v2.me();
-      const data =
-        me && typeof me === "object" && "data" in me ? (me as { data?: unknown }).data : undefined;
-      const dataRecord =
-        data !== null && typeof data === "object" && !Array.isArray(data)
-          ? (data as Record<string, unknown>)
-          : {};
-      const identity = normalizeXProviderIdentity({
-        userId: dataRecord.id,
-        username: dataRecord.username,
-      });
+      const identity = parseVerifiedTwitterIdentity(me);
       if (!identity) {
         // Token exchange succeeded; identity is incomplete so it cannot be treated as verified.
         identityLookupError = X_PROVIDER_IDENTITY_VERIFICATION_FAILED;
@@ -857,7 +812,7 @@ class TwitterAutomationService {
       // connection status carrying an explicit error field — never a silent healthy/empty state. A
       // missing-credentials case returns { connected:false } with no error above; this branch always
       // sets error.
-      const errorCode = "provider_identity_verification_failed" as const;
+      const errorCode = X_PROVIDER_IDENTITY_VERIFICATION_FAILED;
       const status = getTwitterApiErrorStatus(error);
       logger.warn("[TwitterAutomation] Provider identity verification failed", {
         organizationId,

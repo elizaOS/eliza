@@ -28,6 +28,7 @@ let tokenResult: {
 let exchangeError: Error | null = null;
 let successLandingPath = false;
 const mintedProofs: unknown[] = [];
+const logError = mock();
 
 const cacheGet = mock(async () => ({
   codeVerifier: "verifier",
@@ -79,7 +80,7 @@ mock.module("@/lib/security/redirect-validation", () => ({
   }),
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { error: mock(), warn: mock(), info: mock() },
+  logger: { error: logError, warn: mock(), info: mock() },
 }));
 
 const { default: route } = await import("./route");
@@ -98,6 +99,7 @@ describe("GET /api/v1/twitter/callback", () => {
     callOrder = [];
     successLandingPath = false;
     exchangeError = null;
+    logError.mockClear();
     mintedProofs.length = 0;
     tokenResult = {
       accessToken: "access-token",
@@ -236,5 +238,9 @@ describe("GET /api/v1/twitter/callback", () => {
     expect(url.searchParams.get("twitter_error_detail")).toBeNull();
     expect(url.toString()).not.toContain("secret-provider-detail-xyz");
     expect(url.toString()).not.toContain("invalid_grant");
+    expect(JSON.stringify(logError.mock.calls)).not.toContain(
+      "secret-provider-detail-xyz",
+    );
+    expect(JSON.stringify(logError.mock.calls)).not.toContain("invalid_grant");
   });
 });

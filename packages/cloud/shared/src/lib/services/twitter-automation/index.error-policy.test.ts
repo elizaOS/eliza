@@ -160,6 +160,10 @@ describe("TwitterAutomationService error policy", () => {
       { data: { username: 1, id: "42" } },
       { data: { username: "alice", id: 42 } },
       { data: {} },
+      { data: [] },
+      { data: null },
+      [],
+      null,
       {},
     ])("treats incomplete OAuth2 /2/users/me payload %j as unverified", async (payload) => {
       twitterApiBehavior.me = async () => payload;
