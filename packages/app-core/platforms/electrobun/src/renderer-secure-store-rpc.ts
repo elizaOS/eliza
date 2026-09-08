@@ -248,6 +248,17 @@ export function createRendererSecureStoreRpc(
             if (cancelling.get(key) === pending) cancelling.delete(key);
           }
         }
+        case "inspect": {
+          const operationId = identity(params.operationId);
+          return {
+            operation: "inspect",
+            recovery: await (await load()).inspect(
+              configuration().vault,
+              selected,
+              operationId,
+            ),
+          };
+        }
         case "lookup": {
           const operationId = identity(params.operationId);
           return {
