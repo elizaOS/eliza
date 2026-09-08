@@ -29,6 +29,9 @@ const native = vi.hoisted(() => ({
   heldValue: "joined-agent",
   hold: null as Promise<void> | null,
   enter: () => {},
+  deleteHold: null as Promise<void> | null,
+  enterDelete: () => {},
+  rejectDelete: false,
 }));
 vi.mock("@capacitor/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@capacitor/core")>();
@@ -66,10 +69,14 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
       native.values.set(key, value);
       return { ok: true };
     },
-    remove: async ({ key }: { key: string }) => ({
-      ok: true,
-      deleted: native.values.delete(key),
-    }),
+    remove: async ({ key }: { key: string }) => {
+      if (key === "runtime.active_server") {
+        native.enterDelete();
+        await native.deleteHold;
+        if (native.rejectDelete) return { ok: false, error: "denied" };
+      }
+      return { ok: true, deleted: native.values.delete(key) };
+    },
   },
 }));
 
@@ -83,7 +90,7 @@ const originalServer = {
   accessToken: "original-client-token",
 };
 
-function start(signal?: AbortSignal) {
+function start(signal = new AbortController().signal) {
   const complete = vi.fn();
   const result = listOrAutoProvisionCloudAgent(
     {
@@ -96,6 +103,7 @@ function start(signal?: AbortSignal) {
     {
       uiLanguage: "en",
       elizaCloudConnected: true,
+      revertLocalRuntimeBeforeCloud: true,
       handleInteractiveCloudLogin: async () => {
         throw new Error("Unexpected interactive login");
       },
@@ -109,13 +117,22 @@ function start(signal?: AbortSignal) {
 }
 
 describe("first-run protected native continuation", () => {
+  const abortSignalAny = Object.getOwnPropertyDescriptor(AbortSignal, "any");
   beforeAll(async () => {
     await initializeStorageBridge();
   });
   beforeEach(async () => {
+    // Exercise the actual conductor's parent signal without newer composition APIs.
+    Object.defineProperty(AbortSignal, "any", {
+      configurable: true,
+      value: undefined,
+    });
     native.hold = null;
     native.heldKey = "";
     native.heldValue = "joined-agent";
+    native.deleteHold = null;
+    native.enterDelete = () => {};
+    native.rejectDelete = false;
     vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
     setBootConfig({
       branding: {},
@@ -159,6 +176,9 @@ describe("first-run protected native continuation", () => {
     });
   });
   afterEach(() => {
+    if (abortSignalAny)
+      Object.defineProperty(AbortSignal, "any", abortSignalAny);
+    else Reflect.deleteProperty(AbortSignal, "any");
     native.hold = null;
     client.setToken(null);
     client.setBaseUrl(null);
@@ -181,6 +201,102 @@ describe("first-run protected native continuation", () => {
       "personal:joined-agent",
     );
   });
+
+  it("waits for the old local selection's native deletion before Cloud lookup", async () => {
+    await setStorageValue(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "local:embedded",
+        kind: "local",
+        label: "This device",
+      }),
+    );
+    let release!: () => void;
+    native.deleteHold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      native.enterDelete = resolve;
+    });
+    const { result, complete } = start();
+    const outcome = result.catch((error: unknown) => error);
+    try {
+      await Promise.race([entered, result]);
+      expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+      expect(complete).not.toHaveBeenCalled();
+      release();
+      expect(await outcome).toEqual({ kind: "done" });
+      expect(complete).toHaveBeenCalledWith("chat");
+      expect(loadPersistedActiveServer()?.id).toBe(
+        "cloud:personal:joined-agent",
+      );
+    } finally {
+      release();
+      await outcome;
+    }
+  });
+
+  it("keeps the local selection and exposes rejection when native cleanup fails", async () => {
+    const local = { id: "local:embedded", kind: "local", label: "This device" };
+    await setStorageValue("elizaos:active-server", JSON.stringify(local));
+    native.rejectDelete = true;
+    const { result, complete } = start();
+    const outcome = await result.catch((error: unknown) => error);
+    expect(outcome).toBeInstanceOf(Error);
+    expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(loadPersistedActiveServer()).toEqual(local);
+  });
+
+  it.each(["abort", "session", "selection"])(
+    "retires local cleanup after %s without starting a stale Cloud flow",
+    async (change) => {
+      const local = {
+        id: "local:embedded",
+        kind: "local",
+        label: "This device",
+      };
+      await setStorageValue("elizaos:active-server", JSON.stringify(local));
+      let release!: () => void;
+      native.deleteHold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise<void>((resolve) => {
+        native.enterDelete = resolve;
+      });
+      const controller = new AbortController();
+      const { result, complete } = start(controller.signal);
+      const outcome = result.catch((error: unknown) => error);
+      let replacement: Promise<void> | undefined;
+      try {
+        await Promise.race([entered, result]);
+        expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+        if (change === "abort") controller.abort();
+        else if (change === "session")
+          await writeStoredStewardToken("replacement-account-token");
+        else
+          replacement = setStorageValue(
+            "elizaos:active-server",
+            JSON.stringify(originalServer),
+          );
+        release();
+        expect(await outcome).toBeInstanceOf(Error);
+        await replacement;
+        expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+        expect(complete).not.toHaveBeenCalled();
+        expect(loadPersistedActiveServer()).toEqual(
+          change === "selection" ? originalServer : local,
+        );
+        expect(native.values.get("runtime.active_server")).toBe(
+          JSON.stringify(change === "selection" ? originalServer : local),
+        );
+      } finally {
+        release();
+        await outcome;
+        await replacement;
+      }
+    },
+  );
 
   it.each(["authority", "base"])(
     "preserves a replacement selected synchronously by a %s listener",

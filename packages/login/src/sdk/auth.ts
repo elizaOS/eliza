@@ -1246,48 +1246,66 @@ export class LoginAuth {
   ): Promise<LoginAuthResult | LoginMfaRequiredResult> {
     // Hosts must share this lifetime while establishing their canonical session,
     // not just while publishing the SDK's final in-memory token.
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, this.sessionLifetime.signal])
-      : this.sessionLifetime.signal;
-    signal.throwIfAborted();
-    // Verification can settle after logout and a new login. Capture before the
-    // request, not when storeAndReturn begins securing the returned credentials.
-    const generation = this.sessionGeneration;
-    const logoutEpoch = this.authProxyUrl ? this.readLogoutEpoch() : null;
-    const res = await authRequest<LoginAuthExchangeResponse>(
-      this.baseUrl,
-      "/auth/email/verify",
-      {
-        method: "POST",
-        signal,
-        body: JSON.stringify({
-          token,
-          email,
-          ...(this.tenantId ? { tenantId: this.tenantId } : {}),
-        }),
-      },
-    );
-
-    signal.throwIfAborted();
-    if (!res.ok) {
-      throw new LoginApiError(res.error, res.status);
-    }
-
-    const commit = async () => {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const sources = options.signal
+      ? [options.signal, this.sessionLifetime.signal]
+      : [this.sessionLifetime.signal];
+    const subscriptions = sources.map((source) => {
+      const abort = () => controller.abort(source.reason);
+      if (source.aborted) abort();
+      else source.addEventListener("abort", abort, { once: true });
+      return { source, abort };
+    });
+    try {
       signal.throwIfAborted();
-      if (
-        generation !== this.sessionGeneration ||
-        (this.authProxyUrl &&
-          logoutEpoch !== undefined &&
-          this.readLogoutEpoch() !== logoutEpoch)
-      ) {
-        throw new LoginApiError("Authentication was cancelled by sign-out", 0);
+      // Verification can settle after logout and a new login. Capture before the
+      // request, not when storeAndReturn begins securing the returned credentials.
+      const generation = this.sessionGeneration;
+      const logoutEpoch = this.authProxyUrl ? this.readLogoutEpoch() : null;
+      const res = await authRequest<LoginAuthExchangeResponse>(
+        this.baseUrl,
+        "/auth/email/verify",
+        {
+          method: "POST",
+          signal,
+          body: JSON.stringify({
+            token,
+            email,
+            ...(this.tenantId ? { tenantId: this.tenantId } : {}),
+          }),
+        },
+      );
+
+      signal.throwIfAborted();
+      if (!res.ok) {
+        throw new LoginApiError(res.error, res.status);
       }
-      return this.storeExchangeResponse(res.data, signal);
-    };
-    return options.commitSession
-      ? options.commitSession(commit, res.data, signal)
-      : commit();
+
+      const commit = async () => {
+        signal.throwIfAborted();
+        if (
+          generation !== this.sessionGeneration ||
+          (this.authProxyUrl &&
+            logoutEpoch !== undefined &&
+            this.readLogoutEpoch() !== logoutEpoch)
+        ) {
+          throw new LoginApiError(
+            "Authentication was cancelled by sign-out",
+            0,
+          );
+        }
+        return this.storeExchangeResponse(res.data, signal);
+      };
+      // Keep both lifetimes connected until the host's durable commit settles.
+      return await (options.commitSession
+        ? options.commitSession(commit, res.data, signal)
+        : commit());
+    } finally {
+      for (const { source, abort } of subscriptions) {
+        source.removeEventListener("abort", abort);
+      }
+    }
   }
 
   async verifyEmailSignInCode(

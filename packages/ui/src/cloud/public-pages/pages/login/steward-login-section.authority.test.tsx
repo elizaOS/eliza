@@ -251,12 +251,21 @@ describe("OAuth provider roundtrip", () => {
     },
   );
 
-  it.each(["unmount", "pagehide"])(
-    "cancels a callback abandoned by %s before late completion",
-    async (end) => {
-      const view = await mountCallback("nonce callback");
+  it.each([
+    ["nonce callback", "unmount"],
+    ["nonce callback", "pagehide"],
+    ["cookie recovery", "unmount"],
+    ["cookie recovery", "pagehide"],
+  ] as const)(
+    "cancels %s abandoned by %s before late completion",
+    async (mode, end) => {
+      const view = await mountCallback(mode);
       await waitFor(() =>
-        expect(requests).toContain("POST /api/auth/steward-nonce-exchange"),
+        expect(requests).toContain(
+          mode === "nonce callback"
+            ? "POST /api/auth/steward-nonce-exchange"
+            : "POST /api/auth/steward-refresh",
+        ),
       );
       await act(async () => {
         if (end === "unmount") view.unmount();
@@ -267,6 +276,46 @@ describe("OAuth provider roundtrip", () => {
         releaseExchange(Response.json({ ok: true, token })),
       );
       expect(readStoredStewardToken()).toBeNull();
+    },
+  );
+
+  it.each([false, true])(
+    "starts fresh cookie recovery after page return (StrictMode: %s)",
+    async (strict) => {
+      await mountCallback("cookie recovery", true, strict);
+      await waitFor(() => expect(requestSignal).toBeTruthy());
+      const oldSignal = requestSignal;
+      await act(async () => fireEvent(window, new Event("pagehide")));
+      expect(oldSignal?.aborted).toBe(true);
+      const staleToken = `e30.${btoa(JSON.stringify({ userId: "stale-fixture", tenantId: "elizacloud", exp: 4102444800 }))}.synthetic`;
+      await act(async () =>
+        releaseExchange(Response.json({ ok: true, token: staleToken })),
+      );
+      expect(readStoredStewardToken()).toBeNull();
+      expect(
+        screen.queryByRole("heading", {
+          name: "Authenticated destination fixture",
+        }),
+      ).toBeNull();
+      const beforeReturn = requests.filter(
+        (request) => request === "POST /api/auth/steward-refresh",
+      ).length;
+      useFallback = true;
+      await act(async () =>
+        fireEvent(
+          window,
+          new PageTransitionEvent("pageshow", { persisted: true }),
+        ),
+      );
+      await screen.findByRole("heading", {
+        name: "Authenticated destination fixture",
+      });
+      expect(readStoredStewardToken()).toBe(token);
+      expect(
+        requests.filter(
+          (request) => request === "POST /api/auth/steward-refresh",
+        ),
+      ).toHaveLength(beforeReturn + 1);
     },
   );
 

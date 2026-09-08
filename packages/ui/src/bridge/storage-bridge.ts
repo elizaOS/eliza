@@ -11,6 +11,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { ElizaError } from "@elizaos/core/errors";
 import { logger } from "@elizaos/logger";
 import {
   registerStewardTokenPersistence,
@@ -22,6 +23,7 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
+import { mutateDesktopSecureSlot } from "./desktop-secure-store-transaction";
 import {
   type DesktopSecureStoreKind,
   desktopSecureStoreDelete,
@@ -771,9 +773,122 @@ export async function getStorageValue(key: string): Promise<string | null> {
   return window.localStorage.getItem(key);
 }
 
-/**
- * Set a value in storage (works on both native and web)
- */
+/** Serialize a guarded native write or deletion with compensation before any newer writer. */
+async function mutateProtectedStorageValue(
+  key: string,
+  value: string | null,
+  revalidate: () => void,
+): Promise<void> {
+  const mutationVersion = markProtectedStorageMutation(key);
+  await serializeProtectedStorageMutation(key, async () => {
+    const validate = () => {
+      revalidate();
+      if (protectedStorageMutationVersion.get(key) !== mutationVersion)
+        throw new Error("Protected storage write was superseded");
+    };
+    validate();
+    if (!isNativePlatform() && isElectrobunRuntime()) {
+      const kind = PROTECTED_STORAGE_KIND.get(key);
+      if (!kind)
+        throw new ElizaError("Protected storage kind is not registered", {
+          code: "NATIVE_STORE_INVALID_INPUT",
+        });
+      const writeId = crypto.randomUUID();
+      runAsPrivilegedShell(() =>
+        window.localStorage.setItem(protectedPendingKey(key), writeId),
+      );
+      if (pendingProtectedWrite(key) !== writeId)
+        throw new ElizaError("Protected write quarantine did not round-trip", {
+          code: "NATIVE_STORE_QUARANTINE_FAILED",
+        });
+      const validateOwnMirror = () => {
+        // Only this synchronous authority check can see its predecessor. All
+        // unrelated reads during native awaits remain quarantined.
+        activeGuardedWrites.set(key, writeId);
+        try {
+          validate();
+        } finally {
+          activeGuardedWrites.delete(key);
+        }
+      };
+      try {
+        const published = await mutateDesktopSecureSlot(
+          kind,
+          value,
+          validateOwnMirror,
+        );
+        // A cancelled caller must not publish a stale renderer mirror even
+        // when native seal already completed. It cannot undo that durable seal.
+        validateOwnMirror();
+        if (published.value !== value)
+          throw new ElizaError(
+            "Protected storage publication did not round-trip",
+            { code: "NATIVE_STORE_INVALID_REPLY" },
+          );
+        clearPendingProtectedWrite(key, writeId);
+        if (value === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, value);
+      } catch (error) {
+        // error-policy:J2 retain quarantine for explicit recovery. The native
+        // helper reconciles only its own unsealed receipt, never old values.
+        if (protectedStorageMutationVersion.get(key) === mutationVersion)
+          protectedStorageCache.delete(key);
+        throw error;
+      }
+      return;
+    }
+    const previous =
+      pendingProtectedWrite(key) === null ? await protectedStoreGet(key) : null;
+    validate();
+    // A surviving marker made this old cache unavailable. Starting a new
+    // writer may expose only that unavailable state, not resurrect it.
+    if (pendingProtectedWrite(key) !== null) protectedStorageCache.delete(key);
+    const writeId = crypto.randomUUID();
+    runAsPrivilegedShell(() =>
+      window.localStorage.setItem(protectedPendingKey(key), writeId),
+    );
+    if (pendingProtectedWrite(key) !== writeId)
+      throw new Error("Protected write quarantine did not round-trip");
+    activeGuardedWrites.set(key, writeId);
+    try {
+      if (value === null) await protectedStoreDelete(key);
+      else if (!(await protectedStoreSet(key, value)))
+        throw new Error(`Protected storage rejected write for ${key}`);
+      validate();
+      if ((await protectedStoreGet(key)) !== value)
+        throw new Error("Protected storage write did not round-trip");
+      validate();
+      clearPendingProtectedWrite(key, writeId);
+      if (value === null) protectedStorageCache.delete(key);
+      else protectedStorageCache.set(key, value);
+    } catch (error) {
+      // error-policy:J2 native transport may finish after cancellation.
+      // Compensate within this key's existing queue before newer writers
+      // proceed; never replace their already-published renderer cache.
+      activeGuardedWrites.delete(key);
+      if (previous === null) await protectedStoreDelete(key);
+      else if (!(await protectedStoreSet(key, previous)))
+        throw new Error("Protected storage rollback was rejected", {
+          cause: error,
+        });
+      if ((await protectedStoreGet(key)) !== previous)
+        throw new Error("Protected storage rollback did not round-trip", {
+          cause: error,
+        });
+      if (protectedStorageMutationVersion.get(key) === mutationVersion) {
+        if (previous === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, previous);
+      }
+      clearPendingProtectedWrite(key, writeId);
+      throw error;
+    } finally {
+      if (activeGuardedWrites.get(key) === writeId)
+        activeGuardedWrites.delete(key);
+    }
+  });
+}
+
+/** Set a value in storage, waiting for protected native acknowledgement when applicable. */
 export async function setStorageValue(
   key: string,
   value: string,
@@ -781,68 +896,11 @@ export async function setStorageValue(
 ): Promise<void> {
   options.revalidate?.();
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
-    const mutationVersion = markProtectedStorageMutation(key);
     if (options.revalidate) {
-      const revalidate = options.revalidate;
-      await serializeProtectedStorageMutation(key, async () => {
-        const validate = () => {
-          revalidate();
-          if (protectedStorageMutationVersion.get(key) !== mutationVersion)
-            throw new Error("Protected storage write was superseded");
-        };
-        validate();
-        const previous =
-          pendingProtectedWrite(key) === null
-            ? await protectedStoreGet(key)
-            : null;
-        validate();
-        // A surviving marker made this old cache unavailable. Starting a new
-        // writer may expose only that unavailable state, not resurrect it.
-        if (pendingProtectedWrite(key) !== null)
-          protectedStorageCache.delete(key);
-        const writeId = crypto.randomUUID();
-        runAsPrivilegedShell(() =>
-          window.localStorage.setItem(protectedPendingKey(key), writeId),
-        );
-        if (pendingProtectedWrite(key) !== writeId)
-          throw new Error("Protected write quarantine did not round-trip");
-        activeGuardedWrites.set(key, writeId);
-        try {
-          if (!(await protectedStoreSet(key, value)))
-            throw new Error(`Protected storage rejected write for ${key}`);
-          validate();
-          if ((await protectedStoreGet(key)) !== value)
-            throw new Error("Protected storage write did not round-trip");
-          validate();
-          clearPendingProtectedWrite(key, writeId);
-          protectedStorageCache.set(key, value);
-        } catch (error) {
-          // error-policy:J2 native transport may finish after cancellation.
-          // Compensate within this key's existing queue before newer writers
-          // proceed; never replace their already-published renderer cache.
-          activeGuardedWrites.delete(key);
-          if (previous === null) await protectedStoreDelete(key);
-          else if (!(await protectedStoreSet(key, previous)))
-            throw new Error("Protected storage rollback was rejected", {
-              cause: error,
-            });
-          if ((await protectedStoreGet(key)) !== previous)
-            throw new Error("Protected storage rollback did not round-trip", {
-              cause: error,
-            });
-          if (protectedStorageMutationVersion.get(key) === mutationVersion) {
-            if (previous === null) protectedStorageCache.delete(key);
-            else protectedStorageCache.set(key, previous);
-          }
-          clearPendingProtectedWrite(key, writeId);
-          throw error;
-        } finally {
-          if (activeGuardedWrites.get(key) === writeId)
-            activeGuardedWrites.delete(key);
-        }
-      });
+      await mutateProtectedStorageValue(key, value, options.revalidate);
       return;
     }
+    const mutationVersion = markProtectedStorageMutation(key);
     if (!(await serializedProtectedStoreSet(key, value))) {
       throw new Error(`Protected storage rejected write for ${key}`);
     }
@@ -865,8 +923,16 @@ export async function setStorageValue(
 /**
  * Remove a value from storage (works on both native and web)
  */
-export async function removeStorageValue(key: string): Promise<void> {
+export async function removeStorageValue(
+  key: string,
+  options: { revalidate?: () => void } = {},
+): Promise<void> {
+  options.revalidate?.();
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+    if (options.revalidate) {
+      await mutateProtectedStorageValue(key, null, options.revalidate);
+      return;
+    }
     const removalVersion = markProtectedStorageMutation(key);
     await serializedProtectedStoreDelete(key);
     if (protectedStorageMutationVersion.get(key) === removalVersion) {

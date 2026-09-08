@@ -14,6 +14,46 @@
 // Defined here so both src/bridge/ and platforms/electrobun/ can import them
 // without crossing the build boundary.
 
+export type RendererSecureSlot =
+  | "session.device_auth"
+  | "session.steward_token"
+  | "runtime.active_server"
+  | "runtime.agent_profiles";
+
+export interface RendererSecureSnapshot {
+  revision: string;
+  value: string | null;
+  authority: Record<RendererSecureSlot, string>;
+}
+
+export interface RendererSecureReceipt {
+  operationId: string;
+  revision: string;
+  state: "pending" | "committed" | "sealed" | "rolled-back";
+}
+
+export type RendererSecureTransactionRequest =
+  | { operation: "read"; kind: RendererSecureSlot }
+  | {
+      operation: "prepare";
+      kind: RendererSecureSlot;
+      expected: RendererSecureSnapshot;
+      value: string | null;
+      operationId: string;
+    }
+  | { operation: "lookup"; kind: RendererSecureSlot; operationId: string }
+  | {
+      operation: "commit" | "seal" | "rollback";
+      kind: RendererSecureSlot;
+      receipt: RendererSecureReceipt;
+    };
+
+export type RendererSecureTransactionResult =
+  | { operation: "read" | "commit" | "seal"; snapshot: RendererSecureSnapshot }
+  | { operation: "prepare"; receipt: RendererSecureReceipt }
+  | { operation: "lookup"; receipt: RendererSecureReceipt | null }
+  | { operation: "rollback" };
+
 export type ExistingElizaInstallSource =
   | "config-path-env"
   | "state-dir-env"
