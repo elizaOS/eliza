@@ -308,8 +308,13 @@ function serializeProtectedStorageMutation<T>(
 function serializedProtectedStoreSet(
   key: string,
   value: string,
+  deferUntilNextTask = false,
 ): Promise<boolean> {
   return serializeProtectedStorageMutation(key, async () => {
+    // Legacy Web Storage callers stay sync-fast, but must join the queue now:
+    // a delayed enqueue could overwrite a later awaited write after it resolves.
+    if (deferUntilNextTask)
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const pending = key === STEWARD_TOKEN_KEY ? pendingStewardWrite() : null;
     const guardedPending = pendingProtectedWrite(key);
     if (!(await protectedStoreSet(key, value))) return false;
@@ -796,23 +801,21 @@ function setupStorageProxy(): void {
       markProtectedStorageMutation(key);
       protectedStorageCache.set(key, value);
       originalRemoveItem(key);
-      setTimeout(() => {
-        serializedProtectedStoreSet(key, value)
-          .then((stored) => {
-            if (!stored) {
-              logger.error(
-                { key },
-                "[StorageBridge] secure-store rejected protected write",
-              );
-            }
-          })
-          .catch((err) => {
+      void serializedProtectedStoreSet(key, value, true)
+        .then((stored) => {
+          if (!stored) {
             logger.error(
-              { err, key },
-              "[StorageBridge] failed to persist protected key",
+              { key },
+              "[StorageBridge] secure-store rejected protected write",
             );
-          });
-      }, 0);
+          }
+        })
+        .catch((err) => {
+          logger.error(
+            { err, key },
+            "[StorageBridge] failed to persist protected key",
+          );
+        });
       return;
     }
     // Always set in localStorage first

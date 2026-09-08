@@ -8,12 +8,14 @@ import { setStorageValue } from "../bridge/storage-bridge";
 import {
   getActiveProfile,
   updateAgentProfile,
-  upsertAndActivateAgentProfile,
+  updateAgentProfileDurably,
+  upsertAndActivateAgentProfileDurably,
 } from "./agent-profiles";
 import {
   createPersistedActiveServer,
   isPersistedActiveServerAllowed,
   loadPersistedActiveServer,
+  type PersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
 
@@ -22,11 +24,15 @@ const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 export async function persistActiveServerCredential(
   token: string,
   pairedApiBase?: string,
-  options: { revalidate?: () => void } = {},
+  options: {
+    revalidate?: () => void;
+    /** Own server-write receipt only; companion persistence can still fail. */
+    onActiveServerPersisted?: (server: PersistedActiveServer) => void;
+  } = {},
 ): Promise<void> {
   const activeServer = loadPersistedActiveServer();
   let expectedServer = JSON.stringify(activeServer);
-  const expectedProfile = options.revalidate
+  let expectedProfile = options.revalidate
     ? JSON.stringify(getActiveProfile())
     : null;
   const validate = () => {
@@ -63,27 +69,27 @@ export async function persistActiveServerCredential(
     (activeServer && activeServer.kind !== "local"
       ? { ...activeServer, accessToken: token }
       : null);
+  if (
+    credentialTarget &&
+    options.revalidate &&
+    !isPersistedActiveServerAllowed(credentialTarget)
+  )
+    throw new Error(
+      "Active credential target is outside the build-pinned runtime",
+    );
+
   if (credentialTarget) {
-    const authenticatedServer = credentialTarget;
-    if (
-      options.revalidate &&
-      !isPersistedActiveServerAllowed(authenticatedServer)
-    )
-      throw new Error(
-        "Active credential target is outside the build-pinned runtime",
-      );
-    // Guarded recovery must not optimistically publish before the native
-    // acknowledgement. Other pairing callers retain their existing contract.
-    if (!options.revalidate) savePersistedActiveServer(authenticatedServer);
-    // Native storage mirroring is normally fire-and-forget, but pairing reloads
-    // immediately after this boundary. Await the authoritative Preferences write
-    // so hydration cannot restore the pre-pair, tokenless server on the next boot.
+    // Preserve server-before-profile ordering: an interrupted server write
+    // must not have published the companion credential already.
+    if (!options.revalidate) savePersistedActiveServer(credentialTarget);
     await setStorageValue(
       ACTIVE_SERVER_STORAGE_KEY,
-      JSON.stringify(authenticatedServer),
+      JSON.stringify(credentialTarget),
       options.revalidate ? { revalidate: validate } : undefined,
     );
-    expectedServer = JSON.stringify(authenticatedServer);
+    expectedServer = JSON.stringify(credentialTarget);
+    validate();
+    options.onActiveServerPersisted?.(credentialTarget);
   }
 
   validate();
@@ -95,15 +101,25 @@ export async function persistActiveServerCredential(
     activeProfile.apiBase?.replace(/\/+$/, "") ===
       credentialTarget.apiBase?.replace(/\/+$/, "");
   if (sameCredentialTarget && activeProfile) {
-    updateAgentProfile(activeProfile.id, { accessToken: token });
+    const updated = await updateAgentProfileDurably(
+      activeProfile.id,
+      { accessToken: token },
+      validate,
+    );
+    expectedProfile = JSON.stringify(updated);
   } else if (credentialTarget?.kind === "remote") {
-    upsertAndActivateAgentProfile({
-      kind: "remote",
-      label: credentialTarget.label,
-      apiBase: credentialTarget.apiBase,
-      accessToken: token,
-    });
+    const updated = await upsertAndActivateAgentProfileDurably(
+      {
+        kind: "remote",
+        label: credentialTarget.label,
+        apiBase: credentialTarget.apiBase,
+        accessToken: token,
+      },
+      validate,
+    );
+    expectedProfile = JSON.stringify(updated);
   }
+  validate();
 }
 
 /**

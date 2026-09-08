@@ -6306,6 +6306,7 @@
   "bootstrapstep.errorNoToken": "No token provided. Paste the token from your Eliza Cloud dashboard.",
   "bootstrapstep.errorInvalidToken": "Token invalid, expired, or already used. Bootstrap tokens are single-use — rotate from your Eliza Cloud dashboard to get a new one.",
   "bootstrapstep.errorNetwork": "Network error — check your connection and try again.",
+  "bootstrapstep.errorStorage": "The session could not be saved. Check device storage access, then get a new bootstrap token from your Cloud dashboard.",
   "bootstrapstep.formLabel": "Bootstrap token entry",
   "bootstrapstep.title": "Finish setting up your container",
   "bootstrapstep.description": "Paste the bootstrap token from your Eliza Cloud dashboard to activate this container.",
