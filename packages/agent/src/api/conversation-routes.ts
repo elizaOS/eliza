@@ -1521,6 +1521,21 @@ function conversationReplyContentHash(content: Content): string {
     .digest("hex");
 }
 
+/** A grounded successful reply replaces only the original failure markers. */
+function clearRecoveredReplyFailureMarkers<T extends object>(record: T): T {
+  const recovered = { ...record } as T & Record<string, unknown>;
+  for (const key of ["elizaSyntheticFailure", "syntheticChatFailure"] as const)
+    if (recovered[key] === true) delete recovered[key];
+  for (const key of ["failureKind", "chatFailureKind"] as const)
+    if (
+      isChatFailureKind(recovered[key]) ||
+      recovered[key] === "no_response" ||
+      recovered[key] === "transient_failure"
+    )
+      delete recovered[key];
+  return recovered;
+}
+
 function parseDurableConversationReplyRecovery(
   serialized: string,
 ): DurableConversationReplyRecovery | null {
@@ -4591,7 +4606,7 @@ export async function handleConversationRoutes(
         );
       await authorizeRecoveryAudience();
       assertCurrent();
-      const content: Content = {
+      let content: Content = {
         ...assistant.content,
         text: reply.text,
         inReplyTo: userId,
@@ -4605,6 +4620,27 @@ export async function handleConversationRoutes(
       delete content.elizaSyntheticFailure;
       delete content.interrupted;
       delete content.transcriptVisibility;
+      const normalizedContent = clearRecoveredReplyFailureMarkers(content);
+      if (isRecord(normalizedContent.metadata))
+        normalizedContent.metadata = clearRecoveredReplyFailureMarkers(
+          normalizedContent.metadata,
+        );
+      // New prepared prose binds its successful metadata before persistence.
+      // Legacy staged/completed replies keep their exact saved revision: memory
+      // evaluators may already have acknowledged that historical content hash.
+      const normalizeFailureMetadata =
+        !recovery.reply ||
+        recovery.reply.contentHash ===
+          conversationReplyContentHash(normalizedContent);
+      if (normalizeFailureMetadata) content = normalizedContent;
+      if (
+        recovery.reply &&
+        recovery.reply.contentHash !== conversationReplyContentHash(content)
+      )
+        throw new ElizaError(
+          "Stored recovered content does not match its prepared revision",
+          { code: "CHAT_REPLY_RECOVERY_INVALID" },
+        );
       const checked = await enforceTrustedDeliveryAudienceAtEgress(
         runtime,
         message,
@@ -4688,9 +4724,15 @@ export async function handleConversationRoutes(
       await runtime.roomHandlerQueue.runInLease(conv.roomId, lease, () => {
         assertCurrent();
         const metadata = latestAssistant.metadata
-          ? { ...latestAssistant.metadata }
+          ? normalizeFailureMetadata
+            ? clearRecoveredReplyFailureMarkers(latestAssistant.metadata)
+            : { ...latestAssistant.metadata }
           : undefined;
-        if (metadata && "chatFailureKind" in metadata)
+        if (
+          !normalizeFailureMetadata &&
+          metadata &&
+          "chatFailureKind" in metadata
+        )
           delete metadata.chatFailureKind;
         return runtime.updateMemory({
           id: assistantId,
