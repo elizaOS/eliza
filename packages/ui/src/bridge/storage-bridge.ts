@@ -20,6 +20,7 @@ import {
   registerStewardTokenRemoval,
   STEWARD_PENDING_WRITE_KEY,
   STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
   type StewardTokenScopePublication,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
@@ -29,6 +30,7 @@ import {
   captureDesktopStorageAuthority,
   type DesktopStorageAuthority,
   mutateDesktopSecureSlot,
+  recoverDesktopSecureSlot,
 } from "./desktop-secure-store-transaction";
 import {
   type DesktopSecureStoreKind,
@@ -171,6 +173,12 @@ function clearPendingStewardWrite(expected: string | null): void {
 }
 
 function readProtectedToken(): string | null {
+  const guarded = pendingProtectedWrite(STEWARD_TOKEN_KEY);
+  if (
+    guarded !== null &&
+    activeGuardedWrites.get(STEWARD_TOKEN_KEY) !== guarded
+  )
+    return null;
   const pending = pendingStewardWrite();
   if (pending !== null && pending !== activeStewardWrite) return null;
   const value = protectedStorageCache.get(STEWARD_TOKEN_KEY) ?? null;
@@ -519,13 +527,76 @@ export async function initializeStorageBridge(): Promise<void> {
       try {
         await serializeProtectedStorageMutation(key, async () => {
           const version = protectedStorageMutationVersion.get(key);
-          if (
-            (key === STEWARD_TOKEN_KEY && pendingStewardWrite() !== null) ||
-            pendingProtectedWrite(key) !== null
-          ) {
-            // A previous renderer did not acknowledge this credential. Neither
-            // native hydration nor legacy migration may promote it to authority.
+          const pending =
+            key === STEWARD_TOKEN_KEY
+              ? (pendingStewardWrite() ?? pendingProtectedWrite(key))
+              : pendingProtectedWrite(key);
+          if (pending !== null) {
+            // An interrupted renderer cannot hydrate by value alone. Desktop
+            // recovery requires this operation's own terminal native receipt.
             protectedStorageCache.delete(key);
+            if (!isNativePlatform() && isElectrobunRuntime()) {
+              if (
+                key === STEWARD_TOKEN_KEY &&
+                pendingStewardWrite() !== null &&
+                pendingProtectedWrite(key) !== null &&
+                pendingStewardWrite() !== pendingProtectedWrite(key)
+              )
+                throw new ElizaError(
+                  "Multiple interrupted session writes require explicit recovery",
+                  { code: "NATIVE_STORE_RECOVERY_REQUIRED" },
+                );
+              const scope = getStewardTokenDeploymentScope();
+              const kind = PROTECTED_STORAGE_KIND.get(key);
+              if (!kind)
+                throw new ElizaError(
+                  "Protected storage kind is not registered",
+                  { code: "NATIVE_STORE_INVALID_INPUT" },
+                );
+              const validate = () => {
+                if (
+                  protectedStorageMutationVersion.get(key) !== version ||
+                  (key === STEWARD_TOKEN_KEY
+                    ? (pendingStewardWrite() ?? pendingProtectedWrite(key))
+                    : pendingProtectedWrite(key)) !== pending ||
+                  getStewardTokenDeploymentScope() !== scope
+                )
+                  throw new ElizaError(
+                    "Native storage recovery was superseded",
+                    { code: "NATIVE_STORE_SUPERSEDED" },
+                  );
+              };
+              const recovered = await recoverDesktopSecureSlot(
+                kind,
+                pending,
+                validate,
+              );
+              validate();
+              // The native receipt, not the old renderer marker, owns the value.
+              // Repair companion scope only for a token valid in this deployment.
+              if (
+                key === STEWARD_TOKEN_KEY &&
+                readDesktopStewardToken(recovered.value) !== null &&
+                scope !== null
+              ) {
+                runAsPrivilegedShell(() =>
+                  window.localStorage.setItem(STEWARD_TOKEN_SCOPE_KEY, scope),
+                );
+                if (
+                  window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) !== scope
+                )
+                  throw new ElizaError(
+                    "Recovered session scope did not round-trip",
+                    { code: "NATIVE_STORE_RECOVERY_REQUIRED" },
+                  );
+              }
+              validate();
+              if (key === STEWARD_TOKEN_KEY) clearPendingStewardWrite(pending);
+              clearPendingProtectedWrite(key, pending);
+              if (recovered.value !== null)
+                protectedStorageCache.set(key, recovered.value);
+              originalRemoveItem(key);
+            }
             return;
           }
           const protectedValue = await protectedStoreGet(key);
@@ -911,6 +982,7 @@ async function mutateProtectedStorageValue(
           validateOwnMirror,
           nativeAuthority?.expected(kind),
           signal,
+          writeId,
         );
         // A cancelled caller must not publish a stale renderer mirror even
         // when native seal already completed. It cannot undo that durable seal.
@@ -1132,6 +1204,7 @@ async function persistDesktopStewardToken(
         () => withOwnMirror(validate),
         authority.expected("session.steward_token"),
         signal,
+        writeId,
       );
       withOwnMirror(() => {
         validate();
