@@ -19,6 +19,7 @@ import {
 	runWithStreamingContext,
 } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
+import type { ContextEvent } from "../types/context-object";
 import {
 	type ChatMessage,
 	getModelFallbackChain,
@@ -31,6 +32,7 @@ import { modelProviderErrorDetail } from "../utils/model-errors";
 import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
 import { toWellFormedUnicode } from "../utils/well-formed.js";
+import { selectCompletionContext } from "./completion-context";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
@@ -88,6 +90,7 @@ interface RawEvaluatorOutput {
 	effectReceiptIds?: unknown;
 	copyToClipboard?: unknown;
 	recommendedToolCallId?: unknown;
+	contextRequest?: unknown;
 }
 
 interface ParsedEvaluatorObject {
@@ -108,6 +111,7 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 	"effectReceiptIds",
 	"copyToClipboard",
 	"recommendedToolCallId",
+	"contextRequest",
 ]);
 
 /**
@@ -571,11 +575,57 @@ export async function runEvaluator(
 		});
 		throw error;
 	}
-	const output = finalizeEvaluatorOutput(
-		raw,
-		params.context,
-		params.trajectory,
-	);
+	let output = finalizeEvaluatorOutput(raw, params.context, params.trajectory);
+	const snapshot = selectedCall?.preparedAttempt;
+	const recordOutput = () =>
+		recordEvaluationStage({
+			runtime: params.runtime,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration: params.iteration ?? 1,
+			...(output.raw?.contextRequest === "full" &&
+			(snapshot?.input ?? renderedInput).completionSelectionApplied
+				? { attempt: 0 }
+				: {}),
+			modelType: String(modelType),
+			provider: snapshot?.provider ?? params.provider,
+			messages: (snapshot?.input ?? renderedInput).messages,
+			providerOptions: snapshot?.providerOptions ?? providerOptions,
+			raw,
+			output,
+			startedAt,
+			endedAt: selectedCall?.endedAt ?? Date.now(),
+			segmentHashes: (snapshot?.prefixHashes ?? prefixHashes).map(
+				(entry) => entry.segmentHash,
+			),
+			prefixHash: snapshot?.prefixHash ?? prefixHash,
+			logger: params.runtime.logger,
+		});
+	if (output.raw?.contextRequest === "full" && !output.protocolFailure) {
+		if ((snapshot?.input ?? renderedInput).completionSelectionApplied) {
+			// This is a read of the original in-memory sources, not another
+			// planner turn. No callbacks or tools run before the full-context
+			// evaluator decides; removing the selector makes this one-shot.
+			await recordOutput();
+			const original = params.trajectory.modelBaseContext ?? params.context;
+			return runEvaluator({
+				...params,
+				trajectory: {
+					...params.trajectory,
+					modelBaseContext: {
+						...original,
+						metadata: { ...original.metadata, completionContext: undefined },
+					},
+				},
+			});
+		}
+		output = {
+			...output,
+			protocolFailure: true,
+			parseError: "Full completion context was already supplied",
+		};
+	}
 	await timeInferenceSpan("evaluator:stream-hook", () =>
 		emitStreamingHook(streamingContext, "onEvaluation", {
 			evaluation: projectToolDiagnosticValue(
@@ -589,27 +639,7 @@ export async function runEvaluator(
 		applyEvaluatorEffects(output, params.effects),
 	);
 
-	const snapshot = selectedCall?.preparedAttempt;
-	await recordEvaluationStage({
-		runtime: params.runtime,
-		recorder: params.recorder,
-		trajectoryId: params.trajectoryId,
-		parentStageId: params.parentStageId,
-		iteration: params.iteration ?? 1,
-		modelType: String(modelType),
-		provider: snapshot?.provider ?? params.provider,
-		messages: (snapshot?.input ?? renderedInput).messages,
-		providerOptions: snapshot?.providerOptions ?? providerOptions,
-		raw,
-		output,
-		startedAt,
-		endedAt: selectedCall?.endedAt ?? Date.now(),
-		segmentHashes: (snapshot?.prefixHashes ?? prefixHashes).map(
-			(entry) => entry.segmentHash,
-		),
-		prefixHash: snapshot?.prefixHash ?? prefixHash,
-		logger: params.runtime.logger,
-	});
+	await recordOutput();
 
 	return output;
 }
@@ -785,19 +815,73 @@ function renderEvaluatorModelInput(params: {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
+	completionSelectionApplied: boolean;
 } {
-	const renderedContext = renderContextObject(
+	const completion = selectCompletionContext(
 		params.trajectory.modelBaseContext ?? params.context,
 	);
+	const renderedContext = renderContextObject(
+		projectEvaluatorContext(completion.context),
+	);
+	if (completion.applied) {
+		renderedContext.promptSegments.push({
+			id: "completion-context-selection",
+			label: "completion_context",
+			stable: false,
+			content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior user sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=full with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime will restore the complete original context for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
+		});
+	}
 	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages =
+	const completeStepMessages =
 		params.trajectory.modelHistory ??
 		trajectoryStepsToMessages(params.trajectory.steps, {
 			redactText: params.redactText,
 		});
+	// The planner's append-only history stays byte-stable. Only this stage's
+	// wire copy removes JSON indentation; all result fields and string bytes
+	// survive, including receipts, failures, attachments and pending work.
+	const stepMessages = completeStepMessages.map((message): ChatMessage => {
+		if (message.role !== "tool" || !Array.isArray(message.content)) {
+			return message;
+		}
+		return {
+			...message,
+			content: message.content.map((part) => {
+				const output =
+					part.type === "tool-result" && "output" in part
+						? part.output
+						: undefined;
+				if (
+					!output ||
+					typeof output !== "object" ||
+					!("type" in output) ||
+					output.type !== "text" ||
+					!("value" in output) ||
+					typeof output.value !== "string"
+				) {
+					return part;
+				}
+				try {
+					const result: unknown = JSON.parse(output.value);
+					// Only change the canonical serialization emitted by the planner.
+					// This rejects lossy parse roundtrips (duplicate object keys, large
+					// integers, etc.) and retains legacy/custom tool text verbatim.
+					if (JSON.stringify(result, null, 2) !== output.value) return part;
+					return {
+						...part,
+						output: { ...output, value: JSON.stringify(result) },
+					};
+				} catch {
+					// error-policy:J3 Non-JSON tool text is valid evidence. Preserve it
+					// completely instead of repairing or extracting a JSON substring.
+					return part;
+				}
+			}),
+		};
+	});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
@@ -823,7 +907,80 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments };
+	return {
+		messages,
+		promptSegments,
+		cacheKeySegments,
+		completionSelectionApplied: completion.applied,
+	};
+}
+
+const ACTION_SURFACE_DIAGNOSTIC_FIELDS = new Set([
+	"mode",
+	"candidateActionCount",
+	"discoverableActionCount",
+	"discoveryToolName",
+	"catalogParentCount",
+	"exposedActionCount",
+	"tierAParents",
+	"tierAChildrenByParent",
+	"tierBParents",
+	"omittedParentCount",
+	"omittedParentNamesPreview",
+	"actionSurfaceHash",
+	"warnings",
+	"queryTokens",
+	"candidateActions",
+	"parentActionHints",
+	"codingActionProfile",
+	"fallback",
+]);
+
+/**
+ * The evaluator judges outcomes and can return CONTINUE for more planning. Its
+ * input therefore does not need the message service's retrieval catalog
+ * diagnostics. Preserve the source event and every semantic field; unknown
+ * producers or future catalog fields keep the complete representation.
+ */
+function projectEvaluatorContext(context: ContextObject): ContextObject {
+	const events = (context.events ?? []).map((event): ContextEvent => {
+		if (
+			event.type !== "message_handler" ||
+			event.source !== "message-service"
+		) {
+			return event;
+		}
+		const plan = event.metadata?.plan;
+		if (!plan || typeof plan !== "object" || Array.isArray(plan)) return event;
+		const surface = plan.actionSurface;
+		if (
+			!surface ||
+			typeof surface !== "object" ||
+			Array.isArray(surface) ||
+			(surface.mode !== "full" &&
+				surface.mode !== "tiered" &&
+				surface.mode !== "relay-delivery") ||
+			Object.keys(surface).some(
+				(key) => !ACTION_SURFACE_DIAGNOSTIC_FIELDS.has(key),
+			)
+		) {
+			return event;
+		}
+		const { actionSurface: _catalogDiagnostics, ...completionPlan } = plan;
+		return {
+			...event,
+			metadata: {
+				...event.metadata,
+				plan: completionPlan,
+				evaluatorProjection: {
+					sourceEventId: event.id,
+					omittedFields: ["metadata.plan.actionSurface"],
+					reason: "planner_retrieval_diagnostics",
+				},
+			},
+		};
+	});
+	return { ...context, events };
 }
 
 export function parseEvaluatorOutput(
@@ -914,6 +1071,15 @@ function evaluatorEnvelopeProtocolError(
 		return 'fields "decision" and legacy "route" must agree';
 	if (typeof output.thought !== "string")
 		return 'required field "thought" must be a string';
+	if (
+		Object.hasOwn(output, "contextRequest") &&
+		(output.contextRequest !== "full" ||
+			output.success !== false ||
+			parseEvaluatorRoute(output.decision ?? output.route) !== "CONTINUE" ||
+			Object.hasOwn(output, "messageToUser") ||
+			Object.hasOwn(output, "copyToClipboard"))
+	)
+		return "contextRequest must be full with CONTINUE, success=false, and no messageToUser or copyToClipboard";
 	if (
 		Object.hasOwn(output, "messageToUser") &&
 		typeof output.messageToUser !== "string"

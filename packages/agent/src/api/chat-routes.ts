@@ -37,6 +37,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type MessageMetadata,
+  type MessageReplyRecoveryContext,
   ModelType,
   markInference,
   nextInferenceTurnId,
@@ -306,6 +307,8 @@ export interface ChatMessageIdOutcome {
   actionResults?: ChatActionResultSummary[];
   failureKind?: ChatFailureKind;
   terminalFailure?: ChatTerminalFailure;
+  /** A server-persisted reply can be regenerated without re-running this turn. */
+  replyRecoveryAvailable?: true;
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   noResponseReason?: "ignored";
@@ -478,6 +481,10 @@ export interface ChatGenerationResult {
   usedActionCallbacks?: boolean;
   actionCallbackHistory?: string[];
   actionResults?: ChatActionResultSummary[];
+  /** Server-only complete evidence; never serialize this into a chat DTO. */
+  replyRecovery?: MessageReplyRecoveryContext & {
+    actionResults: ActionResult[];
+  };
   responseContent?: Content | null;
   responseMessages?: Memory[];
   /** Exact response IDs durably committed by the message service before return. */
@@ -3495,6 +3502,14 @@ async function generateChatResponseWithTiming(
         : {}),
       ...(actionResultSummaries.length > 0
         ? { actionResults: actionResultSummaries }
+        : {}),
+      ...(replyFailure && result?.replyRecovery && result.actionResults
+        ? {
+            replyRecovery: {
+              ...result.replyRecovery,
+              actionResults: result.actionResults,
+            },
+          }
         : {}),
       ...(responseContent ? { responseContent } : {}),
       ...(responseMessages.length > 0 ? { responseMessages } : {}),

@@ -7,6 +7,7 @@ import {
 	normalizeTopics,
 } from "../../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../../runtime/candidate-action-backstop";
+import { parseCompletionContextSelection } from "../../runtime/completion-context";
 import {
 	parseJsonObject,
 	stripJsonStructuralJunkReply,
@@ -169,6 +170,12 @@ export function normalizeRawParsedForFieldRegistry(
 	}
 	if (normalized.intents === undefined) {
 		normalized.intents = Array.isArray(plan?.intents) ? plan.intents : [];
+	}
+	if (
+		normalized.completionContext === undefined &&
+		plan?.completionContext !== undefined
+	) {
+		normalized.completionContext = plan.completionContext;
 	}
 	if (normalized.requiresTool === undefined && plan?.requiresTool === true) {
 		normalized.requiresTool = true;
@@ -613,6 +620,9 @@ export function messageHandlerFromFieldResult(
 			: replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
+		completionContext: parseCompletionContextSelection(
+			result.completionContext,
+		),
 		intents: declaredIntents,
 		reply: replyText,
 		replyEffectStatus,

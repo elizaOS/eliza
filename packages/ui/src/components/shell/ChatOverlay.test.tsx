@@ -5859,6 +5859,49 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 
+  it("uses the shared reply-only callback for a stored effect failure without resending", async () => {
+    let finish!: () => void;
+    const handleChatRetry = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    __setAppValueForTests({ handleChatRetry } as never);
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "Create a note", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "The reply failed.",
+          createdAt: 2,
+          failureKind: "provider_issue",
+          replyRecoveryAvailable: true,
+          terminalFailure: {
+            kind: "provider_issue",
+            transient: false,
+            message: "Reply failed.",
+          },
+        },
+      ],
+    });
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    const retry = screen.getByRole("button", { name: "Regenerate reply" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(handleChatRetry).toHaveBeenCalledTimes(1);
+    expect(handleChatRetry).toHaveBeenCalledWith("a1");
+    expect(controller.send).not.toHaveBeenCalled();
+    expect((retry as HTMLButtonElement).disabled).toBe(true);
+    expect(retry.textContent).toContain("Regenerating reply…");
+    await act(async () => {
+      finish();
+    });
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("shows Retry on planner exhaustion and re-sends the preceding user turn", () => {
     const controller = makeController({
       messages: [

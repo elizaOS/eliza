@@ -180,6 +180,18 @@ export interface MessageHandlerDeterministicToolCall {
 	params?: Record<string, JsonValue>;
 }
 
+/** Stage-1 source selection for completion only; it never edits stored history. */
+export type CompletionContextSelection = {
+	mode: "full" | "selected";
+	sourceSetId: string;
+	/** The model reviewed every source for applicability before selecting. */
+	complete: boolean;
+	relevantSourceIds: string[];
+	constraintSourceIds: string[];
+	referentSourceIds: string[];
+	pendingIntentSourceIds: string[];
+};
+
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
@@ -192,6 +204,7 @@ export interface MessageHandlerPlan {
 	 */
 	requiresTool?: boolean;
 	contextSlices?: string[];
+	completionContext?: CompletionContextSelection;
 	candidateActions?: string[];
 	/**
 	 * Stage 1's declared user intents for the turn, verbatim ("delete

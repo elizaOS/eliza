@@ -27,9 +27,16 @@
  */
 
 import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../actions/to-tool";
-import type { ReplyEffectStatus } from "../types/components";
+import type {
+	CompletionContextSelection,
+	ReplyEffectStatus,
+} from "../types/components";
 import type { JSONSchema } from "../types/model";
 import { trimEndCharacters } from "../utils/string-boundaries";
+import {
+	COMPLETION_CONTEXT_SCHEMA,
+	parseCompletionContextSelection,
+} from "./completion-context";
 import { stripJsonStructuralJunkReply } from "./json-output";
 import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-evaluator";
 
@@ -166,6 +173,19 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 		}
 		return result;
 	},
+};
+
+export const completionContextFieldEvaluator: ResponseHandlerFieldEvaluator<
+	CompletionContextSelection | undefined
+> = {
+	name: "completionContext",
+	description:
+		"Source references for the later completion evaluator, never a summary. Review ALL completion_source user-history blocks. For mode=selected, echo completion_source_set as sourceSetId, set complete=true only after checking every block, and select every applicable source in the four lists: relevantSourceIds for factual background; constraintSourceIds for all standing preferences, permissions, prohibitions and corrections; referentSourceIds for this/that/it and follow-up meanings; pendingIntentSourceIds for referenced unfinished work. A source may appear in multiple lists. Preserve exact h IDs, with no cap. Empty lists mean none applicable, not unchecked. Current request, assistant dialogue, providers and current tool receipts are retained automatically. Use mode=full and complete=false if uncertain about any constraint/reference, if no source set is supplied, or if exhaustive history/count/recall is requested. Do not omit a constraint because another request is more recent. Do not include old one-off commands as pending unless the current request refers to them.",
+	descriptionCompressed:
+		"Exact h source IDs for completion. Selected requires sourceSetId and complete=true after checking all sources for relevant facts, every applicable standing constraint/correction, referents and referenced pending work. No summaries/caps. Full if uncertain, exhaustive recall or no source set.",
+	priority: 16,
+	schema: COMPLETION_CONTEXT_SCHEMA,
+	parse: parseCompletionContextSelection,
 };
 
 // ---------------------------------------------------------------------------
@@ -496,6 +516,7 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
 		shouldRespondFieldEvaluator,
 		contextsFieldEvaluator,
 		intentsFieldEvaluator,
+		completionContextFieldEvaluator,
 		replyTextFieldEvaluator,
 		replyEffectStatusFieldEvaluator,
 		candidateActionNamesFieldEvaluator,

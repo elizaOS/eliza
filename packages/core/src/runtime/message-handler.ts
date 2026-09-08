@@ -15,6 +15,7 @@ import {
 	normalizeReplyEffectStatus,
 	normalizeTopics,
 } from "./builtin-field-evaluators";
+import { parseCompletionContextSelection } from "./completion-context";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
 import {
 	looksLikeRawFieldTranscript,
@@ -103,6 +104,9 @@ export function parseMessageHandlerOutput(
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply: replyRaw,
+		completionContext: parseCompletionContextSelection(
+			parsed.completionContext,
+		),
 		...(typeof parsed.replyEffectStatus === "string" &&
 		parsed.replyEffectStatus.trim().toLowerCase() === replyEffectStatus
 			? { replyEffectStatus }

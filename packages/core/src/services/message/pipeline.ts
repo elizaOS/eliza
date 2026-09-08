@@ -27,6 +27,10 @@ import {
 	parseCodingActionProfile,
 } from "../../runtime/coding-action-profile";
 import { appendContextEvent } from "../../runtime/context-object";
+import {
+	renderContextObject,
+	segmentBlock,
+} from "../../runtime/context-renderer";
 import { type EvaluatorEffects, runEvaluator } from "../../runtime/evaluator";
 import {
 	type FactsAndRelationshipsRunResult,
@@ -61,13 +65,19 @@ import {
 	type TrajectoryRecorder,
 } from "../../runtime/trajectory-recorder";
 import { withSemanticStageFanOut } from "../../runtime/trajectory-semantic-stage-sink";
+import {
+	composeToolDiagnosticRedactor,
+	projectCompleteToolValueForModel,
+} from "../../security/tool-diagnostics";
+import { ownerExclusiveDisclosureWasUsed } from "../../security/trusted-delivery-audience";
 import { getTrajectoryContext } from "../../trajectory-context";
 import type {
 	Action,
 	HandlerCallback,
 	MessageHandlerResult,
 } from "../../types/components";
-import type { ContextEvent } from "../../types/context-object";
+import type { ContextEvent, ContextObject } from "../../types/context-object";
+import type { MessageReplyRecoveryContext } from "../../types/message-service";
 import { type GenerateTextParams, ModelType } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
 import { ChannelType } from "../../types/primitives";
@@ -1121,6 +1131,12 @@ export async function runV5MessageRuntimeStage1(
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
+		if (messageHandler.plan.completionContext) {
+			plannerContext.metadata = {
+				...plannerContext.metadata,
+				completionContext: { ...messageHandler.plan.completionContext },
+			};
+		}
 		const plannerDecisionEvent: ContextEvent = {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",
@@ -1249,6 +1265,12 @@ export async function runV5MessageRuntimeStage1(
 						args.message,
 					),
 				});
+				if (messageHandler.plan.completionContext) {
+					umbrellaContext.metadata = {
+						...umbrellaContext.metadata,
+						completionContext: { ...messageHandler.plan.completionContext },
+					};
+				}
 				const context = appendContextEvent(
 					umbrellaContext,
 					plannerDecisionEvent,
@@ -1918,6 +1940,36 @@ export async function runV5MessageRuntimeStage1(
 			// outcome and surface the unavailable system status separately; none of
 			// the answerless/egress/context-after fallbacks may call another model
 			// or execute another action after this presentation failure.
+			let replyRecovery: MessageReplyRecoveryContext | undefined;
+			try {
+				const redactText = composeToolDiagnosticRedactor(args.runtime);
+				const context = projectCompleteToolValueForModel(
+					plannerResult.trajectory.context,
+					redactText,
+				) as ContextObject;
+				replyRecovery = {
+					context: renderContextObject(context)
+						.promptSegments.map(segmentBlock)
+						.join("\n\n"),
+					pendingToolCalls: projectCompleteToolValueForModel(
+						plannerResult.trajectory.plannedQueue,
+						redactText,
+					) as JsonValue[],
+					evaluatorOutputs: projectCompleteToolValueForModel(
+						plannerResult.trajectory.evaluatorOutputs,
+						redactText,
+					) as JsonValue[],
+					ownerExclusiveDisclosureUsed: ownerExclusiveDisclosureWasUsed(
+						args.message,
+					),
+				};
+			} catch {
+				// error-policy:J4 Unserializable evidence disables later recovery, but must never
+				// erase the authoritative failure/results or replay a saved effect.
+				args.runtime.logger.warn(
+					"Reply-only recovery unavailable: complete context could not be captured",
+				);
+			}
 			return {
 				kind: "planned_reply",
 				messageHandler,
@@ -1932,6 +1984,7 @@ export async function runV5MessageRuntimeStage1(
 					mode: "none",
 					terminalFailure: plannerResult.terminalFailure,
 					actionResults: egressActionResults,
+					...(replyRecovery ? { replyRecovery } : {}),
 				},
 			};
 		}

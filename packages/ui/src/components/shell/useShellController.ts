@@ -1079,6 +1079,7 @@ export function useShellController(): ShellController {
         cached.interrupted === (message.interrupted || undefined) &&
         cached.failureKind === message.failureKind &&
         cached.terminalFailure === message.terminalFailure &&
+        cached.replyRecoveryAvailable === message.replyRecoveryAvailable &&
         (cached.reasoning || undefined) === (message.reasoning || undefined) &&
         cached.secretRequest === message.secretRequest &&
         cached.capabilityHandoff === message.capabilityHandoff &&
@@ -1101,6 +1102,7 @@ export function useShellController(): ShellController {
         ...(message.source ? { source: message.source } : {}),
         failureKind: message.failureKind,
         terminalFailure: message.terminalFailure,
+        replyRecoveryAvailable: message.replyRecoveryAvailable,
         ...(message.reasoning ? { reasoning: message.reasoning } : {}),
         ...(message.toolEvents?.length
           ? { toolEvents: message.toolEvents }

@@ -11,6 +11,7 @@
  * `NATIVE_TOOL_NAME_PATTERN` or conversion throws.
  */
 import { ElizaError } from "../errors";
+import { COMPLETION_CONTEXT_SCHEMA } from "../runtime/completion-context";
 import type { Action } from "../types";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
@@ -70,6 +71,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			items: { type: "string" },
 			description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
 		},
+		completionContext: COMPLETION_CONTEXT_SCHEMA,
 		replyText: {
 			type: "string",
 			description:
@@ -137,6 +139,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		"shouldRespond",
 		"contexts",
 		"intents",
+		"completionContext",
 		"replyText",
 		"replyEffectStatus",
 		"candidateActionNames",
@@ -167,10 +170,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
+	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
+	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /

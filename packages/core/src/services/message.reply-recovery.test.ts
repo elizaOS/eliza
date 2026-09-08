@@ -37,6 +37,46 @@ const savedNote: ActionResult = {
 };
 
 describe("model-backed final reply recovery", () => {
+	it("retains original constraints and unfinished intents during reply-only recovery", async () => {
+		const response =
+			"I saved Picnic. The calendar change was not completed, and I have not retried it.";
+		const useModel = vi.fn(async () =>
+			JSON.stringify({ response, effectReceiptIds: ["note-proof"] }),
+		);
+		const processActions = vi.fn();
+		const runtime = createMockRuntime({ useModel, processActions });
+		const context = `${"prior constraint ".repeat(2000)}Keep the existing calendar event unchanged.`;
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message,
+				reply: "",
+				actionResults: [savedNote],
+				recovery: {
+					context,
+					pendingToolCalls: [
+						{ name: "CALENDAR", arguments: { operation: "create" } },
+					],
+					evaluatorOutputs: [
+						{ decision: "CONTINUE", reason: "Calendar is still pending" },
+					],
+					ownerExclusiveDisclosureUsed: true,
+				},
+			}),
+		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
+		expect(useModel).toHaveBeenCalledTimes(1);
+		const parameters = useModel.mock.calls[0]?.[1] as { prompt: string };
+		expect(parameters.prompt).toContain(context);
+		expect(parameters.prompt).toContain("Calendar is still pending");
+		expect(parameters.prompt).toContain(
+			"does not prove the whole request completed",
+		);
+		expect(parameters.prompt).toContain(
+			"not a fresh observation of current state",
+		);
+		expect(processActions).not.toHaveBeenCalled();
+	});
+
 	it("delivers the evaluator's receipt-bound reply without another model call", async () => {
 		const reply = "I've created Picnic with your reminder to bring a charger.";
 		const evaluator = parseEvaluatorOutput(

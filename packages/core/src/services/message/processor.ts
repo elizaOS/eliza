@@ -27,6 +27,7 @@ import type { Memory } from "../../types/memory";
 import type {
 	ContextRoutedResponseDecision,
 	MessageProcessingResult,
+	MessageReplyRecoveryContext,
 	MessageTerminalFailure,
 } from "../../types/message-service";
 import { ModelType } from "../../types/model";
@@ -1086,6 +1087,7 @@ export class MessageProcessor {
 			Array.from(persistedEarlyReplyIds, (id) => id as UUID),
 		);
 		let actionResults: ActionResult[] | undefined;
+		let replyRecovery: MessageReplyRecoveryContext | undefined;
 		let terminalFailure: MessageTerminalFailure | undefined;
 		let mode: StrategyMode = "none";
 
@@ -1114,6 +1116,7 @@ export class MessageProcessor {
 					: result.responseMessages;
 			state = result.state;
 			actionResults = result.actionResults;
+			replyRecovery = result.replyRecovery;
 			terminalFailure = result.terminalFailure;
 			mode = result.mode;
 
@@ -1621,6 +1624,7 @@ export class MessageProcessor {
 					}
 				: {}),
 			...(actionResults ? { actionResults } : {}),
+			...(replyRecovery ? { replyRecovery } : {}),
 			...(terminalFailure ? { terminalFailure } : {}),
 			state,
 			mode,

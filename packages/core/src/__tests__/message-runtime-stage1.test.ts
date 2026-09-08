@@ -1794,6 +1794,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"shouldRespond",
 			"contexts",
 			"intents",
+			"completionContext",
 			"replyText",
 			"replyEffectStatus",
 			"candidateActionNames",
@@ -2887,14 +2888,19 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls[3]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		const plannerCall = calls[3]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
+			tools?: Array<{ name: string; description?: string }>;
 		};
 		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
 		expect(plannerUserContent).toContain(
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
 		);
-		expect(plannerUserContent).toContain(
-			'"tierAParents":["FILE","TASKS_SPAWN_AGENT"]',
+		expect(plannerCall.tools?.map((tool) => tool.name)).toContain(
+			"TASKS_SPAWN_AGENT",
 		);
+		expect(
+			plannerCall.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
+				?.description,
+		).toContain('"name":"FILE"');
 	});
 
 	it("keeps the complete umbrella dispatcher when duplicate child schemas exceed the input budget", async () => {
@@ -6301,10 +6307,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).not.toContain("provider text should not render");
 		expect(userContent).toContain(
-			"prior_message:user:\nbotdick: Hey, nice to meet shebotdick.",
+			"prior_message:user:\n[completion_source=h1]\nbotdick: Hey, nice to meet shebotdick.",
 		);
 		expect(userContent).toContain(
-			"prior_message:user:\n1gig: i was asking about shedick",
+			"prior_message:user:\n[completion_source=h2]\n1gig: i was asking about shedick",
 		);
 		expect(userContent).toContain(
 			'message:user:\n{"text":"whats the compatibility between her and botdick","source":"test"}',
@@ -6397,7 +6403,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		// The user's turn keeps the user tag; the agent's own reply is present
 		// and role-tagged with the character name so recall is grounded.
 		expect(userContent).toContain(
-			"prior_message:user:\n1gig: whats the btc price",
+			"prior_message:user:\n[completion_source=h1]\n1gig: whats the btc price",
 		);
 		expect(userContent).toContain(
 			"prior_message:agent:\nTest Agent: BTC is around $63,000 right now.",
@@ -7467,7 +7473,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
-			tools?: Array<{ name?: string }>;
+			tools?: Array<{ name?: string; description?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
 		expect(plannerParams.tools?.map((tool) => tool.name)).toContain(
@@ -7825,7 +7831,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
-		expect(toolNames).toContain("SHELL");
+		expect(
+			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
+				?.description,
+		).toContain('"name":"SHELL"');
 		expect(
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))
@@ -8889,18 +8898,19 @@ describe("verified read actions own the turn's single user-facing message", () =
 		]);
 		expect(calendarHandler).toHaveBeenCalledTimes(1);
 		expect(distractorHandler).not.toHaveBeenCalled();
-		// Stage-1 hints do not authorize catalog removal: the planner receives
-		// every eligible action and its tool call determines which one executes.
+		// Stage-1 selects the native family; every other authorized family stays
+		// advertised by discovery and no distractor executes without a tool call.
 		const plannerParams = calls[1]?.[1] as {
-			tools?: Array<{ name: string }>;
+			tools?: Array<{ name: string; description?: string }>;
 		};
 		expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
-			expect.arrayContaining([
-				"CALENDAR",
-				"SCHEDULED_HOUSEHOLD_DISTRACTOR",
-				"WEEKLY_BRIEF_DISTRACTOR",
-			]),
+			expect.arrayContaining(["CALENDAR", "DISCOVER_TOOLS"]),
 		);
+		const discovery = plannerParams.tools?.find(
+			(tool) => tool.name === "DISCOVER_TOOLS",
+		)?.description;
+		expect(discovery).toContain('"name":"SCHEDULED_HOUSEHOLD_DISTRACTOR"');
+		expect(discovery).toContain('"name":"WEEKLY_BRIEF_DISTRACTOR"');
 		expect(result.kind).toBe("planned_reply");
 		expect(result.messageHandler.plan.deterministicToolCall).toBeUndefined();
 		if (result.kind === "planned_reply") {

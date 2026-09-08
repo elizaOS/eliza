@@ -3,6 +3,7 @@
 import { v4 } from "uuid";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../actions/to-tool";
 import { messageHandlerTemplate } from "../../prompts";
+import { completionContextSources } from "../../runtime/completion-context";
 import {
 	normalizePromptSegments,
 	renderContextObject,
@@ -184,6 +185,12 @@ export function renderMessageHandlerModelInput(
 	promptSegments: PromptSegment[];
 } {
 	const rendered = renderContextObject(context);
+	const completionSources = options?.voiceDirectMessage
+		? undefined
+		: completionContextSources(context);
+	const completionSourceIds = new Map(
+		completionSources?.sources.map(({ id, event }) => [event.id, id]),
+	);
 	const instructions = renderMessageHandlerInstructions(
 		runtime,
 		availableContexts,
@@ -201,9 +208,17 @@ export function renderMessageHandlerModelInput(
 	const remainingDynamicSegments = dynamicSegments.filter(
 		(segment) => segment.id !== "current-turn-boundary",
 	);
-	const priorDialogueSegments = remainingDynamicSegments.filter(
-		(segment) => segment.label?.startsWith("prior_message:") === true,
-	);
+	const priorDialogueSegments = remainingDynamicSegments
+		.filter((segment) => segment.label?.startsWith("prior_message:") === true)
+		.map((segment) => {
+			const sourceId = segment.id && completionSourceIds.get(segment.id);
+			return sourceId
+				? {
+						...segment,
+						content: `[completion_source=${sourceId}]\n${segment.content}`,
+					}
+				: segment;
+		});
 	const dynamicProviderSegments = remainingDynamicSegments.filter(
 		(segment) => segment.label?.startsWith("provider:") === true,
 	);
@@ -218,6 +233,14 @@ export function renderMessageHandlerModelInput(
 	const orderedDynamicSegments = [
 		...priorDialogueSegments,
 		...currentTurnBoundary,
+		...(completionSources?.sources.length
+			? [
+					{
+						content: `completion_source_set: ${completionSources.sourceSetId}\nThe completion_source labels above identify prior user messages only. Select their exact IDs for completionContext. The current request, all providers, assistant dialogue, permissions, tool evidence and pending execution remain included automatically. Review every source for applicable standing constraints, corrections, references and unresolved work. Use mode=full if uncertain or if exhaustive history is needed.`,
+						stable: false,
+					},
+				]
+			: []),
 		...dynamicProviderSegments,
 		...turnTailSegments,
 	];

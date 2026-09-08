@@ -373,6 +373,7 @@ describe("BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS", () => {
 			"shouldRespond",
 			"contexts",
 			"intents",
+			"completionContext",
 			"replyText",
 			"replyEffectStatus",
 			"candidateActionNames",
