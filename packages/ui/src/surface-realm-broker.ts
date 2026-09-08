@@ -439,16 +439,28 @@ export class SurfaceRealmScope {
 // active view (and the isolation tests) reach exactly the brokered handles the
 // shell resolved for the current manifest, never the raw globals.
 let activeScope: SurfaceRealmScope | null = null;
+const activeScopeListeners = new Set<() => void>();
+
+export function subscribeActiveSurfaceRealmScope(
+  listener: () => void,
+): () => void {
+  activeScopeListeners.add(listener);
+  return () => {
+    activeScopeListeners.delete(listener);
+  };
+}
 
 /** Publish the scope for the active view. Pass `null` on teardown. */
 export function setActiveSurfaceRealmScope(
   scope: SurfaceRealmScope | null,
 ): void {
+  if (activeScope === scope) return;
   activeScope = scope;
   // Guards install lazily on the first publish (not at module load) so server
   // consumers of the ui barrel never touch window, and so the guards wrap
   // whatever `window.localStorage` the environment (or a test stub) provides.
   if (scope !== null) ensureHostRealmGuards();
+  for (const listener of activeScopeListeners) listener();
 }
 
 /** The scope for the active view, or `null` when no view is mounted. */
