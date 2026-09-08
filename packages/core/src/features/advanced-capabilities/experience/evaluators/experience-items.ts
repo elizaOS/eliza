@@ -17,6 +17,11 @@ import { logger } from "../../../../logger.ts";
 import { stringifyForDiagnostics } from "../../../../runtime/json-output.ts";
 import { renderStoredEnvelopesForPrompt } from "../../../../security/external-content";
 import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
+import { assertExtractionSourcesUnchanged } from "../../../../services/evaluator-progress.ts";
+import {
+	getRoomTranscript,
+	recentMessagesSection,
+} from "../../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -27,6 +32,7 @@ import type {
 import { isSyntheticConversationArtifactMemory } from "../../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
 import { toWellFormedUnicode } from "../../../../utils/well-formed.ts";
+import { stringToUuid } from "../../../../utils.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 
@@ -105,6 +111,8 @@ interface ExperiencePrepared {
 	experienceService: ExperienceService;
 	recentMessages: Memory[];
 	conversationContext: string;
+	/** Complete experience-only bodies absent from the shared dialogue transcript. */
+	unsharedConversationContext: string;
 	signalSummary: string;
 	existingExperiences: Experience[];
 	provenance: Pick<
@@ -358,7 +366,10 @@ function sanitizeConversationText(
 	runtime: IAgentRuntime,
 	text: string,
 ): string {
-	return runtime.redactSecrets(text).replace(/\s+\n/g, "\n").trim();
+	return runtime
+		.redactSecrets(renderStoredEnvelopesForPrompt(text))
+		.replace(/\s+\n/g, "\n")
+		.trim();
 }
 
 export const experiencePatternEvaluator: Evaluator<
@@ -366,17 +377,33 @@ export const experiencePatternEvaluator: Evaluator<
 	ExperiencePrepared
 > = {
 	name: "experiencePatterns",
+	incremental: true,
 	description:
 		"Extracts reusable agent lessons from validated conversation events.",
 	priority: EvaluatorPriority.EXPERIENCE,
 	schema: experienceSchema,
 	async shouldRun({ runtime, message, state, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		if (!message.roomId || !message.content.text) return false;
 		if (isSyntheticMemory(message)) return false;
 		const experienceService = runtime.getService(
 			"EXPERIENCE",
 		) as ExperienceService | null;
 		if (!experienceService) return false;
+		if (options.extraction) {
+			// The incremental journal retains skipped evidence; cadence must not
+			// acknowledge a batch before its processors have persisted it.
+			return (
+				scoreExperienceSignals({
+					latestText: getMessageText(message),
+					responseTexts: (options.responses ?? []).map(getMessageText),
+					actionResults: actionResultsFromState(state),
+					recentTexts: options.extraction.messages
+						.filter((memory) => !isSyntheticMemory(memory))
+						.map(getMessageText),
+				}).score > 0
+			);
+		}
 
 		const cacheKey = `experience-extraction:${message.roomId}:message-count`;
 		const lastRunKey = `experience-extraction:${message.roomId}:last-run-count`;
@@ -445,28 +472,46 @@ export const experiencePatternEvaluator: Evaluator<
 		return true;
 	},
 	async prepare({ runtime, message, state, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		const experienceService = runtime.getService(
 			"EXPERIENCE",
 		) as ExperienceService | null;
 		if (!experienceService) throw new Error("Experience service not available");
-		const rawRecentMessages = await runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			unique: false,
-		});
+		const rawRecentMessages =
+			options.extraction?.messages ??
+			(await runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				unique: false,
+			}));
 		const recentMessages = rawRecentMessages.filter(
 			(memory) => !isSyntheticMemory(memory),
 		);
-		const conversationContext = recentMessages
-			.map((memory) =>
-				typeof memory.content.text === "string"
-					? renderStoredEnvelopesForPrompt(memory.content.text)
-					: memory.content.text,
-			)
-			.filter(
-				(text): text is string => typeof text === "string" && text.length > 0,
-			)
-			.map((text) => sanitizeConversationText(runtime, text))
+		const conversationTexts = recentMessages
+			.map(getMessageText)
+			.filter(Boolean)
+			.map((text) => sanitizeConversationText(runtime, text));
+		const conversationContext = conversationTexts.join("\n");
+		const sharedTranscript =
+			options.extraction?.messages ??
+			(await getRoomTranscript(runtime, message).catch((error: unknown) => {
+				// error-policy:J7 shared-context deduplication is optional. Preserve
+				// every sanitized body if the canonical transcript read fails.
+				runtime.reportError("experiencePatterns.sharedTranscript", error, {
+					roomId: message.roomId,
+				});
+				return [];
+			}));
+		const sharedTexts = new Set(
+			sharedTranscript.map((memory) =>
+				sanitizeConversationText(runtime, getMessageText(memory)),
+			),
+		);
+		// The shared dialogue applies hygiene and delivery-echo deduplication.
+		// Retain any experience-only body instead of assuming those projections
+		// contain identical rows. Stored records and provenance stay untouched.
+		const unsharedConversationContext = conversationTexts
+			.filter((text) => !sharedTexts.has(text))
 			.join("\n");
 		const signalSummary = summarizeExperienceSignals(
 			scoreExperienceSignals({
@@ -484,12 +529,20 @@ export const experiencePatternEvaluator: Evaluator<
 			experienceService,
 			recentMessages,
 			conversationContext,
+			unsharedConversationContext,
 			signalSummary,
 			existingExperiences,
 			provenance: buildExperienceProvenance(message, recentMessages),
 		};
 	},
-	prompt({ prepared }) {
+	prompt({ prepared, shared }) {
+		const conversation = shared?.roomTranscriptRendered
+			? `${recentMessagesSection(shared, [])}${
+					prepared.unsharedConversationContext
+						? `\nAdditional experience records not in that transcript:\n${prepared.unsharedConversationContext}`
+						: ""
+				}`
+			: prepared.conversationContext || "(none)";
 		return `Extract reusable lessons from recent conversation.
 
 Emit only lessons useful for future behavior: success, failure, correction, discovery, validation, warning, hypothesis.
@@ -507,7 +560,7 @@ Detected extraction signal:
 ${prepared.signalSummary}
 
 Recent conversation:
-${prepared.conversationContext || "(none)"}
+${conversation}
 
 Existing similar experiences:
 ${formatExistingExperiences(prepared.existingExperiences)}`;
@@ -516,7 +569,8 @@ ${formatExistingExperiences(prepared.existingExperiences)}`;
 	processors: [
 		{
 			name: "recordExperiences",
-			async process({ runtime, prepared, output }) {
+			async process({ runtime, prepared, output, options }) {
+				assertExtractionSourcesUnchanged(options.extraction);
 				const threshold = getNumberSetting(
 					runtime,
 					"AUTO_RECORD_THRESHOLD",
@@ -530,7 +584,7 @@ ${formatExistingExperiences(prepared.existingExperiences)}`;
 					),
 				);
 				const seenLearning = new Set<string>();
-				for (const exp of output.experiences) {
+				for (const [index, exp] of output.experiences.entries()) {
 					if (exp.confidence < threshold) continue;
 					const learning = normalizeStoredText(runtime, exp.learning);
 					const learningKey = normalizeLearningKey(learning);
@@ -545,6 +599,17 @@ ${formatExistingExperiences(prepared.existingExperiences)}`;
 					}
 					seenLearning.add(learningKey);
 					await prepared.experienceService.recordExperience({
+						...(options.extraction
+							? {
+									id: stringToUuid(
+										`${runtime.agentId}:experiencePatterns:${options.extraction.evidenceId}:${index}`,
+									),
+									extractionEvidenceId: options.extraction.evidenceId,
+									sourceMessageRevisions: {
+										...options.extraction.sourceRevisions,
+									},
+								}
+							: {}),
 						type: exp.type,
 						outcome: exp.outcome,
 						context: normalizeStoredText(runtime, exp.context),

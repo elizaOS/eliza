@@ -5501,7 +5501,103 @@ export async function handleConversationRoutes(
         }
 
         const endActiveChatTurn = beginActiveChatTurn(state);
+        let generationDelivered = false;
         try {
+          const deliveryLease = runtimeTurnLease;
+          let generationCompletion: Promise<void> | undefined;
+          const completeGeneration = (
+            result: ChatGenerationResult,
+          ): Promise<void> => {
+            if (generationCompletion) return generationCompletion;
+            generationCompletion = (async () => {
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+
+              conv.updatedAt = new Date().toISOString();
+              if (result.noResponseReason !== "ignored") {
+                const resolvedText = normalizeChatResponseText(
+                  result.text,
+                  state.logBuffer,
+                  runtime,
+                );
+                const persistedAssistant = await resolvePersistedAssistantTurn(
+                  runtime,
+                  conv.roomId,
+                  turnStartedAt,
+                  result,
+                  resolvedText,
+                  channelType,
+                  deliveryLease,
+                  messageToStore.id,
+                );
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const persistedAssistantId =
+                  persistedAssistant.kind === "durable"
+                    ? persistedAssistant.id
+                    : undefined;
+                if (
+                  result.actionCallbackHistory?.length &&
+                  persistedAssistantId
+                ) {
+                  await persistRecentAssistantActionCallbackHistory(
+                    runtime,
+                    conv.roomId,
+                    result.actionCallbackHistory,
+                    turnStartedAt,
+                    persistedAssistantId,
+                    deliveryLease,
+                  );
+                }
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const visibleResolvedText =
+                  result.transcriptVisibility === "internal"
+                    ? ""
+                    : resolvedText;
+                const outcome = buildGenerationMessageIdOutcome(
+                  result,
+                  visibleResolvedText,
+                  persistedAssistantId,
+                  {
+                    userMessageId: messageToStore.id,
+                    ...(persistedAssistant.kind === "ephemeral"
+                      ? { assistantEphemeral: true }
+                      : {}),
+                    ...(result.usedActionCallbacks
+                      ? { historyRefreshRequired: true }
+                      : {}),
+                  },
+                );
+                await settleTurnReservation(outcome);
+                json(res, buildConversationJsonOutcome(outcome));
+              } else {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const outcome = buildGenerationMessageIdOutcome(
+                  result,
+                  "",
+                  undefined,
+                  {
+                    userMessageId: messageToStore.id,
+                    assistantEphemeral: true,
+                  },
+                );
+                await settleTurnReservation(outcome);
+                json(res, buildConversationJsonOutcome(outcome));
+              }
+              generationDelivered = true;
+            })();
+            return generationCompletion;
+          };
           const result = await generateChatResponse(
             runtime,
             routedUserMessage,
@@ -5512,88 +5608,19 @@ export async function handleConversationRoutes(
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
               preferredLanguage,
+              onReplyReady: completeGeneration,
             },
           );
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
-
-          conv.updatedAt = new Date().toISOString();
-          if (result.noResponseReason !== "ignored") {
-            const resolvedText = normalizeChatResponseText(
-              result.text,
-              state.logBuffer,
-              runtime,
-            );
-            const persistedAssistant = await resolvePersistedAssistantTurn(
-              runtime,
-              conv.roomId,
-              turnStartedAt,
-              result,
-              resolvedText,
-              channelType,
-              runtimeTurnLease,
-              messageToStore.id,
-            );
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            const persistedAssistantId =
-              persistedAssistant.kind === "durable"
-                ? persistedAssistant.id
-                : undefined;
-            if (result.actionCallbackHistory?.length && persistedAssistantId) {
-              await persistRecentAssistantActionCallbackHistory(
-                runtime,
-                conv.roomId,
-                result.actionCallbackHistory,
-                turnStartedAt,
-                persistedAssistantId,
-                runtimeTurnLease,
-              );
-            }
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            const visibleResolvedText =
-              result.transcriptVisibility === "internal" ? "" : resolvedText;
-            const outcome = buildGenerationMessageIdOutcome(
-              result,
-              visibleResolvedText,
-              persistedAssistantId,
-              {
-                userMessageId: messageToStore.id,
-                ...(persistedAssistant.kind === "ephemeral"
-                  ? { assistantEphemeral: true }
-                  : {}),
-                ...(result.usedActionCallbacks
-                  ? { historyRefreshRequired: true }
-                  : {}),
-              },
-            );
-            await settleTurnReservation(outcome);
-            json(res, buildConversationJsonOutcome(outcome));
-          } else {
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            const outcome = buildGenerationMessageIdOutcome(
-              result,
-              "",
-              undefined,
-              {
-                userMessageId: messageToStore.id,
-                assistantEphemeral: true,
-              },
-            );
-            await settleTurnReservation(outcome);
-            json(res, buildConversationJsonOutcome(outcome));
-          }
+          // Compatibility adapters may omit the early callback; the promise
+          // fence ensures durable completion and JSON are still emitted once.
+          await completeGeneration(result);
         } catch (err) {
+          if (generationDelivered) {
+            logger.warn(
+              `[conversations] post-delivery drain failed after JSON delivery: ${getErrorMessage(err)}`,
+            );
+            return true;
+          }
           if (
             isCallbackHistoryPersistenceError(err) ||
             err instanceof AssistantReplyPersistenceError

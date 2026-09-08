@@ -1518,7 +1518,7 @@ export class MessageProcessor {
 		// releases the trajectory exactly once after the child settles. Fact,
 		// preference and ALWAYS_AFTER writes are room state, not diagnostics;
 		// retain ordering until their processors support conflict-safe commits.
-		runTerminalOwner.track("post_turn", async () => {
+		runTerminalOwner.trackAfterDelivery("post_turn", async () => {
 			if (actionResults?.some((result) => result.replyFailure !== undefined)) {
 				// The action already settled and response generation is unavailable.
 				// Close the run without another evaluation/model or action hook.

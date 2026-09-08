@@ -213,6 +213,41 @@ Some deterministic/offline backends may return **plain text** instead. In that c
 
 ### Post-turn evaluator prompt prefixes
 
+Managed post-turn extraction supports a revision-based input contract. An
+evaluator opts in with `incremental: true` only when its preparation consumes
+`options.extraction` and every processor can safely replay the same evidence.
+An opt-in predicate may require adapter capabilities; the long-term-memory lane
+requires durable idempotent writes and otherwise keeps its legacy behavior.
+The first run backfills the retained room; later runs receive complete new or
+changed evidence, not a token-capped transcript. Full messages remain stored for
+conversation rendering and authorized recall. Already processed provider prose
+is not copied wholesale into the extraction prompt; declared providers, existing
+facts, delivered action results and the pending evidence remain available.
+
+Progress is isolated by agent, room, speaker and evaluator. Validated output is
+durably staged before effects and reused after failure; the checkpoint advances
+only after all processors succeed. Personal facts, preferences and long-term
+memories must cite selected messages from the correct speaker. Initial backfill
+does not award existing facts another confidence increase merely for rereading
+old evidence. Transport acknowledgements and topic/embedding bookkeeping do not
+count as authored edits.
+The managed wire schema requires declared source-message citations; parsing also
+checks their actual authorship before journaling. Connector delivery settlement
+precedes extraction, so final text and delivered action receipts are included.
+
+This is at-least-once processing with replay-safe reducers, not a distributed
+exactly-once transaction. The existing room ordering remains required. Edits or
+deletions of processed sources are explicit reconciliation holds; they never
+silently delete reviewed facts or acknowledge unreconciled evidence. Pending
+work resumes on a later eligible text turn. Voice/mobile reflection exclusions
+and third-party evaluators' full-context contracts remain unchanged. Moving
+model work outside the room lease requires a separate durable scheduling and
+source-reconciliation design.
+
+`parse(output, context)` can validate evidence before staging; the optional
+second argument preserves existing plugins. `processedEvaluators` lists only
+evaluators whose processors and progress commits succeeded, not attempted ones.
+
 Evaluators retain the complete `prompt(context): string` API. They may also
 provide `promptSegments(context)` whose concatenated content equals that exact
 prompt. Only instructions independent of the turn belong in stable segments;

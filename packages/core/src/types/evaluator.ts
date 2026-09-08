@@ -21,6 +21,19 @@ export interface EvaluatorRunOptions {
 	 * plugin evaluators such as link extraction retain their own gates.
 	 */
 	semanticSignal?: boolean;
+	/**
+	 * Runtime-owned, durable evidence batch for an incremental evaluator. All
+	 * changed records are complete; historical chat remains in message storage.
+	 * Processors must make replay of evidenceId idempotent before opting in.
+	 */
+	extraction?: {
+		isBackfill: boolean;
+		messages: Memory[];
+		sourceRevisions: Record<string, string>;
+		changedMessageIds: string[];
+		removedMessageIds: string[];
+		evidenceId: string;
+	};
 }
 
 export interface EvaluatorRunContext {
@@ -80,6 +93,8 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	providers?: string[];
 	schema: JSONSchema;
 	modelType?: ModelTypeName;
+	/** Opt in only when prepare consumes extraction and every processor is replay-safe. */
+	incremental?: boolean | ((runtime: IAgentRuntime) => boolean);
 
 	shouldRun(context: EvaluatorRunContext): Promise<boolean>;
 	prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>;
@@ -91,7 +106,10 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	 * Boundaries must not split a Unicode code point.
 	 */
 	promptSegments?(context: EvaluatorPromptContext<TPrepared>): PromptSegment[];
-	parse?(output: unknown): TOutput | null;
+	parse?(
+		output: unknown,
+		context?: EvaluatorPromptContext<TPrepared>,
+	): TOutput | null;
 	processors?: Array<EvaluatorProcessor<TOutput, TPrepared>>;
 }
 

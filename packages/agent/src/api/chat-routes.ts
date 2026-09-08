@@ -22,7 +22,6 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
-  drainRoomPostDeliveryTasks,
   ElizaError,
   EventType,
   emitInferenceTiming,
@@ -60,6 +59,7 @@ import {
   toWellFormedUnicode,
   trackPostDeliveryTask,
   type UUID,
+  withRoomDeliverySettlement,
 } from "@elizaos/core";
 import type {
   ChatFailureKind,
@@ -3582,21 +3582,24 @@ export async function generateChatResponse(
   const runOwned = async (
     roomHandlerLease: RoomHandlerLease,
   ): Promise<ChatGenerationResult> => {
-    try {
-      const result = await generateOwnedChatResponse(
-        runtime,
-        message,
-        agentName,
-        {
-          ...opts,
-          roomHandlerLease,
-        },
-      );
-      await opts?.onReplyReady?.(result);
-      return result;
-    } finally {
-      await drainRoomPostDeliveryTasks(runtime, message.roomId);
-    }
+    return withRoomDeliverySettlement(
+      runtime,
+      message.roomId,
+      roomHandlerLease,
+      async () => {
+        const result = await generateOwnedChatResponse(
+          runtime,
+          message,
+          agentName,
+          {
+            ...opts,
+            roomHandlerLease,
+          },
+        );
+        await opts?.onReplyReady?.(result);
+        return result;
+      },
+    );
   };
 
   const inheritedLease = runtime.roomHandlerQueue.currentLease(message.roomId);

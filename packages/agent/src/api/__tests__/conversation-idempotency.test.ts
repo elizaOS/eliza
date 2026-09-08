@@ -65,9 +65,14 @@ let resetChatDedupe: () => void;
 let getChatDedupeTtlMs: () => number;
 let markChatMessageSeen: typeof import("../chat-routes.ts")["isDuplicateChatMessage"];
 let setChatOutcome: typeof import("../chat-routes.ts")["setChatMessageIdOutcome"];
+let roomDeliverySettlement: typeof import("@elizaos/core")["roomDeliverySettlement"];
+let trackPostDeliveryTask: typeof import("@elizaos/core")["trackPostDeliveryTask"];
 
 beforeAll(async () => {
   vi.resetModules();
+  ({ roomDeliverySettlement, trackPostDeliveryTask } = await import(
+    "@elizaos/core"
+  ));
   const chatRoutes = await import("../chat-routes.ts");
   resetChatDedupe = chatRoutes.__resetChatDedupeForTests;
   getChatDedupeTtlMs = chatRoutes.__getChatDedupeTtlMsForTests;
@@ -437,6 +442,148 @@ describe("conversation-route chat idempotency wiring", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
+
+  it.each([
+    { label: "SSE", path: STREAM_PATH },
+    { label: "JSON", path: SEND_PATH },
+  ])(
+    "$label: freezes post-turn evidence only after final reply, correlation and callback history persist",
+    async ({ label, path }) => {
+      const { state, handleMessage, storedMemories } = createHarness();
+      const persistedId = stringToUuid(`settled-evidence-${label}`);
+      let extractionSnapshot: Memory | undefined;
+      let triggerId: UUID | undefined;
+      handleMessage.mockImplementationOnce(
+        async (
+          runtime: AgentRuntime,
+          message: Memory,
+          callback: (
+            content: { text: string },
+            actionName?: string,
+          ) => Promise<unknown>,
+        ) => {
+          triggerId = message.id;
+          const persisted: Memory = {
+            id: persistedId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+            content: {
+              text: "Final note reply",
+              inReplyTo: stringToUuid(`${message.id}:${runtime.agentId}`),
+            },
+          };
+          await runtime.createMemory(persisted, "messages");
+          const settled = roomDeliverySettlement(
+            runtime,
+            message.roomId,
+            runtime.roomHandlerQueue.currentLease(message.roomId),
+          );
+          trackPostDeliveryTask(runtime, "test-evidence-freeze", async () => {
+            if (!(await settled)) return;
+            extractionSnapshot = structuredClone(
+              storedMemories.find((memory) => memory.id === persistedId),
+            );
+          });
+          await callback({ text: "Delivered note evidence" }, "READ_NOTE");
+          await Promise.resolve();
+          expect(extractionSnapshot).toBeUndefined();
+          return {
+            didRespond: true,
+            responseContent: persisted.content,
+            responseMessages: [persisted],
+            persistedResponseMessageIds: [persistedId],
+            actionResults: [
+              {
+                actionName: "READ_NOTE",
+                success: true,
+                text: "Delivered note evidence",
+              },
+            ],
+          };
+        },
+      );
+      const response = await runRoute("POST", path, state, {
+        text: "Read the note",
+        clientMessageId: `evidence-${label}`,
+      });
+      const deliveredText =
+        label === "SSE"
+          ? parseDataFrames(response.record).find(
+              (frame) => frame.type === "done",
+            )?.fullText
+          : (response.captured.payload as { text?: string }).text;
+      expect(typeof deliveredText).toBe("string");
+      expect(extractionSnapshot).toMatchObject({
+        id: persistedId,
+        content: {
+          text: deliveredText,
+          inReplyTo: triggerId,
+          actionCallbackHistory: ["Delivered note evidence"],
+        },
+      });
+      expect(
+        storedMemories.filter((memory) => memory.id === persistedId),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    { label: "SSE", path: STREAM_PATH },
+    { label: "JSON", path: SEND_PATH },
+  ])(
+    "$label: failed assistant reconciliation cancels extraction without deadlocking the route",
+    async ({ label, path }) => {
+      const { state, handleMessage, updateMemory } = createHarness();
+      let extractionCount = 0;
+      handleMessage.mockImplementationOnce(
+        async (runtime: AgentRuntime, message: Memory) => {
+          const persisted: Memory = {
+            id: stringToUuid(`failed-settled-evidence-${label}`),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+            content: {
+              text: "Final reply",
+              inReplyTo: stringToUuid(`${message.id}:${runtime.agentId}`),
+            },
+          };
+          await runtime.createMemory(persisted, "messages");
+          const settled = roomDeliverySettlement(
+            runtime,
+            message.roomId,
+            runtime.roomHandlerQueue.currentLease(message.roomId),
+          );
+          trackPostDeliveryTask(
+            runtime,
+            "test-failed-evidence-freeze",
+            async () => {
+              if (await settled) extractionCount += 1;
+            },
+          );
+          updateMemory.mockRejectedValueOnce(
+            new Error("assistant reconciliation failed"),
+          );
+          return {
+            didRespond: true,
+            responseContent: persisted.content,
+            responseMessages: [persisted],
+            persistedResponseMessageIds: [persisted.id],
+          };
+        },
+      );
+      await runRoute("POST", path, state, {
+        text: "Remember this",
+        clientMessageId: `failed-evidence-${label}`,
+      });
+      expect(extractionCount).toBe(0);
+      expect(
+        (state.runtime as AgentRuntime).roomHandlerQueue.pendingFor(ROOM_ID),
+      ).toBe(0);
+    },
+  );
 
   it("cordons and drains the old runtime before a same-room replacement turn starts", async () => {
     const old = createHarness();

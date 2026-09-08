@@ -20,6 +20,7 @@ import {
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { buildProviderCachePlan } from "../runtime/provider-cache-plan.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
+import { renderStoredEnvelopesForPrompt } from "../security/external-content";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
 	ActionResult,
@@ -45,6 +46,14 @@ import {
 } from "../utils/well-formed.ts";
 import { CONVERSATION_MESSAGES_HEADER_PREFIX } from "../utils.ts";
 import {
+	commitEvaluatorProgress,
+	type EvaluatorProgressSnapshot,
+	prepareEvaluatorProgress,
+	stageEvaluatorOutput,
+} from "./evaluator-progress.ts";
+import { requireIncrementalSourceCitations } from "./evaluator-schema.ts";
+import {
+	canonicalEvaluatorMessages,
 	formatRecentMessages,
 	getRoomTranscript,
 	ROOM_TRANSCRIPT_HEADING,
@@ -53,7 +62,24 @@ import {
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
 	prepared: unknown;
+	options: EvaluatorRunOptions;
+	message: Memory;
+	progress?: EvaluatorProgressSnapshot;
 };
+
+function extractionOptions(
+	snapshot: EvaluatorProgressSnapshot,
+	runtime: IAgentRuntime,
+): NonNullable<EvaluatorRunOptions["extraction"]> {
+	return {
+		isBackfill: snapshot.isBackfill,
+		messages: canonicalEvaluatorMessages(snapshot.messages, runtime.agentId),
+		sourceRevisions: snapshot.sourceRevisions,
+		changedMessageIds: snapshot.changedMessageIds,
+		removedMessageIds: snapshot.removedMessageIds,
+		evidenceId: snapshot.evidenceId,
+	};
+}
 
 const EMPTY_STATE: State = {
 	values: {},
@@ -149,7 +175,12 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
 	return {
 		type: "object",
 		properties: Object.fromEntries(
-			active.map(({ evaluator }) => [evaluator.name, evaluator.schema]),
+			active.map(({ evaluator, options }) => [
+				evaluator.name,
+				options.extraction
+					? requireIncrementalSourceCitations(evaluator.schema)
+					: evaluator.schema,
+			]),
 		),
 		required: active.map(({ evaluator }) => evaluator.name),
 		additionalProperties: false,
@@ -195,7 +226,7 @@ ${part("responseTexts")}
 Action results:
 ${part("actionResults", "[]")}
 
-${ROOM_TRANSCRIPT_HEADING} (complete, oldest first):
+${ROOM_TRANSCRIPT_HEADING} (${parts.evidenceMode ?? "complete, oldest first"}):
 ${part("roomTranscript")}
 
 Provider context:
@@ -214,6 +245,7 @@ function buildPrompt(params: {
 	schema: JSONSchema;
 }): RenderedEvaluatorPrompt {
 	const { runtime, message, state, active, options } = params;
+	const incremental = active.every((entry) => entry.progress !== undefined);
 	const agentName = runtime.character.name ?? "Agent";
 	const latestMessage = message.content.text ?? "";
 	const responseTexts = (options.responses ?? [])
@@ -237,6 +269,9 @@ function buildPrompt(params: {
 	// The merged evaluator prompt uses complete model projections while the
 	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
+		evidenceMode: incremental
+			? "complete pending evidence records; processed history remains in storage"
+			: "complete, oldest first",
 		latestMessage,
 		responseTexts,
 		actionResults: Array.isArray(actionResults)
@@ -251,7 +286,31 @@ function buildPrompt(params: {
 			? `rendered once below in Provider context under "${CONVERSATION_MESSAGES_HEADER_PREFIX}N retained)" (complete, deduped, oldest first)`
 			: params.roomTranscript === null
 				? "(unavailable this turn)"
-				: formatRecentMessages(params.roomTranscript),
+				: incremental
+					? // Compact JSON preserves every selected field without paying for
+						// per-record indentation across a historical backfill.
+						JSON.stringify(
+							params.roomTranscript.map((record) => ({
+								id: record.id,
+								entityId: record.entityId,
+								createdAt: record.createdAt,
+								content: {
+									...record.content,
+									// Transport acknowledgements are not conversation evidence.
+									// Keep delivered callback text, attachments and domain fields.
+									chatIdempotency: undefined,
+									evalCallbacks: undefined,
+									providers: undefined,
+									responseId: undefined,
+									responseMessageId: undefined,
+									text:
+										typeof record.content.text === "string"
+											? renderStoredEnvelopesForPrompt(record.content.text)
+											: record.content.text,
+								},
+							})),
+						)
+					: formatRecentMessages(params.roomTranscript),
 	};
 	const shared = {
 		roomTranscriptRendered:
@@ -267,8 +326,16 @@ function buildPrompt(params: {
 		},
 	];
 	const dynamic: PromptSegment[] = [];
-	for (const { evaluator, prepared } of active) {
-		const context = { runtime, message, state, options, prepared, shared };
+	for (const entry of active) {
+		const { evaluator, prepared } = entry;
+		const context = {
+			runtime,
+			message: entry.message,
+			state,
+			options: entry.options,
+			prepared,
+			shared,
+		};
 		const full = evaluator.prompt(context);
 		const segments = evaluator.promptSegments?.(context) ?? [
 			{ content: full, stable: false },
@@ -319,8 +386,17 @@ function buildPrompt(params: {
 				.join("")}\nPut result under "${evaluator.name}".\n\n`,
 			stable: true,
 		});
+		const evidenceIds = entry.options.extraction?.messages.map(
+			(record) => record.id,
+		);
+		const evidenceSelection =
+			evidenceIds === undefined
+				? ""
+				: evidenceIds.length === params.roomTranscript?.length
+					? "all evidence records above"
+					: `only message IDs ${stringifyForModel(evidenceIds)}`;
 		dynamic.push({
-			content: `### ${evaluator.name}\n${segments
+			content: `### ${evaluator.name}\n${entry.progress ? `Incremental evidence contract: process ${evidenceSelection}. Removed source IDs: ${stringifyForModel(entry.progress.removedMessageIds)}. Edited source IDs: ${stringifyForModel(entry.progress.changedMessageIds)}. Existing facts and other evaluator records are reference context, not additional evidence. Attribute personal facts only to their actual speaker; another speaker's statement is not a fact about the triggering sender. Agent thoughts are not independent factual evidence. If a reference cannot be resolved from the evidence and existing records, do not invent a memory.\n` : ""}${segments
 				.filter((segment) => !segment.stable)
 				.map((segment) => segment.content)
 				.join("")}\n\n`,
@@ -572,12 +648,27 @@ export class EvaluatorService extends BaseService {
 		candidates: RegisteredEvaluator[],
 		context: EvaluatorRunContext,
 		errors: EvaluatorRunResult["errors"],
+		progress?: Map<string, EvaluatorProgressSnapshot>,
 	): Promise<RegisteredEvaluator[]> {
 		const active: RegisteredEvaluator[] = [];
 		await Promise.all(
 			candidates.map(async (evaluator) => {
 				try {
-					if (await evaluator.shouldRun(context)) active.push(evaluator);
+					const snapshot = progress?.get(evaluator.name);
+					if (
+						snapshot?.pendingOutput !== undefined ||
+						(await evaluator.shouldRun({
+							...context,
+							message: snapshot?.triggerMessage ?? context.message,
+							options: snapshot
+								? {
+										...context.options,
+										extraction: extractionOptions(snapshot, this.runtime),
+									}
+								: context.options,
+						}))
+					)
+						active.push(evaluator);
 				} catch (error) {
 					// error-policy:J1 shouldRun failures join the evaluator
 					// pipeline's explicit error collection.
@@ -623,20 +714,35 @@ export class EvaluatorService extends BaseService {
 		state: State,
 		options: EvaluatorRunOptions,
 		errors: EvaluatorRunResult["errors"],
+		progress?: Map<string, EvaluatorProgressSnapshot>,
 	): Promise<PreparedEntry[]> {
 		const preparedEntries: PreparedEntry[] = [];
 		await Promise.all(
 			active.map(async (evaluator) => {
 				try {
+					const snapshot = progress?.get(evaluator.name);
+					const entryMessage = snapshot?.triggerMessage ?? message;
+					const entryOptions = snapshot
+						? {
+								...options,
+								extraction: extractionOptions(snapshot, this.runtime),
+							}
+						: options;
 					const prepared = evaluator.prepare
 						? await evaluator.prepare({
 								runtime: this.runtime,
-								message,
+								message: entryMessage,
 								state,
-								options,
+								options: entryOptions,
 							})
 						: undefined;
-					preparedEntries.push({ evaluator, prepared });
+					preparedEntries.push({
+						evaluator,
+						prepared,
+						message: entryMessage,
+						options: entryOptions,
+						progress: snapshot,
+					});
 				} catch (error) {
 					// error-policy:J1 Preparation failures join the evaluator
 					// pipeline's explicit error collection.
@@ -739,16 +845,44 @@ export class EvaluatorService extends BaseService {
 		processedEvaluators: string[];
 		results: ActionResult[];
 	}> {
-		const { preparedEntries, output, message, state, options, errors } = params;
+		const { preparedEntries, output, state, errors } = params;
 		const results: ActionResult[] = [];
 		const processedEvaluators: string[] = [];
 		for (const entry of preparedEntries) {
 			const { evaluator, prepared } = entry;
-			const rawSection = output[evaluator.name];
-			if (rawSection === undefined) continue;
-			const parsed = evaluator.parse
-				? evaluator.parse(rawSection)
-				: (rawSection as JsonValue);
+			const rawSection =
+				entry.progress?.pendingOutput !== undefined
+					? entry.progress.pendingOutput
+					: output[evaluator.name];
+			if (rawSection === undefined) {
+				errors.push({
+					evaluatorName: evaluator.name,
+					error: "Evaluator output section is missing",
+				});
+				continue;
+			}
+			let parsed: unknown;
+			try {
+				parsed = evaluator.parse
+					? evaluator.parse(rawSection, {
+							runtime: this.runtime,
+							message: entry.message,
+							options: entry.options,
+							state,
+							prepared,
+						})
+					: rawSection;
+			} catch (error) {
+				// error-policy:J1 reject ungrounded model sections before durable staging or effects.
+				this.runtime.reportError("EvaluatorService.parse", error, {
+					evaluator: evaluator.name,
+				});
+				errors.push({
+					evaluatorName: evaluator.name,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				continue;
+			}
 			if (parsed === null || parsed === undefined) {
 				// The returned `errors` array is not read by every caller, so this
 				// structured warn is the field-visible trace of a parse failure
@@ -773,17 +907,40 @@ export class EvaluatorService extends BaseService {
 				});
 				continue;
 			}
-			await this.runEntryProcessors({
-				evaluator,
-				prepared,
-				parsed: parsed as JsonValue,
-				message,
-				state,
-				options,
-				results,
-				errors,
-			});
-			processedEvaluators.push(evaluator.name);
+			const errorsBefore = errors.length;
+			try {
+				if (entry.progress) {
+					await stageEvaluatorOutput(
+						this.runtime,
+						entry.progress,
+						rawSection as JsonValue,
+					);
+				}
+				await this.runEntryProcessors({
+					evaluator,
+					prepared,
+					parsed: parsed as JsonValue,
+					message: entry.message,
+					state,
+					options: entry.options,
+					results,
+					errors,
+				});
+				if (errors.length === errorsBefore) {
+					if (entry.progress)
+						await commitEvaluatorProgress(this.runtime, entry.progress);
+					processedEvaluators.push(evaluator.name);
+				}
+			} catch (error) {
+				// error-policy:J1 durable progress failure stays pending and is reported, never acknowledged.
+				this.runtime.reportError("EvaluatorService.progress", error, {
+					evaluator: evaluator.name,
+				});
+				errors.push({
+					evaluatorName: evaluator.name,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
 		}
 		return { processedEvaluators, results };
 	}
@@ -826,7 +983,20 @@ export class EvaluatorService extends BaseService {
 					output: parsed,
 					evaluatorName: evaluator.name,
 				});
-				if (result) results.push(result);
+				if (result) {
+					results.push(result);
+					if (!result.success)
+						throw new ElizaError(
+							"Evaluator processor reported a failed effect",
+							{
+								code: "EVALUATOR_PROCESSOR_FAILED",
+								context: {
+									evaluator: evaluator.name,
+									processor: processor.name,
+								},
+							},
+						);
+				}
 			} catch (error) {
 				// error-policy:J1 Processor failures join the evaluator
 				// pipeline's explicit error collection.
@@ -896,6 +1066,92 @@ export class EvaluatorService extends BaseService {
 		state?: State,
 		options: EvaluatorRunOptions = {},
 	): Promise<EvaluatorRunResult> {
+		const candidates = this.sortEvaluators(this.runtime.evaluators.slice());
+		const incremental =
+			options.phase === "post_turn"
+				? candidates.filter((entry) =>
+						typeof entry.incremental === "function"
+							? entry.incremental(this.runtime)
+							: entry.incremental === true,
+					)
+				: [];
+		if (incremental.length === 0)
+			return this.runBatch(candidates, message, state, options);
+
+		// The host retains the existing room lease until this completes. Neither
+		// model work nor state writes become fire-and-forget when inputs go incremental.
+		const transcript = await this.runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			agentId: this.runtime.agentId,
+			unique: false,
+			orderDirection: "asc",
+			includeEmbedding: false,
+		});
+		const progress = new Map<string, EvaluatorProgressSnapshot>();
+		const progressErrors: EvaluatorRunResult["errors"] = [];
+		await Promise.all(
+			incremental.map(async (evaluator) => {
+				try {
+					const snapshots = await prepareEvaluatorProgress(
+						this.runtime,
+						message,
+						[evaluator.name],
+						transcript,
+					);
+					for (const [name, snapshot] of snapshots)
+						progress.set(name, snapshot);
+				} catch (error) {
+					// error-policy:J1 one stale journal must not block independent extraction lanes.
+					this.runtime.reportError("EvaluatorService.prepareProgress", error, {
+						evaluator: evaluator.name,
+					});
+					progressErrors.push({
+						evaluatorName: evaluator.name,
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+			}),
+		);
+		const pending = incremental.filter((entry) => {
+			const snapshot = progress.get(entry.name);
+			return (
+				snapshot &&
+				(snapshot.messages.length > 0 ||
+					snapshot.removedMessageIds.length > 0 ||
+					snapshot.pendingOutput !== undefined)
+			);
+		});
+		const results = [
+			await this.runBatch(pending, message, state, options, progress),
+		];
+		const incrementalNames = new Set(incremental.map((entry) => entry.name));
+		const legacy = candidates.filter(
+			(entry) => !incrementalNames.has(entry.name),
+		);
+		if (legacy.length > 0)
+			results.push(await this.runBatch(legacy, message, state, options));
+		return {
+			skipped: results.every((result) => result.skipped),
+			activeEvaluators: results.flatMap((result) => result.activeEvaluators),
+			processedEvaluators: results.flatMap(
+				(result) => result.processedEvaluators,
+			),
+			results: results.flatMap((result) => result.results),
+			errors: [
+				...progressErrors,
+				...results.flatMap((result) => result.errors),
+			],
+		};
+	}
+
+	private async runBatch(
+		candidates: RegisteredEvaluator[],
+		message: Memory,
+		state: State | undefined,
+		options: EvaluatorRunOptions,
+		progress?: Map<string, EvaluatorProgressSnapshot>,
+	): Promise<EvaluatorRunResult> {
 		setTrajectoryPurpose("evaluation");
 
 		const context: EvaluatorRunContext = {
@@ -905,7 +1161,6 @@ export class EvaluatorService extends BaseService {
 			options,
 		};
 
-		const candidates = this.sortEvaluators(this.runtime.evaluators.slice());
 		if (candidates.length === 0) {
 			return this.skippedResult();
 		}
@@ -915,22 +1170,41 @@ export class EvaluatorService extends BaseService {
 			candidates,
 			context,
 			errors,
+			progress,
 		);
 		if (active.length === 0) {
 			return this.skippedResult({ errors });
 		}
 
-		const [composedState, roomTranscript] = await Promise.all([
-			this.composeEvaluatorState(message, state, active),
-			getRoomTranscript(this.runtime, message).catch((error: unknown) => {
-				// error-policy:J7 the shared transcript is a dedupe of what each
-				// evaluator reads for itself; its failure is reported and the
-				// sections fall back to their own reads, which isolate per evaluator.
-				this.runtime.reportError("EvaluatorService.roomTranscript", error, {
-					roomId: message.roomId,
-				});
-				return null;
-			}),
+		const [composedState, legacyRoomTranscript] = await Promise.all([
+			this.composeEvaluatorState(
+				message,
+				progress ? undefined : state,
+				active,
+			).then((composed) =>
+				progress
+					? {
+							...composed,
+							values: { ...state?.values, ...composed.values },
+							data: {
+								...state?.data,
+								...composed.data,
+								providers: composed.data.providers ?? {},
+							},
+						}
+					: composed,
+			),
+			progress
+				? Promise.resolve(null)
+				: getRoomTranscript(this.runtime, message).catch((error: unknown) => {
+						// error-policy:J7 the shared transcript is a dedupe of what each
+						// evaluator reads for itself; its failure is reported and the
+						// sections fall back to their own reads, which isolate per evaluator.
+						this.runtime.reportError("EvaluatorService.roomTranscript", error, {
+							roomId: message.roomId,
+						});
+						return null;
+					}),
 		]);
 		const preparedEntries = await this.collectPreparedEntries(
 			active,
@@ -938,6 +1212,7 @@ export class EvaluatorService extends BaseService {
 			composedState,
 			options,
 			errors,
+			progress,
 		);
 		if (preparedEntries.length === 0) {
 			return this.skippedResult({
@@ -946,13 +1221,34 @@ export class EvaluatorService extends BaseService {
 			});
 		}
 
-		const schema = buildMergedSchema(preparedEntries);
+		const freshEntries = preparedEntries.filter(
+			(entry) => entry.progress?.pendingOutput === undefined,
+		);
+		// Only sections requesting new model output contribute shared evidence.
+		// Replay-only and failed preparations retain their own complete snapshots,
+		// but must not resend that history to an unrelated fresh extractor.
+		const roomTranscript = progress
+			? Array.from(
+					new Map(
+						freshEntries.flatMap((entry) =>
+							(entry.options.extraction?.messages ?? []).map(
+								(record) => [record.id, record] as const,
+							),
+						),
+					).values(),
+				).sort(
+					(left, right) =>
+						(left.createdAt ?? 0) - (right.createdAt ?? 0) ||
+						String(left.id).localeCompare(String(right.id)),
+				)
+			: legacyRoomTranscript;
+		const schema = buildMergedSchema(freshEntries);
 		const rendered = buildPrompt({
 			runtime: this.runtime,
 			message,
 			state: composedState,
 			roomTranscript,
-			active: preparedEntries,
+			active: freshEntries,
 			options,
 			schema,
 		});
@@ -975,29 +1271,46 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const { output, error } = await this.readEvaluatorOutput({
-			evaluatorId,
-			rendered,
-			schema,
-		});
-		if (!output) {
+		const { output, error } =
+			freshEntries.length > 0
+				? await this.readEvaluatorOutput({
+						evaluatorId,
+						rendered,
+						schema,
+					})
+				: { output: {}, error: undefined };
+		if (
+			!output &&
+			preparedEntries.every(
+				(entry) => entry.progress?.pendingOutput === undefined,
+			)
+		) {
 			return this.failedResult({
 				preparedEntries,
 				errors,
 				error: error ?? "Evaluator model returned no output",
 			});
 		}
+		if (!output)
+			errors.push({
+				evaluatorName: "post_turn",
+				error: error ?? "Evaluator model returned no output",
+			});
 
 		const { processedEvaluators, results } = await this.processPreparedEntries({
-			preparedEntries,
-			output,
+			preparedEntries: output
+				? preparedEntries
+				: preparedEntries.filter(
+						(entry) => entry.progress?.pendingOutput !== undefined,
+					),
+			output: output ?? {},
 			message,
 			state: composedState,
 			options,
 			errors,
 		});
 
-		await this.emitEvaluatorCompleted(evaluatorId, true);
+		await this.emitEvaluatorCompleted(evaluatorId, errors.length === 0);
 
 		return {
 			skipped: false,

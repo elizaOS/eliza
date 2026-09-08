@@ -270,7 +270,11 @@ export class MemoryService extends Service {
 		messageCount: number,
 	): Promise<void> {
 		const key = this.getExtractionKey(entityId, roomId);
-		await this.runtime.setCache(key, messageCount);
+		if (!(await this.runtime.setCache(key, messageCount))) {
+			throw new ElizaError("Extraction checkpoint was not persisted", {
+				code: "MEMORY_EXTRACTION_CHECKPOINT_FAILED",
+			});
+		}
 		this.lastExtractionCheckpoints.set(key, messageCount);
 		this.capSessionMap(this.lastExtractionCheckpoints);
 		logger.debug(
@@ -320,12 +324,30 @@ export class MemoryService extends Service {
 
 	// ── Storage operations (delegated to provider) ──────────────────────
 
+	/** Select the legacy evaluator path until a replay-safe backend is resolved. */
+	get supportsIncrementalExtraction(): boolean {
+		return this.storage?.supportsIdempotentWrites === true;
+	}
+
+	async ensureIncrementalExtractionSupported(): Promise<void> {
+		const storage = await this.requireStorage("process incremental extraction");
+		if (storage.supportsIdempotentWrites !== true) {
+			throw new ElizaError(
+				"Memory storage does not support replay-safe incremental extraction",
+				{
+					code: "MEMORY_INCREMENTAL_STORAGE_UNSUPPORTED",
+				},
+			);
+		}
+	}
+
 	async storeLongTermMemory(
 		memory: Omit<
 			LongTermMemory,
 			"id" | "createdAt" | "updatedAt" | "accessCount"
-		>,
+		> & { id?: UUID },
 	): Promise<LongTermMemory> {
+		if (memory.id) await this.ensureIncrementalExtractionSupported();
 		const entityId = await resolvePrimaryEntityId(
 			this.runtime,
 			memory.entityId,

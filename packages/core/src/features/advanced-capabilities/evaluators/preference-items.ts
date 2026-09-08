@@ -28,6 +28,7 @@
  * dropped with a debug log — the counters in the processor result record it.
  */
 import { v4 } from "uuid";
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import {
@@ -36,6 +37,7 @@ import {
 } from "../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
+	EvaluatorRunOptions,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
@@ -46,7 +48,9 @@ import type {
 import { asUUID } from "../../../types/index.ts";
 import type { CustomMetadata, FactMetadata } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
+import { stableStringify } from "../../../utils/deterministic.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
+import { stringToUuid } from "../../../utils.ts";
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
@@ -75,11 +79,17 @@ import {
 	type SetTraitOp,
 } from "./preferenceExtractor.schema.ts";
 import {
+	assertPersonalExtractionOperations,
 	canEvaluateMessage,
 	DEDUP_SIMILARITY_THRESHOLD,
+	extractionEvidenceMetadata,
+	hasExtractionEvidence,
 	NEW_FACT_CONFIDENCE,
+	personalExtractionEvidence,
 	preserveFactMetadata,
+	reviewChangedExtractionSources,
 	STRENGTHEN_DELTA,
+	updateExtractedFact,
 } from "./reflection-items.ts";
 
 // Slot writes shape EVERY subsequent prompt for this user (and verbosity is
@@ -116,6 +126,7 @@ const preferenceOpsSchema: JSONSchema = {
 						enum: [...VERBOSITY_VALUES, ...TONE_VALUES, ...FORMALITY_VALUES],
 					},
 					confidence: { type: "number" },
+					sourceMessageIds: { type: "array", items: { type: "string" } },
 					evidence: { type: "string" },
 					text: { type: "string" },
 					claim: { type: "string" },
@@ -196,9 +207,10 @@ function pickFactConfidence(memory: Memory): number {
 async function preparePreferences(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options: EvaluatorRunOptions,
 ): Promise<PreferencePrepared> {
 	const [recentMessagesRaw, entityFacts] = await Promise.all([
-		getRoomTranscript(runtime, message),
+		options.extraction?.messages ?? getRoomTranscript(runtime, message),
 		runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
@@ -261,7 +273,15 @@ async function applySetTrait(
 	userId: UUID,
 	gateSlot: PersonalitySlot,
 	op: SetTraitOp,
+	evidenceId?: string,
 ): Promise<SlotOpOutcome> {
+	if (
+		evidenceId &&
+		store
+			.getSlot(userId, runtime.agentId)
+			.extraction_evidence_ids?.includes(evidenceId)
+	)
+		return "unchanged";
 	if (op.confidence < SLOT_CONFIDENCE_THRESHOLD)
 		return "skipped_low_confidence";
 	const current = gateSlot[op.trait];
@@ -280,6 +300,7 @@ async function applySetTrait(
 		trait: op.trait,
 		value: op.value,
 		source: "agent_inferred",
+		extractionEvidenceId: evidenceId,
 	});
 	return "applied";
 }
@@ -290,7 +311,15 @@ async function applyRetractTrait(
 	userId: UUID,
 	gateSlot: PersonalitySlot,
 	op: RetractTraitOp,
+	evidenceId?: string,
 ): Promise<SlotOpOutcome> {
+	if (
+		evidenceId &&
+		store
+			.getSlot(userId, runtime.agentId)
+			.extraction_evidence_ids?.includes(evidenceId)
+	)
+		return "unchanged";
 	// Retraction only undoes inference. An explicitly-set trait (per-trait
 	// source user/admin) is cleared through the PERSONALITY action, never by
 	// the extractor.
@@ -306,6 +335,7 @@ async function applyRetractTrait(
 		trait: op.trait,
 		value: null,
 		source: "agent_inferred",
+		extractionEvidenceId: evidenceId,
 	});
 	return "applied";
 }
@@ -315,7 +345,15 @@ async function applyAddDirective(
 	runtime: IAgentRuntime,
 	userId: UUID,
 	op: AddDirectiveOp,
+	evidenceId?: string,
 ): Promise<"added" | "deduped" | "skipped_low_confidence"> {
+	if (
+		evidenceId &&
+		store
+			.getSlot(userId, runtime.agentId)
+			.extraction_evidence_ids?.includes(evidenceId)
+	)
+		return "deduped";
 	if (op.confidence < SLOT_CONFIDENCE_THRESHOLD)
 		return "skipped_low_confidence";
 	// Dedupe against the LIVE slot (unlike trait gates) so two near-identical
@@ -331,6 +369,7 @@ async function applyAddDirective(
 		actorId: runtime.agentId,
 		directive: op.text,
 		source: "agent_inferred",
+		extractionEvidenceId: evidenceId,
 	});
 	return "added";
 }
@@ -345,6 +384,7 @@ async function applyAddPreferenceFact(
 	message: Memory,
 	candidates: FactCandidate[],
 	op: AddPreferenceFactOp,
+	extraction: EvaluatorRunOptions["extraction"],
 ): Promise<{ added: boolean; strengthened: boolean }> {
 	const keywords = buildFactKeywordsForStorage(
 		op.keywords ?? [],
@@ -376,6 +416,24 @@ async function applyAddPreferenceFact(
 		}
 	}
 	if (best?.memory.id) {
+		if (extraction) {
+			const latest = await runtime.getMemoryById(best.memory.id);
+			if (!latest)
+				throw new ElizaError(
+					"Preference fact disappeared before extraction update",
+					{ code: "EXTRACTED_FACT_WRITE_FAILED" },
+				);
+			best.memory = latest;
+		}
+		if (hasExtractionEvidence(best.memory.metadata, extraction))
+			return { added: false, strengthened: false };
+		if (extraction?.isBackfill) {
+			await updateExtractedFact(runtime, best.memory, {
+				...preserveFactMetadata(best.memory),
+				...extractionEvidenceMetadata(best.memory.metadata, extraction),
+			});
+			return { added: false, strengthened: false };
+		}
 		// Update-not-duplicate: a re-stated preference reinforces the existing
 		// row instead of creating a near-copy the provider would rank twice; a
 		// same-message Stage-1 observation is promoted to the durable preference.
@@ -401,7 +459,11 @@ async function applyAddPreferenceFact(
 					),
 					lastConfirmedAt: nowIso(),
 				};
-		await runtime.updateMemory({ id: best.memory.id, metadata: nextMeta });
+		Object.assign(
+			nextMeta,
+			extractionEvidenceMetadata(best.memory.metadata, extraction),
+		);
+		await updateExtractedFact(runtime, best.memory, nextMeta);
 		return { added: false, strengthened: true };
 	}
 	const metadata: MemoryMetadata = {
@@ -416,6 +478,7 @@ async function applyAddPreferenceFact(
 		structuredFields: {},
 		keywords,
 		verificationStatus: "self_reported",
+		...extractionEvidenceMetadata(undefined, extraction),
 	};
 	const memory: Memory = {
 		id: asUUID(v4()),
@@ -427,6 +490,10 @@ async function applyAddPreferenceFact(
 		createdAt: Date.now(),
 	};
 	const persistedId = await runtime.createMemory(memory, "facts", true);
+	if (extraction && !persistedId)
+		throw new ElizaError("Preference fact insert was not persisted", {
+			code: "EXTRACTED_FACT_WRITE_FAILED",
+		});
 	if (persistedId) {
 		candidates.push({ memory, searchText: buildFactSearchText(memory) });
 	}
@@ -438,6 +505,7 @@ export const preferenceEvaluator: Evaluator<
 	PreferencePrepared
 > = {
 	name: "preferences",
+	incremental: true,
 	description:
 		"Extracts user preferences about the agent, views, and interaction style from ordinary conversation.",
 	priority: EvaluatorPriority.REFLECTION_PREFERENCES,
@@ -450,10 +518,10 @@ export const preferenceEvaluator: Evaluator<
 			message.entityId !== runtime.agentId
 		);
 	},
-	async prepare({ runtime, message }) {
-		return preparePreferences(runtime, message);
+	async prepare({ runtime, message, options }) {
+		return preparePreferences(runtime, message, options);
 	},
-	prompt({ runtime, prepared, shared }) {
+	prompt({ runtime, message, prepared, shared }) {
 		const agentName = runtime.character.name ?? "Agent";
 		// Without the PersonalityStore, slot ops would be dropped in the
 		// processor anyway — don't advertise them, so the model routes
@@ -474,11 +542,14 @@ ${slotOps}- add_preference_fact: preferences that are knowledge rather than repl
 
 Rules:
 - Only the speaker's own expressed preferences. Not the agent's suggestions, not hypotheticals, not third parties.
+- In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
+- New evidence must come from this speaker's newly selected messages. Historical reference text and known preferences are context only; do not reinforce them just because they appear.
 - confidence 0-1, honest; slot ops below 0.8 are discarded.
 - No preference expressed -> {"ops":[]}.
 - Never emit anything about muting, ignoring, or when ${agentName} may reply.
 
 Current personality for this user:
+Speaker entity id: ${message.entityId}
 ${formatSlotForPrompt(prepared.slot)}
 
 Known preferences already stored:
@@ -486,16 +557,28 @@ ${formatKnownPreferences(prepared.knownPreferenceFacts)}
 
 ${recentMessagesSection(shared, prepared.recentMessages)}`;
 	},
-	parse(output) {
+	parse(output, context) {
 		// Tolerant, op-by-op — drops are logged inside
 		// parsePreferenceOutputTolerant (this parse contract has no
 		// runtime/logger). Null only when the envelope isn't { ops: [...] }.
-		return parsePreferenceOutputTolerant(output);
+		const parsed = parsePreferenceOutputTolerant(output);
+		if (parsed && context)
+			assertPersonalExtractionOperations(
+				context.message,
+				context.options.extraction,
+				parsed.ops,
+			);
+		return parsed;
 	},
 	processors: [
 		{
 			name: "applyPreferenceOps",
-			async process({ runtime, message, prepared, output }) {
+			async process({ runtime, message, prepared, output, options }) {
+				assertPersonalExtractionOperations(
+					message,
+					options.extraction,
+					output.ops,
+				);
 				const store = getPersonalityStore(runtime);
 				const userId = message.entityId;
 				// Pre-run snapshot for trait gates — see applySetTrait.
@@ -527,6 +610,11 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 					memory,
 					searchText: buildFactSearchText(memory),
 				}));
+				const sourceReviews = await reviewChangedExtractionSources(
+					runtime,
+					freshFacts,
+					options.extraction,
+				);
 				let traitsSet = 0;
 				let traitsRetracted = 0;
 				let directivesAdded = 0;
@@ -535,12 +623,20 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 				let skipped = 0;
 				let droppedNoStore = 0;
 				for (const op of output.ops) {
+					const evidenceId = options.extraction
+						? `${options.extraction.evidenceId}:${stringToUuid(stableStringify(op))}`
+						: undefined;
 					if (op.op === "add_preference_fact") {
 						const result = await applyAddPreferenceFact(
 							runtime,
 							message,
 							candidates,
 							op,
+							personalExtractionEvidence(
+								message,
+								options.extraction,
+								op.sourceMessageIds,
+							),
 						);
 						if (result.added) factsAdded += 1;
 						if (result.strengthened) factsStrengthened += 1;
@@ -557,13 +653,20 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 							userId,
 							gateSlot,
 							op,
+							evidenceId,
 						);
 						if (outcome === "applied") traitsSet += 1;
 						else skipped += 1;
 						continue;
 					}
 					if (op.op === "add_directive") {
-						const outcome = await applyAddDirective(store, runtime, userId, op);
+						const outcome = await applyAddDirective(
+							store,
+							runtime,
+							userId,
+							op,
+							evidenceId,
+						);
 						if (outcome === "added") directivesAdded += 1;
 						else skipped += 1;
 						continue;
@@ -574,6 +677,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 						userId,
 						gateSlot,
 						op,
+						evidenceId,
 					);
 					if (outcome === "applied") traitsRetracted += 1;
 					else skipped += 1;
@@ -595,6 +699,7 @@ ${recentMessagesSection(shared, prepared.recentMessages)}`;
 					factsStrengthened,
 					skipped,
 					droppedNoStore,
+					...(options.extraction ? { sourceReviews } : {}),
 				};
 				return { success: true, values: counters, data: counters };
 			},

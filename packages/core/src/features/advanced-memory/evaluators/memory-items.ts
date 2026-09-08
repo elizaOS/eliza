@@ -5,19 +5,25 @@
  * of being replaced by a lossy rolling projection.
  */
 
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import { renderStoredEnvelopesForPrompt } from "../../../security/external-content";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-progress.ts";
 import { recentMessagesSection } from "../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
+	EvaluatorPromptContext,
+	EvaluatorRunOptions,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
 	RegisteredEvaluator,
+	UUID,
 } from "../../../types/index.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
+import { stringToUuid } from "../../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
@@ -48,6 +54,7 @@ const longTermMemorySchema: JSONSchema = {
 					category: { type: "string", enum: MEMORY_CATEGORIES },
 					content: { type: "string" },
 					confidence: { type: "number" },
+					sourceMessageIds: { type: "array", items: { type: "string" } },
 				},
 				required: ["category", "content", "confidence"],
 				additionalProperties: false,
@@ -105,7 +112,39 @@ function formatMessages(runtime: IAgentRuntime, msgs: Memory[]): string {
 		.join("\n");
 }
 
-function parseLongTermOutput(output: unknown): LongTermMemoryOutput | null {
+function assertPersonalMemorySources(
+	output: LongTermMemoryOutput,
+	message: Memory,
+	evidence: EvaluatorRunOptions["extraction"],
+	minConfidence: number,
+): void {
+	if (!evidence) return;
+	assertExtractionSourcesUnchanged(evidence);
+	const sourceMessages = new Map(
+		evidence.messages.map((record) => [record.id, record]),
+	);
+	for (const extraction of output.memories) {
+		if (extraction.confidence < minConfidence) continue;
+		if (
+			!extraction.sourceMessageIds?.length ||
+			extraction.sourceMessageIds.some(
+				(id) =>
+					!Object.hasOwn(evidence.sourceRevisions, id) ||
+					sourceMessages.get(id)?.entityId !== message.entityId,
+			)
+		) {
+			throw new ElizaError(
+				"Long-term memory requires evidence authored by the target user",
+				{ code: "MEMORY_EXTRACTION_SOURCE_INVALID" },
+			);
+		}
+	}
+}
+
+function parseLongTermOutput(
+	output: unknown,
+	context?: EvaluatorPromptContext<LongTermMemoryPrepared>,
+): LongTermMemoryOutput | null {
 	if (!isRecord(output) || !Array.isArray(output.memories)) return null;
 	const memories: MemoryExtraction[] = [];
 	for (const entry of output.memories) {
@@ -122,29 +161,54 @@ function parseLongTermOutput(output: unknown): LongTermMemoryOutput | null {
 		const confidence =
 			typeof entry.confidence === "number" ? entry.confidence : Number.NaN;
 		if (!content || Number.isNaN(confidence)) continue;
-		memories.push({ category, content, confidence });
+		memories.push({
+			category,
+			content,
+			confidence,
+			...(Array.isArray(entry.sourceMessageIds) &&
+			entry.sourceMessageIds.every((id) => typeof id === "string")
+				? { sourceMessageIds: entry.sourceMessageIds as UUID[] }
+				: {}),
+		});
 	}
-	return { memories };
+	const parsed = { memories };
+	if (context?.options.extraction) {
+		assertPersonalMemorySources(
+			parsed,
+			context.message,
+			context.options.extraction,
+			Math.max(
+				context.prepared.memoryService.getConfig().longTermConfidenceThreshold,
+				0.85,
+			),
+		);
+	}
+	return parsed;
 }
 
 async function prepareLongTermMemory(
 	runtime: IAgentRuntime,
 	message: Memory,
+	extraction: EvaluatorRunOptions["extraction"],
 ): Promise<LongTermMemoryPrepared> {
 	const memoryService = runtime.getService("memory") as MemoryService | null;
 	if (!memoryService) throw new Error("MemoryService not found");
-	const currentMessageCount = await runtime.countMemories({
-		roomIds: [message.roomId],
-		unique: false,
-		tableName: "messages",
-	});
-	const [recentRaw, existingLongTerm] = await Promise.all([
-		runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			limit: Math.max(1, currentMessageCount),
+	if (extraction) await memoryService.ensureIncrementalExtractionSupported();
+	const currentMessageCount =
+		extraction?.messages.length ??
+		(await runtime.countMemories({
+			roomIds: [message.roomId],
 			unique: false,
-		}),
+			tableName: "messages",
+		}));
+	const [recentRaw, existingLongTerm] = await Promise.all([
+		extraction?.messages ??
+			runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				limit: Math.max(1, currentMessageCount),
+				unique: false,
+			}),
 		message.entityId
 			? memoryService.getLongTermMemories(message.entityId)
 			: Promise.resolve([]),
@@ -175,28 +239,57 @@ export const longTermMemoryEvaluator: Evaluator<
 	LongTermMemoryPrepared
 > = {
 	name: "longTermMemory",
+	incremental(runtime) {
+		const service = runtime.getService("memory") as MemoryService | null;
+		return service?.supportsIncrementalExtraction === true;
+	},
 	description:
 		"Extracts high-confidence persistent memories about the user from conversation context.",
 	priority: EvaluatorPriority.MEMORY_LONG_TERM,
 	schema: longTermMemorySchema,
-	async shouldRun({ runtime, message }) {
+	async shouldRun({ runtime, message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		if (!message.content.text || !message.roomId || !message.entityId) {
 			return false;
 		}
 		const memoryService = runtime.getService("memory") as MemoryService | null;
 		if (!memoryService) return false;
+		if (options.extraction) {
+			const config = memoryService.getConfig();
+			if (
+				!config.longTermExtractionEnabled ||
+				message.entityId === runtime.agentId
+			)
+				return false;
+			await memoryService.ensureIncrementalExtractionSupported();
+			const count = await runtime.countMemories({
+				roomIds: [message.roomId],
+				unique: false,
+				tableName: "messages",
+			});
+			// Skipped batches remain pending in the journal. Its delta, not an
+			// old total-count watermark, determines when another interval is due.
+			return (
+				count >= config.longTermExtractionThreshold &&
+				options.extraction.messages.length >= config.longTermExtractionInterval
+			);
+		}
 		return shouldExtractLongTerm(runtime, message, memoryService);
 	},
-	async prepare({ runtime, message }) {
-		return prepareLongTermMemory(runtime, message);
+	async prepare({ runtime, message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
+		return prepareLongTermMemory(runtime, message, options.extraction);
 	},
-	prompt({ runtime, prepared, shared }) {
+	prompt({ runtime, message, prepared, shared, options }) {
 		// The shared context renders the room conversation once; this section
 		// embeds its own copy only when that rendering is unavailable this turn.
 		const recentMessages = shared?.roomTranscriptRendered
 			? recentMessagesSection(shared, prepared.recentMessages)
-			: `Recent messages:\n${formatMessages(runtime, prepared.recentMessages)}`;
+			: options?.extraction
+				? `Recent messages:\n${prepared.recentMessages.map((record) => `[${record.id}] ${formatMessages(runtime, [record])}`).join("\n")}`
+				: `Recent messages:\n${formatMessages(runtime, prepared.recentMessages)}`;
 		return `Extract every high-confidence persistent user memory. Categories: episodic, semantic, procedural. Keep only specific, concrete, user-unique info likely useful in 3+ months, confidence >=0.85, not already present. Skip one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, and synthetic historical artifacts.
+${options?.extraction ? `\nTarget user entity ID: ${message.entityId}. Extract personal memories only about this target. Cite sourceMessageIds for every memory, using only selected evidence messages authored by that exact entity. Other participants and agent responses are reference context, not evidence about this user. No grounded target-authored citation means no memory. Do not invent IDs. Do not add a conflicting replacement for an existing memory; corrections require review.\n` : "\nInclude sourceMessageIds when visible; use [] when unavailable.\n"}
 
 Existing long-term memories:
 ${prepared.existingMemories}
@@ -207,7 +300,11 @@ ${recentMessages}`;
 	processors: [
 		{
 			name: "storeLongTermMemory",
-			async process({ runtime, message, prepared, output }) {
+			async process({ runtime, message, prepared, output, options }) {
+				assertExtractionSourcesUnchanged(options.extraction);
+				if (options.extraction) {
+					await prepared.memoryService.ensureIncrementalExtractionSupported();
+				}
 				const config = prepared.memoryService.getConfig();
 				const minConfidence = Math.max(
 					config.longTermConfidenceThreshold,
@@ -215,9 +312,18 @@ ${recentMessages}`;
 				);
 				const extractedAt = new Date().toISOString();
 				let longTermStored = 0;
-				for (const extraction of output.memories) {
+				const evidence = options.extraction;
+				assertPersonalMemorySources(output, message, evidence, minConfidence);
+				for (const [index, extraction] of output.memories.entries()) {
 					if (extraction.confidence < minConfidence) continue;
 					await prepared.memoryService.storeLongTermMemory({
+						...(options.extraction
+							? {
+									id: stringToUuid(
+										`${runtime.agentId}:longTermMemory:${options.extraction.evidenceId}:${index}`,
+									),
+								}
+							: {}),
 						agentId: runtime.agentId,
 						entityId: message.entityId,
 						category: extraction.category,
@@ -227,15 +333,28 @@ ${recentMessages}`;
 						metadata: {
 							roomId: message.roomId,
 							extractedAt,
+							...(evidence
+								? {
+										extractionEvidenceId: evidence.evidenceId,
+										sourceMessageRevisions: Object.fromEntries(
+											(extraction.sourceMessageIds ?? []).map((id) => [
+												id,
+												evidence.sourceRevisions[id],
+											]),
+										),
+									}
+								: {}),
 						},
 					});
 					longTermStored += 1;
 				}
-				await prepared.memoryService.setLastExtractionCheckpoint(
-					message.entityId,
-					message.roomId,
-					prepared.currentMessageCount,
-				);
+				if (!options.extraction) {
+					await prepared.memoryService.setLastExtractionCheckpoint(
+						message.entityId,
+						message.roomId,
+						prepared.currentMessageCount,
+					);
+				}
 				logAdvancedMemoryTrajectory({
 					runtime,
 					message,
