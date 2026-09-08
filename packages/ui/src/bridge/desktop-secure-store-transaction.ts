@@ -4,6 +4,7 @@ import { ElizaError } from "@elizaos/core/errors";
 import type {
   RendererSecureSlot,
   RendererSecureSnapshot,
+  RendererSecureStorageAuthority,
 } from "@elizaos/shared/types";
 import { desktopSecureStoreTransaction as request } from "./electrobun-rpc";
 
@@ -36,14 +37,7 @@ function copySnapshot(
 }
 
 /** An individual continuation's baseline, advanced only by its acknowledged writes. */
-export interface DesktopStorageAuthority {
-  expected(kind: RendererSecureSlot): RendererSecureSnapshot;
-  acceptOwned(
-    kind: RendererSecureSlot,
-    published: RendererSecureSnapshot,
-  ): void;
-  assertCurrent(): Promise<void>;
-}
+export type DesktopStorageAuthority = RendererSecureStorageAuthority;
 
 /** Capture before starting account requests, rejecting an already-stale renderer mirror. */
 export async function captureDesktopStorageAuthority(
