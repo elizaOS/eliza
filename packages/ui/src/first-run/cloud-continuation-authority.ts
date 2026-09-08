@@ -101,7 +101,7 @@ export async function createCloudContinuationAuthority(
   return {
     signal,
     revalidate,
-    storageOptions: { revalidate, nativeAuthority },
+    storageOptions: { revalidate, nativeAuthority, signal },
     async assertNative() {
       revalidate();
       await nativeAuthority?.assertCurrent();
@@ -111,6 +111,7 @@ export async function createCloudContinuationAuthority(
       profile = await prepareAgentProfileRegistryDurably(
         revalidate,
         nativeAuthority,
+        signal,
       );
       revalidate();
     },

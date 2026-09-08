@@ -52,6 +52,81 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+it("durably rejects a delayed prepare after cancellation across a new host", async () => {
+  const kind = "runtime.active_server";
+  const read = await a.secureStoreTransaction({ operation: "read", kind });
+  if (read.operation !== "read") throw new Error("Expected snapshot");
+  const operationId = randomUUID();
+  expect(
+    await a.secureStoreTransaction({ operation: "cancel", kind, operationId }),
+  ).toEqual({ operation: "cancel", state: "not-current" });
+  await expect(
+    b.secureStoreTransaction({
+      operation: "prepare",
+      kind,
+      expected: read.snapshot,
+      value: "late-replay",
+      operationId,
+    }),
+  ).rejects.toMatchObject({ code: "NATIVE_STORE_CANCELLED" });
+  expect(await b.secureStoreGet({ kind })).toEqual({
+    ok: false,
+    reason: "not_found",
+  });
+});
+
+it.each([false, true])(
+  "cancels an unsealed proposal but never undoes an acknowledged seal (%s)",
+  async (sealed) => {
+    const kind = "runtime.active_server";
+    const read = await a.secureStoreTransaction({ operation: "read", kind });
+    if (read.operation !== "read") throw new Error("Expected snapshot");
+    const operationId = randomUUID();
+    const prepared = await a.secureStoreTransaction({
+      operation: "prepare",
+      kind,
+      expected: read.snapshot,
+      value: "owned-proposal",
+      operationId,
+    });
+    if (prepared.operation !== "prepare") throw new Error("Expected receipt");
+    await a.secureStoreTransaction({
+      operation: "commit",
+      kind,
+      receipt: prepared.receipt,
+    });
+    if (sealed)
+      await a.secureStoreTransaction({
+        operation: "seal",
+        kind,
+        receipt: prepared.receipt,
+      });
+    expect(
+      await b.secureStoreTransaction({
+        operation: "cancel",
+        kind,
+        operationId,
+      }),
+    ).toEqual({
+      operation: "cancel",
+      state: sealed ? "published" : "cancelled",
+    });
+    expect(await a.secureStoreGet({ kind })).toEqual(
+      sealed
+        ? { ok: true, value: "owned-proposal" }
+        : { ok: false, reason: "not_found" },
+    );
+    if (!sealed)
+      await expect(
+        a.secureStoreTransaction({
+          operation: "seal",
+          kind,
+          receipt: prepared.receipt,
+        }),
+      ).rejects.toMatchObject({ code: "NATIVE_STORE_CANCELLED" });
+  },
+);
+
 it("retains credentials across restart when the new state directory is under a symlink parent", async () => {
   const realParent = join(directory, "real-parent"),
     linkedParent = join(directory, "linked-parent");

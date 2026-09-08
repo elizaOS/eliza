@@ -780,6 +780,7 @@ export async function getStorageValue(key: string): Promise<string | null> {
 export interface StorageMutationOptions {
   revalidate?: () => void;
   nativeAuthority?: DesktopStorageAuthority;
+  signal?: AbortSignal;
 }
 
 /** Pin this workflow to the native values its renderer actually observed. */
@@ -809,6 +810,7 @@ async function mutateProtectedStorageValue(
   value: string | null,
   revalidate: () => void,
   nativeAuthority?: DesktopStorageAuthority,
+  signal?: AbortSignal,
 ): Promise<void> {
   const mutationVersion = markProtectedStorageMutation(key);
   await serializeProtectedStorageMutation(key, async () => {
@@ -848,6 +850,7 @@ async function mutateProtectedStorageValue(
           value,
           validateOwnMirror,
           nativeAuthority?.expected(kind),
+          signal,
         );
         // A cancelled caller must not publish a stale renderer mirror even
         // when native seal already completed. It cannot undo that durable seal.
@@ -935,6 +938,7 @@ export async function setStorageValue(
         value,
         options.revalidate,
         options.nativeAuthority,
+        options.signal,
       );
       return;
     }
@@ -973,6 +977,7 @@ export async function removeStorageValue(
         null,
         options.revalidate,
         options.nativeAuthority,
+        options.signal,
       );
       return;
     }

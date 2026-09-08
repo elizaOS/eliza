@@ -42,6 +42,7 @@ export type RendererSecureTransactionRequest =
       operationId: string;
     }
   | { operation: "lookup"; kind: RendererSecureSlot; operationId: string }
+  | { operation: "cancel"; kind: RendererSecureSlot; operationId: string }
   | {
       operation: "commit" | "seal" | "rollback";
       kind: RendererSecureSlot;
@@ -52,6 +53,7 @@ export type RendererSecureTransactionResult =
   | { operation: "read" | "commit" | "seal"; snapshot: RendererSecureSnapshot }
   | { operation: "prepare"; receipt: RendererSecureReceipt }
   | { operation: "lookup"; receipt: RendererSecureReceipt | null }
+  | { operation: "cancel"; state: "cancelled" | "published" | "not-current" }
   | { operation: "rollback" };
 
 export type ExistingElizaInstallSource =

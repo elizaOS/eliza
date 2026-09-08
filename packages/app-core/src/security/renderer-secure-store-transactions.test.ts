@@ -48,6 +48,7 @@ beforeEach(() => {
   // Models the host serialization port, shared by independent RPC clients.
   // Platform/process locking itself requires separate native adapter tests.
   const queues = new Map<string, Promise<void>>();
+  const cancellations = new Set<string>();
   serialization = {
     async run<T>(
       id: string,
@@ -62,6 +63,11 @@ beforeEach(() => {
         const checks: Array<() => void> = [];
         const result = await work({
           beforeCommit: (check) => checks.push(check),
+          isCancelled: (slot, operationId) =>
+            cancellations.has(JSON.stringify([id, slot, operationId])),
+          cancelOperation: (slot, operationId) => {
+            cancellations.add(JSON.stringify([id, slot, operationId]));
+          },
         });
         for (const check of checks) check();
         return result;

@@ -144,7 +144,9 @@ export async function mutateDesktopSecureSlot(
   value: string | null,
   revalidate: () => void,
   expected?: RendererSecureSnapshot,
+  signal?: AbortSignal,
 ): Promise<RendererSecureSnapshot> {
+  signal?.throwIfAborted();
   revalidate();
   const read = await request({ operation: "read", kind });
   if (read.operation !== "read") throw invalidReply();
@@ -159,47 +161,93 @@ export async function mutateDesktopSecureSlot(
     throw superseded();
   revalidate();
   const operationId = crypto.randomUUID();
+  let cancellation: ReturnType<typeof request> | undefined;
+  const cancel = () => {
+    cancellation ??= request({ operation: "cancel", kind, operationId });
+    // error-policy:J5 observed by the cancellation branch before this mutation settles.
+    void cancellation.catch(() => undefined);
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
+  const validate = () => {
+    signal?.throwIfAborted();
+    revalidate();
+  };
   let sealDispatched = false;
   let sealAcknowledged = false;
-  try {
-    const prepared = await request({
-      operation: "prepare",
-      kind,
-      expected: read.snapshot,
-      value,
-      operationId,
-    });
-    if (prepared.operation !== "prepare") throw invalidReply();
-    revalidate();
-    await request({ operation: "commit", kind, receipt: prepared.receipt });
-    revalidate();
-    // The host revalidates captured native account/selection authority at its
-    // durable COMMIT. Cancellation after this dispatch cannot undo publication.
-    sealDispatched = true;
-    const sealed = await request({
-      operation: "seal",
-      kind,
-      receipt: prepared.receipt,
-    });
-    if (sealed.operation !== "seal") throw invalidReply();
-    sealAcknowledged = true;
-    return await verifyPublication(kind, sealed.snapshot, read.snapshot);
-  } catch (error) {
-    // error-policy:J2 an acknowledgement can be lost after native mutation.
-    // Lookup is by this operation's identity; a newer writer is never compensated.
-    if (sealAcknowledged) throw error;
-    const current = await request({ operation: "lookup", kind, operationId });
-    if (current.operation !== "lookup") throw invalidReply(error);
-    const receipt = current.receipt;
-    if (sealDispatched && receipt?.state === "sealed") {
-      // Idempotent seal reads the already-published result. A newer winner
-      // between lookup and this call makes it reject without changing anything.
-      const sealed = await request({ operation: "seal", kind, receipt });
-      if (sealed.operation !== "seal") throw invalidReply(error);
-      return await verifyPublication(kind, sealed.snapshot, read.snapshot);
+  const execute = async (): Promise<RendererSecureSnapshot> => {
+    try {
+      validate();
+      const prepared = await request({
+        operation: "prepare",
+        kind,
+        expected: read.snapshot,
+        value,
+        operationId,
+      });
+      if (prepared.operation !== "prepare") throw invalidReply();
+      validate();
+      await request({ operation: "commit", kind, receipt: prepared.receipt });
+      validate();
+      // The host revalidates captured native account/selection authority at its
+      // durable COMMIT. Cancellation is also sent while this request is awaiting
+      // native work; durable seal COMMIT, not dispatch or its reply, is irreversible.
+      sealDispatched = true;
+      const sealed = await request({
+        operation: "seal",
+        kind,
+        receipt: prepared.receipt,
+      });
+      if (sealed.operation !== "seal") throw invalidReply();
+      sealAcknowledged = true;
+      const verified = await verifyPublication(
+        kind,
+        sealed.snapshot,
+        read.snapshot,
+      );
+      validate();
+      return verified;
+    } catch (error) {
+      // error-policy:J2 an acknowledgement can be lost after native mutation.
+      // Lookup is by this operation's identity; a newer writer is never compensated.
+      if (signal?.aborted) throw error;
+      if (sealAcknowledged) throw error;
+      const current = await request({ operation: "lookup", kind, operationId });
+      if (current.operation !== "lookup") throw invalidReply(error);
+      const receipt = current.receipt;
+      if (sealDispatched && receipt?.state === "sealed") {
+        // Idempotent seal reads the already-published result. A newer winner
+        // between lookup and this call makes it reject without changing anything.
+        const sealed = await request({ operation: "seal", kind, receipt });
+        if (sealed.operation !== "seal") throw invalidReply(error);
+        return await verifyPublication(kind, sealed.snapshot, read.snapshot);
+      }
+      if (receipt?.state === "pending" || receipt?.state === "committed")
+        await request({ operation: "rollback", kind, receipt });
+      throw error;
     }
-    if (receipt?.state === "pending" || receipt?.state === "committed")
-      await request({ operation: "rollback", kind, receipt });
-    throw error;
+  };
+  // error-policy:J2 retain the operation error until its cancellation receipt is reconciled.
+  const outcome = await execute().then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  signal?.removeEventListener("abort", cancel);
+  // Cancellation can also arrive while lost-reply reconciliation is awaiting
+  // the host. Observe its durable disposition on every exit, not just catch entry.
+  if (cancellation) {
+    const result = await cancellation;
+    if (result.operation !== "cancel") throw invalidReply();
+    if (result.state === "published")
+      throw new ElizaError(
+        "Native storage was already published before cancellation; recover the current selection.",
+        {
+          code: "NATIVE_STORE_ALREADY_PUBLISHED",
+          severity: "ephemeral",
+          cause: signal?.reason,
+        },
+      );
+    signal?.throwIfAborted();
   }
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
 }
