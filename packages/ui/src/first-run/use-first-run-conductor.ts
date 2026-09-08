@@ -998,7 +998,9 @@ export function useFirstRunConductor(): void {
 
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
   const allowInteractiveCloudLoginRef = React.useRef(true);
+  const revertLocalForCloudRef = React.useRef(false);
   const startCloudProvisionFlow = React.useCallback(() => {
+    if (cloudPageHiddenRef.current) return;
     const allowInteractiveCloudLogin = allowInteractiveCloudLoginRef.current;
     allowInteractiveCloudLoginRef.current = true;
     busyRef.current = true;
@@ -1091,6 +1093,7 @@ export function useFirstRunConductor(): void {
     void listOrAutoProvisionCloudAgent(draftRef.current, {
       ...portsRef.current,
       allowInteractiveCloudLogin,
+      revertLocalRuntimeBeforeCloud: revertLocalForCloudRef.current,
       signal: abortController.signal,
       onInteractiveLogin: () => {
         if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
@@ -1236,6 +1239,37 @@ export function useFirstRunConductor(): void {
   const runCloudResumeRef = React.useRef(runCloudResume);
   runCloudResumeRef.current = runCloudResume;
 
+  React.useEffect(() => {
+    if (!active || !runtimeChooserEnabled) return;
+    cloudPageHiddenRef.current = false;
+    let interrupted = false;
+    const onPagehide = () => {
+      cloudPageHiddenRef.current = true;
+      if (activeCloudLoginCancelRef.current) {
+        interrupted = true;
+        activeCloudLoginCancelRef.current();
+      }
+    };
+    const onPageshow = () => {
+      cloudPageHiddenRef.current = false;
+      if (!interrupted) return;
+      interrupted = false;
+      // A restored chooser must not reuse the departed attempt. Keep the
+      // selected runtime and offer a fresh, explicit retry of its setup.
+      seedError(
+        "Setup was interrupted when you left this page. Try again to continue.",
+      );
+    };
+    window.addEventListener("pagehide", onPagehide);
+    window.addEventListener("pageshow", onPageshow);
+    return () => {
+      cloudPageHiddenRef.current = true;
+      activeCloudLoginCancelRef.current?.();
+      window.removeEventListener("pagehide", onPagehide);
+      window.removeEventListener("pageshow", onPageshow);
+    };
+  }, [active, runtimeChooserEnabled, seedError]);
+
   // Auto-resume: when the user connects Eliza Cloud from the retry turn's OAuth
   // block (instead of re-picking a runtime), continue the interrupted flow the
   // moment the store learns the connection landed. Fires AT MOST ONCE per
@@ -1344,7 +1378,10 @@ export function useFirstRunConductor(): void {
         // committed) local runtime must unwind it: clear the persisted mode +
         // local active server and stop a service a failed finish may have
         // started (#14390). No-op when nothing local was committed.
-        if (id !== "local") {
+        // Cloud owns an awaited, guarded reversal inside its attempt. Keep
+        // that intent for retries; a different explicit runtime retires it.
+        revertLocalForCloudRef.current = id === "cloud";
+        if (id === "remote") {
           void revertLocalRuntimeCommitment();
         }
         if (id === "cloud") {

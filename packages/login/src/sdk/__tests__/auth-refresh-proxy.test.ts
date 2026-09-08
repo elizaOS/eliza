@@ -303,6 +303,75 @@ describe("LoginAuth authProxyUrl (SEC-018: HttpOnly refresh-token custody)", () 
     expect(storage.getItem("steward_refresh_token")).toBeNull();
   });
 
+  test.each(["success", "caller-abort", "sign-out", "pre-aborted"] as const)(
+    "email callback without AbortSignal.any preserves %s through host publication",
+    async (ending) => {
+      const descriptor = Object.getOwnPropertyDescriptor(AbortSignal, "any");
+      Object.defineProperty(AbortSignal, "any", {
+        configurable: true,
+        value: undefined,
+      });
+      const auth = new LoginAuth({
+        baseUrl: requireLoginValue(server, "server").baseUrl,
+        storage,
+      });
+      const controller = new AbortController();
+      const reason = new Error("The callback page was abandoned");
+      const entered = Promise.withResolvers<AbortSignal>();
+      const release = Promise.withResolvers<void>();
+      if (ending === "pre-aborted") controller.abort(reason);
+      const pending = auth.verifyEmailCallback(
+        "magic-token",
+        "test@example.com",
+        {
+          signal: controller.signal,
+          commitSession: async (commit, _candidate, signal) => {
+            entered.resolve(signal);
+            await release.promise;
+            return commit();
+          },
+        },
+      );
+      const outcome = pending.then(
+        (value) => ({ value, error: null }),
+        (error: unknown) => ({ value: null, error }),
+      );
+      try {
+        if (ending === "pre-aborted") {
+          expect((await outcome).error).toBe(reason);
+          expect(requests).toHaveLength(0);
+        } else {
+          // Fail promptly if verification never reaches the held host boundary.
+          const signal = await Promise.race([entered.promise, pending]);
+          expect(signal).toBeInstanceOf(AbortSignal);
+          if (!(signal instanceof AbortSignal))
+            throw new Error("Missing host lifetime");
+          if (ending === "caller-abort") controller.abort(reason);
+          if (ending === "sign-out") await auth.signOut();
+          expect(signal.aborted).toBe(ending !== "success");
+          if (ending === "caller-abort") expect(signal.reason).toBe(reason);
+          release.resolve();
+          const result = await outcome;
+          if (ending === "success") {
+            expect(result.error).toBeNull();
+            expect(auth.getSession()?.userId).toBe(TEST_USER.id);
+          } else {
+            expect(result.error).toBeInstanceOf(Error);
+          }
+        }
+        if (ending !== "success") {
+          expect(auth.getSession()).toBeNull();
+          expect(storage.getItem("steward_refresh_token")).toBeNull();
+        }
+      } finally {
+        release.resolve();
+        await outcome;
+        if (descriptor) Object.defineProperty(AbortSignal, "any", descriptor);
+        else Reflect.deleteProperty(AbortSignal, "any");
+      }
+    },
+  );
+
   test("cancelled proxy custody retires its deposit before a newer sign-in can win", async () => {
     const baseUrl = requireLoginValue(server, "server").baseUrl;
     const auth = new LoginAuth({

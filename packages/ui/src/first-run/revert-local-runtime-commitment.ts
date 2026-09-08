@@ -17,11 +17,13 @@
 
 import { logger } from "@elizaos/logger";
 import { getAgentPlugin } from "../bridge/native-plugins";
+import { removeStorageValue } from "../bridge/storage-bridge";
 import { isAndroid, isIOS } from "../platform/init";
 import {
   clearPersistedActiveServer,
   loadPersistedActiveServer,
 } from "../state/persistence";
+import { getBuildConfiguredRemoteApiBaseUrl } from "../state/runtime-url-trust";
 import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   MOBILE_LOCAL_AGENT_SERVER_ID,
@@ -94,4 +96,55 @@ export async function revertLocalRuntimeCommitment(): Promise<ClearedLocalRuntim
     );
   }
   return cleared;
+}
+
+/** Finish an explicitly requested Local → Cloud cleanup before capturing the next runtime target. */
+export async function revertLocalRuntimeCommitmentBeforeCloud(options: {
+  revalidate: () => void;
+  acceptClearedServer: () => void;
+}): Promise<void> {
+  options.revalidate();
+  if (getBuildConfiguredRemoteApiBaseUrl()) {
+    throw new Error(
+      "Cloud setup is unavailable in this build-pinned remote runtime",
+    );
+  }
+  const mode = readPersistedMobileRuntimeMode();
+  const revalidate = () => {
+    options.revalidate();
+    if (readPersistedMobileRuntimeMode() !== mode)
+      throw new Error("Local runtime choice changed during cleanup");
+  };
+  const active = loadPersistedActiveServer();
+  if (
+    active &&
+    (active.kind === "local" || LOCAL_AGENT_SERVER_IDS.has(active.id))
+  ) {
+    await removeStorageValue("elizaos:active-server", {
+      revalidate,
+    });
+    // Advance only the exact deletion this guarded transaction acknowledged.
+    // A newer selected server must fail the caller's expected-null check.
+    options.acceptClearedServer();
+  }
+  revalidate();
+  if (mode !== "local" && mode !== "cloud-hybrid") return;
+  if (isAndroid || isIOS) {
+    // A rejected stop is a visible setup failure, not permission to join Cloud
+    // while an abandoned local service may still be running.
+    const agent = getAgentPlugin();
+    if (!agent.stop)
+      throw new Error("The local agent stop bridge is unavailable");
+    const stopped = await agent.stop();
+    revalidate();
+    if (
+      !stopped ||
+      typeof stopped !== "object" ||
+      !("ok" in stopped) ||
+      stopped.ok !== true
+    ) {
+      throw new Error("The local agent did not acknowledge stopping");
+    }
+  }
+  persistMobileRuntimeMode(null);
 }

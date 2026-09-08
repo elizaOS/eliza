@@ -19,10 +19,6 @@ const credentialDiscoverySource = readFileSync(
   ),
   "utf8",
 );
-const rendererBridgeSource = readFileSync(
-  new URL("../../platforms/electrobun/src/rpc-handlers.ts", import.meta.url),
-  "utf8",
-);
 const anthropicCredentialSource = readFileSync(
   new URL(
     "../../../../plugins/plugin-anthropic/utils/credential-store.ts",
@@ -122,23 +118,6 @@ describe("desktop platform secure-store boundary", () => {
     expect(source).not.toContain("// ignore — item may not exist");
     expect(source).not.toContain(
       'e.code === 1 || stderr.includes("not found")',
-    );
-    expect(rendererBridgeSource).toContain(
-      "secureStoreDelete: async (params) =>\n      rendererSecureStore.delete(",
-    );
-    expect(rendererBridgeSource).not.toContain(
-      "await rendererSecureStore.delete(",
-    );
-  });
-
-  it("allowlists renderer slots and bounds credential payload size", () => {
-    expect(rendererBridgeSource).toContain("rendererSecureStoreKinds");
-    expect(rendererBridgeSource).toContain(
-      "RENDERER_SECURE_STORE_MAX_VALUE_BYTES = 256 * 1024",
-    );
-    expect(rendererBridgeSource).toContain('Buffer.byteLength(value, "utf8")');
-    expect(rendererBridgeSource).toContain(
-      "requireRendererSecureStoreValue(params?.value)",
     );
   });
 

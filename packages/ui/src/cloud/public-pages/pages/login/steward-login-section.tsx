@@ -810,6 +810,7 @@ export default function StewardLoginSection() {
   // reveals the EVM / Solana peer buttons; clicking one mounts the lazy wallet
   // stack as before.
   const [showWalletOptions, setShowWalletOptions] = useState(false);
+  const passiveRecoveryPageHiddenRef = useRef(false);
   // Focus target for the controlled wallet region. After a chain intent locks
   // the disclosure toggle (walletButtonsMounted), keyboard focus must move
   // into this live region so it is not stranded on a newly-disabled control or
@@ -1309,101 +1310,131 @@ export default function StewardLoginSection() {
       return;
     }
 
-    setSessionRecoveryComplete(false);
-    let cancelled = false;
-    const recoveryController = new AbortController();
-    let expected = getStewardTabSessionAuthorityCoordinator().readSnapshot();
+    const beginRecovery = () => {
+      let cancelled = false;
+      const recoveryController = new AbortController();
+      let expected = getStewardTabSessionAuthorityCoordinator().readSnapshot();
 
-    const tryRecoverSession = async () => {
-      try {
-        let storedToken = expected.token;
-        if (storedToken && !hasHydratableStewardToken()) {
-          // Expired, malformed, and identity-less local proofs cannot restore
-          // a session. Clear them before any network call so an unusable token
-          // cannot hide fresh sign-in controls behind session sync. A valid
-          // HttpOnly cookie is independent and still recovers below.
-          expected = await runStewardSessionAuthorityExclusive({
-            kind: "callback-restore",
-            expectedToken: expected.token,
-            expectedGeneration: expected.generation,
-            expectedScope: expected.scope,
-            signal: recoveryController.signal,
-            work: async (authority) => {
-              await clearStoredStewardToken({ authority });
-              const cleared = authority.revalidate();
-              window.dispatchEvent(new CustomEvent("steward-token-sync"));
-              return cleared;
-            },
-          });
-          storedToken = null;
-        }
-        if (storedToken) {
-          try {
-            // Session recovery establishes auth only. A pending Telegram claim
-            // remains inert until /get-started previews it and the user
-            // confirms it explicitly.
-            const tokenToRestore = storedToken;
-            await runStewardSessionAuthorityExclusive({
+      const tryRecoverSession = async () => {
+        try {
+          let storedToken = expected.token;
+          if (storedToken && !hasHydratableStewardToken()) {
+            // Expired, malformed, and identity-less local proofs cannot restore
+            // a session. Clear them before any network call so an unusable token
+            // cannot hide fresh sign-in controls behind session sync. A valid
+            // HttpOnly cookie is independent and still recovers below.
+            expected = await runStewardSessionAuthorityExclusive({
               kind: "callback-restore",
               expectedToken: expected.token,
               expectedGeneration: expected.generation,
               expectedScope: expected.scope,
               signal: recoveryController.signal,
               work: async (authority) => {
-                await syncStewardSessionCookie(tokenToRestore, null, {
-                  authority,
-                });
-                authority.revalidate();
-                if (!cancelled)
-                  setRedirectTo(resolveLoginReturnTo(searchParams));
+                await clearStoredStewardToken({ authority });
+                const cleared = authority.revalidate();
+                window.dispatchEvent(new CustomEvent("steward-token-sync"));
+                return cleared;
               },
             });
-            return;
-          } catch (storedTokenError) {
-            // error-policy:J4 A stale browser token may coexist with a valid
-            // HttpOnly refresh cookie. Retry only through the server-owned
-            // cookie boundary; never reintroduce a browser refresh token.
-            if (!hasStewardAuthedCookie()) throw storedTokenError;
+            storedToken = null;
           }
-        }
-
-        if (hasStewardAuthedCookie()) {
-          const refreshed = await recoverStewardSessionViaCookie({
-            expected,
-            signal: recoveryController.signal,
-          });
-          if (cancelled) return;
-          if (refreshed?.token) {
-            await persistStewardToken(
-              refreshed.token,
-              {
-                expected,
+          if (storedToken) {
+            try {
+              // Session recovery establishes auth only. A pending Telegram claim
+              // remains inert until /get-started previews it and the user
+              // confirms it explicitly.
+              const tokenToRestore = storedToken;
+              await runStewardSessionAuthorityExclusive({
+                kind: "callback-restore",
+                expectedToken: expected.token,
+                expectedGeneration: expected.generation,
+                expectedScope: expected.scope,
                 signal: recoveryController.signal,
-              },
-              () => {
-                window.dispatchEvent(new CustomEvent("steward-token-sync"));
-                setRedirectTo(resolveLoginReturnTo(searchParams));
-              },
+                work: async (authority) => {
+                  await syncStewardSessionCookie(tokenToRestore, null, {
+                    authority,
+                  });
+                  authority.revalidate();
+                  if (!cancelled)
+                    setRedirectTo(resolveLoginReturnTo(searchParams));
+                },
+              });
+              return;
+            } catch (storedTokenError) {
+              // error-policy:J4 A stale browser token may coexist with a valid
+              // HttpOnly refresh cookie. Retry only through the server-owned
+              // cookie boundary; never reintroduce a browser refresh token.
+              if (!hasStewardAuthedCookie()) throw storedTokenError;
+            }
+          }
+
+          if (hasStewardAuthedCookie()) {
+            const refreshed = await recoverStewardSessionViaCookie({
+              expected,
+              signal: recoveryController.signal,
+            });
+            if (cancelled) return;
+            if (refreshed?.token) {
+              await persistStewardToken(
+                refreshed.token,
+                {
+                  expected,
+                  signal: recoveryController.signal,
+                },
+                () => {
+                  window.dispatchEvent(new CustomEvent("steward-token-sync"));
+                  setRedirectTo(resolveLoginReturnTo(searchParams));
+                },
+              );
+            }
+            return;
+          }
+        } catch (sessionError) {
+          if (!cancelled) {
+            setError(
+              describeCodeExchangeError(
+                sessionError,
+                recoveryTranslator.current,
+              ),
             );
           }
-          return;
+        } finally {
+          if (!cancelled) setSessionRecoveryComplete(true);
         }
-      } catch (sessionError) {
-        if (!cancelled) {
-          setError(
-            describeCodeExchangeError(sessionError, recoveryTranslator.current),
-          );
-        }
-      } finally {
-        if (!cancelled) setSessionRecoveryComplete(true);
-      }
+      };
+
+      void tryRecoverSession();
+
+      return () => {
+        cancelled = true;
+        recoveryController.abort();
+      };
     };
 
-    void tryRecoverSession();
-
+    let abandon = () => {};
+    const start = () => {
+      setSessionRecoveryComplete(false);
+      if (!passiveRecoveryPageHiddenRef.current) abandon = beginRecovery();
+    };
+    const leave = () => {
+      passiveRecoveryPageHiddenRef.current = true;
+      abandon();
+      setSessionRecoveryComplete(false);
+    };
+    const resume = () => {
+      if (!passiveRecoveryPageHiddenRef.current) return;
+      passiveRecoveryPageHiddenRef.current = false;
+      // BFCache retains React: capture a fresh authority and controller rather
+      // than permitting a response from the departed page to resume publication.
+      start();
+    };
+    window.addEventListener("pagehide", leave);
+    window.addEventListener("pageshow", resume);
+    start();
     return () => {
-      cancelled = true;
-      recoveryController.abort();
+      abandon();
+      window.removeEventListener("pagehide", leave);
+      window.removeEventListener("pageshow", resume);
     };
   }, [searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 

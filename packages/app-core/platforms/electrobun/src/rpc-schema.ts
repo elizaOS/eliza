@@ -46,6 +46,10 @@ import type {
   LaunchSnapshot,
 } from "./launch/types";
 import type {
+  RendererSecureTransactionRequest,
+  RendererSecureTransactionResult,
+} from "./renderer-secure-store-rpc";
+import type {
   ShellAuthorityCommandPush,
   ShellAuthorityCommandResult,
   ShellAuthorityCompleteCommandParams,
@@ -2193,6 +2197,10 @@ export type ElizaDesktopRPCSchema = {
         params: undefined;
         response: RendererSecureStoreStatus;
       };
+      secureStoreTransaction: {
+        params: RendererSecureTransactionRequest;
+        response: RendererSecureTransactionResult;
+      };
       runtimeCredentialStore: {
         params: RuntimeCredentialSetParams;
         response: { stored: true };
@@ -3034,6 +3042,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "secureStore:set": "secureStoreSet",
   "secureStore:delete": "secureStoreDelete",
   "secureStore:status": "secureStoreStatus",
+  "secureStore:transaction": "secureStoreTransaction",
   "runtimeCredential:store": "runtimeCredentialStore",
   "runtimeCredential:delete": "runtimeCredentialDelete",
   "runtimeCredential:deleteRecord": "runtimeCredentialDeleteRecord",

@@ -77,6 +77,7 @@ import {
   MOBILE_LOCAL_AGENT_SERVER_ID,
   persistMobileRuntimeModeForServerTarget,
 } from "./mobile-runtime-mode";
+import { revertLocalRuntimeCommitmentBeforeCloud } from "./revert-local-runtime-commitment";
 import { resolveFirstRunLocalAgentApiBase } from "./runtime-target";
 
 const FIRST_RUN_AGENT_WAIT_MS = 180_000;
@@ -92,6 +93,8 @@ export interface FirstRunFinishPorts {
    * return `needs-cloud-login` so the conductor can render its sign-in choice.
    */
   allowInteractiveCloudLogin?: boolean;
+  /** Only the explicit Local → Cloud chooser may unwind a local runtime commitment. */
+  revertLocalRuntimeBeforeCloud?: boolean;
   /**
    * Interactive Cloud login entry point: pre-opens the named popup window
    * itself, so the first-run flow cannot omit it (#17129). Use this for
@@ -805,6 +808,20 @@ export async function listOrAutoProvisionCloudAgent(
     ? createCloudContinuationAuthority(client, ports.signal)
     : null;
   try {
+    if (ports.revertLocalRuntimeBeforeCloud) {
+      const preparation =
+        capturedAuthority ??
+        createCloudContinuationAuthority(client, ports.signal);
+      try {
+        await revertLocalRuntimeCommitmentBeforeCloud({
+          revalidate: preparation.revalidate,
+          acceptClearedServer: () => preparation.acceptServer(null),
+        });
+        preparation.revalidate();
+      } finally {
+        if (preparation !== capturedAuthority) preparation.dispose();
+      }
+    }
     syncIdentity(sourceDraft, ports);
     capturedAuthority?.revalidate();
     ports.setRuntimeState(
