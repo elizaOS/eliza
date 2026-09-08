@@ -796,29 +796,34 @@ export async function importAuthenticatedViewBundle(
  * HostModuleImporter} it resolves its externals through — no `globalThis` bridge.
  * Exported so tests can exercise the resolver the factory receives.
  */
+async function importHostExternalForScope(
+  specifier: string,
+  scope: SurfaceRealmScope | null,
+): Promise<Record<string, unknown>> {
+  if (getActiveSurfaceRealmScope() !== scope) {
+    throw new SurfaceRealmDeniedError(
+      scope?.viewId ?? "unscoped",
+      "navigate",
+      "host import belongs to a deactivated surface",
+    );
+  }
+  const importer = resolveHostExternalImporter(specifier);
+  if (!importer) {
+    throw new Error(
+      `DynamicViewLoader: unsupported host external "${specifier}"`,
+    );
+  }
+  return importer(scope);
+}
+
 function createBoundHostImport(
   scope: SurfaceRealmScope | null,
 ): HostModuleImporter {
-  return async (specifier) => {
-    if (getActiveSurfaceRealmScope() !== scope) {
-      throw new SurfaceRealmDeniedError(
-        scope?.viewId ?? "unscoped",
-        "navigate",
-        "host import belongs to a deactivated surface",
-      );
-    }
-    const importer = resolveHostExternalImporter(specifier);
-    if (!importer) {
-      throw new Error(
-        `DynamicViewLoader: unsupported host external "${specifier}"`,
-      );
-    }
-    return importer(scope);
-  };
+  return (specifier) => importHostExternalForScope(specifier, scope);
 }
 
 export const hostImport: HostModuleImporter = (specifier) => {
-  return createBoundHostImport(getActiveSurfaceRealmScope())(specifier);
+  return importHostExternalForScope(specifier, getActiveSurfaceRealmScope());
 };
 
 /**
