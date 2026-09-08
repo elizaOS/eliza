@@ -23,6 +23,8 @@ type Bridge = {
     revalidate: () => void,
   ): Promise<DesktopStorageAuthority>;
   initializeStorageBridge(): Promise<void>;
+  isStorageRecoveryRequired(): boolean;
+  subscribeStorageRecovery(listener: () => void): () => void;
   getStorageValue(key: string): Promise<string | null>;
   setStorageValue(
     key: string,
@@ -157,12 +159,13 @@ function realm(
   afterCall: (operation: string) => Promise<void> = async () => undefined,
   transactions = true,
   realSession = false,
+  sharedStorageData?: Map<string, string>,
 ) {
   // Native IPC enters from a separate async root, not the credential writer's
   // AsyncLocalStorage transaction context (even when a test delivers it inline).
   const transportContext = new AsyncResource("isolated-renderer-ipc");
-  // Different origins/partitions have independent localStorage but share a host vault.
-  const data = new Map<string, string>();
+  // Same-origin windows share storage; other partitions only share the host vault.
+  const data = sharedStorageData ?? new Map<string, string>();
   class Storage {
     getItem(key: string) {
       return data.get(key) ?? null;
@@ -228,13 +231,144 @@ function scopedToken(token: string, scope = "eliza-cloud:staging") {
 }
 
 describe("desktop renderer conditional persistence", () => {
+  it.each([false, true])(
+    "recovers the latest caller-owned write after consecutive local failures (%s)",
+    async (failSecondAcknowledgement) => {
+      const rpc = await setup();
+      const a = realm(rpc, undefined, true, true);
+      await a.bridge.initializeStorageBridge();
+      const pendingKey = `eliza:protected-storage-pending:${key}`;
+      const remove = a.localStorage.removeItem.bind(a.localStorage);
+      let refuseAcknowledgement = true;
+      Object.defineProperty(a.localStorage, "removeItem", {
+        value: (target: string) => {
+          if (target === pendingKey && refuseAcknowledgement)
+            throw new Error("local acknowledgement unavailable");
+          remove(target);
+        },
+      });
+      await expect(
+        a.bridge.setStorageValue(key, "first-owned", {
+          revalidate() {},
+        }),
+      ).rejects.toThrow();
+      refuseAcknowledgement = failSecondAcknowledgement;
+      const second = a.bridge.setStorageValue(key, "second-owned", {
+        revalidate() {},
+      });
+      if (failSecondAcknowledgement) await expect(second).rejects.toThrow();
+      else await second;
+      refuseAcknowledgement = false;
+      await a.bridge.initializeStorageBridge();
+      expect(a.bridge.isStorageRecoveryRequired()).toBe(false);
+      expect(a.localStorage.getItem(key)).toBe("second-owned");
+      expect(a.localStorage.getItem(pendingKey)).toBeNull();
+    },
+  );
+
+  it.each([
+    [key, "retained"],
+    [key, "acknowledged-elsewhere"],
+    [key, "replaced"],
+    ["steward_session_token", "retained"],
+    ["steward_session_token", "acknowledged-elsewhere"],
+    ["steward_session_token", "replaced"],
+  ])(
+    "retains cold recovery ownership for %s (%s)",
+    async (storageKey, scenario) => {
+      const rpc = await setup();
+      const sharedStorage = new Map<string, string>();
+      const a = realm(rpc, undefined, true, true, sharedStorage);
+      await a.bridge.initializeStorageBridge();
+      const isToken = storageKey === "steward_session_token";
+      const pendingKey = isToken
+        ? "eliza:steward-token-pending-write"
+        : `eliza:protected-storage-pending:${storageKey}`;
+      const remove = a.localStorage.removeItem.bind(a.localStorage);
+      let refuseAcknowledgement = true;
+      Object.defineProperty(a.localStorage, "removeItem", {
+        value: (target: string) => {
+          if (target === pendingKey && refuseAcknowledgement)
+            throw new Error("local acknowledgement unavailable");
+          remove(target);
+        },
+      });
+      await expect(
+        a.bridge.setStorageValue(storageKey, "owned-value", {
+          revalidate() {},
+        }),
+      ).rejects.toThrow();
+      let loseInspection = true;
+      const b = realm(
+        rpc,
+        async (operation) => {
+          if (operation === "inspect" && loseInspection) {
+            loseInspection = false;
+            throw new Error("cold inspection acknowledgement unavailable");
+          }
+        },
+        true,
+        true,
+        sharedStorage,
+      );
+      await b.bridge.initializeStorageBridge();
+      expect(b.bridge.isStorageRecoveryRequired()).toBe(true);
+      expect(b.localStorage.getItem(storageKey)).toBeNull();
+      if (scenario !== "retained") {
+        refuseAcknowledgement = false;
+        await a.bridge.initializeStorageBridge();
+        expect(a.bridge.isStorageRecoveryRequired()).toBe(false);
+        expect(a.localStorage.getItem(storageKey)).toBe("owned-value");
+        expect(b.localStorage.getItem(pendingKey)).toBeNull();
+        if (scenario === "replaced") {
+          refuseAcknowledgement = true;
+          await expect(
+            a.bridge.setStorageValue(storageKey, "newer-value", {
+              revalidate() {},
+            }),
+          ).rejects.toThrow();
+        } else {
+          await rpc.secureStoreSet({
+            kind: isToken ? "session.steward_token" : kind,
+            value: isToken ? scopedToken("newer-value") : "newer-value",
+          });
+        }
+      }
+      await b.bridge.initializeStorageBridge();
+      expect(b.bridge.isStorageRecoveryRequired()).toBe(
+        scenario !== "retained",
+      );
+      expect(b.localStorage.getItem(storageKey)).toBe(
+        scenario === "retained" ? "owned-value" : null,
+      );
+    },
+  );
+
+  it("retries a marker-free cold native read failure", async () => {
+    const rpc = await setup();
+    let failRead = true;
+    const a = realm(rpc, async (operation) => {
+      if (operation === "secureStoreGet" && failRead) {
+        failRead = false;
+        throw new Error("cold read acknowledgement unavailable");
+      }
+    });
+    await a.bridge.initializeStorageBridge();
+    expect(a.bridge.isStorageRecoveryRequired()).toBe(true);
+    await a.bridge.initializeStorageBridge();
+    expect(a.bridge.isStorageRecoveryRequired()).toBe(false);
+    expect(a.localStorage.getItem(key)).toBe("original");
+  });
+
   it.each([
     ["steward_session_token", "owned"],
     ["steward_session_token", "superseded"],
     ["steward_session_token", "lost-inspection"],
+    ["steward_session_token", "missing-marker"],
     [key, "owned"],
     [key, "superseded"],
     [key, "lost-inspection"],
+    [key, "missing-marker"],
   ])(
     "retries interrupted %s hydration in the mounted renderer (%s)",
     async (storageKey, scenario) => {
@@ -279,8 +413,10 @@ describe("desktop renderer conditional persistence", () => {
       ).rejects.toThrow();
       const marker = a.localStorage.getItem(pendingKey);
       if (marker === null) throw new Error("Missing interrupted operation");
+      expect(a.bridge.isStorageRecoveryRequired()).toBe(true);
       expect(a.localStorage.getItem(storageKey)).toBeNull();
       failLocalAcknowledgement = false;
+      if (scenario === "missing-marker") a.localStorage.removeItem(pendingKey);
       // A retry must not silently refresh other observed account/selection
       // mirrors while reconciling this interrupted operation.
       await rpc.secureStoreSet({
@@ -301,15 +437,21 @@ describe("desktop renderer conditional persistence", () => {
         await a.bridge.initializeStorageBridge();
       }
       expect(a.localStorage.getItem(storageKey)).toBe(
-        scenario === "superseded" ? null : "owned-result",
+        scenario === "superseded" || scenario === "missing-marker"
+          ? null
+          : "owned-result",
       );
       expect(a.localStorage.getItem(pendingKey)).toBe(
         scenario === "superseded" ? marker : null,
       );
+      expect(a.bridge.isStorageRecoveryRequired()).toBe(
+        scenario === "superseded" || scenario === "missing-marker",
+      );
       expect(a.localStorage.getItem("eliza.device.auth")).toBe(
         "observed-device",
       );
-      expect(operations).toContain("inspect");
+      if (scenario === "missing-marker") expect(operations).toEqual([]);
+      else expect(operations).toContain("inspect");
       expect(
         operations.every((operation) =>
           ["inspect", "read"].includes(operation),

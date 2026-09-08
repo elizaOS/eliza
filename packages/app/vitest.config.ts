@@ -4,6 +4,7 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizePath } from "vite";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
 
@@ -28,6 +29,27 @@ const unitExcludes = [
 export default defineConfig({
   ...baseConfig,
   root: here,
+  plugins: [
+    ...(baseConfig.plugins ?? []),
+    {
+      name: "entrypoint-test-hmr-data",
+      enforce: "pre",
+      transform(source, id) {
+        if (
+          normalizePath(id.split("?")[0]) !==
+          normalizePath(path.join(here, "src/main.tsx"))
+        )
+          return;
+        // Vitest's inert /@vite/client context omits Vite's required data bag.
+        // Complete that host collaborator before boot, without changing the
+        // renderer under test or pretending these tests exercise real HMR.
+        return {
+          code: `if (import.meta.hot) import.meta.hot.data ??= {};\n${source}`,
+          map: null,
+        };
+      },
+    },
+  ],
   resolve: {
     ...baseConfig.resolve,
     alias: [
