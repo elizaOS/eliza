@@ -329,6 +329,12 @@ export function useAgentSessionRecovery(
               validateLifetime();
               coordinator.assertSnapshot(expected);
             },
+            // A companion-profile failure is retryable even after our own
+            // server write. Track only its acknowledged receipt so the runner
+            // does not mistake that partial save for an unrelated selection.
+            onActiveServerPersisted: (server) => {
+              recoveryServer = server;
+            },
           });
           recoveryServer = { ...activeServer, accessToken: apiToken };
           validateTarget();
