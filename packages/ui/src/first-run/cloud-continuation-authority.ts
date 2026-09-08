@@ -21,9 +21,7 @@ export function createCloudContinuationAuthority(
   const coordinator = getStewardTabSessionAuthorityCoordinator();
   const session = coordinator.readSnapshot();
   const controller = new AbortController();
-  const signal = parentSignal
-    ? AbortSignal.any([parentSignal, controller.signal])
-    : controller.signal;
+  const signal = controller.signal;
   const cloudBase = getBootConfig().cloudApiBase;
   let clientBase = client.getBaseUrl();
   let clientRevision = client.getAuthorityRevision();
@@ -34,6 +32,10 @@ export function createCloudContinuationAuthority(
   let profile = window.localStorage.getItem("elizaos:agent-profiles");
   let writingClient = false;
   let clientNotifications = 0;
+
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) abortFromParent();
+  else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
 
   const revalidate = () => {
     signal.throwIfAborted();
@@ -128,6 +130,7 @@ export function createCloudContinuationAuthority(
       revalidate();
     },
     dispose() {
+      parentSignal?.removeEventListener("abort", abortFromParent);
       unsubscribe();
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, onChange);
       window.removeEventListener("steward-token-sync", onChange);

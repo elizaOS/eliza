@@ -440,6 +440,81 @@ function writeTestCookie(value: string): void {
 }
 
 describe("useFirstRunConductor", () => {
+  it.each(["pagehide", "unmount"])(
+    "retires a chooser Cloud attempt on %s without publishing its late target",
+    async (departure) => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let signal: AbortSignal | undefined;
+      mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+        async (options) => {
+          signal = options.signal as AbortSignal;
+          await held;
+          return {
+            personalElizaId: PERSONAL_ELIZA_ID,
+            agentId: PERSONAL_ELIZA_ID,
+            activeAgentId: PERSONAL_ELIZA_ID,
+            agentName: "Eliza Cloud",
+            apiBase: PERSONAL_ELIZA_API_BASE,
+            runtime: "dedicated" as const,
+          };
+        },
+      );
+      const spies = seedAppStore();
+      const mounted = renderConductor();
+      try {
+        act(() => {
+          tryHandleFirstRunAction("__first_run__:runtime:cloud");
+        });
+        await waitFor(() =>
+          expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledOnce(),
+        );
+        if (departure === "unmount") mounted.unmount();
+        else
+          act(() => {
+            window.dispatchEvent(new Event("pagehide"));
+          });
+        expect(signal?.aborted).toBe(true);
+        release();
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        });
+        expect(loadPersistedActiveServer()).toBeNull();
+        expect(mocks.client.setBaseUrl).not.toHaveBeenCalled();
+        expect(spies.completeFirstRun).not.toHaveBeenCalled();
+        expect(mounted.turn("first-run:tutorial")).toBeUndefined();
+        if (departure === "pagehide") {
+          act(() => {
+            tryHandleFirstRunAction("__first_run__:cloud-login:retry");
+          });
+          expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledOnce();
+          act(() => {
+            window.dispatchEvent(new Event("pageshow"));
+          });
+          const error = mounted.transcript.current.find((turn) =>
+            turn.text.includes("__first_run__:error:retry="),
+          );
+          expect(error).toBeTruthy();
+          act(() => {
+            tryHandleFirstRunAction("__first_run__:error:retry");
+          });
+          await waitForTurn(mounted.turn, "first-run:tutorial");
+          expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(2);
+          expect(loadPersistedActiveServer()?.kind).toBe("cloud");
+          act(() => {
+            tryHandleFirstRunAction("__first_run__:tutorial:skip");
+          });
+          expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+        }
+      } finally {
+        release();
+        mounted.unmount();
+      }
+    },
+  );
+
   it("keeps cloud-only onboarding locked when a stale developer override enables the chooser", async () => {
     localStorage.removeItem("steward_session_token");
     localStorage.setItem("eliza:enable-runtime-chooser", "1");
