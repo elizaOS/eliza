@@ -42,7 +42,6 @@ import {
   setupHelperTextClassName,
   setupPrimaryActionClass,
   setupPrimaryActionTextShadowStyle,
-  setupReadableTextFaintClassName,
   setupReadableTextMutedClassName,
   setupTextShadowStyle,
   setupTitleClass,
@@ -322,7 +321,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
               defaultValue: "Where do I get this?",
             })}
           </span>{" "}
-          <span className={setupReadableTextFaintClassName}>
+          <span className={setupReadableTextMutedClassName}>
             {t("bootstrapstep.whereToGetDetail", {
               defaultValue:
                 "Open your Eliza Cloud dashboard, select this container, and copy the token shown under “Bootstrap token”. It is valid for 24 hours and can only be used once.",
@@ -347,7 +346,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         <Button
           type="button"
           variant="mutedLink"
-          size="content"
+          size="formAction"
           onClick={() => startFreshFirstRunReload()}
         >
           {t("bootstrapstep.startOver", { defaultValue: "Start over" })}
