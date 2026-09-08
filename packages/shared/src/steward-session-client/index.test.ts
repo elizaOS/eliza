@@ -281,7 +281,51 @@ describe("Steward session storage transitions", () => {
         commit: expect.any(Function),
         rollback: expect.any(Function),
       }),
+      expect.any(AbortSignal),
     );
+  });
+
+  it("delivers caller cancellation to an awaiting durable host without publishing the token", async () => {
+    const controller = new AbortController();
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let hostAborted = false;
+    const unregister = registerStewardTokenPersistence(
+      async (_token, _revalidate, _scope, signal) => {
+        signal.throwIfAborted();
+        const cancelled = new Promise<void>((resolve) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              hostAborted = true;
+              resolve();
+            },
+            { once: true },
+          );
+        });
+        entered();
+        await cancelled;
+        signal.throwIfAborted();
+      },
+    );
+    try {
+      const write = writeStoredStewardToken("cancelled-host-token", {
+        signal: controller.signal,
+      });
+      const assertion = expect(write).rejects.toMatchObject({
+        name: "StewardSessionAuthorityError",
+      });
+      await started;
+      controller.abort();
+      await assertion;
+      expect(hostAborted).toBe(true);
+      expect(readStoredStewardToken()).toBeNull();
+    } finally {
+      controller.abort();
+      unregister();
+    }
   });
 
   it("publishes canonical invalidation before stale refresh-key cleanup can fail", async () => {

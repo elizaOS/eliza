@@ -1,40 +1,68 @@
 /**
  * Verifies dedicated-agent account management crosses to the Cloud control
  * plane only from trusted native, desktop, and local-development app shells.
+ * Desktop persistence runs the real RPC/SQLite host in an isolated fixture;
+ * provider responses and the OS credential store remain deterministic doubles.
  */
 // @vitest-environment jsdom
+/// <reference types="bun-types/sqlite" />
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { constants, runInThisContext } from "node:vm";
 import {
   clearStoredStewardToken,
+  configureStoredStewardTokenScope,
   readStoredStewardToken,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RendererSecureTransactionRequest } from "@elizaos/shared/types";
+import { build } from "esbuild";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import type { createRendererSecureStoreRpc } from "../../../app-core/platforms/electrobun/src/renderer-secure-store-rpc";
 
 const platform = vi.hoisted(() => ({
   native: false,
   secureValues: new Map<string, string>(),
   request: vi.fn(),
+  rpc: null as ReturnType<typeof createRendererSecureStoreRpc> | null,
+  directory: "",
 }));
 
 vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
-  desktopSecureStoreGet: vi.fn(async (key: string) =>
-    platform.secureValues.has(key)
-      ? { ok: true, value: platform.secureValues.get(key) }
-      : { ok: false, reason: "not_found" },
-  ),
-  desktopSecureStoreSet: vi.fn(async (key: string, value: string) => {
-    platform.secureValues.set(key, value);
-    return { ok: true };
-  }),
-  desktopSecureStoreDelete: vi.fn(async (key: string) => ({
-    ok: true,
-    deleted: platform.secureValues.delete(key),
-  })),
+  desktopSecureStoreGet: async (kind: string) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreGet({ kind });
+  },
+  desktopSecureStoreSet: async (kind: string, value: string) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreSet({ kind, value });
+  },
+  desktopSecureStoreDelete: async (kind: string) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreDelete({ kind });
+  },
+  desktopSecureStoreTransaction: async (
+    request: RendererSecureTransactionRequest,
+  ) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreTransaction(request);
+  },
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -54,6 +82,43 @@ import { STAGING_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 const DEDICATED_STAGING_BASE =
   "https://11111111-1111-4111-8111-111111111111.staging.elizacloud.ai";
 const STAGING_CONTROL_PLANE = STAGING_DIRECT_CLOUD_API_BASE_URL;
+let createRpc: typeof createRendererSecureStoreRpc;
+let hostBundleDirectory: string;
+beforeAll(async () => {
+  hostBundleDirectory = mkdtempSync(
+    join(process.cwd(), ".trusted-shell-host-"),
+  );
+  const output = join(hostBundleDirectory, "rpc.mjs");
+  await build({
+    entryPoints: [
+      join(
+        import.meta.dirname,
+        "../../../app-core/platforms/electrobun/src/renderer-secure-store-rpc.ts",
+      ),
+    ],
+    outfile: output,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    banner: {
+      js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+    },
+    external: ["bun:*", "node:*"],
+  });
+  // Native code executes under Node's loader, not jsdom's browser transform,
+  // which cannot resolve the unused Bun SQLite branch. Source is bundled fresh.
+  const loadNativeModule = runInThisContext("(url) => import(url)", {
+    importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+  }) as (url: string) => Promise<{
+    createRendererSecureStoreRpc: typeof createRendererSecureStoreRpc;
+  }>;
+  createRpc = (await loadNativeModule(pathToFileURL(output).href))
+    .createRendererSecureStoreRpc;
+});
+afterAll(() => {
+  if (hostBundleDirectory)
+    rmSync(hostBundleDirectory, { recursive: true, force: true });
+});
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
@@ -108,6 +173,8 @@ function setPageLocation(
 function setElectrobunRuntime(enabled: boolean): void {
   const runtimeWindow = window as ElectrobunWindow;
   if (enabled) {
+    // Match launcher bootstrap before the first canonical native token write.
+    configureStoredStewardTokenScope(STAGING_CONTROL_PLANE);
     Object.defineProperty(runtimeWindow, "__electrobunWindowId", {
       configurable: true,
       value: 1,
@@ -160,6 +227,24 @@ function assertStewardRequests(
 }
 
 beforeEach(() => {
+  platform.directory = mkdtempSync(join(tmpdir(), "eliza-trusted-shell-"));
+  platform.secureValues.clear();
+  platform.rpc = createRpc({
+    directory: platform.directory,
+    vault: "fixture-trusted-shell",
+    store: {
+      async get(vault, slot) {
+        const value = platform.secureValues.get(`${vault}:${slot}`);
+        return value === undefined
+          ? { ok: false, reason: "not_found" }
+          : { ok: true, value };
+      },
+      async set(vault, slot, value) {
+        platform.secureValues.set(`${vault}:${slot}`, value);
+        return { ok: true };
+      },
+    },
+  });
   platform.native = false;
   platform.request.mockReset();
   localStorage.removeItem(STEWARD_TOKEN_KEY);
@@ -171,12 +256,17 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await clearStoredStewardToken();
-  setElectrobunRuntime(false);
-  if (originalLocationDescriptor) {
-    Object.defineProperty(window, "location", originalLocationDescriptor);
+  try {
+    await clearStoredStewardToken();
+  } finally {
+    setElectrobunRuntime(false);
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, "location", originalLocationDescriptor);
+    }
+    vi.restoreAllMocks();
+    platform.rpc = null;
+    rmSync(platform.directory, { recursive: true, force: true });
   }
-  vi.restoreAllMocks();
 });
 
 describe("dedicated Cloud account boundary on trusted app shells", () => {
