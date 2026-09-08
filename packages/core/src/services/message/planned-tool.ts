@@ -678,6 +678,24 @@ export function collectBudgetedStageOneCandidateActions(args: {
 			selectedNames.add(normalizeActionIdentifier(action.name));
 		}
 	}
+	// A loaded parent exposes its complete authorized family. Loading only the
+	// initially named child can strand a follow-up operation in a compound ask.
+	let addedChild = true;
+	while (addedChild) {
+		addedChild = false;
+		for (const action of args.actions) {
+			if (!selectedNames.has(normalizeActionIdentifier(action.name))) continue;
+			for (const child of action.subActions ?? []) {
+				const childName = normalizeActionIdentifier(
+					typeof child === "string" ? child : child.name,
+				);
+				if (!selectedNames.has(childName)) {
+					selectedNames.add(childName);
+					addedChild = true;
+				}
+			}
+		}
+	}
 
 	return args.actions.filter((action) =>
 		selectedNames.has(normalizeActionIdentifier(action.name)),

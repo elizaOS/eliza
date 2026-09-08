@@ -114,7 +114,7 @@ describe("budgeted model-selected action surface", () => {
 				candidateActions: ["GO"],
 				contexts: [],
 			}).map((action) => action.name),
-		).toEqual(["PAGE", "GO"]);
+		).toEqual(["PAGE", "GO", "READ_PAGE"]);
 	});
 
 	it("does not reintroduce a gated parent or infer one from name prefixes", () => {
@@ -135,6 +135,53 @@ describe("budgeted model-selected action surface", () => {
 				contexts: [],
 			}),
 		).toEqual([]);
+	});
+
+	it.each(["HOME", "home"])(
+		"resolves the model's %s destination hint alongside admitted navigation",
+		(homeHint) => {
+			const navigationActions: Action[] = [
+				{ name: "VIEWS", description: "Navigate to an authorized app view" },
+				{ name: "CALENDAR", description: "Manage calendar events" },
+			];
+			expect(
+				collectBudgetedStageOneCandidateActions({
+					actions: navigationActions,
+					candidateActions: [homeHint, "VIEWS"],
+					contexts: ["general"],
+				}).map((action) => action.name),
+			).toEqual(["VIEWS"]);
+			expect(
+				collectBudgetedStageOneCandidateActions({
+					actions: navigationActions,
+					candidateActions: ["HOME", "MISSING_CAPABILITY"],
+					contexts: ["general"],
+				}),
+			).toEqual([]);
+			expect(
+				collectBudgetedStageOneCandidateActions({
+					actions: navigationActions.filter(
+						(action) => action.name !== "VIEWS",
+					),
+					candidateActions: ["HOME"],
+					contexts: ["general"],
+				}),
+			).toEqual([]);
+		},
+	);
+
+	it("prefers a genuinely registered HOME action over the destination alias", () => {
+		const home: Action = {
+			name: "HOME",
+			description: "A registered domain action",
+		};
+		expect(
+			collectBudgetedStageOneCandidateActions({
+				actions: [home, { name: "VIEWS", description: "Navigate" }],
+				candidateActions: ["HOME"],
+				contexts: [],
+			}),
+		).toEqual([home]);
 	});
 
 	it("retains model-selected domain actions when a synthetic candidate aliases to navigation", () => {
@@ -174,7 +221,7 @@ describe("budgeted model-selected action surface", () => {
 				candidateActions: ["GO"],
 				contexts: ["general", "page", "page-notes"],
 			}).map((action) => action.name),
-		).toEqual(["PAGE", "GO"]);
+		).toEqual(["PAGE", "GO", "READ_PAGE"]);
 	});
 
 	it("does not expand a resolved Calendar candidate to every action sharing its context", () => {

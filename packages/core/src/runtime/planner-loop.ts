@@ -14,6 +14,7 @@ import {
 	DEFAULT_SUBACTION_KEYS,
 	readSubaction,
 } from "../actions/subaction-dispatch";
+import { DISCOVER_TOOLS_NAME } from "../actions/to-tool";
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
@@ -1924,6 +1925,16 @@ async function runPlannerLoopIterations(
 		});
 
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+		if (
+			toolCall.name === DISCOVER_TOOLS_NAME &&
+			latestResult?.success === true
+		) {
+			// Loading schemas is planner protocol, not completed user work. The
+			// next model round chooses the newly available operation; there is no
+			// effect for a completion evaluator to judge yet.
+			lastPlannerExplicitCompleted = false;
+			continue;
+		}
 		if (latestResult?.replyFailure) {
 			// The action already settled. A failed presentation is not an action
 			// failure and must never trigger model rescue, tool replay, or another
@@ -5044,14 +5055,19 @@ function hasExposedNonTerminalTool(
 		Array.isArray(tools) &&
 		tools.some((tool) => {
 			const name = getToolDefinitionName(tool);
-			return Boolean(name && !isTerminalToolCall({ name }));
+			return Boolean(
+				name && name !== DISCOVER_TOOLS_NAME && !isTerminalToolCall({ name }),
+			);
 		})
 	);
 }
 
 function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
 	return trajectory.steps.some(
-		(step) => step.toolCall && !isTerminalToolCall(step.toolCall),
+		(step) =>
+			step.toolCall &&
+			step.toolCall.name !== DISCOVER_TOOLS_NAME &&
+			!isTerminalToolCall(step.toolCall),
 	);
 }
 
@@ -6454,6 +6470,7 @@ function hasSuccessfulNonTerminalToolStep(
 	return [...trajectory.archivedSteps, ...trajectory.steps].some(
 		(step) =>
 			step.toolCall !== undefined &&
+			step.toolCall.name !== DISCOVER_TOOLS_NAME &&
 			!isTerminalToolCall(step.toolCall) &&
 			step.result?.success === true,
 	);

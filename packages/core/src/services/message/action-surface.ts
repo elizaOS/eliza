@@ -43,6 +43,9 @@ import {
 export type V5PlannerActionSurfaceSummary = {
 	mode: "full" | "tiered" | "relay-delivery";
 	candidateActionCount: number;
+	/** Complete per-turn authorized catalog reachable through explicit discovery. */
+	discoverableActionCount?: number;
+	discoveryToolName?: string;
 	catalogParentCount: number;
 	exposedActionCount: number;
 	tierAParents: string[];

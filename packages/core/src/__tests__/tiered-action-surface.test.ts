@@ -578,7 +578,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledOnce();
 	});
 
-	it("keeps admitted children directly executable above the estimated planner budget", async () => {
+	it("routes an oversized family through its parent without dropping child schemas", async () => {
 		const childHandler = vi.fn(async () => ({
 			success: true,
 			text: "Calendar event created",
@@ -606,6 +606,7 @@ describe("v5 tiered action surface", () => {
 					contexts: ["calendar"],
 					candidateActionNames: ["CALENDAR"],
 				}),
+				plannerToolResponse("CALENDAR"),
 				plannerToolResponse("CALENDAR_OP_01"),
 				finishEvaluatorResponse("Calendar event created."),
 				finishEvaluatorResponse("Calendar event created."),
@@ -621,8 +622,17 @@ describe("v5 tiered action surface", () => {
 
 		const toolNames = plannerToolNames(runtime);
 		expect(toolNames).toContain("CALENDAR");
-		expect(toolNames).toContain("CALENDAR_OP_01");
-		expect(toolNames).toContain("CALENDAR_OP_28");
+		expect(toolNames).not.toContain("CALENDAR_OP_01");
+		const subPlannerCall = getCalls(runtime).filter(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		)[1];
+		if (!subPlannerCall) throw new Error("Expected the child-family planner");
+		const childTools = (
+			subPlannerCall.params as { tools: Array<{ name: string }> }
+		).tools;
+		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_01");
+		expect(childTools.map((tool) => tool.name)).toContain("CALENDAR_OP_28");
+		expect(JSON.stringify(childTools)).toContain(children[27].description);
 		expect(childHandler).toHaveBeenCalledOnce();
 	});
 
@@ -834,7 +844,15 @@ describe("v5 tiered action surface", () => {
 			const tools = plannerToolNames(runtime);
 			expect(tools).toContain("CALENDAR");
 			expect(tools).toContain("VIEWS");
-			expect(tools).toContain("UNRELATED");
+			if (candidateActionNames.includes("MISSING_CAPABILITY")) {
+				expect(tools).toContain("UNRELATED");
+			} else {
+				expect(tools).not.toContain("UNRELATED");
+				expect(tools).toContain("DISCOVER_TOOLS");
+				expect(availableActionsSection(runtime)).toContain(
+					'"name":"UNRELATED"',
+				);
+			}
 			expect(tools).not.toContain("MISSING_CAPABILITY");
 			expect(tools).not.toContain("PRIVATE_CALENDAR_REPAIR");
 			expect(tools).not.toContain("CALENDAR_ADMIN_ONLY");
@@ -849,7 +867,7 @@ describe("v5 tiered action surface", () => {
 		},
 	);
 
-	it("keeps other admitted actions available beside a focused-view hint", async () => {
+	it("keeps other admitted actions discoverable beside a focused-view hint", async () => {
 		const notes = makeAction({
 			name: "NOTES",
 			description: "Read the notes shown in the open Notes view.",
@@ -895,8 +913,68 @@ describe("v5 tiered action surface", () => {
 
 		const tools = plannerToolNames(runtime);
 		expect(tools).toContain("NOTES");
-		expect(tools).toContain("VIEWS");
-		expect(tools).toContain("MESSAGE");
+		expect(tools).not.toContain("VIEWS");
+		expect(tools).not.toContain("MESSAGE");
+		expect(tools).toContain("DISCOVER_TOOLS");
+		expect(availableActionsSection(runtime)).toContain('"name":"VIEWS"');
+		expect(availableActionsSection(runtime)).toContain('"name":"MESSAGE"');
+	});
+
+	it("loads a missing family and executes it through the normal planner and executor", async () => {
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Calendar event read",
+			data: { title: "Demo" },
+		}));
+		const runtime = makeRuntime({
+			actions: [
+				makeAction({ name: "VIEWS", contexts: ["general"] }),
+				makeAction({
+					name: "CALENDAR",
+					contexts: ["general"],
+					subActions: ["READ_EVENT"],
+				}),
+				makeAction({ name: "READ_EVENT", contexts: ["general"], handler }),
+			],
+			responses: [
+				stage1Response({
+					contexts: ["general"],
+					candidateActionNames: ["VIEWS"],
+					intents: ["continue the next step"],
+				}),
+				plannerToolResponse("DISCOVER_TOOLS", {
+					names: ["CALENDAR"],
+					eliza_turn_scope: "more_work_pending",
+				}),
+				plannerToolResponse("REPLY", {
+					text: "Done.",
+					eliza_turn_scope: "final",
+				}),
+				plannerToolResponse("READ_EVENT", { eliza_turn_scope: "final" }),
+				finishEvaluatorResponse("Your calendar event is Demo."),
+			],
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("Please do that next"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		const plannerCalls = getCalls(runtime).filter(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		expect(plannerCalls).toHaveLength(3);
+		expect(
+			getCalls(runtime).filter(
+				(call) => call.modelType === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(2);
+		const first = plannerCalls[0].params as { tools: Array<{ name: string }> };
+		const second = plannerCalls[1].params as { tools: Array<{ name: string }> };
+		expect(first.tools.map((tool) => tool.name)).not.toContain("READ_EVENT");
+		expect(second.tools.map((tool) => tool.name)).toContain("READ_EVENT");
+		expect(handler).toHaveBeenCalledOnce();
+		expect(result.kind).toBe("planned_reply");
 	});
 
 	it("does not let focused-view metadata widen action context admission", async () => {
