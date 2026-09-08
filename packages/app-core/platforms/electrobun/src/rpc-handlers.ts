@@ -10,10 +10,7 @@
 
 import * as fs from "node:fs";
 import { Utils } from "electrobun/bun";
-import {
-  deriveAgentVaultId,
-  resolveCanonicalStateDir,
-} from "../../../src/security/agent-vault-id";
+import { resolveCanonicalStateDir } from "../../../src/security/agent-vault-id";
 import {
   createNodePlatformSecureStore,
   describeNodePlatformSecureStore,
@@ -149,7 +146,10 @@ import {
   desktopRemoteTargetStatus,
   desktopRemoteTargetStop,
 } from "./remote-target-rpc";
-import { createRendererSecureStoreRpc } from "./renderer-secure-store-rpc";
+import {
+  createRendererSecureStoreRpc,
+  resolveRendererSecureStoreInstallation,
+} from "./renderer-secure-store-rpc";
 import {
   buildDynamicViewRpcHandlers,
   buildNotificationRpcHandlers,
@@ -326,10 +326,11 @@ type BunRpcHandlers = {
 let rpcVoiceService: VoiceService | null = null;
 let rpcLaunchOrchestrator: LaunchOrchestrator | null = null;
 const rendererSecureStore = createNodePlatformSecureStore();
-const rendererSecureStoreRpc = createRendererSecureStoreRpc({
-  directory: resolveCanonicalStateDir(),
-  vault: deriveAgentVaultId(),
-  store: rendererSecureStore,
+const rendererSecureStoreRpc = createRendererSecureStoreRpc(() => {
+  // Main loads the installation environment after importing this module.
+  // Resolve one path at first use, then pin its matching vault for this host.
+  const directory = resolveCanonicalStateDir();
+  return resolveRendererSecureStoreInstallation(directory, rendererSecureStore);
 });
 
 function getRpcVoiceService(traceService: ReturnType<typeof getTraceService>) {
