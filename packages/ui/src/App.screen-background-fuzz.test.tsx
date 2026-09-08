@@ -665,10 +665,15 @@ describe("App screen-background fuzz — color invariant across view switching",
     window.addEventListener("unhandledrejection", swallow);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     window.removeEventListener("error", swallow);
     window.removeEventListener("unhandledrejection", swallow);
     cleanup();
+    // Radix restores focus in a zero-delay unmount timer. Finish that real
+    // callback before Vitest replaces the jsdom realm and its Event classes.
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
     vi.unstubAllGlobals();
   });
 
@@ -912,10 +917,15 @@ describe("App view-surface mutation isolation — rogue view cannot leak global 
     window.addEventListener("unhandledrejection", swallow);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     window.removeEventListener("error", swallow);
     window.removeEventListener("unhandledrejection", swallow);
     cleanup();
+    // Radix restores focus in a zero-delay unmount timer. Finish that real
+    // callback before Vitest replaces the jsdom realm and its Event classes.
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
     vi.unstubAllGlobals();
   });
 

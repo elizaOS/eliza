@@ -155,6 +155,7 @@ jobs:
             artifacts/cloud-latency-certification/inference-auth.jsonl
             artifacts/cloud-latency-certification/inference-auth-worker.jsonl
             artifacts/cloud-latency-certification/inference-traces.json
+            artifacts/cloud-latency-certification/trace-denial.json
             artifacts/cloud-latency-certification/summary.json
           if-no-files-found: warn
           retention-days: 7

@@ -171,7 +171,7 @@ export const appControlPlugin: Plugin = {
 		runtimeManagementAction,
 		settingsAction,
 	],
-	// Model-selected navigation runs before planning and settles through the action queue.
+	// Contextual navigation joins domain work in the same planner action queue.
 	evaluators: [],
 	responseHandlerEvaluators: [viewContextPlanningEvaluator],
 	providers: [

@@ -1,6 +1,6 @@
 /**
  * Exercises moderation ban/unban transitions through the real AdminService and
- * real mock-Redis inference cache. Only database and strong-fence boundaries
+ * real mock-Redis inference cache. Database, primary policy/admission and strong-fence boundaries
  * are deterministic substitutes; cached API-key and Steward-session decisions
  * are written, invalidated, and refreshed through their production helpers.
  */
@@ -8,7 +8,14 @@
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
+import * as admissionActual from "./organization-policy-admission";
+import type { OrganizationPolicyStamp, OrganizationQuotaPolicy } from "./organization-quota-policy";
+import * as quotaActual from "./organization-quota-policy";
+
+const quotaSnapshot = { ...quotaActual };
+const admissionSnapshot = { ...admissionActual };
 
 const USER_ID = "user-1";
 const ORG_ID = "org-1";
@@ -33,6 +40,103 @@ function moderationRecord(status: string | null) {
     : undefined;
 }
 
+const admission: InferenceAdmissionSnapshot = {
+  authority: {
+    generation: "0",
+    source: "legacy",
+    sourceSubscriptionId: null,
+    sourceRevision: null,
+    projectionRevision: null,
+    catalogVersion: null,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+    effectiveUntil: null,
+  },
+  subscriptionFunded: false,
+  balance: { balanceUsd: 5, balanceAt: 1, balanceRevision: "0" },
+  rateLimits: {
+    completionsRpm: 60,
+    embeddingsRpm: 100,
+    standardRpm: 30,
+    strictRpm: 5,
+  },
+};
+
+const unavailableResource = { status: "unavailable" as const, code: "outside_test_scope" };
+const policy: OrganizationQuotaPolicy = {
+  authority: admission.authority,
+  subscriptionFunded: false,
+  tier: { status: "available", value: { tierName: "fixture", ...admission.rateLimits } },
+  tierSourceCreditTotal: "0",
+  overrides: { completionsRpm: null, embeddingsRpm: null, standardRpm: null, strictRpm: null },
+  limits: {
+    characters: unavailableResource,
+    nonEagerSandboxes: unavailableResource,
+    sandboxes: unavailableResource,
+    containers: unavailableResource,
+    apps: unavailableResource,
+    storage: unavailableResource,
+  },
+  observedAt: new Date(admission.balance.balanceAt).toISOString(),
+  balance: {
+    status: "available",
+    value: {
+      balanceUsd: admission.balance.balanceUsd,
+      revision: admission.balance.balanceRevision,
+    },
+  },
+};
+mock.module("./organization-quota-policy", () => ({
+  ...quotaSnapshot,
+  readOrganizationQuotaPolicy: async (organizationId: string) => {
+    if (organizationId !== ORG_ID) throw new Error("Unexpected policy tenant");
+    return policy;
+  },
+}));
+mock.module("./organization-policy-admission", () => ({
+  ...admissionSnapshot,
+  withOrganizationPolicyAdmission: async <T>(
+    organizationId: string,
+    authority: OrganizationPolicyStamp | undefined,
+    action: (current: OrganizationQuotaPolicy) => Promise<T>,
+  ): Promise<T> => {
+    if (organizationId !== ORG_ID || authority?.generation !== policy.authority.generation)
+      throw new Error("Unexpected admission authority");
+    return action(policy);
+  },
+}));
+
+const primaryDatabase = {
+  query: {
+    userModerationStatus: {
+      findFirst: async () => moderationRecord(primaryModerationStatus),
+    },
+    users: {
+      findFirst: async () => ({
+        id: USER_ID,
+        organization_id: ORG_ID,
+        steward_user_id: STEWARD_USER_ID,
+      }),
+    },
+  },
+  insert: () => ({
+    values: async (data: { status?: string }) => {
+      primaryModerationStatus = data.status ?? primaryModerationStatus;
+      lifecycleEvents.push(`db:${primaryModerationStatus}`);
+    },
+  }),
+  update: () => ({
+    set: (data: { status?: string }) => ({
+      where: async () => {
+        primaryModerationStatus = data.status ?? primaryModerationStatus;
+        lifecycleEvents.push(`db:${primaryModerationStatus}`);
+      },
+    }),
+  }),
+  select: () => {
+    throw new Error("Cached outbound standing must not read the database");
+  },
+};
+
 mock.module("../../db/client", () => ({
   dbRead: {
     query: {
@@ -48,42 +152,11 @@ mock.module("../../db/client", () => ({
       },
     },
   },
-  dbWrite: {
-    query: {
-      userModerationStatus: {
-        findFirst: async () => moderationRecord(primaryModerationStatus),
-      },
-      users: {
-        findFirst: async () => ({
-          id: USER_ID,
-          organization_id: ORG_ID,
-          steward_user_id: STEWARD_USER_ID,
-        }),
-      },
-    },
-    insert: () => ({
-      values: async (data: { status?: string }) => {
-        primaryModerationStatus = data.status ?? primaryModerationStatus;
-        lifecycleEvents.push(`db:${primaryModerationStatus}`);
-      },
-    }),
-    update: () => ({
-      set: (data: { status?: string }) => ({
-        where: async () => {
-          primaryModerationStatus = data.status ?? primaryModerationStatus;
-          lifecycleEvents.push(`db:${primaryModerationStatus}`);
-        },
-      }),
-    }),
-  },
+  dbWrite: primaryDatabase,
 }));
 
 mock.module("../../db/helpers", () => ({
-  dbWrite: {
-    select: () => {
-      throw new Error("Cached outbound standing must not read the database");
-    },
-  },
+  dbWrite: primaryDatabase,
 }));
 
 mock.module("../../db/repositories", () => ({
@@ -121,17 +194,6 @@ const {
   writeInferenceSessionAuthDecision,
 } = await import("./inference-auth-cache");
 const { adminService } = await import("./admin");
-
-const admission = {
-  subscriptionFunded: false,
-  balance: { balanceUsd: 5, balanceAt: 1, balanceRevision: "0" },
-  rateLimits: {
-    completionsRpm: 60,
-    embeddingsRpm: 100,
-    standardRpm: 30,
-    strictRpm: 5,
-  },
-};
 
 async function seedModerationDenials(): Promise<void> {
   await writeInferenceApiKeyAuthRejection(KEY_HASH, "suspended", 403, "moderation_blocked");
@@ -338,4 +400,9 @@ describe("AdminService moderation cache transitions", () => {
     expect(lifecycleEvents).toEqual(["db:clean", `fence:${ORG_ID}:${USER_ID}:true:moderation`]);
     deleteSpy.mockRestore();
   });
+});
+
+afterAll(() => {
+  mock.module("./organization-quota-policy", () => quotaSnapshot);
+  mock.module("./organization-policy-admission", () => admissionSnapshot);
 });

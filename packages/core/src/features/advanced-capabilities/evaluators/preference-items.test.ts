@@ -438,28 +438,60 @@ describe("applyPreferenceOps directives", () => {
 		expect(slot.source).toBe("agent_inferred");
 	});
 
-	it("dedupes a lexically similar directive instead of appending a near-copy", async () => {
+	it("preserves a distinct directive despite overlapping reply vocabulary", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		await fake.store.addDirective({
 			userId: USER,
 			agentId: AGENT,
 			actorId: USER,
-			directive: "no emojis in replies",
+			directive: "use formal replies",
 		});
 		const result = await processOps(
 			fake,
 			mustParse({
-				ops: [{ op: "add_directive", text: "avoid emojis", confidence: 0.9 }],
+				ops: [
+					{
+						op: "add_directive",
+						text: "avoid formal replies",
+						confidence: 0.9,
+					},
+				],
 			}),
 		);
 		expect(fake.store.getSlot(USER, AGENT).custom_directives).toEqual([
-			"no emojis in replies",
+			"use formal replies",
+			"avoid formal replies",
 		]);
-		expect(result?.data).toMatchObject({ directivesAdded: 0, skipped: 1 });
+		expect(result?.data).toMatchObject({ directivesAdded: 1 });
 	});
 });
 
 describe("applyPreferenceOps preference facts", () => {
+	it.each([
+		["prefers tea over coffee", "prefers coffee over tea"],
+		["likes oat milk", "does not like oat milk"],
+	])("stores a distinct preference: %s / %s", async (storedClaim, newClaim) => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		const existing = preferenceFact(
+			"00000000-0000-4000-8000-0000000000af",
+			storedClaim,
+			[],
+		);
+		fake.memories.set("facts", [existing]);
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [{ op: "add_preference_fact", claim: newClaim, keywords: [] }],
+			}),
+			{ knownPreferenceFacts: [existing] },
+		);
+		const rows = fake.memories.get("facts") ?? [];
+		expect(rows.map((row) => row.content.text)).toEqual([
+			storedClaim,
+			newClaim,
+		]);
+		expect(result?.data).toMatchObject({ factsAdded: 1, factsStrengthened: 0 });
+	});
 	it("writes a durable preference fact row with extractor provenance", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		const result = await processOps(

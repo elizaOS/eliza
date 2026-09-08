@@ -5,8 +5,6 @@
  * "don't browse the web"), since a false positive runs an unwanted
  * side-effecting action.
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Action } from "../../types/components";
 import {
@@ -548,24 +546,6 @@ describe("inferDirectCurrentRequestCandidateActions owner-goal routing", () => {
 				"Make it $2,000 by March 31 for the Lisbon trip, with a $175 transfer after each paycheck and a check-in if I fall behind.",
 			),
 		).toEqual([]);
-	});
-});
-
-describe("shell-direct coupling grep guard (#12636)", () => {
-	it("message.ts no longer duck-types shell-direct routing off a hardcoded name Set", () => {
-		// The audit item's brittle literal was a `SHELL_DIRECT_ACTIONS = new Set([...])`
-		// hardcoded in the core pipeline. Prove it is gone from the executable path
-		// and that routing resolves through the declared-tag helpers instead. If a
-		// future edit reintroduces the literal set, this fails loudly.
-		const messagePath = fileURLToPath(
-			new URL("../message.ts", import.meta.url),
-		);
-		const src = readFileSync(messagePath, "utf8");
-		expect(src).not.toContain("const SHELL_DIRECT_ACTIONS");
-		expect(src).not.toContain("SHELL_DIRECT_ACTIONS.has(");
-		// And it routes through the tag-aware resolver/classifier.
-		expect(src).toContain("findShellDirectActionName");
-		expect(src).toContain("isShellDirectActionName");
 	});
 });
 

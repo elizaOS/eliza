@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "
 import { and, eq, sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { jobsRepository } from "../../db/repositories/jobs";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import type { Job } from "../../db/schemas/jobs";
@@ -190,6 +191,8 @@ beforeAll(async () => {
     for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
       await dbWrite.execute(sql.raw(ddl));
     }
+    const { getPgliteClientForTests } = await import("../../db/client");
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch {
     // error-policy:J1 The harness boundary records setup failure for the mandatory readiness assertion.
     pgliteReady = false;

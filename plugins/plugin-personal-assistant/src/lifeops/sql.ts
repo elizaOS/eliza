@@ -31,7 +31,12 @@ export {
   withOptimisticRetry,
 } from "@elizaos/shared/db/raw-sql";
 
-export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
+/** The database and tenant identity required by repository SQL operations. */
+export type LifeOpsDatabaseContext = Pick<IAgentRuntime, "agentId"> & {
+  readonly adapter: Pick<IAgentRuntime["adapter"], "db">;
+};
+
+export function getRuntimeDb(runtime: LifeOpsDatabaseContext): RuntimeDb {
   const db = runtime.adapter.db as RuntimeDb | undefined;
   if (!db || typeof db.execute !== "function") {
     throw new Error("runtime database adapter unavailable");
@@ -40,7 +45,7 @@ export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
 }
 
 export async function executeRawSql(
-  runtime: IAgentRuntime,
+  runtime: LifeOpsDatabaseContext,
   sqlText: string,
 ): Promise<Array<Record<string, unknown>>> {
   const db = getRuntimeDb(runtime);
@@ -61,7 +66,7 @@ type DrizzleTransactionalDb = RuntimeDb & {
  * partial commit would leave household state internally inconsistent.
  */
 export async function withTransaction<T>(
-  runtime: IAgentRuntime,
+  runtime: LifeOpsDatabaseContext,
   fn: (tx: TransactionalDb) => Promise<T>,
 ): Promise<T> {
   const db = getRuntimeDb(runtime) as DrizzleTransactionalDb;
@@ -85,7 +90,7 @@ export async function withTransaction<T>(
  * look retriable and requires an operator-facing diagnosis.
  */
 export async function withRequiredTransaction<T>(
-  runtime: IAgentRuntime,
+  runtime: LifeOpsDatabaseContext,
   fn: (tx: TransactionalDb) => Promise<T>,
 ): Promise<T> {
   const db = getRuntimeDb(runtime) as DrizzleTransactionalDb;

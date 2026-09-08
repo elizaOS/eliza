@@ -354,6 +354,16 @@ function namedError(name: string, message = name) {
 
 function admissionSnapshot() {
   return {
+    authority: {
+      generation: "0",
+      source: "legacy" as const,
+      sourceSubscriptionId: null,
+      sourceRevision: null,
+      projectionRevision: null,
+      catalogVersion: null,
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+      effectiveUntil: null,
+    },
     subscriptionFunded: false,
     balance: {
       balanceUsd: 12,

@@ -159,6 +159,24 @@ export default scenario({
             times: { min: 0, max: 1 },
           },
           {
+            name: "pr-smoke-conversation-needs-no-view",
+            match: {
+              modelType: ModelType.TEXT_SMALL,
+              prompt: (prompt: string) =>
+                prompt.includes(
+                  "Classify visual continuation for the complete user request using only the authorized live catalog below.",
+                ) &&
+                prompt.endsWith(
+                  'Complete user request: "hello deterministic provider"',
+                ),
+            },
+            response: JSON.stringify({
+              disposition: "none",
+              reason: "A greeting does not require a visual surface.",
+            }),
+            times: 1,
+          },
+          {
             name: "pr-smoke-deterministic-router-reply",
             match: {
               modelType: ModelType.RESPONSE_HANDLER,
@@ -321,6 +339,13 @@ export default scenario({
       name: "view shell API received exact deterministic requests",
       predicate: () => {
         const expected = [
+          {
+            body: undefined,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
           {
             body: { path: "/views" },
             method: "POST",

@@ -12,7 +12,7 @@ agent/server routing state in Redis, and patches CR status as pods come and go.
   config and the single `ServerController` capability.
 - `capabilities/index.ts` — exports `ServerController`; wires the admission
   hooks: `Validate` on create/update, `Reconcile` + `Finalize` on the `Server`
-  CR, status `Watch` on managed `Deployment`s, and self-healing `Watch`es that
+  CR, queued status `Reconcile` on managed `Deployment`s, and self-healing `Watch`es that
   re-apply `Deployment`/`Service` if deleted externally (skipped when the CR is
   itself being deleted). Managed objects carry the `eliza.ai/managed-by=server-operator`
   and `eliza.ai/server=<name>` labels.
@@ -27,6 +27,7 @@ agent/server routing state in Redis, and patches CR status as pods come and go.
   `register.ts` (applies the CRD on load), `validator.ts` (capacity bounds,
   agents ≤ capacity, no duplicate `agentId`), and `generated/server-v1alpha1.ts`
   (generated `Server` types — `ServerPhase`, etc.).
+- `capabilities/deployment-status.ts` — caches status only after Redis and Kubernetes acknowledge it; readiness changes remain visible within the same phase, and failed writes remain eligible on the next watch event. The deployment binding uses Pepr Reconcile to serialize updates for each object.
 - `capabilities/redis.ts` — `ioredis` client and routing helpers
   (`setServerState`, `setAgentServer`, `removeAgentServer`, `cleanupServer`).
 - `crds/server-crd.yaml` — YAML CRD manifest. `scripts/` — `build.mjs`

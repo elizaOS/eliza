@@ -2784,6 +2784,10 @@ export const INVALID_TRACER_PROVIDER = {};
     ],
     alias: [
       {
+        find: /^@elizaos\/login$/,
+        replacement: path.resolve(elizaRoot, "packages/login/src/sdk/index.ts"),
+      },
+      {
         find: /^@homepage\//,
         replacement: `${path.resolve(here, "../homepage/src")}/`,
       },

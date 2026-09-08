@@ -38,6 +38,7 @@ import {
   stopMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
+import { resolveBundledSkillsDir } from "./bundled-skills.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
@@ -4691,20 +4692,12 @@ export async function startEliza(
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   })();
 
-  // 7a. Resolve bundled skills directory from @elizaos/skills so
-  //     plugin-agent-skills auto-loads them on startup.
-  let bundledSkillsDir: string | null = null;
-  try {
-    const { getSkillsDir } = (await import("@elizaos/skills")) as {
-      getSkillsDir: () => string;
-    };
-    bundledSkillsDir = getSkillsDir();
-    logger.debug(`[eliza] Bundled skills dir: ${bundledSkillsDir}`);
-  } catch {
-    logger.debug(
-      "[eliza] @elizaos/skills not available — bundled skills will not be loaded",
-    );
-  }
+  const bundledSkillsDir = await resolveBundledSkillsDir();
+  logger.debug(
+    bundledSkillsDir === null
+      ? "[eliza] @elizaos/skills is not installed; bundled skills are unavailable"
+      : `[eliza] Bundled skills dir: ${bundledSkillsDir}`,
+  );
 
   // Workspace skills directory (highest precedence for overrides)
   const workspaceSkillsDir = workspaceDir ? `${workspaceDir}/skills` : null;

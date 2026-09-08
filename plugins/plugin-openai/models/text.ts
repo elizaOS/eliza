@@ -520,16 +520,14 @@ function resolveProviderOptions(
 function buildStructuredOutput(
   responseSchema: unknown,
   modelType: ModelTypeName,
-  cerebrasResponseSchema = false
-): PreparedStructuredOutput | undefined {
+  cerebrasMode = false
+): PreparedStructuredOutput {
   if (
     responseSchema &&
     typeof responseSchema === "object" &&
     "responseFormat" in responseSchema &&
     "parseCompleteOutput" in responseSchema
   ) {
-    // Opaque SDK output contracts cannot be checked by the plain-schema walk.
-    if (cerebrasResponseSchema) return undefined;
     return { output: responseSchema as NativeOutput };
   }
 
@@ -538,22 +536,13 @@ function buildStructuredOutput(
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
-  if (cerebrasResponseSchema && preparedSchema.transform) return undefined;
-  const compatibility = cerebrasResponseSchema ? { preservesShape: true } : undefined;
-  const sanitizedSchema = sanitizeJsonSchema(preparedSchema.schema, true, "$", undefined, {
-    preserveOptional: cerebrasResponseSchema,
-    responseCompatibility: compatibility,
-  });
-  // Keep the existing JSON-mode contract when strict normalization would
-  // change the returned shape or require an unsupported grammar construct.
-  if (compatibility && !compatibility.preservesShape) return undefined;
 
   return {
     output: Output.object({
       schema: jsonSchema(
-        cerebrasResponseSchema
-          ? (normalizeSchemaForCerebras(sanitizedSchema, true) as JSONSchema7)
-          : sanitizedSchema
+        cerebrasMode
+          ? (preparedSchema.schema as JSONSchema7)
+          : sanitizeJsonSchema(preparedSchema.schema, true)
       ),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
@@ -1598,14 +1587,11 @@ function sanitizeJsonSchema(
     responseCompatibility.preservesShape = false;
   }
 
-  // This is the single wire choke point — every response_format schema
-  // (buildStructuredOutput) and every tool schema (normalizeNativeTools)
-  // funnels through here, so strip the strict-unsupported constraint keywords
-  // centrally instead of relying on each schema author to remember the rule.
-  // UNCONDITIONAL, not Cerebras-gated: isCerebrasMode is proxy-blind — an agent
-  // pointed at api.eliza.app with OPENAI_API_KEY looks like plain OpenAI,
-  // which is exactly the deployment where the 400 fired (#11123/#11141). The
-  // recursion below reaches nested nodes via properties/items/unions.
+  // Non-Cerebras response schemas and strict/unspecified tool schemas share
+  // this compatibility rewrite. Direct Cerebras response schemas bypass it to
+  // preserve optional fields; explicit non-strict tools also bypass it.
+  // Proxy endpoints can still require strict grammar even when detected as
+  // OpenAI, so compatibility normalization remains enabled for those callers.
   stripStrictUnsupportedConstraints(sanitized);
 
   if (typeof sanitized.type !== "string") {
@@ -2186,6 +2172,49 @@ function assertModelNotCoolingDown(models: Map<string, number>, modelName: strin
   throw new ProviderRateLimitCooldownError(modelName, remaining);
 }
 
+function isModelCoolingDown(models: Map<string, number>, modelName: string): boolean {
+  const until = models.get(modelName);
+  if (until === undefined) return false;
+  if (until <= Date.now()) {
+    models.delete(modelName);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Operator-configured fallback model (`OPENAI_FALLBACK_MODEL`, alias
+ * `CEREBRAS_FALLBACK_MODEL`) used only while the requested model is held by a
+ * provider rate-limit cooldown. Undefined when unset or equal to the primary.
+ */
+function resolveFallbackModelName(
+  runtime: IAgentRuntime,
+  primaryModelName: string
+): string | undefined {
+  const raw =
+    getSetting(runtime, "OPENAI_FALLBACK_MODEL") ?? getSetting(runtime, "CEREBRAS_FALLBACK_MODEL");
+  const fallback = typeof raw === "string" ? raw.trim() : "";
+  if (!fallback || fallback === primaryModelName) return undefined;
+  return fallback;
+}
+
+/**
+ * The concrete model a request should use: the primary unless it is cooling
+ * down after a 429 and a distinct fallback is configured and not itself
+ * cooling down. Every slot keeps its primary model; fallback applies only
+ * for the duration of the provider's Retry-After.
+ */
+function selectRequestModelName(
+  models: Map<string, number>,
+  primaryModelName: string,
+  fallbackModelName: string | undefined
+): string {
+  if (!fallbackModelName) return primaryModelName;
+  if (!isModelCoolingDown(models, primaryModelName)) return primaryModelName;
+  if (isModelCoolingDown(models, fallbackModelName)) return primaryModelName;
+  return fallbackModelName;
+}
+
 function noteRateLimitCooldown(
   models: Map<string, number>,
   modelName: string,
@@ -2722,11 +2751,6 @@ async function consumeStreamWithTransientRetry(
   }
 }
 
-const CEREBRAS_STRICT_RESPONSE_SCHEMA_MODELS: ReadonlySet<string> = new Set([
-  "qwen-3.8-27b",
-  "gemma-4-31b",
-]);
-
 /**
  * Generates text using the specified model type.
  *
@@ -2747,9 +2771,17 @@ async function generateTextByModelType(
   // Keep retries and their failures bound to this call's endpoint/credential,
   // even if runtime settings change while the HTTP request is in flight.
   const modelCooldowns = runtimeRateLimitCooldowns(runtime);
-  const modelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  const primaryModelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  const fallbackModelName = resolveFallbackModelName(runtime, primaryModelName);
+  const modelName = selectRequestModelName(modelCooldowns, primaryModelName, fallbackModelName);
   const usageProvider = getUsageProvider(runtime);
 
+  if (modelName !== primaryModelName) {
+    logger.info(
+      { src: "plugin:openai", modelType, primaryModel: primaryModelName, fallbackModel: modelName },
+      "[OpenAI] primary model is rate limited; serving this request with the configured fallback model"
+    );
+  }
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
   const providerOptions = resolveProviderOptions(params, runtime, modelName);
   const hasAttachments = (paramsWithAttachments.attachments?.length ?? 0) > 0;
@@ -2812,8 +2844,10 @@ async function generateTextByModelType(
         : { prompt: promptText };
   // AI SDK v6 derives the provider-level response format from its `output`
   // contract; a similarly named top-level setting is ignored by generateText.
-  // Current Qwen supports strict response schemas without native tools. Other
-  // Cerebras contracts retain JSON mode with caller-side schema validation.
+  // A caller's response schema takes precedence over legacy JSON-object mode.
+  // Cerebras accepts strict schemas, including optional properties; applying
+  // OpenAI's all-properties-required rewrite would change evaluator semantics.
+  // Unsupported Cerebras schemas remain visible provider errors.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -2831,18 +2865,9 @@ async function generateTextByModelType(
   const sanitizedResponseSchema = paramsWithAttachments.responseSchema
     ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
     : undefined;
-  // Cerebras models with a strict json_schema contract (documented for Qwen 3.8
-  // and Gemma 4). Without it the evaluator/extractor calls on the second bucket
-  // ran in json_object mode, where prose + a fenced envelope came back and the
-  // planner read a protocol failure (live 2026-09-05).
-  const qwenResponseSchema =
-    cerebrasMode &&
-    CEREBRAS_STRICT_RESPONSE_SCHEMA_MODELS.has(normalizeCerebrasModelId(modelName)) &&
-    normalizedTools === undefined;
-  const preparedOutput =
-    sanitizedResponseSchema && (!cerebrasMode || qwenResponseSchema)
-      ? buildStructuredOutput(sanitizedResponseSchema, modelType, qwenResponseSchema)
-      : undefined;
+  const preparedOutput = sanitizedResponseSchema
+    ? buildStructuredOutput(sanitizedResponseSchema, modelType, cerebrasMode)
+    : undefined;
   const requestedOutput: NativeOutput | undefined =
     preparedOutput?.output ??
     (responseFormatType === "json_object" || (cerebrasMode && sanitizedResponseSchema)
@@ -3490,6 +3515,10 @@ export const __INTERNAL_sanitizeSchemaKeywords = {
 export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_enrichProviderCallError = enrichProviderCallError;
+/** @internal */
+export const __INTERNAL_selectRequestModelName = selectRequestModelName;
+/** @internal */
+export const __INTERNAL_resolveFallbackModelName = resolveFallbackModelName;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_isTransientProviderError = isTransientProviderError;
 /** @internal — exported for unit tests only. */

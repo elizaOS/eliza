@@ -1,6 +1,6 @@
 # @elizaos/app
 
-The cross-platform renderer shell for [elizaOS](https://github.com/elizaos) â the
+The cross-platform renderer shell for [elizaOS](https://github.com/elizaos) — the
 top-level Vite application that boots the Eliza agent UI on web browsers,
 Electrobun desktop (macOS/Windows/Linux), and Capacitor-wrapped iOS/Android.
 
@@ -18,12 +18,12 @@ gotchas), see [`AGENTS.md`](./AGENTS.md).
 ```
 app.config.ts        App identity (appId, appName, envPrefix, urlScheme, branding)
 capacitor.config.ts  Capacitor mobile config (derived from app.config.ts)
-vite.config.ts       Build config â alias resolution, chunk splitting, Vite plugins
+vite.config.ts       Build config — alias resolution, chunk splitting, Vite plugins
 index.html           HTML shell (tokens replaced at build by appShellMetadataPlugin)
 src/
   main.tsx           React boot: plugin loading, root render, platform init
   app-config.ts      Re-exports APP_CONFIG and derived branding/namespace constants
-  deep-link-routing.ts  Custom URL scheme â hash route mapping
+  deep-link-routing.ts  Custom URL scheme → hash route mapping
   mobile-*.ts        Capacitor bridges + app lifecycle
 vite/                Browser-bundle Vite plugins (native-module-stub-plugin.ts)
 scripts/             Build, plugin build, Playwright runner, mobile preflight/install
@@ -78,7 +78,7 @@ a missing managed grant. Later runs reuse the first replacement whose decoded
 grants still cover the target instead of minting another profile.
 
 The desktop shell is built by Electrobun from the repo root (`bun run dev:desktop`),
-not from inside this package â `packages/app` only produces the renderer.
+not from inside this package — `packages/app` only produces the renderer.
 
 ### Local Cloud development
 

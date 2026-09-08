@@ -77,6 +77,7 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
 import { APP_RESUME_EVENT, dispatchChatPrefill } from "../events";
@@ -98,6 +99,7 @@ import {
   observeFirstRunTranscriptEpoch,
 } from "../state/first-run-transcript-epoch";
 import { startTutorial } from "../tutorial/tutorial-service";
+import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
 import {
   armCloudLoginWaitDeadline,
@@ -855,10 +857,26 @@ export function useFirstRunConductor(): void {
   const exitToSettings = React.useCallback(() => {
     if (completedRef.current) return;
     completedRef.current = true;
+    if (isElectrobunRuntime()) {
+      void openDesktopSettingsWindow().then(
+        () => {
+          completeFirstRun("chat");
+          resumePendingFirstRunText();
+        },
+        (error: unknown) => {
+          // error-policy:J4 keep onboarding recoverable when the native window cannot open
+          completedRef.current = false;
+          seedError(
+            `Settings could not open. ${error instanceof Error ? error.message : String(error)}`,
+          );
+        },
+      );
+      return;
+    }
     setTab("settings");
     completeFirstRun("settings");
     resumePendingFirstRunText();
-  }, [setTab, completeFirstRun, resumePendingFirstRunText]);
+  }, [setTab, completeFirstRun, resumePendingFirstRunText, seedError]);
 
   const seedCloudAgentChoice = React.useCallback(
     (agents: { id?: string; name?: string }[]) => {

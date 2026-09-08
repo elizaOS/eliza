@@ -9,7 +9,9 @@
  * surface for a view production no longer registers — proving nothing. So the
  * declarations live here next to `checkSmokeViewParity`, which fails the moment
  * a declared view's plugin directory is gone or no longer exports the named
- * component. Removed plugin IDs (Shopify, Steward, Social Alpha) are therefore
+ * component. Navigation grants must also match in both directions; unrelated
+ * surface grants are outside this check. Removed plugin IDs
+ * (Shopify, Steward, Social Alpha) are therefore
  * kept out and cannot silently reappear.
  *
  * `resolveBundleProvenance` is the single decision the stub uses when serving a
@@ -39,14 +41,22 @@ export const smokeViewDeclarations = [
     "/cloud",
     "CloudView",
     "gui",
-    { capabilities: ["agent-surface"] },
+    { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
   ],
   ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
   // The decomposed personal-assistant domain views are the real surfaces (the
   // old monolithic `lifeops` overview view was removed). `documents` is
   // intentionally absent — its `/documents` path collides with the built-in
   // Knowledge tab (`App.tsx` findView matches `/${tab}`).
-  ["calendar", "Calendar", "plugin-calendar", "/calendar", "CalendarView"],
+  [
+    "calendar",
+    "Calendar",
+    "plugin-calendar",
+    "/calendar",
+    "CalendarView",
+    "gui",
+    { header: "fullscreen", capabilities: ["agent-surface"] },
+  ],
   [
     "computer-use-sessions",
     "Computer Sessions",
@@ -144,6 +154,22 @@ function readSourceFiles(dir) {
   return sources;
 }
 
+function propertyInitializer(object, propertyName) {
+  // The last matching property wins. A later spread can replace the policy.
+  for (const property of [...object.properties].reverse()) {
+    if (ts.isSpreadAssignment(property)) return null;
+    const name = property.name;
+    const key =
+      name && (ts.isIdentifier(name) || ts.isStringLiteralLike(name))
+        ? name.text
+        : undefined;
+    if (key === undefined) return null;
+    if (key !== propertyName) continue;
+    return ts.isPropertyAssignment(property) ? property.initializer : null;
+  }
+  return undefined;
+}
+
 function stringProperty(object, propertyName) {
   for (const property of object.properties) {
     if (!ts.isPropertyAssignment(property)) continue;
@@ -160,12 +186,197 @@ function stringProperty(object, propertyName) {
   return undefined;
 }
 
+function literalExpression(node) {
+  while (
+    node &&
+    (ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isParenthesizedExpression(node) ||
+      ts.isTypeAssertionExpression(node))
+  ) {
+    node = node.expression;
+  }
+  return node;
+}
+
+function immutablePolicyInitializer(node) {
+  if (ts.isStringLiteralLike(literalExpression(node))) return true;
+  while (ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node)) {
+    node = node.expression;
+  }
+  return (
+    ts.isAsExpression(node) &&
+    ts.isTypeReferenceNode(node.type) &&
+    ts.isIdentifier(node.type.typeName) &&
+    node.type.typeName.text === "const"
+  );
+}
+
+function isModulePolicyReference(node) {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (
+      ts.isFunctionLike(parent) ||
+      ts.isBlock(parent) ||
+      ts.isModuleBlock(parent) ||
+      ts.isClassLike(parent) ||
+      ts.isCaseBlock(parent) ||
+      ts.isForStatement(parent) ||
+      ts.isForInStatement(parent) ||
+      ts.isForOfStatement(parent)
+    )
+      return false;
+  }
+  return true;
+}
+
+function hasUnsupportedPolicyUse(sourceFile, name) {
+  let unsupported = false;
+  const visit = (node) => {
+    if (ts.isIdentifier(node) && node.text === name) {
+      let reference = node;
+      while (
+        reference.parent &&
+        (ts.isAsExpression(reference.parent) ||
+          ts.isSatisfiesExpression(reference.parent) ||
+          ts.isTypeAssertionExpression(reference.parent) ||
+          ts.isParenthesizedExpression(reference.parent))
+      )
+        reference = reference.parent;
+      const parent = reference.parent;
+      if (
+        parent &&
+        (((ts.isPropertyAccessExpression(parent) ||
+          ts.isElementAccessExpression(parent)) &&
+          parent.expression === reference) ||
+          ((ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
+            parent.arguments?.includes(reference)) ||
+          (ts.isBinaryExpression(parent) && parent.left === reference) ||
+          ts.isDeleteExpression(parent) ||
+          ts.isPostfixUnaryExpression(parent) ||
+          ts.isPrefixUnaryExpression(parent))
+      )
+        unsupported = true;
+    }
+    if (!unsupported) ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return unsupported;
+}
+
+function resolvePolicyExpression(node, sources, resolving = new Set()) {
+  node = literalExpression(node);
+  if (!node || !ts.isIdentifier(node)) return node;
+  // This is a static manifest contract, not a lexical binder or mutation analysis.
+  if (!isModulePolicyReference(node)) return null;
+  const sourceFile = node.getSourceFile();
+  if (hasUnsupportedPolicyUse(sourceFile, node.text)) return null;
+  const key = `${sourceFile.fileName}:${node.text}`;
+  if (resolving.has(key)) return null;
+  const next = new Set(resolving).add(key);
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isVariableStatement(statement) &&
+      statement.declarationList.flags & ts.NodeFlags.Const
+    ) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.name.text === node.text
+        ) {
+          return declaration.initializer &&
+            immutablePolicyInitializer(declaration.initializer)
+            ? resolvePolicyExpression(declaration.initializer, sources, next)
+            : null;
+        }
+      }
+    }
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteralLike(statement.moduleSpecifier) ||
+      !statement.moduleSpecifier.text.startsWith(".")
+    )
+      continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    const binding = bindings.elements.find(
+      (element) => element.name.text === node.text,
+    );
+    if (!binding) continue;
+    const target = path.resolve(
+      path.dirname(sourceFile.fileName),
+      statement.moduleSpecifier.text,
+    );
+    const imported = sources.find(
+      ({ filePath }) =>
+        filePath === target ||
+        filePath === target.replace(/\.js$/, ".ts") ||
+        filePath === `${target}.ts`,
+    );
+    if (!imported) return null;
+    const importedFile = ts.createSourceFile(
+      imported.filePath,
+      imported.source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const exportedName = binding.propertyName?.text ?? binding.name.text;
+    if (hasUnsupportedPolicyUse(importedFile, exportedName)) return null;
+    for (const importedStatement of importedFile.statements) {
+      if (
+        !ts.isVariableStatement(importedStatement) ||
+        !(importedStatement.declarationList.flags & ts.NodeFlags.Const) ||
+        !importedStatement.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+        )
+      )
+        continue;
+      for (const declaration of importedStatement.declarationList
+        .declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.name.text === exportedName
+        ) {
+          return declaration.initializer &&
+            immutablePolicyInitializer(declaration.initializer)
+            ? resolvePolicyExpression(declaration.initializer, sources, next)
+            : null;
+        }
+      }
+    }
+    return null;
+  }
+  return null;
+}
+
+function navigationGrant(object, sources) {
+  const surface = resolvePolicyExpression(
+    propertyInitializer(object, "surface"),
+    sources,
+  );
+  if (surface === undefined) return false;
+  if (!surface || !ts.isObjectLiteralExpression(surface)) return null;
+  const capabilities = resolvePolicyExpression(
+    propertyInitializer(surface, "capabilities"),
+    sources,
+  );
+  if (capabilities === undefined) return false;
+  if (!capabilities || !ts.isArrayLiteralExpression(capabilities)) return null;
+  const grants = capabilities.elements.map((element) =>
+    resolvePolicyExpression(element, sources),
+  );
+  if (!grants.every((grant) => grant && ts.isStringLiteralLike(grant)))
+    return null;
+  return grants.some((grant) => grant.text === "navigate");
+}
+
 function inspectViewDeclarations(
   sourceFiles,
   { id, viewPath, componentExport },
 ) {
   let declaresIdAndPath = false;
   let declaresExactView = false;
+  let grantsNavigation = null;
   for (const { filePath, source } of sourceFiles) {
     const sourceFile = ts.createSourceFile(
       filePath,
@@ -182,6 +393,7 @@ function inspectViewDeclarations(
           declaresIdAndPath = true;
           if (stringProperty(node, "componentExport") === componentExport) {
             declaresExactView = true;
+            grantsNavigation = navigationGrant(node, sourceFiles);
           }
         }
       }
@@ -190,13 +402,15 @@ function inspectViewDeclarations(
     visit(sourceFile);
     if (declaresExactView) break;
   }
-  return { declaresExactView, declaresIdAndPath };
+  return { declaresExactView, declaresIdAndPath, grantsNavigation };
 }
 
 /**
  * Check every smoke view declaration against the plugin that must register it.
  * A declaration is in parity when the plugin directory exists and its source
- * both declares the view `id` and exports the named component. Returns the full
+ * both declares the view `id` and exports the named component. Navigation must
+ * be equally granted or denied by the smoke and production declarations.
+ * Other surface capabilities are not compared. Returns the full
  * declaration list plus the misses so a test can assert the shipped set is
  * clean AND that a removed plugin id would be caught.
  */
@@ -233,6 +447,23 @@ export function checkSmokeViewParity(
         reason: declaration.declaresIdAndPath
           ? "component-export-missing"
           : "view-id-not-declared",
+      });
+    } else if (declaration.grantsNavigation === null) {
+      missing.push({
+        id,
+        pluginDirName,
+        componentExport,
+        reason: "surface-navigation-policy-unresolved",
+      });
+    } else if (
+      declaration.grantsNavigation !==
+      (tuple[6]?.capabilities?.includes("navigate") ?? false)
+    ) {
+      missing.push({
+        id,
+        pluginDirName,
+        componentExport,
+        reason: "surface-navigation-mismatch",
       });
     }
   }

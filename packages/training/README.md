@@ -6,8 +6,8 @@ trajectory rows: the exact
 request sent to the model plus the exact normalized response returned by the
 model, including native tool calls.
 
-> **This directory is gitignored.** The canonical artifact stores live on
-> HuggingFace, not in git history:
+> Pipeline source is maintained in Git. Generated artifacts and private data
+> stay in ignored directories; published artifacts live on HuggingFace:
 >
 > | what                              | repo                                      | script                          |
 > |-----------------------------------|-------------------------------------------|---------------------------------|

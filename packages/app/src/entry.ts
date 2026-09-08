@@ -47,15 +47,19 @@ const usePublicEntry =
   __ELIZA_PUBLIC_WEB_ENTRY__ === true &&
   shouldUsePublicWebEntry(entryDecisionInput);
 
-const rendererEntry = useMarketingHomeEntry
-  ? import("./marketing-home-entry")
-  : usePublicEntry
-    ? import("./public-web-entry")
-    : import("./main");
-
 // error-policy:J1 renderer-entry boundary — import failures render the same
 // actionable reload card as failures inside the established main boot.
-void rendererEntry.catch(async (error) => {
+async function handleRendererFailure(error: unknown): Promise<void> {
   const { renderBootFailure } = await import("./boot-failure");
   renderBootFailure(error);
-});
+}
+
+// Separate import callbacks let Vite attach each renderer's CSS dependencies.
+// A conditional import callback can collapse those lists to shared CSS only.
+if (useMarketingHomeEntry) {
+  void import("./marketing-home-entry").catch(handleRendererFailure);
+} else if (usePublicEntry) {
+  void import("./public-web-entry").catch(handleRendererFailure);
+} else {
+  void import("./main").catch(handleRendererFailure);
+}

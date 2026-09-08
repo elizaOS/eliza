@@ -111,8 +111,7 @@ function getWorkspaceSourceEntry(
   );
   const exportedSourceAliases = Object.entries(packageExports).flatMap(
     ([subpath, target]) => {
-      if (subpath === "." || target === null || typeof target === "string")
-        return [];
+      if (target === null || typeof target === "string") return [];
       const source = target["eliza-source"];
       const sourcePath =
         typeof source === "string"
@@ -120,7 +119,7 @@ function getWorkspaceSourceEntry(
           : (source?.import ?? source?.default ?? source?.types);
       if (
         !sourcePath?.startsWith("./") ||
-        !subpath.startsWith("./") ||
+        (subpath !== "." && !subpath.startsWith("./")) ||
         subpath.includes("*")
       )
         return [];
@@ -131,12 +130,31 @@ function getWorkspaceSourceEntry(
         return [];
       return [
         {
-          subpath: subpath.slice(2),
+          subpath: subpath === "." ? "." : subpath.slice(2),
           sourcePath: resolvedSourcePath,
         },
       ];
     },
   );
+  const declaredRoot = exportedSourceAliases.find(
+    ({ subpath }) => subpath === ".",
+  );
+  const subpathAliases = exportedSourceAliases.filter(
+    ({ subpath }) => subpath !== ".",
+  );
+  if (declaredRoot) {
+    return {
+      packageName: packageJson.name,
+      indexPath: declaredRoot.sourcePath,
+      sourceDir:
+        existsSync(path.join(packageDir, "src", "index.ts")) ||
+        !existsSync(path.join(packageDir, "index.ts"))
+          ? path.join(packageDir, "src")
+          : packageDir,
+      exportedSourceAliases: subpathAliases,
+      blockedExactSubpaths,
+    };
+  }
   const sourceIndex = path.join(packageDir, "src", "index.ts");
   if (existsSync(sourceIndex)) {
     return {

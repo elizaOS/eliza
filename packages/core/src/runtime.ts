@@ -1,32 +1,41 @@
-/**
- * The `AgentRuntime` — the central orchestrator every Eliza agent runs on, and
- * the concrete `implements IAgentRuntime`. One instance owns a single agent's
- * whole world: its actions, providers, evaluators, and services; the
- * model-handler registry and the `useModel` dispatch/routing/fallback layer; the
- * plugin set and its lifecycle (register / unload / reload / config); memory and
- * state (database adapter, embeddings, `stateCache`, working memory); and the
- * message loop that runs provider -> model -> action -> evaluator. Plugins
- * contribute capabilities; the runtime wires and runs them, and nearly all of
- * `@elizaos/core` and every plugin ultimately talks to this class.
- *
- * The file is ~10k lines — navigate by symbol, never top-to-bottom. Alongside the
- * class it exports typed boot errors (`NoModelProviderConfiguredError`,
- * `EmbeddingDimensionProbeError`) that `initialize()` treats specially.
- *
- * Invariants to preserve when editing:
- * - `getSetting()` resolves per-agent config and DELIBERATELY never reads
- *   `process.env` — in a multi-tenant process that would leak a host secret into
- *   every agent; hosts fold dotenv into the constructor `settings` map instead.
- * - Embedding width is pinned to whichever TEXT_EMBEDDING provider answered the
- *   boot dimension probe, including TEXT_EMBEDDING_BATCH; a later embedding from
- *   a different provider can emit a width the SQL adapter silently drops (#8769).
- *   If every provider fails the probe, `initialize()` catches
- *   `EmbeddingDimensionProbeError` non-fatally and disables embedding generation
- *   instead of crashing boot.
- * - Without a database adapter, `initialize()` falls back to the in-memory
- *   adapter only when `ALLOW_NO_DATABASE` is set.
- */
-import Handlebars from "handlebars";
+/** Owns one agent’s public runtime identity, registries, settings, and initialization. Model dispatch, structured prompts, provider composition, service startup, embeddings, and data mutations have dedicated owners that share this runtime’s state. Settings remain agent-scoped, and embedding width stays pinned to the provider that passed the boot probe. */
+
+import { RuntimeDataMutations } from "./runtime/data-mutations.js";
+import {
+	EmbeddingDimensionProbeError,
+	RuntimeEmbeddings,
+} from "./runtime/embeddings.js";
+import {
+	RuntimeServiceLifecycle,
+	type ServicePromiseHandler,
+	type ServiceRejecter,
+	type ServiceResolver,
+} from "./runtime/service-lifecycle.js";
+
+export {
+	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
+	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+	EmbeddingDimensionProbeError,
+	type EmbeddingProbeAttempt,
+	type EmbeddingStoreIdentity,
+} from "./runtime/embeddings.js";
+
+import { RuntimeModelDispatch } from "./runtime/model-dispatch/dispatcher.js";
+import {
+	type ResolvedModelRegistration,
+	TEXT_GENERATION_MODEL_KEYS,
+} from "./runtime/model-dispatch/policy.js";
+
+export {
+	NoModelProviderConfiguredError,
+	readReasoningTokensFromResponse,
+} from "./runtime/model-dispatch/policy.js";
+
+import { RuntimePipelineHooks } from "./runtime/pipeline-hooks.js";
+import { ProviderStateComposer } from "./runtime/state-composition/composer.js";
+
+export { calculateProviderOverlaps } from "./runtime/state-composition/provider-execution.js";
+
 import { v4 as uuidv4 } from "uuid";
 import {
 	withCanonicalActionDocs,
@@ -51,13 +60,6 @@ import {
 	createBasicCapabilitiesPlugin,
 	resolveCapabilityConfig,
 } from "./features/basic-capabilities/index";
-import {
-	INFERENCE_MARKS,
-	type InferenceTimingMeta,
-	markInference,
-	recordInferenceSpan,
-	setInferenceModelProvider,
-} from "./inference-timing";
 import { createLogger } from "./logger";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
@@ -71,56 +73,26 @@ import {
 } from "./plugins/native-features";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
-import {
-	executeChainWithFallback,
-	isLocalHandler,
-	maybeReroute,
-	resolveChain,
-} from "./runtime/action-model-routing";
 import { getActionRolePolicyWarnings } from "./runtime/action-role-policy";
-import {
-	getActionRoutingContext,
-	runWithActionRoutingContext,
-	runWithoutActionRoutingContext,
-} from "./runtime/action-routing-context";
+import { runWithActionRoutingContext } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
-import { isCanonicalModelCapabilityDisabled } from "./runtime/canonical-model-capabilities.ts";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
-import { computePrefixHashes } from "./runtime/context-hash";
 import { ContextRegistry } from "./runtime/context-registry";
-import { cachePrefixSegments } from "./runtime/context-renderer";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
-import {
-	findEquivalentFact,
-	mergeStrongerFactMetadata,
-} from "./runtime/fact-write-dedupe";
-import { stringifyForModel } from "./runtime/json-output";
-import {
-	buildModelInputBudget,
-	DEFAULT_INPUT_RESERVE_TOKENS,
-	withModelInputBudgetProviderOptions,
-} from "./runtime/model-input-budget";
-import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
 import { ShortcutRegistry } from "./runtime/shortcut-registry";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
+import { ActivePromptTraces } from "./runtime/structured-prompt/active-traces";
+import { StructuredPromptExecutor } from "./runtime/structured-prompt/executor";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
-import {
-	buildProviderAttributionsFromState,
-	canonicalPromptForModelCall,
-	omitUnvalidatedProviderSpans,
-} from "./runtime/trajectory-provider-attribution";
-import {
-	TurnAbortedError,
-	TurnControllerRegistry,
-} from "./runtime/turn-controller";
+import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import {
 	locateConfiguredSecretFragmentTaint,
@@ -132,8 +104,6 @@ import {
 	CompositeEntityRecognizer,
 	collectPiiPromptText,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
-	GuardedStreamScanner,
-	ownerExclusiveSuppressionNote,
 	PII_ENTITY_RECOGNIZER_SERVICE,
 	PII_SWAP_DISABLED_KINDS_SETTING,
 	PII_SWAP_ENABLED_SETTING,
@@ -145,9 +115,7 @@ import {
 	parsePiiSwapList,
 	RegexEntityRecognizer,
 	revalidateOwnerExclusiveDisclosure,
-	trustedDeliveryAudienceCacheKey,
 } from "./security/index.js";
-import { guardOutboundEnvelopeText } from "./security/outbound-envelope-guard.js";
 import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -157,14 +125,6 @@ import {
 } from "./security/secret-swap";
 import { DefaultMessageService } from "./services/message";
 import {
-	describeModelCallError,
-	isElizaCloudGatewayWarmingExhaustedError,
-	isModelProviderFallbackError,
-	isRateLimitError,
-} from "./services/message/fallback-reply";
-import { sanitizeOutboundText } from "./services/message/outbound-sanitize";
-import { ensureAgentVoice } from "./services/message/voice-gate";
-import {
 	drainPostDeliveryTasks,
 	pendingPostDeliveryTaskCount,
 } from "./services/post-delivery-task-tracker.ts";
@@ -172,23 +132,11 @@ import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
-	getStreamingContext,
-	runInsideModelStreamChunkDelivery,
-	runWithStreamingContext,
-	runWithSuppressedModelStream,
-} from "./streaming-context";
-import {
 	getTrajectoryContext,
 	invalidateTurnMemoPrefix,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
-import {
-	runInModelCallRecordingScope,
-	runWithModelCallRecordingScope,
-	type TrajectoryProviderAccessLogger,
-	type TrajectoryRuntimeLlmCallLogger,
-	withProviderStep,
-} from "./trajectory-utils";
+import type { SendHandlerFunction } from "./types";
 import {
 	type AccessContext,
 	type Action,
@@ -203,10 +151,7 @@ import {
 	type ConnectorAccountAuditEventRecord,
 	type ConnectorAccountCredentialRefRecord,
 	type ConnectorAccountRecord,
-	type ConnectorAccountRef,
-	type ConnectorPostIdentity,
 	type ConsumeOAuthFlowStateParams,
-	type Content,
 	type ControlMessage,
 	type CreateOAuthFlowStateParams,
 	type DeleteConnectorAccountCredentialRefsParams,
@@ -223,7 +168,6 @@ import {
 	type GetConnectorAccountCredentialRefParams,
 	type GetConnectorAccountParams,
 	type GetOAuthFlowStateParams,
-	getModelFallbackChain,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type IDatabaseAdapter,
@@ -235,17 +179,10 @@ import {
 	type LogBody,
 	type Memory,
 	type MemoryMetadata,
-	type MessageConnector,
-	type MessageConnectorCreateThreadParams,
-	type MessageConnectorMetadata,
-	type MessageConnectorRegistration,
 	type MessageSearchHit,
 	type Metadata,
-	MODEL_PROVIDER_ATTEMPTS,
-	type ModelAttemptContext,
 	type ModelHandler,
 	type ModelParamsMap,
-	type ModelProviderAttempt,
 	type ModelRegistrationInfo,
 	type ModelRegistrationMetadata,
 	type ModelResultMap,
@@ -257,45 +194,26 @@ import {
 	type PairingRequest,
 	type Participant,
 	type PatchOp,
-	type PipelineHookContext,
-	type PipelineHookPhase,
-	type PipelineHookSpec,
 	type Plugin,
 	type PluginOwnership,
-	type PostConnector,
-	type PostConnectorMetadata,
-	type PostConnectorRegistration,
-	type PromptSegment,
 	type Provider,
-	type ProviderResult,
 	type RegisteredEvaluator,
 	type Relationship,
 	type RemotePluginInstallOptions,
 	type RemotePluginInstanceHandle,
-	type ResolvedPipelineHook,
-	type ResponseSkeleton,
 	type Room,
 	type Route,
 	type RuntimeEventStorage,
 	type RuntimeSettings,
 	type RuntimeStopOptions,
-	type SendHandlerFunction,
-	type SendHandlerResult,
 	type Service,
 	type ServiceClass,
 	ServiceType,
 	type ServiceTypeName,
 	type SetConnectorAccountCredentialRefParams,
 	type State,
-	type StateValue,
-	type StreamChunkCallback,
-	type TargetInfo,
 	type Task,
 	type TaskWorker,
-	TEXT_GENERATION_MODEL_TYPES,
-	type TextGenerationModelType,
-	type TextStreamResult,
-	type ThreadHandle,
 	type UpdateOAuthFlowStateParams,
 	type UpsertConnectorAccountParams,
 	type UUID,
@@ -308,22 +226,7 @@ import type {
 } from "./types/chat-pre-handler";
 import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
-import {
-	afterMemoryPersistedPipelineHookContext,
-	composeStateProvidersPipelineHookContext,
-	modelStreamChunkPipelineHookContext,
-	modelStreamEndPipelineHookContext,
-	PIPELINE_HOOK_DEBUG_LOG_MS,
-	PIPELINE_HOOK_ERROR_LOG_MS,
-	PIPELINE_HOOK_WARN_MS,
-	pipelineHookMetricRoomId,
-	postModelPipelineHookContext,
-	preModelPipelineHookContext,
-	resolvePipelineHookSpec,
-	sortPipelineHooksByPosition,
-} from "./types/pipeline-hooks";
 import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
-import { ScoreCard } from "./types/prompt-optimization-score-card";
 import type {
 	ExecutionTrace,
 	ScoreSignal,
@@ -335,645 +238,32 @@ import {
 	SearchCategoryRegistryError,
 } from "./types/search";
 import type { ShortcutDefinition } from "./types/shortcut";
-import type {
-	RetryBackoffConfig,
-	SchemaRow,
-	SchemaValueSpec,
-	StreamEvent,
-	StructuredOutputFailure,
-} from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
-import { parseJSONObjectFromText, stringToUuid, validateUuid } from "./utils";
+import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
-import { BufferUtils } from "./utils/buffer";
-import { resolveProviderContexts } from "./utils/context-catalog";
-import {
-	getActiveRoutingContextsForTurn,
-	shouldIncludeByContext,
-} from "./utils/context-routing";
 import { createHash } from "./utils/crypto-compat";
-import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
-import {
-	assertModelOutputComplete,
-	getErrorMessage,
-	isTransientModelError,
-	modelProviderErrorDetail,
-} from "./utils/model-errors";
-import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
-import { resolveSetting } from "./utils/resolve-setting";
 import { getOptimizationRootDir } from "./utils/state-dir";
-import {
-	ResponseSkeletonStreamExtractor,
-	StructuredFieldStreamExtractor,
-} from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
-import { toWellFormedUnicode } from "./utils/well-formed.js";
+
+export {
+	mergeProviderOptionsWithCachePlan,
+	resolveDefaultOutputFormat,
+	resolveDynamicPromptStreamFields,
+} from "./runtime/structured-prompt/options.js";
+
+import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 
 const environmentSettings: RuntimeSettings = {};
-// Whether debug-level logs are emitted, captured once at load (mirrors the
-// logger's static LOG_LEVEL read; debug is on only for trace/verbose/debug).
-// Lets hot paths skip building expensive debug-only payloads. Guarded for the
-// browser/edge build targets where `process` is absent.
-const RUNTIME_DEBUG_LOG_ENABLED =
-	typeof process !== "undefined" &&
-	["trace", "verbose", "debug"].includes(
-		String(process.env?.LOG_LEVEL || "info").toLowerCase(),
-	);
-const RUNTIME_TEMPLATE_CACHE = new Map<
-	string,
-	Handlebars.TemplateDelegate<Record<string, unknown>>
->();
-const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500;
-// stateCache holds up to 2 entries per message (base State + `${id}_action_results`).
-// Previously it was never unconditionally evicted at end-of-turn, so a long-lived
-// runtime accumulated one State per processed message for its lifetime (~4.7 KB/msg,
-// ~23 MB at 5k messages). Cap it; oldest entries evict once over the cap, which keeps
-// recent and in-flight turns while bounding memory.
-const STATE_CACHE_LIMIT = 512;
-const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
 // Page size for the getAllMemories partition sweep. The sweep must be complete
 // — the media GC builds its referenced-set from it — so it paginates until a
 // short page instead of issuing one bounded read that silently truncates.
 const GET_ALL_MEMORIES_PAGE_SIZE = 10_000;
-
-type ProviderExecutionOutcome = "success" | "error" | "aborted";
-
-interface ProviderExecutionRecord extends ProviderResult {
-	providerName: string;
-	providerStartedAt: number;
-	providerEndedAt: number;
-	providerDurationMs: number;
-	providerOutcome: ProviderExecutionOutcome;
-	providerCoalesced: boolean;
-	providerError?: ElizaError;
-}
-
-interface CachedProviderResult extends ProviderResult {
-	providerName: string;
-	providerStartedAt?: number;
-	providerEndedAt?: number;
-	providerDurationMs?: number;
-	providerOutcome?: ProviderExecutionOutcome;
-}
-
-interface InFlightProviderExecution {
-	promise: Promise<ProviderResult>;
-	// The execution owns its abort authority: callers race the shared promise
-	// against their OWN turn signal and this controller fires only when the
-	// last interested caller has aborted. Wiring the work directly to the
-	// first caller's signal would swallow a later coalesced waiter's "stop"
-	// entirely, and push the first caller's abort reason into turns that never
-	// requested it.
-	controller: AbortController;
-	// Every consumer of this execution MUST attach through awaitProviderExecution
-	// rather than awaiting `promise` directly: an uncounted caller would not
-	// register as a waiter, so the accounting below could abort the shared
-	// work out from under it.
-	waiters: number;
-	startedAt: number;
-	startedAtMonotonic: number;
-}
-
-// Per-waiter cancellation boundary for a (possibly coalesced) provider
-// execution. Each caller observes its own signal: an aborting waiter rejects
-// immediately with ITS reason while the shared work keeps running for the
-// remaining callers, and the shared work is aborted exactly when the caller
-// count drops to zero — so a lone caller's abort still reaches the provider.
-//
-// EVERY attached caller counts toward `waiters`, including callers with no
-// signal (composeState outside any turn or streaming context — signalFor and
-// getStreamingContext are both legitimately undefined there). The abort
-// condition reads `waiters` as "is anyone still interested", so exempting
-// signal-less callers would let a cancelling waiter abort work an uncounted
-// caller is still awaiting.
-//
-// `evict` removes the in-flight map entry for this execution. It must run
-// SYNCHRONOUSLY, immediately before `controller.abort()`, rather than being
-// left to the `promise.then(cleanup, cleanup)` at the call site: that cleanup
-// only fires once the shared promise finishes unwinding through
-// runProviderExecution/withProviderStep, a microtask or more after the
-// synchronous abort. A composeState call landing in that window would
-// otherwise `get()` the dying execution and inherit an abort reason it never
-// asked for. Evicting here makes the entry unreachable at the moment it stops
-// being viable instead of when its promise settles.
-function awaitProviderExecution(
-	execution: InFlightProviderExecution,
-	signal: AbortSignal | undefined,
-	evict: () => void,
-): Promise<ProviderResult> {
-	execution.waiters += 1;
-	let released = false;
-	const release = () => {
-		if (released) return false;
-		released = true;
-		execution.waiters -= 1;
-		return true;
-	};
-	if (!signal) {
-		return execution.promise.finally(release);
-	}
-	return new Promise<ProviderResult>((resolve, reject) => {
-		const settle = <V>(handler: (value: V) => void) => {
-			return (value: V) => {
-				if (!release()) return;
-				signal.removeEventListener("abort", onAbort);
-				handler(value);
-			};
-		};
-		const onAbort = settle(() => {
-			if (execution.waiters === 0) {
-				evict();
-				execution.controller.abort(signal.reason);
-			}
-			reject(signal.reason ?? new Error("Provider execution aborted"));
-		});
-		// Attach the settle handlers to `execution.promise` BEFORE checking
-		// `signal.aborted`: an already-aborted caller still needs a rejection
-		// handler wired up, or the shared promise's eventual rejection (driven
-		// by the `controller.abort()` below) goes unhandled and crashes the
-		// process under Node's default unhandled-rejection behavior.
-		execution.promise.then(settle(resolve), settle(reject));
-		if (signal.aborted) {
-			onAbort(undefined);
-			return;
-		}
-		signal.addEventListener("abort", onAbort, { once: true });
-	});
-}
-
-export function calculateProviderOverlaps(
-	timings: readonly {
-		providerName: string;
-		providerStartedAt: number;
-		providerEndedAt: number;
-	}[],
-): Array<Array<{ providerName: string; overlapMs: number }>> {
-	return timings.map((timing, index) =>
-		timings.flatMap((sibling, siblingIndex) => {
-			if (siblingIndex === index) return [];
-			const overlapMs = Math.max(
-				0,
-				Math.min(timing.providerEndedAt, sibling.providerEndedAt) -
-					Math.max(timing.providerStartedAt, sibling.providerStartedAt),
-			);
-			return overlapMs > 0
-				? [{ providerName: sibling.providerName, overlapMs }]
-				: [];
-		}),
-	);
-}
-
-// Shared provider work has one execution-owned cancellation boundary. Each
-// composeState caller races that work against its own owner signal in
-// awaitProviderExecution; this boundary stops waiting for non-cooperative work
-// when the final caller leaves or the runtime stops, while Promise.race keeps
-// the detached provider promise observed.
-function runProviderExecution<T>(
-	run: () => Promise<T>,
-	signal: AbortSignal,
-): Promise<T> {
-	let rejectFromSignal: (() => void) | undefined;
-	const aborted = new Promise<never>((_, reject) => {
-		rejectFromSignal = () => {
-			reject(signal.reason ?? new Error("Provider execution aborted"));
-		};
-		if (signal.aborted) {
-			rejectFromSignal?.();
-			return;
-		}
-		signal.addEventListener("abort", rejectFromSignal, {
-			once: true,
-		});
-	});
-	const providerPromise = Promise.resolve().then(() => {
-		// The execution controller can be aborted after this promise is created
-		// but before its microtask starts (an already-cancelled caller and runtime
-		// teardown both take this path). Recheck here so provider work never begins
-		// after its final lifecycle owner has already departed.
-		if (signal.aborted) {
-			throw signal.reason ?? new Error("Provider execution aborted");
-		}
-		return run();
-	});
-	return Promise.race([providerPromise, aborted]).finally(() => {
-		if (rejectFromSignal) {
-			signal.removeEventListener("abort", rejectFromSignal);
-		}
-	});
-}
-
-function providerCancellationReason(
-	callerSignal: AbortSignal | undefined,
-	executionSignal: AbortSignal,
-	cause: unknown,
-): boolean {
-	return (
-		(callerSignal?.aborted === true && cause === callerSignal.reason) ||
-		(executionSignal.aborted && cause === executionSignal.reason)
-	);
-}
-
-function throwIfProviderCompositionAborted(
-	signal: AbortSignal | undefined,
-	runtimeStopped: boolean,
-): void {
-	if (signal?.aborted) {
-		const reason = signal.reason;
-		throw reason instanceof TurnAbortedError
-			? reason
-			: new TurnAbortedError(
-					reason instanceof Error ? reason.message : String(reason),
-				);
-	}
-	if (runtimeStopped) {
-		throw new TurnAbortedError("runtime-stop");
-	}
-}
-const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
-	"agentName",
-	"bio",
-	"system",
-	"topic",
-	"topics",
-	"adjective",
-	"messageDirections",
-	"postDirections",
-	"directions",
-	"examples",
-	"characterPostExamples",
-	"characterMessageExamples",
-	"actionNames",
-	"actionsWithDescriptions",
-	"providersWithDescriptions",
-]);
-const STABLE_PROMPT_PROVIDER_NAMES = new Set([
-	"ACTIONS",
-	"CHARACTER",
-	"PROVIDERS",
-]);
-const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
-const JSON_OBJECT_KEY_PATTERN =
-	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
-
-/**
- * Thrown by `AgentRuntime.useModel` when a text-generation model is requested
- * but no LLM provider plugin is registered for any text model type at all.
- *
- * This is distinct from "one provider is registered but the specific type is
- * missing" — that case still throws the generic `No handler found for delegate
- * type` error so legitimate misconfigurations stay loud.
- *
- * Surfacing this as a typed error lets the chat layer render an actionable
- * hint instead of a generic parse-failure template. See issue elizaOS/eliza#7203.
- */
-export class NoModelProviderConfiguredError extends Error {
-	readonly reason: "no-provider" | "capability-disabled";
-
-	constructor(
-		message: string = "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).",
-		reason: "no-provider" | "capability-disabled" = "no-provider",
-	) {
-		super(message);
-		this.name = "NoModelProviderConfiguredError";
-		this.reason = reason;
-	}
-}
-
-/** One failed TEXT_EMBEDDING dimension-probe attempt, kept for diagnostics. */
-export interface EmbeddingProbeAttempt {
-	provider: string;
-	modelKey: string;
-	error: string;
-}
-
-/** Providers that satisfy the app's explicit on-device embedding contract. */
-const LOCAL_EMBEDDING_PROVIDERS = new Set([
-	"eliza-router",
-	"eliza-local-inference",
-	"eliza-device-bridge",
-	"capacitor-llama",
-	"eliza-aosp-llama",
-]);
-
-/**
- * Thrown by `AgentRuntime.ensureEmbeddingDimension` when EVERY registered
- * TEXT_EMBEDDING provider failed the null dimension probe. Carries the
- * per-provider failure list so callers (and logs) can show exactly which
- * providers were tried and why each one failed.
- *
- * `AgentRuntime.initialize` catches this error type — and only this type —
- * non-fatally: the runtime keeps booting with embedding generation disabled
- * (memory writes persist without vectors) instead of either crashing boot or
- * leaving the vector column at its default width, where later real vectors
- * would be silently dropped on dimension mismatch by the SQL adapter (#8769).
- */
-/**
- * Per-agent record of which embedder produced the vectors in the store. Same
- * width does not mean same space (gte-small and bge-small are both 384-dim and
- * incompatible), so the runtime refuses to pin a different model at the same
- * width until the operator performs a scoped backup + fresh-index cutover and
- * acknowledges the new model with ELIZA_EMBEDDING_STORE_ACCEPT_MODEL.
- */
-export const EMBEDDING_STORE_IDENTITY_CACHE_KEY = "embedding:store-identity";
-export const EMBEDDING_STORE_ACCEPT_MODEL_SETTING =
-	"ELIZA_EMBEDDING_STORE_ACCEPT_MODEL";
-export interface EmbeddingStoreIdentity {
-	provider: string;
-	modelLabel: string | null;
-	dimension: number;
-	recordedAt: string;
-}
-
-export class EmbeddingDimensionProbeError extends Error {
-	readonly attempts: readonly EmbeddingProbeAttempt[];
-	constructor(attempts: readonly EmbeddingProbeAttempt[]) {
-		const detail = attempts
-			.map((attempt) => `${attempt.provider}: ${attempt.error}`)
-			.join("; ");
-		super(
-			`All ${attempts.length} registered TEXT_EMBEDDING provider(s) failed the embedding dimension probe — ${detail}`,
-		);
-		this.name = "EmbeddingDimensionProbeError";
-		this.attempts = attempts;
-	}
-}
-
-const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
-	TEXT_GENERATION_MODEL_TYPES;
-
-type StructuredResponseFormat = "JSON" | "TOON";
-
-type StructuredResponseCandidate = {
-	text: string;
-	formats: StructuredResponseFormat[];
-	source: string;
-};
-
-type DynamicPromptStreamExtractor = {
-	push(chunk: string): void;
-	flush(): void;
-	reset(): void;
-	signalError(message: string): void;
-	signalRetry(retry: number): { validatedFields: string[] };
-	diagnose(): {
-		missingFields: string[];
-		invalidFields: string[];
-		incompleteFields: string[];
-	};
-	getValidatedFields(): Map<string, string>;
-};
-
-function coerceOutgoingMessageText(text: unknown): string {
-	if (text === null || text === undefined) {
-		return "";
-	}
-	return String(text);
-}
-
-function stringifyStructuredForPrompt(value: unknown): string {
-	return stringifyForModel(value);
-}
-
-function resolveDynamicPromptModelType(
-	modelType?: TextGenerationModelType,
-	modelSize?: "nano" | "small" | "medium" | "large" | "mega",
-): TextGenerationModelType {
-	if (modelType) {
-		return modelType;
-	}
-
-	switch (modelSize) {
-		case "nano":
-			return ModelType.TEXT_NANO;
-		case "small":
-			return ModelType.TEXT_SMALL;
-		case "medium":
-			return ModelType.TEXT_MEDIUM;
-		case "mega":
-			return ModelType.TEXT_MEGA;
-		default:
-			return ModelType.TEXT_LARGE;
-	}
-}
-
-/**
- * Resolves the default structured-output format from a setting value.
- * Used by `dynamicPromptExecFromState` when no per-call preference is given.
- */
-export function resolveDefaultOutputFormat(
-	raw: unknown,
-): StructuredResponseFormat {
-	if (typeof raw !== "string") return "JSON";
-	switch (raw.trim().toLowerCase()) {
-		case "json":
-			return "JSON";
-		default:
-			return "JSON";
-	}
-}
-
-const DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS = new Set(["text"]);
-const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
-	"text",
-	"messageToUser",
-]);
-
-/**
- * Resolve which structured fields stream to the consumer for the line-oriented
- * `dynamicPromptExecFromState` path. A field streams when it opts in with
- * `streamField: true`, or — when it expresses no preference — when its name is
- * in {@link DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS} (the clean reply `text`).
- * `streamField: false` always opts out. Exported for regression coverage of
- * the default token-stream contract (#9174).
- */
-export function resolveDynamicPromptStreamFields(
-	schema: readonly SchemaRow[],
-): string[] {
-	return schema
-		.filter((row) => {
-			if (row.streamField === true) {
-				return true;
-			}
-			if (row.streamField === false) {
-				return false;
-			}
-			return DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS.has(row.field);
-		})
-		.map((row) => row.field);
-}
-
-/**
- * Merges provider options from three sources: a base object (e.g. `{ agentName }`),
- * optional caller-supplied options, and a cache-plan's options. Caller fields take
- * precedence over base; plan fields take precedence over caller on key collision, but
- * named provider sub-objects (e.g. `anthropic`, `openai`) are merged one level deep so
- * caller-specific fields like `anthropic.thinking` survive alongside plan additions like
- * `anthropic.cacheControl`.
- *
- * Exported so tests can import and exercise the real function rather than maintaining a
- * hand-copied mirror that cannot catch regressions in this code path.
- */
-export function mergeProviderOptionsWithCachePlan(
-	base: Record<string, JsonValue | object | undefined>,
-	callerOptions: Record<string, JsonValue | object | undefined> | undefined,
-	planOptions: Record<string, JsonValue | object | undefined>,
-): Record<string, JsonValue | object | undefined> {
-	const merged: Record<string, JsonValue | object | undefined> = {
-		...base,
-		...callerOptions,
-	};
-	for (const [key, planValue] of Object.entries(planOptions)) {
-		const existing = merged[key];
-		merged[key] =
-			existing != null &&
-			typeof existing === "object" &&
-			!Array.isArray(existing) &&
-			planValue != null &&
-			typeof planValue === "object" &&
-			!Array.isArray(planValue)
-				? {
-						...(existing as Record<string, unknown>),
-						...(planValue as Record<string, unknown>),
-					}
-				: planValue;
-	}
-	return merged;
-}
-
-function resolveResponseSkeletonStreamFields(
-	skeleton: ResponseSkeleton | undefined,
-): string[] {
-	if (!skeleton) {
-		return [];
-	}
-	const fields: string[] = [];
-	const seen = new Set<string>();
-	for (const span of skeleton.spans) {
-		const key = span.key;
-		if (
-			span.kind === "free-string" &&
-			key &&
-			DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS.has(key) &&
-			!seen.has(key)
-		) {
-			seen.add(key);
-			fields.push(key);
-		}
-	}
-	return fields;
-}
-
-type ServiceResolver = (service: Service) => void;
-type ServiceRejecter = (reason: Error | string) => void;
-type ServicePromiseHandler = {
-	resolve: ServiceResolver;
-	reject: ServiceRejecter;
-};
-
-function isTextStreamResult(
-	value: JsonValue | object,
-): value is TextStreamResult {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"textStream" in value &&
-		"text" in value &&
-		"usage" in value &&
-		"finishReason" in value
-	);
-}
-
-/** Capability absence is recoverable; malformed input/output is not absence. */
-function isUnavailableLocalModel(error: unknown): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		error.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
-		"reason" in error &&
-		(error.reason === "backend_unavailable" ||
-			error.reason === "capability_unavailable")
-	);
-}
-
-async function assertRuntimeModelOutputComplete(args: {
-	result: unknown;
-	provider: string;
-	model: string;
-}): Promise<void> {
-	if (typeof args.result !== "object" || args.result === null) return;
-	const record = args.result as { finishReason?: unknown };
-	if (!("finishReason" in record)) return;
-	assertModelOutputComplete({
-		finishReason: await Promise.resolve(record.finishReason),
-		provider: args.provider,
-		model: args.model,
-	});
-}
-
-/**
- * Read the hidden reasoning-token count from a model response so it can be
- * surfaced on the successful model span (#16394). Native results (tool-call
- * shape) carry a `.usage` object; plain-text results do not, and the field is
- * left undefined there. Returns a finite non-negative number or `undefined`;
- * missing is preserved as missing rather than coerced to zero so an
- * unattributed burst stays distinguishable from a confirmed-none call.
- *
- * Covers the elizaOS `TokenUsage.reasoningTokens` field plus the two raw
- * provider shapes the AI SDK exposes (`usage.reasoningTokens` and
- * `providerMetadata.completion_tokens_details.reasoning_tokens`).
- */
-export function readReasoningTokensFromResponse(
-	response: unknown,
-): number | undefined {
-	if (typeof response !== "object" || response === null) return undefined;
-	const record = response as Record<string, unknown>;
-	const usageRaw = isPlainObject(record.usage) ? record.usage : undefined;
-	const usage = usageRaw as Record<string, unknown> | undefined;
-	const fromUsage =
-		usage && typeof usage.reasoningTokens === "number"
-			? usage.reasoningTokens
-			: undefined;
-	if (fromUsage !== undefined) {
-		return Number.isFinite(fromUsage) && fromUsage >= 0 ? fromUsage : undefined;
-	}
-	// Fall back to provider metadata when the adapter did not normalize the
-	// field into the usage object (some OpenAI-compatible paths expose it only
-	// under completion_tokens_details).
-	const providerMetadataRaw = isPlainObject(record.providerMetadata)
-		? record.providerMetadata
-		: undefined;
-	const providerMetadata = providerMetadataRaw as
-		| Record<string, unknown>
-		| undefined;
-	const detailsRaw = providerMetadata
-		? isPlainObject(providerMetadata.completion_tokens_details)
-			? providerMetadata.completion_tokens_details
-			: isPlainObject(providerMetadata.completionTokensDetails)
-				? providerMetadata.completionTokensDetails
-				: undefined
-		: undefined;
-	const details = detailsRaw as Record<string, unknown> | undefined;
-	const fromDetails = details
-		? typeof details.reasoning_tokens === "number"
-			? details.reasoning_tokens
-			: typeof details.reasoningTokens === "number"
-				? details.reasoningTokens
-				: undefined
-		: undefined;
-	if (fromDetails !== undefined) {
-		return Number.isFinite(fromDetails) && fromDetails >= 0
-			? fromDetails
-			: undefined;
-	}
-	return undefined;
-}
 
 function getSearchCategoryKey(category: string): string {
 	return category.trim().toLowerCase();
@@ -1016,217 +306,6 @@ function normalizeSearchCategoryRegistration(
 		label,
 		enabled: registration.enabled ?? true,
 	});
-}
-
-function labelFromMessageConnectorSource(source: string): string {
-	const label = source
-		.replace(/[_-]+/g, " ")
-		.trim()
-		.replace(/\b\w/g, (char) => char.toUpperCase());
-	return label || "Message Connector";
-}
-
-const CONNECTOR_ACCOUNT_KEY_SEPARATOR = "\u0000";
-
-function normalizeConnectorAccountId(accountId: unknown): string | undefined {
-	return typeof accountId === "string" && accountId.trim()
-		? accountId.trim()
-		: undefined;
-}
-
-function connectorRouteKey(source: string, accountId?: string): string {
-	return accountId
-		? `${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}${accountId}`
-		: source;
-}
-
-function connectorKeySource(key: string): string {
-	return key.split(CONNECTOR_ACCOUNT_KEY_SEPARATOR, 1)[0] ?? key;
-}
-
-function cloneConnectorAccountRef(
-	account: ConnectorAccountRef,
-	source: string,
-): ConnectorAccountRef {
-	return {
-		...account,
-		source: account.source || source,
-		accountId: normalizeConnectorAccountId(account.accountId),
-		capabilities: account.capabilities
-			? account.capabilities.map((capability) => ({
-					...capability,
-					targetKinds: capability.targetKinds
-						? [...capability.targetKinds]
-						: undefined,
-					scopes: capability.scopes ? [...capability.scopes] : undefined,
-					metadata: capability.metadata
-						? { ...capability.metadata }
-						: undefined,
-				}))
-			: undefined,
-		metadata: account.metadata ? { ...account.metadata } : undefined,
-	};
-}
-
-function normalizeConnectorAccountRef(
-	source: string,
-	account?: ConnectorAccountRef,
-	accountId?: string,
-): ConnectorAccountRef | undefined {
-	const normalizedAccountId =
-		normalizeConnectorAccountId(accountId) ??
-		normalizeConnectorAccountId(account?.accountId);
-	if (!account && !normalizedAccountId) {
-		return undefined;
-	}
-	return cloneConnectorAccountRef(
-		{
-			...account,
-			source: account?.source?.trim() || source,
-			accountId: normalizedAccountId,
-		},
-		source,
-	);
-}
-
-function cloneMessageConnector(connector: MessageConnector): MessageConnector {
-	return {
-		...connector,
-		account: connector.account
-			? cloneConnectorAccountRef(connector.account, connector.source)
-			: undefined,
-		capabilities: [...connector.capabilities],
-		supportedTargetKinds: [...connector.supportedTargetKinds],
-		contexts: [...connector.contexts],
-		metadata: connector.metadata ? { ...connector.metadata } : undefined,
-		contentShaping: connector.contentShaping
-			? {
-					...connector.contentShaping,
-					constraints: connector.contentShaping.constraints
-						? { ...connector.contentShaping.constraints }
-						: undefined,
-				}
-			: undefined,
-	};
-}
-
-function clonePostConnector(connector: PostConnector): PostConnector {
-	return {
-		...connector,
-		account: connector.account
-			? cloneConnectorAccountRef(connector.account, connector.source)
-			: undefined,
-		capabilities: [...connector.capabilities],
-		contexts: [...connector.contexts],
-		metadata: connector.metadata ? { ...connector.metadata } : undefined,
-		contentShaping: connector.contentShaping
-			? {
-					...connector.contentShaping,
-					constraints: connector.contentShaping.constraints
-						? { ...connector.contentShaping.constraints }
-						: undefined,
-				}
-			: undefined,
-	};
-}
-
-function normalizeMessageConnector(
-	source: string,
-	metadata: MessageConnectorMetadata = {},
-): MessageConnector {
-	const accountId =
-		normalizeConnectorAccountId(metadata.accountId) ??
-		normalizeConnectorAccountId(metadata.account?.accountId);
-	const connector: MessageConnector = {
-		source,
-		accountId,
-		account: normalizeConnectorAccountRef(source, metadata.account, accountId),
-		label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
-		capabilities: metadata.capabilities
-			? [...metadata.capabilities]
-			: ["send_message"],
-		supportedTargetKinds: metadata.supportedTargetKinds
-			? [...metadata.supportedTargetKinds]
-			: [],
-		contexts: metadata.contexts ? [...metadata.contexts] : [],
-	};
-
-	if (metadata.accountRouting === "connector" && !accountId)
-		connector.accountRouting = metadata.accountRouting;
-	if (metadata.description) connector.description = metadata.description;
-	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
-	if (metadata.resolveTargets)
-		connector.resolveTargets = metadata.resolveTargets;
-	if (metadata.resolveIdentityClaimTarget)
-		connector.resolveIdentityClaimTarget = metadata.resolveIdentityClaimTarget;
-	if (metadata.listRecentTargets)
-		connector.listRecentTargets = metadata.listRecentTargets;
-	if (metadata.listRooms) connector.listRooms = metadata.listRooms;
-	if (metadata.getChatContext)
-		connector.getChatContext = metadata.getChatContext;
-	if (metadata.getUserContext)
-		connector.getUserContext = metadata.getUserContext;
-	if (metadata.listServers) connector.listServers = metadata.listServers;
-	if (metadata.fetchMessages) connector.fetchMessages = metadata.fetchMessages;
-	if (metadata.searchMessages)
-		connector.searchMessages = metadata.searchMessages;
-	if (metadata.reactHandler) connector.reactHandler = metadata.reactHandler;
-	if (metadata.editHandler) connector.editHandler = metadata.editHandler;
-	if (metadata.deleteHandler) connector.deleteHandler = metadata.deleteHandler;
-	if (metadata.pinHandler) connector.pinHandler = metadata.pinHandler;
-	if (metadata.joinHandler) connector.joinHandler = metadata.joinHandler;
-	if (metadata.leaveHandler) connector.leaveHandler = metadata.leaveHandler;
-	if (metadata.getUser) connector.getUser = metadata.getUser;
-	if (metadata.typingHandler) connector.typingHandler = metadata.typingHandler;
-	if (metadata.stopTypingHandler)
-		connector.stopTypingHandler = metadata.stopTypingHandler;
-	if (metadata.createThreadHandler)
-		connector.createThreadHandler = metadata.createThreadHandler;
-	if (metadata.postToThreadHandler)
-		connector.postToThreadHandler = metadata.postToThreadHandler;
-	if (metadata.contentShaping)
-		connector.contentShaping = {
-			...metadata.contentShaping,
-			constraints: metadata.contentShaping.constraints
-				? { ...metadata.contentShaping.constraints }
-				: undefined,
-		};
-
-	return connector;
-}
-
-function normalizePostConnector(
-	source: string,
-	metadata: PostConnectorMetadata = {},
-): PostConnector {
-	const accountId =
-		normalizeConnectorAccountId(metadata.accountId) ??
-		normalizeConnectorAccountId(metadata.account?.accountId);
-	const connector: PostConnector = {
-		source,
-		accountId,
-		account: normalizeConnectorAccountRef(source, metadata.account, accountId),
-		label: metadata.label?.trim() || labelFromMessageConnectorSource(source),
-		capabilities: metadata.capabilities ? [...metadata.capabilities] : ["post"],
-		contexts: metadata.contexts ? [...metadata.contexts] : [],
-	};
-
-	if (metadata.accountRouting === "connector" && !accountId)
-		connector.accountRouting = metadata.accountRouting;
-	if (metadata.description) connector.description = metadata.description;
-	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
-	if (metadata.postHandler) connector.postHandler = metadata.postHandler;
-	if (metadata.fetchFeed) connector.fetchFeed = metadata.fetchFeed;
-	if (metadata.searchPosts) connector.searchPosts = metadata.searchPosts;
-	if (metadata.contentShaping)
-		connector.contentShaping = {
-			...metadata.contentShaping,
-			constraints: metadata.contentShaping.constraints
-				? { ...metadata.contentShaping.constraints }
-				: undefined,
-		};
-
-	return connector;
 }
 
 function getServiceClassLabel(serviceClass: ServiceClass): string {
@@ -1280,18 +359,6 @@ async function settleBeforeTimeout(
 	}
 }
 
-interface ResolvedModelRegistration {
-	handler: ModelHandler["handler"];
-	metadata?: ModelRegistrationMetadata;
-	modelKey: string;
-	provider: string;
-}
-
-/** Backoff between eager service-start attempts after a failed boot-time start. */
-const EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [
-	2_000, 5_000, 10_000,
-];
-
 /**
  * Configuration keys that operators commonly place under `settings.secrets`
  * but that carry no credential; their values are safe in prompts and must not
@@ -1307,6 +374,68 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export class AgentRuntime implements IAgentRuntime {
+	private readonly dataMutations = new RuntimeDataMutations(this, {
+		invalidateTurnEntityDetails: (...args) =>
+			this.invalidateTurnEntityDetails(...args),
+		invalidateTurnIdentityClusters: (...args) =>
+			this.invalidateTurnIdentityClusters(...args),
+		getSecretsForRedaction: (...args) => this.getSecretsForRedaction(...args),
+		roomMessagesMemo: () => this.roomMessagesMemo,
+		roomReadMemo: () => this.roomReadMemo,
+	});
+	private readonly serviceLifecycle = new RuntimeServiceLifecycle(this, {
+		stopRequested: () => this.stopRequested,
+		isNativeFeatureServiceEnabled: (...args) =>
+			this.isNativeFeatureServiceEnabled(...args),
+		resolveServiceTypeAlias: (...args) => this.resolveServiceTypeAlias(...args),
+		initResolver: () => this.initResolver,
+		serviceTypes: () => this.serviceTypes,
+		serviceInstancesByClass: () => this.serviceInstancesByClass,
+		startingServiceClasses: () => this.startingServiceClasses,
+		failedServiceClasses: () => this.failedServiceClasses,
+		startingServices: () => this.startingServices,
+		serviceRegistrationStatus: () => this.serviceRegistrationStatus,
+		servicePromiseHandlers: () => this.servicePromiseHandlers,
+		servicePromises: () => this.servicePromises,
+		stopped: () => this.stopped,
+	});
+	private readonly embeddings = new RuntimeEmbeddings(this, {
+		resolveModelRegistrations: (...args) =>
+			this.resolveModelRegistrations(...args),
+		fetch: (...args) => this.fetch(...args),
+	});
+	private readonly modelDispatch = new RuntimeModelDispatch(this, {
+		models: () => this.models,
+		pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
+		currentRoomId: () => this.currentRoomId,
+		isSecretSwapEnabled: (...args) => this.isSecretSwapEnabled(...args),
+		isPiiSwapEnabled: (...args) => this.isPiiSwapEnabled(...args),
+		hooksForPhase: (...args) => this.hooksForPhase(...args),
+		invokePipelineHooks: (...args) => this.invokePipelineHooks(...args),
+		attachEffectiveSystemPrompt: (...args) =>
+			this.attachEffectiveSystemPrompt(...args),
+		createSecretSwapSession: (...args) => this.createSecretSwapSession(...args),
+		createPiiSwapSession: (...args) => this.createPiiSwapSession(...args),
+		collectPromptText: (...args) => this.collectPromptText(...args),
+		initResolver: () => this.initResolver,
+		_ensureServiceStarted: (...args) => this._ensureServiceStarted(...args),
+		buildRuntimeSystemPrompt: (...args) =>
+			this.buildRuntimeSystemPrompt(...args),
+		getFirstUserPromptFromMessages: (...args) =>
+			this.getFirstUserPromptFromMessages(...args),
+	});
+	private readonly pipelineHooks = new RuntimePipelineHooks(this);
+	// Plugin lifecycle and host send-availability probes share this legacy map.
+	private sendHandlers = new Map<string, SendHandlerFunction>();
+	readonly #connectorRegistry = new RuntimeConnectorRegistry(
+		this,
+		this.sendHandlers,
+	);
+	private readonly promptTraces = new ActivePromptTraces();
+	private readonly structuredPrompts = new StructuredPromptExecutor(
+		this,
+		this.promptTraces,
+	);
 	/** The runtime invokes request preparation before each resolved model handler. */
 	readonly supportsModelAttemptPreparation = true;
 	#conversationLength = 100;
@@ -1350,22 +479,12 @@ export class AgentRuntime implements IAgentRuntime {
 	public getAllPluginOwnership!: () => PluginOwnership[];
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
-	// Owner-private providers are revalidated on every compose and therefore
-	// prevent the mixed State from entering stateCache. Public provider results
-	// are still safe to reuse within the same Memory object's turn; WeakMap
-	// lifetime keeps that reuse request-local without retaining messages.
-	private readonly publicProviderStateByMessage = new WeakMap<
-		Memory,
-		{ text: unknown; state: State }
-	>();
-	private providerExecutionsInFlight = new Map<
-		string,
-		InFlightProviderExecution
-	>();
-	// Includes keyed/coalescible work and one-off executions (missing message id
-	// or an explicit refresh). The coalescing map alone cannot own shutdown:
-	// those one-off executions still need their controller aborted at teardown.
-	private providerExecutionsActive = new Set<InFlightProviderExecution>();
+	private readonly providerState = new ProviderStateComposer(this, {
+		hasProviderSelectionHooks: () =>
+			this.hooksForPhase("compose_state_providers").length > 0,
+		ensureServiceStarted: (type) => this._ensureServiceStarted(type),
+		isStopping: () => this.stopRequested,
+	});
 	// Turn-scoped single-flight read coalescing (see runtime/single-flight-memo).
 	// A Stage-1 compose issues getRoom 4x (RECENT_MESSAGES / CHARACTER /
 	// PLATFORM_* / WORLD) and 3 overlapping room messages-scans (RECENT_MESSAGES
@@ -1411,61 +530,14 @@ export class AgentRuntime implements IAgentRuntime {
 	private inReportError = false;
 	models = new Map<string, ModelHandler[]>();
 	routes: Route[] = [];
-	/**
-	 * Provider that answered the boot-time TEXT_EMBEDDING dimension probe. The
-	 * SQL adapter's vector column is sized from that provider's output, so all
-	 * later embedding calls without an explicit provider are pinned to it —
-	 * letting a different registration serve an embedding call can emit a
-	 * different-width vector that the adapter silently drops on dimension
-	 * mismatch (#8769). Re-set on every successful `ensureEmbeddingDimension`.
-	 */
-	private pinnedEmbeddingProvider: string | undefined;
-	/**
-	 * The provider name that actually served the most recent successful
-	 * `useModel` call for each model type key. Populated the moment a
-	 * registration answers (before any streaming/return path), so a caller that
-	 * cannot see `useModel`'s internal resolution — e.g. the messageHandler /
-	 * factsAndRelationships trajectory stage recorders in `services/message.ts`,
-	 * which previously hardcoded the provider as the literal `"default"` — can
-	 * read the real provider that answered instead of fabricating one (#13623).
-	 * Keyed by the REQUESTED model type string so the recorder for a
-	 * RESPONSE_HANDLER / TEXT_LARGE stage reads the provider for that stage's
-	 * call, not some other model type's.
-	 */
-	private lastResolvedModelProviderByType = new Map<string, string>();
-	/**
-	 * Non-null while embedding generation is disabled because every registered
-	 * TEXT_EMBEDDING provider failed the dimension probe. While set, memory
-	 * writes skip vector generation entirely (see `addEmbeddingToMemory` /
-	 * `queueEmbeddingGeneration`) instead of producing vectors the SQL adapter
-	 * would silently drop against a default-sized column. Cleared by the next
-	 * successful `ensureEmbeddingDimension` (e.g. the deferred boot re-probe).
-	 */
-	private embeddingGenerationDisabledReason: string | null = null;
-	/** Once-latch so the embedding-skip warning fires once, not per write. */
-	private embeddingSkipWarned = false;
 	private secretRedactionProfileSignature = "";
 	private secretRedactionProfileRevision = 0;
 	private taskWorkers = new Map<string, TaskWorker>();
-	private sendHandlers = new Map<string, SendHandlerFunction>();
-	private messageConnectors = new Map<string, MessageConnector>();
-	private postConnectors = new Map<string, PostConnector>();
 	private searchCategories = new Map<string, SearchCategoryRegistration>();
 	private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
 		new Map();
-
-	/**
-	 * In-flight execution traces keyed by trace.id (unique uuid).
-	 * A single run can produce multiple DPE calls; each gets its own trace.
-	 * `runToTraces` maps runId -> set of trace ids for enrichment lookup.
-	 */
-	private activeTraces = new Map<string, ExecutionTrace>();
-	private runToTraces = new Map<string, Set<string>>();
 	/** Optional DPE-side prompt optimization I/O (merge, registry, baseline/failure traces). */
 	private promptOptimizationHooks: PromptOptimizationRuntimeHooks | null = null;
-
-	private pipelineHookEntries: ResolvedPipelineHook[] = [];
-	private pipelineHookIdToIndex = new Map<string, number>();
 
 	// A map of all plugins available to the runtime, keyed by name, for dependency resolution.
 	private allAvailablePlugins = new Map<string, Plugin>();
@@ -1978,432 +1050,35 @@ export class AgentRuntime implements IAgentRuntime {
 	isTrajectoriesEnabled(): boolean {
 		return this.hasNativeRuntimeFeature("trajectories");
 	}
-
-	/**
-	 * Per-phase, position-sorted hook lists, cached because the
-	 * `model_stream_chunk` phase is consulted once per streamed token — a
-	 * filter+sort over all registered hooks per token dominated the zero-hook
-	 * stream path. Invalidated wholesale on register/unregister (rare,
-	 * boot-time operations). Callers must treat the returned array as
-	 * read-only.
-	 */
-	private pipelineHooksByPhase = new Map<
-		PipelineHookPhase,
-		ResolvedPipelineHook[]
-	>();
-
-	private hooksForPhase(phase: PipelineHookPhase): ResolvedPipelineHook[] {
-		let hooks = this.pipelineHooksByPhase.get(phase);
-		if (!hooks) {
-			hooks = sortPipelineHooksByPosition(
-				this.pipelineHookEntries.filter((e) => e.phase === phase),
-			);
-			this.pipelineHooksByPhase.set(phase, hooks);
-		}
-		return hooks;
+	private hooksForPhase(
+		...args: Parameters<RuntimePipelineHooks["hooksForPhase"]>
+	): ReturnType<RuntimePipelineHooks["hooksForPhase"]> {
+		return this.pipelineHooks.hooksForPhase(...args);
 	}
-
-	private upsertPipelineHook(entry: ResolvedPipelineHook): void {
-		// A re-registered id may change phase, so drop every phase's cache rather
-		// than tracking which two lists are stale.
-		this.pipelineHooksByPhase.clear();
-		const existing = this.pipelineHookIdToIndex.get(entry.id);
-		if (existing !== undefined) {
-			this.pipelineHookEntries[existing] = entry;
-			return;
-		}
-		this.pipelineHookIdToIndex.set(entry.id, this.pipelineHookEntries.length);
-		this.pipelineHookEntries.push(entry);
+	private upsertPipelineHook(
+		...args: Parameters<RuntimePipelineHooks["upsertPipelineHook"]>
+	): ReturnType<RuntimePipelineHooks["upsertPipelineHook"]> {
+		return this.pipelineHooks.upsertPipelineHook(...args);
 	}
-
-	private async invokePipelineHooks(
-		phase: PipelineHookPhase,
-		ctx: PipelineHookContext,
-		logLabel: string,
-		pipelineHookTelemetry = true,
-	): Promise<void> {
-		const hooks = this.hooksForPhase(phase);
-		if (!hooks.length) {
-			return;
-		}
-
-		const roomId = pipelineHookMetricRoomId(ctx);
-
-		const runOne = async (entry: ResolvedPipelineHook) => {
-			const t0 = performance.now();
-			let errorMessage: string | undefined;
-			try {
-				await entry.handler(this, ctx);
-			} catch (error) {
-				// error-policy:J4 Local text admission rejects before dispatch; other
-				// hook failures retain the ordinary isolated diagnostic behavior.
-				if (
-					ctx.phase === "pre_model" &&
-					ctx.provider === "eliza-local-inference" &&
-					TEXT_GENERATION_MODEL_KEYS.includes(ctx.resolvedModelKey) &&
-					isUnavailableLocalModel(error)
-				) {
-					throw error;
-				}
-				// error-policy:J4 Hooks are isolated so one plugin cannot suppress
-				// later hooks; the failure is surfaced to the agent explicitly.
-				errorMessage = error instanceof Error ? error.message : String(error);
-				this.logger.error(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						hookId: entry.id,
-						phase: entry.phase,
-						error: errorMessage,
-					},
-					`${logLabel} threw; continuing`,
-				);
-				this.reportError("AgentRuntime.pipelineHook", error, {
-					hookId: entry.id,
-					phase: entry.phase,
-				});
-			}
-			{
-				const durationMs = Math.round(performance.now() - t0);
-				if (!pipelineHookTelemetry) {
-					const baseLite = {
-						src: "pipeline_hook" as const,
-						agentId: this.agentId,
-						hookId: entry.id,
-						phase,
-						roomId,
-						durationMs,
-					};
-					if (durationMs >= PIPELINE_HOOK_WARN_MS) {
-						this.logger.warn(
-							baseLite,
-							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
-						this.logger.error(
-							baseLite,
-							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-				} else {
-					const slow = durationMs >= PIPELINE_HOOK_WARN_MS;
-					const baseFields = {
-						src: "pipeline_hook" as const,
-						agentId: this.agentId,
-						hookId: entry.id,
-						phase,
-						roomId,
-						durationMs,
-					};
-					if (durationMs >= PIPELINE_HOOK_DEBUG_LOG_MS) {
-						this.logger.debug(baseFields, "Pipeline hook timing");
-					}
-					if (slow) {
-						this.logger.warn(
-							baseFields,
-							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
-						this.logger.error(
-							baseFields,
-							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
-						);
-					}
-					try {
-						await this.emitEvent(EventType.PIPELINE_HOOK_METRIC, {
-							phase,
-							hookId: entry.id,
-							durationMs,
-							roomId,
-							slow,
-							...(errorMessage !== undefined ? { error: errorMessage } : {}),
-						});
-					} catch (metricError) {
-						// error-policy:J7 Hook metrics are diagnostics and cannot
-						// interrupt the pipeline they observe.
-						this.logger.debug(
-							{
-								src: "pipeline_hook",
-								agentId: this.agentId,
-								hookId: entry.id,
-								phase,
-								error:
-									metricError instanceof Error
-										? metricError.message
-										: String(metricError),
-							},
-							"PIPELINE_HOOK_METRIC listener failed",
-						);
-						this.reportError("AgentRuntime.pipelineHookMetric", metricError, {
-							hookId: entry.id,
-							phase,
-						});
-					}
-				}
-			}
-		};
-
-		if (
-			phase === "parallel_with_should_respond" ||
-			phase === "model_stream_chunk"
-		) {
-			await Promise.all(hooks.map((h) => runOne(h)));
-			return;
-		}
-
-		const mutators = hooks.filter((h) => h.mutatesPrimary);
-		const serialReaders = hooks.filter(
-			(h) => !h.mutatesPrimary && h.schedule === "serial",
-		);
-		const concurrentReaders = hooks.filter(
-			(h) => !h.mutatesPrimary && h.schedule === "concurrent",
-		);
-
-		for (const h of mutators) {
-			await runOne(h);
-		}
-		for (const h of serialReaders) {
-			await runOne(h);
-		}
-		await Promise.all(concurrentReaders.map((h) => runOne(h)));
+	private invokePipelineHooks(
+		...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
+	): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]> {
+		return this.pipelineHooks.invokePipelineHooks(...args);
 	}
-
-	registerPipelineHook(spec: PipelineHookSpec): void {
-		this.upsertPipelineHook(resolvePipelineHookSpec(spec));
+	registerPipelineHook(
+		...args: Parameters<RuntimePipelineHooks["registerPipelineHook"]>
+	): ReturnType<RuntimePipelineHooks["registerPipelineHook"]> {
+		return this.pipelineHooks.registerPipelineHook(...args);
 	}
-
-	unregisterPipelineHook(id: string): void {
-		const idx = this.pipelineHookIdToIndex.get(id);
-		if (idx === undefined) {
-			return;
-		}
-		this.pipelineHooksByPhase.clear();
-		this.pipelineHookEntries.splice(idx, 1);
-		this.pipelineHookIdToIndex.clear();
-		for (let i = 0; i < this.pipelineHookEntries.length; i++) {
-			const e = this.pipelineHookEntries[i];
-			this.pipelineHookIdToIndex.set(e.id, i);
-		}
+	unregisterPipelineHook(
+		...args: Parameters<RuntimePipelineHooks["unregisterPipelineHook"]>
+	): ReturnType<RuntimePipelineHooks["unregisterPipelineHook"]> {
+		return this.pipelineHooks.unregisterPipelineHook(...args);
 	}
-
-	/**
-	 * Run pipeline hooks for a phase (skip metadata, ordering, and outgoing sanitize + redact).
-	 * @param pipelineHookTelemetry When false, skips debug logs / `PIPELINE_HOOK_METRIC` per hook
-	 * (still logs warn/error for slow hooks). Defaults to false for `model_stream_chunk` only.
-	 */
-	async applyPipelineHooks(
-		phase: PipelineHookPhase,
-		ctx: PipelineHookContext,
-		pipelineHookTelemetry?: boolean,
-	): Promise<void> {
-		if (ctx.phase !== phase) {
-			throw new Error(
-				`applyPipelineHooks: phase mismatch (expected ${phase}, ctx.phase=${ctx.phase})`,
-			);
-		}
-
-		const hookTelemetry =
-			pipelineHookTelemetry !== undefined
-				? pipelineHookTelemetry
-				: phase !== "model_stream_chunk";
-
-		const hasHooks = this.hooksForPhase(phase).length > 0;
-
-		switch (phase) {
-			case "incoming_before_compose": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "incoming_before_compose" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipIncomingMessageHooks === true) {
-					return;
-				}
-				const messageId = c.message.id;
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Incoming pipeline hook",
-					hookTelemetry,
-				);
-				if (messageId) {
-					this.stateCache.delete(messageId);
-					this.stateCache.delete(`${messageId}_action_results`);
-				}
-				return;
-			}
-			case "compose_state_providers": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "compose_state_providers" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipComposeStateProviderHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Compose-state provider pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "pre_should_respond": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "pre_should_respond" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipPreShouldRespondHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Pre-should-respond pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "parallel_with_should_respond": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "parallel_with_should_respond" }
-				>;
-				const md = c.message.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipParallelWithShouldRespondHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"Parallel should-respond pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "outgoing_before_deliver": {
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "outgoing_before_deliver" }
-				>;
-				if (hasHooks) {
-					await this.invokePipelineHooks(
-						phase,
-						c,
-						"Outgoing pipeline hook",
-						hookTelemetry,
-					);
-				}
-				// Mandatory outbound hygiene, hooks or none: strip leaked model
-				// machine syntax (#15888), redact secrets, then fail-closed block
-				// any security-envelope echo. Runs before the content is
-				// persisted, so stored outbound memories carry the same text the
-				// connector delivers.
-				c.content.text = guardOutboundEnvelopeText(
-					this,
-					this.redactSecrets(
-						sanitizeOutboundText(coerceOutgoingMessageText(c.content.text)),
-					),
-					"outgoing_before_deliver",
-				);
-				return;
-			}
-			case "pre_model":
-			case "post_model": {
-				if (!hasHooks) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					ctx as Extract<
-						PipelineHookContext,
-						{ phase: "pre_model" | "post_model" }
-					>,
-					phase === "pre_model"
-						? "Pre-model pipeline hook"
-						: "Post-model pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "after_memory_persisted": {
-				if (!hasHooks) {
-					return;
-				}
-				const c = ctx as Extract<
-					PipelineHookContext,
-					{ phase: "after_memory_persisted" }
-				>;
-				const md = c.memory.content.metadata;
-				const meta =
-					typeof md === "object" && md !== null
-						? (md as Record<string, unknown>)
-						: null;
-				if (meta?.skipAfterMemoryPersistedHooks === true) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					c,
-					"After-memory-persisted pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			case "model_stream_chunk":
-			case "model_stream_end": {
-				if (!hasHooks) {
-					return;
-				}
-				await this.invokePipelineHooks(
-					phase,
-					ctx as Extract<
-						PipelineHookContext,
-						{ phase: "model_stream_chunk" | "model_stream_end" }
-					>,
-					phase === "model_stream_chunk"
-						? "Model stream chunk pipeline hook"
-						: "Model stream end pipeline hook",
-					hookTelemetry,
-				);
-				return;
-			}
-			default: {
-				throw new Error(`Unknown pipeline hook phase: ${String(phase)}`);
-			}
-		}
+	applyPipelineHooks(
+		...args: Parameters<RuntimePipelineHooks["applyPipelineHooks"]>
+	): ReturnType<RuntimePipelineHooks["applyPipelineHooks"]> {
+		return this.pipelineHooks.applyPipelineHooks(...args);
 	}
 
 	async registerPlugin(plugin: Plugin): Promise<void> {
@@ -2642,7 +1317,10 @@ export class AgentRuntime implements IAgentRuntime {
 			// snapshot, otherwise the first declaration can fail before a later
 			// implementation of the same service type is visible.
 			for (const serviceType of serviceTypesToStart) {
-				void this.startServiceEagerly(serviceType, pluginToRegister.name);
+				void this.serviceLifecycle.startServiceEagerly(
+					serviceType,
+					pluginToRegister.name,
+				);
 			}
 		}
 		if (pluginToRegister.adapter) {
@@ -2921,11 +1599,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// its provider work — no caller retains the controller — so clearing
 		// alone would strand in-flight provider calls past teardown with nothing
 		// left able to cancel them.
-		for (const execution of this.providerExecutionsActive) {
-			execution.controller.abort(new Error("Runtime stopped"));
-		}
-		this.providerExecutionsActive.clear();
-		this.providerExecutionsInFlight.clear();
+		this.providerState.stop();
 		this.roomReadMemo.invalidate();
 		this.roomMessagesMemo.invalidate();
 		this.servicePromises.clear();
@@ -2936,40 +1610,16 @@ export class AgentRuntime implements IAgentRuntime {
 		this.failedServiceClasses.clear();
 	}
 
-	private async _stopServiceInstance(
+	private _stopServiceInstance(
 		serviceType: string,
 		service: Service | null | undefined,
 		reason: string,
 	): Promise<void> {
-		const maybe = service as { stop?: () => Promise<void> | void } | null;
-		if (maybe && typeof maybe.stop === "function") {
-			try {
-				await Promise.resolve().then(() => maybe.stop?.());
-			} catch (err) {
-				// error-policy:J6 Service shutdown is best-effort so every
-				// registered service receives its teardown opportunity.
-				this.logger.warn(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						serviceType,
-						reason,
-						error: err instanceof Error ? err.message : String(err),
-					},
-					"Service stop() threw; continuing",
-				);
-			}
-		} else if (!maybe) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, serviceType, reason },
-				"Null service instance during stop; skipping",
-			);
-		} else {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, serviceType, reason },
-				"Service instance is missing stop(); skipping",
-			);
-		}
+		return this.serviceLifecycle._stopServiceInstance(
+			serviceType,
+			service,
+			reason,
+		);
 	}
 
 	/**
@@ -3881,121 +2531,31 @@ export class AgentRuntime implements IAgentRuntime {
 	getPromptOptimizationHooks(): PromptOptimizationRuntimeHooks | null {
 		return this.promptOptimizationHooks;
 	}
-
 	resolveProviderModelString(
 		resolvedModelType: string,
 		optionsModel?: string,
 		effectiveModelId?: string,
 	): string {
-		if (effectiveModelId) return effectiveModelId;
-		if (optionsModel) return optionsModel;
-
-		const slotToSetting: Record<string, string> = {
-			TEXT_NANO: "NANO_MODEL",
-			TEXT_MINI: "MINI_MODEL",
-			TEXT_SMALL: "SMALL_MODEL",
-			TEXT_LARGE: "LARGE_MODEL",
-			TEXT_MEGA: "MEGA_MODEL",
-			RESPONSE_HANDLER: "RESPONSE_HANDLER_MODEL",
-			ACTION_PLANNER: "ACTION_PLANNER_MODEL",
-			REASONING_SMALL: "REASONING_SMALL_MODEL",
-			REASONING_LARGE: "REASONING_LARGE_MODEL",
-			TEXT_COMPLETION: "COMPLETION_MODEL",
-		};
-
-		const providerPrefixes = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
-		for (const candidate of getModelFallbackChain(
-			resolvedModelType as ModelTypeName,
-		)) {
-			const settingKey = slotToSetting[candidate];
-			if (!settingKey) continue;
-			for (const prefix of providerPrefixes) {
-				const val = this.getSetting(`${prefix}${settingKey}`);
-				if (typeof val === "string" && val) return val;
-			}
-		}
-
-		return resolvedModelType;
+		return this.structuredPrompts.resolveProviderModelString(
+			resolvedModelType,
+			optionsModel,
+			effectiveModelId,
+		);
 	}
-
 	enrichTrace(runId: string, signal: ScoreSignal): void {
-		const traceIds = this.runToTraces.get(runId);
-		if (!traceIds) return;
-
-		const targetTraceId = (signal as { traceId?: string }).traceId;
-
-		for (const tid of traceIds) {
-			if (targetTraceId && tid !== targetTraceId) continue;
-
-			const trace = this.activeTraces.get(tid);
-			if (!trace) continue;
-			trace.scoreCard.signals.push(signal);
-			const card = ScoreCard.fromJSON(trace.scoreCard);
-			trace.scoreCard.compositeScore = card.composite();
-			trace.enrichedAt = Date.now();
-		}
+		this.promptTraces.enrichTrace(runId, signal);
 	}
-
 	getActiveTrace(runId: string): ExecutionTrace | undefined {
-		const traceIds = this.runToTraces.get(runId);
-		if (!traceIds) return undefined;
-		let latest: ExecutionTrace | undefined;
-		for (const tid of traceIds) {
-			const t = this.activeTraces.get(tid);
-			if (t) latest = t;
-		}
-		return latest;
+		return this.promptTraces.getActiveTrace(runId);
 	}
-
 	getActiveTracesForRun(runId: string): ExecutionTrace[] {
-		const traceIds = this.runToTraces.get(runId);
-		if (!traceIds) return [];
-		const traces: ExecutionTrace[] = [];
-		for (const tid of traceIds) {
-			const t = this.activeTraces.get(tid);
-			if (t) traces.push(t);
-		}
-		return traces;
+		return this.promptTraces.getActiveTracesForRun(runId);
 	}
-
 	deleteActiveTrace(runId: string): void {
-		const traceIds = this.runToTraces.get(runId);
-		if (traceIds) {
-			for (const tid of traceIds) {
-				this.activeTraces.delete(tid);
-			}
-			this.runToTraces.delete(runId);
-		}
+		this.promptTraces.deleteActiveTrace(runId);
 	}
-
 	deleteActiveTraceById(traceId: string): void {
-		this.activeTraces.delete(traceId);
-		for (const [rid, tids] of this.runToTraces) {
-			if (tids.delete(traceId) && tids.size === 0) {
-				this.runToTraces.delete(rid);
-			}
-		}
-	}
-
-	private static readonly ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
-	private activeTraceTtlPurgeCounter = 0;
-
-	private purgeStaleActiveTraces(): void {
-		const now = Date.now();
-		const ttl = AgentRuntime.ACTIVE_TRACE_TTL_MS;
-		for (const [id, t] of this.activeTraces) {
-			if (now - t.createdAt <= ttl) continue;
-			this.activeTraces.delete(id);
-			for (const [rid, tids] of this.runToTraces) {
-				tids.delete(id);
-				if (tids.size === 0) this.runToTraces.delete(rid);
-			}
-		}
-	}
-
-	private maybeRunActiveTraceTTLPurge(): void {
-		if (++this.activeTraceTtlPurgeCounter % 100 !== 0) return;
-		this.purgeStaleActiveTraces();
+		this.promptTraces.deleteActiveTraceById(traceId);
 	}
 
 	/**
@@ -5068,985 +3628,26 @@ export class AgentRuntime implements IAgentRuntime {
 			room ? "Room updated" : "Room created",
 		);
 	}
-
-	async composeState(
-		message: Memory,
-		includeList: string[] | null = null,
-		onlyInclude = false,
-		skipCache = false,
-		refreshProviders: string[] | null = null,
-	): Promise<State> {
-		const trajectoryStepIdFromMessage =
-			typeof message.metadata === "object" &&
-			message.metadata !== null &&
-			"trajectoryStepId" in message.metadata
-				? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
-				: undefined;
-		const trajectoryStepId =
-			typeof trajectoryStepIdFromMessage === "string" &&
-			trajectoryStepIdFromMessage.trim() !== ""
-				? trajectoryStepIdFromMessage
-				: getTrajectoryContext()?.trajectoryStepId;
-
-		// Recording is observational: it must neither blank cached state nor force
-		// cached providers to execute again. Reused providers are logged as cache
-		// hits below, so enabling trajectories cannot add latency or change what a
-		// provider observes.
-		const filterList = onlyInclude ? includeList : null;
-		const emptyObj = {
-			values: {},
-			data: {},
-			text: "",
-		} as State;
-		const audienceCacheKey = trustedDeliveryAudienceCacheKey(message);
-		const publicProviderCache = this.publicProviderStateByMessage.get(message);
-		const cachedPublicState =
-			publicProviderCache !== undefined &&
-			publicProviderCache.text === message.content.text
-				? publicProviderCache.state
-				: undefined;
-		const cachedCandidate =
-			skipCache || !message.id
-				? emptyObj
-				: (this.stateCache.get(message.id) ?? cachedPublicState ?? emptyObj);
-		const cachedState =
-			cachedCandidate === emptyObj ||
-			(cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
-				audienceCacheKey &&
-				(cachedCandidate.data as Record<string, unknown>).__roomId ===
-					message.roomId)
-				? cachedCandidate
-				: emptyObj;
-		const activeContexts = getActiveRoutingContextsForTurn(
-			cachedState,
-			message,
-		);
-		const providerNames = new Set<string>();
-		if (filterList && filterList.length > 0) {
-			// The onlyInclude path honors the explicit name list without enforcing
-			// provider roleGates: the Stage-1 response state deliberately
-			// force-includes recall providers like FACTS for every sender, and
-			// unassigned senders (ordinary humans AND relay/webhook bridges
-			// carrying human conversation) resolve to GUEST by default (roles.ts
-			// getEntityRole), so gate enforcement here would silently strip
-			// cross-turn recall from exactly the turns that need it. Callers that
-			// name a provider explicitly own that inclusion decision.
-			for (const name of filterList) {
-				providerNames.add(name);
-			}
-		} else {
-			for (const p of this.providers.filter((p) => !p.private && !p.dynamic)) {
-				if (
-					activeContexts.length > 0 &&
-					!shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
-				) {
-					continue;
-				}
-				providerNames.add(p.name);
-			}
-		}
-		if (!filterList && includeList && includeList.length > 0) {
-			for (const name of includeList) {
-				providerNames.add(name);
-			}
-		}
-		// Opt-in provider-selection hook: lets a host app filter, extend, or
-		// reorder the provider set per message intent before any provider runs.
-		// Guarded so the default (no-hook) path stays allocation-free.
-		if (this.hooksForPhase("compose_state_providers").length > 0) {
-			const selection = composeStateProvidersPipelineHookContext({
-				message,
-				providers: { current: [...providerNames] },
-				activeContexts,
-				onlyInclude,
-				includeList,
-			});
-			await this.applyPipelineHooks("compose_state_providers", selection);
-			// Boundary validation: a buggy hook may replace `current` with a
-			// non-array (or throw mid-mutation). Only adopt a well-formed list;
-			// otherwise keep the pre-hook selection rather than crash the turn.
-			const selected = selection.providers.current;
-			if (Array.isArray(selected)) {
-				providerNames.clear();
-				for (const name of selected) {
-					if (typeof name === "string" && name.length > 0) {
-						providerNames.add(name);
-					}
-				}
-			} else {
-				this.logger.warn(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						phase: "compose_state_providers",
-					},
-					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
-				);
-			}
-		}
-		const providersToGet: Provider[] = [];
-		const deniedSensitiveProviderNames = new Set<string>();
-		let ownerDisclosureDecision:
-			| Awaited<ReturnType<typeof authorizeOwnerExclusiveDisclosure>>
-			| undefined;
-		let containsSensitiveProvider = false;
-		for (const provider of this.providers) {
-			if (!providerNames.has(provider.name)) {
-				continue;
-			}
-			if (provider.disclosureGate?.require === "owner_exclusive") {
-				ownerDisclosureDecision ??= await authorizeOwnerExclusiveDisclosure(
-					this,
-					message,
-				);
-				if (!ownerDisclosureDecision.allowed) {
-					deniedSensitiveProviderNames.add(provider.name);
-					this.logger.info(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							provider: provider.name,
-							reason: ownerDisclosureDecision.reason,
-						},
-						"Owner-private provider denied for untrusted delivery audience",
-					);
-					continue;
-				}
-				containsSensitiveProvider = true;
-			}
-			providersToGet.push(provider);
-		}
-		providersToGet.sort(
-			(a, b) =>
-				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
-		);
-
-		// `refreshProviders` lets a caller reuse cached provider results and re-run
-		// only the named providers, plus providers not yet cached for this
-		// message. An empty array requests maximum reuse. `null` preserves the
-		// explicit full-recompose behavior used by callers that need a fresh view.
-		// Trajectory recording logs reused entries as cache hits instead of
-		// changing execution behavior.
-		const refreshSet =
-			refreshProviders !== null ? new Set(refreshProviders) : null;
-		const cachedProviderNames = refreshSet
-			? new Set(
-					Object.keys(
-						(cachedState.data.providers as
-							| Record<string, unknown>
-							| undefined) ?? {},
-					),
-				)
-			: null;
-		const providersToRun = refreshSet
-			? providersToGet.filter(
-					(p) =>
-						p.disclosureGate?.require === "owner_exclusive" ||
-						refreshSet.has(p.name) ||
-						!cachedProviderNames?.has(p.name),
-				)
-			: providersToGet;
-		const providersToRunNames = new Set(providersToRun.map((p) => p.name));
-		const reusedProviders = providersToGet.filter(
-			(provider) => !providersToRunNames.has(provider.name),
-		);
-
-		// Optional trajectory logging service; absent unless configured.
-		let trajLogger: (Service & TrajectoryProviderAccessLogger) | null;
-		try {
-			trajLogger = (await this._ensureServiceStarted("trajectories")) as
-				| (Service & TrajectoryProviderAccessLogger)
-				| null;
-		} catch (error) {
-			// error-policy:J7 diagnostics-must-not-kill-the-loop — a trajectory
-			// logger that fails to start must never abort composeState; continue
-			// without provider-access logging. Surfaced via reportError.
-			this.reportError("AgentRuntime.composeState.trajectories", error, {
-				serviceType: "trajectories",
-			});
-			trajLogger = null;
-		}
-		const composeStartedAt = Date.now();
-		// The host installs its merged request/room owner in streaming context.
-		// Prefer that composite signal over the raw room controller so a client
-		// disconnect remains observable while a room turn is active.
-		const providerSignal =
-			getStreamingContext()?.abortSignal ??
-			this.turnControllers.signalFor(message.roomId) ??
-			undefined;
-		const providerData: ProviderExecutionRecord[] = await Promise.all(
-			providersToRun.map(async (provider) => {
-				const providerRuntime: IAgentRuntime = this;
-				const inFlightKey =
-					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${message.roomId}\u0000${provider.name}\u0000${
-								provider.disclosureGate?.require === "owner_exclusive"
-									? trustedDeliveryAudienceCacheKey(message)
-									: "public"
-							}`
-						: null;
-				let execution =
-					inFlightKey !== null
-						? this.providerExecutionsInFlight.get(inFlightKey)
-						: undefined;
-				const providerCoalesced = execution !== undefined;
-				if (!execution) {
-					const startedAt = Date.now();
-					const startedAtMonotonic = performance.now();
-					const callerStreamingContext = getStreamingContext();
-					// The work is deliberately NOT wired to this caller's signal:
-					// coalesced waiters each race the shared promise against their own
-					// signal in awaitProviderExecution, and the dedicated controller
-					// aborts the provider only when no interested caller remains.
-					const workController = new AbortController();
-					const promise = runProviderExecution(
-						() =>
-							runWithStreamingContext(
-								{
-									// A caller without its own streaming context contributes
-									// no chunk consumer, so the scope stays cancellation-only
-									// and provider-internal useModel calls remain off the
-									// streaming path.
-									...callerStreamingContext,
-									// Nested useModel calls read cancellation from this
-									// scope. They belong to the shared execution, not to
-									// whichever caller happened to create it.
-									abortSignal: workController.signal,
-								},
-								() =>
-									runWithSuppressedModelStream(() =>
-										withProviderStep(providerRuntime, provider.name, () =>
-											provider.get(providerRuntime, message, cachedState, {
-												signal: workController.signal,
-											}),
-										),
-									),
-							),
-						workController.signal,
-					);
-					execution = {
-						promise,
-						controller: workController,
-						waiters: 0,
-						startedAt,
-						startedAtMonotonic,
-					};
-					this.providerExecutionsActive.add(execution);
-					if (this.stopRequested) {
-						workController.abort(new Error("Runtime stopped"));
-					}
-					if (inFlightKey !== null) {
-						this.providerExecutionsInFlight.set(inFlightKey, execution);
-					}
-				}
-				// Hoisted so BOTH the owner path (the `execution` just created
-				// above) and the coalesced path (the `execution` fetched from the
-				// map before this `if`) can evict the SAME map entry the moment it
-				// stops being viable, rather than waiting for `promise` to unwind.
-				// Identity-checked against the specific execution this call
-				// attached to, so a later execution occupying the same key is
-				// never evicted by a stale caller; idempotent so calling it
-				// synchronously from awaitProviderExecution's abort path AND again
-				// from `promise.then(evict, evict)` below is harmless.
-				const attachedExecution = execution;
-				const evict =
-					inFlightKey !== null
-						? () => {
-								if (
-									this.providerExecutionsInFlight.get(inFlightKey) ===
-									attachedExecution
-								) {
-									this.providerExecutionsInFlight.delete(inFlightKey);
-								}
-							}
-						: () => {};
-				if (!providerCoalesced) {
-					const releaseExecution = () => {
-						this.providerExecutionsActive.delete(attachedExecution);
-						evict();
-					};
-					void attachedExecution.promise.then(
-						releaseExecution,
-						releaseExecution,
-					);
-				}
-				try {
-					const result = await awaitProviderExecution(
-						execution,
-						providerSignal,
-						evict,
-					);
-					const endedAt = Date.now();
-					const duration = performance.now() - execution.startedAtMonotonic;
-					recordInferenceSpan(`provider:${provider.name}`, duration, {
-						outcome: "success",
-						coalesced: providerCoalesced,
-					});
-
-					return {
-						...result,
-						providerName: provider.name,
-						providerStartedAt: execution.startedAt,
-						providerEndedAt: endedAt,
-						providerDurationMs: duration,
-						providerOutcome: "success",
-						providerCoalesced,
-					};
-				} catch (cause) {
-					const endedAt = Date.now();
-					const duration = performance.now() - execution.startedAtMonotonic;
-					const outcome: ProviderExecutionOutcome = providerCancellationReason(
-						providerSignal,
-						execution.controller.signal,
-						cause,
-					)
-						? "aborted"
-						: "error";
-					const code =
-						outcome === "aborted"
-							? "PROVIDER_COMPOSITION_ABORTED"
-							: "PROVIDER_COMPOSITION_FAILED";
-					const error = new ElizaError(
-						`Provider "${provider.name}" ${
-							outcome === "aborted" ? "was aborted" : "failed"
-						} during state composition`,
-						{
-							code,
-							cause,
-							severity: "ephemeral",
-							context: {
-								provider: provider.name,
-								durationMs: duration,
-								roomId: message.roomId,
-								messageId: message.id,
-								outcome,
-							},
-						},
-					);
-					recordInferenceSpan(`provider:${provider.name}`, duration, {
-						outcome,
-						errorCode: code,
-						coalesced: providerCoalesced,
-					});
-					this.reportError("AgentRuntime.composeState.provider", error);
-					return {
-						providerName: provider.name,
-						providerStartedAt: execution.startedAt,
-						providerEndedAt: endedAt,
-						providerDurationMs: duration,
-						providerOutcome: outcome,
-						providerCoalesced,
-						providerError: error,
-					};
-				}
-			}),
-		);
-		const providerOverlaps = calculateProviderOverlaps(providerData);
-		const failedProviderData = providerData.filter(
-			(record) => record.providerError !== undefined,
-		);
-		for (const provider of reusedProviders) {
-			const cached = (
-				cachedState.data.providers as
-					| Record<string, CachedProviderResult>
-					| undefined
-			)?.[provider.name];
-			recordInferenceSpan(`provider-cache:${provider.name}`, 0, {
-				cacheHit: true,
-				...(typeof cached?.providerDurationMs === "number"
-					? { sourceDurationMs: cached.providerDurationMs }
-					: {}),
-			});
-		}
-		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
-			providers: providersToRun.length,
-			reused: providersToGet.length - providersToRun.length,
-			failed: failedProviderData.length,
-		});
-
-		const currentProviderResults: Record<string, CachedProviderResult> = {
-			...(cachedState.data.providers as
-				| Record<string, CachedProviderResult>
-				| undefined),
-		};
-		for (const provider of this.providers) {
-			if (
-				provider.disclosureGate?.require === "owner_exclusive" ||
-				deniedSensitiveProviderNames.has(provider.name)
-			) {
-				delete currentProviderResults[provider.name];
-			}
-		}
-		for (const freshResult of providerData) {
-			if (freshResult.providerError) continue;
-			// Redact secrets from individual provider text results
-			const redactedText = freshResult.text
-				? this.redactSecrets(freshResult.text)
-				: freshResult.text;
-			currentProviderResults[freshResult.providerName] = {
-				...freshResult,
-				text: redactedText,
-				values:
-					freshResult.values && typeof freshResult.values === "object"
-						? Object.fromEntries(
-								Object.entries(freshResult.values).filter(
-									([, value]) => value !== undefined,
-								),
-							)
-						: undefined,
-			};
-		}
-		const orderedTexts: string[] = [];
-		for (const provider of providersToGet) {
-			const result = currentProviderResults[provider.name];
-			if (
-				result?.text &&
-				typeof result.text === "string" &&
-				result.text.trim() !== ""
-			) {
-				orderedTexts.push(result.text);
-			}
-		}
-		// Denial UX: when the disclosure gate suppressed owner-private providers
-		// or actions this turn, the model sees an explicit notice instead of a
-		// silently thinner toolset — otherwise it fabricates either the missing
-		// data or a permanent inability. Suppressions are recorded by the gate
-		// itself (security/trusted-delivery-audience.ts), so this covers both
-		// the provider drop above and action-gate drops during selection.
-		const suppressionNote = ownerExclusiveSuppressionNote(message);
-		if (suppressionNote) {
-			orderedTexts.push(suppressionNote);
-		}
-		// Redact any secrets from provider context before use
-		const rawProvidersText = orderedTexts.join("\n");
-		const providersText = this.redactSecrets(rawProvidersText);
-		const providerOrderNames = providersToGet.map((provider) => provider.name);
-		const attributionState = {
-			values: {},
-			data: {
-				providerOrder: providerOrderNames,
-				providers: currentProviderResults,
-			},
-			text: providersText,
-		} as State;
-		// Spans against `providersText` are composition-local only. Model-call
-		// writers rebind from `providerAttributionState` against the exact
-		// recorded messages/prompt; do not treat these offsets as model-prompt
-		// indices.
-		const providerAttribution = buildProviderAttributionsFromState({
-			state: attributionState,
-			prompt: providersText,
-		});
-		const providerAttributionByName = new Map(
-			providerAttribution.providerAttributions.map((entry) => [
-				entry.providerName,
-				entry,
-			]),
-		);
-		const activeTrajectoryContext = getTrajectoryContext();
-		if (activeTrajectoryContext) {
-			activeTrajectoryContext.providerOrder = providerAttribution.providerOrder;
-			activeTrajectoryContext.providerAttributions =
-				providerAttribution.providerAttributions;
-			activeTrajectoryContext.providerAttributionState = attributionState;
-		}
-		if (trajectoryStepId && trajLogger) {
-			const userText =
-				typeof message.content.text === "string" ? message.content.text : "";
-			const trajCtx = activeTrajectoryContext;
-			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
-			for (const [providerIndex, r] of providerData.entries()) {
-				try {
-					const overlapsWith = providerOverlaps[providerIndex];
-					if (!overlapsWith) {
-						throw new Error(
-							`Missing provider overlap row at index ${providerIndex}`,
-						);
-					}
-					const redactedText =
-						currentProviderResults[r.providerName]?.text ?? "";
-					const attribution = providerAttributionByName.get(r.providerName);
-					trajLogger.logProviderAccess({
-						stepId: trajectoryStepId,
-						providerName: r.providerName,
-						startedAt: r.providerStartedAt,
-						endedAt: r.providerEndedAt,
-						durationMs: r.providerDurationMs,
-						overlapsWith,
-						data: {
-							textLength: redactedText.length,
-							outcome: r.providerOutcome,
-							coalesced: r.providerCoalesced,
-							cacheHit: false,
-							...(r.providerError ? { errorCode: r.providerError.code } : {}),
-						},
-						sha256: attribution?.sha256,
-						tokenCount: attribution?.tokenCount,
-						position: attribution?.position,
-						// Spans index providersText, which is not persisted on the
-						// access row — omit them so readers do not slice a different
-						// string with compose-local offsets.
-						purpose: "compose_state",
-						query: { message: toWellFormedUnicode(userText) },
-						runId: trajCtx?.runId,
-						roomId: trajCtx?.roomId,
-						messageId: trajCtx?.messageId,
-						executionTraceId: providerTraceId,
-					});
-				} catch (error) {
-					// error-policy:J7 trajectory diagnostics must not replace the
-					// provider result or kill the message loop.
-					this.reportError(
-						"AgentRuntime.composeState.providerTrajectory",
-						error,
-						{
-							provider: r.providerName,
-							messageId: message.id,
-						},
-					);
-				}
-			}
-			for (const provider of reusedProviders) {
-				try {
-					const cached = currentProviderResults[provider.name];
-					const attribution = providerAttributionByName.get(provider.name);
-					trajLogger.logProviderAccess({
-						stepId: trajectoryStepId,
-						providerName: provider.name,
-						startedAt: composeStartedAt,
-						endedAt: composeStartedAt,
-						durationMs: 0,
-						overlapsWith: [],
-						data: {
-							textLength:
-								typeof cached?.text === "string" ? cached.text.length : 0,
-							outcome: cached?.providerOutcome ?? "success",
-							coalesced: false,
-							cacheHit: true,
-							...(typeof cached?.providerDurationMs === "number"
-								? { sourceDurationMs: cached.providerDurationMs }
-								: {}),
-						},
-						sha256: attribution?.sha256,
-						tokenCount: attribution?.tokenCount,
-						position: attribution?.position,
-						purpose: "compose_state",
-						query: { message: toWellFormedUnicode(userText) },
-						runId: trajCtx?.runId,
-						roomId: trajCtx?.roomId,
-						messageId: trajCtx?.messageId,
-						executionTraceId: providerTraceId,
-					});
-				} catch (error) {
-					// error-policy:J7 trajectory diagnostics must not replace the
-					// cached provider result or kill the message loop.
-					this.reportError(
-						"AgentRuntime.composeState.cachedProviderTrajectory",
-						error,
-						{
-							provider: provider.name,
-							messageId: message.id,
-						},
-					);
-				}
-			}
-		}
-		// A designed turn abort (threadOps abort op, user "stop", client
-		// disconnect) owns the whole composition, including the post-provider
-		// assembly window. Surface that owner cancellation even when every provider
-		// already settled; provider-originated failures were reported above and are
-		// not misclassified as aborts merely because their Error name resembles one.
-		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
-		if (failedProviderData.length === 1) {
-			const failedProvider = failedProviderData[0];
-			if (failedProvider?.providerError) {
-				throw failedProvider.providerError;
-			}
-		}
-		if (failedProviderData.length > 1) {
-			// error-policy:J2 preserve every provider failure behind one
-			// state-composition error so callers receive the complete cause chain.
-			throw new ElizaError(
-				`State composition failed in ${failedProviderData.length} providers`,
-				{
-					code: "STATE_COMPOSITION_PROVIDER_FAILURES",
-					cause: new AggregateError(
-						failedProviderData.flatMap((record) =>
-							record.providerError ? [record.providerError] : [],
-						),
-					),
-					severity: "ephemeral",
-					context: {
-						providers: failedProviderData.map((record) => record.providerName),
-						messageId: message.id,
-						roomId: message.roomId,
-					},
-				},
-			);
-		}
-		if (containsSensitiveProvider) {
-			const disclosure = await revalidateOwnerExclusiveDisclosure(
-				this,
-				message,
-			);
-			if (!disclosure.allowed) {
-				throw new ElizaError(PRIVACY_DENIED_TEXT, {
-					code: "OWNER_PRIVATE_AUDIENCE_CHANGED",
-					severity: "ephemeral",
-					context: {
-						messageId: message.id,
-						roomId: message.roomId,
-						reason: disclosure.reason,
-					},
-				});
-			}
-		}
-		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
-		const conversationSeed = buildDeterministicSeed(
-			this.agentId,
-			message.roomId,
-			"conversation",
-		);
-		const aggregatedStateValues: Record<string, StateValue> = {
-			...cachedState.values,
-		};
-		for (const provider of providersToGet) {
-			const providerResult = currentProviderResults[provider.name];
-			if (
-				providerResult?.values &&
-				typeof providerResult.values === "object" &&
-				providerResult.values !== null
-			) {
-				Object.assign(aggregatedStateValues, providerResult.values);
-			}
-		}
-		const providersToGetNames = new Set(providersToGet.map((p) => p.name));
-		for (const providerName in currentProviderResults) {
-			if (!providersToGetNames.has(providerName)) {
-				const providerResult = currentProviderResults[providerName];
-				if (
-					providerResult?.values &&
-					typeof providerResult.values === "object" &&
-					providerResult.values !== null
-				) {
-					Object.assign(aggregatedStateValues, providerResult.values);
-				}
-			}
-		}
-		const newState = {
-			values: {
-				...aggregatedStateValues,
-				__conversationSeed: conversationSeed,
-				providers: providersText,
-			},
-			data: {
-				...cachedState.data,
-				__roomId: message.roomId,
-				__conversationSeed: conversationSeed,
-				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
-				providerOrder: providerOrderNames,
-				providers: currentProviderResults,
-			},
-			text: providersText,
-		} as State;
-		// Provider values can be lazily materialized while assembling the state;
-		// recheck at the mutation boundary so a cancellation in that window cannot
-		// populate either the normal cache or the audience-scoped public cache.
-		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
-		if (message.id && !containsSensitiveProvider) {
-			this.publicProviderStateByMessage.delete(message);
-			this.stateCache.set(message.id, newState);
-			// Evict oldest entries beyond the cap. The just-set entry and recent
-			// in-flight turns are kept; only stale messages drop out.
-			while (this.stateCache.size > STATE_CACHE_LIMIT) {
-				const oldest = this.stateCache.keys().next().value;
-				if (oldest === undefined) {
-					break;
-				}
-				this.stateCache.delete(oldest);
-			}
-		} else if (message.id) {
-			const publicProviders = providersToGet.filter(
-				(provider) => provider.disclosureGate?.require !== "owner_exclusive",
-			);
-			const publicProviderResults = Object.fromEntries(
-				publicProviders.flatMap((provider) => {
-					const result = currentProviderResults[provider.name];
-					return result ? [[provider.name, result]] : [];
-				}),
-			) as Record<string, CachedProviderResult>;
-			const publicValues: Record<string, StateValue> = {
-				__conversationSeed: conversationSeed,
-			};
-			const publicTexts: string[] = [];
-			for (const provider of publicProviders) {
-				const result = publicProviderResults[provider.name];
-				if (result?.values && typeof result.values === "object") {
-					Object.assign(publicValues, result.values);
-				}
-				if (typeof result?.text === "string" && result.text.trim() !== "") {
-					publicTexts.push(result.text);
-				}
-			}
-			const publicText = this.redactSecrets(publicTexts.join("\n"));
-			// Public projection assembly reads provider-owned values after the full
-			// state guard above. A getter can synchronously cancel the owner in that
-			// window, so guard the actual WeakMap mutation as well.
-			throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
-			this.publicProviderStateByMessage.set(message, {
-				text: message.content.text,
-				state: {
-					values: { ...publicValues, providers: publicText },
-					data: {
-						__roomId: message.roomId,
-						__conversationSeed: conversationSeed,
-						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
-						providerOrder: publicProviders.map((provider) => provider.name),
-						providers: publicProviderResults,
-					},
-					text: publicText,
-				},
-			});
-		}
-		return newState;
+	composeState(
+		...args: Parameters<IAgentRuntime["composeState"]>
+	): ReturnType<IAgentRuntime["composeState"]> {
+		return this.providerState.composeState(...args);
 	}
 
 	/** Starts every pending implementation in parallel and waits for the full set. */
-	/**
-	 * Eager startup for one service type with a bounded retry. Boot starts every
-	 * service at once, so a transient failure (a saturated database pool, a
-	 * dependency still warming) used to mark the type "failed" for the whole
-	 * process lifetime and every later `getService` returned null (live
-	 * 2026-09-05: two services dead after a 5 s pool timeout at boot). Each
-	 * retry re-enters `_ensureServiceStarted`, which re-arms the class start;
-	 * a stop request ends the sequence.
-	 */
-	private async startServiceEagerly(
-		serviceType: ServiceTypeName | string,
-		pluginName: string,
-	): Promise<void> {
-		for (let attempt = 0; ; attempt += 1) {
-			try {
-				await this._ensureServiceStarted(serviceType);
-				return;
-			} catch (err) {
-				// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
-				// reports each failure and service-load callers observe the rejection.
-				const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt];
-				const willRetry =
-					delayMs !== undefined && !this.stopRequested && !this.stopped;
-				this.logger.error(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						plugin: pluginName,
-						serviceType,
-						attempt: attempt + 1,
-						willRetry,
-						error: err instanceof Error ? err.message : String(err),
-					},
-					willRetry ? "Service start failed; retrying" : "Service start failed",
-				);
-				if (!willRetry) return;
-				await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-				if (this.stopRequested || this.stopped) return;
-			}
-		}
-	}
-
-	private async _ensureServiceStarted(
+	private _ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
-		if (this.stopRequested) return null;
-		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
-		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
-		// Fast path: a service that is already registered and running is returned
-		// immediately WITHOUT awaiting initPromise. Callers inside initialize()
-		// (plugin init -> getFilteredActions) would otherwise deadlock on the
-		// still-unresolved init barrier even though the instance is already up.
-		const alreadyRunning = this.services.get(key)?.[0];
-		if (alreadyRunning && this.initResolver) return alreadyRunning;
-		await this.initPromise;
-		if (this.stopRequested) return null;
-		const classes = this.serviceTypes.get(key);
-		if (!classes || classes.length === 0) {
-			return null;
-		}
-		const startedImplementation = classes
-			.map((serviceClass) => this.serviceInstancesByClass.get(serviceClass))
-			.find((service): service is Service => service !== undefined);
-		const starts = classes.map((serviceClass) => {
-			const started = this.serviceInstancesByClass.get(serviceClass);
-			if (started) return Promise.resolve(started);
-			const pending = this.startingServiceClasses.get(serviceClass);
-			if (pending) return pending;
-			if (
-				startedImplementation &&
-				this.failedServiceClasses.has(serviceClass)
-			) {
-				return Promise.resolve(startedImplementation);
-			}
-
-			const start = this._runServiceStart(key, serviceType, serviceClass).then(
-				(service) => {
-					if (!service) {
-						throw new Error(
-							`Service implementation ${serviceClass.name || "<anonymous>"} did not start`,
-						);
-					}
-					this.failedServiceClasses.delete(serviceClass);
-					return service;
-				},
-				(error) => {
-					this.failedServiceClasses.add(serviceClass);
-					throw error;
-				},
-			);
-			this.startingServiceClasses.set(serviceClass, start);
-			void start.then(
-				() => this.startingServiceClasses.delete(serviceClass),
-				() => this.startingServiceClasses.delete(serviceClass),
-			);
-			return start;
-		});
-
-		const settlement = Promise.allSettled(starts);
-		const allStarts = settlement.then((results) => {
-			const firstSuccessful = results.find(
-				(result): result is PromiseFulfilledResult<Service> =>
-					result.status === "fulfilled",
-			)?.value;
-			return firstSuccessful ?? null;
-		});
-		this.startingServices.set(key, allStarts);
-		void allStarts.then(() => {
-			if (this.startingServices.get(key) === allStarts) {
-				this.startingServices.delete(key);
-			}
-		});
-
-		const settled = await settlement;
-		const first = this.services.get(key)?.[0] ?? null;
-		if (first) {
-			this.serviceRegistrationStatus.set(key, "registered");
-			const handler = this.servicePromiseHandlers.get(key);
-			if (handler) {
-				handler.resolve(first);
-				this.servicePromiseHandlers.delete(key);
-			}
-			return first;
-		}
-
-		const cause = new AggregateError(
-			settled.flatMap((result) =>
-				result.status === "rejected" ? [result.reason] : [],
-			),
-			`All implementations of service ${String(serviceType)} failed`,
-		);
-		const startupError = new ElizaError(
-			`Service ${String(serviceType)} not found or failed to start`,
-			{
-				code: "SERVICE_START_FAILED",
-				context: {
-					serviceType: String(serviceType),
-					implementationCount: classes.length,
-				},
-				cause,
-			},
-		);
-		const handler = this.servicePromiseHandlers.get(key);
-		if (handler) {
-			handler.reject(startupError);
-			this.servicePromiseHandlers.delete(key);
-			this.servicePromises.delete(key);
-		}
-		this.serviceRegistrationStatus.set(key, "failed");
-		throw startupError;
+		return this.serviceLifecycle._ensureServiceStarted(serviceType);
 	}
 
 	/** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
-	private async _runServiceStart(
+	private _runServiceStart(
 		key: ServiceTypeName,
 		serviceType: string,
 		serviceDef: ServiceClass,
 	): Promise<Service | null> {
-		if ((this.services.get(key)?.length ?? 0) === 0) {
-			this.serviceRegistrationStatus.set(key, "registering");
-		}
-		if (typeof serviceDef.start !== "function") {
-			this.serviceRegistrationStatus.set(key, "failed");
-			throw new ElizaError("Service class has no static start method", {
-				code: "SERVICE_START_METHOD_MISSING",
-				context: { serviceType },
-			});
-		}
-		try {
-			if (this.stopped || this.stopRequested) {
-				throw new Error(
-					`Runtime stop requested before service ${String(serviceType)} could start`,
-				);
-			}
-			const serviceInstance = await serviceDef.start(this);
-			if (!serviceInstance) {
-				this.serviceRegistrationStatus.set(key, "failed");
-				throw new ElizaError("Service start returned no instance", {
-					code: "SERVICE_START_RESULT_INVALID",
-					context: { serviceType },
-				});
-			}
-			if (this.stopped || this.stopRequested) {
-				await this._stopServiceInstance(
-					key,
-					serviceInstance,
-					"late service start after runtime stop",
-				);
-				throw new Error(
-					`Runtime stop requested while service ${String(serviceType)} was starting`,
-				);
-			}
-			this.serviceInstancesByClass.set(serviceDef, serviceInstance);
-			const orderedInstances = (this.serviceTypes.get(key) ?? []).flatMap(
-				(serviceClass) => {
-					const instance = this.serviceInstancesByClass.get(serviceClass);
-					return instance ? [instance] : [];
-				},
-			);
-			this.services.set(key, orderedInstances);
-			if (serviceDef.registerSendHandlers) {
-				serviceDef.registerSendHandlers(this, serviceInstance);
-			}
-			// Hosts can attach transports to services loaded after API startup.
-			// Observers must use getService(), not await this service's startup
-			// promise (which is still being fulfilled).
-			try {
-				await this.emitEvent(EventType.SERVICE_STARTED, { serviceType });
-			} catch (error) {
-				// A broken observer does not turn a running service into a failed one.
-				this.reportError("AgentRuntime.serviceStartedObserver", error, {
-					serviceType,
-				});
-			}
-			return serviceInstance;
-		} catch (error) {
-			// error-policy:J2 service startup adds service identity and preserves the cause
-			this.reportError("AgentRuntime.serviceStart", error, {
-				serviceType,
-			});
-			const handler = this.servicePromiseHandlers.get(serviceType);
-			if (handler) {
-				handler.reject(
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				this.servicePromiseHandlers.delete(serviceType);
-				this.servicePromises.delete(serviceType);
-			}
-			this.serviceRegistrationStatus.set(key, "failed");
-			throw new ElizaError(`Service ${serviceType} failed to start`, {
-				code: "SERVICE_START_FAILED",
-				cause: error,
-				context: { serviceType },
-			});
-		}
+		return this.serviceLifecycle._runServiceStart(key, serviceType, serviceDef);
 	}
 
 	/** Returns the service instance or null. Synchronous lookup from the services map. */
@@ -6299,46 +3900,13 @@ export class AgentRuntime implements IAgentRuntime {
 		priority?: number,
 		metadata?: ModelRegistrationMetadata,
 	): void {
-		const modelKey = String(modelType);
-		if (this.isCanonicalModelCapabilityDisabled(modelKey)) {
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, modelType: modelKey, provider },
-				"Ignoring model registration for a capability omitted from canonical service routing",
-			);
-			return;
-		}
-		if (!this.models.has(modelKey)) {
-			this.models.set(modelKey, []);
-		}
-
-		const registrationOrder = Date.now();
-		const modelsArray = this.models.get(modelKey);
-		if (modelsArray) {
-			modelsArray.push({
-				handler,
-				metadata,
-				provider,
-				priority: priority || 0,
-				registrationOrder,
-			});
-			modelsArray.sort((a, b) => {
-				if ((b.priority || 0) !== (a.priority || 0)) {
-					return (b.priority || 0) - (a.priority || 0);
-				}
-				return (a.registrationOrder || 0) - (b.registrationOrder || 0);
-			});
-		}
-
-		// Announce the registration so observers (e.g. the local-inference
-		// routing table) can mirror the model registry without patching the
-		// runtime or capturing handlers. Fire-and-forget: a no-op when nothing
-		// is subscribed, and registry bookkeeping must never block boot.
-		void this.emitEvent(EventType.MODEL_REGISTERED, {
-			modelType: modelKey,
-			metadata,
+		this.modelDispatch.registerModel(
+			modelType,
+			handler,
 			provider,
-			priority: priority || 0,
-		});
+			priority,
+			metadata,
+		);
 	}
 
 	/**
@@ -6350,19 +3918,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * {@link EventType.MODEL_REGISTERED} event to stay live.
 	 */
 	getModelRegistrations(): ModelRegistrationInfo[] {
-		const out: ModelRegistrationInfo[] = [];
-		for (const [modelType, handlers] of this.models) {
-			for (const h of handlers) {
-				out.push({
-					modelType,
-					metadata: h.metadata,
-					provider: h.provider,
-					priority: h.priority || 0,
-					registrationOrder: h.registrationOrder || 0,
-				});
-			}
-		}
-		return out;
+		return this.modelDispatch.getModelRegistrations();
 	}
 
 	/**
@@ -6386,9 +3942,7 @@ export class AgentRuntime implements IAgentRuntime {
 		modelTypeKey: string,
 		provider: string | undefined,
 	): void {
-		if (typeof provider === "string" && provider.trim().length > 0) {
-			this.lastResolvedModelProviderByType.set(modelTypeKey, provider);
-		}
+		this.modelDispatch.noteResolvedModelProvider(modelTypeKey, provider);
 	}
 
 	/**
@@ -6402,90 +3956,33 @@ export class AgentRuntime implements IAgentRuntime {
 	getLastResolvedModelProvider(
 		modelType: ModelTypeName | string,
 	): string | undefined {
-		return this.lastResolvedModelProviderByType.get(String(modelType));
+		return this.modelDispatch.getLastResolvedModelProvider(modelType);
 	}
 
 	private resolveTextProviderOverride(): string | undefined {
-		const raw = this.getSetting("ELIZA_BRAIN_PROVIDER");
-		const override = typeof raw === "string" ? raw.trim() : "";
-		if (!override) return undefined;
-		return override;
+		return this.modelDispatch.resolveTextProviderOverride();
 	}
 
 	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
-		return isCanonicalModelCapabilityDisabled(this, modelType);
+		return this.modelDispatch.isCanonicalModelCapabilityDisabled(modelType);
 	}
 
 	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
-		if (!this.isCanonicalModelCapabilityDisabled(modelType)) return;
-		const capability = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
-			? "llmText"
-			: "embeddings";
-		throw new NoModelProviderConfiguredError(
-			`Canonical service routing does not configure the ${capability} capability. Add serviceRouting.${capability} before requesting ${modelType}.`,
-			"capability-disabled",
-		);
+		this.modelDispatch.assertCanonicalModelCapabilityEnabled(modelType);
 	}
 
 	private resolveModelRegistration(
 		modelType: ModelTypeName | string,
 		provider?: string,
 	): ResolvedModelRegistration | undefined {
-		return this.resolveModelRegistrations(modelType, provider)[0];
+		return this.modelDispatch.resolveModelRegistration(modelType, provider);
 	}
 
 	private resolveModelRegistrations(
 		modelType: ModelTypeName | string,
 		provider?: string,
 	): ResolvedModelRegistration[] {
-		const requestedModelKey = String(modelType);
-		if (this.isCanonicalModelCapabilityDisabled(requestedModelKey)) {
-			return [];
-		}
-		const resolvedModels: ResolvedModelRegistration[] = [];
-
-		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
-			const models = this.models.get(candidateKey);
-			if (!models?.length) {
-				continue;
-			}
-
-			const modelWithProvider =
-				provider && models.find((model) => model.provider === provider);
-			const candidateModels = provider
-				? modelWithProvider
-					? [modelWithProvider]
-					: []
-				: models;
-
-			for (const resolvedModel of candidateModels) {
-				if (candidateKey !== requestedModelKey) {
-					this.logger.debug(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							requestedModel: requestedModelKey,
-							resolvedModel: candidateKey,
-							provider: resolvedModel.provider,
-						},
-						"Model fallback applied",
-					);
-				}
-
-				resolvedModels.push({
-					handler: resolvedModel.handler,
-					metadata: resolvedModel.metadata,
-					modelKey: candidateKey,
-					provider: resolvedModel.provider,
-				});
-			}
-
-			if (provider && candidateModels.length > 0) {
-				break;
-			}
-		}
-
-		return resolvedModels;
+		return this.modelDispatch.resolveModelRegistrations(modelType, provider);
 	}
 
 	private logModelProviderFailover(args: {
@@ -6494,46 +3991,18 @@ export class AgentRuntime implements IAgentRuntime {
 		nextModel: ResolvedModelRegistration;
 		error: unknown;
 	}): void {
-		this.logger.warn(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				requestedModel: args.requestedModelKey,
-				failedModel: args.failedModel.modelKey,
-				failedProvider: args.failedModel.provider,
-				nextModel: args.nextModel.modelKey,
-				nextProvider: args.nextModel.provider,
-				error:
-					args.error instanceof Error ? args.error.message : String(args.error),
-			},
-			"Model provider failed; trying next registered provider",
-		);
+		this.modelDispatch.logModelProviderFailover(args);
 	}
 
 	private shouldFailOverModelProvider(
 		error: unknown,
 		modelType: string,
 	): boolean {
-		return isModelProviderFallbackError(error, modelType);
+		return this.modelDispatch.shouldFailOverModelProvider(error, modelType);
 	}
 
 	private throwNoModelHandler(requestedModelKey: string): never {
-		// If the request is for a text-generation model AND no text-generation
-		// handler is registered for ANY of the text model types, this is the
-		// "no LLM provider configured at all" state — surface a typed error
-		// so callers (chat UI, etc.) can render an actionable hint instead of
-		// a generic "No handler found for delegate type" parse-failure message.
-		// Issue: elizaOS/eliza#7203.
-		if (TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)) {
-			const hasAnyTextHandler = TEXT_GENERATION_MODEL_KEYS.some((key) => {
-				const handlers = this.models.get(key);
-				return Array.isArray(handlers) && handlers.length > 0;
-			});
-			if (!hasAnyTextHandler) {
-				throw new NoModelProviderConfiguredError();
-			}
-		}
-		throw new Error(`No handler found for delegate type: ${requestedModelKey}`);
+		return this.modelDispatch.throwNoModelHandler(requestedModelKey);
 	}
 
 	/**
@@ -6551,17 +4020,7 @@ export class AgentRuntime implements IAgentRuntime {
 		error: unknown,
 		failed?: { modelKey: string; provider: string },
 	): never {
-		if (error instanceof Error && error.message.trim().length > 0) {
-			throw error;
-		}
-		const detail = describeModelCallError(error);
-		const provider = failed?.provider ?? "unknown";
-		throw new ElizaError(`Model provider "${provider}" failed: ${detail}`, {
-			code: "MODEL_PROVIDER_FAILED",
-			cause: error,
-			context: { provider: failed?.provider, modelKey: failed?.modelKey },
-			severity: "ephemeral",
-		});
+		return this.modelDispatch.rethrowModelFailoverError(error, failed);
 	}
 
 	getModel(
@@ -6572,26 +4031,7 @@ export class AgentRuntime implements IAgentRuntime {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined {
-		const requestedModelKey = String(modelType);
-		// Keep capability probes aligned with useModel dispatch: once the
-		// embedding dimension probe pins a provider, another provider's BATCH
-		// handler is not usable because it may emit a different vector width.
-		const requestedProvider =
-			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
-				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
-			this.pinnedEmbeddingProvider !== undefined
-				? this.pinnedEmbeddingProvider
-				: undefined;
-		const resolvedModel = this.resolveModelRegistration(
-			requestedModelKey,
-			requestedProvider,
-		);
-		if (!resolvedModel) {
-			return undefined;
-		}
-
-		// Return highest priority handler (first in array after sorting)
-		return resolvedModel.handler;
+		return this.modelDispatch.getModel(modelType);
 	}
 
 	/**
@@ -6608,73 +4048,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private getModelSettings(
 		modelType?: ModelTypeName,
 	): Record<string, number> | null {
-		const modelSettings: Record<string, number> = {};
-
-		// Helper to get a setting value with fallback chain
-		const getSettingWithFallback = (
-			param:
-				| "MAX_TOKENS"
-				| "TEMPERATURE"
-				| "TOP_P"
-				| "TOP_K"
-				| "MIN_P"
-				| "SEED"
-				| "REPETITION_PENALTY"
-				| "FREQUENCY_PENALTY"
-				| "PRESENCE_PENALTY",
-		): number | null => {
-			// Try model-specific setting first
-			if (modelType) {
-				const modelSpecificKey = `${modelType}_${param}`;
-				const modelValue = this.getSetting(modelSpecificKey);
-				if (modelValue !== null && modelValue !== undefined) {
-					const numValue = Number(modelValue);
-					if (!Number.isNaN(numValue)) {
-						return numValue;
-					}
-				}
-			}
-
-			// Fall back to default setting
-			const defaultKey = `DEFAULT_${param}`;
-			const defaultValue = this.getSetting(defaultKey);
-			if (defaultValue !== null && defaultValue !== undefined) {
-				const numValue = Number(defaultValue);
-				if (!Number.isNaN(numValue)) {
-					return numValue;
-				}
-			}
-
-			return null;
-		};
-
-		// Get settings with proper fallback chain
-		const maxTokens = getSettingWithFallback("MAX_TOKENS");
-		const temperature = getSettingWithFallback("TEMPERATURE");
-		const topP = getSettingWithFallback("TOP_P");
-		const topK = getSettingWithFallback("TOP_K");
-		const minP = getSettingWithFallback("MIN_P");
-		const seed = getSettingWithFallback("SEED");
-		const repetitionPenalty = getSettingWithFallback("REPETITION_PENALTY");
-		const frequencyPenalty = getSettingWithFallback("FREQUENCY_PENALTY");
-		const presencePenalty = getSettingWithFallback("PRESENCE_PENALTY");
-
-		// Add settings if they exist
-		if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
-		if (temperature !== null) modelSettings.temperature = temperature;
-		if (topP !== null) modelSettings.topP = topP;
-		if (topK !== null) modelSettings.topK = topK;
-		if (minP !== null) modelSettings.minP = minP;
-		if (seed !== null) modelSettings.seed = seed;
-		if (repetitionPenalty !== null)
-			modelSettings.repetitionPenalty = repetitionPenalty;
-		if (frequencyPenalty !== null)
-			modelSettings.frequencyPenalty = frequencyPenalty;
-		if (presencePenalty !== null)
-			modelSettings.presencePenalty = presencePenalty;
-
-		// Return null if no settings were configured
-		return Object.keys(modelSettings).length > 0 ? modelSettings : null;
+		return this.modelDispatch.getModelSettings(modelType);
 	}
 
 	/**
@@ -6716,31 +4090,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private resolveRegistrationModelName(
 		metadata: ModelRegistrationMetadata | undefined,
 	): string | undefined {
-		if (!metadata) return undefined;
-		if (
-			typeof metadata.displayModel === "string" &&
-			metadata.displayModel.trim()
-		) {
-			return metadata.displayModel.trim();
-		}
-		for (const setting of [
-			...(metadata.displayModelSettings ?? []),
-			metadata.displayModelSetting,
-		]) {
-			if (!setting) continue;
-			const value = resolveSetting(
-				{ getSetting: (key: string) => this.getSetting(key) },
-				setting,
-			);
-			if (value?.trim()) return value.trim();
-		}
-		if (
-			typeof metadata.displayModelDefault === "string" &&
-			metadata.displayModelDefault.trim()
-		) {
-			return metadata.displayModelDefault.trim();
-		}
-		return undefined;
+		return this.modelDispatch.resolveRegistrationModelName(metadata);
 	}
 
 	/**
@@ -6753,88 +4103,14 @@ export class AgentRuntime implements IAgentRuntime {
 		params: unknown,
 		metadata: ModelRegistrationMetadata | undefined,
 	) {
-		const record = isPlainObject(params)
-			? (params as Record<string, unknown>)
-			: {};
-		const contextWindowTokens =
-			typeof metadata?.contextWindowTokens === "number" &&
-			Number.isFinite(metadata.contextWindowTokens)
-				? Math.max(1, Math.floor(metadata.contextWindowTokens))
-				: undefined;
-		const requestedOutputTokens =
-			typeof record.maxTokens === "number" &&
-			Number.isFinite(record.maxTokens) &&
-			record.maxTokens > 0
-				? Math.floor(record.maxTokens)
-				: 0;
-		const requestedModelName =
-			typeof record.model === "string" && record.model.trim()
-				? record.model.trim()
-				: undefined;
-		return buildModelInputBudget({
-			completeRequest: params,
-			messages: Array.isArray(record.messages)
-				? (record.messages as GenerateTextParams["messages"])
-				: undefined,
-			promptSegments: Array.isArray(record.promptSegments)
-				? (record.promptSegments as GenerateTextParams["promptSegments"])
-				: undefined,
-			tools: Array.isArray(record.tools)
-				? (record.tools as GenerateTextParams["tools"])
-				: undefined,
-			system: record.system,
-			prompt: record.prompt,
-			input: record.input,
-			responseSchema: record.responseSchema,
-			responseFormat: record.responseFormat,
-			grammar: record.grammar,
-			responseSkeleton: record.responseSkeleton,
-			prefill: record.prefill,
-			modelName:
-				requestedModelName ??
-				(contextWindowTokens === undefined
-					? this.resolveRegistrationModelName(metadata)
-					: undefined),
-			...(contextWindowTokens ? { contextWindowTokens } : {}),
-			reserveTokens: Math.max(
-				DEFAULT_INPUT_RESERVE_TOKENS,
-				requestedOutputTokens,
-			),
-			estimationMode: "utf8-upper-bound",
-		});
+		return this.modelDispatch.buildFinalModelInputBudget(params, metadata);
 	}
 
 	/** Clone caller-owned request data before runtime transforms. Arrays and
 	 * plain records become handler-owned; opaque transport collaborators retain
 	 * identity because cloning them would change platform semantics. */
 	private cloneModelRequestGraph<T>(value: T): T {
-		const seen = new WeakMap<object, unknown>();
-		const clone = (candidate: unknown): unknown => {
-			if (candidate === null || typeof candidate !== "object") return candidate;
-			const existing = seen.get(candidate);
-			if (existing !== undefined) return existing;
-			if (Array.isArray(candidate)) {
-				const result: unknown[] = [];
-				seen.set(candidate, result);
-				for (const item of candidate) result.push(clone(item));
-				return result;
-			}
-			// A hostile Proxy may trap prototype reflection. Keep such an opaque
-			// value intact here; the descriptor-only secret/PII walkers normalize it
-			// later without consulting its prototype.
-			try {
-				if (!isPlainObject(candidate)) return candidate;
-			} catch {
-				return candidate;
-			}
-			const result: Record<string, unknown> = {};
-			seen.set(candidate, result);
-			for (const [key, nested] of Object.entries(candidate)) {
-				result[key] = clone(nested);
-			}
-			return result;
-		};
-		return clone(value) as T;
+		return this.modelDispatch.cloneModelRequestGraph<T>(value);
 	}
 
 	/** Freeze the complete admitted handler payload so provider code cannot add,
@@ -6842,25 +4118,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * arrays and plain records belong to the request graph; platform objects
 	 * such as AbortSignal remain opaque transport collaborators. */
 	private freezeAdmittedModelRequest(value: unknown): void {
-		const seen = new WeakSet<object>();
-		const visit = (candidate: unknown): void => {
-			if (
-				candidate === null ||
-				(typeof candidate !== "object" && typeof candidate !== "function") ||
-				seen.has(candidate as object)
-			) {
-				return;
-			}
-			if (!Array.isArray(candidate) && !isPlainObject(candidate)) return;
-			seen.add(candidate as object);
-			for (const nested of Object.values(
-				candidate as Record<string, unknown>,
-			)) {
-				visit(nested);
-			}
-			Object.freeze(candidate);
-		};
-		visit(value);
+		this.modelDispatch.freezeAdmittedModelRequest(value);
 	}
 
 	private getFirstUserPromptFromMessages(
@@ -6895,1500 +4153,24 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string | undefined,
 		response: unknown,
 	): void {
-		// Per-turn latency breakdown: attribute this model round-trip to the
-		// active inference timer (no-op when none is active). `elapsedTime` is the
-		// already-measured handler+stream duration, so every return path that
-		// funnels through here is covered exactly once.
-		const resolvedProvider =
-			provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
-		// Surface reasoning-token usage on the successful model span so a
-		// reasoning burst is attributable per call (#16394). Native results
-		// (tool-call shape) carry `.usage`; plain-text results do not, in which
-		// case the field is omitted entirely — missing stays missing, never zero.
-		const spanMeta: InferenceTimingMeta = {
+		this.modelDispatch.logModelCall(
+			modelType,
 			modelKey,
-			provider: resolvedProvider,
-			outcome: "success",
-		};
-		const reasoningTokens = readReasoningTokensFromResponse(response);
-		if (reasoningTokens !== undefined) {
-			spanMeta.reasoningTokens = reasoningTokens;
-		}
-		recordInferenceSpan(`model:${modelType}`, elapsedTime, spanMeta);
-		if (modelType !== ModelType.TEXT_EMBEDDING) {
-			setInferenceModelProvider(resolvedProvider);
-		}
-		// Log to database
-		const responseValue =
-			Array.isArray(response) && response.every((x) => typeof x === "number")
-				? "[array]"
-				: typeof response === "string"
-					? response
-					: undefined;
-		const trajectoryContext = getTrajectoryContext();
-		const logRoomId =
-			(trajectoryContext?.roomId as UUID | undefined) ??
-			this.currentRoomId ??
-			this.agentId;
-		void this.adapter
-			.createLogs([
-				{
-					entityId: this.agentId,
-					roomId: logRoomId,
-					body: {
-						modelType,
-						modelKey,
-						prompt: promptContent ?? undefined,
-						systemPrompt,
-						runId: this.getCurrentRunId(),
-						timestamp: Date.now(),
-						executionTime: elapsedTime,
-						provider:
-							provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
-						response: responseValue,
-					},
-					type: `useModel:${modelKey}`,
-				},
-			])
-			.catch((error) => {
-				// error-policy:J7 Model-call logs are diagnostic; report failed
-				// persistence without altering the completed model response.
-				this.logger.debug(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						model: modelKey,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Model call log write failed",
-				);
-				this.reportError("AgentRuntime.modelCallLog", error, {
-					model: modelKey,
-					diagnosticOnly: true,
-				});
-			});
+			_params,
+			promptContent,
+			systemPrompt,
+			elapsedTime,
+			provider,
+			response,
+		);
 	}
 
-	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+	useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
 		modelType: T,
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
-		const useModelStartedAt = Date.now();
-		this.assertCanonicalModelCapabilityEnabled(String(modelType));
-		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
-			? captureModelLookupCaller()
-			: undefined;
-		// Per-action model routing seam (closes A5 / W1-R2). If the call
-		// originates inside an action handler that declared a `modelClass`, and
-		// the requested model type is a text-generation model, we resolve
-		// through a strategy chain instead of the default per-provider path.
-		// The chain implements cost-aware ascending fallback: LOCAL → SMALL → LARGE.
-		// Lookup the strategy ourselves rather than recursing on the requested
-		// modelType so the routing decision is made once at the entry point,
-		// not on every nested call.
-		const actionRoutingCtx = getActionRoutingContext();
-		if (actionRoutingCtx?.modelClass !== undefined && provider === undefined) {
-			const strategy = maybeReroute(
-				actionRoutingCtx.modelClass,
-				String(modelType),
-			);
-			if (strategy) {
-				const resolvedChain = resolveChain(strategy, (key) =>
-					this.models.get(key),
-				);
-				if (resolvedChain.length > 0) {
-					this.logger.debug(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							action: actionRoutingCtx.actionName,
-							modelClass: actionRoutingCtx.modelClass,
-							requestedModelType: String(modelType),
-							chain: resolvedChain.map((r) => ({
-								modelType: r.modelType,
-								provider: r.provider,
-							})),
-						},
-						"Per-action model routing applied",
-					);
-					// Execute the chain. Each step recurses into useModel with the
-					// resolved modelType + provider hint, but the action routing
-					// context is cleared so the inner call uses the default path.
-					return executeChainWithFallback(
-						resolvedChain,
-						strategy.confidenceThreshold,
-						async (resolved) =>
-							runWithoutActionRoutingContext(() =>
-								this.useModel<T, R>(
-									resolved.modelType as T,
-									params,
-									resolved.provider,
-								),
-							),
-					);
-				}
-				this.logger.debug(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						action: actionRoutingCtx.actionName,
-						modelClass: actionRoutingCtx.modelClass,
-						requestedModelType: String(modelType),
-					},
-					"Per-action model routing requested but no handlers in chain — falling back to default",
-				);
-			}
-		}
-
-		let requestedModelKey = String(modelType);
-
-		// Apply LLM mode override for text generation models
-		const llmMode = this.getLLMMode();
-		if (llmMode !== "DEFAULT") {
-			// List of text generation model types that can be overridden
-			const textGenerationModels = [
-				ModelType.TEXT_NANO,
-				ModelType.TEXT_SMALL,
-				ModelType.TEXT_MEDIUM,
-				ModelType.TEXT_LARGE,
-				ModelType.TEXT_MEGA,
-				ModelType.RESPONSE_HANDLER,
-				ModelType.ACTION_PLANNER,
-				ModelType.TEXT_COMPLETION,
-			];
-
-			if (
-				textGenerationModels.includes(
-					requestedModelKey as (typeof textGenerationModels)[number],
-				)
-			) {
-				const overrideModelKey =
-					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
-				if (requestedModelKey !== overrideModelKey) {
-					this.logger.debug(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							originalModel: requestedModelKey,
-							overrideModel: overrideModelKey,
-							llmMode,
-						},
-						"LLM mode override applied",
-					);
-					requestedModelKey = overrideModelKey as typeof requestedModelKey;
-				}
-			}
-		}
-
-		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
-		// provider are pinned to the provider that answered the dimension probe:
-		// the vector column was sized from its output, so serving an embedding
-		// call from any other registration (including a higher-priority BATCH
-		// handler, or via rate-limit failover) can emit a different-width vector
-		// that the SQL adapter silently drops (#8769). Pinning also disables
-		// mid-call provider failover for embeddings — an embedding either comes
-		// from the provider the column was sized for, or the call fails loudly.
-		// An explicit provider argument still wins.
-		const requestedProvider =
-			provider === undefined &&
-			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
-				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
-			this.pinnedEmbeddingProvider !== undefined
-				? this.pinnedEmbeddingProvider
-				: provider;
-
-		// Runtime preferred-provider override: when the caller did not pin a
-		// provider and this is a text-generation model, honor the runtime-selected
-		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
-		// between loaded providers with no restart. A selection is a strict pin:
-		// failure or missing registration must not silently switch providers.
-		const providerOverride =
-			provider === undefined &&
-			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
-				? this.resolveTextProviderOverride()
-				: undefined;
-		const resolvedModels = this.resolveModelRegistrations(
-			requestedModelKey,
-			providerOverride ?? requestedProvider,
-		);
-		if (resolvedModels.length === 0) {
-			this.throwNoModelHandler(requestedModelKey);
-		}
-
-		let lastModelError: unknown;
-		let lastFailedModel: ResolvedModelRegistration | undefined;
-		let providerAttemptStartedOutput = false;
-		const providersWithExhaustedWarmingBudget = new Set<string>();
-		const providerAttempts: ModelProviderAttempt[] = [];
-		const registrationAttempted = (
-			candidate: ResolvedModelRegistration,
-		): boolean =>
-			providerAttempts.some(
-				(attempt) =>
-					attempt.modelType === candidate.modelKey &&
-					attempt.provider === candidate.provider &&
-					attempt.handler === candidate.handler,
-			);
-		for (
-			let resolvedIndex = 0;
-			resolvedIndex < resolvedModels.length;
-			resolvedIndex++
-		) {
-			const resolvedModel = resolvedModels[resolvedIndex];
-			if (!resolvedModel) {
-				continue;
-			}
-			if (
-				providersWithExhaustedWarmingBudget.has(resolvedModel.provider) ||
-				registrationAttempted(resolvedModel)
-			) {
-				continue;
-			}
-			const resolvedModelKey = resolvedModel.modelKey;
-			const handler = resolvedModel.handler;
-			providerAttemptStartedOutput = false;
-			const attemptMeta = {
-				modelKey: String(resolvedModelKey),
-				provider: resolvedModel.provider ?? "unknown",
-				attempt: resolvedIndex + 1,
-			};
-			const preprocessingStartedAt = Date.now();
-			let handlerStartedAt: number | null = null;
-			let providerAttempt: ModelProviderAttempt | undefined;
-			if (resolvedIndex === 0) {
-				recordInferenceSpan(
-					`model-routing:${String(modelType)}`,
-					preprocessingStartedAt - useModelStartedAt,
-					attemptMeta,
-				);
-			}
-
-			// Outer-scope mirrors of the try-block locals needed by the catch block's
-			// failed-attempt trajectory record. `let`/`const` inside `try` are not
-			// visible to the matching `catch`, so we capture them here as they are
-			// assigned inside (#17532).
-			let modelParamsRef: unknown = params;
-			let promptContentRef: string | null | undefined;
-			// recordingStateRef tracks whether the provider already logged this call.
-			// The catch block must not add a second failure entry for a call the
-			// provider recorded before throwing (e.g. OpenAI streaming logs in its
-			// generator finalizer then rethrows the stream error) — that would
-			// reintroduce the double-counting this fix removes (#17532).
-			//
-			// Initial value `{ recorded: false }` is only read when the handler
-			// throws BEFORE runWithModelCallRecordingScope assigns the real store
-			// (line ~6578). Once assigned, all later reads reference the scope's
-			// live mutable object, not this placeholder.
-			let recordingStateRef: { recorded: boolean } = { recorded: false };
-			let attemptPreparationFailed = false;
-			let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined;
-
-			try {
-				const binaryModels: string[] = [
-					ModelType.TRANSCRIPTION,
-					ModelType.IMAGE,
-					ModelType.AUDIO,
-					ModelType.VIDEO,
-				];
-				// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
-				// (a random per-turn surrogate would destabilize embeddings), but — unlike
-				// the secret gate — swaps IMAGE prompts, whose text can carry real names.
-				const PII_SWAP_SKIP_MODELS: string[] = [
-					ModelType.TRANSCRIPTION,
-					ModelType.AUDIO,
-					ModelType.VIDEO,
-					ModelType.TEXT_EMBEDDING,
-				];
-				const shouldSubstituteSecrets =
-					this.isSecretSwapEnabled() &&
-					!binaryModels.includes(resolvedModelKey);
-				// Validate the caller-owned graph before `isPlainObject` / object spread
-				// below can reflect it. The later collection still runs after secret swap
-				// so NER never sees raw secrets; this preflight exists to make the earlier
-				// runtime cloning boundary descriptor-safe and fail-closed as well.
-				if (
-					this.isPiiSwapEnabled() &&
-					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
-				) {
-					collectPiiPromptText(params);
-				}
-				let modelParams: ModelParamsMap[T];
-				const paramsClone = isPlainObject(params)
-					? shouldSubstituteSecrets
-						? { ...(params as Record<string, unknown>) }
-						: this.cloneModelRequestGraph(params)
-					: params;
-				if (
-					params === null ||
-					params === undefined ||
-					typeof params !== "object" ||
-					Array.isArray(params) ||
-					BufferUtils.isBuffer(params)
-				) {
-					modelParams = paramsClone as ModelParamsMap[T];
-				} else {
-					// Include model settings from character configuration if available
-					const modelSettings = this.getModelSettings(requestedModelKey);
-
-					if (modelSettings) {
-						// Apply model settings if configured — merged object is narrowed at handlers after routing.
-						const merged: object = {
-							...modelSettings,
-							...(paramsClone as Record<string, JsonValue | object>),
-						};
-						modelParams = merged as ModelParamsMap[T];
-					} else {
-						// No model settings configured, use params as-is
-						modelParams = paramsClone as ModelParamsMap[T];
-					}
-
-					// Auto-populate user parameter from character name if not provided
-					// The `user` parameter is used by LLM providers for tracking and analytics purposes.
-					// We only auto-populate when user is undefined (not explicitly set to empty string or null)
-					// to allow users to intentionally set an empty identifier if needed.
-					const shouldAttachUser =
-						requestedModelKey === ModelType.TEXT_NANO ||
-						requestedModelKey === ModelType.TEXT_SMALL ||
-						requestedModelKey === ModelType.TEXT_MEDIUM ||
-						requestedModelKey === ModelType.TEXT_LARGE ||
-						requestedModelKey === ModelType.TEXT_MEGA ||
-						requestedModelKey === ModelType.RESPONSE_HANDLER ||
-						requestedModelKey === ModelType.ACTION_PLANNER ||
-						requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
-						requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
-						requestedModelKey === ModelType.TEXT_COMPLETION;
-					if (
-						shouldAttachUser &&
-						isPlainObject(modelParams) &&
-						this.character.name
-					) {
-						const modelParamsRecord = modelParams as Record<
-							string,
-							JsonValue | object
-						>;
-						if (modelParamsRecord.user === undefined) {
-							modelParamsRecord.user = this.character.name;
-						}
-					}
-				}
-				const prepareModelAttempt =
-					isPlainObject(modelParams) &&
-					typeof (modelParams as GenerateTextParams).prepareModelAttempt ===
-						"function"
-						? (modelParams as GenerateTextParams).prepareModelAttempt
-						: undefined;
-				if (prepareModelAttempt) {
-					const attempt: ModelAttemptContext = {
-						modelType: String(resolvedModelKey),
-						provider: resolvedModel.provider ?? "unknown",
-						...(resolvedModel.metadata
-							? { metadata: resolvedModel.metadata }
-							: {}),
-					};
-					try {
-						await prepareModelAttempt(
-							attempt,
-							modelParams as GenerateTextParams,
-						);
-					} catch (error) {
-						attemptPreparationFailed = true;
-						throw error;
-					}
-					delete (modelParams as GenerateTextParams).prepareModelAttempt;
-				}
-				let startTime =
-					typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now();
-
-				// Get streaming config
-				// Define interface for params that may have streaming properties
-				interface StreamingParams {
-					stream?: boolean;
-					onStreamChunk?: StreamChunkCallback;
-					signal?: AbortSignal;
-					streamStructured?: boolean;
-					responseSkeleton?: ResponseSkeleton;
-				}
-				const streamingCtx = getStreamingContext();
-				const paramsAsStreaming = isPlainObject(modelParams)
-					? (modelParams as StreamingParams)
-					: undefined;
-				const paramsChunk = paramsAsStreaming?.onStreamChunk;
-				const ctxChunk = streamingCtx?.onStreamChunk;
-				const msgId = streamingCtx?.messageId;
-				const abortSignal = streamingCtx?.abortSignal;
-				const explicitStream = paramsAsStreaming?.stream;
-				const resolvedProviderName = resolvedModel?.provider;
-				// stream: false = force no stream, otherwise stream if any callback exists.
-				// Vision describes are often hidden preprocessing/OCR calls inside a chat
-				// turn; do not leak those chunks into the visible chat stream unless the
-				// call itself opts in.
-				const requiresExplicitStreaming =
-					requestedModelKey === ModelType.IMAGE_DESCRIPTION;
-				const shouldStream =
-					explicitStream === false
-						? false
-						: requiresExplicitStreaming
-							? explicitStream === true
-							: !!(paramsChunk || ctxChunk || explicitStream);
-				const structuredStreamFields =
-					shouldStream && paramsAsStreaming?.streamStructured === true
-						? resolveResponseSkeletonStreamFields(
-								paramsAsStreaming.responseSkeleton,
-							)
-						: [];
-				const suppressStructuredStream =
-					shouldStream &&
-					paramsAsStreaming?.streamStructured === true &&
-					structuredStreamFields.length === 0;
-				let downstreamDelivery = Promise.resolve();
-				let downstreamDeliveryError: unknown;
-				let downstreamDeliveryFailed = false;
-				const downstreamChunk = (
-					chunk: string,
-					accumulated?: string,
-					streamRevision?: number,
-				): void => {
-					downstreamDelivery = downstreamDelivery
-						.then(async () => {
-							if (downstreamDeliveryFailed) return;
-							if (paramsChunk)
-								await paramsChunk(chunk, msgId, accumulated, streamRevision);
-							if (ctxChunk)
-								await ctxChunk(chunk, msgId, accumulated, streamRevision);
-						})
-						.then(undefined, (error: unknown) => {
-							downstreamDeliveryFailed = true;
-							downstreamDeliveryError = error;
-						});
-				};
-				drainStructuredStreamCallbacks = async () => {
-					await downstreamDelivery;
-					if (downstreamDeliveryFailed) throw downstreamDeliveryError;
-				};
-				const structuredExtractor =
-					structuredStreamFields.length > 0 &&
-					paramsAsStreaming?.responseSkeleton
-						? new ResponseSkeletonStreamExtractor({
-								skeleton: paramsAsStreaming.responseSkeleton,
-								streamFields: structuredStreamFields,
-								unordered: true,
-								onChunk: (chunk, _field, accumulated, streamRevision) =>
-									downstreamChunk(chunk, accumulated, streamRevision),
-								...(abortSignal ? { abortSignal } : {}),
-							})
-						: undefined;
-				let handlerDeliveredStream = false;
-				let streamedText = "";
-				let secretSwapSession: SecretSwapSession | null = null;
-				let guardScanner: GuardedStreamScanner | null = null;
-				let piiSwapSession: PseudonymSession | null = null;
-				const emitModelStreamChunk = async (
-					safeChunk: string,
-					visibleChunk = safeChunk,
-				): Promise<void> => {
-					if (abortSignal?.aborted) return;
-					if (safeChunk.length > 0) {
-						providerAttemptStartedOutput = true;
-					}
-					if (streamedText === "" && safeChunk.length > 0) {
-						markInference(INFERENCE_MARKS.firstToken);
-						const firstTokenAt =
-							typeof performance !== "undefined" &&
-							typeof performance.now === "function"
-								? performance.now()
-								: Date.now();
-						recordInferenceSpan(
-							`model-ttft:${String(modelType)}`,
-							firstTokenAt - startTime,
-							attemptMeta,
-						);
-					}
-					streamedText += safeChunk;
-					// Per-token hook dispatch: skip the whole ceremony (trajectory
-					// lookup, context-object build, awaited invoke) when nothing is
-					// registered for the phase — the common zero-hook stream would
-					// otherwise pay it for every token. The length check reads the
-					// cached per-phase list, so a hook registered mid-stream is still
-					// picked up on the next chunk.
-					if (this.hooksForPhase("model_stream_chunk").length > 0) {
-						const trajStream = getTrajectoryContext();
-						await this.invokePipelineHooks(
-							"model_stream_chunk",
-							modelStreamChunkPipelineHookContext({
-								source: "use_model",
-								chunk: safeChunk,
-								messageId: msgId,
-								roomId:
-									(trajStream?.roomId as UUID | undefined) ??
-									this.currentRoomId ??
-									this.agentId,
-								runId: this.getCurrentRunId(),
-								...(trajStream?.messageId
-									? { responseId: trajStream.messageId as UUID }
-									: {}),
-								accumulated: streamedText,
-							}),
-							"Model stream chunk (useModel)",
-							false,
-						);
-					}
-					await runInsideModelStreamChunkDelivery(async () => {
-						if (structuredExtractor) {
-							structuredExtractor.push(visibleChunk);
-							return;
-						}
-						// A structured caller with no approved stream fields must
-						// hold the provider's raw envelope until the validated final
-						// result is available. Falling through here would expose
-						// routing JSON and unverified reply text token-by-token.
-						if (suppressStructuredStream) return;
-						if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined);
-						if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
-					});
-				};
-				// When a guard is active, route every chunk through the scanner: it
-				// emits the substituted prefix it can prove safe and holds only the
-				// still-in-progress tail, so guarded turns stream token-by-token instead
-				// of collapsing to one terminal chunk (#15256). Both sessions are assigned
-				// before the handler runs (below), so lazy construction here is ordering-safe.
-				const deliverModelStreamChunk = async (
-					chunk: string,
-				): Promise<void> => {
-					if (abortSignal?.aborted) return;
-					if (secretSwapSession || piiSwapSession) {
-						guardScanner ??= new GuardedStreamScanner({
-							secretSession: secretSwapSession,
-							piiSession: piiSwapSession,
-						});
-						const { safe, visible } = guardScanner.push(chunk);
-						if (safe.length > 0) await emitModelStreamChunk(safe, visible);
-						return;
-					}
-					await emitModelStreamChunk(chunk);
-				};
-				const flushGuardedStream = async (): Promise<void> => {
-					if (abortSignal?.aborted || !guardScanner) return;
-					const { safe, visible } = guardScanner.flush();
-					if (safe.length > 0) await emitModelStreamChunk(safe, visible);
-				};
-				// Wire the handler-facing stream callback for registrations that declare
-				// handler streaming support, with local-provider recognition retained as
-				// the legacy fallback. The prefer-local router ("eliza-router") still opts
-				// in by name because it forwards `onStreamChunk` to the underlying
-				// on-device handler after routing.
-				const declaredStreamable = resolvedModel.metadata?.streamable;
-				const resolvedAcceptsHandlerStream =
-					resolvedProviderName === "eliza-router" ||
-					(typeof declaredStreamable === "boolean"
-						? declaredStreamable
-						: !!resolvedProviderName &&
-							isLocalHandler({
-								provider: resolvedProviderName,
-								metadata: resolvedModel.metadata,
-							}));
-				const handlerStreamChunk: StreamChunkCallback | undefined =
-					shouldStream &&
-					resolvedAcceptsHandlerStream &&
-					(paramsChunk || ctxChunk || structuredExtractor)
-						? async (chunk) => {
-								handlerDeliveredStream = true;
-								await deliverModelStreamChunk(chunk);
-							}
-						: undefined;
-
-				if (isPlainObject(modelParams) && paramsAsStreaming) {
-					paramsAsStreaming.stream = shouldStream;
-					if (handlerStreamChunk) {
-						paramsAsStreaming.onStreamChunk = handlerStreamChunk;
-					} else {
-						delete paramsAsStreaming.onStreamChunk;
-					}
-					// Plumb the streaming-context abort signal into model params so the
-					// underlying handler can wire it into its transport (e.g. local
-					// llama's `stopOnAbortSignal`, fetch's `signal`). Only inject when
-					// the caller didn't already pass one explicitly.
-					if (paramsAsStreaming.signal === undefined && abortSignal) {
-						paramsAsStreaming.signal = abortSignal;
-					}
-				}
-
-				const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
-					String(resolvedModelKey),
-				)
-					? String(resolvedModelKey)
-					: requestedModelKey;
-				let effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
-					textModelKey,
-					modelParams,
-				);
-
-				if (shouldSubstituteSecrets) {
-					// Reuse one session per turn so every model call in the turn shares a
-					// nonce and the action-execution boundary can restore what this call
-					// swapped. The session hangs off the turn-scoped trajectory context;
-					// calls outside a trajectory scope fall back to a per-call session
-					// (no egress restore — there is no execution boundary to restore at).
-					const trajectoryCtx = getTrajectoryContext();
-					secretSwapSession =
-						trajectoryCtx?.secretSwapSession ?? this.createSecretSwapSession();
-					if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
-						trajectoryCtx.secretSwapSession = secretSwapSession;
-					}
-					modelParams = secretSwapSession.substituteInValue(modelParams);
-					effectiveSystemPrompt =
-						effectiveSystemPrompt === undefined
-							? undefined
-							: secretSwapSession.substituteText(effectiveSystemPrompt);
-				}
-
-				// Models the PII swap must NOT touch: binary-input modalities (nothing to
-				// swap) and — unlike the secret gate — IMAGE is INCLUDED (its text prompt
-				// can carry real names), while TEXT_EMBEDDING is EXCLUDED (a per-turn-random
-				// surrogate would embed the same real text differently every turn and wreck
-				// semantic memory retrieval; embeddings stay on the real text).
-				let piiIngressText = "";
-				if (
-					this.isPiiSwapEnabled() &&
-					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
-				) {
-					// Turn-scoped like the secret session (same mapping all turn), so the
-					// execution boundary can restore what this call swapped.
-					const trajectoryCtx = getTrajectoryContext();
-					piiSwapSession =
-						trajectoryCtx?.piiSwapSession ?? this.createPiiSwapSession();
-					if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
-						trajectoryCtx.piiSwapSession = piiSwapSession;
-					}
-					// The awaited detection step: learn every named entity in the assembled
-					// prompt (params + system prompt), then substitute synchronously. Ordered
-					// after the secret pass, so the NER model reads opaque
-					// `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
-					// inference is offloaded to onnxruntime's threadpool, so it overlaps the
-					// event loop rather than blocking other turns.
-					piiIngressText = this.collectPromptText(
-						modelParams,
-						effectiveSystemPrompt,
-					);
-					await piiSwapSession.learn(piiIngressText);
-					modelParams = piiSwapSession.substituteInValue(modelParams);
-					effectiveSystemPrompt =
-						effectiveSystemPrompt === undefined
-							? undefined
-							: piiSwapSession.substituteText(effectiveSystemPrompt);
-				}
-
-				await this.invokePipelineHooks(
-					"pre_model",
-					preModelPipelineHookContext({
-						requestedModelType: String(modelType),
-						resolvedModelKey,
-						provider: resolvedModel.provider,
-						roomId: getTrajectoryContext()?.roomId,
-						params: modelParams,
-					}),
-					"Pre-model pipeline hook",
-				);
-				if (secretSwapSession) {
-					modelParams = secretSwapSession.substituteInValue(modelParams);
-					const postHookSystemPrompt = resolveEffectiveSystemPrompt({
-						params: modelParams,
-						fallback: effectiveSystemPrompt,
-					});
-					effectiveSystemPrompt =
-						postHookSystemPrompt === undefined
-							? undefined
-							: secretSwapSession.substituteText(postHookSystemPrompt);
-				}
-				if (piiSwapSession) {
-					// pre_model hooks may have injected fresh text (RAG snippets, extra
-					// context) with never-seen PII. If the assembled text changed, re-run
-					// detection so that new PII is swapped too — not just already-learned
-					// values re-masked. learn() is idempotent, so this only adds new entities.
-					const postHookText = this.collectPromptText(
-						modelParams,
-						effectiveSystemPrompt,
-					);
-					if (postHookText !== piiIngressText) {
-						await piiSwapSession.learn(postHookText);
-					}
-					modelParams = piiSwapSession.substituteInValue(modelParams);
-					const postHookSystemPrompt = resolveEffectiveSystemPrompt({
-						params: modelParams,
-						fallback: effectiveSystemPrompt,
-					});
-					effectiveSystemPrompt =
-						postHookSystemPrompt === undefined
-							? undefined
-							: piiSwapSession.substituteText(postHookSystemPrompt);
-				}
-
-				const hookedParamsObj =
-					modelParams &&
-					typeof modelParams === "object" &&
-					!Array.isArray(modelParams)
-						? (modelParams as Record<string, JsonValue | object>)
-						: null;
-				const promptContent =
-					(hookedParamsObj &&
-					"prompt" in hookedParamsObj &&
-					typeof hookedParamsObj.prompt === "string"
-						? hookedParamsObj.prompt
-						: null) ||
-					(hookedParamsObj &&
-					"input" in hookedParamsObj &&
-					typeof hookedParamsObj.input === "string"
-						? hookedParamsObj.input
-						: null) ||
-					(hookedParamsObj &&
-					"messages" in hookedParamsObj &&
-					Array.isArray(hookedParamsObj.messages)
-						? stringifyStructuredForPrompt({
-								messages: hookedParamsObj.messages,
-							})
-						: null) ||
-					(typeof modelParams === "string" ? modelParams : null);
-
-				// Capture the exact post-hook request before the final budget check so a
-				// typed zero-dispatch rejection records the same complete request.
-				modelParamsRef = modelParams;
-				promptContentRef = promptContent;
-				// Attach only to this attempt's fresh request, before admission freezes
-				// it. Symbols are not enumerated, measured, serialized, or deep-frozen.
-				if (isPlainObject(modelParams)) {
-					Object.defineProperty(modelParams, MODEL_PROVIDER_ATTEMPTS, {
-						value: providerAttempts,
-						enumerable: false,
-					});
-				}
-
-				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
-					let finalBudget = this.buildFinalModelInputBudget(
-						modelParams,
-						resolvedModel.metadata,
-					);
-					if (isPlainObject(modelParams)) {
-						const paramsRecord = modelParams as Record<string, unknown>;
-						const providerOptions = isPlainObject(paramsRecord.providerOptions)
-							? (paramsRecord.providerOptions as Record<string, unknown>)
-							: {};
-						const seenBudgetSignatures = new Set<string>();
-						while (true) {
-							const signature = JSON.stringify(finalBudget);
-							if (seenBudgetSignatures.has(signature)) {
-								throw new ElizaError(
-									"Final model-input budget metadata did not stabilize",
-									{ code: "MODEL_INPUT_BUDGET_UNSTABLE" },
-								);
-							}
-							seenBudgetSignatures.add(signature);
-							Object.assign(
-								providerOptions,
-								withModelInputBudgetProviderOptions(
-									providerOptions,
-									finalBudget,
-								),
-							);
-							paramsRecord.providerOptions = providerOptions;
-							const measuredWithMetadata = this.buildFinalModelInputBudget(
-								modelParams,
-								resolvedModel.metadata,
-							);
-							if (
-								measuredWithMetadata.estimatedInputTokens ===
-								finalBudget.estimatedInputTokens
-							) {
-								finalBudget = measuredWithMetadata;
-								break;
-							}
-							finalBudget = measuredWithMetadata;
-						}
-					}
-					this.freezeAdmittedModelRequest(modelParams);
-				}
-
-				if (!binaryModels.includes(resolvedModelKey)) {
-					this.logger.trace(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							model: resolvedModelKey,
-							params: modelParams,
-						},
-						"Model input",
-					);
-				} else {
-					let sizeInfo = "unknown size";
-					if (Buffer.isBuffer(modelParams)) {
-						sizeInfo = `${modelParams.length} bytes`;
-					} else if (
-						typeof Blob !== "undefined" &&
-						modelParams instanceof Blob
-					) {
-						sizeInfo = `${modelParams.size} bytes`;
-					} else if (typeof modelParams === "object" && modelParams !== null) {
-						if ("audio" in modelParams && Buffer.isBuffer(modelParams.audio)) {
-							sizeInfo = `${(modelParams.audio as Buffer).length} bytes`;
-						} else if (
-							"audio" in modelParams &&
-							typeof Blob !== "undefined" &&
-							modelParams.audio instanceof Blob
-						) {
-							sizeInfo = `${(modelParams.audio as Blob).size} bytes`;
-						}
-					}
-					this.logger.trace(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							model: resolvedModelKey,
-							size: sizeInfo,
-						},
-						"Model input (binary)",
-					);
-				}
-
-				this.logger.debug(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						model: resolvedModelKey,
-						provider: resolvedModel.provider,
-						...(lookupCaller?.caller ? { caller: lookupCaller.caller } : {}),
-						...(lookupCaller?.callerStack.length
-							? { callerStack: lookupCaller.callerStack }
-							: {}),
-					},
-					"Using model",
-				);
-
-				// The model-call timing window opens HERE, not at useModel entry:
-				// everything above (streaming setup, secret/PII swap sessions,
-				// pre_model hooks, prompt extraction) is runtime work, and charging
-				// it to the provider span makes `model:*` timings unreadable as
-				// provider latency (#16394).
-				startTime =
-					typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now();
-				recordInferenceSpan(
-					`model-preprocess:${String(modelType)}`,
-					Date.now() - preprocessingStartedAt,
-					attemptMeta,
-				);
-				handlerStartedAt = Date.now();
-				providerAttempt = {
-					modelType: resolvedModelKey,
-					provider: resolvedModel.provider,
-					handler,
-				};
-				providerAttempts.push(providerAttempt);
-				const { result: handlerResult, recordingState } =
-					await runWithModelCallRecordingScope(() =>
-						handler(this, modelParams as Record<string, JsonValue | object>),
-					);
-				// Expose the mutable recording state to the catch block so it can
-				// suppress a failure entry when the provider already logged this
-				// call before throwing (#17532).
-				recordingStateRef = recordingState;
-				const rawResponse = handlerResult;
-
-				let safeRawResponse: unknown =
-					secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
-				safeRawResponse =
-					piiSwapSession?.substituteInValue(safeRawResponse) ?? safeRawResponse;
-				const resultRef: { current: unknown } = { current: safeRawResponse };
-				const modelOutToTrajectoryString = (v: unknown) =>
-					typeof v === "string"
-						? v
-						: stringifyStructuredForPrompt({ response: v });
-
-				// Stream: broadcast to callbacks if streaming
-				if (
-					shouldStream &&
-					(paramsChunk || ctxChunk) &&
-					isTextStreamResult(rawResponse)
-				) {
-					// Consume the provider stream inside the recording scope, mirroring
-					// the pass-through TextStreamResult wrapper below. Async generators
-					// do not inherit AsyncLocalStorage context from their creation, and
-					// runWithModelCallRecordingScope above has already exited by the
-					// time we iterate, so markProviderRecordedCall (fired from the
-					// provider finalizer via logActiveTrajectoryLlmCall — e.g. the
-					// plugin-openai live-stream finally block) would find no store and
-					// no-op. Re-entering the scope per-.next() (and forwarding .return()
-					// cleanup) ensures the provider mark lands and suppresses the
-					// generic fallback, otherwise this call is double-recorded (#17532).
-					const streamIter = rawResponse.textStream[Symbol.asyncIterator]();
-					try {
-						while (true) {
-							const { done, value } = await runInModelCallRecordingScope(
-								recordingState,
-								() => streamIter.next(),
-							);
-							if (done) break;
-							// Check abort AFTER pulling a chunk (matching the original
-							// for-await pull-then-check order) so the provider generator
-							// body always advances at least once and its finally block
-							// runs on .return() cleanup.
-							if (abortSignal?.aborted) break;
-							await deliverModelStreamChunk(value);
-						}
-					} finally {
-						// Forward cleanup to the provider iterator so its finally block
-						// (markProviderRecordedCall) also runs inside the scope. Safe to
-						// call even if already exhausted.
-						await runInModelCallRecordingScope(recordingState, async () => {
-							await streamIter.return?.();
-						});
-					}
-					await flushGuardedStream();
-					structuredExtractor?.flush();
-					await drainStructuredStreamCallbacks();
-
-					const trajStreamEnd = getTrajectoryContext();
-					await this.invokePipelineHooks(
-						"model_stream_end",
-						modelStreamEndPipelineHookContext({
-							source: "use_model",
-							roomId:
-								(trajStreamEnd?.roomId as UUID | undefined) ??
-								this.currentRoomId ??
-								this.agentId,
-							runId: this.getCurrentRunId(),
-							messageId: msgId ?? trajStreamEnd?.messageId,
-							text: streamedText,
-						}),
-						"Model stream end (useModel)",
-						true,
-					);
-
-					// Signal stream end to allow context to reset state between useModel calls
-					const streamingCtxEnd = getStreamingContext();
-					const ctxEnd = streamingCtxEnd?.onStreamEnd;
-					if (ctxEnd) ctxEnd();
-
-					// Preserve tool calls + finishReason + usage from the stream result.
-					// The streaming branch used to collapse the response to `streamedText`
-					// (a bare string), discarding any `toolCalls` surfaced by the provider
-					// as a Promise. Callers like `parsePlannerOutput` then saw
-					// `toolCalls.length === 0` and incremented `required_tool_misses` even
-					// though the LLM had emitted a valid native tool call.
-					const streamRaw = rawResponse as {
-						toolCalls?: unknown;
-						finishReason?: unknown;
-						usage?: unknown;
-						providerMetadata?: unknown;
-					};
-					const hasToolCallsField = "toolCalls" in streamRaw;
-					const resolvedToolCalls = hasToolCallsField
-						? await Promise.resolve(streamRaw.toolCalls)
-						: [];
-					const resolvedFinishReason =
-						"finishReason" in streamRaw
-							? await Promise.resolve(streamRaw.finishReason)
-							: undefined;
-					assertModelOutputComplete({
-						finishReason: resolvedFinishReason,
-						provider: resolvedModel.provider,
-						model: resolvedModelKey,
-					});
-					// The presence of `toolCalls` marks a native-result contract, even
-					// when the provider returns an empty list. Collapsing that result to a
-					// string discards usage, finish reason, and concrete model metadata,
-					// which makes successful hosted calls unpriceable.
-					if (hasToolCallsField) {
-						const resolvedUsage =
-							"usage" in streamRaw
-								? await Promise.resolve(streamRaw.usage)
-								: undefined;
-						resultRef.current = {
-							text: streamedText,
-							toolCalls: resolvedToolCalls,
-							finishReason: resolvedFinishReason,
-							usage: resolvedUsage,
-							providerMetadata: streamRaw.providerMetadata,
-						};
-					} else {
-						resultRef.current = streamedText;
-					}
-
-					const elapsedTime =
-						(typeof performance !== "undefined" &&
-						typeof performance.now === "function"
-							? performance.now()
-							: Date.now()) - startTime;
-					const postprocessingStartedAt = Date.now();
-
-					await this.invokePipelineHooks(
-						"post_model",
-						postModelPipelineHookContext({
-							requestedModelType: String(modelType),
-							resolvedModelKey,
-							provider: resolvedModel.provider,
-							roomId: getTrajectoryContext()?.roomId,
-							durationMs: Math.round(elapsedTime),
-							params: modelParams,
-							result: resultRef,
-							streaming: true,
-						}),
-						"Post-model pipeline hook",
-					);
-					resultRef.current =
-						secretSwapSession?.substituteInValue(resultRef.current) ??
-						resultRef.current;
-					resultRef.current =
-						piiSwapSession?.substituteInValue(resultRef.current) ??
-						resultRef.current;
-
-					// Record the provider that actually served this call so callers
-					// that can't see the internal resolution (message.ts stage
-					// recorders) can read the real provider instead of hardcoding
-					// "default" (#13623).
-					this.noteResolvedModelProvider(
-						requestedModelKey,
-						resolvedModel.provider,
-					);
-
-					this.logger.trace(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							model: resolvedModelKey,
-							duration: Number(elapsedTime.toFixed(2)),
-							streaming: true,
-						},
-						"Model output (stream with callback complete)",
-					);
-
-					this.logModelCall(
-						String(modelType),
-						resolvedModelKey,
-						modelParams,
-						promptContent,
-						effectiveSystemPrompt,
-						elapsedTime,
-						resolvedModel.provider,
-						resultRef.current,
-					);
-
-					if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
-						await this.recordUseModelTrajectory({
-							modelType: String(modelType),
-							resolvedModelKey: String(resolvedModelKey),
-							provider: resolvedModel.provider,
-							modelParams,
-							promptContent,
-							result: resultRef.current,
-							response: modelOutToTrajectoryString(resultRef.current),
-							elapsedTime,
-							providerRecorded: recordingState.recorded,
-						});
-					}
-					recordInferenceSpan(
-						`model-postprocess:${String(modelType)}`,
-						Date.now() - postprocessingStartedAt,
-						{ ...attemptMeta, streaming: true },
-					);
-
-					return resultRef.current as R;
-				}
-
-				if (handlerDeliveredStream) {
-					await flushGuardedStream();
-					structuredExtractor?.flush();
-					await drainStructuredStreamCallbacks();
-					const trajStreamEnd = getTrajectoryContext();
-					await this.invokePipelineHooks(
-						"model_stream_end",
-						modelStreamEndPipelineHookContext({
-							source: "use_model",
-							roomId:
-								(trajStreamEnd?.roomId as UUID | undefined) ??
-								this.currentRoomId ??
-								this.agentId,
-							runId: this.getCurrentRunId(),
-							messageId: msgId ?? trajStreamEnd?.messageId,
-							text: streamedText,
-						}),
-						"Model stream end (useModel)",
-						true,
-					);
-					const streamingCtxEnd = getStreamingContext();
-					const ctxEnd = streamingCtxEnd?.onStreamEnd;
-					if (ctxEnd) ctxEnd();
-				}
-
-				if (!isTextStreamResult(resultRef.current as JsonValue | object)) {
-					await assertRuntimeModelOutputComplete({
-						result: resultRef.current,
-						provider: resolvedModel.provider,
-						model: resolvedModelKey,
-					});
-				}
-
-				const elapsedTime =
-					(typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now()) - startTime;
-				const postprocessingStartedAt = Date.now();
-
-				await this.invokePipelineHooks(
-					"post_model",
-					postModelPipelineHookContext({
-						requestedModelType: String(modelType),
-						resolvedModelKey,
-						provider: resolvedModel.provider,
-						roomId: getTrajectoryContext()?.roomId,
-						durationMs: Math.round(elapsedTime),
-						params: modelParams,
-						result: resultRef,
-						streaming: handlerDeliveredStream,
-					}),
-					"Post-model pipeline hook",
-				);
-				resultRef.current =
-					secretSwapSession?.substituteInValue(resultRef.current) ??
-					resultRef.current;
-				resultRef.current =
-					piiSwapSession?.substituteInValue(resultRef.current) ??
-					resultRef.current;
-
-				// Record the provider that actually served this call so callers
-				// that can't see the internal resolution (message.ts stage
-				// recorders) can read the real provider instead of hardcoding
-				// "default" (#13623).
-				this.noteResolvedModelProvider(
-					requestedModelKey,
-					resolvedModel.provider,
-				);
-
-				this.logger.trace(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						model: resolvedModelKey,
-						duration: Number(elapsedTime.toFixed(2)),
-					},
-					"Model output",
-				);
-
-				this.logModelCall(
-					String(modelType),
-					resolvedModelKey,
-					modelParams,
-					promptContent,
-					effectiveSystemPrompt,
-					elapsedTime,
-					resolvedModel.provider,
-					resultRef.current,
-				);
-
-				if (
-					String(modelType) !== ModelType.TEXT_EMBEDDING &&
-					!(
-						shouldStream &&
-						!handlerDeliveredStream &&
-						isTextStreamResult(resultRef.current as object)
-					)
-				) {
-					await this.recordUseModelTrajectory({
-						modelType: String(modelType),
-						resolvedModelKey: String(resolvedModelKey),
-						provider: resolvedModel.provider,
-						modelParams,
-						promptContent,
-						result: resultRef.current,
-						response: modelOutToTrajectoryString(resultRef.current),
-						elapsedTime,
-						providerRecorded: recordingState.recorded,
-					});
-				}
-
-				// Pass-through stream: the caller will consume textStream after
-				// useModel returns. Defer the generic trajectory record until then,
-				// so the provider's deferred recordLlmCall has time to mark the
-				// flag (#17532). The wrapper accumulates chunks as they pass
-				// through so the trajectory entry can be recorded from the
-				// delivered text without awaiting streamResult.text, which may
-				// never settle or may reject on the abort path. A backstop on the
-				// provider's text promise guarantees at least one entry even when
-				// the consumer never iterates or awaits .text (#17532 review).
-				if (
-					shouldStream &&
-					!handlerDeliveredStream &&
-					isTextStreamResult(resultRef.current as object)
-				) {
-					const streamResult = resultRef.current as TextStreamResult;
-					const checkedFinishReason = Promise.resolve(
-						streamResult.finishReason,
-					).then((finishReason) => {
-						assertModelOutputComplete({
-							finishReason,
-							provider: resolvedModel.provider,
-							model: resolvedModelKey,
-						});
-						return finishReason;
-					});
-					const trajArgs = {
-						modelType: String(modelType),
-						resolvedModelKey: String(resolvedModelKey),
-						provider: resolvedModel.provider,
-						modelParams,
-						promptContent,
-						elapsedTime,
-					};
-					let didRecord = false;
-					const accumulatedChunks: string[] = [];
-					const recordOnce = async () => {
-						if (didRecord) return;
-						didRecord = true;
-						const finalText = accumulatedChunks.join("");
-						await this.recordUseModelTrajectory({
-							...trajArgs,
-							result: finalText,
-							response: finalText,
-							providerRecorded: recordingState.recorded,
-						});
-					};
-					// Guaranteed terminal record: if the consumer never iterates
-					// the textStream and never awaits .text, the provider's text
-					// promise still resolves (or rejects) eventually. Attach a
-					// backstop so at least one trajectory entry fires regardless
-					// of how the consumer treats the stream result (#17532 review,
-					// Finding 2).
-					Promise.all([streamResult.text, checkedFinishReason]).then(
-						([resolvedText]) => {
-							if (accumulatedChunks.length === 0 && resolvedText) {
-								accumulatedChunks.push(resolvedText);
-							}
-							void recordOnce();
-						},
-						() => void recordOnce(),
-					);
-					resultRef.current = {
-						...streamResult,
-						finishReason: checkedFinishReason,
-						textStream: (async function* () {
-							// Each .next() call re-enters the recording scope so
-							// the provider generator body (and its finally block
-							// where markProviderRecordedCall fires) runs inside
-							// the ALS context (#17532).
-							const innerIter = streamResult.textStream[Symbol.asyncIterator]();
-							try {
-								while (true) {
-									const { done, value } = await runInModelCallRecordingScope(
-										recordingState,
-										() => innerIter.next(),
-									);
-									if (done) {
-										await checkedFinishReason;
-										break;
-									}
-									accumulatedChunks.push(value);
-									yield value;
-								}
-							} finally {
-								// Forward cleanup to the provider iterator so its
-								// finally block (markProviderRecordedCall) runs inside
-								// the scope. Safe to call even if already exhausted.
-								await runInModelCallRecordingScope(recordingState, async () => {
-									await innerIter.return?.();
-								});
-								// Record from accumulated chunks, NOT streamResult.text.
-								// The abort path's text promise may never settle or may
-								// reject; using accumulated chunks avoids hanging the
-								// generator's return() (#17532 review, Finding 3).
-								try {
-									await recordOnce();
-								} catch {
-									// error-policy:J7 Trajectory logging must never break core model flow.
-								}
-							}
-						})(),
-						// Lazy: record from accumulated chunks when the caller
-						// awaits text, not eagerly when the provider's SDK promise
-						// settles (#17532). The consumer explicitly awaited
-						// streamResult.text, so resolving it is safe — a rejection
-						// surfaces at the caller's own await site.
-						get text() {
-							return Promise.resolve(
-								runInModelCallRecordingScope(recordingState, async () => {
-									const t = await streamResult.text;
-									await checkedFinishReason;
-									accumulatedChunks.length = 0;
-									accumulatedChunks.push(t);
-									await recordOnce();
-									return t;
-								}),
-							);
-						},
-					} satisfies TextStreamResult;
-				}
-				recordInferenceSpan(
-					`model-postprocess:${String(modelType)}`,
-					Date.now() - postprocessingStartedAt,
-					{ ...attemptMeta, streaming: handlerDeliveredStream },
-				);
-				return resultRef.current as R;
-			} catch (error) {
-				const streamCallbackResult =
-					await drainStructuredStreamCallbacks?.().then(
-						() => ({ failed: false as const }),
-						(deliveryError: unknown) => ({
-							failed: true as const,
-							error: deliveryError,
-						}),
-					);
-				if (
-					streamCallbackResult?.failed === true &&
-					streamCallbackResult.error !== error
-				) {
-					throw streamCallbackResult.error;
-				}
-				const unavailableLocalText =
-					TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey) &&
-					isUnavailableLocalModel(error);
-				const rejectedLocalAdmission =
-					handlerStartedAt === null && unavailableLocalText;
-				if (attemptPreparationFailed || rejectedLocalAdmission) {
-					recordInferenceSpan(
-						`model-preprocess:${String(modelType)}`,
-						Date.now() - preprocessingStartedAt,
-						{ ...attemptMeta, outcome: "error" },
-					);
-					if (
-						!rejectedLocalAdmission &&
-						!(
-							error instanceof ElizaError &&
-							error.code === "EVALUATOR_INPUT_OVER_BUDGET"
-						)
-					) {
-						throw error;
-					}
-					// A preparation rejection is attempt-local: the hook refused THIS
-					// registration (e.g. its context window cannot fit the stable
-					// input) before its handler ran, so no provider failure happened
-					// and no failed-attempt trajectory entry is recorded. Registration
-					// order is fallback tier + priority, not descending window size,
-					// so a later registration may still fit — advance the chain and
-					// rethrow the typed error only when the caller pinned a provider
-					// or no candidate remains.
-					// An absent fallback cannot explain away an earlier dispatched
-					// provider's actionable failure (for example its quota error).
-					if (!rejectedLocalAdmission || lastModelError === undefined) {
-						lastModelError = error;
-						lastFailedModel = resolvedModel;
-					}
-					const nextAfterPreparation = resolvedModels[resolvedIndex + 1];
-					if (requestedProvider !== undefined) throw error;
-					if (!nextAfterPreparation) {
-						if (rejectedLocalAdmission) {
-							this.rethrowModelFailoverError(lastModelError, lastFailedModel);
-						}
-						throw error;
-					}
-					this.logModelProviderFailover({
-						requestedModelKey,
-						failedModel: resolvedModel,
-						nextModel: nextAfterPreparation,
-						error,
-					});
-					continue;
-				}
-				// error-policy:J4 Provider failover is an explicit degraded path;
-				// the final provider failure is rethrown if no alternative succeeds.
-				if (handlerStartedAt === null) {
-					recordInferenceSpan(
-						`model-preprocess:${String(modelType)}`,
-						Date.now() - preprocessingStartedAt,
-						{ ...attemptMeta, outcome: "error" },
-					);
-				} else {
-					recordInferenceSpan(
-						`model:${String(modelType)}`,
-						Date.now() - handlerStartedAt,
-						{ ...attemptMeta, outcome: "error" },
-					);
-				}
-				// Record the failed attempt as a trajectory llm-call entry so a
-				// rejected (often billed) provider attempt is not invisible. If
-				// failover succeeds, only the success would otherwise appear; if
-				// every attempt fails, the step would have zero model entries
-				// (#17532). Fire-and-forget: trajectory logging must not block the
-				// failover/rethrow path, and its own failures are reported inside.
-				// Skip when the provider already logged this call before throwing
-				// (e.g. OpenAI streaming logs in its finalizer then rethrows) — a
-				// second failure entry would reintroduce the double-counting this
-				// fix removes (#17532).
-				if (!recordingStateRef.recorded) {
-					void this.recordFailedModelTrajectory({
-						modelType: String(modelType),
-						resolvedModelKey: String(resolvedModelKey),
-						provider: resolvedModel.provider,
-						modelParams: modelParamsRef,
-						promptContent: promptContentRef,
-						error,
-						elapsedTime:
-							handlerStartedAt === null
-								? Date.now() - preprocessingStartedAt
-								: Date.now() - handlerStartedAt,
-					});
-				}
-				// A model can unload between admission and dispatch. Record that
-				// real attempt, but retain the previous provider failure if absence
-				// is the only fallback outcome. Output/request errors stay decisive.
-				if (
-					!unavailableLocalText ||
-					lastModelError === undefined ||
-					providerAttemptStartedOutput ||
-					requestedProvider !== undefined
-				) {
-					lastModelError = error;
-					lastFailedModel = resolvedModel;
-				}
-				if (providerAttempt) providerAttempt.error = error;
-				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
-					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
-				}
-				const nextModelIndex = resolvedModels.findIndex(
-					(candidate, candidateIndex) =>
-						candidateIndex > resolvedIndex &&
-						!providersWithExhaustedWarmingBudget.has(candidate.provider) &&
-						!registrationAttempted(candidate),
-				);
-				const nextModel =
-					nextModelIndex >= 0 ? resolvedModels[nextModelIndex] : undefined;
-				if (
-					requestedProvider !== undefined ||
-					!nextModel ||
-					providerAttemptStartedOutput ||
-					!this.shouldFailOverModelProvider(error, requestedModelKey)
-				) {
-					this.rethrowModelFailoverError(lastModelError, lastFailedModel);
-				}
-				this.logModelProviderFailover({
-					requestedModelKey,
-					failedModel: resolvedModel,
-					nextModel,
-					error,
-				});
-				// The loop increments after this catch. Jump over every registration
-				// backed by a provider whose one warming budget was already spent,
-				// while preserving an actually distinct provider as the next attempt.
-				resolvedIndex = nextModelIndex - 1;
-			}
-		}
-		this.rethrowModelFailoverError(
-			lastModelError ??
-				new Error(`No handler found for delegate type: ${requestedModelKey}`),
-			lastFailedModel,
-		);
+		return this.modelDispatch.useModel<T, R>(modelType, params, provider);
 	}
 
 	/**
@@ -8401,7 +4183,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Trajectory logging must never break core model flow, so any thrown
 	 * error here is swallowed.
 	 */
-	private async recordUseModelTrajectory(args: {
+	private recordUseModelTrajectory(args: {
 		modelType: string;
 		resolvedModelKey: string;
 		provider?: string;
@@ -8412,131 +4194,7 @@ export class AgentRuntime implements IAgentRuntime {
 		elapsedTime: number;
 		providerRecorded: boolean;
 	}): Promise<void> {
-		if (this.initResolver) return;
-
-		// When the provider-level wire recorder (`recordLlmCall` or
-		// `logActiveTrajectoryLlmCall`) already logged this call, suppress the
-		// generic fallback to avoid double counting (#17532).
-		if (args.providerRecorded) return;
-
-		try {
-			const trajCtx = getTrajectoryContext();
-			const stepId = trajCtx?.trajectoryStepId;
-			const trajLogger = (await this._ensureServiceStarted("trajectories")) as
-				| (Service & TrajectoryRuntimeLlmCallLogger)
-				| null;
-			if (!stepId || !trajLogger) return;
-
-			const tempRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { temperature?: number }).temperature
-				: undefined;
-			const maxTokensRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { maxTokens?: number }).maxTokens
-				: undefined;
-			const paramsRecord = isPlainObject(args.modelParams)
-				? (args.modelParams as Record<string, unknown>)
-				: {};
-			const systemPrompt =
-				resolveEffectiveSystemPrompt({
-					params: args.modelParams,
-					fallback: this.buildRuntimeSystemPrompt(),
-				}) ?? "";
-			const userPrompt =
-				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
-				args.promptContent ??
-				"";
-			const resultRecord = isPlainObject(args.result)
-				? (args.result as Record<string, unknown>)
-				: {};
-			const messages = Array.isArray(paramsRecord.messages)
-				? paramsRecord.messages
-				: undefined;
-			const prompt =
-				typeof paramsRecord.prompt === "string"
-					? paramsRecord.prompt
-					: userPrompt;
-			// Rebind provider spans to the exact string this call persists. Copying
-			// composeState's providersText offsets onto a larger messages prompt
-			// produces false exact-match slices (#14877).
-			const canonicalPrompt = canonicalPromptForModelCall({
-				messages,
-				prompt,
-			});
-			const reboundAttributions = trajCtx.providerAttributionState
-				? buildProviderAttributionsFromState({
-						state: trajCtx.providerAttributionState,
-						prompt: canonicalPrompt,
-					})
-				: undefined;
-			const providerOrder =
-				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
-			const providerAttributions =
-				reboundAttributions?.providerAttributions ??
-				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
-			const usageRecord = isPlainObject(resultRecord.usage)
-				? (resultRecord.usage as Record<string, unknown>)
-				: {};
-			const asNumber = (value: unknown): number | undefined =>
-				typeof value === "number" && Number.isFinite(value) ? value : undefined;
-			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
-			trajLogger.logLlmCall({
-				stepId,
-				model: args.resolvedModelKey,
-				modelType: args.modelType,
-				provider: args.provider,
-				systemPrompt,
-				userPrompt,
-				prompt,
-				messages,
-				tools: paramsRecord.tools,
-				toolChoice: paramsRecord.toolChoice,
-				responseSchema: paramsRecord.responseSchema,
-				providerOptions: paramsRecord.providerOptions,
-				response: args.response,
-				toolCalls: Array.isArray(resultRecord.toolCalls)
-					? resultRecord.toolCalls
-					: undefined,
-				finishReason:
-					typeof resultRecord.finishReason === "string"
-						? resultRecord.finishReason
-						: undefined,
-				providerMetadata: resultRecord.providerMetadata,
-				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
-				...(typeof maxTokensRaw === "number"
-					? { maxTokens: maxTokensRaw }
-					: {}),
-				purpose: trajCtx.purpose ?? "action",
-				actionType: "runtime.useModel",
-				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
-				promptTokens: asNumber(usageRecord.promptTokens),
-				completionTokens: asNumber(usageRecord.completionTokens),
-				cacheReadInputTokens: asNumber(usageRecord.cacheReadInputTokens),
-				cacheCreationInputTokens: asNumber(
-					usageRecord.cacheCreationInputTokens,
-				),
-				reasoningTokens: asNumber(usageRecord.reasoningTokens),
-				modelSlot: args.modelType,
-				runId: trajCtx.runId,
-				roomId: trajCtx.roomId,
-				messageId: trajCtx.messageId,
-				executionTraceId: activeTrace?.id,
-				providerOrder,
-				providerAttributions,
-			});
-		} catch (error) {
-			// error-policy:J7 diagnostics-must-not-kill-the-loop — model responses
-			// remain usable when trajectory persistence fails, while reportError
-			// makes the missing telemetry observable to the agent and owner.
-			this.logger.warn(
-				{ error, modelType: args.modelType },
-				"Failed to record model-call trajectory",
-			);
-			this.reportError("AgentRuntime.recordUseModelTrajectory", error, {
-				modelType: args.modelType,
-				resolvedModelKey: args.resolvedModelKey,
-				provider: args.provider,
-			});
-		}
+		return this.modelDispatch.recordUseModelTrajectory(args);
 	}
 
 	/**
@@ -8551,7 +4209,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * zero token counts. Trajectory logging never breaks core model flow, so
 	 * failures here are swallowed and surfaced via reportError instead.
 	 */
-	private async recordFailedModelTrajectory(args: {
+	private recordFailedModelTrajectory(args: {
 		modelType: string;
 		resolvedModelKey: string;
 		provider?: string;
@@ -8560,112 +4218,7 @@ export class AgentRuntime implements IAgentRuntime {
 		error: unknown;
 		elapsedTime: number;
 	}): Promise<void> {
-		if (this.initResolver) return;
-		// A failed attempt is NOT provider-recorded: the provider never returned
-		// a result, so its wire recorder did not run. We want this entry to land.
-		try {
-			const trajCtx = getTrajectoryContext();
-			const stepId = trajCtx?.trajectoryStepId;
-			if (!stepId) return;
-			const trajLogger = (await this._ensureServiceStarted("trajectories")) as
-				| (Service & TrajectoryRuntimeLlmCallLogger)
-				| null;
-			if (!trajLogger) return;
-
-			const paramsRecord = isPlainObject(args.modelParams)
-				? (args.modelParams as Record<string, unknown>)
-				: {};
-			const tempRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { temperature?: number }).temperature
-				: undefined;
-			const maxTokensRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { maxTokens?: number }).maxTokens
-				: undefined;
-			const systemPrompt =
-				resolveEffectiveSystemPrompt({
-					params: args.modelParams,
-					fallback: this.buildRuntimeSystemPrompt(),
-				}) ?? "";
-			const userPrompt =
-				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
-				args.promptContent ??
-				"";
-			const errorMessage =
-				args.error instanceof Error
-					? args.error.message
-					: typeof args.error === "string"
-						? args.error
-						: "unknown model error";
-			// Mark the response as a sanitized failure, not a success payload, so
-			// downstream readers/agents can distinguish billed-but-failed attempts
-			// from real outputs. Secrets are stripped to keep the trajectory safe.
-			// The provider's own diagnostic (status + body message) is appended:
-			// SDK error messages degrade to the bare statusText for providers with
-			// non-OpenAI error envelopes, and without the body detail a failed
-			// attempt reads as an uninvestigable "Bad Request".
-			const providerDetail = modelProviderErrorDetail(args.error);
-			const detailSuffix = providerDetail
-				? `${
-						providerDetail.providerMessage &&
-						!errorMessage.includes(providerDetail.providerMessage)
-							? ` | provider: ${providerDetail.providerMessage}`
-							: ""
-					}${
-						providerDetail.status !== undefined
-							? ` | status: ${providerDetail.status}`
-							: ""
-					}`
-				: "";
-			const sanitizedMessage = this.redactSecrets(
-				`${errorMessage}${detailSuffix}`,
-			);
-			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
-			trajLogger.logLlmCall({
-				stepId,
-				model: args.resolvedModelKey,
-				modelType: args.modelType,
-				provider: args.provider,
-				systemPrompt,
-				userPrompt,
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: userPrompt,
-				// The failed request's messages ARE the evidence: without them a
-				// provider rejection (schema, shape, encoding) cannot be replayed or
-				// diagnosed from the trajectory. Same privacy surface as the
-				// successful-call record, which already persists messages.
-				messages: Array.isArray(paramsRecord.messages)
-					? (paramsRecord.messages as unknown[])
-					: undefined,
-				tools: paramsRecord.tools,
-				toolChoice: paramsRecord.toolChoice,
-				responseSchema: paramsRecord.responseSchema,
-				providerOptions: paramsRecord.providerOptions,
-				response: `[model call failed] ${sanitizedMessage}`,
-				finishReason: "error",
-				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
-				...(typeof maxTokensRaw === "number"
-					? { maxTokens: maxTokensRaw }
-					: {}),
-				purpose: trajCtx.purpose ?? "action",
-				actionType: "runtime.useModel",
-				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
-				modelSlot: args.modelType,
-				runId: trajCtx.runId,
-				roomId: trajCtx.roomId,
-				messageId: trajCtx.messageId,
-				executionTraceId: activeTrace?.id,
-				providerOrder: trajCtx.providerOrder,
-				providerAttributions: trajCtx.providerAttributions,
-			});
-		} catch (trajectoryError) {
-			// error-policy:J7 Trajectory logging must never break core model flow.
-			this.reportError("TrajectoryFailedAttemptRecord", trajectoryError, {
-				modelKey: args.resolvedModelKey,
-				provider: args.provider,
-			});
-		}
+		return this.modelDispatch.recordFailedModelTrajectory(args);
 	}
 
 	/**
@@ -8734,2163 +4287,10 @@ export class AgentRuntime implements IAgentRuntime {
 			text: response,
 		};
 	}
-
-	// ============================================================================
-	// Dynamic Prompt Execution with Validation-Aware Streaming
-	// ============================================================================
-
-	/**
-	 * Performance metrics for dynamic prompt execution.
-	 * Tracks success/failure rates per model+schema combination.
-	 *
-	 * Uses LRU-style eviction to prevent unbounded growth:
-	 * - Max 100 entries (sufficient for typical model+schema combinations)
-	 * - Entries older than 1 hour are pruned on access
-	 */
-	private static dynamicPromptMetrics = new Map<
-		string,
-		{
-			lowestFailedTokenCount: number | null;
-			highestSuccessTokenCount: number | null;
-			totalAttempts: number;
-			successfulAttempts: number;
-			failedAttempts: number;
-			lastUpdated: number;
-		}
-	>();
-
-	private static readonly METRICS_MAX_ENTRIES = 100;
-	private static readonly METRICS_TTL_MS = 60 * 60 * 1000; // 1 hour
-	private static readonly STRUCTURED_FAILURE_PREVIEW_LIMIT = 4000;
-
-	/**
-	 * Get or create metrics entry with LRU eviction.
-	 */
-	private static getOrCreateMetrics(key: string) {
-		const now = Date.now();
-
-		// Prune stale entries periodically (when we access)
-		if (
-			AgentRuntime.dynamicPromptMetrics.size >
-			AgentRuntime.METRICS_MAX_ENTRIES / 2
-		) {
-			for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
-				if (now - v.lastUpdated > AgentRuntime.METRICS_TTL_MS) {
-					AgentRuntime.dynamicPromptMetrics.delete(k);
-				}
-			}
-		}
-
-		// Evict oldest if still at max capacity
-		if (
-			AgentRuntime.dynamicPromptMetrics.size >= AgentRuntime.METRICS_MAX_ENTRIES
-		) {
-			let oldestKey: string | null = null;
-			let oldestTime = Infinity;
-			for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
-				if (v.lastUpdated < oldestTime) {
-					oldestTime = v.lastUpdated;
-					oldestKey = k;
-				}
-			}
-			if (oldestKey) {
-				AgentRuntime.dynamicPromptMetrics.delete(oldestKey);
-			}
-		}
-
-		let metric = AgentRuntime.dynamicPromptMetrics.get(key);
-		if (!metric) {
-			metric = {
-				lowestFailedTokenCount: null,
-				highestSuccessTokenCount: null,
-				totalAttempts: 0,
-				successfulAttempts: 0,
-				failedAttempts: 0,
-				lastUpdated: now,
-			};
-			AgentRuntime.dynamicPromptMetrics.set(key, metric);
-		}
-		return metric;
-	}
-
-	private setStructuredOutputFailureState(
-		state: State,
-		failure: StructuredOutputFailure,
-	): void {
-		const issues = Array.isArray(failure.issues)
-			? failure.issues.filter(
-					(issue): issue is string =>
-						typeof issue === "string" && issue.trim().length > 0,
-				)
-			: [];
-		const summaryParts = [
-			`Structured output ${failure.kind.replaceAll("_", " ")}`,
-			`model=${failure.model}`,
-			`format=${failure.format}`,
-			`attempt=${failure.attempts}/${failure.maxRetries + 1}`,
-			...(issues.length > 0 ? [`issue=${issues[0]}`] : []),
-			...(failure.parseError ? [`error=${failure.parseError}`] : []),
-		];
-
-		state.values = {
-			...state.values,
-			structuredOutputFailureSummary: summaryParts.join("; "),
-		};
-		state.data = {
-			...state.data,
-			structuredOutputFailure: failure,
-		};
-	}
-
-	private clearStructuredOutputFailureState(state: State): void {
-		if (state.values.structuredOutputFailureSummary !== undefined) {
-			const { structuredOutputFailureSummary: _discard, ...restValues } =
-				state.values;
-			state.values = restValues;
-		}
-
-		if (state.data.structuredOutputFailure !== undefined) {
-			const { structuredOutputFailure: _discard, ...restData } = state.data;
-			state.data = restData;
-		}
-	}
-
-	/**
-	 * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
-	 *
-	 * WHY THIS EXISTS:
-	 * LLMs are powerful but unreliable for structured outputs. They can:
-	 * - Silently truncate output when hitting token limits
-	 * - Skip fields or produce malformed structures
-	 * - Hallucinate or ignore parts of the prompt
-	 *
-	 * This method addresses these issues by:
-	 * 1. Validation codes: Injects UUID codes the LLM must echo back
-	 * 2. Streaming with safety: Enables streaming while detecting truncation
-	 * 3. Performance tracking: Tracks success/failure rates per model+schema
-	 */
-	async dynamicPromptExecFromState({
-		state: stateArg,
-		params,
-		schema,
-		options = {},
-	}: {
-		state?: State;
-		params: Omit<GenerateTextParams, "prompt"> & {
-			prompt: string | ((ctx: { state: State }) => string);
-		};
-		schema: SchemaRow[];
-		options?: {
-			key?: string;
-			promptName?: string;
-			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
-			modelType?: import("./types").TextGenerationModelType;
-			model?: string;
-			requiredFields?: string[];
-			contextCheckLevel?: 0 | 1 | 2 | 3;
-			checkpointCodes?: boolean;
-			maxRetries?: number;
-			retryBackoff?: number | RetryBackoffConfig;
-			disableCache?: boolean;
-			cacheTTL?: number;
-			onStreamChunk?: StreamChunkCallback;
-			onStreamEvent?: (
-				event: StreamEvent,
-				messageId?: string,
-			) => void | Promise<void>;
-			abortSignal?: AbortSignal;
-		};
-	}): Promise<Record<string, unknown> | null> {
-		const state: State =
-			stateArg ?? ({ values: {}, data: {}, text: "" } as State);
-
-		// Validate schema input
-		if (!schema || schema.length === 0) {
-			this.logger.error(
-				"dynamicPromptExecFromState: schema must have at least one entry",
-			);
-			this.clearStructuredOutputFailureState(state);
-			return null;
-		}
-
-		const flattenedSchema = this.flattenSchemaRows(schema);
-		const schemaWarnings = this.collectSchemaDefinitionWarnings(schema);
-		for (const warning of schemaWarnings) {
-			this.logger.warn(`dynamicPromptExecFromState schema warning: ${warning}`);
-		}
-
-		// Validate field names are valid identifiers
-		const invalidFields = flattenedSchema.filter((row) => {
-			if (!row.field || typeof row.field !== "string") return true;
-			// Field names should be valid identifiers: start with letter/underscore, contain only alphanumeric/underscore
-			return !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(row.field);
-		});
-
-		if (invalidFields.length > 0) {
-			this.logger.error(
-				`dynamicPromptExecFromState: invalid field names in schema: ${invalidFields.map((f) => f.field || "(empty)").join(", ")}`,
-			);
-			this.clearStructuredOutputFailureState(state);
-			return null;
-		}
-
-		// Generate keys for metrics
-		const resolvedModelType = resolveDynamicPromptModelType(
-			options.modelType,
-			options.modelSize,
-		);
-		const modelIdentifier =
-			options.modelType || options.model || resolvedModelType;
-		const schemaKey = this.buildSchemaMetricKey(schema);
-		const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
-
-		// Get validation level from settings or options
-		const validationLevelRaw = this.getSetting("VALIDATION_LEVEL");
-		const validationLevel =
-			typeof validationLevelRaw === "string"
-				? validationLevelRaw.toLowerCase()
-				: undefined;
-
-		// Map VALIDATION_LEVEL to contextCheckLevel and default retries
-		let defaultContextCheckLevel: 0 | 1 | 2 | 3 = 2;
-		let defaultRetries = 1;
-
-		if (validationLevel === "trusted" || validationLevel === "fast") {
-			defaultContextCheckLevel = 0;
-			defaultRetries = 0;
-		} else if (validationLevel === "progressive") {
-			defaultContextCheckLevel = 1;
-			defaultRetries = 2;
-		} else if (validationLevel === "strict" || validationLevel === "safe") {
-			defaultContextCheckLevel = 3;
-			defaultRetries = 3;
-		} else if (validationLevel !== undefined) {
-			// Warn about unrecognized validation level
-			this.logger.warn(
-				`Unrecognized VALIDATION_LEVEL "${validationLevel}". ` +
-					`Valid values: trusted, fast, progressive, strict, safe. ` +
-					`Falling back to default (level 2).`,
-			);
-		}
-
-		const maxRetries = options.maxRetries ?? defaultRetries;
-		const checkpointCodesEnabled =
-			options.checkpointCodes ??
-			parseBooleanValue(this.getSetting("PROMPT_CHECKPOINT_CODES")) ??
-			false;
-		let currentRetry = 0;
-		const promptCode = () => uuidv4().replaceAll("-", "").slice(0, 8);
-		let lastStructuredFailure: StructuredOutputFailure | null = null;
-
-		// Initialize metrics with LRU eviction
-		const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
-
-		// Extractor is created once and persists across retries
-		let extractor: DynamicPromptStreamExtractor | undefined;
-		let structuredPromptDelivery = Promise.resolve();
-		let structuredPromptDeliveryError: unknown;
-		let structuredPromptDeliveryFailed = false;
-		const enqueueStructuredPromptDelivery = (
-			deliver: () => void | Promise<void>,
-		): void => {
-			structuredPromptDelivery = structuredPromptDelivery
-				.then(async () => {
-					if (structuredPromptDeliveryFailed) return;
-					await deliver();
-				})
-				.then(undefined, (error: unknown) => {
-					structuredPromptDeliveryFailed = true;
-					structuredPromptDeliveryError = error;
-				});
-		};
-		const drainStructuredPromptDelivery = async (): Promise<void> => {
-			await structuredPromptDelivery;
-			if (structuredPromptDeliveryFailed) {
-				throw structuredPromptDeliveryError;
-			}
-		};
-		let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
-		const perFieldCodes = new Map<string, string>();
-
-		let traceModelId: string | undefined;
-		let tracePromptKey: string | undefined;
-		let traceVariant = "baseline";
-		let traceArtifactVersion: number | undefined;
-		const traceStartTime = Date.now();
-		const optimizationHooks = this.getPromptOptimizationHooks();
-
-		if (optimizationHooks) {
-			traceModelId = this.resolveProviderModelString(
-				resolvedModelType,
-				options.model,
-			);
-			const schemaHash = this.buildSchemaMetricKey(schema)
-				.split("")
-				.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
-				.toString(16)
-				.slice(0, 8);
-			tracePromptKey = options.promptName ?? schemaHash;
-		}
-
-		while (currentRetry <= maxRetries) {
-			const template = params.prompt;
-			const templateStr =
-				typeof template === "function" ? template({ state }) : template;
-
-			let finalTemplateStr = templateStr;
-			if (
-				optimizationHooks &&
-				traceModelId &&
-				tracePromptKey &&
-				currentRetry === 0
-			) {
-				try {
-					const merged = await optimizationHooks.mergePromptTemplate(this, {
-						baselineTemplate: templateStr,
-						modelId: traceModelId,
-						modelSlot: resolvedModelType,
-						promptKey: tracePromptKey,
-					});
-					finalTemplateStr = merged.template;
-					traceVariant = merged.variant;
-					traceArtifactVersion = merged.artifactVersion;
-				} catch (optErr) {
-					// error-policy:J4 Prompt optimization is optional; the
-					// unoptimized baseline remains the explicit degraded path.
-					this.logger.warn(
-						{ error: optErr },
-						"Optimization artifact lookup failed",
-					);
-					this.reportError("AgentRuntime.promptOptimizationLookup", optErr, {
-						promptKey: tracePromptKey,
-					});
-				}
-			}
-
-			// Get keys from state (excluding text, values, data)
-			const stateKeys = Object.keys(state);
-			const filteredKeys = stateKeys.filter(
-				(key) => !["text", "values", "data"].includes(key),
-			);
-			const filteredState = filteredKeys.reduce(
-				(acc: Record<string, unknown>, key) => {
-					acc[key] = state[key];
-					return acc;
-				},
-				{},
-			);
-			const templateContext = { ...filteredState, ...state.values };
-
-			let outputSegments = this.renderPromptTemplateSegments(
-				finalTemplateStr,
-				templateContext,
-				state,
-			);
-			// Callers that assemble the prompt themselves (e.g. the PromptBatcher
-			// dispatcher) can pass `params.promptSegments` alongside the flat
-			// `params.prompt` to preserve stable/dynamic structure for provider
-			// prompt caching. Without this, the whole caller prompt renders as a
-			// single segment and volatile content (batched section contexts) can be
-			// marked stable, producing cache writes that are never read. The caller
-			// segmentation is adopted ONLY when it reproduces the rendered template
-			// byte-for-byte, so the prompt text sent to the model is provably
-			// unchanged; otherwise (placeholders, template cleaning, optimization
-			// hooks rewriting the template) we keep the rendered segmentation.
-			const callerPromptSegments = (params as { promptSegments?: unknown })
-				.promptSegments;
-			if (
-				Array.isArray(callerPromptSegments) &&
-				callerPromptSegments.length > 0
-			) {
-				const normalizedCallerSegments: PromptSegment[] = [];
-				let callerSegmentsValid = true;
-				for (const segment of callerPromptSegments) {
-					if (
-						typeof segment !== "object" ||
-						segment === null ||
-						typeof (segment as { content?: unknown }).content !== "string"
-					) {
-						callerSegmentsValid = false;
-						break;
-					}
-					const typedSegment = segment as PromptSegment;
-					normalizedCallerSegments.push({
-						content: typedSegment.content,
-						stable: Boolean(typedSegment.stable),
-						...(typedSegment.ttl === "long" || typedSegment.ttl === "short"
-							? { ttl: typedSegment.ttl }
-							: {}),
-					});
-				}
-				const renderedOutput = outputSegments
-					.map((segment) => segment.content)
-					.join("");
-				const callerJoined = normalizedCallerSegments
-					.map((segment) => segment.content)
-					.join("");
-				if (callerSegmentsValid && callerJoined === renderedOutput) {
-					outputSegments = this.mergePromptSegments(normalizedCallerSegments);
-				} else if (RUNTIME_DEBUG_LOG_ENABLED) {
-					this.logger.debug(
-						"dynamicPromptExecFromState: caller promptSegments do not reproduce the rendered prompt; using template segmentation",
-					);
-				}
-			}
-			const output = outputSegments.map((segment) => segment.content).join("");
-
-			// Process format options
-			const format: StructuredResponseFormat = resolveDefaultOutputFormat(
-				this.getSetting("PROMPT_OUTPUT_FORMAT"),
-			);
-
-			/**
-			 * Rough token count estimate for logging/debugging purposes only.
-			 *
-			 * NOTE: This is a heuristic approximation, not an accurate tokenizer.
-			 * Modern LLMs use subword tokenization (BPE, WordPiece, SentencePiece)
-			 * where actual token counts vary significantly by model and content.
-			 *
-			 * The 1.3x multiplier accounts for:
-			 * - Subword splitting of longer/uncommon words
-			 * - Punctuation and special characters as separate tokens
-			 * - Whitespace handling differences
-			 *
-			 * For accurate counts, use model-specific tokenizers (e.g., tiktoken).
-			 * This estimate is sufficient for logging and rough capacity planning.
-			 */
-			const estToken = (text: string) => {
-				const words = text
-					.trim()
-					.split(/\s+|\b/)
-					.filter((w) => /\w+/.test(w));
-				return Math.ceil(words.length * 1.3);
-			};
-
-			// estToken scans the full multi-KB output; only run it when the debug
-			// log it feeds would actually be emitted.
-			if (RUNTIME_DEBUG_LOG_ENABLED) {
-				this.logger.debug(
-					`dynamicPromptExecFromState: using format ${format}, ~${estToken(output).toLocaleString()} tokens`,
-				);
-			}
-
-			// Set context level on first iteration
-			if (currentRetry === 0) {
-				contextLevel = options.contextCheckLevel ?? defaultContextCheckLevel;
-
-				// Generate per-field validation codes for levels 0-1
-				if (contextLevel <= 1) {
-					for (const row of schema) {
-						const defaultValidate = contextLevel === 1;
-						const needsValidation = row.validateField ?? defaultValidate;
-						if (needsValidation) {
-							perFieldCodes.set(row.field, promptCode());
-						}
-					}
-				}
-
-				const streamFields = resolveDynamicPromptStreamFields(schema);
-				if (
-					streamFields.length > 0 &&
-					(options.onStreamChunk || options.onStreamEvent)
-				) {
-					extractor = new StructuredFieldStreamExtractor({
-						level: contextLevel,
-						schema,
-						streamFields,
-						...(options.abortSignal
-							? { abortSignal: options.abortSignal }
-							: {}),
-						onChunk: (chunk, _field, accumulated, streamRevision) => {
-							enqueueStructuredPromptDelivery(() =>
-								options.onStreamChunk?.(
-									chunk,
-									undefined,
-									accumulated,
-									streamRevision,
-								),
-							);
-						},
-						onEvent: (event) => {
-							enqueueStructuredPromptDelivery(() =>
-								options.onStreamEvent?.(event, undefined),
-							);
-						},
-					});
-				}
-			}
-
-			// Optional checkpoint codes: level 2+ gets first codes, level 3 gets both.
-			const first = checkpointCodesEnabled && contextLevel >= 2;
-			const last = checkpointCodesEnabled && contextLevel >= 3;
-
-			// Build extended schema with validation codes
-			const extSchema: Array<{
-				field: string;
-				description: string;
-				required?: boolean;
-			}> = [];
-
-			const codesSchema = (prefix: string) => [
-				{
-					field: `${prefix}initial_code`,
-					description: "echo the initial prompt code",
-				},
-				{
-					field: `${prefix}middle_code`,
-					description: "echo the middle prompt code",
-				},
-				{
-					field: `${prefix}end_code`,
-					description: "echo the end prompt code",
-				},
-			];
-
-			if (first) {
-				extSchema.push(...codesSchema("one_"));
-			}
-
-			// Add schema fields with per-field codes for levels 0-1
-			for (const row of schema) {
-				const fieldCode = perFieldCodes.get(row.field);
-				if (fieldCode) {
-					extSchema.push({
-						field: `code_${row.field}_start`,
-						description: `output exactly: ${fieldCode}`,
-					});
-				}
-				extSchema.push(row);
-				if (fieldCode) {
-					extSchema.push({
-						field: `code_${row.field}_end`,
-						description: `output exactly: ${fieldCode}`,
-					});
-				}
-			}
-
-			if (last) {
-				extSchema.push(...codesSchema("two_"));
-			}
-
-			// Generate prompt with format example
-			const EXAMPLE = this.renderJsonSchemaExample(schema);
-			const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
-				format,
-				schema,
-				perFieldCodes,
-				includeFirstCheckpoint: first,
-				includeLastCheckpoint: last,
-			});
-
-			const initCode = checkpointCodesEnabled ? promptCode() : "";
-			const midCode = checkpointCodesEnabled ? promptCode() : "";
-			const finalCode = checkpointCodesEnabled ? promptCode() : "";
-
-			// Check for smart retry context (set by previous retry iteration)
-			const smartRetryContextRaw = (state as Record<string, unknown>)
-				._smartRetryContext;
-			const smartRetryContext =
-				typeof smartRetryContextRaw === "string"
-					? smartRetryContextRaw.trim()
-					: "";
-
-			const section_start = "# Strict Output instructions";
-			const section_end = "";
-
-			const variableSegments = this.joinPromptSegmentGroups([
-				checkpointCodesEnabled
-					? [{ content: `initial code: ${initCode}`, stable: false }]
-					: [],
-				outputSegments,
-				smartRetryContext
-					? [{ content: smartRetryContext, stable: false }]
-					: [],
-				checkpointCodesEnabled
-					? [{ content: `middle code: ${midCode}`, stable: false }]
-					: [],
-			]).concat({ content: "\n", stable: false });
-			// Prompt cache hints: build segments so providers can cache the stable prefix.
-			// WHY: We only mark content stable when it is identical across calls for the same
-			// schema/character. VALIDATION_INSTRUCTIONS contains per-call UUIDs (perFieldCodes,
-			// checkpoint codes), so it must be in an unstable segment; otherwise provider caches
-			// would never hit. Format instructions and example (same for same schema) are stable.
-			const formatStablePrefix =
-				section_start +
-				`\nReturn only ${format}. No prose before or after it. No <think>.
-
-`;
-			const formatStableSuffix = `
-Use this shape:
-${EXAMPLE}
-
-Return exactly one JSON object.
-${section_end}`;
-			const endBlock = checkpointCodesEnabled
-				? `\nend code: ${finalCode}\n`
-				: "\n";
-			// Middle block: validation text when present (unstable); else "\n\n" so prompt string is unchanged.
-			const formatMiddleBlock = VALIDATION_INSTRUCTIONS
-				? `${VALIDATION_INSTRUCTIONS}\n\n`
-				: "\n\n";
-
-			const segments: PromptSegment[] = this.mergePromptSegments([
-				...variableSegments,
-				{ content: formatStablePrefix, stable: true },
-				{ content: formatMiddleBlock, stable: false },
-				{ content: formatStableSuffix, stable: true },
-				{ content: endBlock, stable: false },
-			]);
-			const prompt = segments.map((s) => s.content).join("");
-
-			// Token estimate used for:
-			// 1. Debug logging of prompt size
-			// 2. Metrics tracking: highestSuccessTokenCount / lowestFailedTokenCount
-			//    (useful for identifying token-count-related failure patterns)
-			const outputTokenEst = estToken(prompt);
-			this.logger.debug(
-				`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`,
-			);
-
-			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
-			// Build the full provider cache plan from the stable-prefix hash so providers like plugin-anthropic and
-			// plugin-openrouter can inject cache_control breakpoints without needing a separate planner call.
-			const _dynamicPrefixHashes = computePrefixHashes(segments);
-			const _dynamicCacheHash =
-				computePrefixHashes(cachePrefixSegments(segments)).at(-1)?.hash ??
-				"no-context-segments";
-			const _callerTools = (params as { tools?: unknown }).tools;
-			const _dynamicCachePlan = buildProviderCachePlan({
-				prefixHash: _dynamicCacheHash,
-				segmentHashes: _dynamicPrefixHashes.map((e) => e.segmentHash),
-				promptSegments: segments,
-				// Providers with tool-aware cache policies (Gemini disables explicit
-				// caching when tools are present; Anthropic reserves a breakpoint for
-				// the tools array) need to know whether this call carries tools.
-				hasTools: Array.isArray(_callerTools)
-					? _callerTools.length > 0
-					: typeof _callerTools === "object" && _callerTools !== null
-						? Object.keys(_callerTools).length > 0
-						: false,
-			});
-			// Deep-merge caller-supplied providerOptions with the cache plan. See
-			// mergeProviderOptionsWithCachePlan for the full merging semantics.
-			const _rawCallerProviderOptions = (
-				params as { providerOptions?: unknown }
-			).providerOptions;
-			const _callerProviderOptions =
-				_rawCallerProviderOptions != null &&
-				typeof _rawCallerProviderOptions === "object" &&
-				!Array.isArray(_rawCallerProviderOptions)
-					? (_rawCallerProviderOptions as Record<
-							string,
-							JsonValue | object | undefined
-						>)
-					: undefined;
-			const _planProviderOptions = _dynamicCachePlan.providerOptions;
-			const _mergedProviderOptions = mergeProviderOptionsWithCachePlan(
-				{ agentName: this.character.name },
-				_callerProviderOptions,
-				_planProviderOptions,
-			);
-			const modelParams = {
-				...params,
-				prompt,
-				responseFormat: params.responseFormat ?? { type: "json_object" },
-				promptSegments: segments,
-				providerOptions: _mergedProviderOptions,
-				...(extractor
-					? {
-							onStreamChunk: (chunk: string) => {
-								extractor?.push(chunk);
-							},
-						}
-					: {}),
-			};
-
-			// Check for cancellation before request
-			if (options.abortSignal?.aborted) {
-				extractor?.signalError("Cancelled by user");
-				await drainStructuredPromptDelivery();
-				delete (state as Record<string, unknown>)._smartRetryContext;
-				this.clearStructuredOutputFailureState(state);
-				return null;
-			}
-
-			let response: string;
-			try {
-				response = await runWithStreamingContext(undefined, () =>
-					this.useModel(resolvedModelType, modelParams, options.model),
-				);
-			} catch (modelError) {
-				// error-policy:J4 Structured generation retries transient model
-				// failures and records an explicit failure state on exhaustion.
-				const modelErrorMessage = getErrorMessage(modelError);
-				const isTransientFailure = isTransientModelError(modelError);
-				// useModel has already tried the configured provider chain. A schema
-				// reroll cannot repair exhausted capacity and only repeats that chain.
-				const capacityExhausted = isRateLimitError(modelError);
-				const willRetry = !capacityExhausted && currentRetry + 1 <= maxRetries;
-				const failureMessage = isTransientFailure
-					? `Model call failed transiently${willRetry ? ", retrying" : ""}: ${modelErrorMessage}`
-					: `Model call failed: ${modelErrorMessage}`;
-				if (isTransientFailure) {
-					this.logger.warn(failureMessage);
-				} else {
-					this.logger.error(failureMessage);
-				}
-				lastStructuredFailure = {
-					source: "dynamicPromptExecFromState",
-					kind: "model_error",
-					model: String(modelIdentifier),
-					format,
-					schemaFields: flattenedSchema.map((row) => row.field),
-					attempts: currentRetry + 1,
-					maxRetries,
-					timestamp: Date.now(),
-					key: options.key ?? modelSchemaKey,
-					parseError: modelErrorMessage,
-					issues: [
-						"Model call failed before a structured response could be validated.",
-					],
-				};
-				currentRetry++;
-
-				if (options.abortSignal?.aborted) {
-					extractor?.signalError("Cancelled by user");
-					await drainStructuredPromptDelivery();
-					delete (state as Record<string, unknown>)._smartRetryContext;
-					this.clearStructuredOutputFailureState(state);
-					return null;
-				}
-
-				if (capacityExhausted) break;
-
-				if (currentRetry <= maxRetries) {
-					// Apply retry backoff for model errors
-					if (options.retryBackoff) {
-						const delayMs = this.calculateBackoffDelay(
-							options.retryBackoff,
-							currentRetry,
-						);
-						this.logger.debug(
-							`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
-						);
-
-						// Abortable sleep - check signal during wait, not just after
-						const aborted = await this.abortableSleep(
-							delayMs,
-							options.abortSignal,
-						);
-						if (aborted) {
-							extractor?.signalError("Cancelled by user");
-							await drainStructuredPromptDelivery();
-							delete (state as Record<string, unknown>)._smartRetryContext;
-							this.clearStructuredOutputFailureState(state);
-							return null;
-						}
-					}
-
-					// Signal retry to extractor if it exists
-					if (extractor) {
-						await drainStructuredPromptDelivery();
-						extractor.signalRetry(currentRetry);
-						extractor.reset();
-					}
-				}
-				continue;
-			}
-
-			// Clean response (remove <think> blocks)
-			const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, "");
-
-			let responseContent: Record<string, unknown> | null = null;
-			let parseErrorMessage: string | undefined;
-			const validationIssues: string[] = [];
-			try {
-				responseContent = this.parseStructuredResponse(cleanResponse, format);
-				this.logger.debug(
-					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
-				);
-			} catch (e) {
-				// error-policy:J3 Model output is untrusted input; parse failure
-				// becomes an explicit invalid attempt for schema retry.
-				parseErrorMessage = e instanceof Error ? e.message : String(e);
-				this.logger.error(
-					`dynamicPromptExecFromState parse error: ${parseErrorMessage}`,
-				);
-			}
-
-			responseContent = this.normalizeStructuredResponse(responseContent);
-
-			// Validate response
-			let allGood = true;
-			let schemaValidation: { missingPaths: string[]; invalidPaths: string[] } =
-				{
-					missingPaths: [],
-					invalidPaths: [],
-				};
-			if (!responseContent) {
-				validationIssues.push(
-					"No structured output could be parsed from the model response.",
-				);
-				this.logger.warn(
-					`dynamicPromptExecFromState parse problem: ${cleanResponse}`,
-				);
-				allGood = false;
-			} else {
-				// Validate codes based on context level
-				if (contextLevel <= 1) {
-					// Per-field validation
-					for (const [field, expectedCode] of perFieldCodes) {
-						const startCodeField = `code_${field}_start`;
-						const endCodeField = `code_${field}_end`;
-						const startCode = responseContent[startCodeField];
-						const endCode = responseContent[endCodeField];
-
-						if (startCode !== expectedCode || endCode !== expectedCode) {
-							validationIssues.push(
-								`Per-field validation failed for ${field}.`,
-							);
-							this.logger.warn(
-								`Per-field validation failed for ${field}: expected=${expectedCode}, start=${startCode}, end=${endCode}`,
-							);
-							allGood = false;
-						}
-
-						delete responseContent[startCodeField];
-						delete responseContent[endCodeField];
-					}
-				} else {
-					// Checkpoint validation
-					const validationCodes: [string, string][] = [
-						...(first
-							? [
-									["one_initial_code", initCode] as [string, string],
-									["one_middle_code", midCode] as [string, string],
-									["one_end_code", finalCode] as [string, string],
-								]
-							: []),
-						...(last
-							? [
-									["two_initial_code", initCode] as [string, string],
-									["two_middle_code", midCode] as [string, string],
-									["two_end_code", finalCode] as [string, string],
-								]
-							: []),
-					];
-
-					for (const [field, expected] of validationCodes) {
-						if (responseContent[field] !== expected) {
-							validationIssues.push(
-								`Checkpoint validation failed for ${field}.`,
-							);
-							this.logger.warn(
-								`Checkpoint ${field} mismatch: expected ${expected}`,
-							);
-							allGood = false;
-						}
-					}
-
-					if (first) {
-						delete responseContent.one_initial_code;
-						delete responseContent.one_middle_code;
-						delete responseContent.one_end_code;
-					}
-					if (last) {
-						delete responseContent.two_initial_code;
-						delete responseContent.two_middle_code;
-						delete responseContent.two_end_code;
-					}
-				}
-
-				schemaValidation = this.validateResponseAgainstSchema(
-					responseContent,
-					schema,
-				);
-				if (
-					schemaValidation.missingPaths.length > 0 ||
-					schemaValidation.invalidPaths.length > 0
-				) {
-					if (schemaValidation.missingPaths.length > 0) {
-						validationIssues.push(
-							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
-						);
-						this.logger.warn(
-							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
-						);
-					}
-					if (schemaValidation.invalidPaths.length > 0) {
-						validationIssues.push(
-							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
-						);
-						this.logger.warn(
-							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
-						);
-					}
-					allGood = false;
-				}
-
-				// Validate required fields
-				if (options.requiredFields && options.requiredFields.length > 0) {
-					const isMissingField = (value: unknown): boolean => {
-						if (value === undefined || value === null) return true;
-						if (typeof value === "string") return value.trim().length === 0;
-						if (Array.isArray(value)) return value.length === 0;
-						if (typeof value === "object")
-							return Object.keys(value).length === 0;
-						return false;
-					};
-
-					const missingFields = options.requiredFields.filter(
-						(field) =>
-							!responseContent ||
-							!(field in responseContent) ||
-							isMissingField(responseContent[field]),
-					);
-					if (missingFields.length > 0) {
-						validationIssues.push(
-							`Missing required fields: ${missingFields.join(", ")}`,
-						);
-						this.logger.warn(
-							`Missing required fields: ${missingFields.join(", ")}`,
-						);
-						allGood = false;
-					}
-				}
-			}
-
-			// Update metrics
-			metric.totalAttempts++;
-
-			if (allGood && responseContent) {
-				// Success - flush buffered content for levels 2-3
-				if (extractor) {
-					extractor.flush();
-				}
-				await drainStructuredPromptDelivery();
-
-				metric.successfulAttempts++;
-				if (
-					metric.highestSuccessTokenCount === null ||
-					outputTokenEst > metric.highestSuccessTokenCount
-				) {
-					metric.highestSuccessTokenCount = outputTokenEst;
-				}
-				metric.lastUpdated = Date.now();
-
-				this.logger.debug(
-					`dynamicPromptExecFromState success [${modelSchemaKey}]: ${outputTokenEst} tokens`,
-				);
-
-				// Clean up smart retry context from state
-				delete (state as Record<string, unknown>)._smartRetryContext;
-
-				if (optimizationHooks && traceModelId && tracePromptKey) {
-					try {
-						const scoreCard = new ScoreCard();
-						scoreCard.add({
-							source: "dpe",
-							kind: "parseSuccess",
-							value: 1.0,
-							reason: "Structured output parsed successfully",
-						});
-						const schemaOk =
-							schemaValidation.missingPaths.length === 0 &&
-							schemaValidation.invalidPaths.length === 0;
-						scoreCard.add({
-							source: "dpe",
-							kind: "schemaValid",
-							value: schemaOk ? 1.0 : 0.0,
-							reason: schemaOk
-								? "Response matched schema paths"
-								: `Schema issues: missing [${schemaValidation.missingPaths.join(", ")}]; invalid [${schemaValidation.invalidPaths.join(", ")}]`,
-						});
-						scoreCard.add({
-							source: "dpe",
-							kind: "retriesUsed",
-							value: Math.max(0, 1.0 - currentRetry / Math.max(maxRetries, 1)),
-							reason: `Succeeded on attempt ${currentRetry + 1} of ${maxRetries + 1}`,
-						});
-						scoreCard.add({
-							source: "dpe",
-							kind: "tokenEfficiency",
-							value: Math.min(1.0, 500 / Math.max(outputTokenEst, 1)),
-							reason: `Estimated output tokens ${outputTokenEst} vs reference 500`,
-						});
-
-						const templateHashInput =
-							typeof params.prompt === "string"
-								? params.prompt
-								: tracePromptKey;
-						const computedTemplateHash = shortStringHash(templateHashInput);
-
-						const trace: ExecutionTrace = {
-							id: uuidv4(),
-							traceVersion: 1,
-							type: "trace",
-							promptKey: tracePromptKey,
-							modelSlot: resolvedModelType,
-							modelId: traceModelId,
-							runId: this.getCurrentRunId(),
-							templateHash: computedTemplateHash,
-							schemaFingerprint: schemaKey,
-							artifactVersion: traceArtifactVersion,
-							variant: traceVariant,
-							parseSuccess: true,
-							schemaValid:
-								schemaValidation.missingPaths.length === 0 &&
-								schemaValidation.invalidPaths.length === 0,
-							validationCodesMatched: true,
-							retriesUsed: currentRetry,
-							tokenEstimate: outputTokenEst,
-							latencyMs: Date.now() - traceStartTime,
-							response: responseContent,
-							scoreCard: scoreCard.toJSON(),
-							createdAt: Date.now(),
-						};
-
-						this.maybeRunActiveTraceTTLPurge();
-						const runId = trace.runId;
-						if (runId) {
-							this.activeTraces.set(trace.id, trace);
-							if (!this.runToTraces.has(runId)) {
-								this.runToTraces.set(runId, new Set());
-							}
-							this.runToTraces.get(runId)?.add(trace.id);
-						}
-
-						void optimizationHooks
-							.persistRegistryEntry(this, {
-								promptKey: tracePromptKey,
-								schemaFingerprint: schemaKey,
-								templateHash: computedTemplateHash,
-								promptTemplate:
-									typeof params.prompt === "string" ? params.prompt : "",
-								schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
-							})
-							.catch((err) => {
-								// error-policy:J7 Optimization registries are diagnostic.
-								this.logger.warn(
-									{ error: err, src: "dpe" },
-									"Failed to write prompt optimization registry",
-								);
-								this.reportError(
-									"AgentRuntime.promptOptimizationRegistry",
-									err,
-									{ promptKey: tracePromptKey },
-								);
-							});
-						void optimizationHooks
-							.appendBaselineTrace(this, { trace })
-							.catch((err) => {
-								// error-policy:J7 Optimization traces are diagnostic.
-								this.logger.warn("Failed to write optimization trace", err);
-								this.reportError("AgentRuntime.promptOptimizationTrace", err, {
-									promptKey: tracePromptKey,
-								});
-							});
-					} catch (traceErr) {
-						// error-policy:J7 Optimization traces are diagnostic and
-						// cannot change an otherwise valid structured response.
-						this.logger.warn(
-							{ error: traceErr },
-							"Failed to build optimization trace",
-						);
-						this.reportError(
-							"AgentRuntime.buildPromptOptimizationTrace",
-							traceErr,
-							{ promptKey: tracePromptKey },
-						);
-					}
-				}
-
-				this.clearStructuredOutputFailureState(state);
-				return responseContent;
-			}
-
-			lastStructuredFailure = {
-				source: "dynamicPromptExecFromState",
-				kind: !responseContent
-					? parseErrorMessage
-						? "parse_error"
-						: "parse_problem"
-					: "validation_error",
-				model: String(modelIdentifier),
-				format,
-				schemaFields: flattenedSchema.map((row) => row.field),
-				attempts: currentRetry + 1,
-				maxRetries,
-				timestamp: Date.now(),
-				key: options.key ?? modelSchemaKey,
-				parseError: parseErrorMessage,
-				issues: validationIssues,
-				responsePreview: this.redactSecrets(cleanResponse).slice(
-					0,
-					AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
-				),
-			};
-
-			// Failure - update metrics
-			metric.failedAttempts++;
-			if (
-				metric.lowestFailedTokenCount === null ||
-				outputTokenEst < metric.lowestFailedTokenCount
-			) {
-				metric.lowestFailedTokenCount = outputTokenEst;
-			}
-
-			currentRetry++;
-
-			if (options.abortSignal?.aborted) {
-				extractor?.signalError("Cancelled by user");
-				await drainStructuredPromptDelivery();
-				delete (state as Record<string, unknown>)._smartRetryContext;
-				this.clearStructuredOutputFailureState(state);
-				return null;
-			}
-
-			if (currentRetry <= maxRetries) {
-				// Apply retry backoff
-				if (options.retryBackoff) {
-					const delayMs = this.calculateBackoffDelay(
-						options.retryBackoff,
-						currentRetry,
-					);
-					this.logger.debug(
-						`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
-					);
-
-					// Abortable sleep - check signal during wait, not just after
-					const aborted = await this.abortableSleep(
-						delayMs,
-						options.abortSignal,
-					);
-					if (aborted) {
-						extractor?.signalError("Cancelled by user");
-						await drainStructuredPromptDelivery();
-						delete (state as Record<string, unknown>)._smartRetryContext;
-						this.clearStructuredOutputFailureState(state);
-						return null;
-					}
-				}
-
-				// Signal retry to extractor
-				let smartRetryContextNext: string | undefined;
-				if (extractor) {
-					await drainStructuredPromptDelivery();
-					const { validatedFields } = extractor.signalRetry(currentRetry);
-					const diagnosis = extractor.diagnose();
-
-					this.logger.warn(
-						`dynamicPromptExecFromState retry ${currentRetry}/${maxRetries}`,
-						`validated=${validatedFields.join(",") || "none"}`,
-						`missing=${diagnosis.missingFields.join(",") || "none"}`,
-					);
-
-					// For level 1, build smart retry context
-					if (contextLevel === 1 && validatedFields.length > 0) {
-						const validatedContent = extractor.getValidatedFields();
-						const validatedParts: string[] = [];
-						for (const [field, content] of validatedContent) {
-							const wellFormedContent = toWellFormedUnicode(content);
-							validatedParts.push(
-								stringifyStructuredForPrompt({ [field]: wellFormedContent }),
-							);
-						}
-						if (validatedParts.length > 0) {
-							smartRetryContextNext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n${validatedParts.join("\n")}\n\nPlease complete: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(", ") || "all fields"}`;
-						}
-					}
-
-					extractor.reset();
-				}
-
-				// Repair reroll: when the extractor didn't produce a targeted retry
-				// context (the common case — contextLevel 2, no streaming extractor,
-				// or no validated fields), feed the model the CONCRETE reason its last
-				// output was rejected + the complete redacted bad output, so the
-				// reroll is corrective instead of a blind re-roll of the same prompt.
-				// Goes in the same `_smartRetryContext` field, which is rendered as a
-				// `stable:false` segment (prompt-cache safe) and cleared on
-				// success/abort. Correctness-neutral: it only changes the prompt of a
-				// retry that was already going to run; it never skips a validation.
-				if (!smartRetryContextNext) {
-					const repairIssues =
-						validationIssues.length > 0
-							? validationIssues
-							: parseErrorMessage
-								? [parseErrorMessage]
-								: [];
-					if (repairIssues.length > 0) {
-						const priorOutput = toWellFormedUnicode(
-							this.redactSecrets(cleanResponse),
-						);
-						const issueList = repairIssues
-							.map((issue) => `- ${issue}`)
-							.join("\n");
-						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${
-							priorOutput
-								? `\n\nYour previous (invalid) output was:\n${priorOutput}`
-								: ""
-						}`;
-					}
-				}
-
-				if (smartRetryContextNext) {
-					(state as Record<string, unknown>)._smartRetryContext =
-						smartRetryContextNext;
-				}
-			}
-		}
-
-		// Retries exhausted, or the provider chain cannot currently serve a call.
-		const retriesUsed = Math.max(
-			0,
-			(lastStructuredFailure?.attempts ?? currentRetry) - 1,
-		);
-		if (extractor) {
-			const diagnosis = extractor.diagnose();
-			const diagnosticParts: string[] = [];
-			if (diagnosis.missingFields.length > 0) {
-				diagnosticParts.push(`missing: ${diagnosis.missingFields.join(", ")}`);
-			}
-			if (diagnosis.invalidFields.length > 0) {
-				diagnosticParts.push(`invalid: ${diagnosis.invalidFields.join(", ")}`);
-			}
-			if (diagnosis.incompleteFields.length > 0) {
-				diagnosticParts.push(
-					`partial: ${diagnosis.incompleteFields.join(", ")}`,
-				);
-			}
-			extractor.signalError(
-				`Failed after ${retriesUsed} retries. ${diagnosticParts.length > 0 ? diagnosticParts.join("; ") : "unknown error"}`,
-			);
-		}
-		await drainStructuredPromptDelivery();
-
-		const finalFailureMessage = `dynamicPromptExecFromState failed after ${retriesUsed} retries [${modelSchemaKey}]`;
-		const finalFailureSummary = `${metric.successfulAttempts}/${metric.totalAttempts} successful`;
-		if (
-			lastStructuredFailure?.kind === "model_error" &&
-			isTransientModelError(lastStructuredFailure.parseError)
-		) {
-			this.logger.warn(finalFailureMessage, finalFailureSummary);
-		} else {
-			this.logger.error(finalFailureMessage, finalFailureSummary);
-		}
-
-		if (optimizationHooks && traceModelId && tracePromptKey) {
-			try {
-				this.purgeStaleActiveTraces();
-
-				const scoreCard = new ScoreCard();
-				scoreCard.add({
-					source: "dpe",
-					kind: "parseSuccess",
-					value: 0.0,
-					reason: `No valid parse after ${retriesUsed} retries`,
-				});
-				scoreCard.add({
-					source: "dpe",
-					kind: "schemaValid",
-					value: 0.0,
-					reason: "Parse or validation never succeeded",
-				});
-				scoreCard.add({
-					source: "dpe",
-					kind: "retriesUsed",
-					value: 0.0,
-					reason:
-						retriesUsed < maxRetries
-							? "Provider capacity exhausted"
-							: "All retry attempts exhausted",
-				});
-
-				const failTemplateHash = shortStringHash(
-					typeof params.prompt === "string" ? params.prompt : tracePromptKey,
-				);
-
-				const trace: ExecutionTrace = {
-					id: uuidv4(),
-					traceVersion: 1,
-					type: "trace",
-					promptKey: tracePromptKey,
-					modelSlot: resolvedModelType,
-					modelId: traceModelId,
-					runId: this.getCurrentRunId(),
-					templateHash: failTemplateHash,
-					schemaFingerprint: schemaKey,
-					artifactVersion: traceArtifactVersion,
-					variant: traceVariant,
-					parseSuccess: false,
-					schemaValid: false,
-					validationCodesMatched: false,
-					retriesUsed,
-					tokenEstimate: 0,
-					latencyMs: Date.now() - traceStartTime,
-					scoreCard: scoreCard.toJSON(),
-					createdAt: Date.now(),
-				};
-
-				void optimizationHooks
-					.persistRegistryEntry(this, {
-						promptKey: tracePromptKey,
-						schemaFingerprint: schemaKey,
-						templateHash: failTemplateHash,
-						promptTemplate:
-							typeof params.prompt === "string" ? params.prompt : "",
-						schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
-					})
-					.catch((err) => {
-						// error-policy:J7 Optimization registries are diagnostic.
-						this.logger.warn(
-							{ error: err, src: "dpe" },
-							"Failed to write prompt optimization registry",
-						);
-						this.reportError("AgentRuntime.promptOptimizationRegistry", err, {
-							promptKey: tracePromptKey,
-						});
-					});
-				void optimizationHooks
-					.appendFailureTrace(this, { trace })
-					.catch((err) => {
-						// error-policy:J7 Optimization traces are diagnostic.
-						this.logger.warn("Failed to write failure trace", err);
-						this.reportError(
-							"AgentRuntime.promptOptimizationFailureTrace",
-							err,
-							{ promptKey: tracePromptKey },
-						);
-					});
-			} catch (traceErr) {
-				// error-policy:J7 Failure traces are diagnostic and cannot replace
-				// the structured failure already returned to the caller.
-				this.logger.warn({ error: traceErr }, "Failed to build failure trace");
-				this.reportError(
-					"AgentRuntime.buildPromptOptimizationFailureTrace",
-					traceErr,
-					{ promptKey: tracePromptKey },
-				);
-			}
-		}
-
-		// Clean up smart retry context from state
-		delete (state as Record<string, unknown>)._smartRetryContext;
-		if (lastStructuredFailure) {
-			this.setStructuredOutputFailureState(state, lastStructuredFailure);
-		} else {
-			this.clearStructuredOutputFailureState(state);
-		}
-		return null;
-	}
-
-	private flattenSchemaRows(rows: SchemaRow[]): SchemaRow[] {
-		const flattened: SchemaRow[] = [];
-		for (const row of rows) {
-			flattened.push(row);
-			if (row.properties?.length) {
-				flattened.push(...this.flattenSchemaRows(row.properties));
-			}
-			if (row.items?.properties?.length) {
-				flattened.push(...this.flattenSchemaRows(row.items.properties));
-			}
-		}
-		return flattened;
-	}
-
-	private renderJsonSchemaExample(rows: SchemaRow[]): string {
-		const exampleObject = Object.fromEntries(
-			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
-		);
-		return `${JSON.stringify(exampleObject, null, 2)}\n`;
-	}
-
-	private buildJsonExampleValue(spec: SchemaValueSpec): unknown {
-		return this.buildJsonExampleValueAtDepth(spec, 0);
-	}
-
-	private buildJsonExampleValueAtDepth(
-		spec: SchemaValueSpec,
-		depth: number,
-	): unknown {
-		if (depth > 8) {
-			return "[max schema depth reached]";
-		}
-
-		switch (this.getEffectiveSchemaValueType(spec)) {
-			case "number":
-				return 123;
-			case "boolean":
-				return true;
-			case "object":
-				if (spec.properties?.length) {
-					return Object.fromEntries(
-						spec.properties.map((row) => [
-							row.field,
-							this.buildJsonExampleValueAtDepth(row, depth + 1),
-						]),
-					);
-				}
-				return {};
-			case "array":
-				return [
-					this.buildJsonExampleValueAtDepth(
-						spec.items ?? { description: spec.description },
-						depth + 1,
-					),
-				];
-			default:
-				return spec.description;
-		}
-	}
-
-	private validateResponseAgainstSchema(
-		responseContent: Record<string, unknown>,
-		schema: SchemaRow[],
-	): { missingPaths: string[]; invalidPaths: string[] } {
-		const missingPaths: string[] = [];
-		const invalidPaths: string[] = [];
-		for (const row of schema) {
-			this.validateSchemaValue(
-				responseContent[row.field],
-				row,
-				row.field,
-				missingPaths,
-				invalidPaths,
-			);
-		}
-		return { missingPaths, invalidPaths };
-	}
-
-	private validateSchemaValue(
-		value: unknown,
-		spec: SchemaValueSpec,
-		path: string,
-		missingPaths: string[],
-		invalidPaths: string[],
-	): void {
-		this.validateSchemaValueAtDepth(
-			value,
-			spec,
-			path,
-			missingPaths,
-			invalidPaths,
-			0,
-		);
-	}
-
-	private validateSchemaValueAtDepth(
-		value: unknown,
-		spec: SchemaValueSpec,
-		path: string,
-		missingPaths: string[],
-		invalidPaths: string[],
-		depth: number,
-	): void {
-		if (depth > 8) {
-			invalidPaths.push(path);
-			return;
-		}
-
-		const isMissingValue = (inner: unknown): boolean => {
-			if (inner === undefined || inner === null) return true;
-			if (typeof inner === "string") return inner.trim().length === 0;
-			if (Array.isArray(inner)) return inner.length === 0;
-			if (typeof inner === "object") return Object.keys(inner).length === 0;
-			return false;
-		};
-
-		if (isMissingValue(value)) {
-			if (spec.required) {
-				missingPaths.push(path);
-			}
-			return;
-		}
-
-		switch (this.getEffectiveSchemaValueType(spec)) {
-			case "number":
-				if (
-					typeof value !== "number" &&
-					!(
-						typeof value === "string" &&
-						value.trim() !== "" &&
-						!Number.isNaN(Number(value))
-					)
-				) {
-					invalidPaths.push(path);
-				}
-				return;
-			case "boolean":
-				if (
-					typeof value !== "boolean" &&
-					!(
-						typeof value === "string" &&
-						["true", "false"].includes(value.trim().toLowerCase())
-					)
-				) {
-					invalidPaths.push(path);
-				}
-				return;
-			case "object":
-				if (
-					typeof value !== "object" ||
-					value === null ||
-					Array.isArray(value)
-				) {
-					invalidPaths.push(path);
-					return;
-				}
-				for (const property of spec.properties ?? []) {
-					this.validateSchemaValueAtDepth(
-						(value as Record<string, unknown>)[property.field],
-						property,
-						`${path}.${property.field}`,
-						missingPaths,
-						invalidPaths,
-						depth + 1,
-					);
-				}
-				return;
-			case "array":
-				if (!Array.isArray(value)) {
-					invalidPaths.push(path);
-					return;
-				}
-				if (spec.items) {
-					value.forEach((item, index) => {
-						this.validateSchemaValueAtDepth(
-							item,
-							spec.items as SchemaValueSpec,
-							`${path}[${index}]`,
-							missingPaths,
-							invalidPaths,
-							depth + 1,
-						);
-					});
-				}
-				return;
-			default:
-				return;
-		}
-	}
-
-	private buildValidationOutputInstructions({
-		format: _format,
-		schema,
-		perFieldCodes,
-		includeFirstCheckpoint,
-		includeLastCheckpoint,
-	}: {
-		format: StructuredResponseFormat;
-		schema: SchemaRow[];
-		perFieldCodes: Map<string, string>;
-		includeFirstCheckpoint: boolean;
-		includeLastCheckpoint: boolean;
-	}): string {
-		const lines: string[] = [];
-
-		if (includeFirstCheckpoint) {
-			lines.push(
-				'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".',
-			);
-		}
-
-		for (const row of schema) {
-			const fieldCode = perFieldCodes.get(row.field);
-			if (!fieldCode) {
-				continue;
-			}
-
-			lines.push(
-				`For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
-			);
-		}
-
-		if (includeLastCheckpoint) {
-			lines.push(
-				'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".',
-			);
-		}
-
-		return lines.length > 0 ? `${lines.join("\n")}\n` : "";
-	}
-
-	private getEffectiveSchemaValueType(
-		spec: SchemaValueSpec,
-	): NonNullable<SchemaValueSpec["type"]> {
-		if (spec.type) {
-			return spec.type;
-		}
-		if (spec.items) {
-			return "array";
-		}
-		if ((spec.properties?.length ?? 0) > 0) {
-			return "object";
-		}
-		return "string";
-	}
-
-	private collectSchemaDefinitionWarnings(rows: SchemaRow[]): string[] {
-		const warnings: string[] = [];
-		for (const row of rows) {
-			this.collectSchemaSpecWarnings(row, row.field, warnings);
-		}
-		return warnings;
-	}
-
-	private collectSchemaSpecWarnings(
-		spec: SchemaValueSpec,
-		path: string,
-		warnings: string[],
-		depth = 0,
-	): void {
-		if (depth > 8) {
-			warnings.push(`${path} exceeds max supported nesting depth`);
-			return;
-		}
-
-		const hasProperties = (spec.properties?.length ?? 0) > 0;
-		const hasItems = spec.items !== undefined;
-
-		if (hasProperties && hasItems) {
-			warnings.push(
-				`${path} defines both properties and items; choose one shape`,
-			);
-		}
-
-		if (spec.type === "array" && hasProperties) {
-			warnings.push(`${path} is type "array" but also defines properties`);
-		}
-
-		if (spec.type === "object" && hasItems) {
-			warnings.push(`${path} is type "object" but also defines items`);
-		}
-
-		if (
-			(spec.type === "string" ||
-				spec.type === "number" ||
-				spec.type === "boolean") &&
-			(hasProperties || hasItems)
-		) {
-			warnings.push(
-				`${path} is type "${spec.type}" but also defines nested structure`,
-			);
-		}
-
-		for (const property of spec.properties ?? []) {
-			this.collectSchemaSpecWarnings(
-				property,
-				`${path}.${property.field}`,
-				warnings,
-				depth + 1,
-			);
-		}
-
-		if (spec.items) {
-			this.collectSchemaSpecWarnings(
-				spec.items,
-				`${path}[]`,
-				warnings,
-				depth + 1,
-			);
-		}
-	}
-
-	private buildSchemaMetricKey(rows: SchemaRow[]): string {
-		return rows.map((row) => this.serializeSchemaMetricRow(row)).join("|");
-	}
-
-	private serializeSchemaMetricRow(row: SchemaRow): string {
-		return `${row.field}${row.required ? "!" : ""}:${this.serializeSchemaMetricSpec(row)}`;
-	}
-
-	private serializeSchemaMetricSpec(spec: SchemaValueSpec): string {
-		return this.serializeSchemaMetricSpecAtDepth(spec, 0);
-	}
-
-	private serializeSchemaMetricSpecAtDepth(
-		spec: SchemaValueSpec,
-		depth: number,
-	): string {
-		if (depth > 8) {
-			return "max-depth";
-		}
-
-		const effectiveType = this.getEffectiveSchemaValueType(spec);
-		switch (effectiveType) {
-			case "object":
-				return `object{${(spec.properties ?? [])
-					.map(
-						(property) =>
-							`${property.field}${property.required ? "!" : ""}:${this.serializeSchemaMetricSpecAtDepth(property, depth + 1)}`,
-					)
-					.join(",")}}`;
-			case "array":
-				return `array[${spec.items ? this.serializeSchemaMetricSpecAtDepth(spec.items, depth + 1) : "unknown"}]`;
-			default:
-				return effectiveType;
-		}
-	}
-
-	/**
-	 * Calculate retry backoff delay.
-	 */
-	private calculateBackoffDelay(
-		config: number | RetryBackoffConfig,
-		retryCount: number,
-	): number {
-		if (typeof config === "number") {
-			return config;
-		}
-		const { initialMs = 1000, multiplier = 2, maxMs = 30000 } = config;
-		const delay = initialMs * multiplier ** (retryCount - 1);
-		return Math.min(delay, maxMs);
-	}
-
-	/**
-	 * Sleep for a duration that can be interrupted by an abort signal.
-	 * Returns true if aborted, false if sleep completed normally.
-	 */
-	private abortableSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
-		if (signal?.aborted) return Promise.resolve(true);
-
-		return new Promise((resolve) => {
-			const timeout = setTimeout(() => {
-				signal?.removeEventListener("abort", onAbort);
-				resolve(false);
-			}, ms);
-
-			const onAbort = () => {
-				clearTimeout(timeout);
-				resolve(true);
-			};
-
-			signal?.addEventListener("abort", onAbort, { once: true });
-		});
-	}
-
-	/**
-	 * Template rendering helpers for prompt caching and deterministic compilation.
-	 */
-	private getCompiledRuntimeTemplate(
-		template: string,
-		alreadyUpgraded = false,
-	): Handlebars.TemplateDelegate<Record<string, unknown>> {
-		const source = alreadyUpgraded
-			? template
-			: this.upgradeDoubleToTriple(template);
-		const cached = RUNTIME_TEMPLATE_CACHE.get(source);
-		if (cached) {
-			return cached;
-		}
-
-		const compiled = Handlebars.compile(source);
-		RUNTIME_TEMPLATE_CACHE.set(source, compiled);
-		if (RUNTIME_TEMPLATE_CACHE.size > RUNTIME_TEMPLATE_CACHE_LIMIT) {
-			const oldestKey = RUNTIME_TEMPLATE_CACHE.keys().next().value;
-			if (typeof oldestKey === "string") {
-				RUNTIME_TEMPLATE_CACHE.delete(oldestKey);
-			}
-		}
-
-		return compiled;
-	}
-
-	private cleanDynamicPromptTemplateOutput(rawOutput: string): string {
-		return rawOutput
-			.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
-			.replace(/\noutput:\n[\s\S]*$/i, "")
-			.replace(/\r\n/g, "\n")
-			.replace(/[ \t]+\n/g, "\n")
-			.replace(/\n{3,}/g, "\n\n")
-			.trim();
-	}
-
-	private extractTemplatePlaceholderKeys(templateChunk: string): string[] {
-		const keys = new Set<string>();
-		const PLACEHOLDER_PATTERN = /\{\{\{?\s*([a-zA-Z0-9_.]+)\s*\}?\}\}/g;
-		let match = PLACEHOLDER_PATTERN.exec(templateChunk);
-		while (match) {
-			if (match[1]) {
-				keys.add(match[1]);
-			}
-			match = PLACEHOLDER_PATTERN.exec(templateChunk);
-		}
-		return [...keys];
-	}
-
-	private isTemplateChunkStable(templateChunk: string): boolean {
-		const placeholderKeys = this.extractTemplatePlaceholderKeys(templateChunk);
-		return placeholderKeys.every(
-			(key) => key !== "providers" && STABLE_PROMPT_TEMPLATE_KEYS.has(key),
-		);
-	}
-
-	private getPromptProviderSegments(state: State): PromptSegment[] {
-		const providerResults = state.data.providers as
-			| Record<string, { text?: string; providerName?: string }>
-			| undefined;
-		if (!providerResults) {
-			return [];
-		}
-
-		const providerOrder = Array.isArray(state.data.providerOrder)
-			? (state.data.providerOrder as string[])
-			: Object.keys(providerResults).sort((left, right) =>
-					left.localeCompare(right),
-				);
-
-		const segments: PromptSegment[] = [];
-		for (const providerName of providerOrder) {
-			const result = providerResults[providerName];
-			if (!result?.text || result.text.trim() === "") {
-				continue;
-			}
-
-			if (segments.length > 0) {
-				segments.push({ content: "\n", stable: false });
-			}
-
-			segments.push({
-				content: result.text,
-				stable: STABLE_PROMPT_PROVIDER_NAMES.has(providerName),
-			});
-		}
-
-		return this.mergePromptSegments(segments);
-	}
-
-	private renderPromptTemplateSegments(
-		templateStr: string,
-		context: Record<string, unknown>,
-		state: State,
-	): PromptSegment[] {
-		const upgradedTemplate = this.upgradeDoubleToTriple(templateStr);
-		const templateWithMarkers = upgradedTemplate.replace(
-			/\{\{\{?\s*providers\s*\}?\}\}/g,
-			PROVIDERS_PROMPT_MARKER,
-		);
-		const templateFunction = this.getCompiledRuntimeTemplate(
-			templateWithMarkers,
-			true,
-		);
-		const renderedWithMarkers = this.cleanDynamicPromptTemplateOutput(
-			templateFunction(context),
-		);
-
-		if (
-			!templateWithMarkers.includes(PROVIDERS_PROMPT_MARKER) ||
-			!renderedWithMarkers.includes(PROVIDERS_PROMPT_MARKER)
-		) {
-			return [
-				{
-					content: renderedWithMarkers,
-					stable: this.isTemplateChunkStable(upgradedTemplate),
-				},
-			];
-		}
-
-		const providerSegments = this.getPromptProviderSegments(state);
-		if (providerSegments.length === 0) {
-			return [
-				{
-					content: renderedWithMarkers.replaceAll(
-						PROVIDERS_PROMPT_MARKER,
-						String(context.providers ?? ""),
-					),
-					stable: false,
-				},
-			];
-		}
-
-		const templateChunks = templateWithMarkers.split(PROVIDERS_PROMPT_MARKER);
-		const renderedChunks = renderedWithMarkers.split(PROVIDERS_PROMPT_MARKER);
-		const segments: PromptSegment[] = [];
-
-		for (let i = 0; i < renderedChunks.length; i += 1) {
-			const renderedChunk = renderedChunks[i] ?? "";
-			if (renderedChunk.length > 0) {
-				segments.push({
-					content: renderedChunk,
-					stable: this.isTemplateChunkStable(templateChunks[i] ?? ""),
-				});
-			}
-
-			if (i < renderedChunks.length - 1) {
-				segments.push(...providerSegments.map((segment) => ({ ...segment })));
-			}
-		}
-
-		return this.mergePromptSegments(segments);
-	}
-
-	private joinPromptSegmentGroups(groups: PromptSegment[][]): PromptSegment[] {
-		const result: PromptSegment[] = [];
-
-		for (const group of groups) {
-			const normalized = this.mergePromptSegments(group);
-			if (normalized.length === 0) {
-				continue;
-			}
-
-			if (result.length > 0) {
-				result.push({ content: "\n\n", stable: false });
-			}
-
-			result.push(...normalized.map((segment) => ({ ...segment })));
-		}
-
-		return result;
-	}
-
-	private mergePromptSegments(segments: PromptSegment[]): PromptSegment[] {
-		const merged: PromptSegment[] = [];
-
-		for (const segment of segments) {
-			if (segment.content.length === 0) {
-				continue;
-			}
-
-			const previous = merged[merged.length - 1];
-			if (previous && previous.stable === segment.stable) {
-				previous.content += segment.content;
-			} else {
-				merged.push({ ...segment });
-			}
-		}
-
-		return merged;
-	}
-
-	/**
-	 * Convert double-brace Handlebars bindings to triple-brace (non-escaping).
-	 *
-	 * Handlebars uses:
-	 * - `{{var}}` for HTML-escaped output
-	 * - `{{{var}}}` for raw/unescaped output
-	 *
-	 * This function upgrades simple variable bindings to triple-brace so that
-	 * special characters in state values don't get HTML-encoded in prompts.
-	 *
-	 * The regex preserves Handlebars helpers and special syntax:
-	 * - `{{#if}}`, `{{/if}}` - block helpers (start with # or /)
-	 * - `{{! comment }}` - comments (start with !)
-	 * - `{{> partial}}` - partials (start with >)
-	 * - `{{{already_raw}}}` - already triple-braced
-	 * - `{{else}}` - else blocks
-	 */
-	private upgradeDoubleToTriple(tpl: string): string {
-		// Pattern breakdown:
-		// (?<!\{)      - not preceded by { (avoids matching inside {{{ )
-		// \{\{         - match opening {{
-		// (?!...)      - not followed by Handlebars special chars: # / ! > { else
-		// (\s*)        - capture leading whitespace
-		// (\S+?)       - capture variable name (non-greedy, non-whitespace)
-		// (\s*)        - capture trailing whitespace
-		// \}\}         - match closing }}
-		// (?!\})       - not followed by } (avoids matching {{{ }}}
-		const DOUBLE_BRACE_VAR =
-			/(?<!\{)\{\{(?!#|\/|!|>|\{|else\b)(\s*)(\S+?)(\s*)\}\}(?!\})/g;
-
-		return tpl.replace(DOUBLE_BRACE_VAR, "{{{$1$2$3}}}");
-	}
-
-	/**
-	 * Normalize structured response (handle nested response objects).
-	 *
-	 * Some LLMs wrap their output in extra `{response: {...}}` layers.
-	 * This recursively unwraps them up to a reasonable depth limit.
-	 */
-	private normalizeStructuredResponse(
-		responseContent: Record<string, unknown> | null,
-		depth = 0,
-	): Record<string, unknown> | null {
-		if (!responseContent) return null;
-
-		// Safety limit to prevent infinite recursion on pathological input
-		const MAX_UNWRAP_DEPTH = 3;
-		if (depth >= MAX_UNWRAP_DEPTH) return responseContent;
-
-		// If there's a nested 'response' object with the actual fields, unwrap it
-		if (
-			"response" in responseContent &&
-			typeof responseContent.response === "object" &&
-			responseContent.response !== null
-		) {
-			const nested = responseContent.response as Record<string, unknown>;
-			// Only unwrap if nested has fields (not empty)
-			if (Object.keys(nested).length > 0) {
-				// Recursively unwrap in case of multiple nesting levels
-				return this.normalizeStructuredResponse(nested, depth + 1);
-			}
-		}
-		return responseContent;
-	}
-
-	private parseStructuredResponse(
-		response: string,
-		expectedFormat: StructuredResponseFormat,
-	): Record<string, unknown> | null {
-		const candidates = this.extractStructuredResponseCandidates(response);
-
-		for (const candidate of candidates) {
-			if (!candidate.formats.includes("JSON")) {
-				continue;
-			}
-
-			const parsed = parseJSONObjectFromText(candidate.text);
-			if (parsed) {
-				if (candidate.source !== "raw" || expectedFormat !== "JSON") {
-					this.logger.debug(
-						`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
-					);
-				}
-				return parsed;
-			}
-		}
-
-		return null;
-	}
-
-	private extractStructuredResponseCandidates(
-		response: string,
-	): StructuredResponseCandidate[] {
-		const seen = new Set<string>();
-		const candidates: StructuredResponseCandidate[] = [];
-
-		const addCandidate = (
-			text: string,
-			source: string,
-			hints: StructuredResponseFormat[] = [],
-		): void => {
-			const trimmed = text.trim();
-			if (!trimmed || seen.has(trimmed)) {
-				return;
-			}
-
-			const formats = Array.from(
-				new Set([...hints, ...this.detectStructuredResponseFormats(trimmed)]),
-			);
-			if (formats.length === 0) {
-				return;
-			}
-
-			seen.add(trimmed);
-			candidates.push({ text: trimmed, formats, source });
-		};
-
-		addCandidate(response, "raw");
-
-		for (const match of response.matchAll(STRUCTURED_CODE_FENCE_PATTERN)) {
-			const label = match[1]?.trim().toLowerCase() ?? "";
-			const content = match[2]?.trim() ?? "";
-			const hints: StructuredResponseFormat[] =
-				label === "json" || label === "json5" ? ["JSON"] : [];
-			addCandidate(content, label ? `fence:${label}` : "fence", hints);
-		}
-
-		const embeddedJson = this.extractEmbeddedJsonObject(response);
-		if (embeddedJson) {
-			addCandidate(embeddedJson, "embedded-json", ["JSON"]);
-		}
-
-		return candidates;
-	}
-
-	private detectStructuredResponseFormats(
-		text: string,
-	): StructuredResponseFormat[] {
-		const trimmed = text.trim();
-		const formats: StructuredResponseFormat[] = [];
-
-		if (this.looksLikeJsonObject(trimmed)) {
-			formats.push("JSON");
-		}
-		return formats;
-	}
-
-	private looksLikeJsonObject(text: string): boolean {
-		const trimmed = text.trim();
-		return (
-			trimmed.startsWith("{") &&
-			trimmed.includes("}") &&
-			JSON_OBJECT_KEY_PATTERN.test(trimmed)
-		);
-	}
-
-	private extractEmbeddedJsonObject(text: string): string | null {
-		const trimmed = text.trim();
-		if (this.looksLikeJsonObject(trimmed)) {
-			return trimmed;
-		}
-
-		for (
-			let start = text.indexOf("{");
-			start !== -1;
-			start = text.indexOf("{", start + 1)
-		) {
-			const candidate = this.extractBalancedJsonObject(text, start);
-			if (candidate && this.looksLikeJsonObject(candidate)) {
-				return candidate.trim();
-			}
-		}
-
-		return null;
-	}
-
-	private extractBalancedJsonObject(
-		text: string,
-		startIndex: number,
-	): string | null {
-		let depth = 0;
-		let inString = false;
-		let stringQuote = "";
-		let escaped = false;
-
-		for (let index = startIndex; index < text.length; index++) {
-			const char = text[index] ?? "";
-
-			if (inString) {
-				if (escaped) {
-					escaped = false;
-					continue;
-				}
-				if (char === "\\") {
-					escaped = true;
-					continue;
-				}
-				if (char === stringQuote) {
-					inString = false;
-					stringQuote = "";
-				}
-				continue;
-			}
-
-			if (char === '"' || char === "'") {
-				inString = true;
-				stringQuote = char;
-				continue;
-			}
-
-			if (char === "{") {
-				depth += 1;
-				continue;
-			}
-
-			if (char !== "}") {
-				continue;
-			}
-
-			depth -= 1;
-			if (depth === 0) {
-				return text.slice(startIndex, index + 1);
-			}
-			if (depth < 0) {
-				return null;
-			}
-		}
-
-		return null;
+	async dynamicPromptExecFromState(
+		args: Parameters<IAgentRuntime["dynamicPromptExecFromState"]>[0],
+	): Promise<Record<string, unknown> | null> {
+		return this.structuredPrompts.dynamicPromptExecFromState(args);
 	}
 
 	registerEvent<T extends keyof EventPayloadMap>(
@@ -11129,379 +4529,30 @@ ${section_end}`;
 			);
 		}
 	}
-
-	/**
-	 * True while embedding generation is disabled because every registered
-	 * TEXT_EMBEDDING provider failed the dimension probe. While true, memory
-	 * writes persist without vectors (recall over new memories is degraded)
-	 * rather than emitting vectors the SQL adapter would silently drop against
-	 * a default-sized column. Cleared by the next successful
-	 * {@link ensureEmbeddingDimension} (e.g. the deferred boot re-probe).
-	 */
-	isEmbeddingGenerationDisabled(): boolean {
-		return this.embeddingGenerationDisabledReason !== null;
+	isEmbeddingGenerationDisabled(
+		...args: Parameters<RuntimeEmbeddings["isEmbeddingGenerationDisabled"]>
+	): ReturnType<RuntimeEmbeddings["isEmbeddingGenerationDisabled"]> {
+		return this.embeddings.isEmbeddingGenerationDisabled(...args);
 	}
-
-	private disableEmbeddingGeneration(reason: string): void {
-		this.embeddingGenerationDisabledReason = reason;
-		this.embeddingSkipWarned = false;
+	private disableEmbeddingGeneration(
+		...args: Parameters<RuntimeEmbeddings["disableEmbeddingGeneration"]>
+	): ReturnType<RuntimeEmbeddings["disableEmbeddingGeneration"]> {
+		return this.embeddings.disableEmbeddingGeneration(...args);
 	}
-
-	private enableEmbeddingGeneration(): void {
-		if (this.embeddingGenerationDisabledReason !== null) {
-			this.logger.info(
-				{ src: "agent", agentId: this.agentId },
-				"TEXT_EMBEDDING provider recovered; embedding generation re-enabled",
-			);
-		}
-		this.embeddingGenerationDisabledReason = null;
-		this.embeddingSkipWarned = false;
+	private enableEmbeddingGeneration(
+		...args: Parameters<RuntimeEmbeddings["enableEmbeddingGeneration"]>
+	): ReturnType<RuntimeEmbeddings["enableEmbeddingGeneration"]> {
+		return this.embeddings.enableEmbeddingGeneration(...args);
 	}
-
-	/**
-	 * Once-latch warn for skipped embedding generation: the first skipped write
-	 * logs a structured warning, subsequent skips stay quiet until the flag is
-	 * cleared and re-set (a fresh degradation event warns again).
-	 */
-	private warnEmbeddingGenerationSkipped(): void {
-		if (this.embeddingSkipWarned) {
-			return;
-		}
-		this.embeddingSkipWarned = true;
-		this.logger.warn(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				reason: this.embeddingGenerationDisabledReason,
-			},
-			"Embedding generation is disabled (every TEXT_EMBEDDING provider failed the dimension probe); memory writes are persisted WITHOUT vectors — recall over new memories is degraded until a provider recovers",
-		);
+	private warnEmbeddingGenerationSkipped(
+		...args: Parameters<RuntimeEmbeddings["warnEmbeddingGenerationSkipped"]>
+	): ReturnType<RuntimeEmbeddings["warnEmbeddingGenerationSkipped"]> {
+		return this.embeddings.warnEmbeddingGenerationSkipped(...args);
 	}
-
-	async ensureEmbeddingDimension() {
-		if (!this.adapter) {
-			throw new Error(
-				"Database adapter not initialized before ensureEmbeddingDimension",
-			);
-		}
-		const canonicalProviderSetting = this.getSetting(
-			"ELIZA_EMBEDDING_PROVIDER",
-		);
-		const embeddingProvider =
-			typeof canonicalProviderSetting === "string" &&
-			canonicalProviderSetting.trim()
-				? canonicalProviderSetting.trim()
-				: undefined;
-		const allRegistrations = this.resolveModelRegistrations(
-			ModelType.TEXT_EMBEDDING,
-			embeddingProvider,
-		);
-		if (allRegistrations.length === 0) {
-			if (embeddingProvider) {
-				// The configured provider can register in a later plugin wave (live
-				// 2026-09-05: plugin-embeddings auto-enables after the first probe).
-				// A hard error here aborted the whole bootstrap in a retry loop; a
-				// probe error keeps the runtime in embedding-disabled mode until the
-				// deferred re-probe finds the handler, and never silently pins a
-				// different provider than the one the operator configured.
-				this.disableEmbeddingGeneration(
-					`Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler yet`,
-				);
-				throw new EmbeddingDimensionProbeError([
-					{
-						provider: embeddingProvider,
-						modelKey: ModelType.TEXT_EMBEDDING,
-						error: "no registered handler yet",
-					},
-				]);
-			}
-			throw new Error("No TEXT_EMBEDDING model registered");
-		}
-
-		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
-		// In particular, the dimension probe must not bypass the local router and
-		// explicitly invoke cloud handlers: doing so caused clean local app boots
-		// to send embedding batches to Eliza Cloud when the GGUF was still staging.
-		// Prefer the router when present because it owns local device selection;
-		// otherwise fail over only among concrete on-device handlers.
-		const configuredOwnershipProvider = String(
-			this.getSetting("EMBEDDING_PROVIDER") ?? "",
-		)
-			.trim()
-			.toLowerCase();
-		const localOnly = configuredOwnershipProvider === "local";
-		const localRegistrations = localOnly
-			? allRegistrations.filter((registration) =>
-					LOCAL_EMBEDDING_PROVIDERS.has(registration.provider),
-				)
-			: [];
-		const routerRegistrations = localRegistrations.filter(
-			(registration) => registration.provider === "eliza-router",
-		);
-		const registrations = localOnly
-			? routerRegistrations.length > 0
-				? routerRegistrations
-				: localRegistrations
-			: allRegistrations;
-		if (localOnly && registrations.length === 0) {
-			const probeError = new EmbeddingDimensionProbeError([
-				{
-					provider: "local",
-					modelKey: ModelType.TEXT_EMBEDDING,
-					error:
-						"EMBEDDING_PROVIDER=local but no on-device embedding handler is registered",
-				},
-			]);
-			this.disableEmbeddingGeneration(probeError.message);
-			throw probeError;
-		}
-
-		// Probe every eligible TEXT_EMBEDDING provider in the same priority order
-		// useModel resolves them. An explicit local policy limits eligibility to
-		// on-device handlers; it never falls through to a remote provider. The
-		// probe passes null; handlers return a
-		// zero-filled vector of their real output width. A provider that cannot
-		// answer the null probe cannot produce usable vectors either, so ANY
-		// probe failure — not just a rate limit — advances to the next
-		// registration. First success wins: it sizes the adapter's vector column
-		// and pins that provider for subsequent embedding calls, so the column
-		// width and the vectors written to it always come from the same provider.
-		const attempts: EmbeddingProbeAttempt[] = [];
-		const probedProviders = new Set<string>();
-		let allFailuresBenign = true;
-		for (const registration of registrations) {
-			if (probedProviders.has(registration.provider)) {
-				continue;
-			}
-			probedProviders.add(registration.provider);
-
-			let embedding: unknown;
-			try {
-				embedding = await this.useModel(
-					ModelType.TEXT_EMBEDDING,
-					null,
-					registration.provider,
-				);
-			} catch (error) {
-				// error-policy:J4 Probe each registered provider independently;
-				// exhaustion throws EmbeddingDimensionProbeError below.
-				if (!(error instanceof NoModelProviderConfiguredError)) {
-					allFailuresBenign = false;
-				}
-				attempts.push({
-					provider: registration.provider,
-					modelKey: registration.modelKey,
-					error: error instanceof Error ? error.message : String(error),
-				});
-				this.logger.warn(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						provider: registration.provider,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					localOnly
-						? "Local TEXT_EMBEDDING provider failed the dimension probe; remote fallback is disabled"
-						: "TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
-				);
-				continue;
-			}
-			if (!Array.isArray(embedding) || embedding.length === 0) {
-				allFailuresBenign = false;
-				attempts.push({
-					provider: registration.provider,
-					modelKey: registration.modelKey,
-					error: `Invalid embedding received (${Array.isArray(embedding) ? "empty array" : typeof embedding})`,
-				});
-				this.logger.warn(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						provider: registration.provider,
-					},
-					localOnly
-						? "Local TEXT_EMBEDDING provider returned an invalid probe embedding; remote fallback is disabled"
-						: "TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
-				);
-				continue;
-			}
-
-			await this.adapter.ensureEmbeddingDimension(embedding.length);
-			const modelLabel = await this.guardEmbeddingStoreIdentity(
-				registration.provider,
-				embedding.length,
-			);
-			this.pinnedEmbeddingProvider = registration.provider;
-			this.enableEmbeddingGeneration();
-			this.logger.info(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					provider: registration.provider,
-					modelLabel,
-					dimension: embedding.length,
-				},
-				"TEXT_EMBEDDING provider pinned",
-			);
-			// Reclaim any vectors left in a different dimension column — e.g. cloud
-			// 1536-dim embeddings after this agent switched to on-device gte-small
-			// (384-dim) — which a same-width search can never match again, then
-			// re-embed those memories at the active width. The clear is one quick
-			// DELETE (a no-op once the store holds only active-dimension vectors);
-			// the re-embed drains through the embedding queue in the background so
-			// boot is never blocked on it.
-			try {
-				const staleMemoryIds =
-					await this.adapter.clearEmbeddingsOutsideActiveDimension();
-				if (staleMemoryIds.length > 0) {
-					this.logger.info(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							count: staleMemoryIds.length,
-							dimension: embedding.length,
-						},
-						"Reclaimed stale-dimension embeddings; re-embedding at active width",
-					);
-					void this.reembedMemoriesByIds(staleMemoryIds);
-				}
-			} catch (error) {
-				// error-policy:J7 stale embedding reconciliation is best-effort maintenance; report and keep booting.
-				this.reportError("AgentRuntime.embeddingDimensionReconcile", error, {
-					agentId: this.agentId,
-				});
-			}
-			this.logger.debug(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					dimension: embedding.length,
-					provider: registration.provider,
-					failedProviders: attempts.map((attempt) => attempt.provider),
-				},
-				"Embedding dimension set",
-			);
-			return;
-		}
-
-		// Every registered handler reported "no backing provider configured"
-		// (e.g. a cloud proxy handler before login). Nothing can emit vectors,
-		// so a default-width column cannot cause a dimension mismatch — keep the
-		// long-standing benign skip.
-		if (allFailuresBenign) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
-			);
-			return;
-		}
-
-		// All probes failed for real. Disable embedding generation so memory
-		// writes skip vector generation coherently (no silent drops downstream),
-		// and surface a typed error carrying every provider's failure.
-		const probeError = new EmbeddingDimensionProbeError(attempts);
-		this.disableEmbeddingGeneration(probeError.message);
-		throw probeError;
-	}
-
-	/**
-	 * Best-effort model label for a pinned TEXT_EMBEDDING provider, read from
-	 * the settings that provider documents. Null when the provider exposes no
-	 * model setting; the identity guard then compares provider + width only.
-	 */
-	private embeddingModelLabelForProvider(provider: string): string | null {
-		const read = (key: string): string | null => {
-			const value = this.getSetting(key);
-			return typeof value === "string" && value.trim().length > 0
-				? value.trim()
-				: null;
-		};
-		switch (provider) {
-			case "embeddings":
-				return read("EMBEDDING_MODEL");
-			case "openai":
-				return read("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
-			case "elizacloud":
-				return read("ELIZAOS_CLOUD_EMBEDDING_MODEL");
-			default:
-				return LOCAL_EMBEDDING_PROVIDERS.has(provider)
-					? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
-					: null;
-		}
-	}
-
-	/**
-	 * Refuse to mix embedding spaces. Records which embedder owns this agent's
-	 * vectors on the first pin (legacy stores adopt the active embedder with a
-	 * warning because their model is unknowable), follows a width change (the
-	 * stale-dimension reconcile owns those vectors), tolerates a provider swap
-	 * that serves the same model, and fails clearly when a different model is
-	 * pinned at the same width without ELIZA_EMBEDDING_STORE_ACCEPT_MODEL naming
-	 * that model. Returns the active model label for the pin log.
-	 */
-	private async guardEmbeddingStoreIdentity(
-		provider: string,
-		dimension: number,
-	): Promise<string | null> {
-		const modelLabel = this.embeddingModelLabelForProvider(provider);
-		const next: EmbeddingStoreIdentity = {
-			provider,
-			modelLabel,
-			dimension,
-			recordedAt: new Date().toISOString(),
-		};
-		const describe = (identity: EmbeddingStoreIdentity): string =>
-			`${identity.provider}/${identity.modelLabel ?? "unknown-model"}@${identity.dimension}`;
-		const stored = await this.getCache<EmbeddingStoreIdentity>(
-			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
-		);
-		if (!stored) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, identity: next },
-				"No embedding store identity recorded for this agent; adopting the active embedder. If the existing vectors came from a different model, back up and rebuild a fresh index.",
-			);
-			await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			return modelLabel;
-		}
-		if (stored.dimension !== dimension) {
-			this.logger.info(
-				{ src: "agent", agentId: this.agentId, from: stored, to: next },
-				"Embedding width changed; the stale-dimension reconcile owns the old vectors",
-			);
-			await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			return modelLabel;
-		}
-		const sameModel =
-			stored.modelLabel !== null && modelLabel !== null
-				? stored.modelLabel === modelLabel
-				: stored.provider === provider;
-		if (sameModel) {
-			if (stored.provider !== provider || stored.modelLabel !== modelLabel) {
-				await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			}
-			return modelLabel;
-		}
-		const acknowledged = this.getSetting(EMBEDDING_STORE_ACCEPT_MODEL_SETTING);
-		const acceptedLabel = modelLabel ?? provider;
-		if (
-			typeof acknowledged === "string" &&
-			acknowledged.trim() === acceptedLabel
-		) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, from: stored, to: next },
-				"Embedding store identity changed with operator acknowledgement",
-			);
-			await this.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			return modelLabel;
-		}
-		const reason =
-			`Embedding model changed from ${describe(stored)} to ${describe(next)} at the same ${dimension}-dim width; refusing to mix vector spaces. ` +
-			`Back up the store, rebuild a fresh index for this agent, then set ${EMBEDDING_STORE_ACCEPT_MODEL_SETTING}=${acceptedLabel}.`;
-		this.disableEmbeddingGeneration(reason);
-		throw new ElizaError(reason, {
-			code: "EMBEDDING_STORE_MODEL_MISMATCH",
-			context: { agentId: this.agentId, stored, next },
-		});
+	ensureEmbeddingDimension(
+		...args: Parameters<RuntimeEmbeddings["ensureEmbeddingDimension"]>
+	): ReturnType<RuntimeEmbeddings["ensureEmbeddingDimension"]> {
+		return this.embeddings.ensureEmbeddingDimension(...args);
 	}
 
 	registerTaskWorker(taskHandler: TaskWorker): void {
@@ -11751,142 +4802,20 @@ ${section_end}`;
 			sourceEntityId,
 		);
 	}
-	async addEmbeddingToMemory(memory: Memory): Promise<Memory> {
-		if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
-			return memory;
-		}
-		const memoryText = memory.content.text;
-		if (!memoryText) {
-			throw new Error("Cannot generate embedding: Memory content is empty");
-		}
-		if (this.embeddingGenerationDisabledReason !== null) {
-			// Every TEXT_EMBEDDING provider failed the dimension probe, so the
-			// vector column was never sized for this runtime. Skip generation
-			// explicitly (warn once) instead of producing a vector the SQL
-			// adapter would silently drop on dimension mismatch (#8769).
-			this.warnEmbeddingGenerationSkipped();
-			return memory;
-		}
-		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
-			text: memoryText,
-		});
-		if (!Array.isArray(embedding) || embedding.length === 0) {
-			throw new ElizaError(
-				"TEXT_EMBEDDING provider returned no usable vector",
-				{
-					code: "EMBEDDING_MODEL_OUTPUT_INVALID",
-					context: {
-						memoryId: memory.id,
-						outputKind: Array.isArray(embedding)
-							? "empty-array"
-							: typeof embedding,
-					},
-					severity: "fatal",
-				},
-			);
-		}
-		memory.embedding = embedding;
-		return memory;
+	addEmbeddingToMemory(
+		...args: Parameters<RuntimeEmbeddings["addEmbeddingToMemory"]>
+	): ReturnType<RuntimeEmbeddings["addEmbeddingToMemory"]> {
+		return this.embeddings.addEmbeddingToMemory(...args);
 	}
-
-	/**
-	 * Re-embed the given memories at the active embedding dimension after their
-	 * stale-dimension vectors were reclaimed. Runs detached from boot and drains
-	 * through the embedding queue at `low` priority so live traffic is never
-	 * starved. Fetched in chunks so a large migration never loads every memory at
-	 * once; a chunk failure is reported and the rest still proceed.
-	 */
-	private async reembedMemoriesByIds(memoryIds: UUID[]): Promise<void> {
-		const CHUNK = 200;
-		for (let i = 0; i < memoryIds.length; i += CHUNK) {
-			try {
-				const memories = await this.adapter.getMemoriesByIds(
-					memoryIds.slice(i, i + CHUNK),
-				);
-				for (const memory of memories) {
-					await this.queueEmbeddingGeneration(memory, "low");
-				}
-			} catch (error) {
-				// error-policy:J7 stale embedding requeue is best-effort maintenance; report and continue later chunks.
-				this.reportError("AgentRuntime.reembedMemoriesByIds", error, {
-					agentId: this.agentId,
-				});
-			}
-		}
+	private reembedMemoriesByIds(
+		...args: Parameters<RuntimeEmbeddings["reembedMemoriesByIds"]>
+	): ReturnType<RuntimeEmbeddings["reembedMemoriesByIds"]> {
+		return this.embeddings.reembedMemoriesByIds(...args);
 	}
-
-	/**
-	 * Queue a memory for embedding generation. If companionUrl is set, POSTs to companion
-	 * and returns without waiting (fire-and-forget). WHY: Thin runtime doesn't block on embedding.
-	 */
-	async queueEmbeddingGeneration(
-		memory: Memory,
-		priority?: "high" | "normal" | "low",
-	): Promise<void> {
-		priority = priority || "normal";
-		if (
-			!memory ||
-			(Array.isArray(memory.embedding) && memory.embedding.length > 0) ||
-			!memory.content.text
-		) {
-			return;
-		}
-		if (this.embeddingGenerationDisabledReason !== null) {
-			// See addEmbeddingToMemory: no provider passed the dimension probe,
-			// so queueing would only produce per-item generation failures (or
-			// silently dropped vectors). Skip explicitly, warn once.
-			this.warnEmbeddingGenerationSkipped();
-			return;
-		}
-
-		if (this.companionUrl) {
-			const url = `${this.companionUrl.replace(/\/$/, "")}/embedding-generation`;
-			void this.fetch(url, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					agentId: this.agentId,
-					memory,
-					priority,
-					runId: this.getCurrentRunId(),
-				}),
-			}).catch((err) =>
-				// error-policy:J7 diagnostics-must-not-kill-the-loop — offloading
-				// embedding generation to the companion is fire-and-forget, but a
-				// dead companion must surface (embeddings would silently stop).
-				this.reportError("AgentRuntime.companionEmbedding", err, {
-					url,
-					agentId: this.agentId,
-				}),
-			);
-			return;
-		}
-
-		void this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
-			runtime: this,
-			memory,
-			priority,
-			source: "runtime",
-			retryCount: 0,
-			maxRetries: 3,
-			runId: this.getCurrentRunId(),
-		}).catch((error) => {
-			// error-policy:J7 The asynchronous request must surface even though
-			// it cannot block the memory write that scheduled it.
-			this.logger.warn(
-				{
-					src: "runtime",
-					error: error instanceof Error ? error.message : String(error),
-					memoryId: memory.id,
-					priority,
-				},
-				"Embedding generation request failed",
-			);
-			this.reportError("AgentRuntime.embeddingGenerationRequest", error, {
-				memoryId: memory.id,
-				priority,
-			});
-		});
+	queueEmbeddingGeneration(
+		...args: Parameters<RuntimeEmbeddings["queueEmbeddingGeneration"]>
+	): ReturnType<RuntimeEmbeddings["queueEmbeddingGeneration"]> {
+		return this.embeddings.queueEmbeddingGeneration(...args);
 	}
 	async getMemories(params: {
 		entityId?: UUID;
@@ -12109,20 +5038,17 @@ ${section_end}`;
 	}): Promise<MessageSearchHit[]> {
 		return this.adapter.searchMessages(params);
 	}
-
-	clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
-		return this.adapter.clearEmbeddingsOutsideActiveDimension();
+	clearEmbeddingsOutsideActiveDimension(
+		...args: Parameters<
+			RuntimeEmbeddings["clearEmbeddingsOutsideActiveDimension"]
+		>
+	): ReturnType<RuntimeEmbeddings["clearEmbeddingsOutsideActiveDimension"]> {
+		return this.embeddings.clearEmbeddingsOutsideActiveDimension(...args);
 	}
-
-	async getCachedEmbeddings(params: {
-		query_table_name: string;
-		query_threshold: number;
-		query_input: string;
-		query_field_name: string;
-		query_field_sub_name: string;
-		query_match_count: number;
-	}): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
-		return this.adapter.getCachedEmbeddings(params);
+	getCachedEmbeddings(
+		...args: Parameters<RuntimeEmbeddings["getCachedEmbeddings"]>
+	): ReturnType<RuntimeEmbeddings["getCachedEmbeddings"]> {
+		return this.embeddings.getCachedEmbeddings(...args);
 	}
 	async searchMemories(params: {
 		embedding: number[];
@@ -12180,14 +5106,8 @@ ${section_end}`;
 		if (!secrets || typeof secrets !== "object") {
 			return {};
 		}
-		// Filter to only include string values. A small closed set of
-		// configuration keys that operators park under `secrets` but that name
-		// no credential is left out of the literal pass (live 2026-09-06: the
-		// owner's TIMEZONE=America/Los_Angeles was rewritten to
-		// "[REDACTED:TIMEZONE]" in every provider text, so the planner never
-		// learned the zone and stored calendar moves as fabricated UTC instants).
-		// Everything else under `secrets` stays redacted literally; the pattern
-		// sweep in `redactSecrets` is unchanged.
+		// Preserve declared non-credential configuration in model context.
+		// Other secret strings retain literal redaction and the pattern sweep.
 		const result: Record<string, string> = {};
 		for (const [key, value] of Object.entries(secrets)) {
 			if (NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())) continue;
@@ -12697,15 +5617,12 @@ ${section_end}`;
 		return this.adapter.getEntitiesByIds(entityIds);
 	}
 
-	async updateEntities(entities: Entity[]): Promise<void> {
-		await this.adapter.updateEntities(entities);
-		this.invalidateTurnEntityDetails();
+	updateEntities(entities: Entity[]): Promise<void> {
+		return this.dataMutations.updateEntities(entities);
 	}
 
-	async deleteEntities(entityIds: UUID[]): Promise<void> {
-		await this.adapter.deleteEntities(entityIds);
-		this.invalidateTurnEntityDetails();
-		this.invalidateTurnIdentityClusters();
+	deleteEntities(entityIds: UUID[]): Promise<void> {
+		return this.dataMutations.deleteEntities(entityIds);
 	}
 	async searchEntitiesByName(params: {
 		query: string;
@@ -12729,37 +5646,30 @@ ${section_end}`;
 	}
 
 	// Single-item entity wrapper
-	async updateEntity(entity: Entity): Promise<void> {
-		await this.adapter.updateEntities([entity]);
-		this.invalidateTurnEntityDetails();
+	updateEntity(entity: Entity): Promise<void> {
+		return this.dataMutations.updateEntity(entity);
 	}
 
 	// Batch component methods
-	async createComponents(components: Component[]): Promise<UUID[]> {
-		const ids = await this.adapter.createComponents(components);
-		this.invalidateTurnEntityDetails();
-		return ids;
+	createComponents(components: Component[]): Promise<UUID[]> {
+		return this.dataMutations.createComponents(components);
 	}
 
 	async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
 		return this.adapter.getComponentsByIds(componentIds);
 	}
 
-	async updateComponents(components: Component[]): Promise<void> {
-		await this.adapter.updateComponents(components);
-		this.invalidateTurnEntityDetails();
+	updateComponents(components: Component[]): Promise<void> {
+		return this.dataMutations.updateComponents(components);
 	}
 
-	async deleteComponents(componentIds: UUID[]): Promise<void> {
-		await this.adapter.deleteComponents(componentIds);
-		this.invalidateTurnEntityDetails();
+	deleteComponents(componentIds: UUID[]): Promise<void> {
+		return this.dataMutations.deleteComponents(componentIds);
 	}
 
 	// Single-item component wrappers
-	async createComponent(component: Component): Promise<boolean> {
-		const ids = await this.adapter.createComponents([component]);
-		this.invalidateTurnEntityDetails();
-		return ids.length > 0;
+	createComponent(component: Component): Promise<boolean> {
+		return this.dataMutations.createComponent(component);
 	}
 
 	async getComponent(
@@ -12776,53 +5686,46 @@ ${section_end}`;
 		return results[0] ?? null;
 	}
 
-	async updateComponent(component: Component): Promise<void> {
-		await this.adapter.updateComponents([component]);
-		this.invalidateTurnEntityDetails();
+	updateComponent(component: Component): Promise<void> {
+		return this.dataMutations.updateComponent(component);
 	}
 
-	async deleteComponent(componentId: UUID): Promise<void> {
-		await this.adapter.deleteComponents([componentId]);
-		this.invalidateTurnEntityDetails();
+	deleteComponent(componentId: UUID): Promise<void> {
+		return this.dataMutations.deleteComponent(componentId);
 	}
 
-	async upsertComponent(component: Component): Promise<void> {
-		await this.adapter.upsertComponents([component]);
-		this.invalidateTurnEntityDetails();
+	upsertComponent(component: Component): Promise<void> {
+		return this.dataMutations.upsertComponent(component);
 	}
 
-	async upsertComponents(
+	upsertComponents(
 		components: Component[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		await this.adapter.upsertComponents(components, options);
-		this.invalidateTurnEntityDetails();
+		return this.dataMutations.upsertComponents(components, options);
 	}
 
-	async patchComponent(
+	patchComponent(
 		componentId: UUID,
 		ops: PatchOp[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		await this.adapter.patchComponents([{ componentId, ops }], options);
-		this.invalidateTurnEntityDetails();
+		return this.dataMutations.patchComponent(componentId, ops, options);
 	}
 
-	async patchComponents(
+	patchComponents(
 		updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		await this.adapter.patchComponents(updates, options);
-		this.invalidateTurnEntityDetails();
+		return this.dataMutations.patchComponents(updates, options);
 	}
 
-	async patchComponentField(
+	patchComponentField(
 		componentId: UUID,
 		op: PatchOp,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		await this.adapter.patchComponents([{ componentId, ops: [op] }], options);
-		this.invalidateTurnEntityDetails();
+		return this.dataMutations.patchComponentField(componentId, op, options);
 	}
 
 	async getComponentsByType(
@@ -12850,37 +5753,23 @@ ${section_end}`;
 		return components;
 	}
 
-	async upsertMemory(
+	upsertMemory(
 		memory: Memory,
 		tableName: string,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		// Apply secret redaction (same as createMemory) to prevent plaintext secrets
-		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content.text) {
-			memory = {
-				...memory,
-				content: {
-					...memory.content,
-					text: redactWithSecrets(memory.content.text, {
-						secrets,
-						applyPatterns: true,
-					}),
-				},
-			};
-		}
-		return this.adapter.upsertMemories([{ memory, tableName }], options);
+		return this.dataMutations.upsertMemory(memory, tableName, options);
 	}
 
-	async upsertMemories(
+	upsertMemories(
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.upsertMemories(memories, options);
+		return this.dataMutations.upsertMemories(memories, options);
 	}
 
 	// Batch relationship methods
-	async createRelationships(
+	createRelationships(
 		relationships: Array<{
 			sourceEntityId: UUID;
 			targetEntityId: UUID;
@@ -12888,9 +5777,7 @@ ${section_end}`;
 			metadata?: Metadata;
 		}>,
 	): Promise<UUID[]> {
-		const ids = await this.adapter.createRelationships(relationships);
-		this.invalidateTurnIdentityClusters();
-		return ids;
+		return this.dataMutations.createRelationships(relationships);
 	}
 
 	async getRelationshipsByIds(
@@ -12905,26 +5792,22 @@ ${section_end}`;
 		return this.adapter.getRelationshipsByPairs(pairs);
 	}
 
-	async updateRelationships(relationships: Relationship[]): Promise<void> {
-		await this.adapter.updateRelationships(relationships);
-		this.invalidateTurnIdentityClusters();
+	updateRelationships(relationships: Relationship[]): Promise<void> {
+		return this.dataMutations.updateRelationships(relationships);
 	}
 
-	async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
-		await this.adapter.deleteRelationships(relationshipIds);
-		this.invalidateTurnIdentityClusters();
+	deleteRelationships(relationshipIds: UUID[]): Promise<void> {
+		return this.dataMutations.deleteRelationships(relationshipIds);
 	}
 
 	// Single-item relationship wrappers
-	async createRelationship(params: {
+	createRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
 		tags?: string[];
 		metadata?: Metadata;
 	}): Promise<boolean> {
-		const ids = await this.adapter.createRelationships([params]);
-		this.invalidateTurnIdentityClusters();
-		return ids.length > 0;
+		return this.dataMutations.createRelationship(params);
 	}
 
 	async getRelationship(params: {
@@ -12937,9 +5820,8 @@ ${section_end}`;
 		return results[0] ?? null;
 	}
 
-	async updateRelationship(relationship: Relationship): Promise<void> {
-		await this.adapter.updateRelationships([relationship]);
-		this.invalidateTurnIdentityClusters();
+	updateRelationship(relationship: Relationship): Promise<void> {
+		return this.dataMutations.updateRelationship(relationship);
 	}
 
 	// ── Batch memory passthroughs ────────────────────────────────────────
@@ -12947,30 +5829,20 @@ ${section_end}`;
 	// WHY no redaction here: batch callers are responsible for their own
 	// content. The single-item createMemory() wrapper below handles
 	// redaction for the common case.
-	async createMemories(
+	createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
-		const ids = await this.adapter.createMemories(memories);
-		for (const entry of memories) {
-			if (entry.tableName === "messages" && entry.memory.roomId) {
-				this.roomMessagesMemo.invalidate(entry.memory.roomId);
-			}
-		}
-		return ids;
+		return this.dataMutations.createMemories(memories);
 	}
 
-	async updateMemories(
+	updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void> {
-		await this.adapter.updateMemories(memories);
-		// Partial updates carry no table/room; drop every cached window rather
-		// than risk serving a pre-update snapshot.
-		this.roomMessagesMemo.invalidate();
+		return this.dataMutations.updateMemories(memories);
 	}
 
-	async deleteMemories(memoryIds: UUID[]): Promise<void> {
-		await this.adapter.deleteMemories(memoryIds);
-		this.roomMessagesMemo.invalidate();
+	deleteMemories(memoryIds: UUID[]): Promise<void> {
+		return this.dataMutations.deleteMemories(memoryIds);
 	}
 
 	// ── Single-item memory wrappers ────────────────────────────────────
@@ -12986,130 +5858,61 @@ ${section_end}`;
 	// tokens, and other secrets are scrubbed from memory content. Internal
 	// runtime code deliberately calls this wrapper (not adapter.createMemories
 	// directly) to ensure redaction always happens.
-	async createMemory(
+	createMemory(
 		memory: Memory,
 		tableName: string,
 		unique?: boolean,
 	): Promise<UUID> {
-		if (unique !== undefined) memory.unique = unique;
-
-		// Redact any secrets from memory content before storing
-		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content.text) {
-			memory = {
-				...memory,
-				content: {
-					...memory.content,
-					text: redactWithSecrets(memory.content.text, {
-						secrets,
-						applyPatterns: true,
-					}),
-				},
-			};
-		}
-
-		// Facts are structurally deduped at write time: when an equivalent row
-		// (same normalized text + room + entity) already exists, skip the insert
-		// and hand back the existing id. The adapter cannot do this — its
-		// similarity check needs an embedding (absent inline on fact writes) and
-		// is bypassed whenever callers pass `unique` — so without this guard the
-		// same claim lands as multiple rows (see runtime/fact-write-dedupe.ts).
-		// A dedupe hit may still carry new information: stronger metadata on the
-		// incoming occurrence (higher confidence, an explicit kind, a fresher
-		// validity timestamp) upgrades the kept row instead of being dropped.
-		if (tableName === "facts") {
-			const equivalent = await findEquivalentFact(this, memory);
-			if (equivalent?.id) {
-				const upgraded = mergeStrongerFactMetadata(equivalent, memory);
-				if (upgraded) {
-					await this.updateMemory({ id: equivalent.id, metadata: upgraded });
-				}
-				return equivalent.id;
-			}
-		}
-
-		const ids = await this.adapter.createMemories([
-			{ memory, tableName, unique },
-		]);
-		// The intake path persists the user message immediately before
-		// composeState reads the room window; busting the key here makes the
-		// coalesced messages-scan self-enforcing — a stale window can never
-		// drop the message currently being answered.
-		if (tableName === "messages" && memory.roomId) {
-			this.roomMessagesMemo.invalidate(memory.roomId);
-		}
-		const memoryId = ids[0];
-		await this.applyPipelineHooks(
-			"after_memory_persisted",
-			afterMemoryPersistedPipelineHookContext(memory, tableName, memoryId),
-		);
-		return memoryId;
+		return this.dataMutations.createMemory(memory, tableName, unique);
 	}
 
-	async updateMemory(
+	updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean> {
-		await this.adapter.updateMemories([memory]);
-		this.roomMessagesMemo.invalidate();
-		return true; // Successfully updated if no error thrown
+		return this.dataMutations.updateMemory(memory);
 	}
 
-	async deleteMemory(memoryId: UUID): Promise<void> {
-		await this.adapter.deleteMemories([memoryId]);
-		this.roomMessagesMemo.invalidate();
+	deleteMemory(memoryId: UUID): Promise<void> {
+		return this.dataMutations.deleteMemory(memoryId);
 	}
 
 	// ── Participant passthroughs & wrappers ──────────────────────────────
-	async deleteParticipants(
+	deleteParticipants(
 		participants: Array<{ entityId: UUID; roomId: UUID }>,
 	): Promise<boolean> {
-		const deleted = await this.adapter.deleteParticipants(participants);
-		this.invalidateTurnEntityDetails();
-		return deleted;
+		return this.dataMutations.deleteParticipants(participants);
 	}
 
-	async updateParticipants(
+	updateParticipants(
 		participants: Array<{
 			entityId: UUID;
 			roomId: UUID;
 			updates: Partial<Participant>;
 		}>,
 	): Promise<void> {
-		await this.adapter.updateParticipants(participants);
-		this.invalidateTurnEntityDetails();
+		return this.dataMutations.updateParticipants(participants);
 	}
 
-	async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-		const deleted = await this.adapter.deleteParticipants([
-			{ entityId, roomId },
-		]);
-		this.invalidateTurnEntityDetails();
-		return deleted;
+	removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+		return this.dataMutations.removeParticipant(entityId, roomId);
 	}
 
 	// ── Room passthroughs & wrappers ────────────────────────────────────
-	async updateRooms(rooms: Room[]): Promise<void> {
-		await this.adapter.updateRooms(rooms);
-		for (const room of rooms) {
-			if (room.id) this.roomReadMemo.invalidate(room.id);
-		}
+	updateRooms(rooms: Room[]): Promise<void> {
+		return this.dataMutations.updateRooms(rooms);
 	}
 
-	async deleteRooms(roomIds: UUID[]): Promise<void> {
-		await this.adapter.deleteRooms(roomIds);
-		for (const roomId of roomIds) {
-			this.roomReadMemo.invalidate(roomId);
-			this.roomMessagesMemo.invalidate(roomId);
-		}
+	deleteRooms(roomIds: UUID[]): Promise<void> {
+		return this.dataMutations.deleteRooms(roomIds);
 	}
 
 	// Single-item room wrappers
-	async updateRoom(room: Room): Promise<void> {
-		return this.updateRooms([room]);
+	updateRoom(room: Room): Promise<void> {
+		return this.dataMutations.updateRoom(room);
 	}
 
-	async deleteRoom(roomId: UUID): Promise<void> {
-		return this.deleteRooms([roomId]);
+	deleteRoom(roomId: UUID): Promise<void> {
+		return this.dataMutations.deleteRoom(roomId);
 	}
 
 	on(event: string, callback: (data: EventPayload) => void): void {
@@ -13240,404 +6043,80 @@ ${section_end}`;
 		}
 		return cloneSearchCategoryRegistration(registration);
 	}
-
-	registerSendHandler(source: string, handler: SendHandlerFunction): void {
-		const normalized = typeof source === "string" ? source.trim() : "";
-		if (!normalized) {
-			throw new Error("Send handler registration requires a source");
-		}
-		const routeKey = connectorRouteKey(normalized);
-		if (this.sendHandlers.has(routeKey)) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: normalized,
-				},
-				"Send handler already registered, overwriting",
-			);
-		}
-		this.sendHandlers.set(routeKey, handler);
-		this.messageConnectors.set(routeKey, normalizeMessageConnector(normalized));
-		this.logger.debug(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				handlerSource: normalized,
-			},
-			"Send handler registered",
-		);
+	registerSendHandler(
+		...args: Parameters<RuntimeConnectorRegistry["registerSendHandler"]>
+	): ReturnType<RuntimeConnectorRegistry["registerSendHandler"]> {
+		return this.#connectorRegistry.registerSendHandler(...args);
 	}
-
 	registerInternalSendHandler(
-		source: string,
-		handler: SendHandlerFunction,
-	): void {
-		const normalized = typeof source === "string" ? source.trim() : "";
-		if (!normalized) {
-			throw new Error("Internal send handler registration requires a source");
-		}
-		const routeKey = connectorRouteKey(normalized);
-		if (this.sendHandlers.has(routeKey)) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: normalized,
-				},
-				"Internal send handler already registered, overwriting",
-			);
-		}
-		this.sendHandlers.set(routeKey, handler);
-		this.logger.debug(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				handlerSource: normalized,
-			},
-			"Internal send handler registered",
-		);
+		...args: Parameters<RuntimeConnectorRegistry["registerInternalSendHandler"]>
+	): ReturnType<RuntimeConnectorRegistry["registerInternalSendHandler"]> {
+		return this.#connectorRegistry.registerInternalSendHandler(...args);
 	}
-
-	registerMessageConnector(registration: MessageConnectorRegistration): void {
-		const source =
-			typeof registration.source === "string" ? registration.source.trim() : "";
-		if (!source) {
-			throw new Error("Message connector registration requires a source");
-		}
-		const accountId =
-			normalizeConnectorAccountId(registration.accountId) ??
-			normalizeConnectorAccountId(registration.account?.accountId);
-		const routeKey = connectorRouteKey(source, accountId);
-		if (
-			this.messageConnectors.has(routeKey) ||
-			this.sendHandlers.has(routeKey)
-		) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: source,
-					accountId,
-				},
-				"Message connector already registered, overwriting",
-			);
-		}
-
-		if (registration.sendHandler) {
-			this.sendHandlers.set(routeKey, registration.sendHandler);
-			this.logger.debug(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: source,
-					accountId,
-				},
-				"Send handler registered",
-			);
-		}
-		this.messageConnectors.set(
-			routeKey,
-			normalizeMessageConnector(source, {
-				...registration,
-				accountId,
-			}),
-		);
+	registerMessageConnector(
+		...args: Parameters<RuntimeConnectorRegistry["registerMessageConnector"]>
+	): ReturnType<RuntimeConnectorRegistry["registerMessageConnector"]> {
+		return this.#connectorRegistry.registerMessageConnector(...args);
 	}
-
-	unregisterMessageConnector(source: string, accountId?: string): boolean {
-		const normalized = typeof source === "string" ? source.trim() : "";
-		if (!normalized) return false;
-		const normalizedAccountId = normalizeConnectorAccountId(accountId);
-		let removedConnector = false;
-		let removedHandler = false;
-		if (normalizedAccountId) {
-			const routeKey = connectorRouteKey(normalized, normalizedAccountId);
-			removedConnector = this.messageConnectors.delete(routeKey);
-			removedHandler = this.sendHandlers.delete(routeKey);
-		} else {
-			for (const [routeKey, connector] of this.messageConnectors) {
-				if (connector.source === normalized) {
-					removedConnector =
-						this.messageConnectors.delete(routeKey) || removedConnector;
-				}
-			}
-			for (const routeKey of Array.from(this.sendHandlers.keys())) {
-				if (connectorKeySource(routeKey) === normalized) {
-					removedHandler = this.sendHandlers.delete(routeKey) || removedHandler;
-				}
-			}
-		}
-		if (removedConnector || removedHandler) {
-			this.logger.debug(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: normalized,
-					accountId: normalizedAccountId,
-				},
-				"Message connector unregistered",
-			);
-		}
-		return removedConnector || removedHandler;
+	unregisterMessageConnector(
+		...args: Parameters<RuntimeConnectorRegistry["unregisterMessageConnector"]>
+	): ReturnType<RuntimeConnectorRegistry["unregisterMessageConnector"]> {
+		return this.#connectorRegistry.unregisterMessageConnector(...args);
 	}
-
-	getMessageConnectors(): MessageConnector[] {
-		return Array.from(this.messageConnectors.values())
-			.map(cloneMessageConnector)
-			.sort(
-				(a, b) =>
-					a.source.localeCompare(b.source) ||
-					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
-			);
+	getMessageConnectors(
+		...args: Parameters<RuntimeConnectorRegistry["getMessageConnectors"]>
+	): ReturnType<RuntimeConnectorRegistry["getMessageConnectors"]> {
+		return this.#connectorRegistry.getMessageConnectors(...args);
 	}
-
-	registerPostConnector(registration: PostConnectorRegistration): void {
-		const source =
-			typeof registration.source === "string" ? registration.source.trim() : "";
-		if (!source) {
-			throw new Error("Post connector registration requires a source");
-		}
-		const accountId =
-			normalizeConnectorAccountId(registration.accountId) ??
-			normalizeConnectorAccountId(registration.account?.accountId);
-		const routeKey = connectorRouteKey(source, accountId);
-		if (this.postConnectors.has(routeKey)) {
-			this.logger.warn(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: source,
-					accountId,
-				},
-				"Post connector already registered, overwriting",
-			);
-		}
-		this.postConnectors.set(
-			routeKey,
-			normalizePostConnector(source, {
-				...registration,
-				accountId,
-			}),
-		);
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, handlerSource: source, accountId },
-			"Post connector registered",
-		);
+	registerPostConnector(
+		...args: Parameters<RuntimeConnectorRegistry["registerPostConnector"]>
+	): ReturnType<RuntimeConnectorRegistry["registerPostConnector"]> {
+		return this.#connectorRegistry.registerPostConnector(...args);
 	}
-
-	unregisterPostConnector(source: string, accountId?: string): boolean {
-		const normalized = typeof source === "string" ? source.trim() : "";
-		if (!normalized) return false;
-		const normalizedAccountId = normalizeConnectorAccountId(accountId);
-		let removed = false;
-		if (normalizedAccountId) {
-			removed = this.postConnectors.delete(
-				connectorRouteKey(normalized, normalizedAccountId),
-			);
-		} else {
-			for (const [routeKey, connector] of this.postConnectors) {
-				if (connector.source === normalized) {
-					removed = this.postConnectors.delete(routeKey) || removed;
-				}
-			}
-		}
-		if (removed) {
-			this.logger.debug(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: normalized,
-					accountId: normalizedAccountId,
-				},
-				"Post connector unregistered",
-			);
-		}
-		return removed;
+	unregisterPostConnector(
+		...args: Parameters<RuntimeConnectorRegistry["unregisterPostConnector"]>
+	): ReturnType<RuntimeConnectorRegistry["unregisterPostConnector"]> {
+		return this.#connectorRegistry.unregisterPostConnector(...args);
 	}
-
-	getPostConnectors(): PostConnector[] {
-		return Array.from(this.postConnectors.values())
-			.map(clonePostConnector)
-			.sort(
-				(a, b) =>
-					a.source.localeCompare(b.source) ||
-					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
-			);
+	getPostConnectors(
+		...args: Parameters<RuntimeConnectorRegistry["getPostConnectors"]>
+	): ReturnType<RuntimeConnectorRegistry["getPostConnectors"]> {
+		return this.#connectorRegistry.getPostConnectors(...args);
 	}
-
-	// NOTE: The owner-binding send gate (the "act as the user" guard) is enforced
-	// at the MESSAGE action layer (ensureSendAccountAllowed in
-	// features/advanced-capabilities/actions/message.ts), NOT here. This is the
-	// low-level transport for every send path; direct callers that route through
-	// an owner-bound account must apply their own gate before calling this.
-	async sendMessageToTarget(
-		target: TargetInfo,
-		content: Content,
-	): SendHandlerResult {
-		const source =
-			typeof target.source === "string" ? target.source.trim() : "";
-		const accountId = normalizeConnectorAccountId(target.accountId);
-		const handler =
-			this.sendHandlers.get(connectorRouteKey(source, accountId)) ??
-			this.sendHandlers.get(connectorRouteKey(source));
-		if (!handler) {
-			const errorMsg = accountId
-				? `No send handler registered for source: ${source} accountId: ${accountId}`
-				: `No send handler registered for source: ${source}`;
-			this.logger.error(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					handlerSource: source,
-					accountId,
-				},
-				"Send handler not found",
-			);
-			throw new Error(errorMsg);
-		}
-		// Humanness voice gate (#14873): this is the connector-transport chokepoint
-		// for every agent-initiated outbound message (scheduled dispatches,
-		// escalations, task-agent routing, raw error strings). Rephrase the literal
-		// into the agent's own voice unless it is already model-voiced
-		// (`content.agentVoiced`); the gate fails open, so a rephrase outage
-		// delivers the original text rather than blocking the send.
-		const voicedContent = await ensureAgentVoice(this, content, { source });
-		// Proactive sends bypass the message-turn callback wrap, so the shared
-		// machine-syntax sanitizer (#15888) and the fail-closed envelope guard
-		// apply here — after the voice gate, whose rephrase is itself model text.
-		const outboundContent =
-			typeof voicedContent.text === "string"
-				? {
-						...voicedContent,
-						text: guardOutboundEnvelopeText(
-							this,
-							sanitizeOutboundText(voicedContent.text),
-							"sendMessageToTarget",
-						),
-					}
-				: voicedContent;
-		return handler(this, target, outboundContent);
+	sendMessageToTarget(
+		...args: Parameters<RuntimeConnectorRegistry["sendMessageToTarget"]>
+	): ReturnType<RuntimeConnectorRegistry["sendMessageToTarget"]> {
+		return this.#connectorRegistry.sendMessageToTarget(...args);
 	}
-
-	private resolveMessageConnector(target: TargetInfo): {
-		connector: MessageConnector;
-		source: string;
-		accountId: string | undefined;
-	} {
-		const source =
-			typeof target.source === "string" ? target.source.trim() : "";
-		const accountId = normalizeConnectorAccountId(target.accountId);
-		const connector =
-			this.messageConnectors.get(connectorRouteKey(source, accountId)) ??
-			this.messageConnectors.get(connectorRouteKey(source));
-		if (!connector) {
-			throw new Error(
-				accountId
-					? `No message connector registered for source: ${source} accountId: ${accountId}`
-					: `No message connector registered for source: ${source}`,
-			);
-		}
-		return { connector, source, accountId };
+	editMessageOnTarget(
+		...args: Parameters<RuntimeConnectorRegistry["editMessageOnTarget"]>
+	): ReturnType<RuntimeConnectorRegistry["editMessageOnTarget"]> {
+		return this.#connectorRegistry.editMessageOnTarget(...args);
 	}
-
-	private requireConnectorHook<K extends keyof MessageConnector>(
-		target: TargetInfo,
-		hook: K,
-		capability: string,
-	): MessageConnector {
-		const { connector, source, accountId } =
-			this.resolveMessageConnector(target);
-		if (!connector[hook]) {
-			const detail = accountId
-				? `source: ${source} accountId: ${accountId}`
-				: `source: ${source}`;
-			throw new Error(`Connector does not support ${capability} (${detail})`);
-		}
-		return connector;
+	sendTypingOnTarget(
+		...args: Parameters<RuntimeConnectorRegistry["sendTypingOnTarget"]>
+	): ReturnType<RuntimeConnectorRegistry["sendTypingOnTarget"]> {
+		return this.#connectorRegistry.sendTypingOnTarget(...args);
 	}
-
-	async editMessageOnTarget(
-		target: TargetInfo,
-		messageId: string,
-		content: Content,
-	): Promise<Memory | undefined> {
-		const connector = this.requireConnectorHook(
-			target,
-			"editHandler",
-			"edit_message",
-		);
-		const handler = connector.editHandler;
-		if (!handler) {
-			throw new Error("Connector does not support edit_message");
-		}
-		return (await handler(this, { target, messageId, content })) ?? undefined;
+	stopTypingOnTarget(
+		...args: Parameters<RuntimeConnectorRegistry["stopTypingOnTarget"]>
+	): ReturnType<RuntimeConnectorRegistry["stopTypingOnTarget"]> {
+		return this.#connectorRegistry.stopTypingOnTarget(...args);
 	}
-
-	async sendTypingOnTarget(target: TargetInfo): Promise<void> {
-		const connector = this.requireConnectorHook(
-			target,
-			"typingHandler",
-			"typing_indicator",
-		);
-		await connector.typingHandler?.(this, { target });
+	createThreadOnTarget(
+		...args: Parameters<RuntimeConnectorRegistry["createThreadOnTarget"]>
+	): ReturnType<RuntimeConnectorRegistry["createThreadOnTarget"]> {
+		return this.#connectorRegistry.createThreadOnTarget(...args);
 	}
-
-	async stopTypingOnTarget(target: TargetInfo): Promise<void> {
-		const connector = this.requireConnectorHook(
-			target,
-			"stopTypingHandler",
-			"typing_indicator",
-		);
-		await connector.stopTypingHandler?.(this, { target });
+	postToThreadOnTarget(
+		...args: Parameters<RuntimeConnectorRegistry["postToThreadOnTarget"]>
+	): ReturnType<RuntimeConnectorRegistry["postToThreadOnTarget"]> {
+		return this.#connectorRegistry.postToThreadOnTarget(...args);
 	}
-
-	async createThreadOnTarget(
-		target: TargetInfo,
-		params: Omit<MessageConnectorCreateThreadParams, "target"> = {},
-	): Promise<ThreadHandle> {
-		const connector = this.requireConnectorHook(
-			target,
-			"createThreadHandler",
-			"create_thread",
-		);
-		const handler = connector.createThreadHandler;
-		if (!handler) {
-			throw new Error("Connector does not support create_thread");
-		}
-		return handler(this, { target, ...params });
-	}
-
-	async postToThreadOnTarget(
-		target: TargetInfo,
-		thread: ThreadHandle,
-		content: Content,
-		identity?: ConnectorPostIdentity,
-	): Promise<Memory | undefined> {
-		const connector = this.requireConnectorHook(
-			target,
-			"postToThreadHandler",
-			"post_to_thread",
-		);
-		return connector.postToThreadHandler?.(this, {
-			target,
-			thread,
-			content,
-			identity,
-		});
-	}
-
-	async addReactionOnTarget(
-		target: TargetInfo,
-		messageId: string,
-		emoji: string,
-	): Promise<void> {
-		const connector = this.requireConnectorHook(
-			target,
-			"reactHandler",
-			"react_message",
-		);
-		await connector.reactHandler?.(this, { target, messageId, emoji });
+	addReactionOnTarget(
+		...args: Parameters<RuntimeConnectorRegistry["addReactionOnTarget"]>
+	): ReturnType<RuntimeConnectorRegistry["addReactionOnTarget"]> {
+		return this.#connectorRegistry.addReactionOnTarget(...args);
 	}
 
 	async getMemoriesByWorldId(params: {
@@ -13871,11 +6350,8 @@ ${section_end}`;
 
 	// ── Batch pass-throughs required by IDatabaseAdapter ────────────────
 
-	async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
-		await this.adapter.deleteRoomsByWorldIds(worldIds);
-		// Room ids under these worlds are unknown here; drop everything.
-		this.roomReadMemo.invalidate();
-		this.roomMessagesMemo.invalidate();
+	deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
+		return this.dataMutations.deleteRoomsByWorldIds(worldIds);
 	}
 
 	async getRoomsByWorlds(

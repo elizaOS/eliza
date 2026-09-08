@@ -1,6 +1,7 @@
 /**
  * Exercises journal privacy and stable source/process admission for the staging
- * diagnostic using hostile input and deterministic read-boundary responses.
+ * diagnostic using real Bun/Node console producers, the production redactor,
+ * hostile input, and deterministic host read-boundary responses.
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -31,6 +32,112 @@ function consoleFrame(containerName, diagnostics) {
   assert.equal(result.status, 0);
   return result.stderr.trimEnd();
 }
+
+function redactedNodeFrame(containerName, diagnostics) {
+  const redactor = new URL(
+    "../../../core/src/security/redact.ts",
+    import.meta.url,
+  );
+  const result = spawnSync(
+    "node",
+    [
+      "--input-type=module",
+      "-e",
+      `
+    import {readFileSync} from "node:fs";
+    import {redactLogArgs} from ${JSON.stringify(redactor.href)};
+    console.warn(...redactLogArgs(["[docker-sandbox] Health timeout diagnostics", JSON.parse(readFileSync(0, "utf8"))]));
+  `,
+    ],
+    {
+      encoding: "utf8",
+      input: JSON.stringify({
+        containerName,
+        nodeId: "private-node.invalid",
+        diagnostics,
+      }),
+    },
+  );
+  assert.equal(result.status, 0);
+  return result.stderr.trimEnd();
+}
+
+const NODE_DIAGNOSTICS =
+  "--- inspect ---\nstate=exited health=unhealthy exit=1 error=private-detail\n--- authkey marker ---\nauthkey-marker=absent\n--- logs ---\n";
+
+test("production redactor through Node console preserves categorical facts and exact target association", () => {
+  const name = "agent-target";
+  const digest = createHash("sha256").update(name).digest("hex");
+  for (const extra of [
+    "Cannot find module private-module\n",
+    "Cannot find module 'private-module'\n",
+    "Cannot find module 'private-module' with \"quotes\"\n",
+    `Cannot find module private-module; literal \${process.exit()} and backtick \`\n`,
+    "\x00\x01\x1b\x7f\u0085\ud800\t\r\b\f\v Cannot find module private-module\n",
+  ]) {
+    const frame = redactedNodeFrame(name, NODE_DIAGNOSTICS + extra);
+    for (const messages of [[frame], frame.split("\n")]) {
+      const journal = messages
+        .map((MESSAGE) => JSON.stringify({ MESSAGE }))
+        .join("\n");
+      const result = summarizeJournal(journal, digest).healthTimeouts;
+      assert.equal(result.all.frames, 1);
+      assert.equal(result.all.malformedFrames, 0);
+      assert.equal(result.target.frames, 1);
+      assert.equal(result.target.observations[0].containerState, "exited");
+      assert.equal(result.target.observations[0].authKeyMarker, "absent");
+      assert.equal(
+        result.target.observations[0].bootSignals.module_resolution,
+        true,
+      );
+      assert.equal(JSON.stringify(result).includes("private"), false);
+      assert.equal(JSON.stringify(result).includes(name), false);
+    }
+    assert.equal(
+      summarizeHealthFrames(
+        [frame],
+        createHash("sha256").update("agent-other").digest("hex"),
+      ).target.frames,
+      0,
+    );
+  }
+});
+
+test("Node incomplete, interleaved, abbreviated and executable-looking frames never certify a target", () => {
+  const digest = createHash("sha256").update("agent-target").digest("hex");
+  const frame = redactedNodeFrame(
+    "agent-target",
+    `${NODE_DIAGNOSTICS}Cannot find module private-module\n`,
+  );
+  const lines = frame.split("\n");
+  const abbreviated = redactedNodeFrame(
+    "agent-target",
+    `${NODE_DIAGNOSTICS}${"x".repeat(11000)}OutOfMemory`,
+  );
+  for (const malformed of [
+    lines.slice(0, -1),
+    [...lines.slice(0, 3), "[other worker] interleaved", ...lines.slice(3)],
+    [abbreviated],
+    [...lines.slice(0, 3), "  diagnostics: process.exit(0)", "}"],
+    [
+      ...lines.slice(0, 3),
+      `  diagnostics: \`literal \${process.exit(0)}\``,
+      "}",
+    ],
+    [...lines.slice(0, 3), String.raw`  diagnostics: '\q'`, "}"],
+    [...lines.slice(0, 3), String.raw`  diagnostics: '\xZZ'`, "}"],
+    [...lines.slice(0, 3), "  diagnostics: 'unterminated", "}"],
+  ]) {
+    const result = summarizeHealthFrames(malformed, digest);
+    assert.equal(result.all.frames, 0);
+    assert.equal(result.all.malformedFrames, 1);
+    assert.equal(result.target.frames, 0);
+    const recovered = summarizeHealthFrames([...malformed, frame], digest);
+    assert.equal(recovered.all.frames, 1);
+    assert.equal(recovered.all.malformedFrames, 1);
+    assert.equal(recovered.target.frames, 1);
+  }
+});
 
 test("real Bun console frames retain health facts while removing identifiers and log text", () => {
   const name = "agent-11111111-1111-4111-8111-111111111111";

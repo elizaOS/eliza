@@ -15,9 +15,6 @@ terraform {
     }
   }
 
-  # State backend uses Cloudflare R2 (S3-compatible), same as apps-data-plane.
-  # Single shared backend file — this module is NOT per-env (one private network +
-  # one tenant Postgres are shared across staging + production app nodes).
-  #   terraform init -backend-config=backend.hcl
+  # Select backend-<environment>.hcl with credentials scoped to its R2 bucket.
   backend "s3" {}
 }

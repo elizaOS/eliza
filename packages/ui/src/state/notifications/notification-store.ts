@@ -25,11 +25,7 @@ import { logger } from "@elizaos/logger";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
-import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
-import {
-  showNativeNotification,
-  showWebNotification,
-} from "../../bridge/native-notifications";
+import { deliverSystemNotification } from "../../bridge/notification-delivery";
 import { APP_RESUME_EVENT } from "../../events";
 import {
   STEWARD_SESSION_CHANGE_EVENT,
@@ -204,78 +200,20 @@ function upsert(
   return [notification, ...withoutDuplicate].slice(0, 300);
 }
 
-function isWindowFocused(): boolean {
-  if (typeof document === "undefined") return true;
-  return document.visibilityState === "visible" && document.hasFocus();
-}
-
-/**
- * Fire the Electrobun host's OS notification. Resolves true only when the
- * desktop bridge exists and handled the request (the RPC helper resolves null
- * when the bridge is absent, i.e. web/mobile).
- */
-async function fireDesktopNotification(
-  notification: AgentNotification,
-): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ id: string }>({
-    rpcMethod: "desktopShowNotification",
-    ipcChannel: "desktop:showNotification",
-    params: {
+/** Deliver interrupt-worthy arrivals once; the inbox remains available under OS suppression. */
+async function deliver(notification: AgentNotification): Promise<void> {
+  if (notification.priority === "low") return;
+  await deliverSystemNotification(
+    {
+      id: notification.id,
       title: notification.title,
       body: notification.body,
-      urgency:
-        notification.priority === "urgent"
-          ? "critical"
-          : notification.priority === "low"
-            ? "low"
-            : "normal",
-      silent: notification.priority === "low",
+      deepLink: notification.deepLink,
+      priority: notification.priority,
+      groupKey: notification.groupKey,
     },
-  }).catch(() => {
-    // error-policy:J6 best-effort OS-interrupt sink; a failing desktop bridge
-    // reads as "no native surface" so another OS channel may be attempted.
-    return null;
-  });
-  return result !== null;
-}
-
-/**
- * Offer a notification to an OS interrupt surface. The inbox is updated
- * separately in ingest and remains visible even when no OS channel is
- * available.
- *
- * Policy: platforms with an OS-native channel (Electrobun desktop, Capacitor
- * mobile) alert through it — the OS owns loudness/heads-up semantics via the
- * priority mapping. A focused web app does not duplicate the Home inbox with a
- * floating alert. A hidden tab may use the browser Notification API.
- */
-async function deliver(notification: AgentNotification): Promise<void> {
-  // §C.1 Silent tier is inbox-only: no OS/native interrupt, no toast, no badge.
-  if (notification.priority === "low") return;
-
-  if (await fireDesktopNotification(notification)) return;
-
-  const request = {
-    id: notification.id,
-    title: notification.title,
-    body: notification.body,
-    deepLink: notification.deepLink,
-    priority: notification.priority,
-    // Coalesce the OS surface the way the inbox does: a superseding
-    // same-groupKey arrival must REPLACE the prior OS notification (shared tag),
-    // not stack a second one for a single inbox row.
-    groupKey: notification.groupKey,
-  };
-  // error-policy:J6 best-effort OS-interrupt sink; the inbox (set separately
-  // in ingest) is the source of truth, so a failed native alert must not
-  // disturb delivery — it reads as "none" and a hidden browser tab may still
-  // raise its own OS notification.
-  const nativeChannel = await showNativeNotification(request).catch(
-    () => "none" as const,
+    { allowHiddenWeb: true },
   );
-  if (nativeChannel !== "none") return;
-
-  if (!isWindowFocused()) showWebNotification(request);
 }
 
 function ingest(

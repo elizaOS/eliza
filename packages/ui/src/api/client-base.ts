@@ -2323,7 +2323,17 @@ export class ElizaClient {
   }
 
   connectWs(): void {
-    if (shouldTreatAsConnectedWithoutWebSocket(this.baseUrl)) {
+    // Infer REST-only policy from the page only for implicit same-origin
+    // clients. An injected realtime target keeps its existing socket and
+    // retry policy, even when its hostname resembles a REST-only API host.
+    const effectiveBase =
+      this.baseUrl ||
+      (getInjectedWsBase()
+        ? ""
+        : typeof window !== "undefined"
+          ? window.location.origin
+          : "");
+    if (shouldTreatAsConnectedWithoutWebSocket(effectiveBase)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;
@@ -2546,10 +2556,10 @@ export class ElizaClient {
         // connected-over-REST state and keep probing in the background (see
         // scheduleReconnect's 30s loop) so live updates resume on WS recovery.
         if (
-          isDedicatedCloudAgentBase(this.baseUrl) ||
+          isDedicatedCloudAgentBase(effectiveBase) ||
           // Control-plane hosts serve chat over REST/SSE and can never
           // complete a WS upgrade (#18172) — same non-fatal degrade.
-          isElizaCloudControlPlaneBase(this.baseUrl)
+          isElizaCloudControlPlaneBase(effectiveBase)
         ) {
           this.connectionState = "connected";
           this.disconnectedAt = null;

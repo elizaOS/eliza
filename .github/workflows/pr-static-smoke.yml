@@ -142,6 +142,10 @@ jobs:
           packages/scripts/__tests__/github-action-pinning.test.ts
           packages/scripts/__tests__/pr-static-smoke-workflow.test.ts
 
+      - name: Check production and smoke view navigation parity
+        working-directory: packages/app-core
+        run: node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/smoke-view-declarations.test.ts
+
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -386,6 +390,18 @@ jobs:
           done
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
+          bun test --config=/dev/null \
+            packages/cloud/shared/src/db/repositories/organization-policy.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/subscription-reconciliation.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/subscription-renewal.postgres.integration.test.ts
       - name: Require subscription authority outcome
         if: always()
         env:

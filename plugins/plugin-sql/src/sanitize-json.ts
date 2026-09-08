@@ -39,6 +39,16 @@ interface SanitizeContext {
   seen: WeakSet<object>;
   visits: number;
   bytes: number;
+  rejectNul?: boolean;
+}
+
+function rejectUnsupportedNul(value: string, context: SanitizeContext): void {
+  if (context.rejectNul && value.includes(NUL)) {
+    throw new ElizaError(
+      "Memory JSON contains NUL, which PostgreSQL jsonb cannot preserve; remove it explicitly before retrying the unchanged write",
+      { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" }
+    );
+  }
 }
 
 function chargeBytes(context: SanitizeContext, bytes: number, reason: string): void {
@@ -128,7 +138,7 @@ export function sanitizeJsonObject(
   return sanitizeJsonValue(value, { seen, visits: 0, bytes: 0 }, 0);
 }
 
-/** Serialize object fields (including legacy pre-encoded JSON) for a jsonb bind. */
+/** Serialize memory JSON without silently removing unsupported NUL characters. */
 export function serializeJsonb(value: unknown): string | undefined {
   // Decode legacy JSON for structural validation; keep its original numeric
   // tokens so arbitrary-precision jsonb numbers never round through JS Number.
@@ -157,15 +167,12 @@ export function serializeJsonb(value: unknown): string | undefined {
         severity: "fatal",
       });
     }
-    sanitizeJsonObject(decoded);
-    // Walk complete JSON escape tokens, not individual backslashes. For
-    // example, "\\u0000" first matches the escaped backslash and stays literal;
-    // only a real NUL escape is removed. JSON.parse already validated syntax.
-    return value.replace(/\\(?:u[0-9a-fA-F]{4}|["\\/bfnrt])/g, (escapeToken) =>
-      escapeToken === "\\u0000" ? "" : escapeToken
-    );
+    sanitizeJsonValue(decoded, { seen: new WeakSet(), visits: 0, bytes: 0, rejectNul: true }, 0);
+    return value;
   }
-  return JSON.stringify(sanitizeJsonObject(decoded));
+  return JSON.stringify(
+    sanitizeJsonValue(decoded, { seen: new WeakSet(), visits: 0, bytes: 0, rejectNul: true }, 0)
+  );
 }
 
 function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: number): unknown {
@@ -187,6 +194,7 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
   }
 
   if (typeof value === "string") {
+    rejectUnsupportedNul(value, context);
     // Strips NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
     // escape JSON.stringify emits for them. Nothing else needs rewriting here —
     // the value is serialized with JSON.stringify, which already escapes
@@ -309,6 +317,7 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
           "object-property-descriptor"
         );
         if (!descriptor?.enumerable) continue;
+        rejectUnsupportedNul(key, context);
         if ("get" in descriptor || "set" in descriptor) {
           failUnbounded({ reason: "object-accessor" });
         }

@@ -6,8 +6,8 @@
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Refuses occupied ports without terminating another workspace or service.
- * Starts the API and Vite together. The UI can compile and serve before the
- * runtime is ready; proxied requests recover as soon as the API comes online.
+ * Starts API and Vite concurrently unless credentialed local voice needs its
+ * gateway ready before the UI's initial capability probe.
  *
  * Usage:
  *   bun eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI

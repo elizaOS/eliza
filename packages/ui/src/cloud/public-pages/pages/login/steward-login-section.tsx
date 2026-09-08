@@ -51,7 +51,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../../bridge/toast";
 import {
   DiscordIcon,
   TelegramIcon,

@@ -2429,7 +2429,11 @@ function withViewsInteractivePayload(result: ActionResult): ActionResult {
 			verifiedUserFacing: _verifiedUserFacing,
 			...evidence
 		} = result;
-		return { ...evidence, turnComplete: false, modelReplyRequired: true };
+		return {
+			...evidence,
+			turnComplete: false,
+			...(result.success ? { modelReplyRequired: true } : {}),
+		};
 	}
 	return {
 		...result,
@@ -3012,9 +3016,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			options?: Record<string, unknown>,
 			deliveryCallback?: HandlerCallback,
 		): Promise<ActionResult> => {
-			// Helpers may emit diagnostic prose for legacy callers. Only actual
-			// interactive payloads are delivered directly; normal receipts remain
-			// tool evidence for the Eliza evaluator's generated response.
+			// Only interactive payloads bypass the model's grounded final reply.
 			const callback: HandlerCallback | undefined = deliveryCallback
 				? async (content, actionName) =>
 						isViewsInteractivePayload(content.text ?? "")

@@ -9,18 +9,13 @@
 
 import { Hono } from "hono";
 import { readPrimaryAccountBillingSnapshot } from "@/db/repositories/account-billing-snapshot";
-import { DEFAULT_ORG_STORAGE_BYTES_LIMIT } from "@/db/repositories/org-storage-quota";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { getMaxCloudCharactersForOrg } from "@/lib/constants/cloud-character-quota";
-import { getMaxContainersForOrg } from "@/lib/constants/pricing";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { buildAccountBillingSnapshot } from "@/lib/services/account-limits-snapshot";
-import { getMaxAppsPerOrg } from "@/lib/services/apps";
 import { getOrgTierCacheOnly } from "@/lib/services/org-rate-limits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -36,10 +31,6 @@ app.get("/", async (c) => {
 
     const snapshot = await buildAccountBillingSnapshot({
       primary: () => readPrimaryAccountBillingSnapshot(organizationId),
-      appLimit: getMaxAppsPerOrg,
-      maxCloudCharacters: getMaxCloudCharactersForOrg,
-      maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg,
-      maxContainers: getMaxContainersForOrg,
       runtimeTierCache: () => getOrgTierCacheOnly(organizationId),
       autoTopUpRuntimeEnabled: () =>
         c.env?.AUTO_TOP_UP_DURABLE_ENABLED === "true",
@@ -52,7 +43,6 @@ app.get("/", async (c) => {
         userAnonymous: user.is_anonymous !== false,
         organizationActive: user.organization.is_active === true,
       },
-      defaultStorageBytesLimit: DEFAULT_ORG_STORAGE_BYTES_LIMIT,
       now: () => new Date(),
     });
 

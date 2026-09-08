@@ -25,6 +25,7 @@ const USER = "00000000-0000-4000-8000-0000000000dd";
 let streamTextImpl: ((config: Record<string, unknown>) => unknown) | null =
   null;
 const streamText = mock((config: Record<string, unknown>) => {
+  if (anonymousUserImpl === null) expect(providerDispatchMarked).toBe(true);
   if (!streamTextImpl) throw new Error("streamTextImpl not set");
   return streamTextImpl(config);
 });
@@ -67,6 +68,13 @@ mock.module("@/lib/services/anonymous-sessions", () => ({
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
+// The stream/settlement contract is independent of the organization RPM transport.
+const rateLimitActual = await import("@/lib/middleware/rate-limit");
+mock.module("@/lib/middleware/rate-limit", () => ({
+  ...rateLimitActual,
+  enforceOrgRateLimit: mock(async () => null),
 }));
 
 mock.module("@/lib/models", () => ({
@@ -122,6 +130,7 @@ function makeLedgerReservation(startBalance: number, hold: number) {
 
 let ledger = makeLedgerReservation(100, 0.015);
 const admissionCalls: Array<Record<string, unknown>> = [];
+let providerDispatchMarked = false;
 
 mock.module("@/lib/services/credits", () => ({
   ...creditsActual,
@@ -152,6 +161,9 @@ mock.module("@/lib/services/organization-inference-admission", () => ({
     };
     return {
       mode: "synchronous_reservation",
+      markProviderDispatched: async () => {
+        providerDispatchMarked = true;
+      },
       settle,
       settleUnknown: () => settle(ledger.reservation.reservedAmount),
       reservation: {
@@ -173,11 +185,13 @@ mock.module("@/lib/providers/anthropic-thinking", () => ({
 const { default: chatRoute } = await import("../v1/chat/route");
 
 afterAll(() => {
+  mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
   mock.module("ai", () => aiActual);
   mock.module("@/lib/providers/language-model", () => languageModelActual);
 });
 
 beforeEach(() => {
+  providerDispatchMarked = false;
   ledger = makeLedgerReservation(100, 0.015);
   streamText.mockClear();
   streamTextImpl = null;

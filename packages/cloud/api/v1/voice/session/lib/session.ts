@@ -26,6 +26,7 @@
  * revoke — same-worker or cross-device — stops uplink to Cartesia in <=500ms.
  */
 
+import type { VoiceUiContext } from "@elizaos/shared";
 import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
@@ -48,7 +49,6 @@ import {
   type ElizaSseBridgeResponseHeaders,
   streamElizaConversation,
 } from "@/lib/voice-session/eliza-sse-bridge";
-import type { VoiceUiContext } from "@elizaos/shared";
 import { PhraseAggregator } from "@/lib/voice-session/phrase-aggregator";
 import type { ServerControlFrame } from "@/lib/voice-session/protocol";
 import {

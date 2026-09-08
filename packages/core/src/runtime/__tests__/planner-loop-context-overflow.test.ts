@@ -8,6 +8,7 @@ import type { ElizaError } from "../../errors";
 import { PROVIDER_CONTEXT_OVERFLOW } from "../../utils/model-errors";
 import { runPlannerLoop } from "../planner-loop";
 import type { PlannerToolResult, PlannerTrajectory } from "../planner-types";
+import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 const LIVE_CEREBRAS_MESSAGE =
 	"Bad Request: Please reduce the length of the messages or completion. " +
@@ -202,6 +203,16 @@ describe("planner-loop — provider context-overflow boundary", () => {
 	});
 
 	it("terminates typed when the initial planner input itself overflows", async () => {
+		const stages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "overflow-input"),
+			recordStage: vi.fn(async (_id, stage) => {
+				stages.push(stage);
+			}),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
 		const runtime = {
 			useModel: vi.fn(async () => {
 				throw liveOverflowError();
@@ -211,7 +222,14 @@ describe("planner-loop — provider context-overflow boundary", () => {
 		await expect(
 			runPlannerLoop({
 				runtime,
-				context: { id: "ctx" },
+				context: {
+					id: "ctx",
+					events: [
+						{ id: "source", type: "provider", name: "SOURCE", text: HUGE_TEXT },
+					],
+				},
+				recorder,
+				trajectoryId: "overflow-input",
 				executeToolCall: vi.fn(),
 				evaluate: vi.fn(),
 			}),
@@ -220,6 +238,11 @@ describe("planner-loop — provider context-overflow boundary", () => {
 			context: { recovery: "typed_boundary_terminal" },
 		});
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		const failed = stages.find((stage) => stage.kind === "planner");
+		expect(failed?.model?.finishReason).toBe("error");
+		expect(failed?.model?.response).toBe("");
+		expect(failed?.model?.toolCalls).toEqual([]);
+		expect(JSON.stringify(failed?.model?.messages)).toContain(HUGE_TEXT);
 	});
 
 	it("propagates an ordinary provider 400 untouched", async () => {

@@ -48,6 +48,7 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
         "2026-09-04",
       ],
       explicitDate: "2026-09-04",
+      nonPlannerDateTexts: ["move my dentist appointment to friday at 4pm"],
       timeZone: TZ,
     });
     expect(candidates.map((c) => c.id)).toEqual(["e1"]);
@@ -67,6 +68,34 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
       timeZone: TZ,
     });
     expect(candidates).toEqual([]);
+  });
+
+  it("does not turn an unmatched date into permission to mutate the only unrelated event", () => {
+    expect(
+      resolveCalendarMutationCandidates({
+        action: "delete",
+        events: [gym],
+        titleHint: undefined,
+        texts: ["delete the event", "2026-09-04"],
+        explicitDate: "2026-09-04",
+        nonPlannerDateTexts: ["delete the event"],
+        timeZone: TZ,
+      }),
+    ).toEqual([]);
+  });
+
+  it("preserves an authoritative date even when its bytes equal the planner field", () => {
+    expect(
+      resolveCalendarMutationCandidates({
+        action: "delete",
+        events: [dentistFriday],
+        titleHint: "dentist appointment",
+        texts: ["2026-09-04", "2026-09-04"],
+        explicitDate: "2026-09-04",
+        nonPlannerDateTexts: ["2026-09-04"],
+        timeZone: TZ,
+      }),
+    ).toEqual([]);
   });
 
   it("does not pick among several title matches on a wrong date", () => {

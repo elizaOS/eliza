@@ -1946,8 +1946,8 @@ describe("runV5MessageRuntimeStage1", () => {
 			firstCall[1] as { messages?: Array<{ content?: unknown }> }
 		).messages;
 		const wireText = JSON.stringify(messages ?? []);
-		expect(wireText).toContain("LOSSLESS_HISTORY_MANIFEST");
-		expect(wireText).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+		expect(wireText).toContain("EAGER_CROSS_ROOM_HISTORY");
+		expect(wireText).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 		let previousPosition = -1;
 		for (const memory of recentMessages) {
 			const text = memory.content.text;
@@ -2017,7 +2017,43 @@ describe("runV5MessageRuntimeStage1", () => {
 			);
 		}
 
-		it("judges the recall signal on the user's request, not on a document-augmentation wrapper", async () => {
+		it("preserves complete provider bodies beyond a declared Stage-1 window", async () => {
+			const runtime = runtimeWithHistoryProvider();
+			runtime.getModelRegistrations = vi.fn(() => [
+				{
+					modelType: ModelType.RESPONSE_HANDLER,
+					provider: "test",
+					metadata: { contextWindowTokens: 32000 },
+				},
+			]) as IAgentRuntime["getModelRegistrations"];
+			const state = historyState();
+			const body =
+				"early instruction: do not delete the invoice\n" +
+				"calendar appointment\n".repeat(8000) +
+				"final instruction: retain the original";
+			if (!state.data.providers) throw new Error("Expected providers");
+			state.data.providers["recent-conversations"].text = body;
+			state.text = body;
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "what did we discuss yesterday?" }),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const call = useModelCalls(runtime)[0];
+			if (!call) throw new Error("Expected a Stage-1 model call");
+			const messages = (
+				call[1] as {
+					messages: Array<{ content: string }>;
+				}
+			).messages;
+			expect(messages.some((entry) => entry.content.includes(body))).toBe(true);
+			expect(wireOfFirstCall(runtime)).not.toContain(
+				"LOSSLESS_HISTORY_MANIFEST",
+			);
+		});
+
+		it("preserves complete history for document-augmented requests", async () => {
 			// Live 2026-09-06: the augmentation preamble's own words matched a
 			// relevance keyword on every API turn and the eager corpus went out.
 			const runtime = runtimeWithHistoryProvider();
@@ -2040,11 +2076,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			});
 			const wire = wireOfFirstCall(runtime);
-			expect(wire).toContain("LOSSLESS_HISTORY_MANIFEST");
-			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 		});
 
-		it("sends the lossless manifest on a text turn with no recall signal", async () => {
+		it("preserves complete history on a text turn with no recall keyword", async () => {
 			// Live 2026-09-05: the eager cross-room history was 22.7K of a
 			// 44K-token Stage-1 prompt on "whats on my calendar tuesday?".
 			const runtime = runtimeWithHistoryProvider();
@@ -2055,20 +2091,20 @@ describe("runV5MessageRuntimeStage1", () => {
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			const wire = wireOfFirstCall(runtime);
-			expect(wire).toContain("LOSSLESS_HISTORY_MANIFEST");
-			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 			// The current room's own history is a different provider and stays.
 			expect(wire).toContain("CURRENT_ROOM_TURN");
 		});
 
 		it.each([
 			{
-				name: "preserves the text manifest in the planner",
+				name: "preserves complete provider text in the planner",
 				text: "Open Notes.",
 				contexts: ["general"],
 				keywords: true,
-				stage1Manifest: true,
-				plannerManifest: true,
+				stage1Manifest: false,
+				plannerManifest: false,
 			},
 			{
 				name: "retains eager recall outside a retrieval context",
@@ -2079,12 +2115,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				plannerManifest: false,
 			},
 			{
-				name: "lets model-selected memory use its retrieval manifest",
+				name: "preserves complete provider text in the memory context",
 				text: "What did we discuss yesterday?",
 				contexts: ["memory"],
 				keywords: true,
 				stage1Manifest: false,
-				plannerManifest: true,
+				plannerManifest: false,
 			},
 			{
 				name: "retains eager history without declared relevance keywords",
@@ -2861,7 +2897,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("executes an umbrella action directly when the planner supplies its dispatcher enum", async () => {
+	it("keeps the complete umbrella dispatcher when duplicate child schemas exceed the input budget", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "A coding task should be delegated.",
@@ -2910,7 +2946,10 @@ describe("runV5MessageRuntimeStage1", () => {
 						name: "action",
 						description: "Task operation",
 						required: false,
-						schema: { type: "string", enum: ["create", "spawn_agent"] },
+						schema: {
+							type: "string",
+							enum: ["create", "spawn_agent", "archive"],
+						},
 					},
 					{
 						name: "task",
@@ -2919,7 +2958,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						schema: { type: "string" },
 					},
 				],
-				subActions: ["TASKS_SPAWN_AGENT"],
+				subActions: ["TASKS_SPAWN_AGENT", "TASKS_ARCHIVE"],
 				examples: [],
 				validate: async () => true,
 				handler: parentHandler,
@@ -2936,6 +2975,14 @@ describe("runV5MessageRuntimeStage1", () => {
 						schema: { type: "string" },
 					},
 				],
+				examples: [],
+				validate: async () => true,
+				handler: childHandler,
+			},
+			{
+				name: "TASKS_ARCHIVE",
+				description: `Archive a task. ${"Complete child instruction. ".repeat(6000)}`,
+				parameters: [],
 				examples: [],
 				validate: async () => true,
 				handler: childHandler,
@@ -2958,6 +3005,18 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		expect(parentHandler).toHaveBeenCalledTimes(1);
 		expect(childHandler).not.toHaveBeenCalled();
+		const plannerInput = useModelCalls(runtime).find(
+			(call) => call[0] === ModelType.ACTION_PLANNER,
+		)?.[1] as { tools: Array<{ name: string; parameters: unknown }> };
+		expect(plannerInput.tools.map((tool) => tool.name)).toContain("TASKS");
+		expect(plannerInput.tools.map((tool) => tool.name)).not.toContain(
+			"TASKS_ARCHIVE",
+		);
+		expect(
+			JSON.stringify(
+				plannerInput.tools.find((tool) => tool.name === "TASKS")?.parameters,
+			),
+		).toContain("spawn_agent");
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
@@ -5033,26 +5092,57 @@ describe("runV5MessageRuntimeStage1", () => {
 		// queries, bounded to what is literally visible in the rendered
 		// prior_message blocks (so the model cannot fabricate a search
 		// across messages it can't see).
-		const sourceText = await readFile(
-			join(import.meta.dirname, "..", "services", "message.ts"),
-			"utf-8",
-		);
-		expect(sourceText).toContain(
+		const prompts: string[] = [];
+		for (const includeMemory of [false, true]) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: "Visible recall." }),
+			]);
+			runtime.contexts = new ContextRegistry([
+				{ id: "simple", label: "Simple", description: "Direct replies." },
+				...(includeMemory
+					? [
+							{
+								id: "memory",
+								label: "Memory",
+								description: "Stored conversation recall.",
+							},
+						]
+					: []),
+			]);
+			if (includeMemory) runtime.actions = [makeMemorySearchAction()];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "Who mentioned the build?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+				stage1DecisionOnly: true,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages?: Array<{ content?: string | null }>;
+			};
+			prompts.push(
+				(params.messages ?? [])
+					.map((message) => message.content ?? "")
+					.join("\n"),
+			);
+		}
+		const renderedPrompt = prompts.join("\n");
+		expect(renderedPrompt).toContain(
 			"Exception for visible-context recall: when the final message asks a recall question",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"you may scan the prior_message blocks above and answer from what is literally visible there",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"there is no separate chat-history search tool",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"never present visible matches as the full-history answer",
 		);
 		// Live regression (2026-06-30, ruby-trivia build): when asked "what
@@ -5060,10 +5150,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		// "no chat-history search tool" disclaimer and claimed it could not verify
 		// a run it COULD look up via the task tools. The carve-out distinguishes
 		// chat-recall (unavailable) from task/build/deploy run status (checkable).
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			'This "no chat-history search" limit is about CHAT recall ONLY',
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"that run status IS verifiable with the task/sub-agent tools",
 		);
 		// Live regression (2026-08-01, tj-69d82bb89ebb69): the "no separate
@@ -5078,14 +5168,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		// branch keeps the honest denial (the 2026-05-25 fabricated-search
 		// guard), the memory branch declares the window bounded and routes
 		// beyond-window recall/count to the memory context.
-		expect(sourceText).toContain("hasMemoryRecallSurface");
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"only the most recent window of a longer stored conversation",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"route it to the memory context (set requiresTool)",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"Never answer a beyond-window recall or count question from the visible window alone",
 		);
 	});
@@ -6000,17 +6089,34 @@ describe("runV5MessageRuntimeStage1", () => {
 		// X" honesty escape and ignored the inline answer. The fix tells the
 		// model to read the final message:user itself before declaring it
 		// cannot find something.
-		const sourceText = await readFile(
-			join(import.meta.dirname, "..", "services", "message.ts"),
-			"utf-8",
-		);
-		expect(sourceText).toContain(
+		const messageText =
+			"I told you my favorite color is teal, what is my favorite color?";
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "Teal." }),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: messageText }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			stage1DecisionOnly: true,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const renderedPrompt = (params.messages ?? [])
+			.map((message) => message.content ?? "")
+			.join("\n");
+		expect(renderedPrompt).toContain(messageText);
+		expect(renderedPrompt).toContain(
 			"Before saying you cannot find something, read the final message:user itself",
 		);
-		expect(sourceText).toContain(
+		expect(renderedPrompt).toContain(
 			"if the asker states a fact and asks about it in the same message",
 		);
-		expect(sourceText).toContain("answer from the current message directly");
+		expect(renderedPrompt).toContain(
+			"answer from the current message directly",
+		);
 	});
 
 	it("renders platform reply references as current-turn context", async () => {

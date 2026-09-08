@@ -188,6 +188,8 @@ app.post("/", async (c) => {
     let created: Awaited<ReturnType<typeof elizaSandboxService.createAgent>>;
     try {
       created = await elizaSandboxService.createAgent({
+        quotaAdmission:
+          authMethod === "standard" ? "organization" : "trusted_internal",
         organizationId: user.organization_id,
         userId: user.id,
         agentName: parsed.data.agentName,

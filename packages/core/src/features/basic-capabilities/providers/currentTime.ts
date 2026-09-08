@@ -125,7 +125,8 @@ export const currentTimeProvider: Provider = {
 - Day: ${dayOfWeek}
 - User timezone: ${timeZone} (${origin === "device" ? "from the active device" : "the owner's configured timezone; use it unless the user states another"})
 - ISO (UTC): ${isoTimestamp}
-The local time above is already the user's wall-clock time. State it as-is; do not perform timezone arithmetic.`
+The local time above is already the user's wall-clock time. State it as-is; do not perform timezone arithmetic.
+If asked what time or day it is, answer from this block only: "${humanReadable}". Earlier time or date statements in the conversation are stale; never reuse or adjust them.`
 			: `# Current Time
 - User timezone: unknown (do not guess; ask when the user's local time matters)
 - ${origin === "agent-setting" ? "Agent reference" : "Server"} time: ${humanReadable}

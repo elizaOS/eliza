@@ -546,6 +546,7 @@ async function __hono_POST(
     >;
     try {
       result = await createTierUpgradeTargetWithProvision({
+        quotaAdmission: "organization",
         sourceAgentId: source.id,
         organizationId: user.organization_id,
         userId: user.id,

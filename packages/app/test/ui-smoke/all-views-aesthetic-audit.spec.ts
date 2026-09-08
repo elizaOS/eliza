@@ -7,6 +7,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { readAuditFindings, writeAuditFinding } from "./aesthetic-audit-report";
 import {
   type AestheticMetricBudget,
   computeVerdict,
@@ -1548,13 +1549,6 @@ function renderManualReviewStub(finding: ViewFinding): string {
   return lines.join("\n");
 }
 
-// Views where the surface IS the experience (the chat overlay itself, a phone
-// dialer, or a fullscreen game/canvas), per the #8796 open questions: only the
-// chrome is in scope, so they're exempt from the readable-content + floating-
-// overlay-clearance + light-surface checks. They still must not crash, log
-// console errors, render fully blank, or use blue.
-const findings: ViewFinding[] = [];
-
 interface RemoteBundleAuditProof {
   auditPath: string;
   bundlePath: string;
@@ -2263,6 +2257,26 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             viewRoot.getByText("Connected", { exact: true }),
           ).toHaveCount(0);
         }
+        if (view.id === "cloud") {
+          const oppositePolicy = resolveViewOcrPolicy(
+            view.fixtureState === "cloud-signed-out"
+              ? "plugin-cloud-gui"
+              : "plugin-cloud-signed-out-gui",
+          );
+          if (oppositePolicy.kind !== "expectation") {
+            throw new Error(
+              "Cloud account states must declare semantic content",
+            );
+          }
+          await expect(
+            readViewPaint(
+              viewRoot,
+              page.locator(overlaySelector),
+              oppositePolicy.expectation,
+            ),
+            "the rendered Cloud account must not satisfy the opposite auth state",
+          ).resolves.toMatchObject({ semanticReady: false });
+        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
@@ -2388,7 +2402,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           ...base,
           verdict: computeVerdict(base),
         };
-        findings.push(finding);
+        await writeAuditFinding(outputDir, finding);
 
         await writeFile(
           path.join(reviewDir, `${view.slug}-${vp.name}.md`),
@@ -2413,11 +2427,25 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               `without overflow-x:hidden)`,
           ).toBeLessThanOrEqual(HORIZONTAL_OVERFLOW_TOLERANCE_PX);
         }
+        if (view.fixtureState === "cloud-signed-out") {
+          await viewRoot
+            .getByRole("button", { name: "Connect in Settings", exact: true })
+            .click();
+          await expect(page).toHaveURL(/\/settings(?:[?#]|$)/);
+          const settingsRoot = page.locator(
+            '[data-view-lifecycle-slot="settings"][data-view-hidden="false"]',
+          );
+          await expect(settingsRoot).toBeVisible();
+          await expect(
+            settingsRoot.getByText("Voice", { exact: true }).first(),
+          ).toBeVisible();
+        }
       });
     }
   }
 
   test.afterAll(async () => {
+    const findings = await readAuditFindings<ViewFinding>(outputDir);
     await mkdir(outputDir, { recursive: true });
     await writeFile(
       path.join(outputDir, "report.json"),

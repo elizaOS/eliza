@@ -37,6 +37,21 @@ describe("chunk-load-recovery", () => {
       ).toBe(true);
     });
 
+    it("finds a chunk failure through contextual wrappers and terminates cyclic causes", () => {
+      const cause = new TypeError(
+        "Failed to fetch dynamically imported module: /assets/es.js",
+      );
+      const contextual = new Error("Unable to load Spanish translations", {
+        cause: new Error("Dictionary unavailable", { cause }),
+      });
+      expect(isChunkLoadError(contextual)).toBe(true);
+      const cycle = new Error("render failure");
+      cycle.cause = new Error("context", { cause: cycle });
+      expect(isChunkLoadError(cycle)).toBe(false);
+      cause.cause = contextual;
+      expect(isChunkLoadError(contextual)).toBe(true);
+    });
+
     it("returns false for non-chunk errors and non-Error values", () => {
       expect(isChunkLoadError(new Error("Network connection lost"))).toBe(
         false,

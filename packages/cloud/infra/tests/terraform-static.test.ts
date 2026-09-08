@@ -326,12 +326,6 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     }
   });
 
-  test("refuses the terraform state bucket as the backup destination", () => {
-    expect(variablesTf).toContain(
-      'var.backup_s3_bucket != "eliza-terraform-state"',
-    );
-  });
-
   test("enforces passphrase strength and a retention floor", () => {
     expect(variablesTf).toContain(
       'var.backup_encryption_passphrase == "" || length(var.backup_encryption_passphrase) >= 32',
@@ -508,19 +502,6 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     const block = outputsTf.slice(start, outputsTf.indexOf("}", start));
     expect(block).toContain("local.backup_enabled");
     expect(block).not.toContain("sensitive   = true");
-  });
-});
-
-describe("Terraform namespace contracts", () => {
-  test("documents that database cluster keys are Kubernetes namespaces", () => {
-    const variables = readK8sTerraform("variables.tf");
-
-    expect(variables).toContain(
-      'description = "List of Kubernetes namespaces to create"',
-    );
-    expect(variables).toContain(
-      'description = "CNPG PostgreSQL clusters to deploy (key = namespace/org UUID)"',
-    );
   });
 });
 

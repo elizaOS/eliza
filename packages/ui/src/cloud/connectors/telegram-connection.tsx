@@ -10,7 +10,7 @@
 
 import { ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import {
   ConnectionCallout,
   ConnectionCard,

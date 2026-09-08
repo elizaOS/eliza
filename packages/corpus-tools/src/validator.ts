@@ -168,9 +168,10 @@ export function parseCorpusShard(
 ): ShardReadResult {
   const rows: unknown[] = [];
   const issues: CorpusValidationIssue[] = [];
-  const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const lines = raw.split(/\r?\n/);
+  const rowLines: number[] = [];
 
-  if (lines.length === 0) {
+  if (lines.every((line) => line.trim().length === 0)) {
     issues.push({
       path: filePath,
       code: "empty-shard",
@@ -179,8 +180,10 @@ export function parseCorpusShard(
   }
 
   lines.forEach((line, index) => {
+    if (line.trim().length === 0) return;
     try {
       rows.push(JSON.parse(line));
+      rowLines.push(index + 1);
     } catch (error) {
       // error-policy:J3 JSONL rows are untrusted corpus input; report invalid row.
       issues.push({
@@ -193,6 +196,10 @@ export function parseCorpusShard(
   });
 
   const result = validateCorpusMessages(rows, options);
+  // Schema validation addresses parsed rows; diagnostics must locate the original file bytes.
+  for (const issue of result.issues) {
+    if (issue.line !== undefined) issue.line = rowLines[issue.line - 1];
+  }
   const pathInfo = parseShardPath(filePath, options.rootDir);
   for (const message of result.messages) {
     if (
@@ -314,15 +321,6 @@ export async function validateCorpusTarget(targetPath: string): Promise<{
   issues: CorpusValidationIssue[];
 }> {
   const { manifest, issues } = await buildCorpusManifest(targetPath);
-  const parsed = corpusManifestSchema.safeParse(manifest);
-  if (!parsed.success) {
-    issues.push({
-      code: "manifest-invalid",
-      message: parsed.error.issues
-        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-        .join("; "),
-    });
-  }
   const stat = await fs.stat(targetPath);
   if (stat.isDirectory()) {
     const entries = await fs.readdir(targetPath);

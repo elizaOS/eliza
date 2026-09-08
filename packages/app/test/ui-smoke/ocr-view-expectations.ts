@@ -228,13 +228,13 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
   "plugin-cloud-gui": expected({
-    requireAll: ["Eliza Cloud"],
-    requireAny: ["Credits", "Hosted agents", "API keys", "Connected"],
+    requireAll: ["Connected", "Credits"],
+    requireAny: ["Hosted agents", "API keys"],
   }),
   // Preserve the disconnected state as a separate production-bundle capture;
   // connected account fixtures must not erase sign-in recovery coverage.
   "plugin-cloud-signed-out-gui": expected({
-    requireAll: ["Eliza Cloud", "Connect in Settings"],
+    requireAll: ["Connect to view credits", "Connect in Settings"],
     requireAny: [
       "credits",
       "hosted agents",

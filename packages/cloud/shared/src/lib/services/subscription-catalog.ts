@@ -8,6 +8,7 @@ import { ElizaError } from "@elizaos/core";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { isProductionDeployment } from "../config/deployment-environment";
+import { canonicalStripeCloudE2ECredential } from "../stripe-cloud-e2e";
 import type {
   SubscriptionPlanDto,
   SubscriptionPlanKey,
@@ -276,8 +277,22 @@ function requiredProviderId(
 }
 
 function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
-  const secret = stripeSecretSchema.safeParse(env.STRIPE_SECRET_KEY);
-  if (!secret.success) {
+  const parsedSecret = stripeSecretSchema.safeParse(env.STRIPE_SECRET_KEY);
+  let secret = parsedSecret.success ? parsedSecret.data : null;
+  if (secret === null) {
+    try {
+      secret = canonicalStripeCloudE2ECredential(env);
+    } catch (cause) {
+      // error-policy:J3 An invalid synthetic runtime never becomes a valid provider credential.
+      throw new SubscriptionCatalogError(
+        "SUBSCRIPTION_CATALOG_STRIPE_KEY_INVALID",
+        "Canonical local Stripe harness configuration is invalid",
+        { field: "STRIPE_SECRET_KEY" },
+        cause,
+      );
+    }
+  }
+  if (secret === null) {
     throw new SubscriptionCatalogError(
       "SUBSCRIPTION_CATALOG_STRIPE_KEY_INVALID",
       "Subscription catalog Stripe key is missing or malformed",
@@ -286,7 +301,7 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
   }
 
   const expectedLivemode = isProductionDeployment(env);
-  const keyIsLive = /^(?:sk|rk)_live_/.test(secret.data);
+  const keyIsLive = /^(?:sk|rk)_live_/.test(secret);
   if (keyIsLive !== expectedLivemode) {
     throw new SubscriptionCatalogError(
       "SUBSCRIPTION_CATALOG_DEPLOYMENT_MODE_MISMATCH",
@@ -318,7 +333,18 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
       "Subscription plans cannot share an approved provider product",
     );
   }
-  return deepFreeze({ expectedLivemode, credential: secret.data, plans });
+  return deepFreeze({ expectedLivemode, credential: secret, plans });
+}
+
+/** Resolves server-owned provider identity without publishing policy or accepting caller bindings. */
+export function resolveSubscriptionProviderBinding(
+  env: NodeJS.ProcessEnv,
+  planKey: SubscriptionPlanKey,
+  catalogVersion: string,
+): Readonly<PlanBinding> & { expectedLivemode: boolean } {
+  resolveSubscriptionPlanDefinition(planKey, catalogVersion);
+  const bindings = parseBindings(env);
+  return { ...bindings.plans[planKey], expectedLivemode: bindings.expectedLivemode };
 }
 
 function mismatch(planKey: SubscriptionPlanKey, field: string): never {

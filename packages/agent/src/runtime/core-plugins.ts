@@ -437,7 +437,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-computeruse", // computer use automation (requires platform-specific binaries)
   "@elizaos/plugin-browser", // browser automation (app/bridge first, optional stagehand fallback)
   "@elizaos/plugin-vision", // vision/image understanding (feature-gated)
-  "@elizaos/plugin-cli", // CLI interface
   "@elizaos/plugin-discord", // Discord bot integration
   "@elizaos/plugin-telegram", // Telegram bot integration
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech

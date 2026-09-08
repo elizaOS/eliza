@@ -3223,16 +3223,41 @@ async function dispatchPlannerModelCall(params: {
 	// receive no ambient timeout, so a stalled generation would hang silently
 	// (live: 63s, only the messageHandler stage recorded). Bound that single
 	// call; non-coding turns keep their exact prior behavior.
-	const raw =
-		params.trajectory.codingMode === true
-			? await dispatchWithCodingCallTimeout({
-					dispatch: invokeUseModel,
-					ambientSignal: streamingContext?.abortSignal,
-					timeoutMs: resolveCodingPlannerCallTimeoutMs(),
-					iteration: params.iteration,
-					logger: params.runtime.logger,
-				})
-			: await invokeUseModel();
+	let raw: string | GenerateTextResult;
+	try {
+		raw =
+			params.trajectory.codingMode === true
+				? await dispatchWithCodingCallTimeout({
+						dispatch: invokeUseModel,
+						ambientSignal: streamingContext?.abortSignal,
+						timeoutMs: resolveCodingPlannerCallTimeoutMs(),
+						iteration: params.iteration,
+						logger: params.runtime.logger,
+					})
+				: await invokeUseModel();
+	} catch (error) {
+		// error-policy:J2 record the attempted input before propagating the
+		// provider failure. A rejected request has no generated response, but
+		// losing its messages/tools makes context-overflow diagnosis impossible.
+		await recordPlannerStage({
+			runtime: params.runtime,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration: params.iteration ?? 1,
+			modelType,
+			provider: params.provider,
+			modelParams,
+			raw: "",
+			startedAt,
+			endedAt: Date.now(),
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			prefixHash,
+			logger: params.runtime.logger,
+			providerAttributionState: params.providerAttributionState,
+		});
+		throw error;
+	}
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
@@ -3422,7 +3447,7 @@ async function recordPlannerStage(args: {
 		providerOptions?: Record<string, unknown>;
 	};
 	raw: string | GenerateTextResult;
-	parsed: ReturnType<typeof parsePlannerOutput>;
+	parsed?: ReturnType<typeof parsePlannerOutput>;
 	startedAt: number;
 	endedAt: number;
 	segmentHashes: string[];
@@ -3436,7 +3461,7 @@ async function recordPlannerStage(args: {
 		const responseText =
 			typeof args.raw === "string" ? args.raw : args.raw.text;
 		const usage = extractUsage(args.raw);
-		const finishReason = extractFinishReason(args.raw);
+		const finishReason = args.parsed ? extractFinishReason(args.raw) : "error";
 		const modelName = extractModelName(args.raw);
 		// Record the model's native declarations before execution-only parsing
 		// strips reserved control arguments. Otherwise traces lose the very
@@ -3446,7 +3471,7 @@ async function recordPlannerStage(args: {
 				? []
 				: normalizeToolCalls(args.raw.toolCalls);
 		const recordedCalls =
-			nativeCalls.length > 0 ? nativeCalls : args.parsed.toolCalls;
+			nativeCalls.length > 0 ? nativeCalls : (args.parsed?.toolCalls ?? []);
 		// Flatten `messages` only to locate provider spans; the flattened form is
 		// not persisted — `messages` is the canonical record and spans index into
 		// `flattenTrajectoryMessages(messages)` reconstructed at read time.

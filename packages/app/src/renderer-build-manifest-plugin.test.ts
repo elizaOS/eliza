@@ -116,6 +116,9 @@ describe("rendererBuildManifestPlugin", () => {
     expect(bundleSource).toMatch(/globalThis\.testAuth\s*=\s*["']true["']/);
     expect(readRendererBuildManifest(outDir)?.playwrightTestAuth).toBe(true);
     const manifest = readRendererBuildManifest(outDir);
+    if (!manifest?.startedAt) {
+      throw new Error("Renderer manifest must record the build start time");
+    }
     expect(Date.parse(manifest.startedAt)).toBeLessThanOrEqual(
       Date.parse(manifest.builtAt),
     );

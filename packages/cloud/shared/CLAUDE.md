@@ -7,7 +7,6 @@ Shared backend code for Eliza Cloud: billing arithmetic, Drizzle DB schemas/repo
 Single private workspace package (`@elizaos/cloud-shared`) consumed by the rest of the cloud stack:
 
 - `@elizaos/cloud-api` — Hono API on Cloudflare Workers (imports `lib/`, `db/`, `billing/`, `types/`).
-- `packages/app` — Vite + React 19 Cloud surfaces; imports only the isomorphic bits (`billing/`, some `types/`).
 - `@elizaos/cloud-services/*` and a few plugins.
 
 Consumers use subpath exports for billing, database, service-library, and type
@@ -33,14 +32,14 @@ src/
     credit-markup.ts       calculateCreditMarkup, platform fee breakdown
     index.ts
   db/                      @elizaos/cloud-shared/db — Drizzle (Railway prod, PGlite local)
-    schemas/               ~100 table schemas (apps, agents, billing, containers, ...)
-    repositories/          ~69 CQRS repositories (readers/writers split)
+    schemas/               table schemas (apps, agents, billing, containers, ...)
+    repositories/          CQRS repositories (readers/writers split)
     migrations/            generated SQL — never hand-edit applied migrations
     client.ts              DB client (Worker routes through the Hyperdrive binding)
     crypto/  utils/
     index.ts
   lib/                     @elizaos/cloud-shared/lib — SERVER-ONLY services + use-cases
-    services/              ~245 service modules (containers, gateways, billing, ...)
+    services/              service modules (containers, gateways, billing, ...)
     auth.ts auth-anonymous.ts auth-errors.ts   session/API-key/wallet auth
     oidc/                  OpenID Connect PROVIDER domain (Eliza Cloud as the OP):
                            config/keys/clients/codes/claims/username/tokens.
@@ -111,10 +110,10 @@ the stored Item environment's explicit secret is configured.
 ## Conventions / gotchas
 
 - **`src/lib/` is server-only.** Browser code (React, hooks, stores, Tailwind
-  utilities) lives in `packages/app`, not here. Only pure isomorphic helpers
-  (`billing/`, math/string/validation) are safe to import from the frontend.
+  utilities) lives in `packages/app`, not here. New browser consumers use
+  public `@elizaos/cloud-sdk` contracts directly.
 - **Migrations are append-only.** Never edit an applied migration. No `CREATE INDEX CONCURRENTLY` (runs in a transaction). Use `IF NOT EXISTS` / `IF EXISTS`. Keep migrations small and targeted (<100 lines): add objects, backfill, and drop in separate migrations — no omnibus recreate-the-schema files (they lock active prod tables). Never `db:push`.
-- **`typecheck` noise:** errors that surface are often from transitive imports (e.g. `plugins/plugin-elizacloud/...`) pulled in via tsconfig paths, not this package's own source. Filter to your files: `bun run --cwd packages/cloud/shared typecheck 2>&1 | grep <your-file>`.
+- **Transitive type errors:** TypeScript follows workspace source aliases. Trace failures to their owning package and report unresolved failures; filtered output is not a passing package gate.
 - **win32 PGlite quarantine (#15785):** on Windows the `test` entry (`scripts/run-bun-tests.mjs`) runs the PGlite tenant-db placement-claimer and authenticated native pairing suites in their own child `bun test` process and retries them (bounded) ONLY on a Bun native-crash signature (`panic(main thread): Illegal instruction`, exit 3), capturing the panic to `.tmp/bun-pglite-crash/` for the upstream Bun report (`scripts/bun-pglite-crash-upstream-report.md`). Genuine test failures never retry; non-win32 behavior is a plain `bun test --isolate`. Renamed a suite? Update `DEFAULT_QUARANTINED_SUITES` in `scripts/run-bun-tests-helpers.mjs` (the run fails loudly until you do).
 - **Repo-wide rules** (logger-only/no-console, ESM, naming, clean-architecture commandments, CQRS, validate-at-boundary, DTO fields required) live in the root `CLAUDE.md`. The WHY docs under `docs/` explain non-obvious choices: `messaging-onboarding-gateway-design.md` and `CLOUD_ONBOARDING_PROVISIONING_REVIEW.md`.
 

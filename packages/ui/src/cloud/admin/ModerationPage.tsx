@@ -67,7 +67,7 @@ import {
   UserX,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../bridge/toast";
 import { ApiError, api } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";

@@ -56,7 +56,7 @@ const MAX_PROBE_FAILURE_BODY_BYTES = 64 * 1024;
 
 async function readProbeFailureBody(response: Response): Promise<string> {
   try {
-    const declaredLength = Number(response.headers?.get?.("content-length"));
+    const declaredLength = Number(response.headers.get("content-length"));
     if (
       Number.isFinite(declaredLength) &&
       declaredLength > MAX_PROBE_FAILURE_BODY_BYTES
@@ -150,5 +150,7 @@ export async function probeDirectApiKey(
     };
   } finally {
     clearTimeout(timer);
+    // Header-only success and rejected diagnostic bodies must release their transport.
+    controller.abort();
   }
 }

@@ -1,0 +1,12 @@
+# Development requires its own Hetzner project token and operator access.
+# Copy to development.tfvars and fill the zone IDs and authorized public keys.
+environment                  = "development"
+hcloud_location              = "fsn1"
+hcloud_server_type           = "cpx32"
+control_plane_count          = 1
+cloudflare_zone_id           = "<legacy-zone-id-for-elizacloud.ai>"
+eliza_app_zone_id            = "<canonical-zone-id-for-eliza.app>"
+headscale_hostname           = "headscale-development.elizacloud.ai"
+canonical_headscale_hostname = "headscale-development.eliza.app"
+deploy_branch                = "develop"
+ssh_public_keys              = []

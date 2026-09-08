@@ -534,10 +534,11 @@ function isNodeEnvironment(): boolean {
 }
 
 function initContextManager(): IInferenceTimingContextManager {
-	if (isNodeEnvironment()) {
+	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
 		try {
-			const { AsyncLocalStorage } =
-				require("node:async_hooks") as typeof import("node:async_hooks");
+			const { AsyncLocalStorage } = process.getBuiltinModule(
+				"node:async_hooks",
+			) as typeof import("node:async_hooks");
 			const storage = new AsyncLocalStorage<InferenceTurnTimer | undefined>();
 			return {
 				run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T {
