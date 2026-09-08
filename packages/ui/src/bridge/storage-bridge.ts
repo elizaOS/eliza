@@ -433,7 +433,11 @@ async function readPreferenceWithTimeout(key: string): Promise<string | null> {
  * into the in-memory cache and optionally syncs them to localStorage.
  */
 export async function initializeStorageBridge(): Promise<void> {
-  if (initialized) {
+  // Desktop callers may retry after an acknowledged boot but an interrupted
+  // later write. Reconcile only that write, without adopting newer native
+  // values for the rest of this already-mounted renderer's account/selection.
+  const recoveryOnly = initialized;
+  if (recoveryOnly && (isNativePlatform() || !isElectrobunRuntime())) {
     return;
   }
 
@@ -531,6 +535,7 @@ export async function initializeStorageBridge(): Promise<void> {
             key === STEWARD_TOKEN_KEY
               ? (pendingStewardWrite() ?? pendingProtectedWrite(key))
               : pendingProtectedWrite(key);
+          if (recoveryOnly && pending === null) return;
           if (pending !== null) {
             // An interrupted renderer cannot hydrate by value alone. Desktop
             // recovery requires this operation's own terminal native receipt.
