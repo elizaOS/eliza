@@ -54,7 +54,7 @@ const fixtures = {
   "@elizaos/logger":
     "export const logger={error(){},warn(){},info(){},debug(){}};",
   "@elizaos/shared/steward-session-client":
-    'export const STEWARD_PENDING_WRITE_KEY="pending:steward",STEWARD_TOKEN_KEY="steward_session_token",STEWARD_SESSION_CHANGE_EVENT="session-change";export function registerStewardTokenPersistence(){};export function registerStewardTokenReader(){};export function registerStewardTokenRemoval(){};export function getStewardTokenDeploymentScope(){return null};export function writeStoredStewardToken(){throw new Error("real session client required")};export function getStewardTabSessionAuthorityCoordinator(){return {readSnapshot:()=>({}),assertSnapshot(){}}};export class StewardSessionAuthorityError extends Error{}',
+    'export const STEWARD_PENDING_WRITE_KEY="pending:steward",STEWARD_TOKEN_KEY="steward_session_token",STEWARD_TOKEN_SCOPE_KEY="steward_session_token_scope",STEWARD_SESSION_CHANGE_EVENT="session-change";export function registerStewardTokenPersistence(){};export function registerStewardTokenReader(){};export function registerStewardTokenRemoval(){};export function getStewardTokenDeploymentScope(){return null};export function writeStoredStewardToken(){throw new Error("real session client required")};export function getStewardTabSessionAuthorityCoordinator(){return {readSnapshot:()=>({}),assertSnapshot(){}}};export class StewardSessionAuthorityError extends Error{}',
   "../config/boot-config":
     'export const getBootConfig=()=>({cloudApiBase:"https://cloud.invalid"});',
   "../state/persistence":
@@ -228,6 +228,192 @@ function scopedToken(token: string, scope = "eliza-cloud:staging") {
 }
 
 describe("desktop renderer conditional persistence", () => {
+  it.each([
+    "same-scope",
+    "different-scope",
+    "newer-owner",
+    "lost-inspection",
+    "scope-changes",
+    "conflicting-markers",
+  ])(
+    "recovers only owned token authority on restart (%s)",
+    async (scenario) => {
+      const rpc = await setup();
+      const a = realm(rpc, undefined, true, true);
+      await a.bridge.initializeStorageBridge();
+      const pendingKey = "eliza:steward-token-pending-write";
+      const remove = a.localStorage.removeItem.bind(a.localStorage);
+      Object.defineProperty(a.localStorage, "removeItem", {
+        value: (key: string) => {
+          if (key === pendingKey)
+            throw new Error("local acknowledgement unavailable");
+          remove(key);
+        },
+      });
+      await expect(
+        a.bridge.writeStoredStewardToken("sealed-token"),
+      ).rejects.toThrow();
+      const marker = a.localStorage.getItem(pendingKey);
+      if (marker === null) throw new Error("Missing recovery identity");
+      if (scenario === "newer-owner")
+        await rpc.secureStoreSet({
+          kind: "session.steward_token",
+          value: scopedToken("other-session"),
+        });
+      let failInspection = scenario === "lost-inspection";
+      const operations: string[] = [];
+      const b = realm(
+        rpc,
+        async (operation) => {
+          operations.push(operation);
+          if (operation === "inspect" && scenario === "scope-changes")
+            b.bridge.configureStoredStewardTokenScope("https://api.eliza.app");
+          if (operation === "inspect" && failInspection) {
+            failInspection = false;
+            throw new Error("lost inspection reply");
+          }
+        },
+        true,
+        true,
+      );
+      b.localStorage.setItem(pendingKey, marker);
+      if (scenario === "conflicting-markers")
+        b.localStorage.setItem(
+          "eliza:protected-storage-pending:steward_session_token",
+          randomUUID(),
+        );
+      if (scenario === "different-scope")
+        b.bridge.configureStoredStewardTokenScope("https://api.eliza.app");
+      await b.bridge.initializeStorageBridge();
+      if (scenario === "lost-inspection") {
+        expect(b.bridge.readStoredStewardToken()).toBeNull();
+        expect(b.localStorage.getItem(pendingKey)).toBe(marker);
+        await b.bridge.initializeStorageBridge();
+      }
+      expect(b.bridge.readStoredStewardToken()).toBe(
+        scenario === "same-scope" || scenario === "lost-inspection"
+          ? "sealed-token"
+          : null,
+      );
+      expect(b.rawGetItem("steward_session_token")).toBeNull();
+      expect(b.localStorage.getItem(pendingKey)).toBe(
+        ["newer-owner", "scope-changes", "conflicting-markers"].includes(
+          scenario,
+        )
+          ? marker
+          : null,
+      );
+      expect(
+        operations.every((operation) =>
+          ["inspect", "read", "secureStoreGet"].includes(operation),
+        ),
+      ).toBe(true);
+      expect(
+        await rpc.secureStoreGet({ kind: "session.steward_token" }),
+      ).toEqual({
+        ok: true,
+        value: scopedToken(
+          scenario === "newer-owner" ? "other-session" : "sealed-token",
+        ),
+      });
+    },
+  );
+
+  it("restores the owned rollback result after cancellation and a renderer restart", async () => {
+    const controller = new AbortController();
+    const rpc = await setup();
+    await rpc.secureStoreSet({
+      kind: "session.steward_token",
+      value: scopedToken("predecessor"),
+    });
+    const a = realm(
+      rpc,
+      async (operation) => {
+        if (operation === "commit") controller.abort();
+      },
+      true,
+      true,
+    );
+    await a.bridge.initializeStorageBridge();
+    a.localStorage.setItem(
+      "steward_session_token_scope",
+      "eliza-cloud:staging",
+    );
+    await expect(
+      a.bridge.writeStoredStewardToken("cancelled-token", {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+    const pendingKey = "eliza:steward-token-pending-write";
+    const operationId = a.localStorage.getItem(pendingKey);
+    if (operationId === null) throw new Error("Missing recovery identity");
+    const b = realm(rpc, undefined, true, true);
+    b.localStorage.setItem(pendingKey, operationId);
+    await b.bridge.initializeStorageBridge();
+    expect(b.bridge.readStoredStewardToken()).toBe("predecessor");
+    expect(b.localStorage.getItem(pendingKey)).toBeNull();
+    expect(await rpc.secureStoreGet({ kind: "session.steward_token" })).toEqual(
+      { ok: true, value: scopedToken("predecessor") },
+    );
+  });
+
+  it.each(["steward_session_token", key])(
+    "retains the native operation identity for recovery of interrupted %s publication",
+    async (storageKey) => {
+      const rpc = await setup();
+      const isToken = storageKey === "steward_session_token";
+      const pendingKey = isToken
+        ? "eliza:steward-token-pending-write"
+        : `eliza:protected-storage-pending:${storageKey}`;
+      const a = realm(rpc, undefined, true, true);
+      await a.bridge.initializeStorageBridge();
+      const remove = a.localStorage.removeItem.bind(a.localStorage);
+      Object.defineProperty(a.localStorage, "removeItem", {
+        value: (target: string) => {
+          if (target === pendingKey)
+            throw new Error("renderer acknowledgement unavailable");
+          remove(target);
+        },
+      });
+      await expect(
+        a.bridge.setStorageValue(storageKey, "owned-candidate", {
+          revalidate() {},
+        }),
+      ).rejects.toThrow();
+      const operationId = a.localStorage.getItem(pendingKey);
+      expect(operationId).not.toBeNull();
+      if (operationId === null) throw new Error("interruption marker missing");
+      // A restarted renderer has only this non-secret marker. It must identify
+      // the native receipt, not an unrelated renderer-only UUID.
+      const lookup = await rpc.secureStoreTransaction({
+        operation: "lookup",
+        kind: isToken ? "session.steward_token" : kind,
+        operationId,
+      });
+      expect(lookup).toMatchObject({
+        operation: "lookup",
+        receipt: { operationId, state: "sealed" },
+      });
+      const restarted = realm(rpc, undefined, true, true);
+      restarted.localStorage.setItem(pendingKey, operationId);
+      restarted.localStorage.setItem(
+        "steward_session_token_scope",
+        "eliza-cloud:production",
+      );
+      await restarted.bridge.initializeStorageBridge();
+      expect(restarted.localStorage.getItem(pendingKey)).toBeNull();
+      expect(restarted.localStorage.getItem(storageKey)).toBe(
+        "owned-candidate",
+      );
+      if (isToken) {
+        expect(restarted.bridge.readStoredStewardToken()).toBe(
+          "owned-candidate",
+        );
+        expect(restarted.rawGetItem(storageKey)).toBeNull();
+      }
+    },
+  );
+
   it("routes awaited legacy token writes through canonical native publication without plaintext persistence", async () => {
     const rpc = await setup();
     const a = realm(rpc, undefined, true, true);

@@ -133,12 +133,45 @@ async function verifyPublication(
   return current.snapshot;
 }
 
+/** Restore only the acknowledged outcome of this renderer's durable interruption marker. */
+export async function recoverDesktopSecureSlot(
+  kind: RendererSecureSlot,
+  operationId: string,
+  revalidate: () => void,
+): Promise<RendererSecureSnapshot> {
+  revalidate();
+  const result = await request({ operation: "inspect", kind, operationId });
+  if (result.operation !== "inspect") throw invalidReply();
+  const recovery = result.recovery;
+  if (recovery.state !== "sealed" && recovery.state !== "rolled-back")
+    throw new ElizaError(
+      "Interrupted native storage has no owned terminal result",
+      {
+        code:
+          recovery.state === "not-current"
+            ? "NATIVE_STORE_SUPERSEDED"
+            : "NATIVE_STORE_PENDING",
+        severity: "ephemeral",
+      },
+    );
+  revalidate();
+  const verified = await verifyPublication(
+    kind,
+    recovery.snapshot,
+    recovery.snapshot,
+  );
+  revalidate();
+  return verified;
+}
+
+/** The optional identity must be durably recorded by a caller before its first native mutation. */
 export async function mutateDesktopSecureSlot(
   kind: RendererSecureSlot,
   value: string | null,
   revalidate: () => void,
   expected?: RendererSecureSnapshot,
   signal?: AbortSignal,
+  operationId = crypto.randomUUID(),
 ): Promise<RendererSecureSnapshot> {
   signal?.throwIfAborted();
   revalidate();
@@ -154,7 +187,6 @@ export async function mutateDesktopSecureSlot(
   )
     throw superseded();
   revalidate();
-  const operationId = crypto.randomUUID();
   let cancellation: ReturnType<typeof request> | undefined;
   const cancel = () => {
     cancellation ??= request({ operation: "cancel", kind, operationId });

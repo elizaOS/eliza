@@ -10,6 +10,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import type {
   RendererSecureReceipt,
+  RendererSecureRecovery,
   RendererSecureSlot,
   RendererSecureSnapshot,
 } from "@elizaos/shared/types";
@@ -443,6 +444,27 @@ export class RendererSecureStoreTransactions {
         ? this.receipt(record.transaction)
         : null,
     );
+  }
+
+  /** Inspect an operation and its terminal value together, without adopting another writer's record. */
+  inspect(
+    vault: string,
+    slot: RendererSecureSlot,
+    operationId: string,
+  ): Promise<RendererSecureRecovery> {
+    if (!isIdentity(operationId))
+      return Promise.reject(failure("NATIVE_STORE_INVALID_INPUT"));
+    return this.run(vault, slot, async (record) => {
+      const transaction = record.transaction;
+      if (transaction?.operationId !== operationId)
+        return { state: "not-current" };
+      if (transaction.state === "pending" || transaction.state === "committed")
+        return { state: transaction.state };
+      return {
+        state: transaction.state,
+        snapshot: await this.snapshot(vault, slot, record),
+      };
+    });
   }
 
   /** Commit the proposal provisionally; other readers remain gated until seal. */

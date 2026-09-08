@@ -52,6 +52,91 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+it.each(["seal", "rollback"] as const)(
+  "inspects only the matching terminal %s outcome after host restart",
+  async (terminal) => {
+    const kind = "session.steward_token";
+    await a.secureStoreSet({ kind, value: "previous-owner" });
+    const before = await a.secureStoreTransaction({ operation: "read", kind });
+    if (before.operation !== "read") throw new Error("Expected snapshot");
+    const operationId = randomUUID();
+    const prepared = await a.secureStoreTransaction({
+      operation: "prepare",
+      kind,
+      expected: before.snapshot,
+      value: "proposed-owner",
+      operationId,
+    });
+    if (prepared.operation !== "prepare") throw new Error("Expected receipt");
+    expect(
+      await b.secureStoreTransaction({
+        operation: "inspect",
+        kind,
+        operationId,
+      }),
+    ).toEqual({ operation: "inspect", recovery: { state: "pending" } });
+    await a.secureStoreTransaction({
+      operation: "commit",
+      kind,
+      receipt: prepared.receipt,
+    });
+    expect(
+      await b.secureStoreTransaction({
+        operation: "inspect",
+        kind,
+        operationId,
+      }),
+    ).toEqual({ operation: "inspect", recovery: { state: "committed" } });
+    await a.secureStoreTransaction({
+      operation: terminal,
+      kind,
+      receipt: prepared.receipt,
+    });
+    const restarted = createRendererSecureStoreRpc({
+      directory,
+      vault: "rpc-fixture",
+      store,
+    });
+    const inspected = await restarted.secureStoreTransaction({
+      operation: "inspect",
+      kind,
+      operationId,
+    });
+    expect(inspected).toMatchObject({
+      operation: "inspect",
+      recovery: {
+        state: terminal === "seal" ? "sealed" : "rolled-back",
+        snapshot: {
+          value: terminal === "seal" ? "proposed-owner" : "previous-owner",
+        },
+      },
+    });
+    await b.secureStoreSet({ kind, value: "newer-owner" });
+    expect(
+      await restarted.secureStoreTransaction({
+        operation: "inspect",
+        kind,
+        operationId,
+      }),
+    ).toEqual({ operation: "inspect", recovery: { state: "not-current" } });
+    expect(await restarted.secureStoreGet({ kind })).toEqual({
+      ok: true,
+      value: "newer-owner",
+    });
+  },
+);
+
+it("rejects invalid recovery identity before native initialization", async () => {
+  await expect(
+    a.secureStoreTransaction({
+      operation: "inspect",
+      kind: "session.steward_token",
+      operationId: "invalid",
+    }),
+  ).rejects.toThrow("Native operation identity is invalid");
+  expect(nativeCalls).toBe(0);
+});
+
 it("durably rejects a delayed prepare after cancellation across a new host", async () => {
   const kind = "runtime.active_server";
   const read = await a.secureStoreTransaction({ operation: "read", kind });

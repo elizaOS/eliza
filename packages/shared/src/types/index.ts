@@ -42,6 +42,11 @@ export interface RendererSecureReceipt {
   state: "pending" | "committed" | "sealed" | "rolled-back";
 }
 
+/** An interrupted operation can restore a mirror only after its own native outcome is terminal. */
+export type RendererSecureRecovery =
+  | { state: "pending" | "committed" | "not-current" }
+  | { state: "sealed" | "rolled-back"; snapshot: RendererSecureSnapshot };
+
 export type RendererSecureTransactionRequest =
   | { operation: "read"; kind: RendererSecureSlot }
   | {
@@ -52,6 +57,7 @@ export type RendererSecureTransactionRequest =
       operationId: string;
     }
   | { operation: "lookup"; kind: RendererSecureSlot; operationId: string }
+  | { operation: "inspect"; kind: RendererSecureSlot; operationId: string }
   | { operation: "cancel"; kind: RendererSecureSlot; operationId: string }
   | {
       operation: "commit" | "seal" | "rollback";
@@ -63,6 +69,7 @@ export type RendererSecureTransactionResult =
   | { operation: "read" | "commit" | "seal"; snapshot: RendererSecureSnapshot }
   | { operation: "prepare"; receipt: RendererSecureReceipt }
   | { operation: "lookup"; receipt: RendererSecureReceipt | null }
+  | { operation: "inspect"; recovery: RendererSecureRecovery }
   | { operation: "cancel"; state: "cancelled" | "published" | "not-current" }
   | { operation: "rollback" };
 
