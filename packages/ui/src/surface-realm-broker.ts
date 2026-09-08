@@ -333,6 +333,7 @@ export interface HostRealmResetResult {
 export class SurfaceRealmScope {
   readonly storage: ScopedStorage;
   readonly navigate: (path: string) => void;
+  private readonly memberViewIds: ReadonlySet<string>;
   private readonly rootClassBaseline: ReadonlySet<string>;
   private readonly bodyClassBaseline: ReadonlySet<string>;
   private readonly rootVarBaseline: ReadonlySet<string>;
@@ -349,7 +350,11 @@ export class SurfaceRealmScope {
     readonly viewId: string,
     backing: Storage,
     navigate: (path: string) => void,
+    childViewIds: readonly string[] = [],
   ) {
+    // Membership comes from the shell's rendered composition. It allows a
+    // child to load under this owner; it never adds capability grants.
+    this.memberViewIds = new Set([viewId, ...childViewIds]);
     this.storage = brokerSurfaceStorage(manifest, backing, viewId);
     this.navigate = brokerSurfaceNavigate(manifest, viewId, navigate);
     if (typeof document === "undefined") {
@@ -375,6 +380,10 @@ export class SurfaceRealmScope {
           .map((name) => [name, root.style.getPropertyValue(name)]),
       );
     }
+  }
+
+  ownsView(viewId: string): boolean {
+    return this.memberViewIds.has(viewId);
   }
 
   /**

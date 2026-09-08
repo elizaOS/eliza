@@ -1464,7 +1464,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   );
   // A retained background view must never evaluate against the foreground
   // view's authority. Null is the standalone host/test lane with no shell scope.
-  const scopeOwnsView = surfaceScope === null || surfaceScope.viewId === viewId;
+  const scopeOwnsView = surfaceScope === null || surfaceScope.ownsView(viewId);
   const cacheKey = bundleUrl
     ? bundleCacheKey(bundleUrl, componentExport, surfaceScope)
     : null;

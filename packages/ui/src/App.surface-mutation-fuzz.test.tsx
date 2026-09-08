@@ -33,6 +33,7 @@
  * while hash-only mutation and the shell's privileged channel keep working.
  */
 
+import { createNavigateViewEvent } from "@elizaos/shared/events";
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -681,6 +682,78 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       expect(getActiveSurfaceRealmScope()).not.toBe(previous);
       expect(getActiveSurfaceRealmScope()?.viewId).toBe("iso-navigate");
     }
+  }, 60_000);
+
+  it("publishes only rendered layout members and revokes changed child policy", async () => {
+    const { rerender } = render(<App />);
+    await act(async () => {
+      window.dispatchEvent(
+        createNavigateViewEvent({
+          action: "split-view",
+          viewId: "iso-navigate",
+          views: ["iso-navigate", "iso-storage", "missing-view"],
+          layout: "horizontal",
+        }),
+      );
+    });
+    const first = getActiveSurfaceRealmScope();
+    expect(first?.ownsView("iso-navigate")).toBe(true);
+    expect(first?.ownsView("iso-storage")).toBe(true);
+    expect(first?.ownsView("missing-view")).toBe(false);
+    expect(first?.ownsView("iso-nogrant")).toBe(false);
+    expect(first?.manifest.capabilities.size).toBe(0);
+    expect(() => first?.navigate("/settings")).toThrow(/no "navigate" grant/);
+
+    await act(async () => {
+      mockAvailableViews = mockAvailableViews.map((view) => ({
+        ...view,
+        label: `${view.label} refreshed`,
+        surface: { ...view.surface },
+      }));
+      rerender(<App />);
+    });
+    expect(getActiveSurfaceRealmScope()).toBe(first);
+
+    await act(async () => {
+      mockAvailableViews = mockAvailableViews.map((view) =>
+        view.id === "iso-navigate"
+          ? { ...view, surface: noGrantView.surface }
+          : view,
+      );
+      rerender(<App />);
+    });
+    const changedPolicy = getActiveSurfaceRealmScope();
+    expect(changedPolicy).not.toBe(first);
+    expect(changedPolicy?.ownsView("iso-navigate")).toBe(true);
+    expect(changedPolicy?.manifest.capabilities.size).toBe(0);
+
+    await act(async () => {
+      mockAvailableViews = mockAvailableViews.filter(
+        (view) => view.id !== "iso-storage",
+      );
+      rerender(<App />);
+    });
+    const changedMembership = getActiveSurfaceRealmScope();
+    expect(changedMembership).not.toBe(changedPolicy);
+    expect(changedMembership?.viewId).toBe(changedPolicy?.viewId);
+    expect(changedMembership?.ownsView("iso-storage")).toBe(false);
+    expect(changedMembership?.ownsView("iso-navigate")).toBe(true);
+    await navigate(rerender, "settings", "/settings");
+    expect(getActiveSurfaceRealmScope()?.ownsView("iso-navigate")).toBe(false);
+  }, 60_000);
+
+  it("declares the Database vector child only under its builtin owner", async () => {
+    const { rerender } = render(<App />);
+    await navigate(rerender, "database", "/apps/database");
+    const databaseScope = getActiveSurfaceRealmScope();
+    expect(databaseScope?.viewId).toBe("database");
+    expect(databaseScope?.ownsView("vector-browser")).toBe(true);
+    expect(databaseScope?.ownsView("iso-navigate")).toBe(false);
+    expect(databaseScope?.manifest.capabilities.size).toBe(0);
+    await navigate(rerender, "settings", "/settings");
+    expect(getActiveSurfaceRealmScope()?.ownsView("vector-browser")).toBe(
+      false,
+    );
   }, 60_000);
 
   it("scopes/blocks all four host-realm vectors across a fuzzed cross-view walk", async () => {

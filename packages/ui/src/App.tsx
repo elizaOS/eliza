@@ -881,6 +881,45 @@ function useActiveScreenBackgroundPolicy({
 interface ActiveViewSurface {
   manifest: ResolvedSurfaceManifest;
   viewId: string;
+  children?: readonly ActiveViewSurfaceChild[];
+}
+
+interface ActiveViewSurfaceChild {
+  viewId: string;
+  manifest: ResolvedSurfaceManifest;
+  path?: string;
+  bundleUrl?: string;
+  frameUrl?: string;
+  componentExport?: string;
+}
+
+function builtinSurfaceChildren(tab: string): ActiveViewSurfaceChild[] {
+  return (resolveBuiltinRouteDescriptor(tab)?.dynamicChildren ?? []).map(
+    (child) => ({ ...child, manifest: resolveRoutedSurfaceManifest(null) }),
+  );
+}
+
+function activeViewLayoutEntries(
+  layout: ActiveViewLayout,
+  availableViews: ViewRegistryEntry[],
+): ViewRegistryEntry[] {
+  return layout.viewIds
+    .map((viewId) => availableViews.find((view) => view.id === viewId))
+    .filter((view): view is ViewRegistryEntry => Boolean(view));
+}
+
+function layoutRouteOverrideForView(
+  view: ViewRegistryEntry,
+): ViewRouterRouteOverride {
+  const navigationPath =
+    view.path ??
+    (SHELL_RESERVED_TABS.has(view.id)
+      ? pathForTab(view.id)
+      : `/apps/${view.id}`);
+  return {
+    navigationPath,
+    tab: tabFromPath(navigationPath) ?? view.id,
+  };
 }
 
 function resolveActiveViewSurface({
@@ -908,6 +947,23 @@ function resolveActiveViewSurface({
     return {
       manifest: resolveRoutedSurfaceManifest(null),
       viewId: `layout:${viewLayout.viewIds.join("+") || tab}`,
+      // Mirror the shell's actual pane composition. Membership permits loading
+      // beneath the existing no-grant layout owner; it does not union grants.
+      children: activeViewLayoutEntries(viewLayout, availableViews).flatMap(
+        (view): ActiveViewSurfaceChild[] => [
+          {
+            viewId: view.id,
+            manifest: resolveRoutedSurfaceManifest(view),
+            path: view.path,
+            bundleUrl: view.bundleUrl,
+            frameUrl: view.frameUrl,
+            componentExport: view.componentExport,
+          },
+          ...(!view.bundleUrl && !view.frameUrl
+            ? builtinSurfaceChildren(layoutRouteOverrideForView(view).tab)
+            : []),
+        ],
+      ),
     };
   }
 
@@ -1015,6 +1071,7 @@ function resolveActiveViewSurface({
     return {
       manifest: builtinManifest,
       viewId: tab === "tasks" ? "projects" : resolveBuiltinTabId(tab),
+      children: builtinSurfaceChildren(tab),
     };
   }
 
@@ -1028,6 +1085,7 @@ function resolveActiveViewSurface({
         layout: builtinDescriptor.layout,
       },
       viewId: builtinDescriptor.canonicalId,
+      children: builtinSurfaceChildren(tab),
     };
   }
 
@@ -1087,6 +1145,13 @@ function useActiveViewSurface({
       ...resolved.manifest,
       capabilities: [...resolved.manifest.capabilities].sort(),
     },
+    children: resolved.children?.map((child) => ({
+      ...child,
+      manifest: {
+        ...child.manifest,
+        capabilities: [...child.manifest.capabilities].sort(),
+      },
+    })),
   });
   const stable = useRef({ policyKey, surface: resolved });
   if (stable.current.policyKey !== policyKey) {
@@ -1267,24 +1332,9 @@ function ViewLayoutSurface({
   layout: ActiveViewLayout;
   onClear: () => void;
 }): ReactNode {
-  const entries = layout.viewIds
-    .map((viewId) => availableViews.find((view) => view.id === viewId))
-    .filter((view): view is ViewRegistryEntry => Boolean(view));
+  const entries = activeViewLayoutEntries(layout, availableViews);
   const paneClassName =
     "flex min-h-[18rem] min-w-0 flex-col overflow-hidden border border-border/45 bg-bg";
-  const routeOverrideForView = (
-    view: ViewRegistryEntry,
-  ): ViewRouterRouteOverride => {
-    const navigationPath =
-      view.path ??
-      (SHELL_RESERVED_TABS.has(view.id)
-        ? pathForTab(view.id)
-        : `/apps/${view.id}`);
-    return {
-      navigationPath,
-      tab: tabFromPath(navigationPath) ?? view.id,
-    };
-  };
 
   return (
     <AppWorkspaceContent pageLayout={DEFAULT_ROUTED_PAGE_LAYOUT}>
@@ -1344,7 +1394,7 @@ function ViewLayoutSurface({
                   ) : (
                     <ViewRouter
                       cloudAuthenticated={cloudAuthenticated}
-                      routeOverride={routeOverrideForView(view)}
+                      routeOverride={layoutRouteOverrideForView(view)}
                     />
                   )}
                 </div>
@@ -3081,6 +3131,7 @@ function AppContent() {
       scopeLifetime.surface.viewId,
       window.localStorage,
       navigateBrowserPath,
+      scopeLifetime.surface.children?.map((child) => child.viewId),
     );
     setActiveSurfaceRealmScope(scope);
     return () => {

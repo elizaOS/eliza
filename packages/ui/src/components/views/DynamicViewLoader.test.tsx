@@ -23,6 +23,7 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
+import { DATABASE_VECTOR_VIEW } from "../../navigation/builtin-route-descriptors";
 import {
   SurfaceRealmDeniedError,
   SurfaceRealmScope,
@@ -683,6 +684,120 @@ describe("DynamicViewLoader", () => {
     expect(importBundle).toHaveBeenCalledTimes(2);
     expect(navigate).toHaveBeenCalledExactlyOnceWith("/settings");
     expect(() => callbacks[0]("/stale")).toThrow(SurfaceRealmDeniedError);
+  });
+
+  it("loads explicit layout members without adding grants and revokes removed children", async () => {
+    const navigate = vi.fn();
+    const makeScope = (members: readonly string[]) =>
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({}),
+        "composed-owner",
+        window.localStorage,
+        navigate,
+        members,
+      );
+    const initialMembers = ["notes", "calendar"];
+    const firstScope = makeScope(initialMembers);
+    // The shell's caller-owned collection cannot mutate published authority.
+    initialMembers.push("unrelated");
+    setActiveSurfaceRealmScope(firstScope);
+    const callbacks: Array<(path: string) => void> = [];
+    const importBundle = vi.fn(async (url, importHost) => {
+      const module = await importHost("@elizaos/ui/app-navigate-view");
+      callbacks.push(module.navigateBrowserPath as (path: string) => void);
+      const label = url.includes("calendar") ? "Calendar" : "Notes";
+      return {
+        default: function PaneControl() {
+          const [count, setCount] = useState(0);
+          return (
+            <button type="button" onClick={() => setCount(count + 1)}>
+              {label} {count}
+            </button>
+          );
+        },
+      };
+    });
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    render(
+      <>
+        <DynamicViewLoader
+          viewId="notes"
+          bundleUrl="/api/views/notes/bundle.js"
+        />
+        <DynamicViewLoader
+          viewId="calendar"
+          bundleUrl="/api/views/calendar/bundle.js"
+        />
+        <DynamicViewLoader
+          viewId="unrelated"
+          bundleUrl="/api/views/unrelated/bundle.js"
+        />
+      </>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notes 0" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Calendar 0" }));
+    expect(screen.getByRole("button", { name: "Notes 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Calendar 1" })).toBeTruthy();
+    expect(importBundle).toHaveBeenCalledTimes(2);
+    expect(() => callbacks[0]("/settings")).toThrow(/no "navigate" grant/);
+    expect(navigate).not.toHaveBeenCalled();
+
+    act(() => setActiveSurfaceRealmScope(makeScope(["notes"])));
+    await screen.findByRole("button", { name: "Notes 0" });
+    expect(screen.queryByRole("button", { name: /Calendar/ })).toBeNull();
+    expect(importBundle).toHaveBeenCalledTimes(3);
+    expect(() => callbacks[0]("/stale")).toThrow(/stale host external/);
+    expect(() => callbacks[1]("/stale")).toThrow(/stale host external/);
+
+    act(() => setActiveSurfaceRealmScope(makeScope(["notes", "calendar"])));
+    fireEvent.click(await screen.findByRole("button", { name: "Calendar 0" }));
+    expect(screen.getByRole("button", { name: "Calendar 1" })).toBeTruthy();
+    expect(importBundle).toHaveBeenCalledTimes(5);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("loads the explicitly declared Database vector child and retires it on navigation", async () => {
+    setActiveSurfaceRealmScope(
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({}),
+        "database",
+        window.localStorage,
+        vi.fn(),
+        [DATABASE_VECTOR_VIEW.viewId],
+      ),
+    );
+    const importBundle = vi.fn(async () => ({
+      [DATABASE_VECTOR_VIEW.componentExport]: function VectorControl() {
+        const [selected, setSelected] = useState(false);
+        return (
+          <button type="button" onClick={() => setSelected(true)}>
+            {selected ? "Vector selected" : "Select vector"}
+          </button>
+        );
+      },
+    }));
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    render(<DynamicViewLoader {...DATABASE_VECTOR_VIEW} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Select vector" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Vector selected" }),
+    ).toBeTruthy();
+    act(() =>
+      setActiveSurfaceRealmScope(
+        new SurfaceRealmScope(
+          resolveSurfaceManifest({}),
+          "settings",
+          window.localStorage,
+          vi.fn(),
+        ),
+      ),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Vector selected" }),
+    ).toBeNull();
+    expect(importBundle).toHaveBeenCalledTimes(1);
   });
 
   it("renders sandboxed iframe views from frameUrl and does not import bundleUrl", () => {
