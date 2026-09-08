@@ -229,6 +229,107 @@ function scopedToken(token: string, scope = "eliza-cloud:staging") {
 
 describe("desktop renderer conditional persistence", () => {
   it.each([
+    ["steward_session_token", "owned"],
+    ["steward_session_token", "superseded"],
+    ["steward_session_token", "lost-inspection"],
+    [key, "owned"],
+    [key, "superseded"],
+    [key, "lost-inspection"],
+  ])(
+    "retries interrupted %s hydration in the mounted renderer (%s)",
+    async (storageKey, scenario) => {
+      const rpc = await setup();
+      await rpc.secureStoreSet({
+        kind: "session.device_auth",
+        value: "observed-device",
+      });
+      const operations: string[] = [];
+      let loseInspection = false;
+      const a = realm(
+        rpc,
+        async (operation) => {
+          operations.push(operation);
+          if (operation === "inspect" && loseInspection) {
+            loseInspection = false;
+            throw new Error("inspection acknowledgement unavailable");
+          }
+        },
+        true,
+        true,
+      );
+      await a.bridge.initializeStorageBridge();
+      const isToken = storageKey === "steward_session_token";
+      const slot = isToken ? "session.steward_token" : kind;
+      const pendingKey = isToken
+        ? "eliza:steward-token-pending-write"
+        : `eliza:protected-storage-pending:${storageKey}`;
+      const remove = a.localStorage.removeItem.bind(a.localStorage);
+      let failLocalAcknowledgement = true;
+      Object.defineProperty(a.localStorage, "removeItem", {
+        value: (target: string) => {
+          if (target === pendingKey && failLocalAcknowledgement)
+            throw new Error("local acknowledgement unavailable");
+          remove(target);
+        },
+      });
+      await expect(
+        a.bridge.setStorageValue(storageKey, "owned-result", {
+          revalidate() {},
+        }),
+      ).rejects.toThrow();
+      const marker = a.localStorage.getItem(pendingKey);
+      if (marker === null) throw new Error("Missing interrupted operation");
+      expect(a.localStorage.getItem(storageKey)).toBeNull();
+      failLocalAcknowledgement = false;
+      // A retry must not silently refresh other observed account/selection
+      // mirrors while reconciling this interrupted operation.
+      await rpc.secureStoreSet({
+        kind: "session.device_auth",
+        value: "newer-device",
+      });
+      if (scenario === "superseded")
+        await rpc.secureStoreSet({
+          kind: slot,
+          value: isToken ? scopedToken("newer-result") : "newer-result",
+        });
+      operations.length = 0;
+      loseInspection = scenario === "lost-inspection";
+      await a.bridge.initializeStorageBridge();
+      if (scenario === "lost-inspection") {
+        expect(a.localStorage.getItem(storageKey)).toBeNull();
+        expect(a.localStorage.getItem(pendingKey)).toBe(marker);
+        await a.bridge.initializeStorageBridge();
+      }
+      expect(a.localStorage.getItem(storageKey)).toBe(
+        scenario === "superseded" ? null : "owned-result",
+      );
+      expect(a.localStorage.getItem(pendingKey)).toBe(
+        scenario === "superseded" ? marker : null,
+      );
+      expect(a.localStorage.getItem("eliza.device.auth")).toBe(
+        "observed-device",
+      );
+      expect(operations).toContain("inspect");
+      expect(
+        operations.every((operation) =>
+          ["inspect", "read"].includes(operation),
+        ),
+      ).toBe(true);
+      expect(await rpc.secureStoreGet({ kind: slot })).toEqual({
+        ok: true,
+        value: isToken
+          ? scopedToken(
+              scenario === "superseded" ? "newer-result" : "owned-result",
+            )
+          : scenario === "superseded"
+            ? "newer-result"
+            : "owned-result",
+      });
+      if (isToken) expect(a.rawGetItem(storageKey)).toBeNull();
+    },
+  );
+
+  it.each([
     "same-scope",
     "different-scope",
     "newer-owner",
