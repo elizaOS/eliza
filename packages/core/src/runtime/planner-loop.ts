@@ -3613,19 +3613,19 @@ function evaluatorFailureAfterInternalEffect(
 	trajectory: PlannerTrajectory,
 	error: unknown,
 ): PlannerLoopResult | undefined {
-	const latestResult = allTrajectorySteps(trajectory)
+	const effectResult = allTrajectorySteps(trajectory)
 		.reverse()
-		.find((step) => step.result)?.result;
+		.find(
+			(step) =>
+				step.result?.transcriptVisibility === "internal" &&
+				step.result.effectReceipts?.length,
+		)?.result;
 	const noProvider =
 		error instanceof Error && error.name === "NoModelProviderConfiguredError";
-	if (
-		latestResult?.transcriptVisibility !== "internal" ||
-		!latestResult.effectReceipts?.length ||
-		(!noProvider && !isModelProviderError(error))
-	) {
+	if (!effectResult || (!noProvider && !isModelProviderError(error))) {
 		return undefined;
 	}
-	// This action already settled and left its reply to the evaluator. Keep
+	// A later read cannot erase an earlier settled effect. Keep
 	// success/data/receipts intact, and propagate presentation failure through
 	// the existing non-replayable boundary instead of promoting internal facts.
 	const replyFailure = createUnavailableGroundedActionReply({
@@ -3636,7 +3636,7 @@ function evaluatorFailureAfterInternalEffect(
 				: "provider_issue",
 		code: "EVALUATOR_REPLY_GENERATION_FAILED",
 	}).failure;
-	latestResult.replyFailure = replyFailure;
+	effectResult.replyFailure = replyFailure;
 	return { status: "finished", trajectory, terminalFailure: replyFailure };
 }
 

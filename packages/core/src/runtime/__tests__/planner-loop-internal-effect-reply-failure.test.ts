@@ -31,6 +31,72 @@ const receipt = {
 };
 
 describe("internal applied effect followed by evaluator reply failure", () => {
+	it("preserves an earlier mutation when a later read precedes reply failure", async () => {
+		const events = new Set(["event-1", "untouched-event"]);
+		const useModel = vi
+			.fn<PlannerRuntime["useModel"]>()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "delete-1", name: "DELETE", arguments: {} },
+					{ id: "read-1", name: "READ", arguments: {} },
+				],
+			})
+			.mockResolvedValueOnce(
+				JSON.stringify({
+					thought: "Read the remaining events next.",
+					success: false,
+					decision: "NEXT_RECOMMENDED",
+					recommendedToolCallId: "read-1",
+				}),
+			)
+			.mockRejectedValueOnce(
+				Object.assign(new Error("Unavailable"), { statusCode: 503 }),
+			);
+		const executeToolCall = vi.fn(async (call: PlannerToolCall) => {
+			if (call.name === "DELETE") {
+				expect(events.delete("event-1")).toBe(true);
+				return actionResultToPlannerToolResult({
+					success: true,
+					transcriptVisibility: "internal",
+					turnComplete: false,
+					effectReceipts: [receipt],
+					data: { deleted: true },
+				});
+			}
+			expect(call.name).toBe("READ");
+			return actionResultToPlannerToolResult({
+				success: true,
+				data: { events: [...events] },
+			});
+		});
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "delete-then-read" },
+			tools: [
+				{ name: "DELETE", description: "Delete event." },
+				{ name: "READ", description: "Read events." },
+			],
+			executeToolCall,
+		});
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect([...events]).toEqual(["untouched-event"]);
+		expect(result.terminalFailure).toMatchObject({
+			kind: "provider_issue",
+			transient: false,
+		});
+		expect(result.trajectory.steps[0]?.result).toMatchObject({
+			success: true,
+			effectReceipts: [receipt],
+			replyFailure: result.terminalFailure,
+		});
+		expect(result.trajectory.steps[1]?.result).toMatchObject({
+			success: true,
+			data: { events: ["untouched-event"] },
+		});
+	});
+
 	it.each([
 		{
 			label: "HTTP 429",
