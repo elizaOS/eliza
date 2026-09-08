@@ -17,7 +17,7 @@ const inputVariants = cva(
       variant: {
         default:
           "flex rounded-sm border-input bg-bg px-3 py-2  file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted    ",
-        form: "rounded-sm border-border bg-bg px-4 py-2    ",
+        form: "keyboard-focus-surface rounded-sm border-border bg-bg px-4 py-2",
         config:
           "rounded-xl border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
         embeddedSearch:
