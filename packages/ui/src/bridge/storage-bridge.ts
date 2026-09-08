@@ -23,7 +23,11 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
-import { mutateDesktopSecureSlot } from "./desktop-secure-store-transaction";
+import {
+  captureDesktopStorageAuthority,
+  type DesktopStorageAuthority,
+  mutateDesktopSecureSlot,
+} from "./desktop-secure-store-transaction";
 import {
   type DesktopSecureStoreKind,
   desktopSecureStoreDelete,
@@ -773,11 +777,38 @@ export async function getStorageValue(key: string): Promise<string | null> {
   return window.localStorage.getItem(key);
 }
 
-/** Serialize a guarded native write or deletion with compensation before any newer writer. */
+export interface StorageMutationOptions {
+  revalidate?: () => void;
+  nativeAuthority?: DesktopStorageAuthority;
+}
+
+/** Pin this workflow to the native values its renderer actually observed. */
+export async function captureStorageMutationAuthority(
+  revalidate: () => void,
+): Promise<DesktopStorageAuthority | undefined> {
+  revalidate();
+  if (isNativePlatform() || !isElectrobunRuntime()) return undefined;
+  const values = new Map<DesktopSecureStoreKind, string | null>();
+  for (const [key, kind] of PROTECTED_STORAGE_KIND) {
+    if (
+      pendingProtectedWrite(key) !== null ||
+      (key === STEWARD_TOKEN_KEY && pendingStewardWrite() !== null)
+    )
+      throw new ElizaError("Interrupted native storage requires recovery", {
+        code: "NATIVE_STORE_RECOVERY_REQUIRED",
+        severity: "ephemeral",
+      });
+    values.set(kind, protectedStorageCache.get(key) ?? null);
+  }
+  return captureDesktopStorageAuthority(values, revalidate);
+}
+
+/** Serialize a guarded native write or deletion without adopting another workflow's authority. */
 async function mutateProtectedStorageValue(
   key: string,
   value: string | null,
   revalidate: () => void,
+  nativeAuthority?: DesktopStorageAuthority,
 ): Promise<void> {
   const mutationVersion = markProtectedStorageMutation(key);
   await serializeProtectedStorageMutation(key, async () => {
@@ -816,6 +847,7 @@ async function mutateProtectedStorageValue(
           kind,
           value,
           validateOwnMirror,
+          nativeAuthority?.expected(kind),
         );
         // A cancelled caller must not publish a stale renderer mirror even
         // when native seal already completed. It cannot undo that durable seal.
@@ -825,6 +857,7 @@ async function mutateProtectedStorageValue(
             "Protected storage publication did not round-trip",
             { code: "NATIVE_STORE_INVALID_REPLY" },
           );
+        nativeAuthority?.acceptOwned(kind, published);
         clearPendingProtectedWrite(key, writeId);
         if (value === null) protectedStorageCache.delete(key);
         else protectedStorageCache.set(key, value);
@@ -892,12 +925,17 @@ async function mutateProtectedStorageValue(
 export async function setStorageValue(
   key: string,
   value: string,
-  options: { revalidate?: () => void } = {},
+  options: StorageMutationOptions = {},
 ): Promise<void> {
   options.revalidate?.();
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
     if (options.revalidate) {
-      await mutateProtectedStorageValue(key, value, options.revalidate);
+      await mutateProtectedStorageValue(
+        key,
+        value,
+        options.revalidate,
+        options.nativeAuthority,
+      );
       return;
     }
     const mutationVersion = markProtectedStorageMutation(key);
@@ -925,12 +963,17 @@ export async function setStorageValue(
  */
 export async function removeStorageValue(
   key: string,
-  options: { revalidate?: () => void } = {},
+  options: StorageMutationOptions = {},
 ): Promise<void> {
   options.revalidate?.();
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
     if (options.revalidate) {
-      await mutateProtectedStorageValue(key, null, options.revalidate);
+      await mutateProtectedStorageValue(
+        key,
+        null,
+        options.revalidate,
+        options.nativeAuthority,
+      );
       return;
     }
     const removalVersion = markProtectedStorageMutation(key);
