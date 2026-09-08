@@ -87,6 +87,7 @@ import {
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
+import { StorageRecoveryBoundary } from "@elizaos/ui/components/shell/StorageRecoveryBoundary";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -2923,7 +2924,7 @@ function mountReactApp(): void {
       <StrictMode>
         <Suspense fallback={null}>
           <RenderTelemetryProfiler id="AppRoot">
-            {mainTree}
+            <StorageRecoveryBoundary>{mainTree}</StorageRecoveryBoundary>
           </RenderTelemetryProfiler>
         </Suspense>
       </StrictMode>
