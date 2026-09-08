@@ -328,7 +328,13 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
     const refreshToken = tokens.refresh_token;
     const refreshed = await this.obtainTokens(() =>
-      this.refreshAccessToken(refreshToken),
+      // Read the refresh token when `produce` actually runs, not from the
+      // pre-join capture. A joiner whose shared result is already expired falls
+      // through to start a fresh flight; by then the joined flight has rotated
+      // R0 -> R1 and cached it, so the captured R0 is spent. Using the current
+      // cached token spends R1 and avoids re-spending R0 (a rarer invalid_grant
+      // on the same double-spend path this guard exists to prevent).
+      this.refreshAccessToken(this.tokens?.refresh_token ?? refreshToken),
     );
     return refreshed.access_token;
   }

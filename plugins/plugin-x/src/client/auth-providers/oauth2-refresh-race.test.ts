@@ -249,6 +249,38 @@ describe("OAuth2PKCEAuthProvider concurrent refresh", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("does not re-spend the old refresh token when a concurrent joiner falls through on an already-expired shared result", async () => {
+    // Forces the join branch in `obtainTokens` to return an *expired* token so a
+    // joiner falls through and starts a fresh flight. With expires_in: 1 the
+    // winner's rotated R1 lands inside the 30s skew, so the joiner sees it as
+    // expired and must refresh again. The fix reads the refresh token when
+    // `produce` runs (the cached R1) instead of the pre-join capture (R0):
+    // without it the fall-through would call refreshAccessToken(R0), which the
+    // winner already spent, re-creating the invalid_grant on this rarer path.
+    const { fetchImpl, refreshCalls } = singleUseRefreshFetch({ expiresIn: 1 });
+    const provider = new OAuth2PKCEAuthProvider(
+      createRuntime(),
+      undefined,
+      createStore(expiredTokens()),
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    const results = await Promise.allSettled([
+      provider.getAccessToken(),
+      provider.getAccessToken(),
+    ]);
+
+    // Both callers succeed: the winner spends R0 -> R1, the joiner sees R1 is
+    // already inside the skew and spends the *current* R1 -> R2, never R0 twice.
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    expect(refreshCalls).toEqual(["R0", "R1"]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const values = results.map((r) =>
+      r.status === "fulfilled" ? r.value : null,
+    );
+    expect(new Set(values)).toEqual(new Set(["A1", "A2"]));
+  });
+
   it("serializes concurrent interactive logins when no tokens exist", async () => {
     let logins = 0;
     const interactiveLoginFn = vi.fn(async () => {
