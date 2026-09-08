@@ -195,63 +195,74 @@ afterEach(() => {
 });
 
 describe("AuthTokenSync", () => {
-  it("refreshes with a fresh page-return lifetime after abandoned HTTP settles", async () => {
-    const original = makeJwt({
-      sub: "return-fixture",
-      exp: Math.floor(Date.now() / 1000) - 1,
-    });
-    const abandoned = makeJwt({
-      sub: "abandoned-fixture",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-    });
-    const current = makeJwt({
-      sub: "return-fixture",
-      exp: Math.floor(Date.now() / 1000) + 7200,
-    });
-    storage.setItem(STEWARD_TOKEN_KEY, original);
-    const held = Promise.withResolvers<void>();
-    const requests: RequestInit[] = [];
-    const published: Array<string | null> = [];
-    const record = () => published.push(storage.getItem(STEWARD_TOKEN_KEY));
-    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, record);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        if (!String(input).includes("steward-refresh"))
-          return Response.json({ ok: true });
-        requests.push(init ?? {});
-        if (requests.length === 1) {
-          await held.promise;
-          return Response.json({ token: abandoned });
-        }
-        return Response.json({ token: current });
-      }),
-    );
-    try {
-      mount();
-      await waitFor(() => expect(requests).toHaveLength(1));
-      act(() => window.dispatchEvent(new Event("pagehide")));
-      expect(requests[0].signal?.aborted).toBe(true);
-      await act(async () => {
-        window.dispatchEvent(new Event("storage"));
-        window.dispatchEvent(new Event("online"));
-        window.dispatchEvent(new Event("steward-unauthorized"));
+  it.each([false, true])(
+    "refreshes only after page return despite hidden auth rebind=%s",
+    async (rebindWhileHidden) => {
+      const original = makeJwt({
+        sub: "return-fixture",
+        exp: Math.floor(Date.now() / 1000) - 1,
       });
-      expect(requests).toHaveLength(1);
-      act(() => window.dispatchEvent(new Event("pageshow")));
-      expect(requests).toHaveLength(1);
-      await act(async () => held.resolve());
-      await waitFor(() =>
-        expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(current),
+      const abandoned = makeJwt({
+        sub: "abandoned-fixture",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+      const current = makeJwt({
+        sub: "return-fixture",
+        exp: Math.floor(Date.now() / 1000) + 7200,
+      });
+      storage.setItem(STEWARD_TOKEN_KEY, original);
+      const held = Promise.withResolvers<void>();
+      const requests: RequestInit[] = [];
+      const published: Array<string | null> = [];
+      const record = () => published.push(storage.getItem(STEWARD_TOKEN_KEY));
+      window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, record);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (!String(input).includes("steward-refresh"))
+            return Response.json({ ok: true });
+          requests.push(init ?? {});
+          if (requests.length === 1) {
+            await held.promise;
+            return Response.json({ token: abandoned });
+          }
+          return Response.json({ token: current });
+        }),
       );
-      expect(requests).toHaveLength(2);
-      expect(requests[1].signal).not.toBe(requests[0].signal);
-      expect(published).not.toContain(abandoned);
-    } finally {
-      held.resolve();
-      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, record);
-    }
-  });
+      try {
+        const view = mount();
+        await waitFor(() => expect(requests).toHaveLength(1));
+        act(() => window.dispatchEvent(new Event("pagehide")));
+        expect(requests[0].signal?.aborted).toBe(true);
+        await act(async () => {
+          window.dispatchEvent(new Event("storage"));
+          window.dispatchEvent(new Event("online"));
+          window.dispatchEvent(new Event("steward-unauthorized"));
+        });
+        expect(requests).toHaveLength(1);
+        if (rebindWhileHidden) {
+          await act(async () => {
+            rerenderAuthenticated(view);
+            held.resolve();
+          });
+          expect(requests).toHaveLength(1);
+          expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(original);
+        }
+        act(() => window.dispatchEvent(new Event("pageshow")));
+        expect(requests).toHaveLength(1);
+        await act(async () => held.resolve());
+        await waitFor(() =>
+          expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(current),
+        );
+        expect(requests).toHaveLength(2);
+        expect(requests[1].signal).not.toBe(requests[0].signal);
+        expect(published).not.toContain(abandoned);
+      } finally {
+        held.resolve();
+        window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, record);
+      }
+    },
+  );
   it.each([3600, 60])(
     "does not automatically mutate cookies without Web Locks (remaining=%s)",
     async (seconds) => {

@@ -105,6 +105,25 @@ function appLoginUrl(appOrigin: string, returnTo: string): string {
   return `${appOrigin}/login?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
+function redirectToAppLogin(hostname: string, returnTo: string): boolean {
+  const appOrigin = pairedAppOrigin(hostname);
+  try {
+    appModeNavigation.replace(
+      appOrigin ? appLoginUrl(appOrigin, returnTo) : "/",
+    );
+    return true;
+  } catch (error) {
+    // error-policy:J1 failed navigation is diagnosed and the caller displays
+    // the distinct authentication-error route with a recovery destination.
+    reportRendererDiagnostic({
+      scope: "steward.sso-bridge.login-navigation",
+      error,
+      severity: "error",
+    });
+    return false;
+  }
+}
+
 /**
  * Remove single-use exchange credentials from the visible URL without
  * notifying the router. ExchangeLeg already captured both values as props, so
@@ -291,14 +310,35 @@ function MintLeg({
     promise: Promise<MintLegOutcome>;
   } | null>(null);
   const effectGenerationRef = useRef(0);
+  const retired = useRef(false);
   const [notInitiated, setNotInitiated] = useState(false);
   const [unexpectedFailure, setUnexpectedFailure] = useState(false);
 
   useEffect(() => {
+    const hide = () => {
+      retired.current = true;
+      operationRef.current?.controller.abort();
+    };
+    const show = () => {
+      if (retired.current && !redirectToAppLogin(hostname, returnTo))
+        setUnexpectedFailure(true);
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    return () => {
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
+    };
+  }, [hostname, returnTo]);
+
+  useEffect(() => {
+    // A restored bridge must not replay a single-use challenge. Its page
+    // listener sends it to ordinary login while preserving the destination.
+    if (retired.current) return;
     const effectGeneration = effectGenerationRef.current + 1;
     effectGenerationRef.current = effectGeneration;
     const effectIsCurrent = () =>
-      effectGenerationRef.current === effectGeneration;
+      !retired.current && effectGenerationRef.current === effectGeneration;
     const operationKey = JSON.stringify([hostname, state, challenge, returnTo]);
     const previousOperation = operationRef.current;
     const controller = new AbortController();
@@ -320,25 +360,6 @@ function MintLeg({
     operationRef.current = operation;
     operation.activeEffects.add(effectGeneration);
 
-    const redirectToAppLogin = (): boolean => {
-      const appOrigin = pairedAppOrigin(hostname);
-      try {
-        appModeNavigation.replace(
-          appOrigin ? appLoginUrl(appOrigin, returnTo) : "/",
-        );
-        return true;
-      } catch (error) {
-        // error-policy:J1 the UI navigation boundary reports the browser error;
-        // its caller renders the distinct authentication-error route.
-        reportRendererDiagnostic({
-          scope: "steward.sso-bridge.login-navigation",
-          error,
-          severity: "error",
-        });
-        return false;
-      }
-    };
-
     void operation.promise
       .then(async (outcome) => {
         if (!effectIsCurrent()) {
@@ -346,7 +367,8 @@ function MintLeg({
             // StrictMode immediately re-subscribes to the same operation. A
             // microtask distinguishes that replay from a real abandonment.
             queueMicrotask(() => {
-              if (operation.activeEffects.size === 0) outcome.handoff?.burn();
+              if (retired.current || operation.activeEffects.size === 0)
+                outcome.handoff?.burn();
             });
           }
           return;
@@ -359,7 +381,7 @@ function MintLeg({
           if (outcome.handoff) {
             if (!(await outcome.handoff.navigate())) {
               outcome.handoff.burn();
-              if (effectIsCurrent() && !redirectToAppLogin())
+              if (effectIsCurrent() && !redirectToAppLogin(hostname, returnTo))
                 setUnexpectedFailure(true);
             }
           } else {
@@ -380,7 +402,7 @@ function MintLeg({
             !(
               error instanceof DOMException && error.name === "SecurityError"
             ) ||
-            !redirectToAppLogin()
+            !redirectToAppLogin(hostname, returnTo)
           ) {
             setUnexpectedFailure(true);
           }
@@ -436,9 +458,27 @@ function ExchangeLeg({
     promise: ReturnType<typeof performSsoExchange>;
   } | null>(null);
   const navigate = useNavigate();
+  const retired = useRef(false);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    const hide = () => {
+      retired.current = true;
+      operationRef.current?.controller.abort();
+    };
+    const show = () => {
+      if (retired.current) setFailed(true);
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    return () => {
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (retired.current) return;
     let operation = operationRef.current;
     if (!operation) {
       stripExchangeCredentialsFromAddressBar();
@@ -481,7 +521,7 @@ function ExchangeLeg({
     currentOperation.subscribers += 1;
     let active = true;
     void currentOperation.promise.then((result) => {
-      if (active && !result.ok) setFailed(true);
+      if (active && !retired.current && !result.ok) setFailed(true);
     });
     return () => {
       active = false;

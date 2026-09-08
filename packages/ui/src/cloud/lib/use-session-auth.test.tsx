@@ -10,7 +10,7 @@
  * bypass, source precedence, and the re-read listeners.
  */
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorState = { isNative: false };
@@ -114,6 +114,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Vitest globals are disabled, so RTL cannot register automatic teardown.
+  // Unmount before restoring storage to retire the hook's re-read timer.
+  cleanup();
   vi.unstubAllGlobals();
 });
 

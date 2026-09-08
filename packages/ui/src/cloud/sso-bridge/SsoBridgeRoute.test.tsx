@@ -263,49 +263,80 @@ describe("SsoBridgeRoute — mint leg (eliza.app auth host)", () => {
     expect(fetchLog).toHaveLength(1);
   });
 
-  it("burns a minted code when the bridge route unmounts before navigation", async () => {
-    setReferrer("https://cloud.eliza.app/");
-    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
-    let resolveMint!: (response: Response) => void;
-    fetchLog = [];
-    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      fetchLog.push({ url, init });
-      if (url.endsWith("/api/auth/sso-bridge/mint")) {
-        return new Promise<Response>((resolve) => {
-          resolveMint = resolve;
-        });
+  it.each(["unmount", "pagehide", "page-return"])(
+    "burns an abandoned minted code after %s without replaying it on return",
+    async (departure) => {
+      setReferrer("https://cloud.eliza.app/");
+      localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+      let resolveMint!: (response: Response) => void;
+      fetchLog = [];
+      globalThis.fetch = vi.fn(
+        (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          fetchLog.push({ url, init });
+          if (url.endsWith("/api/auth/sso-bridge/mint")) {
+            return new Promise<Response>((resolve) => {
+              resolveMint = resolve;
+            });
+          }
+          return Promise.resolve(json(401, { error: "invalid_verifier" }));
+        },
+      ) as typeof fetch;
+      replacedUrls = [];
+      appModeNavigation.replace = (url: string) => {
+        replacedUrls.push(url);
+      };
+
+      const view = render(
+        <MemoryRouter initialEntries={[`/auth/bridge${MINT_QS}`]}>
+          <Routes>
+            <Route
+              path="/auth/bridge"
+              element={<SsoBridgeRoute hostname="eliza.app" />}
+            />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(fetchLog).toHaveLength(1));
+      if (departure === "unmount") view.unmount();
+      else act(() => window.dispatchEvent(new Event("pagehide")));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect.soft(fetchLog[0].init?.signal?.aborted).toBe(true);
+      if (departure === "page-return") {
+        act(() => window.dispatchEvent(new Event("pageshow")));
+        expect
+          .soft(replacedUrls)
+          .toEqual(["https://cloud.eliza.app/login?returnTo=%2Fchat"]);
       }
-      return Promise.resolve(json(401, { error: "invalid_verifier" }));
-    }) as typeof fetch;
-    replacedUrls = [];
-    appModeNavigation.replace = (url: string) => {
-      replacedUrls.push(url);
-    };
 
-    const view = render(
-      <MemoryRouter initialEntries={[`/auth/bridge${MINT_QS}`]}>
-        <Routes>
-          <Route
-            path="/auth/bridge"
-            element={<SsoBridgeRoute hostname="eliza.app" />}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
-    await waitFor(() => expect(fetchLog).toHaveLength(1));
-    view.unmount();
+      await act(async () => {
+        resolveMint(json(200, { ok: true, code: CODE }));
+        await Promise.resolve();
+      });
 
-    await act(async () => {
-      resolveMint(json(200, { ok: true, code: CODE }));
-      await Promise.resolve();
-    });
-
-    expect(replacedUrls).toEqual([]);
-    await waitFor(() => expect(fetchLog).toHaveLength(2));
-    expect(fetchLog[1].url).toBe("https://eliza.app/api/auth/sso-bridge/burn");
-    expect(JSON.parse(String(fetchLog[1].init?.body))).toEqual({ code: CODE });
-  });
+      expect(replacedUrls).toEqual(
+        departure === "page-return"
+          ? ["https://cloud.eliza.app/login?returnTo=%2Fchat"]
+          : [],
+      );
+      await waitFor(() => expect(fetchLog).toHaveLength(2));
+      expect(fetchLog[1].url).toBe(
+        "https://eliza.app/api/auth/sso-bridge/burn",
+      );
+      expect(JSON.parse(String(fetchLog[1].init?.body))).toEqual({
+        code: CODE,
+      });
+      if (departure === "pagehide") {
+        act(() => window.dispatchEvent(new Event("pageshow")));
+        expect(replacedUrls).toEqual([
+          "https://cloud.eliza.app/login?returnTo=%2Fchat",
+        ]);
+        expect(fetchLog).toHaveLength(2);
+      }
+    },
+  );
 
   it("burns a stale mint when the challenge changes and only hands off the current code", async () => {
     const nextChallenge = "f".repeat(64);
@@ -619,9 +650,16 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
-  it.each(["exchange", "steward-session"])(
-    "aborts an abandoned %s transport and never publishes its late success",
-    async (pendingEndpoint) => {
+  it.each(
+    ["exchange", "steward-session"].flatMap((pendingEndpoint) =>
+      ["unmount", "pagehide", "page-return"].map((departure) => ({
+        pendingEndpoint,
+        departure,
+      })),
+    ),
+  )(
+    "aborts $pendingEndpoint after $departure and preserves login intent without replay",
+    async ({ pendingEndpoint, departure }) => {
       const handshake = await createSsoBridgeHandshake();
       expect(handshake).not.toBeNull();
       const token = liveToken();
@@ -647,14 +685,21 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
       try {
         const view = renderBridge(
           "cloud.eliza.app",
-          `?code=${CODE}&state=${handshake?.state}&returnTo=%2Fchat`,
+          `?code=${CODE}&state=${handshake?.state}&returnTo=%2Fchat%3Fconversation%3Dfixture`,
         );
         const signal = await entered.promise;
-        view.unmount();
+        if (departure === "unmount") view.unmount();
+        else act(() => window.dispatchEvent(new Event("pagehide")));
         await act(async () => {
           await Promise.resolve();
         });
         expect(signal.aborted).toBe(true);
+        if (departure === "page-return") {
+          act(() => window.dispatchEvent(new Event("pageshow")));
+          expect((await screen.findByTestId("login-page")).textContent).toBe(
+            "/login?returnTo=%2Fchat%3Fconversation%3Dfixture",
+          );
+        }
         await act(async () => {
           pending.resolve(json(200, { token, ok: true }));
           await getStewardTabSessionAuthorityCoordinator().runExclusive({
@@ -666,6 +711,15 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
         expect(synced).not.toHaveBeenCalled();
         expect(replacedUrls).toEqual([]);
         expect(fetchLog).toHaveLength(pendingEndpoint === "exchange" ? 1 : 2);
+        expect(screen.queryByTestId("landed")).toBeNull();
+        if (departure === "pagehide") {
+          expect(screen.queryByTestId("login-page")).toBeNull();
+          act(() => window.dispatchEvent(new Event("pageshow")));
+          expect((await screen.findByTestId("login-page")).textContent).toBe(
+            "/login?returnTo=%2Fchat%3Fconversation%3Dfixture",
+          );
+          expect(fetchLog).toHaveLength(pendingEndpoint === "exchange" ? 1 : 2);
+        }
       } finally {
         pending.resolve(json(200, { token }));
         window.removeEventListener("steward-token-sync", synced);

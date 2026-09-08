@@ -151,12 +151,14 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
   const lastSyncedAuthority = useRef<StewardSessionAuthoritySnapshot | null>(
     null,
   );
+  // SDK context updates can rebind the effect while the document is away.
+  // Only pageshow may grant a fresh page lifetime, not an auth re-render.
+  const pageHidden = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: auth transitions rebind the runtime listeners
   useEffect(() => {
     const coordinator = getStewardTabSessionAuthorityCoordinator();
     let lifecycle = new AbortController();
-    let hidden = false;
     let refreshInFlight: Promise<void> | null = null;
     let refreshOwner: AbortController | null = null;
 
@@ -182,7 +184,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     });
 
     const syncToken = async (): Promise<void> => {
-      if (hidden || lifecycle.signal.aborted) return;
+      if (pageHidden.current || lifecycle.signal.aborted) return;
       try {
         if (!coordinator.originWide)
           throw new StewardSessionAuthorityError(
@@ -304,7 +306,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     };
 
     const checkAndRefresh = async (force = false): Promise<void> => {
-      if (hidden || lifecycle.signal.aborted) return;
+      if (pageHidden.current || lifecycle.signal.aborted) return;
       const owner = lifecycle;
       let expected: StewardSessionAuthoritySnapshot;
       try {
@@ -323,7 +325,8 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
       if (refreshInFlight) {
         if (refreshOwner === owner) return refreshInFlight;
         await refreshInFlight;
-        if (hidden || owner !== lifecycle || owner.signal.aborted) return;
+        if (pageHidden.current || owner !== lifecycle || owner.signal.aborted)
+          return;
         return checkAndRefresh(force);
       }
       const pending = (async () => {
@@ -424,13 +427,13 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     };
     window.addEventListener("steward-unauthorized", unauthorizedHandler);
     const hide = () => {
-      hidden = true;
+      pageHidden.current = true;
       lifecycle.abort();
       lastSyncedAuthority.current = null;
     };
     const show = () => {
-      if (!hidden) return;
-      hidden = false;
+      if (!pageHidden.current) return;
+      pageHidden.current = false;
       lifecycle = new AbortController();
       void syncToken();
       void checkAndRefresh();
