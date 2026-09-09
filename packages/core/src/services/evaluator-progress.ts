@@ -323,6 +323,42 @@ function readRecord(
 	return structuredClone(value) as unknown as ProgressRecord;
 }
 
+/** New unprocessed messages have no derived effects to reconcile. In-flight
+ * unstaged inference is already fenced by its authoritative source recheck. */
+export async function hasEvaluatorSourceProgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	evaluatorNames: readonly string[],
+	sourceIds: readonly string[],
+): Promise<boolean> {
+	for (const evaluatorName of evaluatorNames) {
+		const scope: ProgressScope = {
+			agentId: runtime.agentId,
+			roomId: message.roomId,
+			entityId: message.entityId,
+			evaluatorName,
+			version: EXTRACTION_VERSION,
+		};
+		const record = readRecord(
+			await runtime.getCache<unknown>(
+				`evaluator-progress:${hashStableJson(scope)}`,
+			),
+			scope,
+		);
+		if (
+			record &&
+			sourceIds.some(
+				(id) =>
+					Object.hasOwn(record.completed, id) ||
+					Object.hasOwn(record.pending?.sourceRevisions ?? {}, id) ||
+					Object.hasOwn(record.pending?.referenceRevisions ?? {}, id),
+			)
+		)
+			return true;
+	}
+	return false;
+}
+
 /** All new/edited records and explicit removals, independently per extractor. */
 export async function prepareEvaluatorProgress(
 	runtime: IAgentRuntime,

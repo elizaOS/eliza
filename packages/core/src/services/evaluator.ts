@@ -65,6 +65,7 @@ import {
 	commitEvaluatorProgress,
 	type EvaluatorProgressSnapshot,
 	evaluatorSourceRevision,
+	hasEvaluatorSourceProgress,
 	prepareEvaluatorProgress,
 	stageEvaluatorOutput,
 } from "./evaluator-progress.ts";
@@ -797,8 +798,21 @@ export class EvaluatorService extends BaseService {
 					for (const entityId of owners) {
 						const trigger = transcript.find((row) => row.entityId === entityId);
 						if (!trigger?.id) continue;
+						if (
+							!(await hasEvaluatorSourceProgress(
+								this.runtime,
+								trigger,
+								this.runtime.evaluators
+									.filter((entry) => this.isBackground(entry))
+									.map((entry) => entry.name),
+								changed
+									.filter((row) => row.roomId === roomId)
+									.map((row) => row.id as UUID),
+							))
+						)
+							continue;
 						const id = stringToUuid(
-							`reconcile-memory:${this.runtime.agentId}:${roomId}:${entityId}:${hashStableJson({ before: changed.map(evaluatorSourceRevision), after: updates ?? null })}`,
+							`post-turn-memory:${this.runtime.agentId}:${roomId}:${entityId}:${trigger.id}`,
 						);
 						const task: Task = {
 							id,
@@ -812,12 +826,17 @@ export class EvaluatorService extends BaseService {
 								baseInterval: 1000,
 								maxFailures: 5,
 								reconciliation: true,
+								reconciliationRevision: uuidv4(),
 								messageId: trigger.id,
 								semanticSignal: true,
 							},
 						};
-						if (!(await this.runtime.getTask(id)))
-							await this.runtime.createTask(task);
+						const existing = await this.runtime.getTask(id);
+						if (existing)
+							await this.runtime.updateTask(id, {
+								metadata: { ...existing.metadata, ...task.metadata },
+							});
+						else await this.runtime.createTask(task);
 						intents.push(task);
 					}
 				}
@@ -887,7 +906,6 @@ export class EvaluatorService extends BaseService {
 			throw new ElizaError("Background memory job has invalid ownership", {
 				code: "EVALUATOR_JOB_INVALID_SCOPE",
 			});
-		const taskId = task.id;
 		const messageId = task.metadata.messageId as Memory["entityId"];
 		this.backgroundRunning = true;
 		try {
@@ -923,8 +941,7 @@ export class EvaluatorService extends BaseService {
 									retained.find((row) => row.entityId === task.entityId) ??
 									null;
 								if (!message) {
-									await this.runtime.deleteTask(taskId);
-									return { preserveTask: true };
+									return this.finishBackgroundTask(task);
 								}
 							}
 						}
@@ -981,14 +998,33 @@ export class EvaluatorService extends BaseService {
 								context: { errors: result.errors },
 							});
 						if (result.hasMoreEvidence) return undefined;
-						await this.runtime.deleteTask(taskId);
-						return { preserveTask: true };
+						return this.finishBackgroundTask(task);
 					},
 				),
 			);
 		} finally {
 			this.backgroundRunning = false;
 		}
+	}
+
+	/** Coalesced jobs may be revised while inference releases the room. Delete only
+	 * the exact revision consumed; otherwise the existing task remains the wakeup. */
+	private async finishBackgroundTask(
+		task: Task,
+	): Promise<{ preserveTask: boolean }> {
+		return this.runtime.roomHandlerQueue.withLease(
+			task.roomId as UUID,
+			async () => {
+				const current = await this.runtime.getTask(task.id as UUID);
+				if (
+					current &&
+					current.metadata?.reconciliationRevision ===
+						task.metadata?.reconciliationRevision
+				)
+					await this.runtime.deleteTask(task.id as UUID);
+				return { preserveTask: true };
+			},
+		);
 	}
 
 	private evidenceBatchBytes(): number {

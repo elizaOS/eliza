@@ -684,4 +684,64 @@ describe("durable background memory", () => {
 			);
 		},
 	);
+	it("coalesces repeated source updates with the delivery job and preserves a newer wakeup during inference", async () => {
+		const { runtime, service, message } = await setup();
+		runtime.services.set("evaluator", [service]);
+		const process = vi.fn(async () => undefined);
+		runtime.registerEvaluator(evaluator(process));
+		await runtime.updateMemory({
+			id: message.id as NonNullable<Memory["id"]>,
+			content: { text: "temporary revision" },
+		});
+		await runtime.updateMemory({
+			id: message.id as NonNullable<Memory["id"]>,
+			content: message.content,
+		});
+		expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toHaveLength(0);
+		runtime.useModel = vi.fn(
+			async () => '{"memory":{"ok":true}}',
+		) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		process.mockClear();
+		const next = {
+			...message,
+			id: stringToUuid("next-coalesced-turn"),
+			createdAt: 20,
+			content: { text: "A new follow-up." },
+		};
+		await runtime.upsertMemory(next, "messages");
+		await service.enqueue(next, state, { phase: "post_turn" });
+		const first = await job(runtime);
+		const started = deferred<void>();
+		const release = deferred<string>();
+		runtime.useModel = vi.fn(async () => {
+			started.resolve();
+			return release.promise;
+		}) as AgentRuntime["useModel"];
+		const running = execute(runtime, first);
+		await started.promise;
+		// Restoring the identical source leaves the generated output valid, but the
+		// task now carries a newer wakeup which the older execution cannot erase.
+		await runtime.updateMemory({
+			id: message.id as NonNullable<Memory["id"]>,
+			content: { text: "another temporary revision" },
+		});
+		await runtime.updateMemory({
+			id: message.id as NonNullable<Memory["id"]>,
+			content: message.content,
+		});
+		const current = await job(runtime);
+		expect(current.id).toBe(first.id);
+		expect(current.metadata?.reconciliationRevision).not.toBe(
+			first.metadata?.reconciliationRevision,
+		);
+		release.resolve('{"memory":{"ok":true}}');
+		await running;
+		expect(await runtime.getTask(first.id)).not.toBeNull();
+		await execute(runtime, await job(runtime));
+		expect(await runtime.getTask(first.id)).toBeNull();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(process).toHaveBeenCalledTimes(1);
+	});
 });
