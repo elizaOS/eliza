@@ -2,7 +2,11 @@
 // @vitest-environment jsdom
 // @vitest-environment-options {"url": "https://cloud.eliza.app/"}
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { locks } from "node:worker_threads";
+import {
+  resetStewardTabSessionAuthorityCoordinatorForTests,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -45,6 +49,7 @@ function clearAuthedCookie(): void {
 
 const realFetch = globalThis.fetch;
 const realReplace = appModeNavigation.replace;
+const originalLocks = Object.getOwnPropertyDescriptor(navigator, "locks");
 let fetchLog: string[];
 let replacedUrls: string[];
 
@@ -103,6 +108,13 @@ function renderEntry(initialPath = "/"): void {
 
 beforeEach(() => {
   stubNetwork();
+  // jsdom has no Web Locks. Use the same real Node implementation as the
+  // canonical SSO suites, so this exercises origin-wide ownership too.
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: locks,
+  });
+  resetStewardTabSessionAuthorityCoordinatorForTests();
 });
 
 afterEach(() => {
@@ -112,9 +124,22 @@ afterEach(() => {
   clearAuthedCookie();
   globalThis.fetch = realFetch;
   appModeNavigation.replace = realReplace;
+  if (originalLocks) Object.defineProperty(navigator, "locks", originalLocks);
+  else Reflect.deleteProperty(navigator, "locks");
+  resetStewardTabSessionAuthorityCoordinatorForTests();
 });
 
 describe("AppModeEntryRoute — SSO auto-bridge (managed app origin)", () => {
+  it("falls back to login without a bridge when origin-wide ownership is unavailable", async () => {
+    Reflect.deleteProperty(navigator, "locks");
+    resetStewardTabSessionAuthorityCoordinatorForTests();
+    renderEntry("/chat?x=1");
+    expect(await screen.findByTestId("login-page")).toBeTruthy();
+    expect(replacedUrls).toEqual([]);
+    expect(sessionStorage.getItem(SSO_STATE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SSO_VERIFIER_KEY)).toBeNull();
+    expect(fetchLog.some((entry) => entry.startsWith("POST "))).toBe(false);
+  });
   it("signed out + domain session marker → full-page bounce to the eliza.app mint leg with a stored state nonce + PKCE challenge", async () => {
     // biome-ignore lint/suspicious/noDocumentCookie: jsdom must seed the synchronous SSO cookie the bridge reads.
     document.cookie = "steward-authed=1; path=/";

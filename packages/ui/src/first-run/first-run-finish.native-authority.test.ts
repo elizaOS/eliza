@@ -166,7 +166,7 @@ describe("first-run protected native continuation", () => {
     client.setToken("original-client-token");
     // Only the account selection transport is doubled; finish, join, live
     // client notifications and native persistence all run unchanged.
-    vi.spyOn(client, "ensurePersonalDedicatedEliza").mockResolvedValue({
+    vi.spyOn(client, "getPersonalSharedEliza").mockResolvedValue({
       personalElizaId: "personal:joined-agent",
       agentId: "personal:joined-agent",
       activeAgentId: "22222222-2222-4222-8222-222222222222",
@@ -222,7 +222,7 @@ describe("first-run protected native continuation", () => {
     const outcome = result.catch((error: unknown) => error);
     try {
       await Promise.race([entered, result]);
-      expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+      expect(client.getPersonalSharedEliza).not.toHaveBeenCalled();
       expect(complete).not.toHaveBeenCalled();
       release();
       expect(await outcome).toEqual({ kind: "done" });
@@ -243,7 +243,7 @@ describe("first-run protected native continuation", () => {
     const { result, complete } = start();
     const outcome = await result.catch((error: unknown) => error);
     expect(outcome).toBeInstanceOf(Error);
-    expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+    expect(client.getPersonalSharedEliza).not.toHaveBeenCalled();
     expect(complete).not.toHaveBeenCalled();
     expect(loadPersistedActiveServer()).toEqual(local);
   });
@@ -270,7 +270,7 @@ describe("first-run protected native continuation", () => {
       let replacement: Promise<void> | undefined;
       try {
         await Promise.race([entered, result]);
-        expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+        expect(client.getPersonalSharedEliza).not.toHaveBeenCalled();
         if (change === "abort") controller.abort();
         else if (change === "session")
           await writeStoredStewardToken("replacement-account-token");
@@ -282,7 +282,7 @@ describe("first-run protected native continuation", () => {
         release();
         expect(await outcome).toBeInstanceOf(Error);
         await replacement;
-        expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+        expect(client.getPersonalSharedEliza).not.toHaveBeenCalled();
         expect(complete).not.toHaveBeenCalled();
         expect(loadPersistedActiveServer()).toEqual(
           change === "selection" ? originalServer : local,
@@ -403,7 +403,7 @@ describe("first-run protected native continuation", () => {
       expect(await outcome).toBeInstanceOf(Error);
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       expect(await getStorageValue("elizaos:agent-profiles")).toBeNull();
-      expect(client.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
+      expect(client.getPersonalSharedEliza).not.toHaveBeenCalled();
       expect(loadPersistedActiveServer()).toEqual(originalServer);
       expect(complete).not.toHaveBeenCalled();
     } finally {

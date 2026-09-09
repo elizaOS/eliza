@@ -87,7 +87,7 @@ import {
   resolveDirectCloudWebBase,
   stripTrailingSlashes,
 } from "./direct-cloud-endpoints";
-import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
+import { isTimeoutAbortError } from "./timeout-signal";
 import { fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
