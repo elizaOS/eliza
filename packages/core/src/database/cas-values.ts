@@ -114,11 +114,16 @@ export function assertCasValue(
  * (so `-0 === 0`, matching jsonb). Non-JSON operands (functions, bigint)
  * compare by identity — callers should have rejected them already.
  *
- * This duplicates the rules of `worldMetadataValueEquals`
- * (world-metadata-cas.ts, landed on develop after this stack's base in
- * #28750) by necessity: that module is not present in this branch's tree.
- * Unifying the two into one shared JSON-equality primitive is the natural
- * follow-up once both stacks sit on develop together.
+ * Parity with `worldMetadataValueEquals` (world-metadata-cas.ts) is
+ * deliberate on every rule the two share: object key order insensitivity,
+ * array length+elementwise comparison, and primitive `===`. The single
+ * divergence is undefined-valued object properties: world-metadata equality
+ * IGNORES them (its stored documents may carry them), while the CAS contract
+ * REJECTS them up front — `assertCasValue` refuses any payload containing an
+ * undefined property before `jsonValueEquals` can observe it, because such a
+ * value cannot round-trip through the durable cache. Both helpers now live in
+ * this tree; unify them only with a change that keeps both inbound contracts
+ * (ignore-at-compare vs reject-at-boundary) intact.
  */
 export function jsonValueEquals(left: unknown, right: unknown): boolean {
 	if (left === right) return true;

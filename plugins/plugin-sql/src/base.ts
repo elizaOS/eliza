@@ -892,6 +892,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE") {
           throw error;
         }
+        // A failed CAS statement has an UNCERTAIN outcome: the conditional
+        // write may already have committed before the failure surfaced (e.g.
+        // the response was lost in flight). Replaying it would re-evaluate
+        // the WHERE clause against the committed replacement and resolve
+        // `false`, corrupting the conflict-only meaning of the CAS boolean
+        // for a write that actually succeeded. One attempt only — surface
+        // the typed failure and let the caller re-read state.
+        if (error instanceof ElizaError && error.code === CACHE_CAS_FAILED_CODE) {
+          throw error;
+        }
         lastError = error as Error;
 
         if (attempt < this.maxRetries) {

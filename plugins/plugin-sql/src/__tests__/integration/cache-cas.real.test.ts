@@ -8,11 +8,12 @@
  * one backend, which the row-level conditional UPDATE serializes).
  */
 
-import type { UUID } from "@elizaos/core";
-import { CACHE_CAS_FAILED_CODE, ElizaError } from "@elizaos/core";
+import { CACHE_CAS_FAILED_CODE, ElizaError, isElizaError, type UUID } from "@elizaos/core";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
+import { PgDatabaseAdapter as PgAdapterCtor } from "../../pg/adapter";
+import type { PostgresConnectionManager } from "../../pg/manager";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { PgliteDatabaseAdapter as PgliteAdapterCtor } from "../../pglite/adapter";
 import type { PGliteClientManager } from "../../pglite/manager";
@@ -258,6 +259,114 @@ describe("Cache compare-and-set (real PGlite)", () => {
       internal.db = originalDb;
       await expect(adapter.compareAndSetCache("healthy", undefined, { v: 2 })).resolves.toBe(true);
       await expect(adapter.getCache("healthy")).resolves.toEqual({ v: 2 });
+    });
+  });
+
+  /**
+   * Committed-write / lost-response fault injection through the REAL Pg
+   * retry facade (#29438 review follow-up).
+   *
+   * `PgDatabaseAdapter.withDatabase` wraps every operation in
+   * `withRetry` (3 attempts). A CAS statement that commits on the server but
+   * whose response is lost in flight surfaces as `CACHE_CAS_FAILED` with an
+   * UNCERTAIN outcome. If the retry facade replayed it, the replay would
+   * re-evaluate the conditional UPDATE's WHERE against the committed
+   * replacement and resolve `false` — corrupting the documented
+   * conflict-only meaning of the CAS boolean for a write that actually
+   * succeeded. These tests prove: exactly one attempt, a typed failure, and
+   * the persisted state readback showing the committed replacement.
+   *
+   * The fault is injected at the drizzle boundary with a one-shot proxy:
+   * attempt 1 executes the real statement (it commits), then the response is
+   * discarded and an exception is thrown; any later attempt would run clean.
+   * The PGlite backend is real — the commit is real.
+   */
+  describe("retry-facade fault injection (real Pg withDatabase → withRetry)", () => {
+    let pgAdapter: InstanceType<typeof PgDatabaseAdapter>;
+    let pgManager: PostgresConnectionManager;
+
+    beforeEach(async () => {
+      if (!sharedManager) {
+        throw new Error("exposeManager option did not yield a manager on the PGlite path");
+      }
+      // Reuse the suite's real PGlite backend, but front it with the Pg
+      // adapter's withDatabase facade (the retrying one) instead of the
+      // PGlite adapter's pass-through, so the retry policy is actually in
+      // the path under test.
+      const raw = (adapter as unknown as { getRawConnection?: () => unknown }).getRawConnection?.();
+      if (!raw) throw new Error("PGlite adapter did not expose a raw connection");
+      // The Pg adapter needs a NodePgDatabase; PGlite's drizzle handle is
+      // API-compatible for this statement shape.
+      pgManager = {
+        getDatabase: () => (adapter as unknown as { db: DrizzleDatabase }).db,
+      } as unknown as PostgresConnectionManager;
+      pgAdapter = new PgAdapterCtor(testAgentId, pgManager);
+    });
+
+    it("committed-write/lost-response: one attempt, typed failure, persisted replacement", async () => {
+      await adapter.setCache("lost-response", "expected-value");
+
+      const internal = pgAdapter as unknown as { db: DrizzleDatabase };
+      const originalDb = internal.db;
+      let lostResponseFaultArmed = true;
+      let statementAttempts = 0;
+      // Delegate the drizzle builder chain (`update().set().where().returning()`)
+      // to the REAL handle so the statement genuinely executes and commits.
+      // Drizzle builders are themselves thenable (QueryPromise), so the fault
+      // must attach ONLY at the explicit terminal `.returning()` call — on the
+      // first attempt the resolved rows are discarded and a lost-response
+      // error is thrown after the real commit. A later attempt would run
+      // clean: exactly the replay a retry facade must NOT perform for an
+      // uncertain CAS mutation.
+      const faulting = (node: object): object =>
+        new Proxy(node, {
+          get(target, prop) {
+            if (prop === "returning") {
+              return (...args: unknown[]) => {
+                statementAttempts += 1;
+                const real = Reflect.get(target, prop, target) as (...a: unknown[]) => unknown;
+                const out = real.apply(target, args) as Promise<unknown>;
+                if (lostResponseFaultArmed) {
+                  lostResponseFaultArmed = false;
+                  return out.then(() => {
+                    throw new Error("response lost in flight");
+                  });
+                }
+                return out;
+              };
+            }
+            const value = Reflect.get(target, prop, target) as unknown;
+            if (typeof value !== "function") return value;
+            return (...args: unknown[]) => {
+              const out = (value as (...a: unknown[]) => unknown).apply(target, args);
+              if (out && typeof out === "object") return faulting(out);
+              return out;
+            };
+          },
+        });
+      internal.db = faulting(originalDb) as DrizzleDatabase;
+      let caught: unknown;
+      try {
+        await pgAdapter.compareAndSetCache(
+          "lost-response",
+          "expected-value",
+          "committed-replacement"
+        );
+      } catch (error) {
+        caught = error;
+      } finally {
+        internal.db = originalDb;
+      }
+      // A typed CAS failure, not a conflict `false` for a write that landed.
+      expect(caught, "expected CACHE_CAS_FAILED, got a normal return").toBeDefined();
+      expect(isElizaError(caught), `expected ElizaError, got ${String(caught)}`).toBe(true);
+      expect((caught as ElizaError).code).toBe(CACHE_CAS_FAILED_CODE);
+      expect((caught as ElizaError).cause).toBeDefined();
+      // Exactly ONE statement execution — the retry facade must not replay
+      // the uncertain mutation.
+      expect(statementAttempts).toBe(1);
+      // Persisted-state readback on the REAL backend: the write committed.
+      await expect(adapter.getCache("lost-response")).resolves.toBe("committed-replacement");
     });
   });
 });
