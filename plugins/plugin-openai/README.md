@@ -85,7 +85,11 @@ credential to a browser build, changes embeddings or voice, activates a local
 model, or substitutes a canned reply.
 
 OpenRouter recovery is limited to HTTP 429/cooldown failures before any output
-has reached the caller. Auth/schema failures and partial streams stay explicit;
+has reached the caller. With that explicit fallback configured, the first eligible
+429 yields immediately even without Retry-After; it does not repeat the same
+rate-limited request through transient backoff first. Other transient errors
+retain bounded retries, and installations without a fallback keep their prior
+retry policy. Auth/schema failures and partial streams stay explicit;
 an aborted call never starts a fallback. Each endpoint has an independent
 credential-scoped cooldown, and Cerebras becomes primary again when its window
 expires. OpenRouter routing requires all request parameters, denies providers

@@ -5,9 +5,8 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers its app and view actions, one model-assisted
-pre-planner navigation evaluator, no natural-language shortcuts or deterministic
-response-handler evaluators, three providers,
+This opt-in plugin registers its app and view actions, one pre-planner navigation evaluator and a Stage-1 visual-continuation field,
+no natural-language shortcuts, three providers,
 and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
@@ -232,3 +231,13 @@ observe cancellation. Show/open outcomes and alternate-mode denials use
 `delivered` requires the matching completed-action handoff receipt, while missing,
 negative, or malformed delivery remains explicit. Stable handoff IDs scope replay
 to the same message, actor, client, step, and destination.
+
+The visual-continuation field reuses the existing Stage-1 model judgment. Its
+result is bound in memory to the exact runtime, message, actor, room, request
+text and sender role; caller metadata cannot supply it. Non-navigation decisions
+set the existing deny constraint. Requested/optional destinations still require
+the fresh authorized catalog, with normal planner execution and transport gates.
+Missing, malformed, uncertain, stale or unavailable selections retain the
+separate live-catalog model classifier. No field handler executes navigation.
+
+Explicit VIEWS list/current/search operations remain reads even when the request mentions keeping a split or window visible; layout inference must not turn a read into a mutation or an avoidable planner repair round.

@@ -451,6 +451,15 @@ function inferMode(
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	const trimmed = viewRequestText(text).trim();
 	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
+	// A planner read must stay a read even when the user asks to keep a split,
+	// window, or pinned surface visible while querying its current state.
+	if (
+		normalizedExplicit === "list" ||
+		normalizedExplicit === "current" ||
+		normalizedExplicit === "search"
+	) {
+		return normalizedExplicit;
+	}
 	// The planner owns explicit navigation. Incidental words such as "right
 	// now" must not turn a show call into a split layout or another operation.
 	if (normalizedExplicit === "show" || normalizedExplicit === "open") {

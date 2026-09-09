@@ -7,6 +7,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
 	type ResponseHandlerEvaluatorContext,
+	ResponseHandlerFieldRegistry,
 	runResponseHandlerEvaluators,
 	runWithStreamingContext,
 } from "@elizaos/core";
@@ -15,6 +16,7 @@ import { navigationDispatchBlock } from "../actions/navigation-execution.js";
 import {
 	parseContextualNavigationIntent,
 	viewContextPlanningEvaluator,
+	viewContinuationField,
 } from "./view-context-planning.js";
 
 let server: Server;
@@ -111,6 +113,123 @@ async function run(ctx: ResponseHandlerEvaluatorContext) {
 }
 
 describe("same-turn contextual navigation", () => {
+	async function runWithField(
+		ctx: ResponseHandlerEvaluatorContext,
+		value: unknown,
+		change?: () => void,
+	) {
+		return runWithStreamingContext({ messageId: ctx.message.id }, async () => {
+			const registry = new ResponseHandlerFieldRegistry();
+			registry.register(viewContinuationField);
+			await registry.dispatch({
+				rawParsed: { visualContinuation: value },
+				runtime: ctx.runtime,
+				message: ctx.message,
+				state: ctx.state,
+				senderRole: "USER",
+				turnSignal: new AbortController().signal,
+			});
+			change?.();
+			const result = await runResponseHandlerEvaluators({
+				...ctx,
+				evaluators: [viewContextPlanningEvaluator],
+			});
+			return {
+				...result,
+				navigationBlock: navigationDispatchBlock(ctx.message, true),
+			};
+		});
+	}
+	it.each(["none", "forbidden"])(
+		"reuses the Stage-1 %s decision without another model or catalog request",
+		async (disposition) => {
+			const ctx = context(
+				"Keep the current screen and answer our hypothetical",
+				{
+					disposition: "requested",
+					viewId: "observatory",
+					reason: "must not run",
+				},
+			);
+			const result = await runWithField(ctx, {
+				disposition,
+				viewId: "",
+				reason: "no navigation",
+			});
+			expect(result.errors).toEqual([]);
+			expect(result.navigationBlock).toBe("forbidden");
+			expect(prompts).toHaveLength(0);
+			expect(requestedPaths).toEqual([]);
+			expect(ctx.messageHandler.plan.candidateActions).toEqual(["CALENDAR"]);
+		},
+	);
+	it("validates a Stage-1 requested destination against the live role-filtered catalog without repeating inference", async () => {
+		const ctx = context("Show the observatory and draft the event", {
+			disposition: "none",
+			reason: "must not run",
+		});
+		const result = await runWithField(ctx, {
+			disposition: "requested",
+			viewId: "observatory",
+			reason: "explicit",
+		});
+		expect(result.errors).toEqual([]);
+		expect(result.navigationBlock).toBeUndefined();
+		expect(prompts).toHaveLength(0);
+		expect(requestedPaths).toEqual(["/api/views"]);
+		expect(ctx.messageHandler.plan.candidateActions).toEqual([
+			"CALENDAR",
+			"VIEWS",
+		]);
+	});
+	it.each([
+		undefined,
+		{ disposition: "unresolved", viewId: "", reason: "uncertain" },
+		{ disposition: "requested", viewId: "admin", reason: "restricted" },
+		{ disposition: "requested", viewId: "offline", reason: "unavailable" },
+		{ disposition: "none", viewId: "observatory", reason: "conflicting" },
+	])(
+		"retains the classifier for invalid, unresolved or unauthorized field decisions: %j",
+		async (value) => {
+			const ctx = context("Help me with this view", {
+				disposition: "none",
+				reason: "unavailable",
+			});
+			const result = await runWithField(ctx, value);
+			expect(result.errors).toEqual([]);
+			expect(prompts).toHaveLength(1);
+			expect(prompts[0]).not.toContain("Restricted account details");
+			expect(result.navigationBlock).toBe("forbidden");
+		},
+	);
+	it.each(["text", "actor", "room", "id", "runtime", "role"])(
+		"rejects a Stage-1 decision after its %s binding changes",
+		async (binding) => {
+			const ctx = context("Show the observatory", {
+				disposition: "forbidden",
+				reason: "fresh decision",
+			});
+			const result = await runWithField(
+				ctx,
+				{ disposition: "requested", viewId: "observatory", reason: "old" },
+				() => {
+					if (binding === "text") ctx.message.content.text = "Stay here";
+					if (binding === "actor")
+						ctx.message.entityId = "actor-2" as typeof ctx.message.entityId;
+					if (binding === "room")
+						ctx.message.roomId = "room-2" as typeof ctx.message.roomId;
+					if (binding === "id")
+						ctx.message.id = "turn-2" as typeof ctx.message.id;
+					if (binding === "runtime") ctx.runtime = { ...ctx.runtime };
+					if (binding === "role") ctx.userRoles = ["OWNER"];
+				},
+			);
+			expect(result.errors).toEqual([]);
+			expect(prompts).toHaveLength(1);
+			expect(result.navigationBlock).toBe("forbidden");
+		},
+	);
+
 	it("preserves a complete long decision inside a whole code fence", () => {
 		const decision = {
 			disposition: "forbidden",

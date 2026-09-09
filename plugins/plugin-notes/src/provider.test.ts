@@ -256,11 +256,35 @@ describe("SAVED_NOTES provider", () => {
     const text = renderSavedNotesText(notes);
 
     expect(text).toContain("Exact note count: 23.");
-    expect(text).toContain("- note 0");
-    expect(text).toContain("- note 19");
-    expect(text).toContain("- note 20");
-    expect(text).toContain("- note 22");
+    expect(text).toContain('- "note 0"');
+    expect(text).toContain('- "note 19"');
+    expect(text).toContain('- "note 20"');
+    expect(text).toContain('- "note 22"');
     expect(text).not.toContain("not shown");
+  });
+
+  it("round-trips label and multiline body without inventing a display separator", async () => {
+    const content =
+      'Packing label\nFirst line — keep this dash.\n\n"Quoted" line with \\ slash and 🦊';
+    const service = await serviceWithNotes([content, "Label only"]);
+    const runtime = await runtimeWith(service);
+    runtime.registerProvider(registeredNotesProvider());
+    const state = await runtime.composeState(
+      recallMessage(runtime, "change just one word"),
+      ["SAVED_NOTES"],
+      true,
+    );
+    const encoded = state.text
+      .split("\n")
+      .filter((line) => line.startsWith("- "));
+    const decoded = encoded.map((line) => JSON.parse(line.slice(2)));
+    expect(decoded).toContain(content);
+    expect(decoded).toContain("Label only");
+    expect(
+      parseNoteContent(
+        decoded.find((value) => value.startsWith("Packing label")),
+      ),
+    ).toEqual(parseNoteContent(content));
   });
 
   it("renders a complete oversized note body", () => {
@@ -293,7 +317,9 @@ describe("SAVED_NOTES provider", () => {
         updatedAt: "2026-08-14T12:00:00.000Z",
       },
     ]);
-    const noteLine = text.split("\n").find((line) => line.startsWith("- x"));
+    const noteLine = text
+      .split("\n")
+      .find((line) => line.startsWith('- "x\\n'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);
@@ -331,7 +357,9 @@ describe("SAVED_NOTES provider", () => {
     ]);
     expect(text).toContain("🦊");
     expect(isWellFormedText(text)).toBe(true);
-    const noteLine = text.split("\n").find((line) => line.startsWith("- t"));
+    const noteLine = text
+      .split("\n")
+      .find((line) => line.startsWith('- "t\\n'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);

@@ -2502,6 +2502,7 @@ async function generateTextWithTransientRetry(
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
     beforeAttempt?: () => void;
+    yieldRateLimit?: (error: unknown) => boolean;
   }
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
   const maxRetries = opts.maxRetries ?? 3;
@@ -2521,7 +2522,12 @@ async function generateTextWithTransientRetry(
       // request retry.
       const error = enrichProviderCallError(rawError);
       logToolPairingRejectionShape(error, generateParams);
-      if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
+      if (
+        attempt >= maxRetries ||
+        signal?.aborted ||
+        opts.yieldRateLimit?.(error) ||
+        !isTransientProviderError(error)
+      ) {
         throw error;
       }
       attempt++;
@@ -2689,6 +2695,7 @@ async function consumeStreamWithTransientRetry(
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
     beforeAttempt?: () => void;
+    yieldRateLimit?: (error: unknown) => boolean;
     streamTiming?: ReturnType<typeof createStreamTiming>;
   }
 ): Promise<BufferedStreamResult> {
@@ -2749,7 +2756,12 @@ async function consumeStreamWithTransientRetry(
       // request retry.
       const error = enrichProviderCallError(rawError);
       logToolPairingRejectionShape(error, generateParams);
-      if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
+      if (
+        attempt >= maxRetries ||
+        signal?.aborted ||
+        opts.yieldRateLimit?.(error) ||
+        !isTransientProviderError(error)
+      ) {
         throw error;
       }
       attempt++;
@@ -2797,23 +2809,30 @@ async function generateTextByModelType(
         }
       : params;
   try {
-    return await generateTextAtEndpoint(runtime, observedParams, modelType, getModelFn);
+    return await generateTextAtEndpoint(
+      runtime,
+      observedParams,
+      modelType,
+      getModelFn,
+      undefined,
+      (error) => {
+        if (!canFallback || delivered || params.signal?.aborted) return false;
+        const failure = RetryError.isInstance(error) ? error.lastError : error;
+        const status =
+          (failure as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+          (failure as { status?: number } | undefined)?.status;
+        return status === 429;
+      }
+    );
   } catch (error) {
     // error-policy:J4 operator-approved alternate inference preserves the
     // complete request after rate limiting, only before any output delivery.
+    if (!canFallback || !modelName || !apiKey || delivered || params.signal?.aborted) throw error;
     const failure = RetryError.isInstance(error) ? error.lastError : error;
     const status =
       (failure as { statusCode?: number; status?: number } | undefined)?.statusCode ??
       (failure as { status?: number } | undefined)?.status;
-    if (
-      !canFallback ||
-      !modelName ||
-      !apiKey ||
-      status !== 429 ||
-      delivered ||
-      params.signal?.aborted
-    )
-      throw error;
+    if (status !== 429) throw error;
     logger.info(
       { src: "plugin:openai", modelType, model: modelName, provider: "openrouter" },
       "[OpenAI] Cerebras rate limited; retrying this model call through the configured OpenRouter fallback"
@@ -2832,7 +2851,8 @@ async function generateTextAtEndpoint(
   params: GenerateTextParams,
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter,
-  endpoint?: { baseURL: string; apiKey: string; modelName: string; provider: "openrouter" }
+  endpoint?: { baseURL: string; apiKey: string; modelName: string; provider: "openrouter" },
+  yieldRateLimit?: (error: unknown) => boolean
 ): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime, endpoint);
@@ -3058,6 +3078,7 @@ async function generateTextAtEndpoint(
           {
             model: modelName,
             retryState,
+            yieldRateLimit,
             maxRetries: 5,
             beforeAttempt: () => attestLlmInputSubstring(details),
             streamTiming,
@@ -3228,6 +3249,7 @@ async function generateTextAtEndpoint(
         !failedBeforeFirstToken ||
         attempt >= 5 ||
         abortSignal?.aborted ||
+        yieldRateLimit?.(capturedStreamError) ||
         !isTransientProviderError(capturedStreamError)
       ) {
         break;
@@ -3462,6 +3484,7 @@ async function generateTextAtEndpoint(
     const result = await generateTextWithTransientRetry(generateParams, {
       model: modelName,
       retryState,
+      yieldRateLimit,
       maxRetries: 3,
       beforeAttempt: () => attestLlmInputSubstring(details),
     }).catch((error: unknown) => {

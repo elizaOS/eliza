@@ -42,40 +42,48 @@ function harness() {
 }
 
 describe("managed incremental evaluators", () => {
-	it("replays a staged null section exactly when its parser accepts it", async () => {
-		const { runtime, service, addMessage } = harness();
-		let fail = true;
-		runtime.registerEvaluator({
-			name: "nullable",
-			description: "Null is an accepted wire value",
-			incremental: true,
-			schema: { type: ["object", "null"] },
-			shouldRun: async () => true,
-			prompt: () => "Return null",
-			parse: (raw) => (raw === null ? {} : null),
-			processors: [
-				{
-					process: async () => {
-						if (fail) throw new Error("injected write failure");
+	it.each(["model", "runtime"])(
+		"replays a staged null %s section exactly when its parser accepts it",
+		async (source) => {
+			const { runtime, service, addMessage } = harness();
+			let fail = true;
+			const resolveOutput = vi.fn(() => null);
+			runtime.registerEvaluator({
+				name: "nullable",
+				...(source === "runtime" ? { resolveOutput } : {}),
+				description: "Null is an accepted wire value",
+				incremental: true,
+				schema: { type: ["object", "null"] },
+				shouldRun: async () => true,
+				prompt: () => "Return null",
+				parse: (raw) => (raw === null ? {} : null),
+				processors: [
+					{
+						process: async () => {
+							if (fail) throw new Error("injected write failure");
+						},
 					},
-				},
-			],
-		});
-		runtime.useModel = vi.fn(async () => ({
-			nullable: null,
-		})) as AgentRuntime["useModel"];
-		const message = await addMessage("Evidence", 1);
-		expect(
-			(await service.run(message, undefined, { phase: "post_turn" })).errors,
-		).toHaveLength(1);
-		fail = false;
-		const retried = await service.run(structuredClone(message), undefined, {
-			phase: "post_turn",
-		});
-		expect(retried.errors).toEqual([]);
-		expect(retried.processedEvaluators).toEqual(["nullable"]);
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
-	});
+				],
+			});
+			runtime.useModel = vi.fn(async () => ({
+				nullable: null,
+			})) as AgentRuntime["useModel"];
+			const message = await addMessage("Evidence", 1);
+			expect(
+				(await service.run(message, undefined, { phase: "post_turn" })).errors,
+			).toHaveLength(1);
+			fail = false;
+			const retried = await service.run(structuredClone(message), undefined, {
+				phase: "post_turn",
+			});
+			expect(retried.errors).toEqual([]);
+			expect(retried.processedEvaluators).toEqual(["nullable"]);
+			expect(runtime.useModel).toHaveBeenCalledTimes(
+				source === "runtime" ? 0 : 1,
+			);
+			expect(resolveOutput).toHaveBeenCalledTimes(source === "runtime" ? 1 : 0);
+		},
+	);
 
 	it("keeps an unrelated extractor working when another saved batch becomes stale", async () => {
 		const { runtime, service, addMessage } = harness();

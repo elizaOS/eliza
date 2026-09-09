@@ -11,6 +11,10 @@ import {
 	factMemoryEvaluator,
 	successEvaluator,
 } from "../features/advanced-capabilities/evaluators/reflection-items";
+import {
+	_setLinkPreviewTransportForTests,
+	linkExtractionEvaluator,
+} from "../features/basic-capabilities/evaluators/link-extraction";
 import { AgentRuntime } from "../runtime";
 import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import {
@@ -72,6 +76,111 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it("captures links through the real service without a whole-room acknowledgment model call", async () => {
+		const runtime = makeRuntime();
+		runtime.registerEvaluator(linkExtractionEvaluator);
+		const message = makeMessage();
+		message.content.text = "Read https://example.com/";
+		const response = new Response(
+			"<title>Example</title><p>Documentation example.</p>",
+			{ headers: { "content-type": "text/html" } },
+		);
+		_setLinkPreviewTransportForTests({
+			lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+			pinnedFetchImpl: async () => response,
+			fetchImpl: async () => response,
+		});
+		runtime.useModel = vi.fn(async (_type, params) => {
+			expect((params as { prompt: string }).prompt).not.toContain(
+				"PRIVATE_OLD_ROOM_SENTINEL",
+			);
+			return "Documentation example.";
+		}) as AgentRuntime["useModel"];
+		const reads = vi.spyOn(runtime, "getMemories");
+		try {
+			const result = await new EvaluatorService(runtime).run(message, {
+				values: {},
+				data: {},
+				text: "PRIVATE_OLD_ROOM_SENTINEL".repeat(10000),
+			});
+			expect(result.errors).toEqual([]);
+			expect(result.processedEvaluators).toEqual(["linkExtraction"]);
+			expect(runtime.useModel).toHaveBeenCalledTimes(1); // page summary only
+			expect(reads).not.toHaveBeenCalled(); // no room transcript for acknowledgment
+			const links = await runtime.getMemories({
+				tableName: "links",
+				roomId: message.roomId,
+				unique: false,
+			});
+			expect(links).toHaveLength(1);
+			expect(links[0].content.url).toBe("https://example.com/");
+		} finally {
+			_setLinkPreviewTransportForTests(undefined);
+		}
+	});
+
+	it.each([false, true])(
+		"keeps runtime-resolved processors when sibling model failure is %s",
+		async (failure) => {
+			const runtime = makeRuntime();
+			const processor = vi.fn(async () => undefined);
+			const direct: Evaluator<{ ok: boolean }, { saved: boolean }> = {
+				name: "captured",
+				description: "Already captured",
+				schema: schema(),
+				shouldRun: async () => true,
+				prepare: async () => ({ saved: true }),
+				resolveOutput: ({ prepared }) => ({ ok: prepared.saved }),
+				prompt: () => {
+					throw new Error("Resolved sections must not enter model prompts");
+				},
+				processors: [{ process: processor }],
+			};
+			runtime.registerEvaluator(direct);
+			runtime.registerEvaluator({
+				name: "judgment",
+				description: "Needs judgment",
+				schema: schema(),
+				shouldRun: async () => true,
+				prompt: () => "Judge current evidence",
+			});
+			runtime.useModel = vi.fn(async (_type, params) => {
+				expect(JSON.stringify(params)).not.toContain("Already captured");
+				if (failure) throw new Error("Provider unavailable");
+				return { judgment: { ok: true } };
+			}) as AgentRuntime["useModel"];
+			const result = await new EvaluatorService(runtime).run(makeMessage());
+			expect(processor).toHaveBeenCalledTimes(1);
+			expect(processor.mock.calls[0][0].output).toEqual({ ok: true });
+			expect(result.processedEvaluators).toContain("captured");
+			expect(result.processedEvaluators.includes("judgment")).toBe(!failure);
+		},
+	);
+
+	it("reports missing runtime output without falling back to a model or applying processors", async () => {
+		const runtime = makeRuntime();
+		const process = vi.fn(async () => undefined);
+		runtime.registerEvaluator({
+			name: "broken",
+			description: "Broken output",
+			schema: schema(),
+			shouldRun: async () => true,
+			resolveOutput: () => undefined,
+			prompt: () => "unused",
+			processors: [{ process }],
+		});
+		runtime.useModel = vi.fn() as AgentRuntime["useModel"];
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+		expect(result.errors).toEqual([
+			expect.objectContaining({
+				evaluatorName: "broken",
+				error: "Runtime evaluator output is undefined",
+			}),
+		]);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(process).not.toHaveBeenCalled();
+	});
+
 	it.each(["object", "JSON text", "native result"])(
 		"applies fact processors from %s model output",
 		async (shape) => {

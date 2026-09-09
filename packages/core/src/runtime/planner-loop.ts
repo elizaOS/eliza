@@ -81,6 +81,7 @@ import {
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
+import { selectCompletionContext } from "./completion-context";
 import {
 	computePrefixHashes,
 	hashString,
@@ -2369,20 +2370,49 @@ function appendPendingToolQueueFeedbackEvent(
 	});
 }
 
+const RESTORE_CONTEXT_TOOL: ToolDefinition = {
+	name: "RESTORE_CONTEXT",
+	description:
+		"Restore all original prior user dialogue when the selected sources leave any constraint, correction, referent or historical evidence uncertain. This reads the complete in-memory turn context once, performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
+	parameters: {
+		type: "object",
+		additionalProperties: false,
+		properties: { reason: { type: "string" } },
+		required: ["reason"],
+	},
+};
+
 function renderPlannerModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
 	codingMode?: boolean;
 	runtime?: PlannerRuntime;
+	allowSourceSelection?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
+	sourceSelectionApplied: boolean;
 } {
-	const renderedContext = renderContextObject(
-		params.trajectory.modelBaseContext ?? params.context,
-	);
+	const original = params.trajectory.modelBaseContext ?? params.context;
+	const selected =
+		params.allowSourceSelection && !params.codingMode
+			? selectCompletionContext(original)
+			: {
+					context: original,
+					applied: false,
+					omittedSourceCount: 0,
+					selection: undefined,
+				};
+	const renderedContext = renderContextObject(selected.context);
+	if (selected.applied)
+		renderedContext.promptSegments.push({
+			id: "planner-context-selection",
+			label: "planner_context",
+			stable: false,
+			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior user source for this request. Only its selected sources are shown; current request, providers, assistant referents, pending work and all current tool receipts remain complete. If a constraint, correction, referent or historical dependency is uncertain, call RESTORE_CONTEXT alone before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
+		});
 	const template = params.template ?? plannerTemplate;
 	const instructions = (
 		params.codingMode
@@ -2451,7 +2481,12 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments };
+	return {
+		messages,
+		promptSegments,
+		cacheKeySegments,
+		sourceSelectionApplied: selected.applied,
+	};
 }
 
 /**
@@ -2488,11 +2523,14 @@ export function buildInitialPlannerModelInputBudget(params: {
 				: resolveOptimizedPlannerTemplate(params.runtime),
 		codingMode: params.codingMode === true,
 		runtime: params.runtime,
+		allowSourceSelection: Boolean(params.tools?.length),
 	});
 	return buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
-		tools: params.tools,
+		tools: renderedInput.sourceSelectionApplied
+			? [...(params.tools ?? []), RESTORE_CONTEXT_TOOL]
+			: params.tools,
 		modelName: config.contextWindowModelName,
 		...(config.contextWindowTokens
 			? { contextWindowTokens: config.contextWindowTokens }
@@ -3078,6 +3116,7 @@ async function dispatchPlannerModelCall(params: {
 				: resolveOptimizedPlannerTemplate(params.runtime),
 		codingMode: params.trajectory.codingMode === true,
 		runtime: params.runtime,
+		allowSourceSelection: Boolean(params.tools?.length),
 	};
 	const renderedInput = renderPlannerModelInput(renderArgs);
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
@@ -3131,7 +3170,11 @@ async function dispatchPlannerModelCall(params: {
 		// argument so the planner can declare turn scope where the provider
 		// envelope has no `completed` field (#17034); `parsePlannerOutput`
 		// strips it before dispatch.
-		modelParams.tools = withTurnScopeToolArg(params.tools);
+		modelParams.tools = withTurnScopeToolArg(
+			renderedInput.sourceSelectionApplied
+				? [...(params.tools ?? []), RESTORE_CONTEXT_TOOL]
+				: params.tools,
+		);
 		// Force a native tool call. With actions exposed directly as tools,
 		// every viable planner outcome —
 		// invoking an action, calling REPLY for a final message, or terminating
@@ -3162,6 +3205,20 @@ async function dispatchPlannerModelCall(params: {
 		// is skipped when the model lands inside the strict grammar.
 		// Cloud adapters can use `tools` carrying the same schemas if they do not
 		// honor local skeleton/grammar hints.
+		if (renderedInput.sourceSelectionApplied)
+			plannerActions.push({
+				name: RESTORE_CONTEXT_TOOL.name,
+				parameters: [
+					{
+						name: "reason",
+						description:
+							"The unresolved source dependency requiring complete context",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				allowAdditionalParameters: false,
+			});
 		const plannerActionGrammar =
 			buildPlannerActionGrammarStrict(plannerActions);
 		if (plannerActionGrammar) {
@@ -3374,7 +3431,39 @@ async function callPlanner(
 	params: Parameters<typeof dispatchPlannerModelCall>[0],
 ): ReturnType<typeof dispatchPlannerModelCall> {
 	try {
-		return await dispatchPlannerModelCall(params);
+		const output = await dispatchPlannerModelCall(params);
+		if (
+			!output.toolCalls.some((call) => call.name === RESTORE_CONTEXT_TOOL.name)
+		)
+			return output;
+		const original = params.trajectory.modelBaseContext ?? params.context;
+		if (
+			params.trajectory.codingMode ||
+			!params.tools?.length ||
+			!selectCompletionContext(original).applied
+		) {
+			throw new ElizaError(
+				"Original planner context is already complete; repeated restoration is invalid",
+				{ code: "PLANNER_CONTEXT_RESTORE_INVALID" },
+			);
+		}
+		// Record the original request above, but execute none of its proposed
+		// actions. Removing the selector makes restoration one-shot and preserves
+		// complete sources for subsequent rounds and the completion evaluator.
+		params.trajectory.modelBaseContext = appendContextEvent(
+			{
+				...original,
+				metadata: { ...original.metadata, completionContext: undefined },
+			},
+			{
+				id: "planner-context-restored",
+				type: "instruction",
+				source: "planner-loop",
+				content:
+					"Full original prior dialogue has been restored as requested. No tool from the restoration response executed. Plan the current request using the complete sources and the existing settled receipts; do not repeat completed effects.",
+			},
+		);
+		return await callPlanner(params);
 	} catch (error) {
 		// error-policy:J2 only a structurally classified provider length rejection
 		// is translated; every other failure propagates intact.

@@ -62,6 +62,7 @@ import {
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
 	prepared: unknown;
+	resolvedOutput?: unknown;
 	options: EvaluatorRunOptions;
 	message: Memory;
 	progress?: EvaluatorProgressSnapshot;
@@ -736,9 +737,28 @@ export class EvaluatorService extends BaseService {
 								options: entryOptions,
 							})
 						: undefined;
+					const resolvedOutput =
+						snapshot?.pendingOutput === undefined && evaluator.resolveOutput
+							? evaluator.resolveOutput({
+									runtime: this.runtime,
+									message: entryMessage,
+									state,
+									options: entryOptions,
+									prepared,
+								})
+							: undefined;
+					if (
+						evaluator.resolveOutput &&
+						snapshot?.pendingOutput === undefined &&
+						resolvedOutput === undefined
+					)
+						throw new ElizaError("Runtime evaluator output is undefined", {
+							code: "EVALUATOR_RESOLVED_OUTPUT_MISSING",
+						});
 					preparedEntries.push({
 						evaluator,
 						prepared,
+						resolvedOutput,
 						message: entryMessage,
 						options: entryOptions,
 						progress: snapshot,
@@ -853,7 +873,9 @@ export class EvaluatorService extends BaseService {
 			const rawSection =
 				entry.progress?.pendingOutput !== undefined
 					? entry.progress.pendingOutput
-					: output[evaluator.name];
+					: entry.resolvedOutput !== undefined
+						? entry.resolvedOutput
+						: output[evaluator.name];
 			if (rawSection === undefined) {
 				errors.push({
 					evaluatorName: evaluator.name,
@@ -1194,7 +1216,7 @@ export class EvaluatorService extends BaseService {
 						}
 					: composed,
 			),
-			progress
+			progress || active.every((entry) => entry.resolveOutput !== undefined)
 				? Promise.resolve(null)
 				: getRoomTranscript(this.runtime, message).catch((error: unknown) => {
 						// error-policy:J7 the shared transcript is a dedupe of what each
@@ -1222,7 +1244,9 @@ export class EvaluatorService extends BaseService {
 		}
 
 		const freshEntries = preparedEntries.filter(
-			(entry) => entry.progress?.pendingOutput === undefined,
+			(entry) =>
+				entry.progress?.pendingOutput === undefined &&
+				entry.resolvedOutput === undefined,
 		);
 		// Only sections requesting new model output contribute shared evidence.
 		// Replay-only and failed preparations retain their own complete snapshots,
@@ -1243,15 +1267,18 @@ export class EvaluatorService extends BaseService {
 				)
 			: legacyRoomTranscript;
 		const schema = buildMergedSchema(freshEntries);
-		const rendered = buildPrompt({
-			runtime: this.runtime,
-			message,
-			state: composedState,
-			roomTranscript,
-			active: freshEntries,
-			options,
-			schema,
-		});
+		const rendered =
+			freshEntries.length > 0
+				? buildPrompt({
+						runtime: this.runtime,
+						message,
+						state: composedState,
+						roomTranscript,
+						active: freshEntries,
+						options,
+						schema,
+					})
+				: null;
 
 		const evaluatorId =
 			uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
@@ -1271,18 +1298,19 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const { output, error } =
-			freshEntries.length > 0
-				? await this.readEvaluatorOutput({
-						evaluatorId,
-						rendered,
-						schema,
-					})
-				: { output: {}, error: undefined };
+		const { output, error } = rendered
+			? await this.readEvaluatorOutput({
+					evaluatorId,
+					rendered,
+					schema,
+				})
+			: { output: {}, error: undefined };
 		if (
 			!output &&
 			preparedEntries.every(
-				(entry) => entry.progress?.pendingOutput === undefined,
+				(entry) =>
+					entry.progress?.pendingOutput === undefined &&
+					entry.resolvedOutput === undefined,
 			)
 		) {
 			return this.failedResult({
@@ -1301,7 +1329,9 @@ export class EvaluatorService extends BaseService {
 			preparedEntries: output
 				? preparedEntries
 				: preparedEntries.filter(
-						(entry) => entry.progress?.pendingOutput !== undefined,
+						(entry) =>
+							entry.progress?.pendingOutput !== undefined ||
+							entry.resolvedOutput !== undefined,
 					),
 			output: output ?? {},
 			message,

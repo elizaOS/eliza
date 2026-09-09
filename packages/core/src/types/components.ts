@@ -180,7 +180,7 @@ export interface MessageHandlerDeterministicToolCall {
 	params?: Record<string, JsonValue>;
 }
 
-/** Stage-1 source selection for completion only; it never edits stored history. */
+/** Stage-1 source selection for planning and completion; it never edits stored history. */
 export type CompletionContextSelection = {
 	mode: "full" | "selected";
 	sourceSetId: string;

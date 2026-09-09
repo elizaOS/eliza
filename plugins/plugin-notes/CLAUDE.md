@@ -51,3 +51,5 @@ views or event state to this package.
 - `clear-notes` validates `expectedRevision` inside the store write barrier, so
   a note committed between confirmation and commit aborts the clear instead of
   being wiped. The dispatch-time snapshot check is only a fast path.
+
+Saved-note prompt content is encoded as complete JSON strings with canonical label/newline/body boundaries; never flatten it into a display dash that can corrupt a partial update.

@@ -98,6 +98,13 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 
 	shouldRun(context: EvaluatorRunContext): Promise<boolean>;
 	prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>;
+	/**
+	 * Runtime-computed output after prepare, for evaluators whose result requires
+	 * no model judgment. Excludes this section from model prompts; normal parsing,
+	 * processors and durable progress still apply. Must return a defined output
+	 * or throw. Stored pending output takes precedence during replay.
+	 */
+	resolveOutput?(context: EvaluatorPromptContext<TPrepared>): TOutput;
 	prompt(context: EvaluatorPromptContext<TPrepared>): string;
 	/** Optional lossless annotation of prompt(); concatenation must equal its full text.
 	 * Only state-independent instructions may be stable, as a contiguous prefix

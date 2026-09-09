@@ -1,6 +1,6 @@
 /**
  * Binds Stage-1 relevance selections to exact prior-user dialogue sources for
- * the completion evaluator. Current requests, providers, assistant referents,
+ * the planner and completion evaluator. Current requests, providers, assistant referents,
  * instructions, runtime feedback and tool evidence are never selectable away.
  * Absent, malformed or stale selections preserve the complete original context.
  */
@@ -22,7 +22,7 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["full", "selected"],
 			description:
-				"selected is the normal completed relevance review for the final current request, including a verified empty selection; full is the fallback for unresolved applicable context, exhaustive current-request recall, or missing source set.",
+				"selected is the normal completed relevance review for planning, executing and answering the final current request, including a verified empty selection; full is the fallback for unresolved applicable context, exhaustive current-request recall, or missing source set.",
 		},
 		sourceSetId: { type: "string" },
 		complete: {

@@ -60,6 +60,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return {
 		...coreMock,
 		ElizaError: actual.ElizaError,
+		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
+		completeUserReferenceView: actual.completeUserReferenceView,
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getStreamingContext: actual.getStreamingContext,
 		getTurnActionConstraint: actual.getTurnActionConstraint,
@@ -1428,6 +1430,37 @@ describe("view management actions", () => {
 			}),
 		);
 	});
+
+	it.each(["list", "current", "search"])(
+		"keeps explicit %s read-only while preserving a split",
+		async (mode) => {
+			const { runtime } = createRuntime();
+			const client = {
+				listViews: vi.fn(async () => [
+					view({ id: "notes", label: "Notes", path: "/notes" }),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			};
+			const action = createViewsAction({
+				client,
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const result = await action.handler(
+				runtime as never,
+				message(
+					"Keep the current split visible and tell me which views are open",
+				) as never,
+				undefined,
+				{ action: mode, query: "notes" },
+			);
+			expect(result?.success).toBe(true);
+			for (const [url, options] of vi.mocked(globalThis.fetch).mock.calls) {
+				expect(String(url)).not.toContain("/navigate");
+				expect(options?.method ?? "GET").toBe("GET");
+			}
+			expect(result?.values?.mode).not.toBe("split");
+		},
+	);
 
 	it("routes split and tile requests through the shell layout navigate API", async () => {
 		const { runtime } = createRuntime();

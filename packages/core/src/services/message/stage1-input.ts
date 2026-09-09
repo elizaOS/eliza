@@ -236,7 +236,7 @@ export function renderMessageHandlerModelInput(
 		...(completionSources?.sources.length
 			? [
 					{
-						content: `completion_source_set: ${completionSources.sourceSetId}\nThe completion_source labels above identify prior user messages only. Review every source for the FINAL CURRENT REQUEST and return its exact IDs in completionContext. Use selected/complete=true after resolving the applicable standing constraints, corrections, facts, referents and referenced unfinished work; a reviewed empty selection is valid. Use full/complete=false if applicable context remains uncertain or the current request requires exhaustive history. Current request, all providers, assistant dialogue and current tool evidence remain included automatically; future tool results will be appended later.`,
+						content: `completion_source_set: ${completionSources.sourceSetId}\nThe completion_source labels above identify prior user messages only. Review every source needed to PLAN, EXECUTE and ANSWER the FINAL CURRENT REQUEST and return its exact IDs in completionContext. The planner and completion evaluator both reuse this selection; include all applicable action constraints and dependencies, not just facts for the final prose. Use selected/complete=true after resolving the applicable standing constraints, corrections, facts, referents and referenced unfinished work; a reviewed empty selection is valid. Use full/complete=false if applicable context remains uncertain or the current request requires exhaustive history. Current request, all providers, assistant dialogue and current tool evidence remain included automatically; future tool results will be appended later.`,
 						stable: false,
 					},
 				]
