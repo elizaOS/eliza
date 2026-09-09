@@ -277,13 +277,50 @@ async function cloudRequest<T>(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await response.text();
-  const parsed = text ? JSON.parse(text) : {};
+  // A proxy or load balancer can answer with an HTML error page, so the body
+  // is parsed only after the status is known and a non-JSON body is reported
+  // with the method, route, and status instead of a bare SyntaxError (#28348).
+  const parsed = parseCloudBody(text);
   if (!response.ok) {
+    const summary =
+      parsed.kind === "json" ? jsonSummary(parsed.value) : parsed.excerpt;
     throw new Error(
-      `${method} ${routePath} failed (${response.status}): ${jsonSummary(parsed)}`,
+      `${method} ${routePath} failed (${response.status}): ${summary}`,
     );
   }
-  return parsed as T;
+  if (parsed.kind !== "json") {
+    throw new Error(
+      `${method} ${routePath} returned ${response.status} with a non-JSON body: ${parsed.excerpt}`,
+    );
+  }
+  return parsed.value as T;
+}
+
+const CLOUD_BODY_EXCERPT_LENGTH = 200;
+
+type ParsedCloudBody =
+  | { kind: "json"; value: unknown }
+  | { kind: "text"; excerpt: string };
+
+/**
+ * Parse a Cloud API body without letting a non-JSON payload escape as a
+ * parser error. An empty body is an empty JSON object, matching the routes
+ * that answer 2xx without content.
+ */
+function parseCloudBody(text: string): ParsedCloudBody {
+  if (!text) return { kind: "json", value: {} };
+  try {
+    return { kind: "json", value: JSON.parse(text) };
+  } catch {
+    // error-policy:J3 a non-JSON body becomes an explicit text result that the
+    // caller reports with its HTTP status; it is never treated as a payload.
+    const collapsed = text.replace(/\s+/g, " ").trim();
+    const excerpt =
+      collapsed.length > CLOUD_BODY_EXCERPT_LENGTH
+        ? `${collapsed.slice(0, CLOUD_BODY_EXCERPT_LENGTH)}…`
+        : collapsed;
+    return { kind: "text", excerpt: excerpt || "(empty)" };
+  }
 }
 
 async function resolveAppId(
