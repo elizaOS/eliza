@@ -54,6 +54,7 @@ interface MemoryParams {
   tags?: string[];
   type?: MemoryType;
   entityId?: string;
+  author?: "requester" | "assistant";
   roomId?: string;
   query?: string;
   limit?: number;
@@ -142,7 +143,7 @@ function fail(
   return { success: false, text, data: { error, ...context } };
 }
 
-type UuidParamName = "entityId" | "roomId" | "memoryId";
+type UuidParamName = "entityId" | "roomId" | "memoryId" | "author";
 
 type ParsedUuidParam =
   | { ok: true; id: UUID | undefined }
@@ -864,10 +865,53 @@ function describeCompleteScan(scan: CandidateScan): string {
 
 async function doSearch(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const type =
-    params.type && MEMORY_TYPES.includes(params.type) ? params.type : undefined;
+    params.author !== undefined
+      ? "messages"
+      : params.type && MEMORY_TYPES.includes(params.type)
+        ? params.type
+        : undefined;
+  let authorId: UUID | undefined;
+  if (params.author !== undefined) {
+    if (params.author !== "requester" && params.author !== "assistant") {
+      return fail(
+        "author must be requester or assistant.",
+        "MEMORY_INVALID_AUTHOR",
+      );
+    }
+    if (params.type !== undefined && params.type !== "messages") {
+      return fail(
+        "author applies only to messages.",
+        "MEMORY_INVALID_AUTHOR_SCOPE",
+      );
+    }
+    const resolved = parseUuidParam(
+      params.author === "requester" ? message.entityId : runtime.agentId,
+      "author",
+    );
+    if (!resolved.ok || !resolved.id) {
+      return fail(
+        "The requested author could not be resolved from this turn.",
+        "MEMORY_AUTHOR_UNAVAILABLE",
+      );
+    }
+    authorId = resolved.id;
+    if (params.entityId !== undefined) {
+      const explicit = parseUuidParam(params.entityId, "entityId");
+      if (
+        !explicit.ok ||
+        explicit.id?.toLowerCase() !== authorId.toLowerCase()
+      ) {
+        return fail(
+          "entityId conflicts with author. Use author alone for the current requester or assistant.",
+          "MEMORY_AUTHOR_CONFLICT",
+        );
+      }
+    }
+  }
   // Read-only salvage (matrix F16): a mangled planner-copied UUID is an
   // unusable *filter*, and failing the whole search over it turns a
   // recoverable turn into a failed one. Searching without the filter is a
@@ -913,7 +957,7 @@ async function doSearch(
 
   const scope = {
     type,
-    entityId: entityParam.ok ? entityParam.id : undefined,
+    entityId: authorId ?? (entityParam.ok ? entityParam.id : undefined),
     roomId: roomParam.ok ? roomParam.id : undefined,
     query,
   };
@@ -952,7 +996,7 @@ async function doSearch(
   // complete records remain machine data for state and trajectory consumers.
   const lines = items.map(
     (m) =>
-      `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}: ${toWellFormedUnicode(m.text)}`,
+      `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}${m.type === "messages" ? ` [author=${m.entityId === runtime.agentId ? "assistant" : "other speaker"}; entityId=${m.entityId}]` : ""}: ${toWellFormedUnicode(m.text)}`,
   );
   const renderNote =
     limit === undefined
@@ -973,6 +1017,11 @@ async function doSearch(
         ? [`Note: ${ignoredIdNotes.join("; ")}.`]
         : []),
       describeCompleteScan(scan),
+      ...(items.some((item) => item.type === "messages")
+        ? [
+            "Authorship matters: assistant replies are not original user statements. For the current requester's original correction, use author=requester and verify their message; do not call an assistant restatement the original correction.",
+          ]
+        : []),
       ...lines,
       ...continuationNote,
     ].join("\n"),
@@ -1501,7 +1550,7 @@ export const memoryAction: Action = {
         case "create":
           return await doCreate(runtime, message, params);
         case "search":
-          return await doSearch(runtime, params);
+          return await doSearch(runtime, message, params);
         case "update":
           return await doUpdate(runtime, message, params);
         case "delete":
@@ -1558,6 +1607,13 @@ export const memoryAction: Action = {
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_TYPES] },
     },
+    {
+      name: "author",
+      description:
+        "search: messages by requester (the person making this request) or assistant (your own replies). Use requester for my original statements or corrections; the runtime resolves the author without copying UUIDs. Defaults type to messages and searches stored rooms within existing access scope.",
+      required: false,
+      schema: { type: "string" as const, enum: ["requester", "assistant"] },
+    },
     // entityId/roomId carry no schema `pattern` on purpose (matrix F16): a
     // planner-copied UUID arrives mangled often enough (live: a dropped hex
     // char in the roomId first segment, tj-b0c123243cb39e) that the
@@ -1567,7 +1623,7 @@ export const memoryAction: Action = {
     {
       name: "entityId",
       description:
-        "search: optional entity UUID from a previous result. Omit it when no exact UUID is known.",
+        "search: optional exact author/entity UUID for another known speaker. Prefer author=requester for my original statements and author=assistant for your replies; do not copy your own UUID to search the requester. Omit when no exact UUID is known.",
       required: false,
       schema: { type: "string" as const },
     },

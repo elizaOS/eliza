@@ -7489,7 +7489,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("keeps stale prior assistant tool answers out of tool-planner context", async () => {
+	it("retains historical answers while executing a fresh tool check", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "The current request needs fresh runtime inspection.",
@@ -7548,12 +7548,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 									roomId: "00000000-0000-0000-0000-000000000004" as UUID,
 									createdAt: 2,
-									// Tool-derived answers carry their producing action in
-									// content.actions (runtime persists) or
-									// actionCallbackHistory (route persists); the planner
-									// window excludes them by that structural marker, not by
-									// role (#17024), so ordinary assistant questions/previews
-									// stay visible for continuation resolution.
+									// Prior visible tool-derived dialogue is history, not a fresh receipt.
 									content: {
 										text: staleAssistantAnswer,
 										actions: ["CHECK_RUNTIME"],
@@ -7598,7 +7593,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(firstPlannerPrompt).toContain(currentMessage.content.text);
 		expect(firstPlannerPrompt).toContain("prior_dialogue_policy");
 		expect(firstPlannerPrompt).not.toContain("provider:RECENT_MESSAGES");
-		expect(firstPlannerPrompt).not.toContain(staleAssistantAnswer);
+		expect(firstPlannerPrompt).toContain(staleAssistantAnswer);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Fresh check completed.",
+			);
+		}
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
@@ -10100,7 +10100,7 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		};
 	}
 
-	it("renders ordinary own replies in the planner context while excluding tool-derived ones", async () => {
+	it("preserves older ordinary and tool-derived dialogue as history in the planner context", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
@@ -10162,6 +10162,14 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 					actionCallbackHistory: ["ETH is $3,000 right now."],
 				},
 			},
+			...Array.from({ length: 6 }, (_, index) => ({
+				id: `later-dialogue-${index}`,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 5 + index,
+				content: { text: `Later unrelated reply ${index}`, source: "discord" },
+			})),
 		]);
 		runtime.composeState = vi.fn(async () => state);
 
@@ -10184,12 +10192,15 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		expect(plannerUserContent).toContain(
 			"prior_message:agent:\nTest Agent: Do you want that in USD or EUR?",
 		);
-		// Tool-derived own answers stay out of the planner window (stale-answer
-		// hazard): both the actions-marked and callback-history-marked rows.
-		expect(plannerUserContent).not.toContain("BTC is around $63,000");
-		expect(plannerUserContent).not.toContain("ETH is $3,000");
+		// Tool-derived answers can contain recalled story details. Preserve their
+		// visible text without leaking internal action/callback metadata.
+		expect(plannerUserContent).toContain("BTC is around $63,000");
+		expect(plannerUserContent).toContain("ETH is $3,000");
+		expect(plannerUserContent).not.toContain("actionCallbackHistory");
 		// The planner boundary instruction now covers own-reply staleness.
-		expect(plannerUserContent).toContain("treat every fact in them as stale");
+		expect(plannerUserContent).toContain(
+			"not proof of current state or newly executed effects",
+		);
 	});
 
 	it("resolves an explicit continuation turn to the prior user request for candidate inference", async () => {

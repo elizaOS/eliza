@@ -233,6 +233,22 @@ describe("promoted MEMORY tool contracts", () => {
     ).toBe(false);
   });
 
+  it("exposes caller-relative authorship on the promoted search tool", () => {
+    const search = actionNamed("MEMORY_SEARCH");
+    expect(search.parameters?.find((p) => p.name === "author")?.schema).toEqual(
+      { type: "string", enum: ["requester", "assistant"] },
+    );
+    expect(
+      validateToolArgs(search, { author: "requester", query: "Mira" }).valid,
+    ).toBe(true);
+    expect(
+      validateToolArgs(search, { author: "everyone", query: "Mira" }).valid,
+    ).toBe(false);
+    expect(
+      actionNamed("MEMORY_DELETE").parameters?.some((p) => p.name === "author"),
+    ).toBe(false);
+  });
+
   it("dispatches a valid promoted update without losing replacement text", async () => {
     const runtime = new AgentRuntime({ character: { name: "Eliza" } });
     let stored: Memory = {

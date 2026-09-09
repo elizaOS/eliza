@@ -1044,17 +1044,27 @@ export async function runV5MessageRuntimeStage1(
 		// Stage 1 has already interpreted the request. Load its complete action
 		// families first, while keeping every other authorized family explicitly
 		// discoverable. Only an entirely unresolved selection retains the full
-		// surface; an unknown hint must not discard the known families.
+		// surface; an unknown hint must not discard the known families. A reply
+		// sent to planning only to verify an applied claim, with no action hints,
+		// starts with discovery instead of loading every domain schema. Grounding
+		// and full-context restoration still run through the normal planner.
+		const stageOneCandidates =
+			getMessageHandlerCandidateActions(messageHandler);
+		const verifyReplyWithoutActionHints =
+			prePatchStageOneReplyIsUngroundedAppliedClaim &&
+			stageOneCandidates.length === 0;
 		const selectedActionFamilies =
 			args.codingMode === true || deterministicPlanSelection
 				? []
 				: collectBudgetedStageOneCandidateActions({
 						actions: plannerCandidateActions,
-						candidateActions: getMessageHandlerCandidateActions(messageHandler),
+						candidateActions: stageOneCandidates,
 						contexts: selectedContexts,
 					});
 		const progressiveActions =
-			selectedActionFamilies.length > 0 &&
+			args.codingMode !== true &&
+			!deterministicPlanSelection &&
+			(selectedActionFamilies.length > 0 || verifyReplyWithoutActionHints) &&
 			selectedActionFamilies.length < plannerCandidateActions.length
 				? selectedActionFamilies
 				: undefined;

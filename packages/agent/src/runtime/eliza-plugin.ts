@@ -238,6 +238,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           MEMORY_SEARCH: [
             "action",
             "type",
+            "author",
             "entityId",
             "roomId",
             "query",

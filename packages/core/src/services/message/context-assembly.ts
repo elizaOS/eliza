@@ -26,7 +26,6 @@ import {
 	appendStateProviderEvents,
 	currentMessageContentForContext,
 	hasStructuredRecentMessagesProvider,
-	PLANNER_MAX_OWN_REPLY_TURNS,
 	replyReferenceEventForContext,
 } from "./dialogue-context.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
@@ -98,20 +97,10 @@ export async function createV5MessageContextObject(args: {
 		});
 	}
 
+	// Planning and restoration need the same complete historical dialogue as
+	// interpretation. Prior answers remain history, never current effect proof.
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message, {
-		// The response handler needs the agent's own prior turns for grounded
-		// chat recall ("did you tell me X?"). The tool planner needs the
-		// ordinary ones too — the question/preview a continuation turn ("finish
-		// it", "that is good") refers to — but role-wide inclusion resurrects
-		// the stale-answer hazard, so the planner's window is bounded and
-		// excludes tool-derived own answers structurally.
 		includeOwnReplies: true,
-		...(args.includeTools
-			? {
-					excludeToolDerivedOwnReplies: true,
-					maxOwnReplies: PLANNER_MAX_OWN_REPLY_TURNS,
-				}
-			: {}),
 	});
 
 	// Contexts are routing taxonomy, not proof that a handler exists. Promise
@@ -153,11 +142,10 @@ export async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content: args.includeTools
-			? 'current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. The prior_message:agent blocks are your own earlier replies, shown only so you can resolve what a continuation like "finish it", "yes", or "that is good" refers to — treat every fact in them as stale. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, never answer by repeating a prior reply in place of executing the fresh check, and never claim work that no tool result proves.'
+			? "current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. The prior_message:agent blocks are your own earlier replies, historical dialogue for resolving continuations, recalled details and corrections. They are not proof of current state or newly executed effects. For a historical conversation question, inspect the earlier dialogue and apply the user's later corrections. A later assistant claim that it lacks a detail does not erase earlier message evidence. Keep each person's details separate. If original evidence is still needed, discover and use authorized memory retrieval instead of asking the user to repeat accessible history. For live data or effects, verify with current tools. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, never answer by repeating a prior reply in place of executing the fresh check, and never claim work that no tool result proves."
 			: 'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. A verified_cross_room_message block is authorized visible context from this requester\'s linked private rooms: if the requested fact appears literally in its message text, attachment description, or transcript, answer directly from that block. This is recall, not inspection of a current-turn attachment or a live calendar lookup, so it does not require ATTACHMENT, CALENDAR, or another tool; never infer details absent from the block or expose a private attachment URL. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
-				// Only the chat-recall context renders the agent's own prior turns;
-				// the tool-planner context deliberately omits them (stale-answer
-				// hazard), so this grounding sentence would be false there.
+				// The planning boundary above also distinguishes historical recall
+				// from current tool verification.
 				(args.includeTools
 					? ""
 					: " Your own prior replies are the prior_message:agent blocks: when asked what YOU said, told, or promised earlier, answer only from those blocks — never assert you said something that does not appear in them, and never deny saying something that does.") +

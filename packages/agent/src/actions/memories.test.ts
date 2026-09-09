@@ -1657,6 +1657,111 @@ describe("MEMORY op:search complete traversal", () => {
     expect(result.text).not.toContain("private.example");
   });
 
+  it("distinguishes assistant restatements from original speaker messages", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (const [index, entityId] of [USER_ID, AGENT_ID].entries()) {
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: `00000000-0000-0000-0000-00000000000${index + 1}` as UUID,
+          agentId: AGENT_ID,
+          entityId,
+          roomId: ROOM_ID,
+          createdAt: index + 1,
+          content: { text: "Mira correction: burgundy charger" },
+        } as Memory,
+      });
+    }
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "messages",
+      query: "burgundy",
+    });
+    expect(result.text).toContain(`[author=assistant; entityId=${AGENT_ID}]`);
+    expect(result.text).toContain(
+      `[author=other speaker; entityId=${USER_ID}]`,
+    );
+    const original = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "messages",
+      query: "burgundy",
+      entityId: USER_ID,
+    });
+    expect(original.text).not.toContain("[author=assistant;");
+    expect(original.text).toContain(
+      `[author=other speaker; entityId=${USER_ID}]`,
+    );
+    expect(rows).toHaveLength(2);
+  });
+
+  it("resolves requester and assistant authors from the current turn without widening scope", async () => {
+    const { runtime, rows } = makeRuntime();
+    const thirdParty = "cccccccc-cccc-cccc-cccc-cccccccccccc" as UUID;
+    for (const [index, entityId] of [USER_ID, AGENT_ID, thirdParty].entries()) {
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          agentId: AGENT_ID,
+          entityId,
+          roomId: ROOM_ID,
+          createdAt: index + 1,
+          content: { text: "Mira correction: burgundy charger" },
+        } as Memory,
+      });
+    }
+    for (const [author, entityId] of [
+      ["requester", USER_ID],
+      ["assistant", AGENT_ID],
+    ]) {
+      const result = await runAction(runtime, makeMessage(), {
+        action: "search",
+        author,
+        query: "burgundy",
+      });
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(`entityId=${entityId}`);
+      for (const other of [USER_ID, AGENT_ID, thirdParty].filter(
+        (id) => id !== entityId,
+      )) {
+        expect(result.text).not.toContain(`entityId=${other}`);
+      }
+    }
+    const differentRequester = { ...makeMessage(), entityId: thirdParty };
+    const third = await runAction(runtime, differentRequester, {
+      action: "search",
+      author: "requester",
+      query: "burgundy",
+    });
+    expect(third.success).toBe(true);
+    expect(third.text).toContain(`entityId=${thirdParty}`);
+    expect(third.text).not.toContain(`entityId=${USER_ID}`);
+    expect(rows).toHaveLength(3);
+  });
+
+  it("rejects ambiguous or unavailable author filters instead of searching everyone", async () => {
+    const { runtime } = makeRuntime();
+    const invalidFilters: TestParams[] = [
+      { author: "anyone" },
+      { author: "requester", type: "facts" },
+      { author: "requester", entityId: AGENT_ID },
+      { author: "requester", entityId: "malformed" },
+    ];
+    for (const params of invalidFilters) {
+      const result = await runAction(runtime, makeMessage(), {
+        action: "search",
+        ...params,
+      });
+      expect(result.success).toBe(false);
+    }
+    const missing = await runAction(
+      runtime,
+      { ...makeMessage(), entityId: undefined } as unknown as Memory,
+      { action: "search", author: "requester" },
+    );
+    expect(missing.success).toBe(false);
+  });
+
   it("ranks an exact all-term match ahead of newer partial decoys", async () => {
     const { runtime, rows } = makeRuntime();
     const targetId = seedFact(rows, {

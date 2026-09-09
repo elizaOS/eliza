@@ -843,16 +843,17 @@ describe("v5 tiered action surface", () => {
 
 			const tools = plannerToolNames(runtime);
 			expect(tools).toContain("CALENDAR");
-			expect(tools).toContain("VIEWS");
-			if (candidateActionNames.includes("MISSING_CAPABILITY")) {
-				expect(tools).toContain("UNRELATED");
-			} else {
-				expect(tools).not.toContain("UNRELATED");
-				expect(tools).toContain("DISCOVER_TOOLS");
-				expect(availableActionsSection(runtime)).toContain(
-					'"name":"UNRELATED"',
-				);
+			// The response-handler evaluator can recover CALENDAR even when the
+			// original hints are unknown. Preserve that admitted family; navigation
+			// and unrelated families remain discoverable instead of forcing them
+			// all into the native schema list.
+			if (!candidateActionNames.includes("MISSING_CAPABILITY")) {
+				expect(tools).toContain("VIEWS");
 			}
+			expect(tools).not.toContain("UNRELATED");
+			expect(tools).toContain("DISCOVER_TOOLS");
+			expect(availableActionsSection(runtime)).toContain('"name":"VIEWS"');
+			expect(availableActionsSection(runtime)).toContain('"name":"UNRELATED"');
 			expect(tools).not.toContain("MISSING_CAPABILITY");
 			expect(tools).not.toContain("PRIVATE_CALENDAR_REPAIR");
 			expect(tools).not.toContain("CALENDAR_ADMIN_ONLY");
@@ -866,6 +867,50 @@ describe("v5 tiered action surface", () => {
 			expect(adminHandler).not.toHaveBeenCalled();
 		},
 	);
+
+	it("verifies an applied recall claim without loading unrelated domain schemas", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const answer = "Rowan is bringing a blue mug and a yellow notebook.";
+		const runtime = makeRuntime({
+			actions: [
+				makeAction({ name: "CALENDAR", contexts: ["general"], handler }),
+				makeAction({ name: "NOTES", contexts: ["general"], handler }),
+			],
+			responses: [
+				stage1Response({
+					contexts: ["simple"],
+					candidateActionNames: [],
+					intents: [],
+					replyEffectStatus: "applied",
+					replyText: answer,
+				}),
+				plannerToolResponse("REPLY", {
+					text: answer,
+					eliza_turn_scope: "final",
+				}),
+			],
+		});
+		const state = makeState();
+		state.text =
+			"User correction: Rowan is bringing a blue mug and a yellow notebook.";
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("What was Rowan bringing after my correction?"),
+			state,
+			responseId: RESPONSE_ID,
+		});
+		const tools = plannerToolNames(runtime);
+		expect(tools).toContain("DISCOVER_TOOLS");
+		expect(tools).toContain("REPLY");
+		expect(tools).not.toContain("CALENDAR");
+		expect(tools).not.toContain("NOTES");
+		expect(availableActionsSection(runtime)).toContain('"name":"CALENDAR"');
+		expect(availableActionsSection(runtime)).toContain('"name":"NOTES"');
+		expect(handler).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply")
+			expect(result.result.responseContent?.text).toBe(answer);
+	});
 
 	it("keeps other admitted actions discoverable beside a focused-view hint", async () => {
 		const notes = makeAction({
