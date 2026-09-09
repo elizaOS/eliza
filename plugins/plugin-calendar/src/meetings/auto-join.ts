@@ -294,6 +294,21 @@ async function reconcileEvent(
   }
   const current = live.filter((task) => taskMode(task) === policy);
 
+  // A task that already reached a terminal state for this same event start
+  // under the current policy is settled: the agent joined, or the owner
+  // answered the approval, and the meeting is still in progress. Recreating it
+  // would anchor a fresh join at start - 1 min, which is already due, so the
+  // agent would join the same meeting a second time (#29961). A rescheduled
+  // event carries a new startAt and is reconciled afresh.
+  const settled = existing.some(
+    (task) =>
+      !isLive(task) &&
+      task.state.status !== "failed" &&
+      taskMode(task) === policy &&
+      task.metadata?.eventStartAt === event.startAt,
+  );
+  if (settled) return current;
+
   if (policy === "all") {
     const join = current.find((task) => taskRole(task) === "join");
     if (join) return [join];
