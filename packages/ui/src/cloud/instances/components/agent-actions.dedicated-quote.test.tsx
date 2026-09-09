@@ -1,6 +1,10 @@
 /** Verifies that Dedicated activation renders and confirms only the server quote. */
 // @vitest-environment jsdom
 
+import {
+  readStoredStewardToken,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -515,7 +519,9 @@ describe("Dedicated activation quote", () => {
       init.method === "POST"
         ? {
             status: 202,
-            data: { data: { dedicatedAgentId: "dedicated-target", jobId: "job" } },
+            data: {
+              data: { dedicatedAgentId: "dedicated-target", jobId: "job" },
+            },
           }
         : { status: 200, data: { data: QUOTE } },
     );
@@ -565,11 +571,147 @@ describe("Dedicated activation quote", () => {
     expect(runSharedToDedicatedUpgradeHandoff).not.toHaveBeenCalled();
   });
 
+  it.each(["account", "agent", "pagehide", "unmount"])(
+    "does not publish a recovered cookie token after %s changes the review context",
+    async (change) => {
+      const { ensureCloudSessionForRepair: recover } = await vi.importActual<
+        typeof import("../../../state/cloud-session-refresh-for-repair")
+      >("../../../state/cloud-session-refresh-for-repair");
+      localStorage.clear();
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let recovery: Promise<string | null> | undefined;
+      readCloudBearerToken.mockImplementation(async () =>
+        readStoredStewardToken(),
+      );
+      ensureCloudSessionForRepair.mockImplementation((deps) => {
+        recovery = recover({
+          ...deps,
+          hasCookie: () => true,
+          refreshFn: async () => {
+            entered();
+            await held;
+            return { token: "obsolete-cookie-token" };
+          },
+        });
+        return recovery;
+      });
+      apiWithStatus.mockResolvedValue({ status: 200, data: { data: QUOTE } });
+      const view = renderChangingAgent();
+      try {
+        await userEvent.click(screen.getByTestId("agent-upgrade-tier-button"));
+        await started;
+        act(() => {
+          if (change === "account") view.changeSession("account-b");
+          else if (change === "agent") view.changeAgent("another-shared-agent");
+          else if (change === "unmount") view.unmount();
+          else
+            window.dispatchEvent(
+              new PageTransitionEvent("pagehide", { persisted: true }),
+            );
+        });
+        await act(async () => {
+          release();
+          await recovery;
+        });
+        expect(readStoredStewardToken()).toBeNull();
+        expect(
+          screen.queryByRole("button", { name: "Activate Dedicated" }),
+        ).toBeNull();
+        expect(
+          apiWithStatus.mock.calls.every(([, init]) => init.method === "GET"),
+        ).toBe(true);
+        expect(runSharedToDedicatedUpgradeHandoff).not.toHaveBeenCalled();
+      } finally {
+        release();
+        await recovery;
+        cleanup();
+        localStorage.clear();
+      }
+    },
+  );
+
+  it("requires a fresh explicit review after canonical cookie recovery publishes a session", async () => {
+    const { ensureCloudSessionForRepair: recover } = await vi.importActual<
+      typeof import("../../../state/cloud-session-refresh-for-repair")
+    >("../../../state/cloud-session-refresh-for-repair");
+    localStorage.clear();
+    readCloudBearerToken.mockImplementation(async () =>
+      readStoredStewardToken(),
+    );
+    ensureCloudSessionForRepair.mockImplementation((deps) =>
+      recover({
+        ...deps,
+        hasCookie: () => true,
+        refreshFn: async () => ({ token: "canonical-cookie-token" }),
+      }),
+    );
+    apiWithStatus.mockImplementation(async (_url, init) =>
+      init.method === "POST"
+        ? {
+            status: 202,
+            data: {
+              data: { dedicatedAgentId: "dedicated-target", jobId: "job" },
+            },
+          }
+        : { status: 200, data: { data: QUOTE } },
+    );
+    runSharedToDedicatedUpgradeHandoff.mockResolvedValue({
+      status: "switched-empty",
+      imported: 0,
+    });
+    try {
+      renderActions();
+      await waitFor(() => expect(apiWithStatus).toHaveBeenCalledTimes(1));
+      await userEvent.click(screen.getByTestId("agent-upgrade-tier-button"));
+      await screen.findByRole("alert");
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        "canonical-cookie-token",
+      );
+      expect(
+        screen.queryByRole("button", { name: "Activate Dedicated" }),
+      ).toBeNull();
+      // Session publication must not silently refresh the quote or activate.
+      expect(apiWithStatus).toHaveBeenCalledTimes(1);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Review current quote" }),
+      );
+      const confirm = await screen.findByRole("button", {
+        name: "Activate Dedicated",
+      });
+      expect(
+        apiWithStatus.mock.calls.every(([, init]) => init.method === "GET"),
+      ).toBe(true);
+      await userEvent.click(confirm);
+      await waitFor(() =>
+        expect(runSharedToDedicatedUpgradeHandoff).toHaveBeenCalledWith(
+          expect.objectContaining({ authToken: "canonical-cookie-token" }),
+        ),
+      );
+      expect(
+        apiWithStatus.mock.calls.filter(([, init]) => init.method === "POST"),
+      ).toHaveLength(1);
+      expect(ensureCloudSessionForRepair).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+      localStorage.clear();
+    }
+  });
+
   it("does not activate or open a quote while cookie session recovery is pending", async () => {
     readCloudBearerToken.mockResolvedValue(null);
     let finishRecovery!: (token: string | null) => void;
     ensureCloudSessionForRepair.mockImplementation(
-      () => new Promise((resolve) => { finishRecovery = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          finishRecovery = resolve;
+        }),
     );
     apiWithStatus.mockResolvedValue({ status: 200, data: { data: QUOTE } });
     const view = renderChangingAgent();
@@ -582,6 +724,9 @@ describe("Dedicated activation quote", () => {
     ).toBeNull();
     view.changeSession("account-b");
     await act(async () => finishRecovery("obsolete-recovery-token"));
+    expect(ensureCloudSessionForRepair.mock.calls[0][0].signal.aborted).toBe(
+      true,
+    );
     expect(
       screen.queryByRole("button", { name: "Activate Dedicated" }),
     ).toBeNull();

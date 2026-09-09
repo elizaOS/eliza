@@ -75,6 +75,7 @@ import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
 import { dispatchCloudHandoffPhase } from "../../../events";
+import { ensureCloudSessionForRepair } from "../../../state/cloud-session-refresh-for-repair";
 import { directCloudSharedAgentIdFromBase } from "../../../utils/cloud-agent-base";
 import { silentlyRepointToDedicated } from "../../handoff/silent-repoint";
 import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
@@ -131,6 +132,13 @@ export function ElizaAgentActions({
   const sessionUserId = session.authenticated
     ? (session.user?.id ?? null)
     : null;
+  const sessionChangedNotice = t(
+    "cloud.containers.agentActions.upgradeSessionChanged",
+    {
+      defaultValue:
+        "Your Cloud session changed. Review the current agent state and Dedicated quote before continuing.",
+    },
+  );
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
@@ -181,9 +189,8 @@ export function ElizaAgentActions({
         reviewedQuote.current !== null || upgradeRequest.current !== null;
       invalidateUpgradeReview();
       if (hadActiveDecision) {
-        toast.info(
-          "Your Cloud session changed. Review the current agent state and Dedicated quote before continuing.",
-        );
+        setUpgradeReviewNotice(sessionChangedNotice);
+        setShowUpgradeConfirm(true);
       }
     }
     function onStorage(event: StorageEvent) {
@@ -214,7 +221,7 @@ export function ElizaAgentActions({
       window.removeEventListener("steward-token-sync", onSessionChange);
       window.removeEventListener("storage", onStorage);
     };
-  }, [agentId, executionTier, status, sessionUserId]);
+  }, [agentId, executionTier, status, sessionUserId, sessionChangedNotice]);
 
   const requestFreshUpgradeReview = useCallback(() => {
     reviewedQuote.current = null;
@@ -484,6 +491,9 @@ export function ElizaAgentActions({
   }
 
   async function reviewDedicatedQuote() {
+    upgradeRequest.current?.abort();
+    const controller = new AbortController();
+    upgradeRequest.current = controller;
     const epoch = ++upgradeEpoch.current;
     reviewedQuote.current = null;
     reviewedBearer.current = undefined;
@@ -492,8 +502,36 @@ export function ElizaAgentActions({
     setUpgradeReviewNotice(null);
     setLoading("upgrade-quote");
     try {
-      const bearer = await readCloudBearerToken();
+      let bearer = await readCloudBearerToken();
       if (upgradeEpoch.current !== epoch) return;
+      if (!bearer) {
+        // Handoff needs a bearer even when the quote API accepts cookies. Use
+        // the owned session recovery before presenting paid consent, never
+        // discover a missing handoff credential after activation is accepted.
+        bearer = await ensureCloudSessionForRepair({
+          signal: controller.signal,
+          beforePublish: () => {
+            controller.signal.throwIfAborted();
+            if (upgradeEpoch.current !== epoch) {
+              throw new Error("Dedicated review context changed");
+            }
+          },
+          emitSyncEvent: false,
+        });
+        // Canonical publication also invalidates this review. Its session
+        // notice offers an explicit new review under the published credential.
+        if (upgradeEpoch.current !== epoch) return;
+        if (!bearer) {
+          setUpgradeReviewNotice(
+            t("cloud.containers.agentActions.upgradeSessionUnavailable", {
+              defaultValue:
+                "Your Cloud session could not be prepared for Dedicated setup. Shared is unchanged. Review again to retry session recovery; activation still requires a separate confirmation.",
+            }),
+          );
+          setShowUpgradeConfirm(true);
+          return;
+        }
+      }
       // A cached mount-time quote is useful for the button label, not consent.
       // Every review (including one reopened after Cancel) reads current terms.
       const refreshed = await upgradeQuoteQuery.refetch();
@@ -528,6 +566,7 @@ export function ElizaAgentActions({
         `${t("cloud.containers.agentActions.upgradeQuoteFailed", { defaultValue: "Could not load the current Dedicated quote" })}: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
+      if (upgradeRequest.current === controller) upgradeRequest.current = null;
       if (upgradeEpoch.current === epoch) setLoading(null);
     }
   }
@@ -547,7 +586,7 @@ export function ElizaAgentActions({
     const bearer = reviewedBearer.current;
     if (
       !quote ||
-      bearer === undefined ||
+      !bearer ||
       !canUpgrade ||
       !quote.canActivate ||
       upgradeSource.current?.agentId !== agentId ||
@@ -593,7 +632,7 @@ export function ElizaAgentActions({
       }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
         method: "POST",
         signal: controller.signal,
-        ...(bearer ? { headers: { Authorization: `Bearer ${bearer}` } } : {}),
+        headers: { Authorization: `Bearer ${bearer}` },
         json: {
           action: "activate_dedicated",
           quoteId: quote.quoteId,

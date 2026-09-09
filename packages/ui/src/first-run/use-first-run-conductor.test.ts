@@ -1943,7 +1943,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // Eliza is resolved server-side. The signal lets a bounded first-run
     // attempt cancel this request without changing that server-side policy.
     expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
-    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(mocks.client.resolveCloudAgentForEntry).not.toHaveBeenCalled();
     expect(
       mocks.client.getPersonalSharedEliza.mock.calls[0][0]?.signal,
     ).toBeInstanceOf(AbortSignal);

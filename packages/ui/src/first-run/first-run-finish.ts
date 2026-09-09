@@ -718,8 +718,8 @@ export async function listOrAutoProvisionCloudAgent(
     let firstRunReady = false;
     const selected = await runJoinFlow({
       client: {
-        ensurePersonalDedicatedEliza: (options) =>
-          client.ensurePersonalDedicatedEliza(options),
+        getPersonalSharedEliza: (options) =>
+          client.getPersonalSharedEliza(options),
         setBaseUrl: (base) =>
           authority.commitClient(() => client.setBaseUrl(base), { base }),
         setToken: (token) =>
