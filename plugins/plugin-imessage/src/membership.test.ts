@@ -52,6 +52,10 @@ class SyntheticRosterSource implements IMessageMembershipRosterSource {
     this.chats.set(chatId, { chatType, handles });
   }
 
+  removeChat(chatId: string): void {
+    this.chats.delete(chatId);
+  }
+
   listChatIds(): readonly string[] {
     if (this.failure) throw this.failure;
     return [...this.chats.keys()];
@@ -265,6 +269,53 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const after = await membership.authorize(
       scope,
       imessageMembershipPrincipalId("default", "+15550006666")
+    );
+    expect(after.decision).toBe("allowed");
+  });
+
+  it("refuses to publish an empty successful roster and fails closed (empty-roster guard)", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;+;chat-empty-roster";
+    source.setChat(chatId, "group", ["+155****8888"]);
+    await publisher.sweepRoster(source);
+
+    // The read SUCCEEDS but the roster is empty: the chat.db LEFT JOIN
+    // returned the chat row with a NULL handle aggregate (or every handle
+    // row was dropped by the truthy filter). Publishing a `complete`
+    // 0-member snapshot here would tell the authority "everyone left" —
+    // an authoritative mass-removal signal from absence of evidence.
+    source.setChat(chatId, "group", []);
+    const published = await publisher.sweepRoster(source);
+    expect(published).toBe(0);
+
+    const scope = await scopeFor(chatId);
+    const health = await membership.getScopeHealth(scope);
+    expect(health?.health).toBe("unavailable");
+    const decision = await membership.authorize(
+      scope,
+      imessageMembershipPrincipalId("default", "+155****8888")
+    );
+    expect(decision.decision).toBe("denied");
+
+    // A falsy handle (empty handle.id filtered by the truthy check in
+    // materializeMembers) is the same absence-of-evidence class: the scope
+    // is degraded, never published as a complete empty roster.
+    const orphanChatId = "Imessage;-;+155****0000";
+    source.setChat(orphanChatId, "direct", [""]);
+    const publishedOrphan = await publisher.sweepRoster(source);
+    expect(publishedOrphan).toBe(0);
+    const orphanScope = await scopeFor(orphanChatId);
+    const orphanHealth = await membership.getScopeHealth(orphanScope);
+    expect(orphanHealth?.health).toBe("unavailable");
+
+    // Recovery: a later non-empty successful read restores admission.
+    source.setChat(chatId, "group", ["+155****8888"]);
+    source.removeChat(orphanChatId);
+    const restored = await publisher.sweepRoster(source);
+    expect(restored).toBeGreaterThanOrEqual(1);
+    const after = await membership.authorize(
+      scope,
+      imessageMembershipPrincipalId("default", "+155****8888")
     );
     expect(after.decision).toBe("allowed");
   });

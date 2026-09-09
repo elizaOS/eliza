@@ -555,6 +555,23 @@ export class IMessageMembershipPublisher {
       chatId: roster.chatId,
     });
     const key = scopeKey(scope);
+    // A committed `complete` snapshot with zero usable members is an
+    // authoritative "everyone left" mass-removal signal, but an empty
+    // successful read (chat.db LEFT JOIN NULL aggregate, a scoped query
+    // matching no rows, or every handle row failing the truthy filter) is
+    // absence of evidence, not evidence of absence. Fail closed instead of
+    // publishing. NOTE: this guard must run OUTSIDE serialized() —
+    // degradeScope takes the same per-key mutex and serialized() is not
+    // reentrant; guarding inside the lock deadlocks.
+    if (!roster.participants.some((participant) => participant.handle)) {
+      await this.degradeScope({
+        chatId: roster.chatId,
+        reason:
+          "chat.db roster returned no usable participants; refusing to publish an empty complete roster",
+        observedAt: input.observedAt,
+      });
+      return false;
+    }
     return this.serialized(key, async () => {
       let tracker = await this.ensureRegistered(scope);
       const observedAt = input.observedAt ?? new Date().toISOString();
