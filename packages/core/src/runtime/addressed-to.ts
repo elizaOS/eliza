@@ -76,9 +76,14 @@ export async function applyAddressedTo(
 		}
 		resolved.push(targetId);
 
+		// Canonical-pair lookup WITHOUT a tag filter: the addressed edge is
+		// upserted onto whatever relationship row already owns the pair. The
+		// canonical store treats (source, target, agentId) as the uniqueness
+		// key — createRelationship returns false for an existing pair of ANY
+		// tag flavor (a seeded "friend" edge included), so a tag-scoped
+		// lookup here would miss it and report a phantom create.
 		const existingList = await runtime.getRelationships({
 			entityIds: [speakerId],
-			tags: [ADDRESSED_RELATIONSHIP_TAGS[0]],
 		});
 		const existing = existingList.find(
 			(rel) =>
