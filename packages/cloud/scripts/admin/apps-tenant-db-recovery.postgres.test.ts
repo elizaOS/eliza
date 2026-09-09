@@ -52,6 +52,27 @@ const SIGNING_KEY = "drill-test-signing-key";
 const PASSPHRASE = "drill-test-passphrase";
 
 /**
+ * pg_dump/pg_dumpall connection environment for a parsed admin DSN. WHATWG
+ * `URL` returns `username` and `password` percent-encoded; postgres roles and
+ * passwords arrive in the DSN escaped, so both must be decoded before
+ * libpq sees them, or any credential the DSN grammar forced the author to
+ * escape (@ / : / %) reaches the tool as literal escaped bytes (#29135 r5).
+ */
+function pgEnvFromUrl(url: URL): {
+  PGHOST: string;
+  PGPORT: string;
+  PGUSER: string;
+  PGPASSWORD: string;
+} {
+  return {
+    PGHOST: url.hostname,
+    PGPORT: url.port || "5432",
+    PGUSER: decodeURIComponent(url.username),
+    PGPASSWORD: decodeURIComponent(url.password ?? ""),
+  };
+}
+
+/**
  * Shell is required for glob/redirection features (sha256sum > file, tar).
  * All interpolated values are test-generated constants (mkdtemp paths,
  * generated database names) — never external input — so shell metacharacter
@@ -116,12 +137,7 @@ async function buildMultiTenantBackupFixture(
     sh(
       `pg_dump --format=custom --no-owner --no-privileges --dbname=${tenants[i].sourceDb} --file=${join(dumpsDir, `${dumpIds[i]}.dump`)}`,
       {
-        env: {
-          PGHOST: url.hostname,
-          PGPORT: url.port || "5432",
-          PGUSER: decodeURIComponent(url.username),
-          PGPASSWORD: url.password ?? "",
-        },
+        env: pgEnvFromUrl(url),
       },
     );
   }
@@ -908,6 +924,27 @@ describe.if(ENABLED)(
     }, 120_000);
   },
 );
+
+describe("pg_dump DSN credential decoding (#29135 r5)", () => {
+  test("an escaped-password DSN reaches pg_dump decoded", () => {
+    // Every character class the DSN grammar forces the author to escape
+    // (@ / : %) plus non-ASCII, exercised together in one password.
+    const dsn =
+      "postgresql://drill_admin:p%40ss%2Fwo%3Ard%2520%E2%82%AC@db.example.com:5433/drill_src";
+    const env = pgEnvFromUrl(new URL(dsn));
+    expect(env.PGHOST).toBe("db.example.com");
+    expect(env.PGPORT).toBe("5433");
+    expect(env.PGUSER).toBe("drill_admin");
+    expect(env.PGPASSWORD).toBe("p@ss/wo:rd%20€");
+  });
+
+  test("a DSN without a password yields an empty PGPASSWORD, never 'null'/'undefined'", () => {
+    const env = pgEnvFromUrl(
+      new URL("postgresql://drill_admin@db.example.com:5433/drill_src"),
+    );
+    expect(env.PGPASSWORD).toBe("");
+  });
+});
 
 if (!ENABLED) {
   describe("restore drill authority on real PostgreSQL (#23453) [gated]", () => {
