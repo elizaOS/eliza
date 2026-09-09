@@ -242,10 +242,22 @@ function installFetchFixture(files: Map<string, string>): void {
  * Returns the ranges each remote path was requested with, so tests can assert
  * resume-vs-fresh behavior.
  */
-function installRangeAwareFetchFixture(files: Map<string, string>): {
+function installRangeAwareFetchFixture(
+	files: Map<string, string>,
+	options: {
+		/**
+		 * `honor` answers a Range request with the requested tail (the
+		 * HuggingFace CDN); `clamp-to-zero` answers 206 with the whole file and
+		 * `Content-Range: bytes 0-…`, the way a proxy that ignores the requested
+		 * offset but still reports partial content does (#30939).
+		 */
+		rangeMode?: "honor" | "clamp-to-zero";
+	} = {},
+): {
 	rangeRequests: Map<string, string[]>;
 } {
 	const rangeRequests = new Map<string, string[]>();
+	const rangeMode = options.rangeMode ?? "honor";
 	globalThis.fetch = vi.fn(
 		async (url: string | URL | Request, init?: RequestInit) => {
 			const remotePath = remotePathOf(url);
@@ -260,7 +272,8 @@ function installRangeAwareFetchFixture(files: Map<string, string>): {
 				seen.push(range);
 				rangeRequests.set(remotePath, seen);
 				const match = /^bytes=(\d+)-$/.exec(range);
-				const start = match?.[1] ? Number.parseInt(match[1], 10) : 0;
+				const requestedStart = match?.[1] ? Number.parseInt(match[1], 10) : 0;
+				const start = rangeMode === "clamp-to-zero" ? 0 : requestedStart;
 				const buf = Buffer.from(body);
 				if (start >= buf.length) {
 					return new Response("range not satisfiable", {
@@ -1419,6 +1432,55 @@ describe("local inference downloader stale-content robustness", () => {
 		// No staging residue (part or sidecar) left behind.
 		expect(fs.existsSync(textPart)).toBe(false);
 		expect(fs.existsSync(`${textPart}.expected`)).toBe(false);
+	});
+
+	it("restarts from byte zero when a 206 reports a Content-Range that does not start at the partial (#30939)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		const { rangeRequests } = installRangeAwareFetchFixture(
+			freshBundleFixtureFiles(),
+			{ rangeMode: "clamp-to-zero" },
+		);
+
+		// A genuine interrupted download of the CURRENT content, exactly as in
+		// the valid-resume case above; only the origin differs.
+		const prefixLen = 17;
+		const textPart = eliza1StagingPartPath(root, CANONICAL_TEXT_PATH);
+		fs.mkdirSync(path.dirname(textPart), { recursive: true });
+		fs.writeFileSync(textPart, freshBundleBytes.text.slice(0, prefixLen));
+		fs.writeFileSync(`${textPart}.expected`, sha256(freshBundleBytes.text));
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		// The resume was attempted from the partial's offset ...
+		expect(
+			rangeRequests.get(eliza1BundleRemotePath(CANONICAL_TEXT_PATH)),
+		).toEqual([`bytes=${prefixLen}-`]);
+		// ... but the 206 covered bytes 0-, so that one response was written
+		// from byte zero instead of appended onto the partial. Without the
+		// Content-Range check the appended file fails its hash and the whole
+		// file is fetched a second time, so exactly one request is the pin.
+		const textFetches = (
+			globalThis.fetch as ReturnType<typeof vi.fn>
+		).mock.calls.filter(
+			([url]) =>
+				remotePathOf(url as string | URL | Request) ===
+				eliza1BundleRemotePath(CANONICAL_TEXT_PATH),
+		);
+		expect(textFetches).toHaveLength(1);
+		expect(
+			fs.readFileSync(eliza1BundleFinalPath(root, CANONICAL_TEXT_PATH), "utf8"),
+		).toBe(freshBundleBytes.text);
+		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
+		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
 	});
 
 	it("still range-resumes a valid .part recorded against the current manifest sha", async () => {

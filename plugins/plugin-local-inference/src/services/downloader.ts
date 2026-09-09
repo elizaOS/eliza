@@ -561,6 +561,24 @@ async function promoteCompletePartial(
 	return { path: finalPath, sizeBytes, sha256 };
 }
 
+/**
+ * Start offset a 206 Partial Content response actually covers, from its
+ * Content-Range header (`bytes <start>-<end>/<size>`). Returns null when the
+ * header is missing or malformed, which a resume must treat as "not honored":
+ * RFC 7233 requires Content-Range on every 206, and the header, not the status
+ * code, states which bytes were sent (#30939).
+ */
+export function contentRangeStart(
+	header: string | string[] | undefined,
+): number | null {
+	const value = Array.isArray(header) ? header[0] : header;
+	if (typeof value !== "string") return null;
+	const match = /^bytes\s+(\d+)-(\d+)\/(?:\d+|\*)$/i.exec(value.trim());
+	if (!match) return null;
+	const start = Number.parseInt(match[1], 10);
+	return Number.isFinite(start) ? start : null;
+}
+
 export class Downloader {
 	private readonly active = new Map<string, ActiveJob>();
 	private readonly terminal = new Map<string, DownloadJob>();
@@ -1176,7 +1194,12 @@ export class Downloader {
 					signal: record.abortController.signal,
 				});
 				let effectiveStartByte = startByte;
-				if (effectiveStartByte > 0 && response.statusCode !== 206) {
+				if (
+					effectiveStartByte > 0 &&
+					(response.statusCode !== 206 ||
+						contentRangeStart(response.headers["content-range"]) !==
+							effectiveStartByte)
+				) {
 					effectiveStartByte = 0;
 					record.job.received = 0;
 				}
@@ -1594,7 +1617,11 @@ export class Downloader {
 					headers,
 					signal: record.abortController.signal,
 				});
-				if (startByte > 0 && response.statusCode !== 206) {
+				if (
+					startByte > 0 &&
+					(response.statusCode !== 206 ||
+						contentRangeStart(response.headers["content-range"]) !== startByte)
+				) {
 					startByte = 0;
 					record.job.received = baseBytes;
 				}
