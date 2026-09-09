@@ -1767,6 +1767,19 @@ function settleLifeActionReply(result: PendingLifeActionResult): ActionResult {
       ...(typeof userFacingText === "string" ? { userFacingText } : {}),
     };
   }
+  if (outcome.success === false && text.kind === "model") {
+    // A renderer's prose is not verification of a rejected operation. Keep
+    // the complete draft with its typed failure for the planner to resolve.
+    return applyGroundedActionReply(
+      {
+        ...outcome,
+        transcriptVisibility: "internal",
+        verifiedUserFacing: false,
+        turnComplete: false,
+      },
+      text,
+    );
+  }
   return applyGroundedActionReply(
     {
       ...outcome,
@@ -6744,9 +6757,6 @@ export async function runLifeOperationHandler(
     options,
     result,
   });
-  if (result.replyFailure) {
-    return { ...result, effectReceipts: [receipt] };
-  }
   // A rejected lookup leaves no write to reconcile. Preserve its failure and
   // diagnostics while allowing the planner's existing observation recovery.
   const observationFailure =
@@ -6754,11 +6764,16 @@ export async function runLifeOperationHandler(
     lifeRequestedOperation(options) === "review" &&
     receipt.outcome === "failed" &&
     receipt.failure.acceptance === "rejected";
-  return completeLifeOpsEffect(
-    callback,
-    observationFailure
-      ? { ...result, data: { ...result.data, readOnlyOperation: true } }
-      : result,
-    receipt,
-  );
+  const settledResult = observationFailure
+    ? { ...result, data: { ...result.data, readOnlyOperation: true } }
+    : result;
+  if (
+    result.replyFailure ||
+    (result.transcriptVisibility === "internal" &&
+      result.success === false &&
+      result.userFacingText === undefined)
+  ) {
+    return { ...settledResult, effectReceipts: [receipt] };
+  }
+  return completeLifeOpsEffect(callback, settledResult, receipt);
 }
