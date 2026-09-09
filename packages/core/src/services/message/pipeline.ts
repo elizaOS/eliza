@@ -1128,7 +1128,14 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const plannerTools = collectPlannerTools(
+			plannerContextWithDecision,
+			undefined,
+			{
+				canonicalFamilies: true,
+				candidateActions: getMessageHandlerCandidateActions(messageHandler),
+			},
+		);
 		const budgetedPlannerContextWithDecision = plannerContextWithDecision;
 		const plannerProviderAttributionState = plannerState;
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
