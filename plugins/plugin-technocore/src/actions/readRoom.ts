@@ -14,7 +14,7 @@ import {
 } from "../services/technocore";
 
 function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
-  const service = runtime.getService?.("technocore") as
+  const service = runtime.getService("technocore") as
     | TechnocoreService
     | undefined;
   if (!service) {
@@ -53,7 +53,7 @@ export const readRoomAction: Action = {
   ): Promise<ActionResult> => {
     try {
       const defaultRoom =
-        (runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) ||
+        (runtime.getSetting("TECHNOCORE_DEFAULT_ROOM") as string) ||
         "technocore";
 
       const text = message.content?.text || "";

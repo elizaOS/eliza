@@ -10,7 +10,7 @@ import type {
 import type { TechnocoreService } from "../services/technocore";
 
 function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
-  const service = runtime.getService?.("technocore") as
+  const service = runtime.getService("technocore") as
     | TechnocoreService
     | undefined;
   if (!service) {
@@ -46,7 +46,7 @@ export function extractNamespace(
   }
 
   return (
-    (runtime.getSetting?.("TECHNOCORE_DEFAULT_NS") as string) || "eliza-agent"
+    (runtime.getSetting("TECHNOCORE_DEFAULT_NS") as string) || "eliza-agent"
   );
 }
 

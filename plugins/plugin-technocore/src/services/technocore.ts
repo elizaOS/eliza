@@ -137,6 +137,13 @@ export class TechnocoreService extends Service {
     this.did = `did:key:z${base58Encode(multicodec)}`;
   }
 
+  public static async start(
+    runtime: IAgentRuntime,
+    config?: Partial<TechnocoreConfig>,
+  ): Promise<TechnocoreService> {
+    return new TechnocoreService(runtime, config);
+  }
+
   public override async stop(): Promise<void> {
     // Cleanup service resources on shutdown
   }
@@ -161,11 +168,10 @@ export class TechnocoreService extends Service {
   }
 
   private async request<T>(
-    method: string,
+    method: "GET" | "POST",
     path: string,
     params?: Record<string, string | number | undefined>,
     body?: Record<string, unknown>,
-    maxRetries = 3,
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
     if (params) {
@@ -175,17 +181,15 @@ export class TechnocoreService extends Service {
         }
       }
     }
-    if (!url.searchParams.has("format")) {
-      url.searchParams.set("format", "json");
-    }
 
+    const maxRetries = 3;
     const headers: Record<string, string> = {
-      "User-Agent": "elizaOS-TechnocorePlugin/1.0",
       Accept: "application/json, text/plain, */*",
+      "User-Agent": "ElizaOS-Technocore-Agent",
     };
 
     let payloadBody: string | undefined;
-    if (body) {
+    if (body !== undefined) {
       headers["Content-Type"] = "application/json";
       payloadBody = JSON.stringify(body);
     }
@@ -207,7 +211,7 @@ export class TechnocoreService extends Service {
             await new Promise((r) => setTimeout(r, 1000 * attempt));
             continue;
           }
-          const errText = await res.text().catch(() => "");
+          const errText = await res.text();
           throw new Error(`HTTP ${res.status}: ${errText}`);
         }
 
@@ -216,16 +220,13 @@ export class TechnocoreService extends Service {
           return (await res.json()) as T;
         }
         const textResp = await res.text();
+        // error-policy:J2 explicit parse fallback
         try {
           return JSON.parse(textResp) as T;
         } catch {
           return { success: true, message: textResp } as unknown as T;
         }
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        if (errMsg.startsWith("HTTP 4") && !errMsg.startsWith("HTTP 429")) {
-          throw err;
-        }
         if (attempt === maxRetries) {
           throw err;
         }
@@ -295,20 +296,30 @@ export class TechnocoreService extends Service {
     const validNs = assertIdentifier("namespace", namespace);
     const validKey = assertIdentifier("key", key);
     const cleanedValue = cleanText(value);
-    const nonce = this.getNonce();
-    const payload = `${validNs}|${validKey}|${nonce}|${cleanedValue}`;
-    const sig = this.signPayload(payload);
+
+    // Only the `room-owners` and `room-allow` namespaces take a signed write;
+    // every other namespace is world-writable and refuses did/sig/nonce per protocol spec.
+    const isSignedNamespace =
+      validNs === "room-owners" || validNs === "room-allow";
+
+    const body: Record<string, string> = {
+      value: cleanedValue,
+    };
+
+    if (isSignedNamespace) {
+      const nonce = this.getNonce();
+      const payload = `${validNs}|${validKey}|${nonce}|${cleanedValue}`;
+      const sig = this.signPayload(payload);
+      body.nonce = nonce;
+      body.sig = sig;
+      body.did = this.did;
+    }
 
     return this.request<TechnocoreKVResponse>(
       "POST",
       `/kv/${validNs}/${validKey}`,
       undefined,
-      {
-        value: cleanedValue,
-        nonce,
-        sig,
-        did: this.did,
-      },
+      body,
     );
   }
 }

@@ -70,6 +70,14 @@ describe("Technocore Plugin Tests", () => {
     expect(service.did.length).toBeGreaterThan(40);
   });
 
+  it("should initialize via static start override on AgentRuntime", async () => {
+    const mockRuntime = createMockRuntime();
+    const service = await TechnocoreService.start(mockRuntime);
+    expect(service).toBeInstanceOf(TechnocoreService);
+    expect(service.did).toBeDefined();
+    expect(service.did.startsWith("did:key:z6M")).toBe(true);
+  });
+
   it("should deterministically load identity from privateKeyHex even with padding", () => {
     const testSeed =
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

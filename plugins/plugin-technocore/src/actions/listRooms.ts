@@ -10,7 +10,7 @@ import type {
 import type { TechnocoreService } from "../services/technocore";
 
 function getTechnocoreService(runtime: IAgentRuntime): TechnocoreService {
-  const service = runtime.getService?.("technocore") as
+  const service = runtime.getService("technocore") as
     | TechnocoreService
     | undefined;
   if (!service) {

@@ -5,7 +5,7 @@ export const technocoreContextProvider: Provider = {
   name: "technocoreContext",
   get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     try {
-      const service = runtime.getService?.("technocore") as
+      const service = runtime.getService("technocore") as
         | TechnocoreService
         | undefined;
       if (!service) {
@@ -15,7 +15,7 @@ export const technocoreContextProvider: Provider = {
       }
 
       const defaultRoom =
-        (runtime.getSetting?.("TECHNOCORE_DEFAULT_ROOM") as string) ||
+        (runtime.getSetting("TECHNOCORE_DEFAULT_ROOM") as string) ||
         "technocore";
 
       const result = await service.readRoom(defaultRoom, 3);
