@@ -49,10 +49,6 @@ const telegramValues: Record<(typeof telegramNames)[number], string> = {
   ELIZA_APP_TELEGRAM_BOT_TOKEN: "railway-telegram-token-private-canary",
   ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "railway-telegram-webhook-private-canary",
 };
-const expectedTelegramConsumerValues = {
-  TELEGRAM_BOT_TOKEN: "railway-telegram-token-private-canary",
-  TELEGRAM_WEBHOOK_SECRET: "railway-telegram-webhook-private-canary",
-} as const;
 const protectedNames = [...blooioNames, ...telegramNames] as const;
 const protectedValues = { ...blooioValues, ...telegramValues };
 
@@ -280,9 +276,13 @@ exit 1
         EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE:
           canonical.ELIZA_APP_TELEGRAM_BOT_USERNAME,
         EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE:
-          expectedTelegramConsumerValues.TELEGRAM_BOT_TOKEN,
+          variables.ELIZA_APP_TELEGRAM_BOT_TOKEN?.trim()
+            ? variables.ELIZA_APP_TELEGRAM_BOT_TOKEN
+            : telegramValues.ELIZA_APP_TELEGRAM_BOT_TOKEN,
         EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE:
-          expectedTelegramConsumerValues.TELEGRAM_WEBHOOK_SECRET,
+          variables.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?.trim()
+            ? variables.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET
+            : telegramValues.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET,
         PATH: `${binRoot}:${process.env.PATH ?? ""}`,
         RAILWAY_ENVIRONMENT_ID: "22222222-2222-4222-8222-222222222222",
         RAILWAY_PROJECT_ID: "11111111-1111-4111-8111-111111111111",
@@ -815,9 +815,15 @@ describe("protected gateway-webhook deployment workflow", () => {
         ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:
           "worker-telegram-webhook-private-canary",
       } as const;
+      const customTelegramValues = {
+        ELIZA_APP_TELEGRAM_BOT_TOKEN: "custom-telegram-token-private-canary",
+        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:
+          "custom-telegram-webhook-private-canary",
+      } as const;
       const allSecretValues = [
         ...Object.values(protectedValues),
         ...Object.values(workerValues),
+        ...Object.values(customTelegramValues),
       ];
 
       for (const target of ["staging", "production"] as const) {
@@ -827,6 +833,16 @@ describe("protected gateway-webhook deployment workflow", () => {
           `protected ${target} Blooio Worker/Railway value matches by salted digest`,
         );
         expect(matched.stdout.toString()).toContain(
+          `protected ${target} Telegram credential pair, selected identity, and getMe attestation`,
+        );
+
+        const matchedCustomTelegram = verifyRailwayVariableInventory(
+          target,
+          customTelegramValues,
+          customTelegramValues,
+        );
+        expect(matchedCustomTelegram.exitCode).toBe(0);
+        expect(matchedCustomTelegram.stdout.toString()).toContain(
           `protected ${target} Telegram credential pair, selected identity, and getMe attestation`,
         );
 
