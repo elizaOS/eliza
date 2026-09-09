@@ -231,3 +231,72 @@ describe("TelegramMembershipMessageGate without an authority service", () => {
     );
   });
 });
+
+describe("TelegramMembershipMessageGate durable re-add recovery", () => {
+  function unavailableDenial() {
+    return {
+      decision: "denied" as const,
+      reason: "authority_unavailable",
+      generation: 3,
+      health: "unavailable",
+    };
+  }
+
+  it("an authority_unavailable denial without durable re-add proof stays denied and never reconciles", async () => {
+    delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+    const reconcile = vi.fn(async () => ({ state: "active", reason: "ok" }));
+    const readdedAfterUnavailable = vi.fn(async () => false);
+    const authorize = vi.fn(async () => unavailableDenial());
+    const gate = new TelegramMembershipMessageGate({
+      runtime: gateRuntime(),
+      authority: {
+        authorize,
+        reconcile,
+        readdedAfterUnavailable,
+      } as unknown as never,
+      botTelegramUserId: null,
+    });
+    const getChatMember = vi.fn(async () => ({
+      status: "member",
+      user: { id: 42 },
+    }));
+    const input = decisionInput();
+    input.getChatMember = getChatMember;
+    await expect(gate.authorizeMessage(input)).resolves.toBe(false);
+    expect(readdedAfterUnavailable).toHaveBeenCalledTimes(1);
+    expect(reconcile).not.toHaveBeenCalled();
+    expect(getChatMember).not.toHaveBeenCalled();
+  });
+
+  it("an authority_unavailable denial WITH durable re-add proof reconciles through getChatMember", async () => {
+    delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+    const reconcile = vi.fn(async () => ({ state: "active", reason: "ok" }));
+    const readdedAfterUnavailable = vi.fn(async () => true);
+    const authorize = vi.fn(async () => unavailableDenial());
+    const gate = new TelegramMembershipMessageGate({
+      runtime: gateRuntime(),
+      authority: {
+        authorize,
+        reconcile,
+        readdedAfterUnavailable,
+      } as unknown as never,
+      botTelegramUserId: null,
+    });
+    const getChatMember = vi.fn(async () => ({
+      status: "member",
+      user: { id: 42 },
+    }));
+    const input = decisionInput();
+    input.getChatMember = getChatMember;
+    // authorize is consulted a second time after the reconcile commits fresh
+    // evidence; keep returning the denial so the result stays deterministic.
+    await expect(gate.authorizeMessage(input)).resolves.toBe(false);
+    expect(readdedAfterUnavailable).toHaveBeenCalledTimes(1);
+    // The gate hands its getChatMember through to the authority's reconcile
+    // (the real authority performs the provider point query inside it).
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(
+      expect.objectContaining({ getChatMember }),
+    );
+  });
+});

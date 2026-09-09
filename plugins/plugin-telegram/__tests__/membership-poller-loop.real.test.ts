@@ -1069,24 +1069,16 @@ describe("telegram membership lifecycle over the real long-poll connector (keyle
     expect(wire.unsupportedCalls).toEqual([]);
   }, 240_000);
 
-  it("bot re-add + fresh join evidence restores admission for a still-valid member (KNOWN deadlock at the PR head)", async () => {
-    // KNOWN connector-path recovery deadlock, pinned so a fix flips this
-    // tripwire green: after a bot kick, `my_chat_member` revoked→present
-    // clears the IN-MEMORY tombstone, but the PERSISTED scope health stays
-    // `unavailable`. The middleware admission gate denies every group
-    // update while scope health is degraded — including the join updates
-    // that carry the fresh evidence which would advance the scope back to
-    // `current` — and `authority_unavailable` is not in the gate's
-    // reconcile-miss set (RECONCILE_MISS_REASONS). The scope can therefore
-    // never recover through the connector until something external resets
-    // it. Member-level revocation recovery (no bot kick) DOES work; see
-    // the lifecycle test above.
-    //
-    // Companion-test discipline: this file's first (green) test uses the
-    // SAME harness (same boot, same fixtures, same wire server) and
-    // proves it admits messages, so the throw below is attributable to
-    // the deadlock rather than a broken boot; if the harness breaks, the
-    // companion fails normally while this tripwire stays red.
+  it("bot re-add plus fresh join evidence restores admission for a still-valid member", async () => {
+    // Recovery invariant for the durable re-add design: after a bot kick the
+    // persisted scope health is `unavailable` and admission fails closed, but
+    // a durable, generation-fenced re-add watermark lets the gate reconcile
+    // through `getChatMember`, so the next join update carrying fresh
+    // evidence advances the scope back to `current` and admission resumes.
+    // The companion first test of this file uses the SAME harness (same
+    // boot, same fixtures, same wire server) and proves it admits messages,
+    // so a failure below is attributable to the recovery path rather than a
+    // broken boot; if the harness breaks, the companion fails normally.
     const { mkdtemp } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const path = await import("node:path");
@@ -1133,8 +1125,8 @@ describe("telegram membership lifecycle over the real long-poll connector (keyle
       (count) => count > 0,
     );
 
-    // Kick the bot (persisted scope degrades), then re-add it (clears the
-    // in-memory tombstone only, at the PR head).
+    // Kick the bot (persisted scope degrades), then re-add it (writes the
+    // durable, generation-fenced re-add watermark the recovery below leans on).
     await wire.push(myChatMember(30_202, "member", "kicked"));
     await until(
       "scope health degraded after the bot kick",
@@ -1144,14 +1136,14 @@ describe("telegram membership lifecycle over the real long-poll connector (keyle
     await wire.push(myChatMember(30_203, "kicked", "member"));
     await new Promise((r) => setTimeout(r, 1_500));
 
-    // A member join carried by a STILL-VALID adder should land fresh
-    // evidence and restore the scope — at the PR head the gate blocks it.
+    // A member join carried by a STILL-VALID adder lands fresh evidence
+    // through the recovered connector path and restores the scope.
     await wire.push(memberJoin(30_204, MEMBER_TG_ID, MEMBER2_TG_ID));
     await new Promise((r) => setTimeout(r, 1_500));
 
-    // THE assertion: admission must have resumed on fresh evidence. At the
-    // PR head this throws with the precise deadlock signature (memory and
-    // model-call deltas flat, authority still denying).
+    // THE assertion: admission must have resumed on fresh evidence — flat
+    // memory and model-call deltas with the authority still denying would
+    // mean the recovery path regressed.
     await assertAdmissionResumedOrThrow(
       boot,
       roomId,

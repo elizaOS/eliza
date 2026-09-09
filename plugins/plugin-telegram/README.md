@@ -117,6 +117,10 @@ The plugin registers a `/eliza_pair <code>` bot command that lets the Telegram u
 
 The Telegram Bot API permits only one active long-poll connection per token. If two agent processes share the same token simultaneously, Telegram rejects the second with a 409 error. Full and standalone pollers share a process-local lock keyed by a fingerprint of the token; a live, starting, retrying, or merely quiet owner remains a hard launch failure. The lock becomes reclaimable only after that poller reaches an explicit terminal state. Across separate processes, operators must still ensure that only one process uses a given token at a time.
 
+## Membership recovery
+
+When the bot is kicked from a group, the scope's persisted health degrades to `unavailable` and group admission fails closed. Admission recovers automatically after a bot re-add: the re-add writes a durable, generation-fenced watermark, and the next join evidence restores the scope. If a re-add's `my_chat_member` / `new_chat_members` update is never delivered to the bot, the scope stays denied by design (fail closed) — the remedy is to kick and re-add the bot again rather than wait.
+
 ## Development
 
 ```bash
