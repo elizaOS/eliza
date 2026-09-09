@@ -11,8 +11,8 @@
  * The fix wraps the post-reserve block in a try/catch that calls
  * settleReservation(0); settleReservation is idempotent (reservationSettled), so
  * a normally-settled turn is never double-refunded. This drives the REAL
- * bridgeSharedMessageSend against a spy reservation, only mocking the two module
- * seams needed to force a post-reserve throw (real code otherwise).
+ * bridgeSharedMessageSend against a spy reservation, with external model, billing, and history-storage seams that force
+ * post-reserve failures while retaining the real facade and active bridge.
  */
 
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -52,6 +52,20 @@ mock.module("../shared-runtime/run-shared-agent-turn", () => ({
   runSharedAgentTurn: mock(async () => turnImpl()),
 }));
 
+const historyActual = await import("../../../db/repositories/shared-runtime-history");
+let persistHistory: typeof historyActual.sharedRuntimeHistoryRepository.merge = async (
+  _agentId,
+  _channelId,
+  messages,
+) => messages;
+mock.module("../../../db/repositories/shared-runtime-history", () => ({
+  ...historyActual,
+  sharedRuntimeHistoryRepository: {
+    get: mock(async () => []),
+    merge: mock((...args: Parameters<typeof persistHistory>) => persistHistory(...args)),
+  },
+}));
+
 const { ElizaSandboxService } = await import("../eliza-sandbox");
 
 type BridgeCallable = {
@@ -59,22 +73,10 @@ type BridgeCallable = {
     rec: Record<string, unknown>,
     rpc: { jsonrpc: string; id: number; method: string; params: { text: string } },
   ) => Promise<unknown>;
-  buildSharedRuntimeCharacter: (...args: unknown[]) => Promise<unknown>;
-  loadSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
-  saveSharedRuntimeHistory: (...args: unknown[]) => Promise<unknown>;
 };
 
 function makeService(): BridgeCallable {
-  const svc = new ElizaSandboxService() as unknown as BridgeCallable;
-  // Private seams the turn path calls before/after runSharedAgentTurn.
-  svc.buildSharedRuntimeCharacter = mock(async () => ({
-    name: "Eliza",
-    model: "openai/gpt-oss-120b",
-    system: "",
-    bio: [],
-  })) as never;
-  svc.loadSharedRuntimeHistory = mock(async () => []) as never;
-  return svc;
+  return new ElizaSandboxService() as unknown as BridgeCallable;
 }
 
 const REC = {
@@ -119,9 +121,9 @@ describe("bridgeSharedMessageSend — refunds the hold on a post-reserve throw (
       model: "openai/gpt-oss-120b",
     });
     const svc = makeService();
-    svc.saveSharedRuntimeHistory = mock(async () => {
+    persistHistory = async () => {
       throw new Error("pg write timeout");
-    }) as never;
+    };
 
     await expect(svc.bridgeSharedMessageSend(REC, RPC)).rejects.toThrow("pg write timeout");
 
