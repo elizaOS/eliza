@@ -608,6 +608,120 @@ describe("SwabbleWeb fallback", () => {
     }
   });
 
+  it("releases the microphone and never starts recognition when stop() lands while the mic is being acquired", async () => {
+    vi.useFakeTimers();
+    try {
+      FakeAudioContext.instances = [];
+      const { stream, stop } = makeMicStream();
+      let resolveMic: (value: MediaStream) => void = () => undefined;
+      const getUserMedia = vi.fn(
+        () =>
+          new Promise<MediaStream>((resolve) => {
+            resolveMic = resolve;
+          }),
+      );
+      vi.stubGlobal("AudioContext", FakeAudioContext);
+      setWindow({ SpeechRecognition: FakeRecognition });
+      setNavigator({
+        mediaDevices: { getUserMedia } as unknown as MediaDevices,
+      });
+
+      const plugin = new SwabbleWeb();
+      const audioLevels = vi.fn();
+      const states = vi.fn();
+      await plugin.addListener("audioLevel", audioLevels);
+      await plugin.addListener("stateChange", states);
+
+      // start() is parked on getUserMedia when stop() arrives.
+      const starting = plugin.start({ config: { triggers: ["eliza"] } });
+      const recognition = FakeRecognition.latest;
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+      await plugin.stop();
+      expect(states).toHaveBeenLastCalledWith({ state: "idle" });
+
+      resolveMic(stream);
+      await expect(starting).resolves.toEqual({
+        started: false,
+        error: "Speech recognition was stopped before it started",
+      });
+
+      // The recognizer never started, the plugin is idle, and the microphone
+      // track opened for the retired start() was released.
+      expect(recognition?.start).not.toHaveBeenCalled();
+      await expect(plugin.isListening()).resolves.toEqual({
+        listening: false,
+      });
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(states).toHaveBeenLastCalledWith({ state: "idle" });
+      expect(states).not.toHaveBeenCalledWith({ state: "listening" });
+
+      audioLevels.mockClear();
+      vi.advanceTimersByTime(300);
+      expect(audioLevels).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps only the replacement's microphone when start() is called again before the first mic resolves", async () => {
+    vi.useFakeTimers();
+    try {
+      FakeAudioContext.instances = [];
+      const firstMic = makeMicStream();
+      const secondMic = makeMicStream();
+      const pending: Array<(value: MediaStream) => void> = [];
+      const getUserMedia = vi.fn(
+        () =>
+          new Promise<MediaStream>((resolve) => {
+            pending.push(resolve);
+          }),
+      );
+      vi.stubGlobal("AudioContext", FakeAudioContext);
+      setWindow({ SpeechRecognition: FakeRecognition });
+      setNavigator({
+        mediaDevices: { getUserMedia } as unknown as MediaDevices,
+      });
+
+      const plugin = new SwabbleWeb();
+      const audioLevels = vi.fn();
+      await plugin.addListener("audioLevel", audioLevels);
+
+      const firstStart = plugin.start({ config: { triggers: ["eliza"] } });
+      const firstRecognition = FakeRecognition.latest;
+      await plugin.stop();
+      const secondStart = plugin.start({ config: { triggers: ["eliza"] } });
+      const secondRecognition = FakeRecognition.latest;
+      expect(secondRecognition).not.toBe(firstRecognition);
+      expect(pending).toHaveLength(2);
+
+      // The replacement's microphone resolves first; the retired start()'s
+      // microphone resolves afterwards and must not displace it.
+      pending[1](secondMic.stream);
+      await expect(secondStart).resolves.toEqual({ started: true });
+      pending[0](firstMic.stream);
+      await expect(firstStart).resolves.toEqual({
+        started: false,
+        error: "Speech recognition was stopped before it started",
+      });
+
+      expect(firstRecognition?.start).not.toHaveBeenCalled();
+      expect(secondRecognition?.start).toHaveBeenCalledTimes(1);
+      expect(firstMic.stop).toHaveBeenCalledTimes(1);
+      expect(secondMic.stop).not.toHaveBeenCalled();
+      await expect(plugin.isListening()).resolves.toEqual({ listening: true });
+
+      audioLevels.mockClear();
+      vi.advanceTimersByTime(100);
+      expect(audioLevels).toHaveBeenCalled();
+
+      await plugin.stop();
+      expect(secondMic.stop).toHaveBeenCalledTimes(1);
+      expect(firstMic.stop).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ignores callbacks from a retired recognizer after a replacement starts", async () => {
     vi.useFakeTimers();
     try {
