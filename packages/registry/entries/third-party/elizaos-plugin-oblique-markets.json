@@ -1,0 +1,17 @@
+{
+  "package": "elizaos-plugin-oblique-markets",
+  "repository": "github:oblique-markets/elizaos-plugin-oblique-markets",
+  "kind": "plugin",
+  "description": "Pay-per-call market data for elizaOS agents over x402 (USDC on Base): live x402 Bazaar market pulse, category heat, price stats, seller rank, new listings and day-over-day deltas, plus Base chain lookups (gas, block, tx status, USDC balance and transfer checks), crypto prices, X post search and Solana priority fees. No accounts, no API keys; a per-call dollar cap bounds spend.",
+  "homepage": "https://oblique.markets",
+  "tags": [
+    "x402",
+    "micropayments",
+    "base",
+    "usdc",
+    "market-data",
+    "bazaar",
+    "agent-economy",
+    "onchain"
+  ]
+}
