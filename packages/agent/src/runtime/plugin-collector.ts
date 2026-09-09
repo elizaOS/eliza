@@ -1081,6 +1081,17 @@ export function collectPluginNames(
  * silently skipped (#30943). Cross-plugin `override` is deliberately
  * neutralized by the plugin lifecycle (#12658), so registration order is the
  * only lever: the assistant must be registered before either plugin.
+ *
+ * Keep this list in step with the names the assistant withholds in
+ * `plugins/plugin-personal-assistant/src/plugin.ts`
+ * (`ensureLifeOpsCalendarPluginRegistered`, `ensureLifeOpsGoalsPluginRegistered`);
+ * `composed-action-order.test.ts` there registers the collector's own order
+ * and fails if a composed name is lost.
+ *
+ * With an app manifest that marks the assistant `requiredForReady` (the Eliza
+ * app), the resolver's phase partition already loads it in the blocking wave
+ * ahead of every deferred plugin, and this reorder is a no-op; it matters for
+ * the manifest-less standalone agent, where both land in one wave.
  */
 const PERSONAL_ASSISTANT_COMPOSED_PLUGINS: readonly string[] = [
   "@elizaos/plugin-calendar",
