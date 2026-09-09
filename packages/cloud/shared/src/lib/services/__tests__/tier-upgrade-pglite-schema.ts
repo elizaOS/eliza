@@ -338,6 +338,8 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "restore_fence_started_at" timestamptz,
   "inventory_fingerprint" text NOT NULL,
   "candidate_count" integer NOT NULL,
+  "rereviewed_by_user_id" uuid,
+  "rereviewed_at" timestamptz,
   "schema_version" integer NOT NULL DEFAULT 1,
   "selected_at" timestamptz NOT NULL DEFAULT now(),
   "created_at" timestamptz NOT NULL DEFAULT now(),
@@ -352,6 +354,12 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
     FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE,
   CONSTRAINT "personal_dedicated_adoption_selections_selected_by_user_id_fk"
     FOREIGN KEY ("selected_by_user_id") REFERENCES "users"("id") ON DELETE SET NULL,
+  CONSTRAINT "personal_dedicated_adoption_selections_rereviewed_by_user_id_fk"
+    FOREIGN KEY ("rereviewed_by_user_id") REFERENCES "users"("id") ON DELETE SET NULL,
+  CONSTRAINT "personal_dedicated_adoption_selections_candidate_count_check"
+    CHECK ("candidate_count" >= 1),
+  CONSTRAINT "personal_dedicated_adoption_selections_rereview_audit_check"
+    CHECK ("rereviewed_by_user_id" IS NULL OR "rereviewed_at" IS NOT NULL),
   CONSTRAINT "personal_dedicated_adoption_selections_activation_check"
     CHECK (("activation_kind" = 'fresh_boot' AND "activation_backup_id" IS NULL
         AND "activation_backup_hash" IS NULL AND "activation_backup_chain" IS NULL)
