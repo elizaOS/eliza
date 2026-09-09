@@ -1067,7 +1067,45 @@ export function collectPluginNames(
   // the launcher-owned development Cloud policy.
   if (devCloudAuthority) applyProviderPrecedence();
 
+  orderPersonalAssistantBeforeComposedPlugins(pluginsToLoad);
   return pluginsToLoad;
+}
+
+/**
+ * Plugins whose same-named actions `@elizaos/plugin-personal-assistant`
+ * composes itself: CALENDAR and CONFLICT_DETECT from the calendar plugin,
+ * OWNER_GOALS from the goals plugin. The assistant withholds those names when
+ * its init registers these plugins, but if either is already in the runtime
+ * the runtime's first-wins collision policy keeps the standalone action and
+ * the composed surface (travel buffers, approval gateway, bulk_reschedule) is
+ * silently skipped (#30943). Cross-plugin `override` is deliberately
+ * neutralized by the plugin lifecycle (#12658), so registration order is the
+ * only lever: the assistant must be registered before either plugin.
+ */
+const PERSONAL_ASSISTANT_COMPOSED_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-calendar",
+  "@elizaos/plugin-goals",
+];
+
+/**
+ * Reorder an insertion-ordered load set in place so the personal assistant
+ * precedes every plugin whose actions it composes. Membership is unchanged.
+ */
+export function orderPersonalAssistantBeforeComposedPlugins(
+  pluginsToLoad: Set<string>,
+): void {
+  const assistant = "@elizaos/plugin-personal-assistant";
+  if (!pluginsToLoad.has(assistant)) return;
+  const ordered = Array.from(pluginsToLoad);
+  const firstComposed = ordered.findIndex((name) =>
+    PERSONAL_ASSISTANT_COMPOSED_PLUGINS.includes(name),
+  );
+  const assistantIndex = ordered.indexOf(assistant);
+  if (firstComposed === -1 || assistantIndex < firstComposed) return;
+  ordered.splice(assistantIndex, 1);
+  ordered.splice(firstComposed, 0, assistant);
+  pluginsToLoad.clear();
+  for (const name of ordered) pluginsToLoad.add(name);
 }
 
 function resolveCloudPluginRequirement(
