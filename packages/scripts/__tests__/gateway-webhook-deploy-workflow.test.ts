@@ -280,6 +280,7 @@ exit 1
     "EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE",
     "EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE",
     "EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE",
+    ...protectedNames,
     ...protectedNames.map((name) => `WORKER_${name}`),
   ]) {
     delete inheritedEnvironment[name];
@@ -709,6 +710,30 @@ describe("protected gateway-webhook deployment workflow", () => {
         delete Bun.env[workerName];
       } else {
         Bun.env[workerName] = inheritedValue;
+      }
+    }
+  });
+
+  executedTest("does not expose inherited raw protected credentials", () => {
+    const name = "ELIZA_APP_TELEGRAM_BOT_TOKEN" as const;
+    const inheritedValue = Bun.env[name];
+    Bun.env[name] = "host-telegram-token-must-not-reach-fixture";
+
+    try {
+      const isolated = verifyRailwayVariableInventory(
+        "staging",
+        {},
+        {},
+        {
+          run: `test -z "\${${name}:-}"`,
+        },
+      );
+      expect(isolated.exitCode).toBe(0);
+    } finally {
+      if (inheritedValue === undefined) {
+        delete Bun.env[name];
+      } else {
+        Bun.env[name] = inheritedValue;
       }
     }
   });
