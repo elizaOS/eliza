@@ -1,0 +1,48 @@
+/* Structural shell only; color, type and controls inherit the active app theme. */
+.eliza-developer-workspace .developer-console :is(button, select, summary),
+.eliza-developer-workspace .developer-pane-navigation button {
+  min-height: 44px;
+}
+.eliza-developer-workspace .developer-console summary,
+.eliza-developer-workspace .developer-console header a {
+  min-height: 44px;
+  min-width: 44px;
+  align-content: center;
+}
+.eliza-developer-workspace .developer-app-pane {
+  position: relative;
+  contain: layout paint;
+  isolation: isolate;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.eliza-developer-workspace .developer-inspector-pane {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-shrink: 0;
+}
+.eliza-developer-workspace[data-mobile-pane="inspector"] .developer-app-pane,
+.eliza-developer-workspace[data-mobile-pane="app"] .developer-inspector-pane {
+  display: none;
+}
+@media (min-width: 1280px) {
+  .eliza-developer-workspace .developer-pane-navigation {
+    display: none;
+  }
+  .eliza-developer-workspace[data-mobile-pane] .developer-app-pane,
+  .eliza-developer-workspace[data-mobile-pane] .developer-inspector-pane {
+    display: block;
+  }
+  .eliza-developer-workspace .developer-inspector-pane {
+    width: 480px;
+  }
+}
+@media (min-width: 1536px) {
+  .eliza-developer-workspace .developer-inspector-pane {
+    width: 560px;
+  }
+}

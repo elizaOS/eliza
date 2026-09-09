@@ -218,6 +218,7 @@ function listItemToUi(
 function detailToUi(
 	traj: ServiceTrajectory,
 	roomContext?: ResolvedRoomContext | null,
+	includePayloads = true,
 ): Record<string, unknown> {
 	const id = String(traj.trajectoryId);
 	const metadata = traj.metadata;
@@ -228,15 +229,26 @@ function detailToUi(
 
 	const steps = traj.steps;
 	for (const step of steps) {
-		if (step.semanticStages) semanticStages.push(...step.semanticStages);
+		if (step.semanticStages) {
+			semanticStages.push(
+				...step.semanticStages.map((stage) =>
+					includePayloads ? stage : { ...stage, payload: {} },
+				),
+			);
+		}
 		const calls = step.llmCalls;
 		for (const c of calls) {
 			llmCalls.push({
 				id: c.callId,
 				stepId: step.stepId,
 				timestamp: c.timestamp,
-				systemPrompt: c.systemPrompt,
-				userPrompt: c.userPrompt,
+				...(includePayloads
+					? {
+							systemPrompt: c.systemPrompt,
+							userPrompt: c.userPrompt,
+							response: c.response,
+						}
+					: {}),
 				temperature: c.temperature,
 				maxTokens: c.maxTokens,
 				maxTokensOmitted: c.maxTokensOmitted,
@@ -246,7 +258,6 @@ function detailToUi(
 				cacheReadInputTokens: c.cacheReadInputTokens,
 				cacheCreationInputTokens: c.cacheCreationInputTokens,
 				model: c.model,
-				response: c.response,
 				...(c.provider ? { provider: c.provider } : {}),
 				...(c.purpose ? { purpose: c.purpose } : {}),
 				...(c.actionType ? { actionType: c.actionType } : {}),
@@ -293,6 +304,7 @@ function detailToUi(
 	const durationMs =
 		endTime !== null && startTime > 0 ? Math.max(0, endTime - startTime) : null;
 	return {
+		payloadsIncluded: includePayloads,
 		trajectory: {
 			id,
 			agentId: traj.agentId,
@@ -487,6 +499,7 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 							roomCache,
 						)
 					: null,
+				url.searchParams.get("includePayloads") !== "0",
 			),
 		);
 		return true;
