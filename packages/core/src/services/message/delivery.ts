@@ -407,6 +407,11 @@ export async function rewriteActionCallbackInCharacter(args: {
 	response: Content;
 	actionName?: string;
 	text: string;
+	/** Runtime validation outcome, not a model-authored or payload instruction. */
+	groundingFailure?:
+		| "completed_side_effect"
+		| "empty_tracked_state"
+		| "missing_reply";
 }): Promise<{ text: string; effectReceiptIds: string[] } | null> {
 	// Failure contract: a failed rewrite must never fabricate wire text — no
 	// meta-narration about formatting ever ships (observed live: a settings
@@ -465,6 +470,11 @@ export async function rewriteActionCallbackInCharacter(args: {
 			error: args.response.error,
 			data: args.response.data,
 		})}`,
+		...(args.groundingFailure
+			? [
+					`Final validation requirement: the prior draft failed ${args.groundingFailure}. Correct that failure; repeating its wording will be rejected again. Use the supplied context for conversational facts and the results for tool outcomes. An unstarted edit can be declined prospectively; do not say you cancelled a note, event, or edit without the matching cancellation receipt.`,
+				]
+			: []),
 	].join("\n");
 
 	try {

@@ -889,6 +889,8 @@ function getLatestVisibleResponseMessageText(
 // Do NOT use as the generic empty-response fallback; that mislabels every
 // IGNORE / empty-action / empty-normalized-text path as a provider failure.
 const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
+const REPLY_GROUNDING_FAILURE_REPLY =
+  "I couldn't verify my reply against the available results.";
 // Shared with the connector failure-reply path in @elizaos/core so every
 // delivery surface phrases credit exhaustion identically.
 const INSUFFICIENT_CREDITS_CHAT_REPLY = INSUFFICIENT_CREDITS_REPLY;
@@ -953,6 +955,9 @@ function classifySyntheticChatFailureText(
     .replace(/[’]/g, "'")
     .replace(/\s+/g, " ");
   if (!normalized) return null;
+  if (normalized === REPLY_GROUNDING_FAILURE_REPLY.toLowerCase()) {
+    return "handler_error";
+  }
   if (normalized === PROVIDER_ISSUE_CHAT_REPLY.toLowerCase()) {
     return "provider_issue";
   }
@@ -1448,6 +1453,9 @@ export function getChatFailureReply(
   err: unknown,
   logBuffer: LogEntry[],
 ): string {
+  if (asRecord(err)?.code === "REPLY_GROUNDING_FAILED") {
+    return REPLY_GROUNDING_FAILURE_REPLY;
+  }
   if (
     isInsufficientCreditsError(err) ||
     findRecentInsufficientCreditsLog(logBuffer)
@@ -1471,6 +1479,9 @@ export function classifyChatFailure(
   err: unknown,
   logBuffer: LogEntry[],
 ): ChatFailureKind {
+  if (asRecord(err)?.code === "REPLY_GROUNDING_FAILED") {
+    return "handler_error";
+  }
   if (
     isInsufficientCreditsError(err) ||
     findRecentInsufficientCreditsLog(logBuffer)

@@ -222,6 +222,83 @@ function visibleTexts(contents: Content[]): string[] {
 }
 
 describe("planner-loop death after a completed tool", () => {
+	it("retains prior dialogue when immediate reply grounding needs a rewrite without replaying the tool", async () => {
+		let actionCalls = 0;
+		const h = await createHarness({
+			actionResult: {
+				success: true,
+				text: "The live page heading is Example Domain.",
+			},
+			actionGate: async () => {
+				actionCalls++;
+			},
+		});
+		const history =
+			"In this fictional story, Ada packs a cobalt notebook and a copper flask.";
+		h.runtime.composeState = vi.fn(async () => ({
+			values: { availableContexts: "general" },
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage(h.runtime, history),
+									id: "00000000-0000-4000-8000-000000000099",
+									createdAt: 1,
+								},
+							],
+						},
+					},
+				},
+			},
+			text: "",
+		})) as AgentRuntime["composeState"];
+		let handlerCalls = 0;
+		h.runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			async () => {
+				if (handlerCalls++ === 0) return stageOneToolTurn();
+				return JSON.stringify({
+					thought: "The read succeeded; answer the compound request.",
+					success: true,
+					decision: "FINISH",
+					messageToUser:
+						"Cancelled the note edit. The page heading is Example Domain.",
+				});
+			},
+			"inline-recovery-context-test",
+			300,
+		);
+		let rewriteCalls = 0;
+		const answer =
+			"I will not perform the edit. The page heading is Example Domain. Ada packs a cobalt notebook and a copper flask.";
+		h.runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_runtime, params) => {
+				rewriteCalls++;
+				expect(params.prompt).toContain(history);
+				expect(params.prompt).toContain(
+					"The live page heading is Example Domain.",
+				);
+				return JSON.stringify({ response: answer, effectReceiptIds: [] });
+			},
+			"inline-recovery-context-test",
+			300,
+		);
+		const result = await new DefaultMessageService().handleMessage(
+			h.runtime,
+			makeMessage(
+				h.runtime,
+				"Withdraw the unstarted note edit, look up the live page heading, and recall Ada's fictional packing list. Do not change any records.",
+			),
+			h.callback,
+		);
+		expect(actionCalls).toBe(1);
+		expect(rewriteCalls).toBe(1);
+		expect(result.responseContent?.text).toBe(answer);
+	});
+
 	beforeEach(() => {
 		vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
 	});

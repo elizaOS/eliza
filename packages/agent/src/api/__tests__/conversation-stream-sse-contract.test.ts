@@ -3290,6 +3290,30 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(record.writes.join("")).not.toContain("error 500");
   });
 
+  it("delivers a typed grounding failure without calling it a provider outage", async () => {
+    const { ctx, record, state, useModel } = createCtx();
+    const service = state.runtime?.messageService;
+    if (!service) throw new Error("message service fixture missing");
+    vi.spyOn(service, "handleMessage").mockRejectedValueOnce(
+      Object.assign(new Error("Reply did not pass grounding"), {
+        code: "REPLY_GROUNDING_FAILED",
+      }),
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      failureKind: "handler_error",
+      fullText: "I couldn't verify my reply against the available results.",
+    });
+    expect(record.writes.join("")).not.toContain("provider issue");
+    expect(useModel).not.toHaveBeenCalled();
+    expect(service.handleMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("fails a streaming turn immediately when runtime capability is absent", async () => {
     const { ctx, record, state, useModel } = createCtx();
     state.runtime = null;
@@ -3301,6 +3325,22 @@ describe("conversation stream SSE contract (#10712)", () => {
       type: "error",
       message: "Agent is not running",
     });
+    expect(useModel).not.toHaveBeenCalled();
+    expect(record.ended).toBe(true);
+  });
+
+  it("keeps an unrestored conversation retryable while the runtime is starting", async () => {
+    const { ctx, record, state, useModel } = createCtx();
+    state.runtime = null;
+    state.conversations.clear();
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.headers["Content-Type"]).toBeUndefined();
+    expect(record.writes.join("")).toContain("error 503");
+    expect(record.writes.join("")).not.toContain("error 404");
+    expect(state.conversations.size).toBe(0);
+    expect(persistConversationMemory).not.toHaveBeenCalled();
     expect(useModel).not.toHaveBeenCalled();
     expect(record.ended).toBe(true);
   });

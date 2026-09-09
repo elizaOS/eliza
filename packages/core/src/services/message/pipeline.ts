@@ -28,10 +28,6 @@ import {
 	parseCodingActionProfile,
 } from "../../runtime/coding-action-profile";
 import { appendContextEvent } from "../../runtime/context-object";
-import {
-	renderContextObject,
-	segmentBlock,
-} from "../../runtime/context-renderer";
 import { type EvaluatorEffects, runEvaluator } from "../../runtime/evaluator";
 import {
 	type FactsAndRelationshipsRunResult,
@@ -66,18 +62,13 @@ import {
 	type TrajectoryRecorder,
 } from "../../runtime/trajectory-recorder";
 import { withSemanticStageFanOut } from "../../runtime/trajectory-semantic-stage-sink";
-import {
-	composeToolDiagnosticRedactor,
-	projectCompleteToolValueForModel,
-} from "../../security/tool-diagnostics";
-import { ownerExclusiveDisclosureWasUsed } from "../../security/trusted-delivery-audience";
 import { getTrajectoryContext } from "../../trajectory-context";
 import type {
 	Action,
 	HandlerCallback,
 	MessageHandlerResult,
 } from "../../types/components";
-import type { ContextEvent, ContextObject } from "../../types/context-object";
+import type { ContextEvent } from "../../types/context-object";
 import type { MessageReplyRecoveryContext } from "../../types/message-service";
 import { type GenerateTextParams, ModelType } from "../../types/model";
 import type { JsonValue } from "../../types/primitives";
@@ -119,6 +110,7 @@ import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { withoutIntermediateVisibleText } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
+	capturePlannerReplyRecovery,
 	evaluatePlannedReplyEgress,
 	resolvePlannedReplyEgress,
 } from "./egress-policy.js";
@@ -1966,27 +1958,11 @@ export async function runV5MessageRuntimeStage1(
 			// or execute another action after this presentation failure.
 			let replyRecovery: MessageReplyRecoveryContext | undefined;
 			try {
-				const redactText = composeToolDiagnosticRedactor(args.runtime);
-				const context = projectCompleteToolValueForModel(
-					plannerResult.trajectory.context,
-					redactText,
-				) as ContextObject;
-				replyRecovery = {
-					context: renderContextObject(context)
-						.promptSegments.map(segmentBlock)
-						.join("\n\n"),
-					pendingToolCalls: projectCompleteToolValueForModel(
-						plannerResult.trajectory.plannedQueue,
-						redactText,
-					) as JsonValue[],
-					evaluatorOutputs: projectCompleteToolValueForModel(
-						plannerResult.trajectory.evaluatorOutputs,
-						redactText,
-					) as JsonValue[],
-					ownerExclusiveDisclosureUsed: ownerExclusiveDisclosureWasUsed(
-						args.message,
-					),
-				};
+				replyRecovery = capturePlannerReplyRecovery(
+					args.runtime,
+					args.message,
+					plannerResult.trajectory,
+				);
 			} catch {
 				// error-policy:J4 Unserializable evidence disables later recovery, but must never
 				// erase the authoritative failure/results or replay a saved effect.
@@ -2053,6 +2029,11 @@ export async function runV5MessageRuntimeStage1(
 				reply: plannerResult.finalMessage ?? "",
 				actionResults: egressActionResults,
 				evaluator: plannerResult.evaluator,
+				recovery: capturePlannerReplyRecovery(
+					args.runtime,
+					args.message,
+					plannerResult.trajectory,
+				),
 			});
 			plannerResult = {
 				...plannerResult,

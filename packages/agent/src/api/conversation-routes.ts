@@ -4817,6 +4817,13 @@ export async function handleConversationRoutes(
     const localVoiceRuntimeFence =
       fenceResolution.kind === "valid" ? fenceResolution.fence : null;
     const conv = await getConversationWithRestore(state, convId);
+    // Before runtime startup there may be no restore task or conversation map
+    // yet. A 404 tells the client to create a replacement conversation, so only
+    // report absence once the runtime can restore persisted conversations.
+    if (!conv && !state.runtime) {
+      error(res, "Agent runtime not available", 503);
+      return true;
+    }
     if (!isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)) {
       error(res, "Local voice agent runtime changed", 409);
       return true;

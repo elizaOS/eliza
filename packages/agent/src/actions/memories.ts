@@ -1581,7 +1581,7 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        'search: filter text. update/delete: the memory to change or forget, quoted in the user\'s own words from this message (never paraphrase: "like my coffee with oat milk", not "prefer oat milk"). Either a valid memoryId or a nonempty query is required. memoryId alone selects one exact record and takes precedence when both are supplied.',
+        'search: ranked keyword matching, not an all-words filter. Prefer a distinctive subject or name; combining unrelated topics broadens matches and can require pagination. update/delete: the memory to change or forget, quoted in the user\'s own words from this message (never paraphrase: "like my coffee with oat milk", not "prefer oat milk"). Either a valid memoryId or a nonempty query is required. memoryId alone selects one exact record and takes precedence when both are supplied.',
       required: false,
       schema: { type: "string" as const },
     },

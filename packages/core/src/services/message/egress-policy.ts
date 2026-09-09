@@ -6,6 +6,10 @@ import {
 } from "../../access-control/audience-egress";
 import { ElizaError } from "../../errors";
 import {
+	renderContextObject,
+	segmentBlock,
+} from "../../runtime/context-renderer";
+import {
 	effectDeliveryBindingIsValid,
 	effectDeliveryBindingProvesApplication,
 	getEffectDeliveryBinding,
@@ -13,7 +17,11 @@ import {
 } from "../../runtime/effect-delivery";
 import type { EvaluatorOutput } from "../../runtime/evaluator";
 import { renderActionResultsForModel } from "../../runtime/planner-rendering";
-import { composeToolDiagnosticRedactor } from "../../security/tool-diagnostics";
+import type { PlannerTrajectory } from "../../runtime/planner-types";
+import {
+	composeToolDiagnosticRedactor,
+	projectCompleteToolValueForModel,
+} from "../../security/tool-diagnostics";
 import {
 	getTrustedDeliveryAudience,
 	ownerExclusiveDisclosureWasUsed,
@@ -21,13 +29,14 @@ import {
 	revalidateOwnerExclusiveDisclosure,
 } from "../../security/trusted-delivery-audience";
 import type { Action, ActionResult } from "../../types/components";
+import type { ContextObject } from "../../types/context-object";
 import {
 	mergeEffectReceipts,
 	resolveAppliedUserFacingEffectReceipts,
 } from "../../types/effects";
 import type { Memory } from "../../types/memory";
 import type { MessageReplyRecoveryContext } from "../../types/message-service";
-import type { Content } from "../../types/primitives";
+import type { Content, JsonValue } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { resolveCallbackActionName } from "./action-identifiers.js";
@@ -41,6 +50,33 @@ import {
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
 	| "empty_tracked_state";
+
+/** Capture the same complete evidence for immediate and durable reply-only recovery. */
+export function capturePlannerReplyRecovery(
+	runtime: IAgentRuntime,
+	message: Memory,
+	trajectory: PlannerTrajectory,
+): MessageReplyRecoveryContext {
+	const redactText = composeToolDiagnosticRedactor(runtime);
+	const context = projectCompleteToolValueForModel(
+		trajectory.context,
+		redactText,
+	) as ContextObject;
+	return {
+		context: renderContextObject(context)
+			.promptSegments.map(segmentBlock)
+			.join("\n\n"),
+		pendingToolCalls: projectCompleteToolValueForModel(
+			trajectory.plannedQueue,
+			redactText,
+		) as JsonValue[],
+		evaluatorOutputs: projectCompleteToolValueForModel(
+			trajectory.evaluatorOutputs,
+			redactText,
+		) as JsonValue[],
+		ownerExclusiveDisclosureUsed: ownerExclusiveDisclosureWasUsed(message),
+	};
+}
 
 export function appliedEffectReceiptIdsForReply(
 	reply: string,
@@ -260,6 +296,8 @@ export async function resolvePlannedReplyEgress(args: {
 		message: args.message,
 		response: { text },
 		text,
+		groundingFailure:
+			decision.verdict === "reject" ? decision.kind : "missing_reply",
 	});
 	const reply = rewritten?.text;
 	// The renderer selects proof for its own prose, not an action's canned
