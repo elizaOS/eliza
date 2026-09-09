@@ -7,7 +7,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "
 import { readFileSync } from "node:fs";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
-import { getPgliteClientForTests } from "../../client";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";

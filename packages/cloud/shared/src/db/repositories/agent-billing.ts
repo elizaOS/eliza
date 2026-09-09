@@ -28,6 +28,8 @@ export interface AgentBillingSandbox {
   user_id: string;
   agent_config: Record<string, unknown> | null;
   status: AgentSandboxStatus;
+  deletion_previous_status: AgentSandboxStatus | null;
+  last_backup_at: Date | null;
   billing_status: AgentBillingStatus;
   last_billed_at: Date | null;
   total_billed: string;
@@ -124,6 +126,8 @@ export class AgentBillingRepository {
       user_id: agentSandboxes.user_id,
       agent_config: agentSandboxes.agent_config,
       status: agentSandboxes.status,
+      deletion_previous_status: agentSandboxes.deletion_previous_status,
+      last_backup_at: agentSandboxes.last_backup_at,
       billing_status: agentSandboxes.billing_status,
       last_billed_at: agentSandboxes.last_billed_at,
       total_billed: agentSandboxes.total_billed,
