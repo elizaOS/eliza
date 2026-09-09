@@ -20,9 +20,18 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
+import { mapWithConcurrency } from "../../../utils/bounded-map.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ROLES");
+
+/**
+ * Upper bound on simultaneous entity lookups while resolving role holders.
+ * The role map covers every entity in the world, so resolving all of them
+ * through one `Promise.all` would admit one concurrent database read per
+ * member (#30896).
+ */
+const MAX_CONCURRENT_ENTITY_LOOKUPS = 8;
 
 type RoleUser = { name: string; username: string; names: string[] };
 type IdentityFields = { name?: string; username?: string; userName?: string };
@@ -199,8 +208,10 @@ export const roleProvider: Provider = {
 		const members: RoleUser[] = [];
 
 		const entityIds = Object.keys(roles) as UUID[];
-		const entities = await Promise.all(
-			entityIds.map((entityId) => runtime.getEntityById(entityId)),
+		const entities = await mapWithConcurrency(
+			entityIds,
+			MAX_CONCURRENT_ENTITY_LOOKUPS,
+			(entityId) => runtime.getEntityById(entityId),
 		);
 		const entityMap = new Map<UUID, (typeof entities)[number]>();
 		for (let i = 0; i < entityIds.length; i += 1) {
