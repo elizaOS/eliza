@@ -793,6 +793,7 @@ async function main(): Promise<void> {
   const originalFetch = globalThis.fetch;
   const wireEvidence: ProviderWireEvidence[] = [];
   const modelContext = new AsyncLocalStorage<ModelInputContext>();
+  let cancelAtProviderDispatch: (() => void) | undefined;
   globalThis.fetch = measuredProviderFetch(
     originalFetch,
     {
@@ -801,6 +802,10 @@ async function main(): Promise<void> {
     },
     () => modelContext.getStore() ?? null,
     (evidence) => wireEvidence.push(evidence),
+    (kind, context) => {
+      if (kind === "text" && context?.phase === "cancellation")
+        cancelAtProviderDispatch?.();
+    },
   );
   const returnedChatResponses: Array<{
     context: ModelInputContext;
@@ -1235,12 +1240,15 @@ async function main(): Promise<void> {
     );
     cancellationReason.name = "AbortError";
     const originalUseModel = runtime.useModel.bind(runtime);
-    let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
+    let liveProviderDispatchObserved = false;
+    cancelAtProviderDispatch = () => {
+      liveProviderDispatchObserved = true;
+      cancellationController.abort(cancellationReason);
+    };
     let liveModelInvocationObserved = false;
     let invokedModelType: string | null = null;
     let modelSignalWasAlreadyAborted = false;
     runtime.useModel = (async (modelType, params, provider) => {
-      const pending = originalUseModel(modelType, params, provider);
       if (
         !liveModelInvocationObserved &&
         modelType === ModelType.RESPONSE_HANDLER
@@ -1253,11 +1261,8 @@ async function main(): Promise<void> {
           "signal" in params &&
           params.signal instanceof AbortSignal &&
           params.signal.aborted;
-        cancellationTimer = setTimeout(() => {
-          cancellationController.abort(cancellationReason);
-        }, 25);
       }
-      return await pending;
+      return await originalUseModel(modelType, params, provider);
     }) as typeof runtime.useModel;
 
     const cancellationStartedAt = performance.now();
@@ -1281,12 +1286,17 @@ async function main(): Promise<void> {
       cancellationError = error;
     } finally {
       runtime.useModel = originalUseModel;
-      if (cancellationTimer) clearTimeout(cancellationTimer);
+      cancelAtProviderDispatch = undefined;
     }
     const cancellationWallMs = performance.now() - cancellationStartedAt;
     if (!liveModelInvocationObserved) {
       throw new Error(
         "Cancellation probe aborted before a live RESPONSE_HANDLER invocation",
+      );
+    }
+    if (!liveProviderDispatchObserved) {
+      throw new Error(
+        "Cancellation probe did not reach actual provider fetch dispatch",
       );
     }
     if (!cancellationController.signal.aborted) {
@@ -1328,8 +1338,9 @@ async function main(): Promise<void> {
     const cancellationProbe = {
       proof: cancellationProof,
       execution:
-        "production generateChatResponse path; owner abort scheduled after the live RESPONSE_HANDLER invocation began",
+        "production generateChatResponse path; owner aborted immediately after actual SDK fetch dispatch began",
       liveModelInvocationObserved,
+      liveProviderDispatchObserved,
       invokedModelType,
       modelSignalWasAlreadyAborted,
       ownerSignalAborted: cancellationController.signal.aborted,
