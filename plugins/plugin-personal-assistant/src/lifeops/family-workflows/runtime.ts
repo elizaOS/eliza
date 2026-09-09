@@ -12,12 +12,14 @@ import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   CalendarService,
 } from "@elizaos/plugin-calendar";
+import { getScheduledTaskRunner } from "@elizaos/plugin-scheduling";
 import { type LifeOpsCalendarEvent, SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalRequest } from "../approval-queue.types.js";
 import { CalendarCardAccessStore } from "../calendar-card.js";
 import {
   type FamilyPacketClaim,
+  type FamilyPacketEmailDelivery,
   type FamilyPacketPeriod,
   type MonthlyFamilyDraft,
   type MonthlyFamilyPacket,
@@ -42,9 +44,18 @@ import {
   SCHOOL_SOURCE_FACT_SERVICE,
 } from "../school/service.js";
 import type { SourceFact } from "../school/types.js";
+import { LifeOpsService } from "../service.js";
 import { executeRawSql, parseJsonValue, sqlQuote, toText } from "../sql.js";
+import {
+  familyPacketCalendarWindow,
+  nextFamilyPacketPeriod,
+} from "./period.js";
 
 export const FAMILY_WORKFLOW_RUNTIME_SERVICE = "lifeops_family_workflows";
+export interface FamilyEmailOptions {
+  accounts: Array<{ grantId: string; label: string }>;
+  recipients: Array<{ entityId: string; name: string; address: string }>;
+}
 export const FAMILY_MONTHLY_SYSTEM_OPERATION =
   "family.monthlyCoordination" as const;
 
@@ -62,27 +73,6 @@ const RUN_SCHEMA = [
 
 function hash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
-function periodFor(date: Date): FamilyPacketPeriod {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-  });
-  const parts = formatter.formatToParts(date);
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  if (!year || !month)
-    throw new Error("[FamilyWorkflowRuntime] period unavailable");
-  const key = `${year}-${month}`;
-  const next = new Date(Date.UTC(Number(year), Number(month), 1));
-  return {
-    key,
-    startsOn: `${key}-01`,
-    endsOnExclusive: next.toISOString().slice(0, 10),
-    timeZone: "America/New_York",
-  };
 }
 
 function calendarClaim(event: LifeOpsCalendarEvent): FamilyPacketClaim {
@@ -232,17 +222,57 @@ export class FamilyWorkflowRuntimeService extends Service {
     return this.school.status();
   }
 
+  async ensureMonthlySchedule(): Promise<void> {
+    const { familyCoordinationPack } = await import(
+      "../../default-packs/family-coordination.js"
+    );
+    const { toSpineTaskInput } = await import(
+      "../../default-packs/spine-registration.js"
+    );
+    const definition = familyCoordinationPack.records[0];
+    if (!definition)
+      throw new Error("Monthly family schedule definition is unavailable");
+    const runner = getScheduledTaskRunner(this.runtime, {
+      agentId: this.runtime.agentId,
+    });
+    const task = await runner.schedule(
+      toSpineTaskInput(definition, familyCoordinationPack.key),
+    );
+    if (!task.ownerVisible || task.kind !== definition.kind)
+      await runner.apply(task.taskId, "edit", {
+        ownerVisible: true,
+        kind: definition.kind,
+      });
+  }
+
   reviewSchool(runId: string) {
     return this.school.review(runId);
   }
 
-  runSchool(
+  async runSchool(
     trigger: "manual" | "scheduled" = "manual",
   ): Promise<SchoolCalendarRunResult> {
-    return this.school.run(CONCORD_SCHOOL_CALENDAR_SOURCE, trigger);
+    const status = await this.school.status();
+    const config = status.config ?? CONCORD_SCHOOL_CALENDAR_SOURCE;
+    const result = await this.school.run(config, trigger);
+    if (
+      result.state !== "awaiting_approval" ||
+      config.updateMode !== "automatic"
+    )
+      return result;
+    await this.applySchool(
+      result.runId,
+      new URL("http://localhost/api/lifeops/family-workflows/school/run"),
+      config,
+    );
+    return { state: "applied", runId: result.runId, plan: result.plan };
   }
 
-  async applySchool(runId: string, requestUrl: URL): Promise<void> {
+  async applySchool(
+    runId: string,
+    requestUrl: URL,
+    configuredSource?: SchoolCalendarSourceConfig,
+  ): Promise<void> {
     const gateway = this.runtime.getService(
       CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
     ) as
@@ -252,7 +282,11 @@ export class FamilyWorkflowRuntimeService extends Service {
       throw new Error(
         "[FamilyWorkflowRuntime] calendar mutation gateway unavailable",
       );
-    await this.school.applyApprovedPlan({ runId, requestUrl, gateway });
+    const config =
+      configuredSource ??
+      (await this.school.status()).config ??
+      CONCORD_SCHOOL_CALENDAR_SOURCE;
+    await this.school.applyApprovedPlan({ runId, requestUrl, gateway, config });
   }
 
   async collectCanonicalClaims(
@@ -266,11 +300,7 @@ export class FamilyWorkflowRuntimeService extends Service {
     if (calendar) {
       const feed = await calendar.getCalendarFeed(
         new URL("http://localhost/api/lifeops/calendar/feed"),
-        {
-          timeMin: `${period.startsOn}T00:00:00.000-04:00`,
-          timeMax: `${period.endsOnExclusive}T00:00:00.000-04:00`,
-          timeZone: period.timeZone,
-        },
+        familyPacketCalendarWindow(period),
       );
       claims.push(...feed.events.map(calendarClaim));
     }
@@ -350,7 +380,7 @@ export class FamilyWorkflowRuntimeService extends Service {
   }
 
   async generatePacket(
-    period = periodFor(this.now()),
+    period = nextFamilyPacketPeriod(this.now()),
   ): Promise<MonthlyFamilyPacket> {
     return this.packets.buildInternal(
       period,
@@ -364,10 +394,70 @@ export class FamilyWorkflowRuntimeService extends Service {
       recipient: string;
       recipientEntityId: string;
       calendarPrivacyMode: "full" | "times_only" | "busy_only";
+      email?: FamilyPacketEmailDelivery;
     },
   ): Promise<MonthlyFamilyDraft> {
     const packet = await this.packets.read(packetId);
     if (!packet) throw new Error("[FamilyWorkflowRuntime] packet not found");
+    const recipient = input.recipient.trim();
+    await this.validateRecipientIdentity({ ...input, recipient });
+    if (input.email) {
+      await new LifeOpsService(this.runtime).requireGoogleGmailSendGrant(
+        new URL("http://localhost"),
+        "local",
+        "owner",
+        input.email.senderGrantId,
+      );
+    }
+    return this.packets.createExternalDraft(packet, { ...input, recipient });
+  }
+
+  async emailOptions(): Promise<FamilyEmailOptions> {
+    const graph = resolveKnowledgeGraphService(this.runtime);
+    if (!graph) throw new Error("Verified contacts are unavailable");
+    const [accounts, people] = await Promise.all([
+      new LifeOpsService(this.runtime).getGoogleConnectorAccounts(
+        new URL("http://localhost"),
+        "owner",
+      ),
+      graph.getEntityStore(this.runtime.agentId).list({ type: "person" }),
+    ]);
+    return {
+      accounts: accounts.flatMap((account) => {
+        if (
+          !account.connected ||
+          !account.grant ||
+          !account.grantedCapabilities.includes("google.gmail.send")
+        )
+          return [];
+        const label = account.identity?.email;
+        if (typeof label !== "string" || !label.trim())
+          throw new Error(
+            "Sending account identity is unavailable. Reconnect Google before preparing email.",
+          );
+        return [{ grantId: account.grant.id, label }];
+      }),
+      recipients: people.flatMap((person) =>
+        person.identities
+          .filter(
+            (identity) =>
+              identity.verified &&
+              ["email", "gmail"].includes(identity.platform.toLowerCase()),
+          )
+          .map((identity) => ({
+            entityId: person.entityId,
+            name: person.preferredName,
+            address: identity.handle,
+          })),
+      ),
+    };
+  }
+
+  async validateRecipientIdentity(input: {
+    recipientEntityId: string;
+    recipient: string;
+    email?: FamilyPacketEmailDelivery | null;
+  }): Promise<void> {
     const entity = await resolveKnowledgeGraphService(this.runtime)
       ?.getEntityStore(this.runtime.agentId)
       .get(input.recipientEntityId);
@@ -376,20 +466,19 @@ export class FamilyWorkflowRuntimeService extends Service {
       !entity?.identities.some(
         (identity) =>
           identity.verified &&
-          ["imessage", "blooio", "sms", "phone"].includes(
-            identity.platform.toLowerCase(),
-          ) &&
-          identity.handle === recipient,
+          (input.email
+            ? ["email", "gmail"]
+            : ["imessage", "blooio", "sms", "phone"]
+          ).includes(identity.platform.toLowerCase()) &&
+          (input.email
+            ? identity.handle.toLowerCase() === recipient.toLowerCase()
+            : identity.handle === recipient),
       )
     ) {
       throw new Error(
-        "[FamilyWorkflowRuntime] recipient is not a verified iMessage Entity identity",
+        "[FamilyWorkflowRuntime] recipient is not a verified identity for the selected delivery channel",
       );
     }
-    return this.packets.createExternalDraft(packet, {
-      ...input,
-      recipient,
-    });
   }
 
   async requestDraftApproval(args: {
@@ -418,7 +507,7 @@ export class FamilyWorkflowRuntimeService extends Service {
   ): Promise<FamilyWorkflowRunResult> {
     await new CalendarCardAccessStore(this.runtime).cleanup();
     await this.ensureSchema();
-    const period = periodFor(this.now());
+    const period = nextFamilyPacketPeriod(this.now());
     const token = randomUUID();
     const now = this.now();
     const expires = new Date(now.getTime() + RUN_LEASE_MS).toISOString();

@@ -9,6 +9,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
 import { CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createLifeOpsScheduledTaskSimulationHarness } from "../../../test/helpers/lifeops-scheduled-task-simulation.js";
 import { familyCoordinationPack } from "../../default-packs/family-coordination.js";
 import { handleFamilyWorkflowRoutes } from "../../routes/family-workflows.js";
 import type { LifeOpsRouteContext } from "../../routes/lifeops-routes.js";
@@ -126,7 +127,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
           })),
       ),
       configure: vi.fn(),
-      status: vi.fn(),
+      status: vi.fn(async () => ({ config: null })),
       applyApprovedPlan: vi.fn(),
     };
     const service = new FamilyWorkflowRuntimeService(runtime, {
@@ -152,6 +153,31 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     expect(replay.runId).toBe(first.runId);
     expect(restarted.school.run).not.toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates one visible monthly schedule and migrates an existing hidden watcher without duplication", async () => {
+    const harness = createLifeOpsScheduledTaskSimulationHarness();
+    const { service } = makeService();
+    services.set("lifeops_scheduled_task_runner", {
+      getRunner: () => harness.runner,
+    });
+    const definition = familyCoordinationPack.records[0];
+    if (!definition) throw new Error("missing definition");
+    const old = await harness.runner.schedule({
+      ...definition,
+      kind: "watcher",
+      ownerVisible: false,
+    });
+    await service.ensureMonthlySchedule();
+    await service.ensureMonthlySchedule();
+    const tasks = await harness.runner.list({ ownerVisibleOnly: true });
+    expect(tasks.map((task) => task.taskId)).toEqual([old.taskId]);
+    expect(tasks[0].kind).toBe("recap");
+    await harness.runner.fire(old.taskId);
+    expect(harness.dispatches).toHaveLength(1);
+    expect(harness.dispatches[0].metadata?.systemOperation).toBe(
+      "family.monthlyCoordination",
+    );
   });
 
   it("elects one concurrent owner and reports the second run as already running", async () => {
@@ -221,7 +247,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     expect(status).toBe(200);
     expect(response).toMatchObject({
       state: "completed",
-      periodKey: "2026-09",
+      periodKey: "2026-10",
     });
   });
 
@@ -270,6 +296,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
       bodySha256: sha("Busy"),
       transformations: [],
       createdAt: "2026-09-01T13:00:00.000Z",
+      email: null,
     });
     const requestDraftApproval = vi
       .spyOn(service, "requestDraftApproval")
@@ -349,14 +376,14 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
   it("ships one structural monthly task on the canonical 09:00 Eastern cron", () => {
     expect(familyCoordinationPack.records).toHaveLength(1);
     expect(familyCoordinationPack.records[0]).toMatchObject({
-      kind: "watcher",
+      kind: "recap",
       trigger: {
         kind: "cron",
         expression: "0 9 1 * *",
         tz: "America/New_York",
       },
       metadata: { systemOperation: "family.monthlyCoordination" },
-      ownerVisible: false,
+      ownerVisible: true,
     });
   });
 

@@ -1,5 +1,7 @@
 /** View contracts for the owner-facing Family Operations workspace. */
 
+import type { FamilyPacketEmailDelivery } from "../../lifeops/family-coordination/index.js";
+import type { FamilyEmailOptions } from "../../lifeops/family-workflows/runtime.js";
 import type {
   AgreementGuestGrantPreview,
   HouseholdKnowledgeGrant,
@@ -33,6 +35,8 @@ export interface SchoolWorkflowView {
     | "failed";
   lastCheckedAt: string | null;
   sourceUrl: string;
+  schoolLevel: "all" | "elementary";
+  updateMode: "review" | "automatic";
   runId?: string;
   changes?: Array<{ kind: "add" | "update" | "remove"; label: string }>;
   error?: string;
@@ -52,6 +56,7 @@ export interface FamilyPacketView {
     calendarPrivacyMode: "full" | "times_only" | "busy_only";
     body: string;
     approvalId?: string;
+    email: FamilyPacketEmailDelivery | null;
   } | null;
 }
 
@@ -71,6 +76,7 @@ export interface PacketDraftInput {
   recipient: string;
   recipientEntityId: string;
   calendarPrivacyMode: "full" | "times_only" | "busy_only";
+  email?: FamilyPacketEmailDelivery;
 }
 
 export interface FamilyOperationsSnapshot {
@@ -78,6 +84,7 @@ export interface FamilyOperationsSnapshot {
   calendarLinks: Loadable<LinkedCalendarView[]>;
   school: Loadable<SchoolWorkflowView>;
   packets: Loadable<FamilyPacketView[]>;
+  emailOptions: Loadable<FamilyEmailOptions>;
 }
 
 export interface FamilyOperationsAdapter {
@@ -116,6 +123,10 @@ export interface FamilyOperationsAdapter {
   ): Promise<void>;
   disconnectCalendar(linkId: string, expectedUpdatedAt: string): Promise<void>;
   runSchoolWorkflow(): Promise<void>;
+  configureSchool(input: {
+    schoolLevel: "all" | "elementary";
+    updateMode: "review" | "automatic";
+  }): Promise<void>;
   approveSchoolDiff(runId: string): Promise<void>;
   generatePacket(periodKey: string): Promise<void>;
   createPacketDraft(input: PacketDraftInput): Promise<void>;

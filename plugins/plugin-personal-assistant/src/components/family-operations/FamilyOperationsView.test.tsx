@@ -82,6 +82,15 @@ function snapshot(): FamilyOperationsSnapshot {
     },
     school: { status: "unavailable", message: "School API is not installed." },
     packets: { status: "ready", data: [] },
+    emailOptions: {
+      status: "ready",
+      data: {
+        accounts: [{ grantId: "sender-1", label: "owner@example.com" }],
+        recipients: [
+          { entityId: "guest-1", name: "Alex", address: "guest@example.com" },
+        ],
+      },
+    },
   };
 }
 
@@ -117,6 +126,7 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     resolveCalendarConflict: vi.fn(async () => undefined),
     disconnectCalendar: vi.fn(async () => undefined),
     runSchoolWorkflow: vi.fn(async () => undefined),
+    configureSchool: vi.fn(async () => undefined),
     approveSchoolDiff: vi.fn(async () => undefined),
     generatePacket: vi.fn(async () => undefined),
     uploadAgreement: vi.fn(async () => undefined),
@@ -126,6 +136,43 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
 }
 
 describe("FamilyOperationsView", () => {
+  it("saves the selected school level and standing update policy before running", async () => {
+    const local = adapter();
+    const data = await local.load();
+    data.school = {
+      status: "ready",
+      data: {
+        sourceId: "concord",
+        label: "Concord calendar",
+        state: "never_run",
+        lastCheckedAt: null,
+        sourceUrl:
+          "https://www.concordps.org/district-resources/school-year-calendars",
+        schoolLevel: "all",
+        updateMode: "review",
+      },
+    };
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "School calendar" }),
+    );
+    fireEvent.change(screen.getByLabelText("School level"), {
+      target: { value: "elementary" },
+    });
+    fireEvent.change(screen.getByLabelText("Calendar updates"), {
+      target: { value: "automatic" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save school settings" }),
+    );
+    await waitFor(() =>
+      expect(local.configureSchool).toHaveBeenCalledWith({
+        schoolLevel: "elementary",
+        updateMode: "automatic",
+      }),
+    );
+    expect(local.runSchoolWorkflow).not.toHaveBeenCalled();
+  });
   it("requires a review reason and delegates approval to the canonical adapter", async () => {
     const local = adapter();
     render(<FamilyOperationsView adapter={local} />);
@@ -265,10 +312,11 @@ describe("FamilyOperationsView", () => {
           claims: [{ id: "claim-1", section: "school", text: "No school." }],
           draft: {
             draftVersion: 2,
-            recipient: "+15551234567",
+            recipient: "guest@example.com",
             recipientEntityId: "guest-1",
             calendarPrivacyMode: "busy_only",
             body: "Family coordination\n\n## school\n- No school.",
+            email: { subject: "Monthly plans", senderGrantId: "sender-1" },
           },
         },
       ],
@@ -278,11 +326,11 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
-    fireEvent.change(screen.getByLabelText("Recipient Entity ID"), {
-      target: { value: "guest-1" },
+    fireEvent.change(screen.getByLabelText("Sending account"), {
+      target: { value: "sender-1" },
     });
-    fireEvent.change(screen.getByLabelText("Verified iMessage address"), {
-      target: { value: "+15551234567" },
+    fireEvent.change(screen.getByLabelText("Email recipient"), {
+      target: { value: JSON.stringify(["guest-1", "guest@example.com"]) },
     });
     fireEvent.click(
       screen.getByRole("button", { name: "Create privacy-filtered draft" }),
@@ -290,9 +338,10 @@ describe("FamilyOperationsView", () => {
     await waitFor(() =>
       expect(local.createPacketDraft).toHaveBeenCalledWith({
         packetId: "packet/1",
-        recipient: "+15551234567",
+        recipient: "guest@example.com",
         recipientEntityId: "guest-1",
         calendarPrivacyMode: "busy_only",
+        email: { subject: expect.any(String), senderGrantId: "sender-1" },
       }),
     );
     expect(screen.getByText(/Family coordination/)).toBeTruthy();

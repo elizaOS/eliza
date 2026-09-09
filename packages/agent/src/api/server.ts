@@ -1405,6 +1405,7 @@ export {
 // boundary-role registry (#12087 item 12).
 export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 
+import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 
@@ -3675,14 +3676,18 @@ async function handleRequest(
         isAuthorized(req) ||
         isBoundaryRoleAuthorized(req, method, pathname),
       isTrustedLocal: () => isTrustedLocalRequest(req),
-      // Per-viewer principal for DTO selection (#14781). Trunk-authorized
-      // callers stay on the single-owner boundary (no context → routes serve
-      // unfiltered, unchanged); only resolver-recognized viewer tokens
-      // (WaifuChat, artifact share-viewer) carry a principal into dispatch.
-      accessContext: () =>
-        hostSessionAuthorization.ok || isAuthorized(req)
-          ? undefined
-          : resolveHttpAccessContext(req),
+      // Session admission and disclosure share the verified host principal.
+      // Only trusted local requests retain the plugin's local-owner fallback.
+      accessContext: () => {
+        if (hostSessionAuthorization.ok && state.runtime) {
+          return resolveHostSessionAccessContext(
+            hostSessionAuthorization,
+            state.runtime,
+          );
+        }
+        if (isTrustedLocalRequest(req)) return undefined;
+        return resolveHttpAccessContext(req);
+      },
     })
   ) {
     return;

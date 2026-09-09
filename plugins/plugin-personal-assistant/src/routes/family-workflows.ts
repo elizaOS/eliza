@@ -3,7 +3,10 @@
  * family packet generation, review, drafting, and canonical approval enqueue.
  */
 
-import type { FamilyPacketPeriod } from "../lifeops/family-coordination/index.js";
+import type {
+  FamilyPacketEmailDelivery,
+  FamilyPacketPeriod,
+} from "../lifeops/family-coordination/index.js";
 import { getFamilyWorkflowRuntimeService } from "../lifeops/family-workflows/index.js";
 import { CONCORD_SCHOOL_CALENDAR_SOURCE } from "../lifeops/school/calendar-workflow.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
@@ -31,13 +34,39 @@ export async function handleFamilyWorkflowRoutes(
   if (!runtimeService) return true;
   try {
     if (
+      method === "GET" &&
+      pathname === "/api/lifeops/family-workflows/email-options"
+    ) {
+      json(res, { options: await runtimeService.emailOptions() });
+      return true;
+    }
+    if (
       method === "PUT" &&
       pathname === "/api/lifeops/family-workflows/school/source"
     ) {
-      json(
-        res,
-        await runtimeService.configureSchool(CONCORD_SCHOOL_CALENDAR_SOURCE),
-      );
+      const body = await readJsonBody<{
+        schoolLevel?: unknown;
+        updateMode?: unknown;
+      }>(req, res);
+      if (!body) return true;
+      if (
+        (body.schoolLevel !== undefined &&
+          body.schoolLevel !== "all" &&
+          body.schoolLevel !== "elementary") ||
+        (body.updateMode !== undefined &&
+          body.updateMode !== "review" &&
+          body.updateMode !== "automatic")
+      ) {
+        ctx.error(res, "Choose a valid school level and update mode", 400);
+        return true;
+      }
+      const status = await runtimeService.configureSchool({
+        ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+        schoolLevel: body.schoolLevel ?? "elementary",
+        updateMode: body.updateMode ?? "review",
+      });
+      await runtimeService.ensureMonthlySchedule();
+      json(res, status);
       return true;
     }
     if (
@@ -146,8 +175,27 @@ export async function handleFamilyWorkflowRoutes(
         recipient?: unknown;
         recipientEntityId?: unknown;
         calendarPrivacyMode?: unknown;
+        email?: unknown;
       }>(req, res);
       if (!body) return true;
+      let email: FamilyPacketEmailDelivery | undefined;
+      if (body.email !== undefined) {
+        if (
+          !body.email ||
+          typeof body.email !== "object" ||
+          !("subject" in body.email) ||
+          typeof body.email.subject !== "string" ||
+          !("senderGrantId" in body.email) ||
+          typeof body.email.senderGrantId !== "string"
+        ) {
+          ctx.error(res, "Email subject and sender account are required", 400);
+          return true;
+        }
+        email = {
+          subject: body.email.subject,
+          senderGrantId: body.email.senderGrantId,
+        };
+      }
       if (typeof body.recipient !== "string" || !body.recipient.trim()) {
         ctx.error(res, "recipient is required", 400);
         return true;
@@ -173,6 +221,7 @@ export async function handleFamilyWorkflowRoutes(
           {
             recipient: body.recipient.trim(),
             recipientEntityId: body.recipientEntityId.trim(),
+            ...(email ? { email } : {}),
             calendarPrivacyMode: body.calendarPrivacyMode as
               | "full"
               | "times_only"

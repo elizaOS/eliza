@@ -395,4 +395,53 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
       }),
     ).rejects.toMatchObject({ code: "FAMILY_PACKET_DRAFT_TAMPERED" });
   });
+
+  it("binds email approval to the persisted sender, recipient, subject and body", async () => {
+    const packet = await service.buildInternal(period("2026-09"), [
+      claim("email-plan"),
+    ]);
+    const draft = await service.createExternalDraft(packet, {
+      ...guestDraft,
+      email: {
+        subject: "September family plans",
+        senderGrantId: "test-account",
+      },
+    });
+    const queue = {
+      enqueueTransactional: async (input: ApprovalEnqueueInput) => ({
+        request: approval(input),
+        reused: false,
+      }),
+      surfaceEnqueuedApproval: async () => undefined,
+    };
+    const request = await service.enqueueDraftApproval({
+      draft,
+      queue,
+      requestedBy: "owner",
+      subjectUserId: "owner",
+      expiresAt: new Date("2026-09-05T00:00:00Z"),
+    });
+    const approved = { ...request, state: "approved" as const };
+    expect(request.action).toBe("send_email");
+    await expect(
+      service.validateApprovedDraft(approved),
+    ).resolves.toMatchObject({ email: draft.email });
+    if (approved.payload.action !== "send_email")
+      throw new Error("expected email");
+    for (const change of [
+      { grantId: "replacement-account" },
+      { familyPacketId: "another-packet" },
+      { to: ["someone-else@example.com"] },
+      { subject: "Changed subject" },
+      { body: `${draft.body}\nChanged` },
+      { bcc: ["hidden@example.com"] },
+    ]) {
+      await expect(
+        service.validateApprovedDraft({
+          ...approved,
+          payload: { ...approved.payload, ...change },
+        }),
+      ).rejects.toMatchObject({ code: "FAMILY_PACKET_APPROVAL_TAMPERED" });
+    }
+  });
 });

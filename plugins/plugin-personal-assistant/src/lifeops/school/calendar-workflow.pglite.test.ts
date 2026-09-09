@@ -9,9 +9,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
+import { CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE } from "@elizaos/plugin-calendar";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FamilyWorkflowRuntimeService } from "../family-workflows/runtime.js";
 import type { RawSqlQuery } from "../sql.js";
 import {
   CONCORD_SCHOOL_CALENDAR_SOURCE,
@@ -333,6 +335,69 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     await db.close();
   });
 
+  it("uses saved elementary auto-apply settings and does not duplicate on a hash-equal rerun", async () => {
+    text = [
+      "2026-09-07 | Labor Day - no school",
+      "2026-09-16 | CCHS early release",
+      "2026-09-17 | CMS early release",
+      "2026-11-06 | Elementary conferences",
+    ].join("\n");
+    runtime.getService = ((name: string) =>
+      name === CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE
+        ? gateway
+        : null) as IAgentRuntime["getService"];
+    const service = new FamilyWorkflowRuntimeService(runtime, {
+      schoolWorkflow: workflow,
+    });
+    await service.configureSchool({
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary",
+      updateMode: "automatic",
+    });
+    expect((await service.runSchool("scheduled")).state).toBe("applied");
+    expect(createdRanges.map((range) => range.title)).toEqual([
+      "Labor Day - no school",
+      "Elementary conferences",
+    ]);
+    expect((await service.runSchool("scheduled")).state).toBe("unchanged");
+    expect(creates).toBe(2);
+  });
+
+  it("reprocesses unchanged PDF bytes when school selection changes", async () => {
+    text =
+      "2026-09-07 | Labor Day - no school\n2026-09-16 | CCHS early release";
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    await workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    const config = {
+      ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+      schoolLevel: "elementary" as const,
+    };
+    await workflow.configure(config);
+    const second = await workflow.run(config);
+    expect(second.state).toBe("awaiting_approval");
+    if (second.state !== "awaiting_approval") throw new Error("expected plan");
+    expect(second.plan.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "cancel",
+          event: expect.objectContaining({ title: "CCHS early release" }),
+        }),
+      ]),
+    );
+    await expect(
+      workflow.applyApprovedPlan({
+        runId: second.runId,
+        requestUrl: new URL("http://localhost"),
+        gateway,
+      }),
+    ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_CONFIG_CHANGED" });
+  });
+
   it("runs source to retained hash to approval plan, applies through the gateway, then records hash-equal no-op", async () => {
     const first = await workflow.run();
     expect(first.state).toBe("awaiting_approval");
@@ -495,6 +560,12 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
         gateway,
       }),
     ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_APPLY_IN_PROGRESS" });
+    await expect(
+      workflow.configure({
+        ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+        schoolLevel: "elementary",
+      }),
+    ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_CONFIG_BUSY" });
     release();
     await applying;
   });
