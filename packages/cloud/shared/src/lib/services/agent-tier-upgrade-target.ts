@@ -60,6 +60,10 @@ import { parseGateCreditBalance } from "./agent-billing-gate";
 import { encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import { apiKeysService } from "./api-keys";
 import {
+  type DedicatedReviewRecord,
+  isDedicatedReviewCurrent,
+} from "./dedicated-activation-review";
+import {
   AGENT_PERSONAL_CUTOVER_KEY,
   AGENT_UPGRADED_FROM_KEY,
   readPersonalElizaCutover,
@@ -117,7 +121,32 @@ export interface CreateTierUpgradeTargetParams {
   environmentVars?: Record<string, string>;
   characterId?: string;
   maxNonTerminalAgents: number;
+  activationQuote: DedicatedActivationQuoteEconomics;
+  activationReceipt: { quoteId: string; quoteVersion: string };
+  /** Server-issued review, checked again at the transactional write boundaries. */
+  activationReview: DedicatedReviewRecord;
   quotaAdmission?: "organization";
+}
+
+/** Server-resolved terms carried from quote validation into the locked mint. */
+export interface DedicatedActivationQuoteEconomics {
+  balanceUsd: number;
+  hourlyRateUsd: number;
+  dailyRateUsd: number;
+  minimumBalanceUsd: number;
+  minimumRunwayDays: number;
+}
+
+export function dedicatedActivationQuoteEconomics(
+  balanceUsd: number,
+): DedicatedActivationQuoteEconomics {
+  return {
+    balanceUsd,
+    hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
+    dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
+    minimumBalanceUsd: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
+    minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+  };
 }
 
 export type TierUpgradeTargetResult =
@@ -342,6 +371,280 @@ export class PersonalDedicatedSelectionRequiredError extends ElizaError {
  */
 export class PersonalDedicatedAuthorityRetainedError extends ElizaError {
   override readonly name = "PersonalDedicatedAuthorityRetainedError";
+}
+
+export class PersonalDedicatedActivationQuoteChangedError extends ElizaError {
+  override readonly name = "PersonalDedicatedActivationQuoteChangedError";
+}
+
+function activationQuoteChanged(
+  params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "sourceAgentId">,
+): PersonalDedicatedActivationQuoteChangedError {
+  return new PersonalDedicatedActivationQuoteChangedError(
+    "The Dedicated activation quote changed before its lifecycle transaction committed",
+    {
+      code: "PERSONAL_DEDICATED_ACTIVATION_QUOTE_CHANGED",
+      context: { organizationId: params.organizationId, sourceAgentId: params.sourceAgentId },
+    },
+  );
+}
+
+/**
+ * The organization row lock fences billing through the target/job commit.
+ * Fresh minting has no existing target row to lock; reattachment must acquire
+ * any existing sandbox row before this lock, matching hourly billing order.
+ */
+async function assertActivationQuoteEconomicsInTx(
+  tx: DbTransaction,
+  params: Pick<
+    CreateTierUpgradeTargetParams,
+    | "organizationId"
+    | "sourceAgentId"
+    | "activationQuote"
+    | "activationReview"
+    | "activationReceipt"
+  >,
+  options: { requireRunway: boolean } = { requireRunway: true },
+): Promise<void> {
+  const quote = params.activationQuote;
+  if (
+    !quote ||
+    !Number.isFinite(quote.balanceUsd) ||
+    !Number.isFinite(quote.hourlyRateUsd) ||
+    !Number.isFinite(quote.dailyRateUsd) ||
+    !Number.isFinite(quote.minimumBalanceUsd) ||
+    !Number.isSafeInteger(quote.minimumRunwayDays)
+  ) {
+    throw activationQuoteChanged(params);
+  }
+  const [organization] = await tx
+    .select({ creditBalance: organizations.credit_balance })
+    .from(organizations)
+    .where(eq(organizations.id, params.organizationId))
+    .for("update")
+    .limit(1);
+  if (!organization) throw activationQuoteChanged(params);
+  let balance: number;
+  try {
+    balance = parseGateCreditBalance(organization.creditBalance);
+  } catch {
+    // error-policy:J1 an unverifiable stored balance cannot authorize a job.
+    throw activationQuoteChanged(params);
+  }
+  const current = dedicatedActivationQuoteEconomics(balance);
+  assertActivationReviewCurrent(params);
+  if (
+    (options.requireRunway && balance <= current.minimumBalanceUsd) ||
+    current.balanceUsd.toFixed(6) !== quote.balanceUsd.toFixed(6) ||
+    current.hourlyRateUsd.toFixed(6) !== quote.hourlyRateUsd.toFixed(6) ||
+    current.dailyRateUsd.toFixed(6) !== quote.dailyRateUsd.toFixed(6) ||
+    current.minimumBalanceUsd.toFixed(6) !== quote.minimumBalanceUsd.toFixed(6) ||
+    current.minimumRunwayDays !== quote.minimumRunwayDays
+  ) {
+    throw activationQuoteChanged(params);
+  }
+}
+
+function assertActivationReviewCurrent(
+  params: Pick<
+    CreateTierUpgradeTargetParams,
+    "organizationId" | "sourceAgentId" | "activationReview" | "activationReceipt"
+  >,
+): void {
+  if (
+    !params.activationReview ||
+    !isDedicatedReviewCurrent(params.activationReview) ||
+    params.activationReview.quoteId !== params.activationReceipt.quoteId
+  ) {
+    throw activationQuoteChanged(params);
+  }
+}
+
+export interface ReattachTierUpgradeTargetParams
+  extends Pick<
+    CreateTierUpgradeTargetParams,
+    | "organizationId"
+    | "userId"
+    | "sourceAgentId"
+    | "activationQuote"
+    | "activationReceipt"
+    | "activationReview"
+  > {
+  expectedTargetId: string;
+  expectedStatus: AgentSandboxStatus;
+  expectedLifecycleRevision: number;
+  expectedActiveJob: Pick<Job, "id" | "status"> | null;
+}
+
+/** The current job is part of the quoted effect: reuse and creation differ. */
+export async function findCurrentTierUpgradeProvisionJob(
+  organizationId: string,
+  agentId: string,
+  database: typeof dbWrite | DbTransaction = dbWrite,
+): Promise<Job | null> {
+  const [job] = await database
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.organization_id, organizationId),
+        eq(jobs.agent_id, agentId),
+        eq(jobs.type, JOB_TYPES.AGENT_PROVISION),
+        inArray(jobs.status, ["pending", "in_progress"]),
+      ),
+    )
+    .orderBy(desc(jobs.created_at), desc(jobs.id))
+    .limit(1);
+  return job ?? null;
+}
+
+/**
+ * Revalidate the HTTP-resolved target and economics in the same transaction as
+ * the provision enqueue. The sandbox row precedes the billing row lock, matching
+ * hourly billing. This never prepares credentials or creates a replacement target.
+ */
+export async function reattachTierUpgradeTargetWithProvision(
+  params: ReattachTierUpgradeTargetParams,
+): Promise<{ agent: AgentSandbox; job: Job | null; jobCreated: boolean }> {
+  const receipt = params.activationReceipt;
+  if (
+    !receipt ||
+    typeof receipt.quoteId !== "string" ||
+    !/^[a-f0-9]{64}$/.test(receipt.quoteId) ||
+    typeof receipt.quoteVersion !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(receipt.quoteVersion)
+  ) {
+    throw activationQuoteChanged(params);
+  }
+  const { quoteId, quoteVersion } = receipt;
+  assertActivationReviewCurrent(params);
+  params = {
+    ...params,
+    activationReceipt: { quoteId, quoteVersion },
+    activationReview: { ...params.activationReview },
+  };
+  return dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+    await tx.execute(
+      elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
+    );
+    await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.expectedTargetId));
+    const [current] = await tx
+      .select({ agent: agentSandboxes })
+      .from(agentSandboxes)
+      .innerJoin(
+        personalDedicatedUpgradeAuthorities,
+        eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+      )
+      .where(
+        and(
+          liveTargetWhere(params.organizationId),
+          eq(agentSandboxes.id, params.expectedTargetId),
+          eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+          eq(personalDedicatedUpgradeAuthorities.organization_id, agentSandboxes.organization_id),
+          eq(personalDedicatedUpgradeAuthorities.user_id, agentSandboxes.user_id),
+          eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+          eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !current ||
+      current.agent.status !== params.expectedStatus ||
+      current.agent.lifecycle_revision !== params.expectedLifecycleRevision
+    ) {
+      throw activationQuoteChanged(params);
+    }
+    const target = current.agent;
+    const activeJob = await findCurrentTierUpgradeProvisionJob(
+      params.organizationId,
+      target.id,
+      tx,
+    );
+    if (
+      params.expectedActiveJob === undefined ||
+      (activeJob?.id ?? null) !== (params.expectedActiveJob?.id ?? null) ||
+      (activeJob?.status ?? null) !== (params.expectedActiveJob?.status ?? null)
+    ) {
+      throw activationQuoteChanged(params);
+    }
+    await assertActivationQuoteEconomicsInTx(tx, params, {
+      requireRunway:
+        target.status === "error" ||
+        target.status === "stopped" ||
+        target.status === "sleeping" ||
+        (target.status !== "running" && !activeJob),
+    });
+    if (target.status === "running") return { agent: target, job: null, jobCreated: false };
+    // Never pass a reviewed reuse through find-or-enqueue: the job may finish
+    // after this read, but returning its result cannot start a replacement.
+    if (activeJob) return { agent: target, job: activeJob, jobCreated: false };
+    // A selected target's next job must carry its reviewed restore directive.
+    // Keep this guard under the canonical source/provision locks: a selection
+    // can appear after HTTP quoting, even while the runtime still says pending.
+    const [selection] = await tx
+      .select({ id: personalDedicatedAdoptionSelections.id })
+      .from(personalDedicatedAdoptionSelections)
+      .where(
+        and(
+          eq(personalDedicatedAdoptionSelections.organization_id, params.organizationId),
+          eq(personalDedicatedAdoptionSelections.dedicated_agent_id, target.id),
+        ),
+      )
+      .limit(1);
+    if (selection) {
+      throw new PersonalDedicatedSelectionRequiredError(
+        "A selected Dedicated target must resume through its reviewed adoption authority",
+        {
+          code: "PERSONAL_DEDICATED_SELECTION_REQUIRES_ADOPTION",
+          context: { organizationId: params.organizationId, sourceAgentId: params.sourceAgentId },
+        },
+      );
+    }
+    const enqueue = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
+      agentId: target.id,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      agentName: target.agent_name ?? target.id,
+    });
+    // A job that became active after the no-job snapshot changes the reviewed
+    // effect. Do not silently accept the old creation quote as a reuse.
+    if (!enqueue.created) throw activationQuoteChanged(params);
+    // A new action consumes this lifecycle revision, even if its job later
+    // disappears without changing the runtime status. Use the existing
+    // database-owned lifecycle revision fence, not a transient timestamp.
+    const [advanced] = await tx
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1` })
+      .where(
+        and(
+          eq(agentSandboxes.id, target.id),
+          eq(agentSandboxes.organization_id, params.organizationId),
+        ),
+      )
+      .returning();
+    if (!advanced) throw activationQuoteChanged(params);
+    // This job receipt is only for reading an accepted result, never for
+    // authorizing another enqueue. Preserve inline/offloaded payload fields.
+    const [recordedJob] = await tx
+      .update(jobs)
+      .set({
+        data: sql`jsonb_set(${jobs.data}, '{dedicatedActivationQuote}', ${JSON.stringify({ sourceAgentId: params.sourceAgentId, quoteId, quoteVersion, targetLifecycleRevision: advanced.lifecycle_revision })}::jsonb, true)`,
+      })
+      .where(
+        and(
+          eq(jobs.id, enqueue.job.id),
+          eq(jobs.organization_id, params.organizationId),
+          eq(jobs.agent_id, target.id),
+        ),
+      )
+      .returning();
+    if (!recordedJob) throw activationQuoteChanged(params);
+    assertActivationReviewCurrent(params);
+    return { agent: advanced, job: recordedJob, jobCreated: true };
+  });
 }
 
 async function assertNoRetainedUpgradeAuthorityInTx(
@@ -1688,6 +1991,7 @@ async function resolveOutcomeAfterBoundaryRejection(
   params: CreateTierUpgradeTargetParams,
   candidateTargetId: string,
   rejection: unknown,
+  origin: CreateTierUpgradeTargetParams["activationReceipt"],
 ): Promise<TierUpgradeTargetResult | null> {
   let live: AgentSandbox | null;
   try {
@@ -1713,9 +2017,48 @@ async function resolveOutcomeAfterBoundaryRejection(
   }
 
   if (live?.id === candidateTargetId) {
-    // Ambiguous commit recovered: target (and, atomically, its job) are
-    // durable. Hand back the committed pair; the credential stays untouched.
-    const job = await findActiveTierUpgradeProvisionJob(params.organizationId, candidateTargetId);
+    // Recover the exact originating job, including a terminal one. A later
+    // active job is a different action and must never be attributed to this
+    // confirmation. Missing evidence is not permission to enqueue again.
+    let job: Job | null = null;
+    try {
+      const [receipt] = await dbWrite
+        .select()
+        .from(personalDedicatedUpgradeAuthorities)
+        .where(
+          and(
+            eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+            eq(personalDedicatedUpgradeAuthorities.user_id, params.userId),
+            eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+            eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, candidateTargetId),
+            eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+            eq(personalDedicatedUpgradeAuthorities.originating_activation_quote_id, origin.quoteId),
+            eq(
+              personalDedicatedUpgradeAuthorities.originating_activation_quote_version,
+              origin.quoteVersion,
+            ),
+          ),
+        )
+        .limit(1);
+      if (receipt?.originating_provision_job_id) {
+        job = await findTierUpgradeProvisionJobById(
+          params.organizationId,
+          candidateTargetId,
+          receipt.originating_provision_job_id,
+        );
+      }
+    } catch (verificationError) {
+      // error-policy:J2 retain the original rejection and the live credential.
+      logger.error("[agent-tier-upgrade] Could not verify the originating activation job", {
+        dedicatedAgentId: candidateTargetId,
+        orgId: params.organizationId,
+        verificationError:
+          verificationError instanceof Error
+            ? verificationError.message
+            : String(verificationError),
+      });
+      return null;
+    }
     logger.warn(
       "[agent-tier-upgrade] Boundary transaction rejected AFTER a durable commit — recovered the committed target",
       {
@@ -1727,9 +2070,9 @@ async function resolveOutcomeAfterBoundaryRejection(
       },
     );
     if (job) return { created: true, agent: live, job };
-    // Job already claimed-and-finished (or otherwise not active): reattach —
-    // the route's idempotent re-enqueue handles a dead job safely.
-    return { created: false, agent: live };
+    // The target is durable but its original result cannot be recovered.
+    // Surface the rejection without revoking its credential or rearming work.
+    return null;
   }
 
   if (live) {
@@ -1743,27 +2086,6 @@ async function resolveOutcomeAfterBoundaryRejection(
   // are unreferenced; the original rejection is the real outcome.
   await revokeAbandonedTargetCredentials(candidateTargetId);
   return null;
-}
-
-/** The candidate/target's active provision job, if one is pending or running. */
-async function findActiveTierUpgradeProvisionJob(
-  organizationId: string,
-  agentId: string,
-): Promise<Job | null> {
-  const [job] = await dbWrite
-    .select()
-    .from(jobs)
-    .where(
-      and(
-        eq(jobs.type, JOB_TYPES.AGENT_PROVISION),
-        eq(jobs.organization_id, organizationId),
-        eq(jobs.agent_id, agentId),
-        sql`${jobs.status} IN ('pending', 'in_progress')`,
-      ),
-    )
-    .orderBy(desc(jobs.created_at))
-    .limit(1);
-  return job ?? null;
 }
 
 /** Exact durable job read used when a COMMIT acknowledgement is ambiguous. */
@@ -1787,6 +2109,94 @@ async function findTierUpgradeProvisionJobById(
   return job ?? null;
 }
 
+/** Read one committed activation result, never enqueue or repair lifecycle work. */
+export async function findOriginatingTierUpgradeResult(params: {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  quoteId: string;
+  quoteVersion: string;
+}): Promise<{ agent: AgentSandbox; job: Job | null; kind: "creation" | "reactivation" } | null> {
+  const [result] = await dbWrite
+    .select({ agent: agentSandboxes, job: jobs })
+    .from(personalDedicatedUpgradeAuthorities)
+    .innerJoin(
+      agentSandboxes,
+      and(
+        eq(agentSandboxes.id, personalDedicatedUpgradeAuthorities.dedicated_agent_id),
+        eq(agentSandboxes.organization_id, personalDedicatedUpgradeAuthorities.organization_id),
+        eq(agentSandboxes.user_id, personalDedicatedUpgradeAuthorities.user_id),
+      ),
+    )
+    .leftJoin(
+      jobs,
+      and(
+        eq(jobs.id, personalDedicatedUpgradeAuthorities.originating_provision_job_id),
+        eq(jobs.type, JOB_TYPES.AGENT_PROVISION),
+        eq(jobs.organization_id, personalDedicatedUpgradeAuthorities.organization_id),
+        eq(jobs.agent_id, sql`${personalDedicatedUpgradeAuthorities.dedicated_agent_id}::text`),
+        eq(jobs.user_id, personalDedicatedUpgradeAuthorities.user_id),
+      ),
+    )
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.user_id, params.userId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, params.targetAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+        eq(personalDedicatedUpgradeAuthorities.originating_activation_quote_id, params.quoteId),
+        eq(
+          personalDedicatedUpgradeAuthorities.originating_activation_quote_version,
+          params.quoteVersion,
+        ),
+        liveTargetWhere(params.organizationId),
+      ),
+    )
+    .limit(1);
+  if (result) return { ...result, kind: "creation" };
+  // Later explicit reactivations retain their confirmation in the canonical
+  // job, while the upgrade authority continues to bind its original owner.
+  // A same-org operator may read only the job they actually confirmed.
+  const [reactivation] = await dbWrite
+    .select({ agent: agentSandboxes, job: jobs })
+    .from(personalDedicatedUpgradeAuthorities)
+    .innerJoin(
+      agentSandboxes,
+      and(
+        eq(agentSandboxes.id, personalDedicatedUpgradeAuthorities.dedicated_agent_id),
+        eq(agentSandboxes.organization_id, personalDedicatedUpgradeAuthorities.organization_id),
+        eq(agentSandboxes.user_id, personalDedicatedUpgradeAuthorities.user_id),
+      ),
+    )
+    .innerJoin(
+      jobs,
+      and(
+        eq(jobs.organization_id, personalDedicatedUpgradeAuthorities.organization_id),
+        eq(jobs.agent_id, sql`${personalDedicatedUpgradeAuthorities.dedicated_agent_id}::text`),
+        eq(jobs.type, JOB_TYPES.AGENT_PROVISION),
+        eq(jobs.user_id, params.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, params.targetAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+        sql`${jobs.data}->'dedicatedActivationQuote'->>'sourceAgentId' = ${params.sourceAgentId}`,
+        sql`${jobs.data}->'dedicatedActivationQuote'->>'quoteId' = ${params.quoteId}`,
+        sql`${jobs.data}->'dedicatedActivationQuote'->>'quoteVersion' = ${params.quoteVersion}`,
+        sql`${jobs.data}->'dedicatedActivationQuote'->>'targetLifecycleRevision' = ${agentSandboxes.lifecycle_revision}::text`,
+        liveTargetWhere(params.organizationId),
+      ),
+    )
+    .orderBy(desc(jobs.created_at), desc(jobs.id))
+    .limit(1);
+  return reactivation ? { ...reactivation, kind: "reactivation" } : null;
+}
+
 /**
  * Find-or-create the dedicated migration target for a shared agent, with its
  * managed environment prepared and its provision job enqueued as one durable
@@ -1797,6 +2207,25 @@ async function findTierUpgradeProvisionJobById(
 export async function createTierUpgradeTargetWithProvision(
   params: CreateTierUpgradeTargetParams,
 ): Promise<TierUpgradeTargetResult> {
+  const receipt = params.activationReceipt;
+  if (
+    !receipt ||
+    typeof receipt.quoteId !== "string" ||
+    !/^[a-f0-9]{64}$/.test(receipt.quoteId) ||
+    typeof receipt.quoteVersion !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(receipt.quoteVersion)
+  ) {
+    throw activationQuoteChanged(params);
+  }
+  // Snapshot before any await: the original confirmed identity is never
+  // replaced by a retry's quote or a mutation of the caller's parameter object.
+  const { quoteId, quoteVersion } = receipt;
+  assertActivationReviewCurrent(params);
+  params = {
+    ...params,
+    activationReceipt: { quoteId, quoteVersion },
+    activationReview: { ...params.activationReview },
+  };
   // Phase 1 — reattach fast path and pre-mint quota refusal under the locks.
   // Anything durable a previous winner committed is visible here, so retries
   // and post-commit racers return without preparing any state of their own.
@@ -1814,6 +2243,7 @@ export async function createTierUpgradeTargetWithProvision(
     if (existing) return existing;
     await assertNoRetainedUpgradeAuthorityInTx(tx, params);
     await assertNoExistingAdoptionCandidateInTx(tx, params);
+    await assertActivationQuoteEconomicsInTx(tx, params);
     // Refuse over-quota upgrades before any credential is minted. The locked
     // insert transaction below re-asserts this authoritatively.
     await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
@@ -1866,6 +2296,7 @@ export async function createTierUpgradeTargetWithProvision(
       if (existing) return { created: false as const, agent: existing };
       await assertNoRetainedUpgradeAuthorityInTx(tx, params);
       await assertNoExistingAdoptionCandidateInTx(tx, params);
+      await assertActivationQuoteEconomicsInTx(tx, params);
 
       await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
 
@@ -1900,20 +2331,24 @@ export async function createTierUpgradeTargetWithProvision(
         });
       }
 
-      await tx.insert(personalDedicatedUpgradeAuthorities).values({
-        organization_id: params.organizationId,
-        user_id: params.userId,
-        source_agent_id: params.sourceAgentId,
-        dedicated_agent_id: created.id,
-        schema_version: 1,
-      });
-
       const { job } = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
         agentId: created.id,
         organizationId: params.organizationId,
         userId: params.userId,
         agentName: created.agent_name ?? created.id,
       });
+
+      await tx.insert(personalDedicatedUpgradeAuthorities).values({
+        organization_id: params.organizationId,
+        user_id: params.userId,
+        source_agent_id: params.sourceAgentId,
+        dedicated_agent_id: created.id,
+        schema_version: 1,
+        originating_activation_quote_id: quoteId,
+        originating_activation_quote_version: quoteVersion,
+        originating_provision_job_id: job.id,
+      });
+      assertActivationReviewCurrent(params);
 
       logger.info("[agent-tier-upgrade] Created migration target with provision job", {
         sourceAgentId: params.sourceAgentId,
@@ -1927,7 +2362,10 @@ export async function createTierUpgradeTargetWithProvision(
     // A rejection is NOT proof of rollback — verify durability before any
     // cleanup (an ambiguous commit-ack loss leaves target+job live, and the
     // candidate credential is then the LIVE target's credential).
-    const recovered = await resolveOutcomeAfterBoundaryRejection(params, targetId, error);
+    const recovered = await resolveOutcomeAfterBoundaryRejection(params, targetId, error, {
+      quoteId,
+      quoteVersion,
+    });
     if (recovered) return recovered;
     throw error;
   }

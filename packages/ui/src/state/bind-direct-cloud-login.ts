@@ -1,6 +1,7 @@
 /**
  * Converts a direct Cloud account login into the durable personal-agent target
- * used by desktop startup, chat routing, and runtime-switch surfaces.
+ * used by desktop startup, chat routing, and runtime-switch surfaces. Login
+ * resolves the current runtime without authorizing any lifecycle operation.
  */
 
 import { setStorageValue } from "../bridge/storage-bridge";
@@ -13,7 +14,7 @@ import {
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 
 interface DirectCloudBindingClient {
-  ensurePersonalDedicatedEliza(options: {
+  getPersonalSharedEliza(options: {
     cloudApiBase: string;
     authToken: string;
   }): Promise<{
@@ -21,7 +22,7 @@ interface DirectCloudBindingClient {
     activeAgentId: string;
     agentName: string;
     apiBase: string;
-    runtime: "dedicated";
+    runtime: "shared" | "dedicated";
   }>;
   setBaseUrl(base: string, options?: { persist?: boolean }): void;
   setToken(token: string): void;
@@ -32,7 +33,7 @@ export async function bindDirectCloudLoginToPersonalAgent(options: {
   cloudApiBase: string;
   token: string;
 }): Promise<void> {
-  const personal = await options.client.ensurePersonalDedicatedEliza({
+  const personal = await options.client.getPersonalSharedEliza({
     cloudApiBase: options.cloudApiBase,
     authToken: options.token,
   });

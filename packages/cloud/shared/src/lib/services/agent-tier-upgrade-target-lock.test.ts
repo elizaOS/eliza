@@ -29,6 +29,7 @@ import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { organizations } from "../../db/schemas/organizations";
 import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
@@ -55,6 +56,7 @@ const quotaSnapshot = { ...quotaActual };
  * race-loser test show a competitor's commit between phase 1 and phase 3. */
 let liveTargetRowsForTx: (txIndex: number) => SandboxRow[] = () => [];
 let insertedTarget: SandboxRow | undefined;
+let insertedReceipt: SandboxRow | undefined;
 let prepCalls = 0;
 const revokeForAgent = mock(async (_agentSandboxId: string) => {});
 
@@ -77,6 +79,7 @@ function makeTx(txIndex: number) {
         hasAuthorityJoin: false,
         hasAuthorityLeftJoin: false,
         hasOrderBy: false,
+        rowLock: undefined as string | undefined,
         selectsOnlyId: selection ? Object.keys(selection).length === 1 && "id" in selection : false,
       };
       const chain = {
@@ -96,12 +99,19 @@ function makeTx(txIndex: number) {
         // The enqueue's sandbox read row-locks its ownership decision
         // (`.for("update")`, lifecycle_revision fencing) — a no-op here since
         // this seam only records statement ORDER, not locking semantics.
-        for: () => chain,
+        for: (mode: string) => {
+          state.rowLock = mode;
+          return chain;
+        },
         orderBy: () => {
           state.hasOrderBy = true;
           return chain;
         },
         limit: () => {
+          if (state.table === organizations) {
+            events.push({ tx: txIndex, kind: "select-activation-balance", detail: state.rowLock });
+            return [{ creditBalance: "100" }];
+          }
           // The live-target re-check orders by created_at; the enqueue's
           // sandbox-existence probe does not — that distinguishes them.
           if (state.table === agentSandboxes && state.hasAuthorityJoin && state.hasOrderBy) {
@@ -146,6 +156,13 @@ function makeTx(txIndex: number) {
     },
     insert: (table: unknown) => ({
       values: (value: SandboxRow) => ({
+        // biome-ignore lint/suspicious/noThenProperty: Drizzle inserts without returning are awaited directly.
+        then: (resolve: (value: undefined) => unknown) => {
+          if (table !== personalDedicatedUpgradeAuthorities) throw new Error("unexpected insert");
+          events.push({ tx: txIndex, kind: "insert-activation-receipt" });
+          insertedReceipt = value;
+          return resolve(undefined);
+        },
         returning: async () => {
           if (table === agentSandboxes) {
             events.push({ tx: txIndex, kind: "insert-target" });
@@ -281,12 +298,14 @@ afterEach(() => {
   txCounter = 0;
   liveTargetRowsForTx = () => [];
   insertedTarget = undefined;
+  insertedReceipt = undefined;
   prepCalls = 0;
   transaction.mockClear();
   revokeForAgent.mockClear();
 });
 
 function upgrade() {
+  const issuedAt = Date.now();
   return createTierUpgradeTargetWithProvision({
     sourceAgentId: SRC,
     organizationId: ORG,
@@ -294,6 +313,22 @@ function upgrade() {
     agentName: "lock-span-target",
     environmentVars: {},
     maxNonTerminalAgents: 5,
+    activationReceipt: { quoteId: "a".repeat(64), quoteVersion: "personal-dedicated-v1" },
+    activationReview: {
+      version: 1 as const,
+      quoteId: "a".repeat(64),
+      binding: "b".repeat(64),
+      termsId: "c".repeat(64),
+      issuedAt,
+      expiresAt: issuedAt + 300_000,
+    },
+    activationQuote: {
+      balanceUsd: 100,
+      hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
+      dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
+      minimumBalanceUsd: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
+      minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+    },
   });
 }
 
@@ -315,6 +350,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "select-retained-authority",
       "select-adoption-selection",
       "select-adoption-candidate",
+      "select-activation-balance",
       "organization-lock",
       "policy-read",
       "select-quota-count",
@@ -325,6 +361,9 @@ describe("tier-upgrade single-flight span (#15943)", () => {
     expect(phase1[0]?.detail).toBe("10000ms,30000ms");
     expect(phase1[1]?.detail).toBe("agent-create");
     expect(phase1[2]?.detail).toBe(`tier-upgrade:${SRC}`);
+    expect(phase1.find((event) => event.kind === "select-activation-balance")?.detail).toBe(
+      "update",
+    );
 
     // The load-bearing assertion: target insert AND provision-job insert are
     // statements of the SAME transaction that took the org + tier-upgrade
@@ -341,6 +380,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "select-retained-authority",
       "select-adoption-selection",
       "select-adoption-candidate",
+      "select-activation-balance",
       "organization-lock",
       "policy-read",
       "select-quota-count",
@@ -351,10 +391,24 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "select-active-job",
       "select-active-job",
       "insert-provision-job",
+      "insert-activation-receipt",
     ]);
+    if (!result.created) throw new Error("expected fresh creation");
+    expect(insertedReceipt).toMatchObject({
+      organization_id: ORG,
+      user_id: USER,
+      source_agent_id: SRC,
+      dedicated_agent_id: result.agent.id,
+      originating_activation_quote_id: "a".repeat(64),
+      originating_activation_quote_version: "personal-dedicated-v1",
+      originating_provision_job_id: result.job.id,
+    });
     expect(phase3[0]?.detail).toBe("10000ms,30000ms");
     expect(phase3[1]?.detail).toBe("agent-create");
     expect(phase3[2]?.detail).toBe(`tier-upgrade:${SRC}`);
+    expect(phase3.find((event) => event.kind === "select-activation-balance")?.detail).toBe(
+      "update",
+    );
     // The nested provision lock is keyed on the freshly minted target id
     // (org → tier-upgrade → provision; never any other order).
     expect(phase3.filter((event) => event.kind === "lock").map((event) => event.detail)).toEqual([

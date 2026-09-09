@@ -121,3 +121,18 @@ export const ErrorWithRetry: Story = {
     assert(card.textContent?.includes("Retry"), "offers a retry control");
   },
 };
+
+export const ConfirmationRequired: Story = {
+  decorators: [frame("confirmation-required")],
+  play: async ({ canvasElement }) => {
+    const card = await waitForCardText(canvasElement, "Confirmation required");
+    assert(
+      card instanceof HTMLButtonElement,
+      "price review is keyboard accessible",
+    );
+    assert(
+      card.getAttribute("aria-label")?.includes("before confirming"),
+      "review does not imply approval",
+    );
+  },
+};

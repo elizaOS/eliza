@@ -6,9 +6,8 @@
  * Cloud binding (`cloud:personal:<uuid>`) by running the same `runJoinFlow`
  * controller `/join` uses. It validates the identity against the current
  * Steward session token (never trusting localStorage alone) and persists the
- * authoritative binding. If an existing Dedicated target requires explicit
- * adoption consent, this headless entry attempt fails closed and routes to
- * `/join`, which owns the visible quote review and confirmation gesture.
+ * authoritative binding. Entry never activates or adopts a Dedicated target;
+ * an unavailable identity fails closed into the retryable `/join` error UI.
  *
  * Callers gate on `enabled` so the request only fires for the rowless case;
  * resolution failure surfaces as a query error and the entry gate falls back

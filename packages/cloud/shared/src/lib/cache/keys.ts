@@ -2,6 +2,9 @@
  * Cache key generators for consistent key naming across the application.
  */
 export const CacheKeys = {
+  dedicatedReview: {
+    quote: (quoteId: string) => `dedicated-review:${quoteId}:v1`,
+  },
   org: {
     data: (orgId: string) => `org:${orgId}:data:v1`,
     credits: (orgId: string) => `org:${orgId}:credits:v1`,

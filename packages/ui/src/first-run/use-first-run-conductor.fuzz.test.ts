@@ -38,14 +38,14 @@ const mocks = vi.hoisted(() => ({
       success: true as const,
       data: [] as unknown[],
     })),
-    selectOrProvisionCloudAgent: vi.fn(
+    resolveCloudAgentForEntry: vi.fn(
       async (_options: Record<string, unknown>) => ({
         apiBase: "https://agent.example.test",
         agentId: "agent-1",
         created: false,
       }),
     ),
-    ensurePersonalDedicatedEliza: vi.fn(
+    getPersonalSharedEliza: vi.fn(
       async (_options: Record<string, unknown>) => ({
         personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
         agentId: "personal:00000000-0000-5000-8000-000000000001",
@@ -261,7 +261,7 @@ async function runStorm(opts: {
   ).toBeLessThanOrEqual(1);
   // I2 — at most one cloud provisioning call.
   expect(
-    mocks.client.selectOrProvisionCloudAgent.mock.calls.length,
+    mocks.client.resolveCloudAgentForEntry.mock.calls.length,
     `seed ${opts.seed}: cloud provision count`,
   ).toBeLessThanOrEqual(1);
   // I3 — the real completion fires at most once.

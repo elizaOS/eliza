@@ -25,7 +25,7 @@ describe("bindDirectCloudLoginToPersonalAgent", () => {
       }),
     );
     const client = {
-      ensurePersonalDedicatedEliza: vi.fn(async () => ({
+      getPersonalSharedEliza: vi.fn(async () => ({
         personalElizaId: PERSONAL_ID,
         activeAgentId: DEDICATED_ID,
         agentName: "Eliza",

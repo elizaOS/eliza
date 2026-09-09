@@ -32,8 +32,9 @@
  *    service (per-source database lock spanning target creation through the
  *    provision enqueue, #15943) makes retries and concurrent tabs resume the
  *    SAME upgrade, with target and job committed atomically — so a reattach
- *    never prepares credentials or environment state; it only reads (or
- *    re-arms, for stopped/sleeping/dead-job targets) durable state.
+ *    never prepares credentials or environment state. Original-quote recovery
+ *    only reads its committed result; a new quote for the current target may
+ *    explicitly authorize reactivation.
  */
 
 import { type Context, Hono } from "hono";
@@ -46,10 +47,21 @@ import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-ga
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
   createTierUpgradeTargetWithProvision,
+  dedicatedActivationQuoteEconomics,
+  findCurrentTierUpgradeProvisionJob,
   findLiveTierUpgradeTarget,
+  findOriginatingTierUpgradeResult,
+  PersonalDedicatedActivationQuoteChangedError,
   PersonalDedicatedAuthorityRetainedError,
   PersonalDedicatedSelectionRequiredError,
+  reattachTierUpgradeTargetWithProvision,
 } from "@/lib/services/agent-tier-upgrade-target";
+import {
+  type DedicatedReviewRecord,
+  dedicatedActivationReviews,
+  dedicatedReviewBinding,
+  isDedicatedReviewCurrent,
+} from "@/lib/services/dedicated-activation-review";
 import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
 import {
   AgentQuotaExceededError,
@@ -125,7 +137,10 @@ interface UpgradeSource {
 }
 
 function json(body: unknown, status = 200): Response {
-  return applyCorsHeaders(Response.json(body, { status }), CORS_METHODS);
+  return applyCorsHeaders(
+    Response.json(body, { status, headers: { "Cache-Control": "no-store" } }),
+    CORS_METHODS,
+  );
 }
 
 function pollingBody(jobId: string) {
@@ -189,16 +204,27 @@ async function resolveUpgradeSource(
 
 async function quoteIdFor(
   organizationId: string,
+  userId: string,
   sourceAgentId: string,
   balance: number,
+  target: AgentRow | null,
+  activeJob: { id: string; status: string } | null,
 ): Promise<string> {
   const input = [
     DEDICATED_QUOTE_VERSION,
     organizationId,
+    userId,
     sourceAgentId,
     balance.toFixed(6),
     AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
+    AGENT_PRICING.DAILY_RUNNING_COST.toFixed(6),
     AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6),
+    AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS.toString(10),
+    target?.id ?? "no-target",
+    target?.status ?? "available",
+    target?.lifecycle_revision.toString(10) ?? "no-revision",
+    activeJob?.id ?? "no-active-job",
+    activeJob?.status ?? "no-active-job-status",
   ].join(":");
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -213,31 +239,47 @@ async function dedicatedQuote(
   source: UpgradeSource,
   user: AuthedUser,
   existingTarget: AgentRow | null,
+  binding: string,
 ) {
   const credit = await checkAgentTierUpgradeCreditGate(user.organization_id);
   const minimumBalanceUsd = AGENT_PRICING.UPGRADE_MINIMUM_BALANCE;
   const balanceUsd = credit.balance;
+  const activeJob = existingTarget
+    ? await findCurrentTierUpgradeProvisionJob(
+        user.organization_id,
+        existingTarget.id,
+      )
+    : null;
   const reattachWithoutStartingCompute = Boolean(
     existingTarget &&
-      existingTarget.status !== "error" &&
-      existingTarget.status !== "stopped" &&
-      existingTarget.status !== "sleeping",
+      (existingTarget.status === "running" ||
+        (activeJob &&
+          ["pending", "provisioning"].includes(existingTarget.status))),
   );
   const deficitUsd = Math.max(
     0,
     Math.round((minimumBalanceUsd - balanceUsd) * 100) / 100,
   );
+  const review = await dedicatedActivationReviews.issue(
+    binding,
+    await quoteIdFor(
+      user.organization_id,
+      user.id,
+      source.id,
+      balanceUsd,
+      existingTarget,
+      activeJob,
+    ),
+  );
   return {
-    quoteId: await quoteIdFor(user.organization_id, source.id, balanceUsd),
+    quoteId: review.quoteId,
+    issuedAt: review.issuedAt,
+    expiresAt: review.expiresAt,
     quoteVersion: DEDICATED_QUOTE_VERSION,
     sourceAgentId: source.id,
     currentMode: "shared" as const,
     targetMode: "dedicated" as const,
-    hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
-    dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
-    minimumBalanceUsd,
-    minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
-    balanceUsd,
+    ...dedicatedActivationQuoteEconomics(balanceUsd),
     deficitUsd,
     canActivate: credit.allowed || reattachWithoutStartingCompute,
     requiresConfirmation: true,
@@ -284,9 +326,11 @@ function invalidUpgradeSource(source: UpgradeSource): Response | null {
 /**
  * Respond for a live migration target that already owns this upgrade — both
  * the pre-checked reattach and the race loser whose single-flight call
- * returned another request's committed target. Running and
- * already-provisioning targets reattach without a second credit gate: nothing
- * new starts billing. Resuming a stopped/sleeping target does start compute
+ * returned another request's committed target. Every path verifies the current
+ * account/target/state-bound quote, including pending jobs that can be re-armed.
+ * A matching originating quote is read-only and cannot authorize reactivation. Running and
+ * already-provisioning targets do not require additional hosting runway.
+ * Resuming a stopped/sleeping target does start compute
  * again, so stopped/sleeping/error paths must prove the same dedicated runway as a fresh upgrade
  * before it may enqueue work. The enqueue is safe from any state because a
  * committed target's environment was fully prepared at creation — re-arming a
@@ -299,37 +343,92 @@ async function respondToLiveTarget(
   env: AppEnv["Bindings"],
   confirmedQuoteId: string,
   executionCtx: ProvisioningExecutionContext | undefined,
+  review: DedicatedReviewRecord,
 ): Promise<Response> {
-  logger.info("[agent-upgrade-tier] Reattaching to in-flight upgrade", {
-    sharedAgentId,
-    dedicatedAgentId: target.id,
-    orgId: user.organization_id,
-    status: target.status,
-  });
-  if (target.status === "running") {
-    return json({
-      success: true,
-      created: false,
-      alreadyInProgress: true,
-      data: {
-        id: target.id,
-        agentId: target.id,
-        dedicatedAgentId: target.id,
-        sharedAgentId,
-        agentName: target.agent_name,
-        status: target.status,
-        executionTier: target.execution_tier,
+  if (!isDedicatedReviewCurrent(review)) {
+    return json(
+      {
+        success: false,
+        code: "dedicated_quote_changed",
+        error: "Your Dedicated quote expired. Review and confirm again.",
       },
-    });
+      409,
+    );
   }
+  const original = await findOriginatingTierUpgradeResult({
+    organizationId: user.organization_id,
+    userId: user.id,
+    sourceAgentId: sharedAgentId,
+    targetAgentId: target.id,
+    quoteId: confirmedQuoteId,
+    quoteVersion: DEDICATED_QUOTE_VERSION,
+  });
+  if (original) {
+    if (!isDedicatedReviewCurrent(review)) {
+      return json(
+        {
+          success: false,
+          code: "dedicated_quote_changed",
+          error: "Your Dedicated quote expired. Review and confirm again.",
+        },
+        409,
+      );
+    }
+    const { agent, job } = original;
+    if (
+      !job ||
+      !["pending", "in_progress"].includes(job.status) ||
+      (original.kind === "creation" &&
+        !["pending", "provisioning"].includes(agent.status))
+    ) {
+      return json(
+        {
+          success: false,
+          code: "dedicated_activation_recovery_required",
+          error:
+            "The original activation is no longer in progress. Review the current runtime and confirm any new action.",
+          retryable: false,
+        },
+        409,
+      );
+    }
+    // This is an already-authorized result, not permission to start compute
+    // again. No billing gate, lifecycle transaction, enqueue or daemon nudge.
+    return json(
+      {
+        success: true,
+        created: false,
+        recovered: true,
+        alreadyInProgress: true,
+        data: {
+          id: agent.id,
+          agentId: agent.id,
+          dedicatedAgentId: agent.id,
+          sharedAgentId,
+          agentName: agent.agent_name,
+          status: job.status,
+          jobId: job.id,
+          estimatedCompletionAt: job.estimated_completion_at,
+          executionTier: agent.execution_tier,
+        },
+        polling: pollingBody(job.id),
+      },
+      202,
+    );
+  }
+  const resumeCreditCheck = await checkAgentTierUpgradeCreditGate(
+    user.organization_id,
+  );
+  const activeJob = await findCurrentTierUpgradeProvisionJob(
+    user.organization_id,
+    target.id,
+  );
   if (
     target.status === "error" ||
     target.status === "stopped" ||
-    target.status === "sleeping"
+    target.status === "sleeping" ||
+    (target.status !== "running" && !activeJob)
   ) {
-    const resumeCreditCheck = await checkAgentTierUpgradeCreditGate(
-      user.organization_id,
-    );
     if (!resumeCreditCheck.allowed) {
       return json(
         insufficientCredits402(
@@ -345,33 +444,69 @@ async function respondToLiveTarget(
         402,
       );
     }
-    const currentQuoteId = await quoteIdFor(
-      user.organization_id,
-      sharedAgentId,
-      resumeCreditCheck.balance,
-    );
-    if (confirmedQuoteId !== currentQuoteId) {
-      return json(
-        {
-          success: false,
-          code: "dedicated_quote_changed",
-          error:
-            "Your Dedicated quote changed before reactivation. Review the latest balance and pricing, then confirm again.",
-        },
-        409,
-      );
-    }
   }
-  // pending/provisioning (or error/stopped/sleeping after an interrupted boot):
-  // hand back the active provision job — enqueue reuses an in-flight job
-  // and only mints a new one when the previous attempt died.
-  const reattach = await provisioningJobService.enqueueAgentProvisionOnce({
-    agentId: target.id,
+  const currentQuoteId = await quoteIdFor(
+    user.organization_id,
+    user.id,
+    sharedAgentId,
+    resumeCreditCheck.balance,
+    target,
+    activeJob,
+  );
+  if (review.termsId !== currentQuoteId || !isDedicatedReviewCurrent(review)) {
+    return json(
+      {
+        success: false,
+        code: "dedicated_quote_changed",
+        error:
+          "Your Dedicated quote changed before reactivation. Review the current account, balance and pricing, then confirm again.",
+      },
+      409,
+    );
+  }
+  const reattach = await reattachTierUpgradeTargetWithProvision({
     organizationId: user.organization_id,
     userId: user.id,
-    agentName: target.agent_name ?? target.id,
+    sourceAgentId: sharedAgentId,
+    expectedTargetId: target.id,
+    expectedStatus: target.status,
+    expectedLifecycleRevision: target.lifecycle_revision,
+    expectedActiveJob: activeJob
+      ? { id: activeJob.id, status: activeJob.status }
+      : null,
+    activationReceipt: {
+      quoteId: confirmedQuoteId,
+      quoteVersion: DEDICATED_QUOTE_VERSION,
+    },
+    activationReview: review,
+    activationQuote: dedicatedActivationQuoteEconomics(
+      resumeCreditCheck.balance,
+    ),
   });
-  if (reattach.created) {
+  target = reattach.agent;
+  logger.info("[agent-upgrade-tier] Reattaching to in-flight upgrade", {
+    sharedAgentId,
+    dedicatedAgentId: target.id,
+    orgId: user.organization_id,
+    status: target.status,
+  });
+  if (!reattach.job) {
+    return json({
+      success: true,
+      created: false,
+      alreadyInProgress: true,
+      data: {
+        id: target.id,
+        agentId: target.id,
+        dedicatedAgentId: target.id,
+        sharedAgentId,
+        agentName: target.agent_name,
+        status: target.status,
+        executionTier: target.execution_tier,
+      },
+    });
+  }
+  if (reattach.jobCreated) {
     await retainProvisioningNudge(env, executionCtx, {
       sharedAgentId,
       dedicatedAgentId: target.id,
@@ -406,7 +541,8 @@ async function __hono_GET(
   { params }: { params: Promise<{ agentId: string }> },
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const auth = await requireAuthOrApiKeyWithOrg(request);
+    const { user } = auth;
     const { agentId } = await params;
     const source = await resolveUpgradeSource(agentId, user);
     if (!source) {
@@ -420,7 +556,12 @@ async function __hono_GET(
     );
     return json({
       success: true,
-      data: await dedicatedQuote(source, user, existingTarget),
+      data: await dedicatedQuote(
+        source,
+        user,
+        existingTarget,
+        await dedicatedReviewBinding(auth, source.id),
+      ),
     });
   } catch (error) {
     // error-policy:J1 translate authentication and quote failures at HTTP.
@@ -435,7 +576,8 @@ async function __hono_POST(
   executionCtx: ProvisioningExecutionContext | undefined,
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const auth = await requireAuthOrApiKeyWithOrg(request);
+    const { user } = auth;
     const { agentId } = await params;
 
     const source = await resolveUpgradeSource(agentId, user);
@@ -461,6 +603,23 @@ async function __hono_POST(
       );
     }
 
+    const binding = await dedicatedReviewBinding(auth, source.id);
+    const review = await dedicatedActivationReviews.resolve(
+      confirmation.data.quoteId,
+      binding,
+    );
+    if (!review) {
+      return json(
+        {
+          success: false,
+          code: "dedicated_quote_changed",
+          error:
+            "Your Dedicated review expired or its session changed. Review the current terms and confirm again.",
+        },
+        409,
+      );
+    }
+
     // ── Reattach: an upgrade for this shared agent is already under way. ──
     const existingTarget = await findLiveTierUpgradeTarget(
       user.organization_id,
@@ -474,6 +633,7 @@ async function __hono_POST(
         env,
         confirmation.data.quoteId,
         executionCtx,
+        review,
       );
     }
 
@@ -496,17 +656,23 @@ async function __hono_POST(
     }
     const currentQuoteId = await quoteIdFor(
       user.organization_id,
+      user.id,
       source.id,
       creditCheck.balance,
+      null,
+      null,
     );
-    if (confirmation.data.quoteId !== currentQuoteId) {
+    if (
+      review.termsId !== currentQuoteId ||
+      !isDedicatedReviewCurrent(review)
+    ) {
       return json(
         {
           success: false,
           code: "dedicated_quote_changed",
           error:
             "Your Dedicated quote changed before activation. Review the latest balance and pricing, then confirm again.",
-          data: await dedicatedQuote(source, user, null),
+          data: await dedicatedQuote(source, user, null, binding),
         },
         409,
       );
@@ -554,6 +720,12 @@ async function __hono_POST(
         ...(source.characterId ? { characterId: source.characterId } : {}),
         agentConfig: source.agentConfig,
         environmentVars: source.environmentVars,
+        activationQuote: dedicatedActivationQuoteEconomics(creditCheck.balance),
+        activationReview: review,
+        activationReceipt: {
+          quoteId: confirmation.data.quoteId,
+          quoteVersion: DEDICATED_QUOTE_VERSION,
+        },
         maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(
           creditCheck.balance,
         ),
@@ -561,6 +733,17 @@ async function __hono_POST(
     } catch (error) {
       // error-policy:J1 translate known activation refusals; propagate others
       // to the outer HTTP error boundary.
+      if (error instanceof PersonalDedicatedActivationQuoteChangedError) {
+        return json(
+          {
+            success: false,
+            code: "dedicated_quote_changed",
+            error:
+              "Your Dedicated quote changed before activation. Review the current balance and pricing, then confirm again.",
+          },
+          409,
+        );
+      }
       if (error instanceof AgentQuotaExceededError) {
         logger.warn("[agent-upgrade-tier] Upgrade blocked: org quota", {
           sharedAgentId: source.id,
@@ -615,6 +798,7 @@ async function __hono_POST(
         env,
         confirmation.data.quoteId,
         executionCtx,
+        review,
       );
     }
     const dedicated = result.agent;
@@ -658,6 +842,28 @@ async function __hono_POST(
     );
   } catch (error) {
     // error-policy:J1 preserve the structured HTTP failure contract.
+    if (error instanceof PersonalDedicatedSelectionRequiredError) {
+      return json(
+        {
+          success: false,
+          code: "dedicated_adoption_selection_required",
+          error:
+            "This Dedicated target requires its reviewed adoption and restore confirmation before restarting.",
+        },
+        409,
+      );
+    }
+    if (error instanceof PersonalDedicatedActivationQuoteChangedError) {
+      return json(
+        {
+          success: false,
+          code: "dedicated_quote_changed",
+          error:
+            "Your Dedicated quote changed. Review the current runtime and pricing, then confirm again.",
+        },
+        409,
+      );
+    }
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }

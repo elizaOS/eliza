@@ -8,7 +8,13 @@
 // pending-handoff marker — the #15902 stale-tile pin). jsdom render with the
 // cloud-compat agent helpers + events mocked (no backend); the pending-handoff
 // marker store runs REAL against jsdom localStorage.
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudHandoffPhaseDetail } from "../../../events";
 import { CLOUD_HANDOFF_RETRY_EVENT } from "../../../events";
@@ -20,6 +26,7 @@ const {
   useCloudHandoffPhaseMock,
   navOpenTab,
   openCloudBillingConsoleMock,
+  openCloudAgentConsoleMock,
 } = vi.hoisted(() => ({
   getCloudCompatAgentMock: vi.fn(),
   isDirectCloudSharedAgentBaseMock: vi.fn(() => true),
@@ -29,6 +36,7 @@ const {
   ),
   navOpenTab: vi.fn(),
   openCloudBillingConsoleMock: vi.fn(async () => {}),
+  openCloudAgentConsoleMock: vi.fn(async () => true),
 }));
 
 vi.mock("../../../api", () => ({
@@ -45,6 +53,7 @@ vi.mock("../../../hooks/useCloudHandoffPhase", () => ({
 }));
 vi.mock("../../../cloud/billing-console", () => ({
   openCloudBillingConsole: openCloudBillingConsoleMock,
+  openCloudAgentConsole: openCloudAgentConsoleMock,
 }));
 // useWidgetNavigation → reportUserViewSwitch; stub it so the click test isolates
 // the navigation call.
@@ -120,6 +129,7 @@ describe("AgentProvisioningWidget", () => {
     useCloudHandoffPhaseMock.mockReturnValue(null);
     navOpenTab.mockReset();
     openCloudBillingConsoleMock.mockReset();
+    openCloudAgentConsoleMock.mockClear();
     openCloudBillingConsoleMock.mockResolvedValue(undefined);
     clearPendingCloudHandoff();
   });
@@ -134,12 +144,14 @@ describe("AgentProvisioningWidget", () => {
     expect(navOpenTab).toHaveBeenCalledWith("chat");
   });
 
-  it("renders on a shared cloud server before any phase arrives when a matching handoff marker is pending", () => {
+  it("offers review for a persisted marker even before a live phase arrives", () => {
     seedPendingHandoffMarker("agent-123");
     useCloudHandoffPhaseMock.mockReturnValue(null);
     render(<AgentProvisioningWidget />);
     expect(screen.getByTestId("chat-widget-agent-provisioning")).toBeTruthy();
-    expect(screen.getByTestId("value").textContent).toBe("Setting up…");
+    fireEvent.click(screen.getByRole("button", { name: /review.*Dedicated/i }));
+    expect(openCloudAgentConsoleMock).toHaveBeenCalledWith("agent-123");
+    expect(getCloudCompatAgentMock).not.toHaveBeenCalled();
   });
 
   it("self-hides on a shared cloud server with NO pending marker and no live phase (#15902 stale pin)", () => {
@@ -154,6 +166,35 @@ describe("AgentProvisioningWidget", () => {
     useCloudHandoffPhaseMock.mockReturnValue(null);
     const { container } = render(<AgentProvisioningWidget />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("offers a price review without retrying lifecycle when confirmation is required", () => {
+    useCloudHandoffPhaseMock.mockReturnValue(phase("confirmation-required"));
+    const onRetry = vi.fn();
+    window.addEventListener(CLOUD_HANDOFF_RETRY_EVENT, onRetry);
+    render(<AgentProvisioningWidget />);
+    fireEvent.click(screen.getByRole("button", { name: /review.*Dedicated/i }));
+    expect(openCloudAgentConsoleMock).toHaveBeenCalledWith("agent-123");
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(getCloudCompatAgentMock).not.toHaveBeenCalled();
+    window.removeEventListener(CLOUD_HANDOFF_RETRY_EVENT, onRetry);
+  });
+
+  it("keeps review available when the platform cannot open Cloud management", async () => {
+    openCloudAgentConsoleMock.mockResolvedValueOnce(false);
+    useCloudHandoffPhaseMock.mockReturnValue(phase("confirmation-required"));
+    render(<AgentProvisioningWidget />);
+    fireEvent.click(screen.getByRole("button", { name: /review.*Dedicated/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /could not open/i }),
+      ).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /could not open/i }));
+    await waitFor(() =>
+      expect(openCloudAgentConsoleMock).toHaveBeenCalledTimes(2),
+    );
+    expect(getCloudCompatAgentMock).not.toHaveBeenCalled();
   });
 
   it("renders a Retry control on a failed handoff and dispatches the retry event", () => {

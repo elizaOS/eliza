@@ -1,17 +1,16 @@
 /**
- * Shared → personal cloud-agent handoff.
- *
- * When a user picks the cloud agent they land in chat IMMEDIATELY on a shared
- * agent (keyed to their identity). Their dedicated personal container then
- * provisions in the background; once it's ready we copy the conversation they
- * already had on the shared agent into it and switch them over seamlessly.
- *
- * This module is the pure orchestration — all I/O (reading shared history,
- * importing to the personal container, polling readiness, switching the active
- * agent) is dependency-injected so the whole flow is unit-testable without a
- * live cloud. The agent-side silent-import primitive lives at
- * `POST /api/conversations/:id/import` (no inference, idempotent).
+ * Copies a Shared conversation to an explicitly approved Dedicated target.
+ * I/O is dependency-injected; this module never grants activation consent.
+ * The initiating caller's cancellation signal stops later reads, imports,
+ * retries and client switches, without claiming to undo an import already sent.
+ * The agent-side import boundary does not run inference and is idempotent.
  */
+
+import {
+  HANDOFF_CANCELLED_MESSAGE,
+  runHandoffStep,
+  waitForHandoffRetry,
+} from "./handoff-cancellation";
 
 export interface HandoffMessage {
   role: "user" | "assistant";
@@ -83,6 +82,8 @@ export function isRetryableHandoffHttpStatus(status: number): boolean {
 }
 
 export interface ConversationHandoffDeps {
+  /** Cancellation stops subsequent I/O; it cannot undo an import already sent. */
+  signal?: AbortSignal;
   /** Poll whether the personal container has finished provisioning. */
   checkPersonalReady: () => Promise<PersonalReadiness>;
   /** Read the conversation the user built on the shared agent. */
@@ -110,10 +111,6 @@ export interface ConversationHandoffDeps {
 const DEFAULT_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Poll until the personal container is ready (or the budget runs out). Kept
  * separate so callers can drive the readiness loop independently of the copy.
@@ -121,20 +118,29 @@ function defaultSleep(ms: number): Promise<void> {
 export async function waitForPersonalAgent(
   deps: Pick<
     ConversationHandoffDeps,
-    "checkPersonalReady" | "intervalMs" | "timeoutMs" | "now" | "sleep" | "log"
+    | "checkPersonalReady"
+    | "intervalMs"
+    | "timeoutMs"
+    | "now"
+    | "sleep"
+    | "log"
+    | "signal"
   >,
 ): Promise<PersonalReadiness> {
   const intervalMs = deps.intervalMs ?? DEFAULT_INTERVAL_MS;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const now = deps.now ?? Date.now;
-  const sleep = deps.sleep ?? defaultSleep;
+  const sleep =
+    deps.sleep ?? ((ms: number) => waitForHandoffRetry(ms, deps.signal));
   const deadline = now() + timeoutMs;
 
   for (;;) {
     let readiness: PersonalReadiness;
     try {
-      readiness = await deps.checkPersonalReady();
+      readiness = await runHandoffStep(deps.signal, deps.checkPersonalReady);
     } catch (err) {
+      // error-policy:J4 unavailable readiness retries, but cancellation never does.
+      deps.signal?.throwIfAborted();
       deps.log?.(
         `[handoff] readiness check failed: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -142,7 +148,7 @@ export async function waitForPersonalAgent(
     }
     if (readiness.ready) return readiness;
     if (now() >= deadline) return { ready: false };
-    await sleep(intervalMs);
+    await runHandoffStep(deps.signal, () => sleep(intervalMs));
   }
 }
 
@@ -168,55 +174,77 @@ export async function runConversationHandoff(
   const intervalMs = deps.intervalMs ?? DEFAULT_INTERVAL_MS;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const now = deps.now ?? Date.now;
-  const sleep = deps.sleep ?? defaultSleep;
+  const sleep =
+    deps.sleep ?? ((ms: number) => waitForHandoffRetry(ms, deps.signal));
   const deadline = now() + timeoutMs;
   let lastTransientError: string | undefined;
 
-  for (;;) {
-    const personal = await waitForPersonalAgent({
-      ...deps,
-      // Every readiness wait spends what REMAINS of the shared budget, so a
-      // transient copy/switch failure never re-arms a fresh 10 minutes.
-      timeoutMs: Math.max(0, deadline - now()),
-    });
-    if (!personal.ready) {
-      deps.log?.("[handoff] personal container did not become ready in time");
-      return {
-        status: "timed-out",
-        imported: 0,
-        ...(lastTransientError ? { error: lastTransientError } : {}),
-      };
-    }
+  try {
+    for (;;) {
+      const personal = await waitForPersonalAgent({
+        ...deps,
+        // Every readiness wait spends what REMAINS of the shared budget, so a
+        // transient copy/switch failure never re-arms a fresh 10 minutes.
+        timeoutMs: Math.max(0, deadline - now()),
+      });
+      if (!personal.ready) {
+        deps.log?.("[handoff] personal container did not become ready in time");
+        return {
+          status: "timed-out",
+          imported: 0,
+          ...(lastTransientError ? { error: lastTransientError } : {}),
+        };
+      }
 
-    try {
-      const messages = await deps.readSharedMessages();
-      let imported = 0;
-      if (messages.length > 0) {
-        const result = await deps.importToPersonal(messages, personal);
-        imported = result.inserted;
-        deps.log?.(
-          `[handoff] imported ${imported}/${messages.length} message(s)` +
-            (result.alreadyPopulated ? " (already populated)" : ""),
+      try {
+        const messages = await runHandoffStep(
+          deps.signal,
+          deps.readSharedMessages,
         );
-      }
-      await deps.switchToPersonal(personal);
-      return {
-        status: messages.length > 0 ? "switched" : "switched-empty",
-        imported,
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (isTransientHandoffError(err) && now() < deadline) {
-        lastTransientError = message;
-        deps.log?.(
-          `[handoff] transient step failure (will retry within budget): ${message}`,
+        let imported = 0;
+        if (messages.length > 0) {
+          const result = await runHandoffStep(deps.signal, () =>
+            deps.importToPersonal(messages, personal),
+          );
+          imported = result.inserted;
+          deps.log?.(
+            `[handoff] imported ${imported}/${messages.length} message(s)` +
+              (result.alreadyPopulated ? " (already populated)" : ""),
+          );
+        }
+        await runHandoffStep(deps.signal, async () =>
+          deps.switchToPersonal(personal),
         );
-        await sleep(intervalMs);
-        continue;
+        return {
+          status: messages.length > 0 ? "switched" : "switched-empty",
+          imported,
+        };
+      } catch (err) {
+        // error-policy:J1 translate actual failures; revoked consent is never retried.
+        deps.signal?.throwIfAborted();
+        const message = err instanceof Error ? err.message : String(err);
+        if (isTransientHandoffError(err) && now() < deadline) {
+          lastTransientError = message;
+          deps.log?.(
+            `[handoff] transient step failure (will retry within budget): ${message}`,
+          );
+          await runHandoffStep(deps.signal, () => sleep(intervalMs));
+          continue;
+        }
+        deps.log?.(`[handoff] failed: ${message}`);
+        return { status: "failed", imported: 0, error: message };
       }
-      deps.log?.(`[handoff] failed: ${message}`);
-      return { status: "failed", imported: 0, error: message };
     }
+  } catch (error) {
+    // error-policy:J1 cancellation has a distinct, non-successful handoff result.
+    if (deps.signal?.aborted) {
+      return {
+        status: "failed",
+        imported: 0,
+        error: HANDOFF_CANCELLED_MESSAGE,
+      };
+    }
+    throw error;
   }
 }
 

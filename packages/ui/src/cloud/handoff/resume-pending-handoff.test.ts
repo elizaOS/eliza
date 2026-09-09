@@ -1,108 +1,17 @@
-/** Verifies resumePendingCloudHandoff through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * Boot-time resume of a persisted shared→dedicated cloud-agent handoff that was
- * interrupted by a reload. Collaborators (the handoff supervisor, bridge
- * delete, cloud auth, runtime state) are doubled so the test drives the
- * decision logic deterministically: same dedicated target on resume, repoint +
- * bridge-delete on success, no delete on failure, and stale-marker clearing.
+ * Exercises boot recovery with real marker storage/events and deterministic
+ * client boundaries. A persisted target or host flag is never current consent.
  */
-
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-type HandoffResult = {
-  status: "switched" | "switched-empty" | "failed" | "timed-out";
-  imported: number;
-  error?: string;
-};
-
-const mocks = vi.hoisted(() => ({
-  startCloudAgentHandoff: vi.fn(
-    async (_opts: Record<string, unknown>): Promise<HandoffResult> => ({
-      status: "switched",
-      imported: 1,
-    }),
-  ),
-  deleteSharedBridgeAgent: vi.fn(async () => ({ success: true as const })),
-  getCloudAuthToken: vi.fn((): string | null => "cloud-token"),
-  isDirectCloudSharedAgentBase: vi.fn((base: string) =>
-    base.includes("/api/v1/eliza/agents/"),
-  ),
-  resolveDirectCloudAuthApiBase: vi.fn((base: string) =>
-    base === "https://elizacloud.ai" ? "https://api.elizacloud.ai" : base,
-  ),
-  loadPersistedActiveServer: vi.fn((): Record<string, unknown> | null => null),
-  runAgentSessionRecovery: vi.fn<
-    (_opts?: unknown) => Promise<{
-      ok: true;
-      redirectUrl: string;
-      mode: "navigate" | "in-process";
-    }>
-  >(async (_opts?: unknown) => ({
-    ok: true,
-    redirectUrl: "https://dedicated-1.elizacloud.ai/pair?token=pairing",
-    mode: "navigate",
-  })),
-  getCloudCompatAgent: vi.fn(async (_id: string) => ({
-    success: true as boolean,
-    data: { id: "dedicated-1", status: "provisioning" },
-  })),
-  createCloudCompatAgent: vi.fn(async (_opts: Record<string, unknown>) => ({
-    success: true as boolean,
-    data: {
-      agentId: "dedicated-fresh",
-      agentName: "Eliza",
-      jobId: "job-fresh",
-      status: "provisioning",
-      nodeId: null,
-      message: "ok",
-    },
-  })),
-  silentlyRepointToDedicated: vi.fn(),
-  getBootConfig: vi.fn((): { autoUpgradeSharedToDedicated?: boolean } => ({
-    autoUpgradeSharedToDedicated: true,
-  })),
-}));
-
-vi.mock("../../api", () => ({
-  client: {
-    startCloudAgentHandoff: mocks.startCloudAgentHandoff,
-    deleteSharedBridgeAgent: mocks.deleteSharedBridgeAgent,
-    getCloudCompatAgent: mocks.getCloudCompatAgent,
-    createCloudCompatAgent: mocks.createCloudCompatAgent,
-  },
-}));
-
-vi.mock("../../api/client-cloud", () => ({
-  getCloudAuthToken: mocks.getCloudAuthToken,
-  isDirectCloudSharedAgentBase: mocks.isDirectCloudSharedAgentBase,
-  resolveDirectCloudAuthApiBase: mocks.resolveDirectCloudAuthApiBase,
-}));
-
-vi.mock("../../config/boot-config-store", () => ({
-  getBootConfig: mocks.getBootConfig,
-}));
-
-// resume-pending-handoff imports loadPersistedActiveServer directly from the
-// persistence leaf (not the ../../state barrel) since #15411 broke the
-// state/index → AppContext → startup-poll → resume cycle; mock that exact path.
-vi.mock("../../state/persistence", () => ({
-  loadPersistedActiveServer: mocks.loadPersistedActiveServer,
-}));
-
-vi.mock("../../state/agent-session-recovery-runner", () => ({
-  runAgentSessionRecovery: mocks.runAgentSessionRecovery,
-}));
-
-vi.mock("./silent-repoint", () => ({
-  silentlyRepointToDedicated: mocks.silentlyRepointToDedicated,
-}));
-
+import {
+  __resetLastCloudHandoffPhaseDetailForTests,
+  dispatchCloudHandoffRetry,
+  getLastCloudHandoffPhaseDetail,
+} from "../../events";
 import {
   loadPendingCloudHandoff,
   PENDING_HANDOFF_TTL_MS,
-  type PendingCloudHandoff,
   savePendingCloudHandoff,
 } from "./pending-handoff-store";
 import {
@@ -110,429 +19,174 @@ import {
   resumePendingCloudHandoff,
 } from "./resume-pending-handoff";
 
-const SHARED_BASE = "https://elizacloud.ai/api/v1/eliza/agents/shared-1/api";
+const mocks = vi.hoisted(() => ({
+  startCloudAgentHandoff: vi.fn(async () => ({
+    status: "switched",
+    imported: 0,
+  })),
+  createCloudCompatAgent: vi.fn(async () => ({
+    success: true,
+    data: { agentId: "fresh-target" },
+  })),
+  deleteSharedBridgeAgent: vi.fn(async () => ({ success: true })),
+  getCloudCompatAgent: vi.fn(async () => ({
+    success: true,
+    data: { id: "dedicated-1", status: "running" },
+  })),
+  loadPersistedActiveServer:
+    vi.fn<
+      () => {
+        kind: string;
+        id: string;
+        apiBase?: string;
+        accessToken?: string;
+      } | null
+    >(),
+  automaticUpgrade: true,
+}));
+vi.mock("../../api", () => ({ client: mocks }));
+vi.mock("../../api/client-cloud", () => ({
+  getCloudAuthToken: () => "test-session",
+  isDirectCloudSharedAgentBase: (base: string) =>
+    base.includes("/api/v1/eliza/agents/"),
+}));
+vi.mock("../../config/boot-config-store", () => ({
+  getBootConfig: () => ({
+    autoUpgradeSharedToDedicated: mocks.automaticUpgrade,
+  }),
+}));
+vi.mock("../../state/persistence", () => ({
+  loadPersistedActiveServer: mocks.loadPersistedActiveServer,
+}));
+vi.mock("./silent-repoint", () => ({ silentlyRepointToDedicated: vi.fn() }));
 
-function pending(
-  overrides: Partial<PendingCloudHandoff> = {},
-): PendingCloudHandoff {
-  return {
-    sharedAgentId: "shared-1",
-    dedicatedAgentId: "dedicated-1",
-    sharedApiBase: SHARED_BASE,
-    cloudApiBase: "https://elizacloud.ai",
-    startedAt: Date.now(),
-    ...overrides,
-  };
+const SHARED_BASE = "https://api.eliza.app/api/v1/eliza/agents/shared-1";
+const marker = () => ({
+  sharedAgentId: "shared-1",
+  dedicatedAgentId: "dedicated-1",
+  sharedApiBase: SHARED_BASE,
+  cloudApiBase: "https://api.eliza.app",
+  startedAt: Date.now(),
+});
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
-
-function activeSharedServer(): Record<string, unknown> {
-  return {
+function expectNoRuntimeWork() {
+  expect(mocks.getCloudCompatAgent).not.toHaveBeenCalled();
+  expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
+  expect(mocks.createCloudCompatAgent).not.toHaveBeenCalled();
+  expect(mocks.deleteSharedBridgeAgent).not.toHaveBeenCalled();
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.automaticUpgrade = true;
+  mocks.getCloudCompatAgent.mockResolvedValue({
+    success: true,
+    data: { id: "dedicated-1", status: "running" },
+  });
+  mocks.loadPersistedActiveServer.mockReturnValue({
     kind: "cloud",
     id: "cloud:shared-1",
     apiBase: SHARED_BASE,
-    accessToken: "cloud-token",
-  };
-}
-
-async function settle(): Promise<void> {
-  // The resume path awaits the target probe (getCloudCompatAgent) before
-  // kicking off the supervisor, then the supervisor awaits its own start(),
-  // then success/failure branches dispatch again. Two macrotask hops cover
-  // the full chain in these tests.
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-describe("resumePendingCloudHandoff", () => {
-  beforeEach(() => {
-    // Reset call history AND stubbed return values (mockClear keeps the
-    // latter, so a per-test mockReturnValue would leak into later tests).
-    for (const fn of Object.values(mocks)) fn.mockReset();
-    mocks.startCloudAgentHandoff.mockResolvedValue({
-      status: "switched",
-      imported: 1,
-    });
-    mocks.deleteSharedBridgeAgent.mockResolvedValue({ success: true });
-    mocks.getCloudAuthToken.mockReturnValue("cloud-token");
-    mocks.isDirectCloudSharedAgentBase.mockImplementation((base: string) =>
-      base.includes("/api/v1/eliza/agents/"),
-    );
-    mocks.loadPersistedActiveServer.mockReturnValue(null);
-    mocks.runAgentSessionRecovery.mockResolvedValue({
-      ok: true,
-      redirectUrl: "https://dedicated-1.elizacloud.ai/pair?token=pairing",
-      mode: "navigate",
-    });
-    mocks.getCloudCompatAgent.mockResolvedValue({
-      success: true,
-      data: { id: "dedicated-1", status: "provisioning" },
-    });
-    mocks.createCloudCompatAgent.mockResolvedValue({
-      success: true,
-      data: {
-        agentId: "dedicated-fresh",
-        agentName: "Eliza",
-        jobId: "job-fresh",
-        status: "provisioning",
-        nodeId: null,
-        message: "ok",
-      },
-    });
-    mocks.getBootConfig.mockReturnValue({
-      autoUpgradeSharedToDedicated: true,
-    });
-    window.localStorage.clear();
-    __resetResumeForTests();
   });
-  afterEach(() => {
-    delete (globalThis as { Capacitor?: unknown }).Capacitor;
-    window.localStorage.clear();
-    vi.restoreAllMocks();
-  });
+  localStorage.clear();
+  __resetResumeForTests();
+  __resetLastCloudHandoffPhaseDetailForTests();
+});
+afterEach(() => {
+  __resetResumeForTests();
+  localStorage.clear();
+});
 
-  it("resumes the SAME migration after a reload: same dedicated target, repoint on switch, bridge delete on success", async () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    mocks.startCloudAgentHandoff.mockImplementation(async (opts) => {
-      // The supervisor calls onSwitch once the dedicated container is live.
-      await (opts as { onSwitch?: (base: string) => Promise<void> }).onSwitch?.(
-        "https://dedicated-1.elizacloud.ai",
-      );
-      return { status: "switched" as const, imported: 1 };
-    });
-
-    expect(resumePendingCloudHandoff()).toBe(true);
-    await settle();
-
-    expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
-    expect(mocks.startCloudAgentHandoff.mock.calls[0][0]).toMatchObject({
-      agentId: "shared-1",
-      dedicatedAgentId: "dedicated-1",
-      sharedApiBase: SHARED_BASE,
-      cloudApiBase: "https://elizacloud.ai",
-      authToken: "cloud-token",
-    });
-    expect(mocks.runAgentSessionRecovery).not.toHaveBeenCalled();
-    expect(mocks.silentlyRepointToDedicated).toHaveBeenCalledWith({
-      containerBase: "https://dedicated-1.elizacloud.ai",
-      dedicatedAgentId: "dedicated-1",
-      authToken: "cloud-token",
-    });
-    // Success terminal → the shared bridge row is deleted.
-    expect(mocks.deleteSharedBridgeAgent).toHaveBeenCalledWith("shared-1", {
-      cloudApiBase: "https://elizacloud.ai",
-      authToken: "cloud-token",
-    });
-  });
-
-  it("retires a legacy marker without probing or mutating when automatic upgrade is off", async () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    mocks.getBootConfig.mockReturnValue({
-      autoUpgradeSharedToDedicated: false,
-    });
-
-    expect(resumePendingCloudHandoff()).toBe(false);
-    await settle();
-
-    expect(loadPendingCloudHandoff()).toBeNull();
-    expect(mocks.getCloudCompatAgent).not.toHaveBeenCalled();
-    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
-    expect(mocks.createCloudCompatAgent).not.toHaveBeenCalled();
-    expect(mocks.deleteSharedBridgeAgent).not.toHaveBeenCalled();
-  });
-
-  it("does not inspect or recreate a gone legacy target when automatic upgrade is off", async () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    mocks.getBootConfig.mockReturnValue({});
+describe("pending handoff requires renewed consent", () => {
+  it.each([true, false])(
+    "offers review without using host auto-upgrade=%s as consent",
+    async (enabled) => {
+      mocks.automaticUpgrade = enabled;
+      const pending = marker();
+      savePendingCloudHandoff(pending);
+      expect(resumePendingCloudHandoff()).toBe(true);
+      await settle();
+      expectNoRuntimeWork();
+      expect(loadPendingCloudHandoff()).toEqual(pending);
+      expect(getLastCloudHandoffPhaseDetail()).toMatchObject({
+        agentId: "shared-1",
+        phase: "confirmation-required",
+      });
+    },
+  );
+  it("never recreates a dead target when a stale Retry event arrives", async () => {
     mocks.getCloudCompatAgent.mockResolvedValue({
       success: false,
       data: { id: "dedicated-1", status: "deleted" },
     });
-
+    const pending = marker();
+    savePendingCloudHandoff(pending);
+    resumePendingCloudHandoff();
+    await settle();
+    dispatchCloudHandoffRetry({ agentId: "shared-1" });
+    await settle();
+    expectNoRuntimeWork();
+    expect(loadPendingCloudHandoff()).toEqual(pending);
+  });
+  it("does not treat a reload or repeated recovery call as approval", async () => {
+    savePendingCloudHandoff(marker());
+    expect(resumePendingCloudHandoff()).toBe(true);
     expect(resumePendingCloudHandoff()).toBe(false);
-    await settle();
-
-    expect(loadPendingCloudHandoff()).toBeNull();
-    expect(mocks.getCloudCompatAgent).not.toHaveBeenCalled();
-    expect(mocks.createCloudCompatAgent).not.toHaveBeenCalled();
-  });
-
-  it("native resume also keeps the live app on the dedicated runtime after switch", async () => {
-    (globalThis as { Capacitor?: unknown }).Capacitor = {
-      isNativePlatform: () => true,
-    };
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    mocks.startCloudAgentHandoff.mockImplementation(async (opts) => {
-      await (opts as { onSwitch?: (base: string) => Promise<void> }).onSwitch?.(
-        "https://dedicated-1.elizacloud.ai",
-      );
-      return { status: "switched" as const, imported: 1 };
-    });
-
+    __resetResumeForTests();
     expect(resumePendingCloudHandoff()).toBe(true);
     await settle();
-
-    expect(mocks.runAgentSessionRecovery).not.toHaveBeenCalled();
-    expect(mocks.silentlyRepointToDedicated).toHaveBeenCalledWith({
-      containerBase: "https://dedicated-1.elizacloud.ai",
-      dedicatedAgentId: "dedicated-1",
-      authToken: "cloud-token",
-    });
+    expectNoRuntimeWork();
   });
-
-  it("does NOT delete the shared bridge when the resumed handoff fails — user stays on shared", async () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    mocks.startCloudAgentHandoff.mockResolvedValue({
-      status: "failed",
-      imported: 0,
-      error: "container never became ready",
-    });
-
+  it("can surface a marker that appears after an initial empty boot check", () => {
+    expect(resumePendingCloudHandoff()).toBe(false);
+    savePendingCloudHandoff(marker());
     expect(resumePendingCloudHandoff()).toBe(true);
-    await settle();
-
-    expect(mocks.deleteSharedBridgeAgent).not.toHaveBeenCalled();
-    expect(mocks.runAgentSessionRecovery).not.toHaveBeenCalled();
+    expectNoRuntimeWork();
   });
-
-  it("clears a stale marker when the active server is no longer the pending shared bridge", () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue({
+  it.each([
+    { kind: "local", id: "local:app-shell" },
+    { kind: "cloud", id: "cloud:another-agent", apiBase: SHARED_BASE },
+    {
       kind: "cloud",
       id: "cloud:dedicated-1",
-      apiBase: "https://dedicated-1.elizacloud.ai",
-    });
-    mocks.isDirectCloudSharedAgentBase.mockReturnValue(false);
-
-    expect(resumePendingCloudHandoff()).toBe(false);
-    expect(loadPendingCloudHandoff()).toBeNull();
-    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
-  });
-
-  it("clears a stale marker when the runtime is not cloud anymore", () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue({
-      kind: "local",
-      id: "local:app-shell",
-    });
-
-    expect(resumePendingCloudHandoff()).toBe(false);
-    expect(loadPendingCloudHandoff()).toBeNull();
-  });
-
-  it("keeps the marker (and allows a later attempt) when cloud auth is not restored yet", () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue({
-      ...activeSharedServer(),
-      accessToken: undefined,
-    });
-    mocks.getCloudAuthToken.mockReturnValue(null);
-
-    expect(resumePendingCloudHandoff()).toBe(false);
-    expect(loadPendingCloudHandoff()).not.toBeNull();
-
-    // Auth lands → the next call (same session) may resume.
-    mocks.getCloudAuthToken.mockReturnValue("cloud-token");
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    expect(resumePendingCloudHandoff()).toBe(true);
-  });
-
-  it("attempts at most once per session when a resume was started", async () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    mocks.startCloudAgentHandoff.mockResolvedValue({
-      status: "switched",
-      imported: 0,
-    });
-
-    expect(resumePendingCloudHandoff()).toBe(true);
-    expect(resumePendingCloudHandoff()).toBe(false);
-    await settle();
-    expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
-  });
-
-  it("no-ops with no marker", () => {
+      apiBase: "https://dedicated-1.cloud.eliza.app",
+    },
+  ])(
+    "clears only the stale local marker after target change: $id",
+    (active) => {
+      savePendingCloudHandoff(marker());
+      mocks.loadPersistedActiveServer.mockReturnValue(active);
+      expect(resumePendingCloudHandoff()).toBe(false);
+      expect(loadPendingCloudHandoff()).toBeNull();
+      expectNoRuntimeWork();
+    },
+  );
+  it("no-ops without a marker", () => {
     expect(resumePendingCloudHandoff()).toBe(false);
     expect(mocks.loadPersistedActiveServer).not.toHaveBeenCalled();
-  });
-
-  it("clears the marker and does NOT resume when the dedicated target is gone (control-plane 404)", async () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    // Control-plane lookup reports the target no longer exists.
-    mocks.getCloudCompatAgent.mockResolvedValue({
-      success: false,
-      data: { id: "dedicated-1", status: "deleted" },
-    });
-
-    // A resume DECISION is initiated (probe in flight).
-    expect(resumePendingCloudHandoff()).toBe(true);
-
-    // Capture the failed phase surfaced by the dead-target path so the tile
-    // lights up instead of silently persisting "Setting up…".
-    const seenPhases: Array<Record<string, unknown>> = [];
-    const onPhase = (event: Event) => {
-      seenPhases.push((event as CustomEvent).detail as Record<string, unknown>);
-    };
-    window.addEventListener("eliza:cloud-handoff-phase", onPhase);
-
-    await settle();
-
-    // Marker is cleared; the supervisor is never called with the dead id.
-    expect(loadPendingCloudHandoff()).toBeNull();
-    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
-    expect(mocks.getCloudCompatAgent).toHaveBeenCalledWith("dedicated-1");
-
-    // A failed phase for the shared agent id is dispatched so the widget shows
-    // its failure surface (existing "Setup paused" + Retry copy).
-    const failed = seenPhases.find(
-      (d) => d.agentId === "shared-1" && d.phase === "failed",
-    );
-    expect(failed).toBeTruthy();
-    expect(failed?.error).toEqual(expect.stringContaining("no longer"));
-    window.removeEventListener("eliza:cloud-handoff-phase", onPhase);
-  });
-
-  it("still resumes normally when the target probe is inconclusive (network error, not 404) — never strand on an unprovable assumption", async () => {
-    savePendingCloudHandoff(pending());
-    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
-    // A 5xx / network blip is inconclusive; treat as live so the supervisor's
-    // own retry/TTL bounds the migration.
-    mocks.getCloudCompatAgent.mockRejectedValue(
-      Object.assign(new Error("transient"), { status: 503 }),
-    );
-
-    expect(resumePendingCloudHandoff()).toBe(true);
-    await settle();
-
-    // Resume still fires against the SAME (pending) target — no fresh create.
-    expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
-    expect(mocks.startCloudAgentHandoff.mock.calls[0][0]).toMatchObject({
-      dedicatedAgentId: "dedicated-1",
-    });
-    expect(mocks.createCloudCompatAgent).not.toHaveBeenCalled();
-  });
-
-  it("on Retry after a dead-target clear, mints a FRESH dedicated agent (forceCreate) instead of the dead id", async () => {
-    // Use unique ids so no armed retry listener from earlier tests
-    // (`runCloudAgentHandoff`'s own retry arming on failed/timed-out) can match
-    // and double-fire on our dispatched retry event.
-    const uniqueShared = "shared-retry-flow";
-    const uniqueDedicated = "dedicated-retry-flow-dead";
-    savePendingCloudHandoff(
-      pending({
-        sharedAgentId: uniqueShared,
-        dedicatedAgentId: uniqueDedicated,
-      }),
-    );
-    mocks.loadPersistedActiveServer.mockReturnValue({
-      kind: "cloud",
-      id: `cloud:${uniqueShared}`,
-      apiBase: SHARED_BASE,
-      accessToken: "cloud-token",
-    });
-    mocks.getCloudCompatAgent.mockResolvedValue({
-      success: false,
-      data: { id: uniqueDedicated, status: "deleted" },
-    });
-
-    expect(resumePendingCloudHandoff()).toBe(true);
-    await settle();
-    expect(loadPendingCloudHandoff()).toBeNull();
-    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
-
-    // Simulate the widget's Retry click: dispatch the retry event for the
-    // shared agent id. The armed dead-target listener should mint a FRESH
-    // dedicated agent (forceCreate:true) and re-run the handoff against it.
-    window.dispatchEvent(
-      new CustomEvent("eliza:cloud-handoff-retry", {
-        detail: { agentId: uniqueShared },
-      }),
-    );
-    await settle();
-
-    expect(mocks.createCloudCompatAgent).toHaveBeenCalledTimes(1);
-    expect(mocks.createCloudCompatAgent.mock.calls[0][0]).toMatchObject({
-      forceCreate: true,
-    });
-    expect(mocks.startCloudAgentHandoff).toHaveBeenCalledTimes(1);
-    // Never re-uses the dead id from the cleared marker.
-    expect(mocks.startCloudAgentHandoff.mock.calls[0][0]).toMatchObject({
-      agentId: uniqueShared,
-      dedicatedAgentId: "dedicated-fresh",
-    });
-    expect(loadPendingCloudHandoff()).toMatchObject({
-      sharedAgentId: uniqueShared,
-      dedicatedAgentId: "dedicated-fresh",
-      sharedApiBase: SHARED_BASE,
-      cloudApiBase: "https://elizacloud.ai",
-    });
-  });
-
-  it("revalidates opt-in at Retry and performs zero create after policy turns off", async () => {
-    const uniqueShared = "shared-retry-policy-off";
-    savePendingCloudHandoff(
-      pending({
-        sharedAgentId: uniqueShared,
-        dedicatedAgentId: "dedicated-retry-policy-off-dead",
-      }),
-    );
-    mocks.loadPersistedActiveServer.mockReturnValue({
-      kind: "cloud",
-      id: `cloud:${uniqueShared}`,
-      apiBase: SHARED_BASE,
-      accessToken: "cloud-token",
-    });
-    mocks.getCloudCompatAgent.mockResolvedValue({
-      success: false,
-      data: { id: "dedicated-retry-policy-off-dead", status: "deleted" },
-    });
-
-    expect(resumePendingCloudHandoff()).toBe(true);
-    await settle();
-    mocks.getBootConfig.mockReturnValue({
-      autoUpgradeSharedToDedicated: false,
-    });
-
-    window.dispatchEvent(
-      new CustomEvent("eliza:cloud-handoff-retry", {
-        detail: { agentId: uniqueShared },
-      }),
-    );
-    await settle();
-
-    expect(mocks.createCloudCompatAgent).not.toHaveBeenCalled();
-    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
-    expect(loadPendingCloudHandoff()).toBeNull();
+    expectNoRuntimeWork();
   });
 });
 
 describe("pending-handoff-store", () => {
-  beforeEach(() => window.localStorage.clear());
-
   it("round-trips a marker and clears expired ones", () => {
-    const marker = pending({ startedAt: Date.now() - 1000 });
-    savePendingCloudHandoff(marker);
-    expect(loadPendingCloudHandoff()).toEqual(marker);
-
-    // Expired by TTL → cleared on load.
+    const pending = marker();
+    savePendingCloudHandoff(pending);
+    expect(loadPendingCloudHandoff()).toEqual(pending);
     expect(
-      loadPendingCloudHandoff(marker.startedAt + PENDING_HANDOFF_TTL_MS + 1),
+      loadPendingCloudHandoff(pending.startedAt + PENDING_HANDOFF_TTL_MS + 1),
     ).toBeNull();
     expect(loadPendingCloudHandoff()).toBeNull();
   });
-
   it("clears malformed markers instead of resuming from garbage", () => {
-    window.localStorage.setItem(
+    localStorage.setItem(
       "eliza:cloud-handoff-pending",
       '{"sharedAgentId": ""}',
     );
     expect(loadPendingCloudHandoff()).toBeNull();
-    window.localStorage.setItem("eliza:cloud-handoff-pending", "not json");
+    localStorage.setItem("eliza:cloud-handoff-pending", "not json");
     expect(loadPendingCloudHandoff()).toBeNull();
   });
 });

@@ -22,7 +22,10 @@
 
 import * as React from "react";
 import type { ConversationMessage } from "../api";
-import { openCloudBillingConsole } from "../cloud/billing-console";
+import {
+  openCloudAgentConsole,
+  openCloudBillingConsole,
+} from "../cloud/billing-console";
 import { useShellControllerContext } from "../components/shell/ShellControllerContext.hooks";
 import {
   type CloudHandoffPhaseDetail,
@@ -60,6 +63,7 @@ const RETRY_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry=Try again`;
 const RETRY_HANDOFF_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry-handoff=Retry setup`;
 const RECONNECT_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}reconnect=Reconnect`;
 const ADD_CREDITS_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}add-credits=Add credits`;
+const REVIEW_DEDICATED_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}review-dedicated=Review Dedicated setup`;
 
 interface RecoveryCard {
   text: string;
@@ -88,12 +92,18 @@ type Trouble =
   | { kind: "connection" }
   | { kind: "insufficient-credits"; agentId: string }
   | { kind: "handoff"; agentId: string }
+  | { kind: "confirmation-required"; agentId: string }
   | { kind: "signed-out" }
   | { kind: "unresponsive" }
   | null;
 
 function liveCard(trouble: NonNullable<Trouble>): RecoveryCard {
   switch (trouble.kind) {
+    case "confirmation-required":
+      return {
+        text: "Your Dedicated setup is paused. Review the current price and runtime state before confirming. You can keep using your shared agent.",
+        choices: [REVIEW_DEDICATED_CHOICE],
+      };
     case "connection":
       return {
         text: "I've lost my connection to the backend — I can't hear you until it's back.",
@@ -191,6 +201,8 @@ export function useBootRecoveryConductor(
   // trouble kind + card copy.
   const handoffInsufficientCredits =
     handoff != null && handoff.phase === "insufficient-credits";
+  const handoffNeedsConfirmation =
+    handoff != null && handoff.phase === "confirmation-required";
   // A dead backend connection outranks everything (nothing else can work),
   // and skips the card when another surface owns the disconnected state.
   const connectionFailed =
@@ -205,15 +217,17 @@ export function useBootRecoveryConductor(
     ? null
     : connectionFailed
       ? { kind: "connection" }
-      : handoffInsufficientCredits
-        ? { kind: "insufficient-credits", agentId: handoff.agentId }
-        : handoffFailed
-          ? { kind: "handoff", agentId: handoff.agentId }
-          : stalled && !noProviderConfigured
-            ? hasUsableStoredStewardToken()
-              ? { kind: "unresponsive" }
-              : { kind: "signed-out" }
-            : null;
+      : handoffNeedsConfirmation
+        ? { kind: "confirmation-required", agentId: handoff.agentId }
+        : handoffInsufficientCredits
+          ? { kind: "insufficient-credits", agentId: handoff.agentId }
+          : handoffFailed
+            ? { kind: "handoff", agentId: handoff.agentId }
+            : stalled && !noProviderConfigured
+              ? hasUsableStoredStewardToken()
+                ? { kind: "unresponsive" }
+                : { kind: "signed-out" }
+              : null;
 
   // An action pins its in-flight copy over the live card; when the action
   // settles without healing the boot, `cardVersion` bumps so the live card
@@ -389,6 +403,31 @@ export function useBootRecoveryConductor(
         // shared agent with the add-credits prompt in view, and hits "Retry
         // setup" once funded — the dedicated upgrade then proceeds.
         void openCloudBillingConsole();
+        return true;
+      }
+
+      if (id === "review-dedicated") {
+        const current = troubleRef.current;
+        if (current?.kind !== "confirmation-required") return true;
+        const showOpenFailure = () => {
+          if (
+            troubleRef.current?.kind !== "confirmation-required" ||
+            troubleRef.current.agentId !== current.agentId
+          )
+            return;
+          pinOverride({
+            text: "Couldn't open Cloud management. Try opening the Dedicated review again; no activation was approved.",
+            choices: [REVIEW_DEDICATED_CHOICE],
+          });
+        };
+        void openCloudAgentConsole(current.agentId)
+          .then((opened) => {
+            if (!opened) showOpenFailure();
+          })
+          .catch(() => {
+            // error-policy:J4 retain an actionable review after a platform browser-launch failure.
+            showOpenFailure();
+          });
         return true;
       }
 

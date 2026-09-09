@@ -1,29 +1,5 @@
-/** Verifies shared→dedicated handoff firing on shared-agent completion through the package's configured test harness. */
+/** Exercises real onboarding completion with mocked client and lifecycle boundaries; host flags and stored markers are not activation consent. */
 // @vitest-environment jsdom
-
-/**
- * Regression for #15310 failure mode #3 and the #15901/#15902/#15903 landing
- * contract of `bindCloudAgent`. The handoff branch was once gated on
- * `selectedAgent.created`, so a re-login that REUSED an existing shared agent
- * (`created:false` — e.g. after a failed first run) never re-entered the
- * upgrade path and stranded the user on the shared adapter.
- *
- * Contract under test:
- *   - created:true                          → handoff fires (unchanged)
- *   - created:false, no pending marker      → handoff fires (#15310 #3)
- *   - created:false, marker for THIS agent  → handoff does NOT fire here —
- *     resumePendingCloudHandoff owns the interrupted-but-live migration and is
- *     invoked at the landing (it verifies the target and re-arms a fresh
- *     create itself when the target is dead); double-firing would provision a
- *     second dedicated agent.
- *   - created:false, marker for a DIFFERENT agent → the stale marker is
- *     cleared and a fresh handoff fires (#15902: a leftover marker must not
- *     suppress the upgrade path or pin the provisioning tile).
- *   - a reused agent that already OWNS a dedicated container (bridgeUrl set)
- *     never mints another dedicated target (#15902 run-2 class).
- *   - EVERY successful landing persists the durable completion flag
- *     (`eliza:first-run-complete`) headlessly (#15903).
- */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -44,8 +20,7 @@ const SHARED_AGENT_BASE =
 
 const clientMock = vi.hoisted(() => ({
   getPersonalSharedEliza: vi.fn(),
-  ensurePersonalDedicatedEliza: vi.fn(),
-  selectOrProvisionCloudAgent: vi.fn(),
+  resolveCloudAgentForEntry: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
@@ -144,7 +119,7 @@ function mockSelection(
   created: boolean,
   opts: { bridgeUrl?: string | null; requiresAgentPairing?: boolean } = {},
 ): void {
-  clientMock.selectOrProvisionCloudAgent.mockResolvedValue({
+  clientMock.resolveCloudAgentForEntry.mockResolvedValue({
     agentId: "cad3c071",
     apiBase: SHARED_AGENT_BASE,
     bridgeUrl: opts.bridgeUrl ?? null,
@@ -185,14 +160,6 @@ beforeEach(() => {
       "https://staging.elizacloud.ai/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001",
     runtime: "shared",
   });
-  clientMock.ensurePersonalDedicatedEliza.mockResolvedValue({
-    personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
-    agentId: "personal:00000000-0000-5000-8000-000000000001",
-    activeAgentId: "00000000-0000-4000-8000-000000000020",
-    agentName: "Eliza",
-    apiBase: "https://00000000-0000-4000-8000-000000000020.cloud.eliza.app",
-    runtime: "dedicated",
-  });
   // Default boot config: shared-first with NO auto-upgrade (#18204).
   bootConfigMock.autoUpgradeSharedToDedicated = false;
 });
@@ -201,47 +168,46 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("shared→dedicated handoff firing on shared-agent completion", () => {
-  // These tests exercise the EXPLICIT opt-in path: autoUpgradeSharedToDedicated
-  // is set to true so the background handoff fires. The default (false) path is
-  // covered by the "shared-only onboarding" describe below.
+describe("legacy host flags do not authorize an onboarding handoff", () => {
   beforeEach(() => {
     bootConfigMock.autoUpgradeSharedToDedicated = true;
   });
 
-  it("fires for a newly created shared agent (unchanged behavior)", async () => {
+  it("does not upgrade a newly selected Shared agent from host flags", async () => {
     mockSelection(true);
     const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
     expect(outcome.kind).toBe("done");
-    expect(runCloudAgentHandoffMock).toHaveBeenCalledTimes(1);
+    expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
+    expect(clientMock.createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
-  it("fires for a REUSED shared agent with no pending marker (#15310 #3)", async () => {
+  it("does not upgrade a reused Shared agent on repeated entry", async () => {
     mockSelection(false);
     const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
     expect(outcome.kind).toBe("done");
-    expect(runCloudAgentHandoffMock).toHaveBeenCalledTimes(1);
+    await bindCloudAgent(draft(), "steward-token", {}, ports());
+    expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
+    expect(clientMock.createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
-  it("does NOT fire when a marker for THIS agent exists — the resume path is invoked instead", async () => {
+  it("preserves a matching marker without treating it as current consent", async () => {
     seedMarker("cad3c071");
     mockSelection(false);
     const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
     expect(outcome.kind).toBe("done");
     expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
-    // The interrupted migration is resumed AT the landing, not left for a
-    // later boot's 404 path to notice (#15902).
-    expect(resumePendingCloudHandoffMock).toHaveBeenCalledTimes(1);
+    expect(resumePendingCloudHandoffMock).not.toHaveBeenCalled();
+    expect(clientMock.deleteSharedBridgeAgent).not.toHaveBeenCalled();
     expect(loadPendingCloudHandoff()?.sharedAgentId).toBe("cad3c071");
   });
 
-  it("clears a stale marker for a DIFFERENT agent and fires a fresh handoff (#15902)", async () => {
+  it("clears a mismatched marker without starting a replacement handoff", async () => {
     seedMarker("some-other-shared-agent");
     mockSelection(false);
     const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
     expect(outcome.kind).toBe("done");
     expect(loadPendingCloudHandoff()).toBeNull();
-    expect(runCloudAgentHandoffMock).toHaveBeenCalledTimes(1);
+    expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
     expect(resumePendingCloudHandoffMock).not.toHaveBeenCalled();
   });
 
@@ -387,31 +353,31 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
     window.localStorage.setItem("steward_session_token", "steward-jwt");
   });
 
-  it("routes Cloud first run through Dedicated personal activation", async () => {
+  it("opens the current personal Shared runtime without provisioning", async () => {
     const outcome = await runFirstRunFinish(
       { ...draft(), runtime: "cloud" },
       ports(),
     );
     expect(outcome.kind).toBe("done");
-    expect(clientMock.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith(
       expect.objectContaining({
         cloudApiBase: "https://staging.elizacloud.ai",
         authToken: "steward-jwt",
       }),
     );
     expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
-    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(clientMock.resolveCloudAgentForEntry).not.toHaveBeenCalled();
   });
 
   it("surfaces personal identity failure without provisioning a fallback", async () => {
-    clientMock.ensurePersonalDedicatedEliza.mockRejectedValueOnce(
+    clientMock.getPersonalSharedEliza.mockRejectedValueOnce(
       new Error("identity unavailable"),
     );
     await expect(
       listOrAutoProvisionCloudAgent(draft(), ports()),
     ).rejects.toThrow("identity unavailable");
     expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
-    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(clientMock.resolveCloudAgentForEntry).not.toHaveBeenCalled();
   });
 
   it("requires cloud login when no auth token is available", async () => {
@@ -438,10 +404,10 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("done");
-    expect(clientMock.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith(
       expect.objectContaining({ authToken: "fresh-client-token" }),
     );
-    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(clientMock.resolveCloudAgentForEntry).not.toHaveBeenCalled();
   });
 
   it("does not list or provision when required client auth returns no token", async () => {
@@ -454,7 +420,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("needs-cloud-login");
-    expect(clientMock.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
-    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(clientMock.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(clientMock.resolveCloudAgentForEntry).not.toHaveBeenCalled();
   });
 });

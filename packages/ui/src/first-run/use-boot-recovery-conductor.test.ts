@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   hasUsableStoredStewardToken: vi.fn(() => true),
   dispatchCloudHandoffRetry: vi.fn(),
   openCloudBillingConsole: vi.fn(async () => {}),
+  openCloudAgentConsole: vi.fn(async (_agentId: string) => true),
 }));
 
 vi.mock("../state", async (importOriginal) => {
@@ -66,6 +67,8 @@ vi.mock("../events", async (importOriginal) => {
 
 vi.mock("../cloud/billing-console", () => ({
   openCloudBillingConsole: () => mocks.openCloudBillingConsole(),
+  openCloudAgentConsole: (agentId: string) =>
+    mocks.openCloudAgentConsole(agentId),
 }));
 
 import type { ConversationMessage } from "../api";
@@ -147,6 +150,24 @@ afterEach(() => {
 });
 
 describe("useBootRecoveryConductor", () => {
+  it("keeps confirmation-required recovery actionable without retrying a paid operation", async () => {
+    const { card, unmount } = renderConductor({
+      booting: false,
+      noProviderConfigured: false,
+      handoff: { phase: "confirmation-required", agentId: "agent-review" },
+    });
+    expect(card()?.text).toContain("__boot_recovery__:review-dedicated=");
+    await act(async () => {
+      expect(
+        tryHandleBootRecoveryAction("__boot_recovery__:review-dedicated"),
+      ).toBe(true);
+    });
+    expect(mocks.openCloudAgentConsole).toHaveBeenCalledWith("agent-review");
+    expect(mocks.dispatchCloudHandoffRetry).not.toHaveBeenCalled();
+    expect(card()?.text).toContain("__boot_recovery__:review-dedicated=");
+    unmount();
+  });
+
   it("stays silent through a normal boot and only speaks after the stall threshold", () => {
     const { card, unmount } = renderConductor(BOOTING);
     act(() => {

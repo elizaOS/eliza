@@ -47,7 +47,7 @@ const SHARED_AGENT_BASE =
   "https://staging.elizacloud.ai/api/v1/eliza/agents/cad3c071";
 
 const clientMock = vi.hoisted(() => ({
-  selectOrProvisionCloudAgent: vi.fn(),
+  resolveCloudAgentForEntry: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
@@ -99,7 +99,7 @@ function ports(): FirstRunFinishPorts {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
-  clientMock.selectOrProvisionCloudAgent.mockResolvedValue({
+  clientMock.resolveCloudAgentForEntry.mockResolvedValue({
     agentId: "cad3c071",
     apiBase: SHARED_AGENT_BASE,
     requiresAgentPairing: false,
@@ -129,7 +129,7 @@ describe("bindCloudAgent clears the durable force-fresh flag on completion", () 
     expect(isForceFreshFirstRunEnabled()).toBe(false);
     // The shared-agent path must NOT POST /api/first-run.
     expect(clientMock.submitFirstRun).not.toHaveBeenCalled();
-    expect(clientMock.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
+    expect(clientMock.resolveCloudAgentForEntry).toHaveBeenCalledWith(
       expect.not.objectContaining({ preferSharedTier: true }),
     );
   });
