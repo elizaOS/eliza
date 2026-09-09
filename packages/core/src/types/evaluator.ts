@@ -128,6 +128,9 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	 * or throw. Stored pending output takes precedence during replay.
 	 */
 	resolveOutput?(context: EvaluatorPromptContext<TPrepared>): TOutput;
+	/** A conditional resolver may opt out and retain ordinary model judgment.
+	 * When omitted, a declared resolver must always return defined output. */
+	resolveOutputWhen?(context: EvaluatorPromptContext<TPrepared>): boolean;
 	prompt(context: EvaluatorPromptContext<TPrepared>): string;
 	/** Optional lossless annotation of prompt(); concatenation must equal its full text.
 	 * Only state-independent instructions may be stable, as a contiguous prefix

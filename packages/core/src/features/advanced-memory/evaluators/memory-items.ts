@@ -23,7 +23,10 @@ import type {
 	RegisteredEvaluator,
 	UUID,
 } from "../../../types/index.ts";
-import { isProtectedMemoryEvidence } from "../../../utils/extraction-evidence.ts";
+import {
+	hasNoPersonalExtractionSources,
+	isProtectedMemoryEvidence,
+} from "../../../utils/extraction-evidence.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { stringToUuid } from "../../../utils.ts";
@@ -297,6 +300,8 @@ export const longTermMemoryEvaluator: Evaluator<
 	LongTermMemoryPrepared
 > = {
 	name: "longTermMemory",
+	resolveOutputWhen: hasNoPersonalExtractionSources,
+	resolveOutput: () => ({ memories: [] }),
 	reconcileEvidence: reconcileLongTermEvidence,
 	background: true,
 	incremental(runtime) {

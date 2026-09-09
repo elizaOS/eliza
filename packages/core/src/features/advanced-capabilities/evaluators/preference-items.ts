@@ -27,6 +27,7 @@
  * (advanced capabilities off), the fact lane still works and slot ops are
  * dropped with a debug log — the counters in the processor result record it.
  */
+
 import { v4 } from "uuid";
 import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
@@ -49,6 +50,10 @@ import { asUUID } from "../../../types/index.ts";
 import type { CustomMetadata, FactMetadata } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import { stableStringify } from "../../../utils/deterministic.ts";
+import {
+	hasNoPersonalExtractionSources,
+	isActiveMemoryEvidence,
+} from "../../../utils/extraction-evidence.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { stringToUuid } from "../../../utils.ts";
 import {
@@ -173,7 +178,11 @@ function readFactMetadata(memory: Memory): FactMetadata {
 
 function isDurablePreferenceFact(memory: Memory): boolean {
 	const meta = readFactMetadata(memory);
-	return meta.category === "preference" && meta.kind !== "current";
+	return (
+		isActiveMemoryEvidence(memory) &&
+		meta.category === "preference" &&
+		meta.kind !== "current"
+	);
 }
 
 /**
@@ -505,6 +514,8 @@ export const preferenceEvaluator: Evaluator<
 	PreferencePrepared
 > = {
 	name: "preferences",
+	resolveOutputWhen: hasNoPersonalExtractionSources,
+	resolveOutput: () => ({ ops: [] }),
 	incremental: true,
 	background: true,
 	description:

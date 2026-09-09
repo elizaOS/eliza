@@ -97,6 +97,129 @@ async function execute(runtime: AgentRuntime, task: Task) {
 }
 
 describe("durable background memory", () => {
+	it("shares exact selected ID lists between diverged lanes without losing evidence", async () => {
+		const { runtime, service, message } = await setup();
+		for (const name of ["leadA", "leadB"])
+			runtime.registerEvaluator({ ...evaluator(), name });
+		runtime.useModel = vi.fn(async () =>
+			JSON.stringify({
+				leadA: { ok: true },
+				leadB: { ok: true },
+				lag: { ok: true },
+			}),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const next = {
+			...message,
+			id: stringToUuid("diverged-new-message"),
+			createdAt: 20,
+			content: { text: "Full second message with a new detail." },
+		};
+		await runtime.upsertMemory(next, "messages");
+		runtime.registerEvaluator({ ...evaluator(), name: "lag" });
+		await service.enqueue(next, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const calls = vi.mocked(runtime.useModel).mock.calls;
+		const params = calls.at(-1)?.[1] as {
+			messages: Array<{ content: string }>;
+		};
+		const prompt = params.messages.map((row) => row.content).join("\n");
+		expect(prompt).toContain(message.content.text);
+		expect(prompt).toContain(next.content.text);
+		expect(prompt.match(/evidence-set-1:/g)).toHaveLength(1);
+		expect(
+			prompt.match(/only the exact source IDs in evidence-set-1/g),
+		).toHaveLength(2);
+		expect(prompt).not.toContain("evidence-set-2");
+		expect(
+			JSON.parse(prompt.match(/evidence-set-1: (\[[\s\S]*?\])/)?.[1] ?? "null"),
+		).toEqual([next.id]);
+	});
+
+	it("advances other-speaker backfill pages without personal inference, then extracts the target speaker", async () => {
+		const { runtime, service, message } = await setup();
+		for (let i = 0; i < 2; i++)
+			await runtime.upsertMemory(
+				{
+					...message,
+					id: stringToUuid(`other-speaker-page:${i}`),
+					entityId: runtime.agentId,
+					createdAt: i,
+					content: {
+						text: `Complete historical agent record ${i} ${"context ".repeat(20)}`,
+					},
+				},
+				"messages",
+			);
+		const stored = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			unique: false,
+			includeEmbedding: false,
+		});
+		const budget =
+			Math.max(
+				...stored.map(
+					(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+				),
+			) + 1;
+		vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+			key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+		);
+		runtime.registerEvaluator(factMemoryEvaluator);
+		runtime.useModel = vi.fn(async () =>
+			JSON.stringify({
+				factMemory: {
+					ops: [
+						{
+							op: "add_durable",
+							claim: "lives in Berlin",
+							category: "identity",
+							keywords: ["berlin"],
+							structured_fields: { city: "Berlin" },
+							sourceMessageIds: [message.id],
+						},
+					],
+				},
+			}),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const task = await job(runtime);
+		await execute(runtime, task);
+		await execute(runtime, task);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(await runtime.getTask(task.id)).not.toBeNull();
+		await execute(runtime, task);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(
+			await runtime.getMemories({
+				tableName: "facts",
+				roomId: message.roomId,
+				unique: false,
+			}),
+		).toHaveLength(1);
+		expect(await runtime.getTask(task.id)).toBeNull();
+	});
+
+	it.each([false, true])(
+		"uses a deterministic resolver only when its evidence predicate permits it (%s)",
+		async (resolve) => {
+			const { runtime, service, message } = await setup();
+			const item = evaluator();
+			item.resolveOutputWhen = () => resolve;
+			item.resolveOutput = vi.fn(() => ({ ok: true }));
+			runtime.registerEvaluator(item);
+			runtime.useModel = vi.fn(
+				async () => '{"memory":{"ok":true}}',
+			) as AgentRuntime["useModel"];
+			await service.enqueue(message, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			expect(runtime.useModel).toHaveBeenCalledTimes(resolve ? 0 : 1);
+			expect(item.resolveOutput).toHaveBeenCalledTimes(resolve ? 1 : 0);
+		},
+	);
+
 	it("enqueues once, admits another foreground turn during inference, then commits under room ownership", async () => {
 		const { runtime, service, message } = await setup();
 		const started = deferred<void>();

@@ -351,6 +351,11 @@ function buildPrompt(params: {
 		},
 	];
 	const dynamic: PromptSegment[] = [];
+	const evidenceSets = new Map<
+		string,
+		{ id: string; sourceIds: Array<Memory["id"]> }
+	>();
+	const sharedIds = params.roomTranscript?.map((record) => record.id);
 	for (const entry of active) {
 		const { evaluator, prepared } = entry;
 		const context = {
@@ -414,12 +419,23 @@ function buildPrompt(params: {
 		const evidenceIds = entry.options.extraction?.messages.map(
 			(record) => record.id,
 		);
-		const evidenceSelection =
-			evidenceIds === undefined
-				? ""
-				: evidenceIds.length === params.roomTranscript?.length
-					? "all evidence records above"
-					: `only message IDs ${stringifyForModel(evidenceIds)}`;
+		let evidenceSelection = "";
+		if (evidenceIds !== undefined) {
+			if (stringifyForModel(evidenceIds) === stringifyForModel(sharedIds))
+				evidenceSelection = "all evidence records above";
+			else {
+				const key = stringifyForModel(evidenceIds);
+				let set = evidenceSets.get(key);
+				if (!set) {
+					set = {
+						id: `evidence-set-${evidenceSets.size + 1}`,
+						sourceIds: evidenceIds,
+					};
+					evidenceSets.set(key, set);
+				}
+				evidenceSelection = `only the exact source IDs in ${set.id} below`;
+			}
+		}
 		dynamic.push({
 			content: `### ${evaluator.name}\n${entry.progress ? `Incremental evidence contract: process ${evidenceSelection}. Removed source IDs: ${stringifyForModel(entry.progress.removedMessageIds)}. Edited source IDs: ${stringifyForModel(entry.progress.changedMessageIds)}. Existing facts and other evaluator records are reference context, not additional evidence. Attribute personal facts only to their actual speaker; another speaker's statement is not a fact about the triggering sender. Agent thoughts are not independent factual evidence. If a reference cannot be resolved from the evidence and existing records, do not invent a memory.\n` : ""}${segments
 				.filter((segment) => !segment.stable)
@@ -444,7 +460,7 @@ function buildPrompt(params: {
 	const promptSegments = [
 		...stable,
 		{
-			content: `${sharedContext}\n\n## Active Evaluators\n\n`,
+			content: `${sharedContext}${evidenceSets.size ? `\n\nExact selected source sets (each listed once; membership is evaluator-specific):\n${[...evidenceSets.values()].map((set) => `${set.id}: ${stringifyForModel(set.sourceIds)}`).join("\n")}` : ""}\n\n## Active Evaluators\n\n`,
 			stable: false,
 		},
 		...dynamic,
@@ -1169,8 +1185,19 @@ export class EvaluatorService extends BaseService {
 								options: entryOptions,
 							})
 						: undefined;
+					const resolveOutputEnabled =
+						snapshot?.pendingOutput === undefined &&
+						evaluator.resolveOutput !== undefined &&
+						(!evaluator.resolveOutputWhen ||
+							evaluator.resolveOutputWhen({
+								runtime: this.runtime,
+								message: entryMessage,
+								state,
+								options: entryOptions,
+								prepared,
+							}));
 					const resolvedOutput =
-						snapshot?.pendingOutput === undefined && evaluator.resolveOutput
+						resolveOutputEnabled && evaluator.resolveOutput
 							? evaluator.resolveOutput({
 									runtime: this.runtime,
 									message: entryMessage,
@@ -1179,11 +1206,7 @@ export class EvaluatorService extends BaseService {
 									prepared,
 								})
 							: undefined;
-					if (
-						evaluator.resolveOutput &&
-						snapshot?.pendingOutput === undefined &&
-						resolvedOutput === undefined
-					)
+					if (resolveOutputEnabled && resolvedOutput === undefined)
 						throw new ElizaError("Runtime evaluator output is undefined", {
 							code: "EVALUATOR_RESOLVED_OUTPUT_MISSING",
 						});

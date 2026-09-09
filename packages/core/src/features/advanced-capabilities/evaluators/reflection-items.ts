@@ -60,6 +60,7 @@ import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
 import { stableStringify } from "../../../utils/deterministic.ts";
 import {
+	hasNoPersonalExtractionSources,
 	isActiveMemoryEvidence,
 	isProtectedMemoryEvidence,
 } from "../../../utils/extraction-evidence.ts";
@@ -1337,6 +1338,8 @@ ${formatKnownLines(current, "current")}`,
 
 export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	name: "factMemory",
+	resolveOutputWhen: hasNoPersonalExtractionSources,
+	resolveOutput: () => ({ ops: [] }),
 	reconcileEvidence: reconcileFactEvidence,
 	incremental: true,
 	background: true,

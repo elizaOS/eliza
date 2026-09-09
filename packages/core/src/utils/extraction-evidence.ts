@@ -1,5 +1,6 @@
 /** Shared read-side rule for retired inference evidence. Explicit/manual facts
  * remain authoritative independently of a conversational extractor's receipts. */
+import type { EvaluatorRunContext } from "../types/evaluator.ts";
 import { isObjectRecord } from "./type-guards.ts";
 
 export function isProtectedMemoryEvidence(memory: {
@@ -27,5 +28,20 @@ export function isActiveMemoryEvidence(memory: {
 	return (
 		metadata.extractionStatus !== "source_invalidated" &&
 		metadata.extractionReviewRequired !== true
+	);
+}
+
+/** Personal reducers cannot emit a valid citation when the current evidence page
+ * contains no message authored by their target speaker. A no-op acknowledges
+ * that complete page without asking a model to extract from future context. */
+export function hasNoPersonalExtractionSources({
+	message,
+	options,
+}: Pick<EvaluatorRunContext, "message" | "options">): boolean {
+	return (
+		options.extraction !== undefined &&
+		!options.extraction.messages.some(
+			(source) => source.entityId === message.entityId,
+		)
 	);
 }
