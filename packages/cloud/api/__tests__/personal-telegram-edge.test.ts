@@ -1078,6 +1078,36 @@ describe("Personal Shared Telegram edge", () => {
     },
   );
 
+  test.each(["", " \n\t"])(
+    "delivers media-only private reply %j once",
+    async (reply) => {
+      const ledger = namespace();
+      const mediaUrl = "https://cdn.example/artifact.png";
+      const turn = mock(async () =>
+        Response.json({ data: { reply, mediaUrls: [mediaUrl] } }),
+      );
+      const sentTexts: string[] = [];
+      globalThis.fetch = mock(async (_input, init) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          text?: string;
+        };
+        if (body.text) sentTexts.push(body.text);
+        return Response.json({
+          ok: true,
+          result: body.text ? { message_id: 9012 } : true,
+        });
+      }) as unknown as typeof fetch;
+      expect((await run(ledger, turn, telegramRequest(81640))).status).toBe(
+        200,
+      );
+      expect((await run(ledger, turn, telegramRequest(81640))).status).toBe(
+        200,
+      );
+      expect(turn).toHaveBeenCalledTimes(1);
+      expect(sentTexts).toEqual([mediaUrl]);
+    },
+  );
+
   test("delivers one fallback when a voice note cannot be resolved before the turn", async () => {
     const ledger = namespace();
     const turn = mock(async () =>

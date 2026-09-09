@@ -26,6 +26,7 @@ import {
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
   TelegramIdentityAttestationError,
+  telegramReplyWithMedia,
   verifyTelegramWebhook,
 } from "@elizaos/cloud-services-common/telegram-connector";
 import {
@@ -1138,17 +1139,29 @@ export async function handlePersonalTelegramEdge(
                   "Personal Shared edge turn returned no reply",
                 );
               }
+              const deliveredReply =
+                event.chatType === "private" && !event.membershipChange
+                  ? telegramReplyWithMedia(
+                      candidate,
+                      payload &&
+                        typeof payload === "object" &&
+                        "data" in payload
+                        ? (payload.data as { mediaUrls?: unknown } | null)
+                            ?.mediaUrls
+                        : undefined,
+                    )
+                  : candidate;
               if (
                 event.chatType === "private" &&
                 !event.membershipChange &&
-                candidate.trim().length === 0
+                deliveredReply.trim().length === 0
               ) {
                 throw new PersonalTelegramPreEgressError(
                   "Personal Shared private turn completed without a reply",
                   { failure: personalSharedNoResponseFailure() },
                 );
               }
-              reply = candidate;
+              reply = deliveredReply;
             }
           } catch (error) {
             // error-policy:J4 only the typed, expected pre-egress failure
