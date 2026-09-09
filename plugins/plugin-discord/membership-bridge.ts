@@ -171,6 +171,32 @@ export class DiscordMembershipBridge {
 					await this.memberEvidence(scope, accountKey, worldId, roomId, member),
 				);
 			}
+			// The guild-level completeness check cannot see per-channel
+			// permission emptiness: a fully-chunked guild may still hold a
+			// channel no cached member can view (archived staff channel,
+			// deleted allow-role). A complete snapshot with zero members is
+			// the mass-removal signal this publisher must never emit, so an
+			// empty visible roster is unknown, not "everyone left".
+			if (members.length === 0) {
+				await this.publisher.publishSnapshot({
+					scope,
+					worldId,
+					roomId,
+					completeness: {
+						kind: "unavailable",
+						reason: "no-visible-members",
+					},
+					idempotencyKey: discordMembershipIdempotencyKey([
+						scope.connectorAccountId,
+						channel.id,
+						"snapshot-unavailable",
+						"no-visible-members",
+						observedAt,
+					]),
+					observedAt,
+				});
+				continue;
+			}
 			await this.publisher.publishSnapshot({
 				scope,
 				worldId,

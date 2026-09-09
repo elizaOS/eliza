@@ -335,6 +335,44 @@ describe("Discord membership publisher (real PGlite authority)", () => {
 		expect(decision.decision).toBe("denied");
 	}, 60_000);
 
+	it("reports unavailable (never a false-empty roster) when no cached member can view a channel of a fully-chunked guild", async () => {
+		// Fully-chunked guild (cache == memberCount) whose only channel denies
+		// ViewChannel to @everyone and allows a role no member holds: the
+		// per-channel visible roster is empty while the guild is complete.
+		// The snapshot must degrade the scope to unavailable/no-visible-members
+		// — a complete snapshot with zero members is the mass-removal signal
+		// the publisher must never emit.
+		const members = [makeMember({ id: "u-outside", roles: [] })];
+		const secret = makeChannel({
+			id: "secret-chan",
+			name: "secret",
+			allowRoleIds: ["r-staff"],
+		});
+		await bridge.publishGuildSnapshot({
+			accountKey: "default",
+			membersIntentEnabled: true,
+			guild: guildShape({
+				id: "guild-no-visible",
+				memberCount: 1,
+				members,
+				channels: [secret],
+			}),
+		});
+		const scope = await scopeFor("guild-no-visible", "secret-chan");
+		const health = await membership.getScopeHealth(scope);
+		expect(health?.health).toBe("unavailable");
+		expect(health?.reason).toContain("no-visible-members");
+		// Fail closed: authorize must deny, not treat the empty roster as
+		// "everyone left" (which would strip access from a role holder the
+		// cache has not yet observed).
+		const principal = discordMembershipPrincipalId(
+			scope.connectorAccountId as string,
+			"u-outside",
+		);
+		const decision = await membership.authorize(scope, principal);
+		expect(decision.decision).toBe("denied");
+	}, 60_000);
+
 	it("publishes join/leave deltas with redelivery idempotency", async () => {
 		const chan = makeChannel({ id: "delta-chan" });
 		const joiner = makeMember({ id: "u-joiner", roles: [] });
