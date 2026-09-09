@@ -1580,6 +1580,47 @@ export class EvaluatorService extends BaseService {
 							: entry.incremental === true,
 					)
 				: [];
+		// A durable evidence contract takes precedence over a legacy input scope.
+		const messageScoped = candidates.filter(
+			(entry) =>
+				entry.inputScope === "current_message" && !incremental.includes(entry),
+		);
+		if (messageScoped.length > 0) {
+			const regular = candidates.filter(
+				(entry) => !messageScoped.includes(entry),
+			);
+			const scopedResult = await this.runBatch(
+				messageScoped,
+				message,
+				undefined,
+				{ ...options, responses: [] },
+				undefined,
+				background,
+				true,
+			);
+			if (regular.length === 0) return scopedResult;
+			const regularResult = await this.runSelected(
+				regular,
+				message,
+				state,
+				options,
+				background,
+			);
+			return {
+				skipped: scopedResult.skipped && regularResult.skipped,
+				hasMoreEvidence: regularResult.hasMoreEvidence,
+				activeEvaluators: [
+					...scopedResult.activeEvaluators,
+					...regularResult.activeEvaluators,
+				],
+				processedEvaluators: [
+					...scopedResult.processedEvaluators,
+					...regularResult.processedEvaluators,
+				],
+				results: [...scopedResult.results, ...regularResult.results],
+				errors: [...scopedResult.errors, ...regularResult.errors],
+			};
+		}
 		if (incremental.length === 0)
 			return this.runBatch(
 				candidates,
@@ -1710,6 +1751,7 @@ export class EvaluatorService extends BaseService {
 		options: EvaluatorRunOptions,
 		progress?: Map<string, EvaluatorProgressSnapshot>,
 		background = false,
+		currentMessageOnly = false,
 	): Promise<EvaluatorRunResult> {
 		setTrajectoryPurpose("evaluation");
 
@@ -1754,8 +1796,10 @@ export class EvaluatorService extends BaseService {
 							}
 						: composed,
 				),
-				progress || active.every((entry) => entry.resolveOutput !== undefined)
-					? Promise.resolve(null)
+				currentMessageOnly ||
+				progress ||
+				active.every((entry) => entry.resolveOutput !== undefined)
+					? Promise.resolve(currentMessageOnly ? [] : null)
 					: getRoomTranscript(this.runtime, message).catch((error: unknown) => {
 							// error-policy:J7 the shared transcript is a dedupe of what each
 							// evaluator reads for itself; its failure is reported and the

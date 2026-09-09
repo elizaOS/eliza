@@ -76,6 +76,56 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it("isolates current-message extraction from history and receipts while preserving legacy context", async () => {
+		const runtime = makeRuntime();
+		const message = makeMessage();
+		message.content.text =
+			"Open Calendar so I can see it. Complete current message.";
+		const item = (name: string, scoped: boolean): Evaluator => ({
+			name,
+			description: name,
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract only your declared evidence",
+			...(scoped ? { inputScope: "current_message" as const } : {}),
+			processors: [{ process: async () => undefined }],
+		});
+		runtime.registerEvaluator(item("scoped", true));
+		runtime.registerEvaluator(item("legacy", false));
+		const calls: string[] = [];
+		runtime.useModel = vi.fn(async (_type, params) => {
+			calls.push(JSON.stringify(params));
+			return JSON.stringify({ scoped: { ok: true }, legacy: { ok: true } });
+		}) as AgentRuntime["useModel"];
+		const service = (await EvaluatorService.start(runtime)) as EvaluatorService;
+		await service.run(
+			message,
+			{
+				text: "COMPLETE_PRIOR_HISTORY_SENTINEL",
+				values: {},
+				data: {
+					actionResults: [{ success: true, text: "TOOL_RECEIPT_SENTINEL" }],
+				},
+			},
+			{
+				phase: "post_turn",
+				responses: [
+					{ ...message, content: { text: "ASSISTANT_REPLY_SENTINEL" } },
+				],
+			},
+		);
+		expect(calls).toHaveLength(2);
+		expect(calls[0]).toContain(message.content.text);
+		for (const sentinel of [
+			"COMPLETE_PRIOR_HISTORY_SENTINEL",
+			"TOOL_RECEIPT_SENTINEL",
+			"ASSISTANT_REPLY_SENTINEL",
+		]) {
+			expect(calls[0]).not.toContain(sentinel);
+			expect(calls[1]).toContain(sentinel);
+		}
+	});
+
 	it("captures links through the real service without a whole-room acknowledgment model call", async () => {
 		const runtime = makeRuntime();
 		runtime.registerEvaluator(linkExtractionEvaluator);

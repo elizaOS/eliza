@@ -132,6 +132,57 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it.each(["final", "more_work_pending"] as const)(
+		"preserves %s scope across discovery and an already queued domain read",
+		async (scope) => {
+			const h = harness({
+				userMessage:
+					"Load the Notes family and read today's Calendar, without changing the view.",
+				plans: [
+					{
+						text: "",
+						toolCalls: [call("DISCOVER_TOOLS", scope), call("READ", scope)],
+					},
+					...(scope === "more_work_pending"
+						? [{ text: "", toolCalls: [call("REPLY", "final")] }]
+						: []),
+				],
+				evaluations: [
+					finish("The tools are loaded and today's calendar has no events."),
+				],
+			});
+			const result = await h.run();
+			expect(h.executed).toEqual(["DISCOVER_TOOLS", "READ"]);
+			expect(
+				h.useModel.mock.calls.filter(
+					([type]) => type === ModelType.ACTION_PLANNER,
+				),
+			).toHaveLength(scope === "final" ? 1 : 2);
+			expect(result.finalMessage).toBe(
+				"The tools are loaded and today's calendar has no events.",
+			);
+			expect(result.trajectory.plannedQueue).toEqual([]);
+		},
+	);
+
+	it("continues planning after a discovery-only batch even when it is labeled final", async () => {
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("DISCOVER_TOOLS", "final")] },
+				{ text: "", toolCalls: [call("READ", "final")] },
+			],
+			evaluations: [finish("The requested record was read.")],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["DISCOVER_TOOLS", "READ"]);
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.finalMessage).toBe("The requested record was read.");
+	});
+
 	it("finishes a consistently final multi-call batch without another planner round", async () => {
 		const h = harness({
 			plans: [

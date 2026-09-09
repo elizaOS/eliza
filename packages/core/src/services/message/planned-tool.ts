@@ -630,11 +630,15 @@ export function collectBudgetedStageOneCandidateActions(args: {
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
-		if (resolved.length === 0) return [];
+		// Hints are not an execution contract. One invented name must not throw
+		// away the known families and inflate the entire surface; the pipeline
+		// exposes DISCOVER_TOOLS for the remaining authorized catalog.
+		if (resolved.length === 0) continue;
 		for (const action of resolved) {
 			selectedNames.add(normalizeActionIdentifier(action.name));
 		}
 	}
+	if (selectedNames.size === 0) return [];
 	// A candidate child is a routing hint, not a complete plan. Keep its
 	// authorized umbrella available so a compound request can use another
 	// operation after the first result (e.g. navigate, then read the page).

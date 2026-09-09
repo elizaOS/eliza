@@ -165,7 +165,10 @@ import {
 	uniqueActionNames,
 } from "./stage1-reply-policy.js";
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
-import { createPlannerToolDiscoveryAction } from "./tool-discovery.js";
+import {
+	appendDiscoveredPlannerTools,
+	createPlannerToolDiscoveryAction,
+} from "./tool-discovery.js";
 import { recordFactsAndRelationshipsStage } from "./trajectory-stages.js";
 import { detachPostDeliverySideEffect } from "./turn-session.js";
 
@@ -1048,7 +1051,8 @@ export async function runV5MessageRuntimeStage1(
 			: undefined;
 		// Stage 1 has already interpreted the request. Load its complete action
 		// families first, while keeping every other authorized family explicitly
-		// discoverable. An unresolved hint retains the full surface.
+		// discoverable. Only an entirely unresolved selection retains the full
+		// surface; an unknown hint must not discard the known families.
 		const selectedActionFamilies =
 			args.codingMode === true || deterministicPlanSelection
 				? []
@@ -1078,12 +1082,21 @@ export async function runV5MessageRuntimeStage1(
 						}
 						// The planner loop holds this array for the lifetime of the turn.
 						// Update it in place so the next model call sees the loaded schemas.
-						const expandedTools = collectPlannerTools(
+						appendDiscoveredPlannerTools(
 							plannerContextWithDecision,
-							exposedPlannerActions,
+							plannerTools,
+							discoveredActions,
 						);
-						plannerTools.splice(0, plannerTools.length, ...expandedTools);
 					},
+					(names) =>
+						collectV5PlannerCandidateActions({
+							runtime: args.runtime,
+							message: args.message,
+							state: plannerState,
+							selectedContexts,
+							candidateActions: names,
+							userRoles: [senderRole],
+						}),
 				),
 			);
 		}

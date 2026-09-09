@@ -81,7 +81,10 @@ import {
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
-import { selectCompletionContext } from "./completion-context";
+import {
+	referencePlannerQueryTokens,
+	selectCompletionContext,
+} from "./completion-context";
 import {
 	computePrefixHashes,
 	hashString,
@@ -1934,7 +1937,11 @@ async function runPlannerLoopIterations(
 			// Loading schemas is planner protocol, not completed user work. The
 			// next model round chooses the newly available operation; there is no
 			// effect for a completion evaluator to judge yet.
-			lastPlannerExplicitCompleted = false;
+			// A same-response domain call may still be queued under the model's
+			// explicit final declaration. Discovery must not turn that whole batch
+			// into pending work and reject its later grounded FINISH.
+			if (trajectory.plannedQueue.length === 0)
+				lastPlannerExplicitCompleted = false;
 			continue;
 		}
 		if (latestResult?.replyFailure) {
@@ -2374,7 +2381,7 @@ function appendPendingToolQueueFeedbackEvent(
 const RESTORE_CONTEXT_TOOL: ToolDefinition = {
 	name: "RESTORE_CONTEXT",
 	description:
-		"Restore all original prior user dialogue when the selected sources leave any constraint, correction, referent or historical evidence uncertain. This reads the complete in-memory turn context once, performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
+		"Restore all original prior user dialogue and referenced retrieval diagnostics when the selected sources leave any constraint, correction, referent or historical evidence uncertain. This reads the complete in-memory turn context once, performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
 	parameters: {
 		type: "object",
 		additionalProperties: false,
@@ -2406,7 +2413,19 @@ function renderPlannerModelInput(params: {
 					omittedSourceCount: 0,
 					selection: undefined,
 				};
-	const renderedContext = renderContextObject(selected.context);
+	const diagnosticProjection =
+		params.allowSourceSelection && !params.codingMode
+			? referencePlannerQueryTokens(selected.context)
+			: { context: selected.context, applied: false };
+	const renderedContext = renderContextObject(diagnosticProjection.context);
+	if (diagnosticProjection.applied)
+		renderedContext.promptSegments.push({
+			id: "planner-query-token-reference",
+			label: "planner_context",
+			stable: false,
+			content:
+				"The tokenized retrieval query is referenced by exact source event, count and hash. It is derived search diagnostics, not additional user instructions. All routing decisions remain inline. Call RESTORE_CONTEXT alone if the original diagnostic array is needed; it restores the complete list together with original dialogue before any effects.",
+		});
 	if (selected.applied)
 		renderedContext.promptSegments.push({
 			id: "planner-context-selection",
@@ -2486,7 +2505,7 @@ function renderPlannerModelInput(params: {
 		messages,
 		promptSegments,
 		cacheKeySegments,
-		sourceSelectionApplied: selected.applied,
+		sourceSelectionApplied: selected.applied || diagnosticProjection.applied,
 	};
 }
 
@@ -3441,7 +3460,8 @@ async function callPlanner(
 		if (
 			params.trajectory.codingMode ||
 			!params.tools?.length ||
-			!selectCompletionContext(original).applied
+			(!selectCompletionContext(original).applied &&
+				!referencePlannerQueryTokens(original).applied)
 		) {
 			throw new ElizaError(
 				"Original planner context is already complete; repeated restoration is invalid",
@@ -3454,14 +3474,18 @@ async function callPlanner(
 		params.trajectory.modelBaseContext = appendContextEvent(
 			{
 				...original,
-				metadata: { ...original.metadata, completionContext: undefined },
+				metadata: {
+					...original.metadata,
+					completionContext: undefined,
+					plannerQueryTokensRestored: true,
+				},
 			},
 			{
 				id: "planner-context-restored",
 				type: "instruction",
 				source: "planner-loop",
 				content:
-					"Full original prior dialogue has been restored as requested. No tool from the restoration response executed. Plan the current request using the complete sources and the existing settled receipts; do not repeat completed effects.",
+					"Full original prior dialogue and retrieval diagnostics have been restored as requested. No tool from the restoration response executed. Plan the current request using the complete sources and the existing settled receipts; do not repeat completed effects.",
 			},
 		);
 		return await callPlanner(params);

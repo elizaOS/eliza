@@ -97,68 +97,71 @@ async function execute(runtime: AgentRuntime, task: Task) {
 }
 
 describe("durable background memory", () => {
-	it("supplies the complete future trigger and receipts only when their evidence page is selected", async () => {
-		const { runtime, service, message } = await setup();
-		const old = {
-			...message,
-			id: stringToUuid("earlier-own-statement"),
-			createdAt: 0,
-			content: {
-				text: "Earlier complete owner statement with violet notebook.",
-			},
-		};
-		await runtime.upsertMemory(old, "messages");
-		const stored = await runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			unique: false,
-			includeEmbedding: false,
-		});
-		const budget =
-			Math.max(
-				...stored.map(
-					(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
-				),
-			) + 1;
-		vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
-			key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
-		);
-		runtime.registerEvaluator(evaluator());
-		runtime.useModel = vi.fn(
-			async () => '{"memory":{"ok":true}}',
-		) as AgentRuntime["useModel"];
-		await service.enqueue(
-			message,
-			{
-				...state,
-				data: {
-					actionResults: [{ success: true, text: "FUTURE_TURN_RECEIPT" }],
+	it.each([undefined, "current_message"] as const)(
+		"supplies the complete future trigger and receipts only when their evidence page is selected (legacy scope %s)",
+		async (inputScope) => {
+			const { runtime, service, message } = await setup();
+			const old = {
+				...message,
+				id: stringToUuid("earlier-own-statement"),
+				createdAt: 0,
+				content: {
+					text: "Earlier complete owner statement with violet notebook.",
 				},
-			},
-			{ phase: "post_turn" },
-		);
-		const task = await job(runtime);
-		await execute(runtime, task);
-		const params = vi.mocked(runtime.useModel).mock.calls[0][1] as {
-			messages: Array<{ content: string }>;
-		};
-		const first = params.messages.map((row) => row.content).join("\n");
-		expect(first).toContain(old.content.text);
-		expect(first).not.toContain(message.content.text);
-		expect(first).not.toContain("FUTURE_TURN_RECEIPT");
-		expect(first).toContain("later evidence page");
-		await execute(runtime, task);
-		const last = vi.mocked(runtime.useModel).mock.calls[1][1] as {
-			messages: Array<{ content: string }>;
-		};
-		expect(last.messages.map((row) => row.content).join("\n")).toContain(
-			message.content.text,
-		);
-		expect(last.messages.map((row) => row.content).join("\n")).toContain(
-			"FUTURE_TURN_RECEIPT",
-		);
-		expect(await runtime.getTask(task.id)).toBeNull();
-	});
+			};
+			await runtime.upsertMemory(old, "messages");
+			const stored = await runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				unique: false,
+				includeEmbedding: false,
+			});
+			const budget =
+				Math.max(
+					...stored.map(
+						(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+					),
+				) + 1;
+			vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+				key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+			);
+			runtime.registerEvaluator({ ...evaluator(), inputScope });
+			runtime.useModel = vi.fn(
+				async () => '{"memory":{"ok":true}}',
+			) as AgentRuntime["useModel"];
+			await service.enqueue(
+				message,
+				{
+					...state,
+					data: {
+						actionResults: [{ success: true, text: "FUTURE_TURN_RECEIPT" }],
+					},
+				},
+				{ phase: "post_turn" },
+			);
+			const task = await job(runtime);
+			await execute(runtime, task);
+			const params = vi.mocked(runtime.useModel).mock.calls[0][1] as {
+				messages: Array<{ content: string }>;
+			};
+			const first = params.messages.map((row) => row.content).join("\n");
+			expect(first).toContain(old.content.text);
+			expect(first).not.toContain(message.content.text);
+			expect(first).not.toContain("FUTURE_TURN_RECEIPT");
+			expect(first).toContain("later evidence page");
+			await execute(runtime, task);
+			const last = vi.mocked(runtime.useModel).mock.calls[1][1] as {
+				messages: Array<{ content: string }>;
+			};
+			expect(last.messages.map((row) => row.content).join("\n")).toContain(
+				message.content.text,
+			);
+			expect(last.messages.map((row) => row.content).join("\n")).toContain(
+				"FUTURE_TURN_RECEIPT",
+			);
+			expect(await runtime.getTask(task.id)).toBeNull();
+		},
+	);
 
 	it("keeps diverged full pages queued when their union exceeds the shared request budget", async () => {
 		const { runtime, service, message } = await setup();

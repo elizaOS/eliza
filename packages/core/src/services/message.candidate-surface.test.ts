@@ -127,11 +127,18 @@ describe("budgeted model-selected action surface", () => {
 		).toEqual(["READ_PAGE"]);
 	});
 
-	it("keeps the existing complete-surface fallback for unresolved candidates", () => {
+	it("keeps known families discoverable when another candidate is unresolved", () => {
 		expect(
 			collectBudgetedStageOneCandidateActions({
 				actions,
 				candidateActions: ["GO", "MISSING_CAPABILITY"],
+				contexts: [],
+			}),
+		).toEqual(actions.slice(0, 3));
+		expect(
+			collectBudgetedStageOneCandidateActions({
+				actions,
+				candidateActions: ["MISSING_CAPABILITY"],
 				contexts: [],
 			}),
 		).toEqual([]);
@@ -157,7 +164,7 @@ describe("budgeted model-selected action surface", () => {
 					candidateActions: ["HOME", "MISSING_CAPABILITY"],
 					contexts: ["general"],
 				}),
-			).toEqual([]);
+			).toEqual([navigationActions[0]]);
 			expect(
 				collectBudgetedStageOneCandidateActions({
 					actions: navigationActions.filter(

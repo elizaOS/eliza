@@ -173,3 +173,53 @@ export function selectCompletionContext(context: ContextObject): {
 		selection,
 	};
 }
+
+/** Tokenized retrieval queries are diagnostics, not authored dialogue. Keep the
+ * complete array in the source event and restore it through RESTORE_CONTEXT;
+ * preserve all other routing, permission, patch, and execution fields inline. */
+export function referencePlannerQueryTokens(context: ContextObject): {
+	context: ContextObject;
+	applied: boolean;
+} {
+	if (context.metadata?.plannerQueryTokensRestored === true)
+		return { context, applied: false };
+	let applied = false;
+	const events = context.events.map((event) => {
+		if (event.type !== "message_handler" || event.source !== "message-service")
+			return event;
+		const plan = event.metadata?.plan;
+		if (!plan || typeof plan !== "object" || Array.isArray(plan)) return event;
+		const surface = plan.actionSurface;
+		if (
+			!surface ||
+			typeof surface !== "object" ||
+			Array.isArray(surface) ||
+			!["full", "tiered", "relay-delivery"].includes(String(surface.mode)) ||
+			!Array.isArray(surface.queryTokens) ||
+			!surface.queryTokens.every((token) => typeof token === "string")
+		)
+			return event;
+		const { queryTokens, ...routing } = surface;
+		// Referencing a tiny list would increase cost. This is a lossless carrier
+		// choice, not a cap: the entire list remains available as one exact source.
+		const reference = {
+			sourceEventId: event.id,
+			field: "metadata.plan.actionSurface.queryTokens",
+			count: queryTokens.length,
+			sha256: hashStableJson(queryTokens),
+			restoreTool: "RESTORE_CONTEXT",
+		};
+		if (JSON.stringify(queryTokens).length <= JSON.stringify(reference).length)
+			return event;
+		applied = true;
+		return {
+			...event,
+			metadata: {
+				...event.metadata,
+				plan: { ...plan, actionSurface: routing },
+				plannerQueryTokensReference: reference,
+			},
+		};
+	});
+	return { context: applied ? { ...context, events } : context, applied };
+}

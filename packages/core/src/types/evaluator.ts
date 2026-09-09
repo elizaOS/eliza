@@ -119,6 +119,11 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 		},
 	): Promise<{ reprocessSourceIds: string[] }>;
 
+	/** Explicit input contract for reducers that extract only from the current
+	 * message. The service isolates their batch from room history and turn receipts;
+	 * declared providers still recompose normally. Existing evaluators default to
+	 * the complete turn context. Incremental evaluators use their evidence contract. */
+	inputScope?: "current_message";
 	shouldRun(context: EvaluatorRunContext): Promise<boolean>;
 	prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>;
 	/**

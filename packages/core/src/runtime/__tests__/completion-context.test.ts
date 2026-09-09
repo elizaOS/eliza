@@ -12,6 +12,7 @@ import { completionContextFieldEvaluator } from "../builtin-field-evaluators";
 import {
 	completionContextSources,
 	parseCompletionContextSelection,
+	referencePlannerQueryTokens,
 	selectCompletionContext,
 } from "../completion-context";
 import { runEvaluator } from "../evaluator";
@@ -406,6 +407,91 @@ describe("source-bound completion relevance", () => {
 });
 
 describe("planner source selection and restoration", () => {
+	it("references large query diagnostics losslessly and restores them without executing accompanying tools", async () => {
+		const full = historyContext();
+		const tokens = Array.from({ length: 1000 }, (_, i) => `query-token-${i}`);
+		full.events.push({
+			id: "search-diagnostics",
+			type: "message_handler",
+			source: "message-service",
+			metadata: {
+				plan: {
+					intents: ["read note"],
+					actionSurface: {
+						mode: "tiered",
+						queryTokens: tokens,
+						candidateActions: ["NOTES"],
+					},
+					responseHandlerPatches: [{ changed: "permission preserved" }],
+				},
+			},
+		});
+		const before = JSON.stringify(full);
+		const projected = referencePlannerQueryTokens(full);
+		expect(projected.applied).toBe(true);
+		expect(JSON.stringify(projected.context)).not.toContain("query-token-999");
+		expect(JSON.stringify(projected.context)).toContain("permission preserved");
+		expect(JSON.stringify(full)).toBe(before);
+		const calls: string[] = [];
+		const execute = vi.fn(async () => ({ success: true }));
+		await runPlannerLoop({
+			context: full,
+			tools: [
+				{
+					name: "NOTES",
+					description: "read",
+					parameters: { type: "object", properties: {} },
+				},
+			],
+			runtime: {
+				useModel: async (_type, params) => {
+					calls.push(JSON.stringify(params));
+					return calls.length === 1
+						? {
+								text: "",
+								toolCalls: [
+									{
+										id: "restore",
+										name: "RESTORE_CONTEXT",
+										arguments: { reason: "Inspect exact query diagnostics" },
+									},
+									{ id: "blocked", name: "NOTES", arguments: {} },
+								],
+							}
+						: {
+								text: "",
+								toolCalls: [
+									{
+										id: "final",
+										name: "REPLY",
+										arguments: { text: "Reviewed." },
+									},
+								],
+							};
+				},
+			},
+			executeToolCall: execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "Reviewed",
+				messageToUser: "Reviewed.",
+			}),
+		});
+		expect(calls[0]).toContain("RESTORE_CONTEXT");
+		expect(calls[0]).not.toContain("query-token-999");
+		expect(calls[1]).toContain("query-token-999");
+		expect(execute).not.toHaveBeenCalled();
+		expect(JSON.stringify(full)).toBe(before);
+		const foreign = {
+			...full,
+			events: full.events.map((e) =>
+				e.id === "search-diagnostics" ? { ...e, source: "custom" } : e,
+			),
+		};
+		expect(referencePlannerQueryTokens(foreign).applied).toBe(false);
+	});
+
 	const tools = [
 		{
 			name: "NOTES",

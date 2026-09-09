@@ -8,12 +8,18 @@ import { DISCOVER_TOOLS_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { buildActionCatalog } from "../../runtime/action-catalog";
 import type { Action } from "../../types/components";
+import type { ContextObject } from "../../types/context-object";
+import type { ToolDefinition } from "../../types/model";
 import { isObjectRecord } from "../../utils/type-guards";
-import { collectBudgetedStageOneCandidateActions } from "./planned-tool.js";
+import {
+	collectBudgetedStageOneCandidateActions,
+	collectPlannerTools,
+} from "./planned-tool.js";
 
 export function createPlannerToolDiscoveryAction(
 	authorizedActions: readonly Action[],
 	onDiscover: (actions: Action[]) => void,
+	resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
 ): Action {
 	const actionsByName = new Map(
 		authorizedActions.map((action) => [action.name, action]),
@@ -39,6 +45,9 @@ export function createPlannerToolDiscoveryAction(
 		description:
 			"Load complete tool schemas from the authorized catalog below when an exposed tool does not cover an intent. " +
 			"Pass one or more exact parent or child names. All authorized operations of each selected family become callable on the next planner round. " +
+			(resolveAdditionalActions
+				? "The catalog lists families admitted for the current routing contexts. Other exact registered names may be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
+				: "") +
 			"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
 			JSON.stringify(
 				catalog.parents.map((parent) => ({
@@ -64,8 +73,7 @@ export function createPlannerToolDiscoveryAction(
 				!Array.isArray(names) ||
 				names.length === 0 ||
 				!names.every(
-					(name): name is string =>
-						typeof name === "string" && actionsByName.has(name),
+					(name): name is string => typeof name === "string" && name.length > 0,
 				)
 			) {
 				return {
@@ -74,8 +82,27 @@ export function createPlannerToolDiscoveryAction(
 						"Select exact names from the authorized discovery catalog. No tools were loaded.",
 				};
 			}
+			// Stage 1 can omit a domain even when the planner explicitly requests
+			// its family. Reuse canonical candidate admission with that exact name;
+			// never turn routing context into a permanent capability denial.
+			const admitted = new Map(actionsByName);
+			if (
+				resolveAdditionalActions &&
+				names.some((name) => !admitted.has(name))
+			) {
+				for (const action of await resolveAdditionalActions(names))
+					admitted.set(action.name, action);
+			}
+			if (!names.every((name) => admitted.has(name))) {
+				return {
+					success: false,
+					error:
+						"Requested tool family was not admitted by the current capability and permission checks. No tools were loaded. Do not substitute an unrelated family for the requested operation.",
+				};
+			}
+			for (const [name, action] of admitted) actionsByName.set(name, action);
 			const selected = collectBudgetedStageOneCandidateActions({
-				actions: authorizedActions,
+				actions: [...actionsByName.values()],
 				candidateActions: names,
 				contexts: [],
 			});
@@ -89,4 +116,20 @@ export function createPlannerToolDiscoveryAction(
 		},
 		examples: [],
 	};
+}
+
+/** Discovery adds only the requested family's complete schemas. Preserve the
+ * existing budgeted definitions instead of expanding unrelated umbrellas. */
+export function appendDiscoveredPlannerTools(
+	context: ContextObject,
+	current: ToolDefinition[],
+	discovered: readonly Action[],
+): void {
+	const names = new Set(current.map((tool) => tool.name));
+	for (const tool of collectPlannerTools(context, discovered)) {
+		if (!names.has(tool.name)) {
+			current.push(tool);
+			names.add(tool.name);
+		}
+	}
 }
