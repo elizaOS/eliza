@@ -154,19 +154,11 @@ export const telegramAdapter: PlatformAdapter = {
     return resolveTelegramVoiceNote(config, asTelegramEvent(event));
   },
 
-  async sendReply(
-    config,
-    event,
-    text,
-    deliveryHooks,
-    mediaUrls,
-  ): Promise<void> {
+  async sendReply(config, event, text, deliveryHooks): Promise<void> {
     await sendTelegramReply(
       config,
       asTelegramEvent(event),
-      event.chatType === "private" && !event.membershipChange
-        ? telegramReplyWithMedia(text, mediaUrls)
-        : text,
+      text,
       logger,
       deliveryHooks,
     );
