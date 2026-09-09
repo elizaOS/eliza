@@ -137,7 +137,12 @@ function pickKnownParams<TSubaction extends string>(
 	]);
 	const result: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(params)) {
-		if (allowed.has(key) && valueIsPresent(value)) {
+		// Optional empty values can intentionally clear a field in update actions.
+		if (
+			allowed.has(key) &&
+			value !== undefined &&
+			(!spec.required.includes(key) || valueIsPresent(value))
+		) {
 			result[key] = value;
 		}
 	}

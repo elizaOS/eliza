@@ -48,6 +48,36 @@ function makeMessage(text: string): Memory {
 }
 
 describe("resolveActionArgs", () => {
+	it("preserves an explicit description clear while extracting a missing goal ID", async () => {
+		const runtime = makeMockRuntime(
+			JSON.stringify({
+				action: "UPDATE",
+				params: { id: "goal-1", description: "Old description" },
+				missing: [],
+				confidence: 0.95,
+			}),
+		);
+		const result = await resolveActionArgs({
+			runtime,
+			message: makeMessage("clear the description of my goal"),
+			actionName: "OWNER_GOALS",
+			subactions: {
+				UPDATE: {
+					description: "Update an owner goal by ID",
+					descriptionCompressed: "update goal",
+					required: ["id"],
+					optional: ["description"],
+				},
+			},
+			options: { parameters: { action: "UPDATE", id: null, description: "" } },
+		});
+		expect(result).toEqual({
+			ok: true,
+			subaction: "UPDATE",
+			params: { id: "goal-1", description: "" },
+		});
+	});
+
 	it("trusts complete planner-supplied parameters without invoking model extraction", async () => {
 		const runtime = makeMockRuntime();
 		const message = makeMessage("create a task");
