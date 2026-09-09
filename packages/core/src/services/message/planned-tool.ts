@@ -1,5 +1,6 @@
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
+import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import { promotedSubactionParent } from "../../actions/promote-subactions";
 import {
 	buildPlannerToolsFromTieredActions,
@@ -579,26 +580,28 @@ export function collectPlannerTools(
 					promotedSubactionParent(action) === parent.name,
 			);
 			if (aliases.length === 0) continue;
-			const aliasContracts = aliases.map((alias) => ({
-				name: alias.name,
-				description: alias.description,
-				routingHint: alias.routingHint,
-				strict: alias.toolSchemaStrict ?? true,
-				allowAdditionalParameters: alias.allowAdditionalParameters ?? false,
-				parameters: alias.parameters?.map(({ schema, ...parameter }) => {
-					const original = parent.parameters?.find(
-						(entry) => entry.name === parameter.name,
-					);
-					return {
-						...parameter,
-						...(original &&
-						JSON.stringify(original.schema) === JSON.stringify(schema)
-							? { schemaFromParentParameter: parameter.name }
-							: { schema }),
-					};
-				}),
-			}));
-			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each schemaFromParentParameter refers losslessly to that parameter's complete schema above. All alias descriptions, applicable parameters, required flags, and schema overrides follow:\n${JSON.stringify(aliasContracts)}`;
+			const parentSchema = normalizeActionJsonSchema(parent);
+			const aliasContracts = aliases.map((alias) => {
+				const { properties = {}, ...schema } = normalizeActionJsonSchema(alias);
+				return {
+					name: alias.name,
+					description: alias.description,
+					routingHint: alias.routingHint,
+					strict: alias.toolSchemaStrict ?? true,
+					parameters: {
+						...schema,
+						parentParameterNames: Object.keys(properties),
+						propertyOverrides: Object.fromEntries(
+							Object.entries(properties).filter(
+								([name, property]) =>
+									JSON.stringify(property) !==
+									JSON.stringify(parentSchema.properties?.[name]),
+							),
+						),
+					},
+				};
+			});
+			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
 		}
 	}
 	const terminalNames = new Set(

@@ -9,7 +9,7 @@ import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { validateSchema } from "../actions/validate-tool-args";
 import { AgentRuntime } from "../runtime";
 import { createContextObject } from "../runtime/context-object";
-import type { Action, ActionParameter } from "../types/components";
+import type { Action } from "../types/components";
 import {
 	collectActionsFromContext,
 	collectCanonicalPlannerActions,
@@ -185,28 +185,29 @@ describe("canonical promoted-family planner surface", () => {
 		const contracts: Array<{
 			name: string;
 			description: string;
-			parameters: Array<
-				ActionParameter & { schemaFromParentParameter?: string }
-			>;
+			parameters: JsonSchema & {
+				parentParameterNames: string[];
+				propertyOverrides: Record<string, JsonSchema>;
+			};
 		}> = JSON.parse(tool.description.split("\n").at(-1) ?? "invalid");
 		for (const contract of contracts) {
 			const original = actions.find((action) => action.name === contract.name);
 			if (!original)
 				throw new Error("Alias action missing from dispatch context");
 			expect(contract.description).toBe(original.description);
-			const parameters = contract.parameters.map(
-				({ schemaFromParentParameter, ...parameter }) => ({
-					...parameter,
-					schema: schemaFromParentParameter
-						? actions[0].parameters?.find(
-								(entry) => entry.name === schemaFromParentParameter,
-							)?.schema
-						: parameter.schema,
-				}),
-			);
-			// Reassembled schemas retain pinned discriminator rejection and every
-			// shared field, rather than accepting another operation under an alias.
-			const schema = actionToJsonSchema({ ...original, parameters });
+			const { parentParameterNames, propertyOverrides, ...outerSchema } =
+				contract.parameters;
+			const parentSchema = actionToJsonSchema(actions[0]);
+			const schema = {
+				...outerSchema,
+				properties: Object.fromEntries(
+					parentParameterNames.map((name) => [
+						name,
+						propertyOverrides[name] ?? parentSchema.properties[name],
+					]),
+				),
+			};
+			expect(schema).toEqual(actionToJsonSchema(original));
 			const validErrors: string[] = [];
 			const operation = original.parameters?.find(
 				(parameter) => parameter.name === "action",
