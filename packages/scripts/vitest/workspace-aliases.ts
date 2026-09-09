@@ -484,6 +484,12 @@ export function getWorkspacePluginAliases(
 
       return [
         ...getWorkspacePackageExportAliases(pluginName, packageRoot),
+        {
+          // Root-barrel aliases cannot resolve a package subpath by appending
+          // it to index.ts. Preserve exact export overrides, then use source.
+          find: new RegExp(`^@elizaos/${escapeRegExp(pluginName)}/(.+)$`),
+          replacement: toPosix(path.join(sourceRoot, "$1")),
+        },
         ...getPackageSourceAliases(pluginName, sourceRoot, {
           rootReplacement: pluginEntry,
         }),
