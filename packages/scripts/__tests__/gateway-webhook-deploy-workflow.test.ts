@@ -269,27 +269,10 @@ exit 1
   chmodSync(join(binRoot, "railway"), 0o755);
   chmodSync(join(binRoot, "shred"), 0o755);
   chmodSync(join(binRoot, "node"), 0o755);
-  const inheritedEnvironment = { ...Bun.env };
-  for (const name of [
-    "TELEGRAM_BOT_TOKEN",
-    "TELEGRAM_WEBHOOK_SECRET",
-    "TELEGRAM_EXPECTED_BOT_ID",
-    "TELEGRAM_EXPECTED_BOT_USERNAME",
-    "TELEGRAM_ATTESTATION_CONTEXT",
-    "EXPECTED_TELEGRAM_BOT_ID_FIXTURE",
-    "EXPECTED_TELEGRAM_BOT_USERNAME_FIXTURE",
-    "EXPECTED_TELEGRAM_BOT_TOKEN_FIXTURE",
-    "EXPECTED_TELEGRAM_WEBHOOK_SECRET_FIXTURE",
-    ...protectedNames,
-    ...protectedNames.map((name) => `WORKER_${name}`),
-  ]) {
-    delete inheritedEnvironment[name];
-  }
 
   try {
     return Bun.spawnSync([GNU_BASH ?? "bash", "-c", verification.run ?? ""], {
       env: {
-        ...inheritedEnvironment,
         EXPECTED_AGENT_BASE_DOMAIN: canonical.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
         EXPECTED_CLOUD_URL: canonical.ELIZA_CLOUD_URL,
         EXPECTED_ROUTER_ORIGIN: canonical.AGENT_ROUTER_ORIGIN_HOST,
@@ -718,6 +701,30 @@ describe("protected gateway-webhook deployment workflow", () => {
     const name = "ELIZA_APP_TELEGRAM_BOT_TOKEN" as const;
     const inheritedValue = Bun.env[name];
     Bun.env[name] = "host-telegram-token-must-not-reach-fixture";
+
+    try {
+      const isolated = verifyRailwayVariableInventory(
+        "staging",
+        {},
+        {},
+        {
+          run: `test -z "\${${name}:-}"`,
+        },
+      );
+      expect(isolated.exitCode).toBe(0);
+    } finally {
+      if (inheritedValue === undefined) {
+        delete Bun.env[name];
+      } else {
+        Bun.env[name] = inheritedValue;
+      }
+    }
+  });
+
+  executedTest("does not expose unrelated inherited credentials", () => {
+    const name = ["GITHUB", "TOKEN"].join("_");
+    const inheritedValue = Bun.env[name];
+    Bun.env[name] = "host-github-token-must-not-reach-fixture";
 
     try {
       const isolated = verifyRailwayVariableInventory(
