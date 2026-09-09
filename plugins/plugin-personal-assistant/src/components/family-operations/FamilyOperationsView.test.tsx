@@ -309,7 +309,14 @@ describe("FamilyOperationsView", () => {
           version: 1,
           createdAt: "2026-08-30T12:00:00.000Z",
           status: "complete",
-          claims: [{ id: "claim-1", section: "school", text: "No school." }],
+          claims: [
+            { id: "claim-1", section: "school", text: "No school." },
+            {
+              id: "private-claim",
+              section: "owner",
+              text: "Private owner note omitted by the disclosure policy.",
+            },
+          ],
           draft: {
             draftVersion: 2,
             recipient: "guest@example.com",
@@ -326,6 +333,15 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
+    const download = screen
+      .getByRole("link", {
+        name: "Download draft record",
+      })
+      .getAttribute("href");
+    if (!download) throw new Error("Draft download has no payload");
+    const record = JSON.parse(decodeURIComponent(download.split(",")[1]));
+    expect(record.draft.body).toBe(data.packets.data[0].draft?.body);
+    expect(JSON.stringify(record)).not.toContain("Private owner note");
     fireEvent.change(screen.getByLabelText("Sending account"), {
       target: { value: "sender-1" },
     });

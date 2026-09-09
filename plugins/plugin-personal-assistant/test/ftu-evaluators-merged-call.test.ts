@@ -35,6 +35,9 @@ function createEvaluatorRuntime(modelOutput: Record<string, unknown>): {
   const calls: CapturedModelCall[] = [];
   const runtime = createOwnerRuntimeStub({
     evaluators: [ftuGoalDiscoveryEvaluator, anticipationFeedbackEvaluator],
+    // This fixture starts with no persisted turns; the triggering message is
+    // supplied to run(), independently of the shared transcript read.
+    getMemories: async () => [],
     useModel: (async (
       _modelType: string,
       params: {

@@ -8,6 +8,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import { chromium } from "playwright";
 import { build as viteBuild } from "vite";
 
@@ -27,6 +28,7 @@ const result = await viteBuild({
   resolve: { conditions: ["eliza-source", "browser"] },
   define: { "process.env.NODE_ENV": '"production"' },
   plugins: [
+    tailwindcss(),
     {
       name: "lifeops-production-adapter-stub",
       enforce: "pre",
@@ -40,6 +42,7 @@ const result = await viteBuild({
   ],
   build: {
     write: false,
+    cssCodeSplit: false,
     minify: false,
     rollupOptions: {
       input: join(here, "lifeops-connections-fixture.tsx"),
@@ -52,20 +55,29 @@ const bundle = buildResult.output.find(
   (entry) => entry.type === "chunk" && entry.isEntry,
 )?.code;
 if (!bundle) throw new Error("LifeOps fixture bundle was empty.");
+const styles = buildResult.output
+  .filter((entry) => entry.type === "asset" && entry.fileName.endsWith(".css"))
+  .map((entry) => String(entry.source))
+  .join("\n");
+if (!styles)
+  throw new Error("LifeOps fixture omitted production control styles.");
 
-const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--destructive:#ff6a1f;--destructive-foreground:var(--brand-black);--destructive-subtle:rgba(255,106,31,.12);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
+const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--destructive:#ff6a1f;--destructive-foreground:var(--brand-black);--destructive-subtle:rgba(255,106,31,.12);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
   fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "/index.html") {
-      return new Response(html, {
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store",
+      return new Response(
+        html.replace("<style>", `<style>${styles}</style><style>`),
+        {
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+          },
         },
-      });
+      );
     }
     return new Response("Not found", { status: 404 });
   },
@@ -107,6 +119,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   const desktop = await browser.newPage({
     viewport: { width: 1280, height: 900 },
+    reducedMotion: "reduce",
   });
   const pageErrors = [];
   desktop.on("pageerror", (error) => pageErrors.push(String(error)));
@@ -125,6 +138,16 @@ try {
   const primaryButton = desktop.getByRole("button", {
     name: "Seed selected context",
   });
+  const rangeColors = await desktop
+    .getByRole("button", { name: "7 days", exact: true })
+    .evaluate((button) => ({
+      foreground: getComputedStyle(button).color,
+      background: getComputedStyle(button.closest("section")).backgroundColor,
+    }));
+  assert(
+    contrastRatio(rangeColors.foreground, rangeColors.background) >= 4.5,
+    "unselected history range remains legible on the dark panel",
+  );
   const primaryRestColors = await primaryButton.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
@@ -181,7 +204,7 @@ try {
     animations: "disabled",
   });
 
-  await desktop.getByRole("radio", { name: "7 days" }).check();
+  await desktop.getByRole("button", { name: "7 days", exact: true }).click();
   await desktop.getByRole("button", { name: "Seed selected context" }).click();
   await desktop.getByTestId("seed-receipt").waitFor();
   assert(
@@ -295,7 +318,10 @@ try {
   await multiAccount.goto(`${baseURL}?scenario=multi-account`);
   await multiAccount
     .getByRole("combobox", { name: "Active Google account" })
-    .selectOption("connector-account:fixture-account-2");
+    .click();
+  await multiAccount
+    .getByRole("option", { name: "fixture-second@example.test", exact: true })
+    .click();
   await multiAccount
     .getByRole("button", { name: "Seed selected context" })
     .click();
@@ -548,6 +574,8 @@ try {
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
   });
   const mobileErrors = [];
   mobile.on("pageerror", (error) => mobileErrors.push(String(error)));
@@ -557,14 +585,24 @@ try {
     () => document.documentElement.scrollWidth <= window.innerWidth + 1,
   );
   assert(fitsViewport, "mobile layout has no horizontal overflow");
-  const shortButtonCount = await mobile
-    .locator("button")
-    .evaluateAll(
-      (buttons) =>
-        buttons.filter((button) => button.getBoundingClientRect().height < 44)
-          .length,
-    );
-  assert(shortButtonCount === 0, "mobile buttons meet the 44px touch target");
+  const shortButtons = await mobile.locator("button").evaluateAll((buttons) =>
+    buttons
+      .filter(
+        (button) =>
+          (button.closest("label") ?? button).getBoundingClientRect().height <
+          44,
+      )
+      .map((button) => ({
+        label: button.textContent,
+        height: button.getBoundingClientRect().height,
+      })),
+  );
+  assert(
+    shortButtons.length === 0,
+    "mobile buttons meet the 44px touch target",
+  );
+  if (shortButtons.length)
+    process.stdout.write(`${JSON.stringify(shortButtons)}\n`);
   await mobile.screenshot({
     path: join(outputDir, "mobile-initial.png"),
     fullPage: true,

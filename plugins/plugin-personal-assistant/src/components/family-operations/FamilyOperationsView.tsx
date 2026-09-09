@@ -1140,15 +1140,48 @@ function PacketPanel({
                 </summary>
                 <p>To: {packet.draft.recipient}</p>
                 {packet.draft.email ? (
-                  <p>Subject: {packet.draft.email.subject}</p>
+                  <>
+                    <p>
+                      From:{" "}
+                      {emailOptions.status === "ready"
+                        ? (emailOptions.data.accounts.find(
+                            (account) =>
+                              account.grantId ===
+                              packet.draft?.email?.senderGrantId,
+                          )?.label ?? "Sender account is no longer connected")
+                        : "Sender account status unavailable"}
+                    </p>
+                    <p>Subject: {packet.draft.email.subject}</p>
+                  </>
                 ) : null}
                 <pre style={{ whiteSpace: "pre-wrap", font: "inherit" }}>
                   {packet.draft.body}
                 </pre>
                 <p>
                   {packet.draft.approvalId
-                    ? "Waiting in the shared approvals queue."
+                    ? "Submitted to the shared approvals queue. Check its result for delivery status."
                     : "Draft has not been submitted for approval."}
+                </p>
+                <p>
+                  <a
+                    download={`family-packet-${packet.periodKey}-draft-${packet.draft.draftVersion}.json`}
+                    href={`data:application/json;charset=utf-8,${encodeURIComponent(
+                      JSON.stringify(
+                        {
+                          recordType: "family_packet_draft",
+                          deliveryStatus: "not_verified_by_this_record",
+                          packetId: packet.packetId,
+                          period: packet.periodKey,
+                          packetVersion: packet.version,
+                          draft: packet.draft,
+                        },
+                        null,
+                        2,
+                      ),
+                    )}`}
+                  >
+                    Download draft record
+                  </a>
                 </p>
                 {!packet.draft.approvalId ? (
                   <Button

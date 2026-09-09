@@ -4,6 +4,7 @@
  * stays inside this deterministic adapter.
  */
 
+import "./lifeops-connections-fixture.css";
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
