@@ -2,32 +2,10 @@
  * Deterministic SSH channel faults exercise cancellation and receipt fencing
  * in the real client; the separate loopback suite covers native SSH framing.
  */
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { EventEmitter } from "node:events";
+import { Client } from "ssh2";
 import { DockerSSHClient } from "./docker-ssh";
-
-let connectingSession: FakeConnectingSshClient | undefined;
-
-class FakeConnectingSshClient extends EventEmitter {
-  connectCalls = 0;
-  destroyCalls = 0;
-
-  constructor() {
-    super();
-    connectingSession = this;
-  }
-
-  connect(): void {
-    this.connectCalls += 1;
-  }
-
-  destroy(): this {
-    this.destroyCalls += 1;
-    return this;
-  }
-}
-
-mock.module("ssh2", () => ({ Client: FakeConnectingSshClient }));
 
 class FakeClientChannel extends EventEmitter {
   readonly stderr = new EventEmitter();
@@ -113,7 +91,6 @@ describe("DockerSSHClient.connect cancellation", () => {
   });
 
   test("preserves the exact reason when aborted while connect is in flight", async () => {
-    connectingSession = undefined;
     const client = new DockerSSHClient({
       hostname: "restore-node.example.test",
       privateKey: Buffer.from("unused"),
@@ -122,20 +99,36 @@ describe("DockerSSHClient.connect cancellation", () => {
     const controller = new AbortController();
     const reason = makeCallerAbortReason("cancelled during SSH connect");
 
-    const promise = client.connect(controller.signal);
-
-    for (let attempt = 0; attempt < 100 && !connectingSession; attempt += 1) {
-      await Bun.sleep(1);
+    let notifyConnecting!: () => void;
+    const connecting = new Promise<void>((resolve) => {
+      notifyConnecting = resolve;
+    });
+    // Replace only this test's socket-opening method, not the process-wide ssh2
+    // module: neighbouring integration suites must keep the real Client/Server.
+    const connect = spyOn(Client.prototype, "connect").mockImplementation(function (this: Client) {
+      notifyConnecting();
+      return this;
+    });
+    const destroy = spyOn(Client.prototype, "destroy").mockImplementation(function (this: Client) {
+      return this;
+    });
+    const pending = requireError(client.connect(controller.signal));
+    try {
+      await connecting;
+      expect(connect).toHaveBeenCalledTimes(1);
+      controller.abort(reason);
+      expect(await pending).toBe(reason);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(client.isConnected).toBe(false);
+    } finally {
+      controller.abort(reason);
+      try {
+        await pending;
+      } finally {
+        connect.mockRestore();
+        destroy.mockRestore();
+      }
     }
-    if (!connectingSession) throw new Error("Expected SSH connection attempt to start");
-    expect(connectingSession.connectCalls).toBe(1);
-
-    controller.abort(reason);
-    const error = await requireError(promise);
-
-    expect(error).toBe(reason);
-    expect(connectingSession.destroyCalls).toBe(1);
-    expect(client.isConnected).toBe(false);
   });
 });
 
