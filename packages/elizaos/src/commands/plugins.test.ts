@@ -57,7 +57,11 @@ describe("submitPluginToRegistry", () => {
     ["https://github.com/acme/plugin-weather.git/tree/main/src"],
     ["https://github.com/acme/plugin-weather.git/blob/main/README.md"],
     ["https://github.com/acme/plugin-weather.git#readme"],
+    ["https://github.com/acme/plugin-weather.git/extra/segment"],
     ["https://github.com/acme/plugin-weather/"],
+    // scp shorthand with an ssh scheme pasted on is tolerated, as before.
+    ["ssh://git@github.com:acme/plugin-weather.git"],
+    ["git+ssh://git@github.com:acme/plugin-weather"],
   ])("normalizes the npm repository url form %s", async (repositoryUrl) => {
     const dir = makePluginPackage({
       name: "@acme/plugin-weather",

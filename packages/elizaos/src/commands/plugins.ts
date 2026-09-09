@@ -271,20 +271,19 @@ function normalizeGithubRepo(value: string | null | undefined): string | null {
   }
   // Host prefixes first. An ssh URL may carry an explicit port
   // (`ssh://git@github.com:22/owner/name`), which must not survive as the
-  // owner segment. Then the fragment and any `/tree/` or `/blob/` path, and
-  // only then the trailing `.git`, so `name.git/tree/main` still yields
-  // `owner/name`.
+  // owner segment; the `[:/]` class after it keeps accepting the scp-style
+  // `ssh://git@github.com:owner/name` shape that hand-written manifests carry.
+  // The fragment goes next, then the repository name is read from its own
+  // segment with a trailing `.git` removed, so `name.git/tree/main`,
+  // `name.git/blob/...`, and any other path suffix all yield `owner/name`.
   input = input
     .replace(/^https?:\/\/github\.com\//, "")
-    .replace(/^ssh:\/\/git@github\.com(?::\d+)?\//, "")
+    .replace(/^ssh:\/\/git@github\.com(?::\d+)?[:/]/, "")
     .replace(/^git:\/\/github\.com\//, "")
     .replace(/^git@github\.com:/, "")
-    .replace(/#.*$/, "")
-    .replace(/\/tree\/.*$/, "")
-    .replace(/\/blob\/.*$/, "")
-    .replace(/\/$/, "")
-    .replace(/\.git$/, "");
-  const [owner, repo] = input.split("/");
+    .replace(/#.*$/, "");
+  const [owner, repoSegment] = input.split("/");
+  const repo = repoSegment?.replace(/\.git$/, "");
   return owner && repo ? `${owner}/${repo}` : null;
 }
 
