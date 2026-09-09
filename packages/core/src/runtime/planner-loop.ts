@@ -651,7 +651,8 @@ async function runPlannerLoopIterations(
 				"A successful FINISH was rejected because the planner explicitly declared more_work_pending. " +
 				"Continue the remaining planned work from the recorded results without repeating settled operations. " +
 				"If a genuine blocker prevents completion, report that stopped outcome with success=false. " +
-				"Only an explicit final planner declaration can supersede the pending scope.",
+				"Only an explicit final planner declaration can supersede the pending scope. " +
+				"If no operation remains and you agree with the recorded evaluator FINISH, return only REPLY with final scope and no text; the already verified evaluator reply will be delivered. Do not regenerate narration or replay a tool just to release scope.",
 		});
 		pendingScopeRejectedFinish = { output: evaluator, iteration };
 		return {
