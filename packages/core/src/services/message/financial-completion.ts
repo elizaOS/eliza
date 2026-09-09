@@ -67,9 +67,15 @@ function financialClaims(reply: string): FinancialClaim[] {
 			claims.push({ operation: "bridge", requiresSettlement });
 		if (
 			/\btransfer(?:red)?\b/i.test(sentence) ||
-			/\b(?:sent|submitted)\b[^.!?]*\b(?:SOL|ETH|BTC|USDC|USDT|tokens?|funds?|crypto)\b/i.test(
-				sentence,
-			)
+			sentence
+				.split(/\s+and\s+/i)
+				.some(
+					(clause) =>
+						!/\b(?:swap|bridge|order|trade|governance)\b/i.test(clause) &&
+						/\b(?:sent|submitted)\b[^.!?]*\b(?:SOL|ETH|BTC|USDC|USDT|tokens?|funds?|crypto)\b/i.test(
+							clause,
+						),
+				)
 		) {
 			claims.push({ operation: "transfer", requiresSettlement });
 		}
@@ -122,6 +128,7 @@ function resultProvesClaim(
 export function financialCompletionIsUngrounded(
 	reply: string,
 	results: readonly ActionResult[],
+	request?: string,
 ): boolean {
 	// Unqualified orders and transfers also exist outside finance. Only the
 	// financial action boundary or explicit financial wording supplies that
@@ -133,7 +140,7 @@ export function financialCompletionIsUngrounded(
 				result.data?.actionName === "TRADE",
 		) ||
 		/\b(?:wallet|crypto|on-?chain|governance|Hyperliquid|Polymarket|SOL|ETH|BTC|USDC|USDT)\b/i.test(
-			reply,
+			`${request ?? ""}\n${reply}`,
 		);
 	if (!financialContext) return false;
 	return financialClaims(reply).some(

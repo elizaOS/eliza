@@ -719,6 +719,7 @@ export async function runV5MessageRuntimeStage1(
 				replyIsModelVoice = false;
 			}
 			const directReplyEgressDecision = evaluatePlannedReplyEgress({
+				request: args.message.content.text,
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -787,6 +788,7 @@ export async function runV5MessageRuntimeStage1(
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+				request: args.message.content.text,
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -1431,6 +1433,7 @@ export async function runV5MessageRuntimeStage1(
 					const groundedModelReply = prePatchStageOneReply?.trim();
 					const groundedModelReplyEgress = groundedModelReply
 						? evaluatePlannedReplyEgress({
+								request: args.message.content.text,
 								reply: groundedModelReply,
 								actionResults: [],
 								actions: args.runtime.actions,
@@ -1808,6 +1811,7 @@ export async function runV5MessageRuntimeStage1(
 			args.codingMode === true
 				? ({ verdict: "allow" } as const)
 				: evaluatePlannedReplyEgress({
+						request: args.message.content.text,
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,

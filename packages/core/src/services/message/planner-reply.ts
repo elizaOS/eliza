@@ -239,6 +239,7 @@ export async function finalizePlannerReply(
 		args.codingMode === true || recoveredReply?.text === effectiveReplyText
 			? ({ verdict: "allow" } as const)
 			: evaluatePlannedReplyEgress({
+					request: args.message.content.text,
 					reply: effectiveReplyText,
 					actionResults,
 					actions: args.runtime.actions,

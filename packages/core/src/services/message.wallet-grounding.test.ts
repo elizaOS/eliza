@@ -302,6 +302,7 @@ async function deliver(
 	finalText: string,
 	actionResult?: ActionResult,
 	rewriteText?: string,
+	request = "Transfer 1 SOL to the requested recipient.",
 ) {
 	const harness = await createHarness(
 		finalText,
@@ -311,7 +312,7 @@ async function deliver(
 	);
 	const result = await new DefaultMessageService().handleMessage(
 		harness.runtime,
-		makeMessage(harness.runtime, "Transfer 1 SOL to the requested recipient."),
+		makeMessage(harness.runtime, request),
 		harness.callback,
 	);
 	expect(harness.actionHandler).toHaveBeenCalledTimes(1);
@@ -519,3 +520,101 @@ it.each(["completed", "confirmed", "settled", "finalized"])(
 		expect(stored).not.toContain(reply);
 	},
 );
+
+it("fails closed when the response model repeats a false operation and invents proof", async () => {
+	const falseClaim = "I submitted the transfer of 1 SOL.";
+	const harness = await createHarness(
+		"The transfer was submitted.",
+		undefined,
+		submitted("swap"),
+	);
+	harness.voiceHandler.mockResolvedValue(
+		JSON.stringify({
+			response: falseClaim,
+			effectReceiptIds: ["controlled-provider-receipt"],
+		}),
+	);
+	await expect(
+		new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(
+				harness.runtime,
+				"Transfer 1 SOL to the requested recipient.",
+			),
+			harness.callback,
+		),
+	).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+	expect(harness.actionHandler).toHaveBeenCalledTimes(1);
+	expect(harness.callbacks).toEqual([]);
+	expect(harness.sent).toEqual([]);
+	const stored = await harness.runtime.getMemories({
+		roomId: harness.runtime.agentId,
+		tableName: "messages",
+	});
+	expect(
+		stored.filter((memory) => memory.entityId === harness.runtime.agentId),
+	).toEqual([]);
+});
+
+it("does not mistake an explicitly named SOL swap for a transfer", async () => {
+	const reply =
+		"Submitted a 1 SOL swap on Solana mainnet; confirmation is not yet verified.";
+	const swap = submitted("swap");
+	swap.data = {
+		...swap.data,
+		amount: "1",
+		fromToken: "So11111111111111111111111111111111111111112",
+		toToken: "controlled-output-mint",
+	};
+	const { texts, stored } = await deliver(reply, swap);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});
+
+it("does not let a submitted swap prove an additional token transfer", async () => {
+	const reply = "I submitted a swap and sent 1 SOL to the recipient.";
+	const { texts, stored } = await deliver(
+		reply,
+		submitted("swap"),
+		"The swap was submitted; a transfer is not verified.",
+	);
+	expect(texts).toContain(
+		"The swap was submitted; a transfer is not verified.",
+	);
+	expect(stored).not.toContain(reply);
+});
+
+it.each(["SEND_EMAIL", "SEND_MESSAGE", "SEARCH"])(
+	"does not use a successful %s result as a requested wallet transfer",
+	async (actionName) => {
+		const unrelated: ActionResult = {
+			success: true,
+			text: "Requested non-financial step finished.",
+			data: { actionName },
+		};
+		const { texts, stored } = await deliver(
+			"The transfer was submitted.",
+			unrelated,
+			"A wallet transfer submission is not verified.",
+		);
+		expect(texts).toContain("A wallet transfer submission is not verified.");
+		expect(stored).not.toContain("The transfer was submitted.");
+	},
+);
+
+it("preserves a nonfinancial file transfer without requiring a wallet result", async () => {
+	const reply = "The file transfer was submitted.";
+	const fileResult: ActionResult = {
+		success: true,
+		text: "Upload accepted: controlled-document",
+		data: { actionName: "UPLOAD_FILE", file: "controlled-document" },
+	};
+	const { texts, stored } = await deliver(
+		reply,
+		fileResult,
+		undefined,
+		"Transfer this document to the requested folder.",
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});

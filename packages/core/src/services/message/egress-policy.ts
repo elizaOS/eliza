@@ -165,13 +165,16 @@ export type PlannedReplyEgressDecision =
  */
 export function evaluatePlannedReplyEgress(args: {
 	reply: string;
+	request?: string;
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
 	evaluator?: EvaluatorOutput;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
-	if (financialCompletionIsUngrounded(reply, args.actionResults)) {
+	if (
+		financialCompletionIsUngrounded(reply, args.actionResults, args.request)
+	) {
 		return { verdict: "reject", kind: "financial_completion" };
 	}
 	if (replyClaimsCompletedSideEffect(reply)) {
@@ -224,6 +227,7 @@ export async function resolvePlannedReplyEgress(args: {
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
 	const decision = evaluatePlannedReplyEgress({
 		reply: args.reply,
+		request: args.message.content.text,
 		actionResults: args.actionResults,
 		actions: args.runtime.actions,
 		evaluator: args.evaluator,
@@ -269,6 +273,7 @@ export async function resolvePlannedReplyEgress(args: {
 	const rewrittenDecision = reply
 		? evaluatePlannedReplyEgress({
 				reply,
+				request: args.message.content.text,
 				actionResults: args.actionResults,
 				actions: args.runtime.actions,
 			})
