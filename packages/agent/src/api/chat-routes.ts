@@ -590,6 +590,10 @@ function recoverSettledMutatingActionTurn(
     ) {
       return true;
     }
+    // Promoted read operations may inherit their mixed-capability parent's
+    // write tags. The result's explicit read-only classification overrides
+    // that legacy fallback, never receipt or unresolved-commit evidence.
+    if (result.data?.readOnlyOperation === true) return false;
     const actionName =
       typeof result.data?.actionName === "string" ? result.data.actionName : "";
     return (

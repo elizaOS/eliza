@@ -36,7 +36,129 @@ const savedNote: ActionResult = {
 	],
 };
 
+const withdrawnEditMessage: Memory = {
+	...message,
+	content: {
+		text: "Cancel the unstarted copper-tag edit. Read QA note B, then update note-qa-missing. If it is missing, do not create or substitute anything; leave the existing notes unchanged.",
+	},
+};
+const readThenRejectedUpdate: ActionResult[] = [
+	{
+		success: true,
+		data: {
+			actionName: "NOTES_LIST",
+			readOnlyOperation: true,
+			notes: [{ id: "qa-b", title: "QA note B", body: "silver thermos" }],
+		},
+	},
+	{
+		success: false,
+		error: 'No sticky note matches "note-qa-missing".',
+		data: { actionName: "NOTES_UPDATE" },
+	},
+];
+const withdrawnEditReply =
+	"I will not perform that edit. QA note B says silver thermos. The requested update failed because the target note was not found; neither existing note changed.";
+
 describe("model-backed final reply recovery", () => {
+	it("accepts withdrawn intent and a pre-write rejection without mutation proof or another call", async () => {
+		const runtime = createMockRuntime({ useModel: vi.fn() });
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message: withdrawnEditMessage,
+				reply: withdrawnEditReply,
+				actionResults: readThenRejectedUpdate,
+			}),
+		).resolves.toEqual({ text: withdrawnEditReply, effectReceiptIds: [] });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
+
+	it("rewrites ambiguous cancellation as withdrawn intent with complete read and failure evidence", async () => {
+		const useModel = vi.fn(async () =>
+			JSON.stringify({ response: withdrawnEditReply, effectReceiptIds: [] }),
+		);
+		const processActions = vi.fn();
+		const runtime = createMockRuntime({ useModel, processActions });
+		const originalResults = structuredClone(readThenRejectedUpdate);
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message: withdrawnEditMessage,
+				reply: "Cancelled the copper-tag edit without modifying either note.",
+				actionResults: readThenRejectedUpdate,
+			}),
+		).resolves.toEqual({ text: withdrawnEditReply, effectReceiptIds: [] });
+		expect(useModel).toHaveBeenCalledTimes(1);
+		for (const evidence of [
+			withdrawnEditMessage.content.text,
+			"silver thermos",
+			"note-qa-missing",
+			"NOTES_LIST",
+			"NOTES_UPDATE",
+		]) {
+			expect(useModel).toHaveBeenCalledWith(
+				ModelType.TEXT_SMALL,
+				expect.objectContaining({ prompt: expect.stringContaining(evidence) }),
+			);
+		}
+		expect(processActions).not.toHaveBeenCalled();
+		expect(readThenRejectedUpdate).toEqual(originalResults);
+	});
+
+	it.each([
+		"I will not perform that edit. I deleted the note.",
+		"I will not perform that edit, and I deleted the note.",
+		"I will not perform that edit. I cancelled the calendar event.",
+		"I will not perform that edit, and I cancelled the calendar event.",
+		"Cancelled the copper-tag edit without modifying either note.",
+	])(
+		"still rejects unproven completed changes in a withdrawal rewrite: %s",
+		async (response) => {
+			const useModel = vi.fn(async () =>
+				JSON.stringify({ response, effectReceiptIds: [] }),
+			);
+			const runtime = createMockRuntime({ useModel });
+			await expect(
+				resolvePlannedReplyEgress({
+					runtime,
+					message: withdrawnEditMessage,
+					reply: "Cancelled the copper-tag edit without modifying either note.",
+					actionResults: readThenRejectedUpdate,
+				}),
+			).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+			expect(useModel).toHaveBeenCalledTimes(1);
+		},
+	);
+
+	it("preserves an earlier committed write when a later edit is rejected before writing", async () => {
+		const response =
+			"I will not perform the copper-tag edit. I created the Picnic note. QA note B says silver thermos; the later update failed because the target note was not found.";
+		const useModel = vi.fn(async () =>
+			JSON.stringify({ response, effectReceiptIds: ["note-proof"] }),
+		);
+		const runtime = createMockRuntime({ useModel });
+		await expect(
+			resolvePlannedReplyEgress({
+				runtime,
+				message: withdrawnEditMessage,
+				reply: "Cancelled the copper-tag edit without modifying either note.",
+				actionResults: [savedNote, ...readThenRejectedUpdate],
+			}),
+		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
+		expect(useModel).toHaveBeenCalledTimes(1);
+		for (const evidence of [
+			"bring a charger",
+			"silver thermos",
+			"note-qa-missing",
+		]) {
+			expect(useModel).toHaveBeenCalledWith(
+				ModelType.TEXT_SMALL,
+				expect.objectContaining({ prompt: expect.stringContaining(evidence) }),
+			);
+		}
+	});
+
 	it("retains original constraints and unfinished intents during reply-only recovery", async () => {
 		const response =
 			"I saved Picnic. The calendar change was not completed, and I have not retried it.";

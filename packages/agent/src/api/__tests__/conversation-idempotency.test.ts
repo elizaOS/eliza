@@ -2302,6 +2302,170 @@ describe("conversation-route chat idempotency wiring", () => {
     ]);
   });
 
+  it.each(["read-only", "earlier-write", "unresolved-commit"] as const)(
+    "SSE: settled %s evidence survives a later missing-note failure without replay",
+    async (variant) => {
+      const { state, handleMessage, storedMemories } = createHarness();
+      const runtime = state.runtime as AgentRuntime;
+      const readResult: ActionResult = {
+        success: true,
+        data: {
+          readOnlyOperation: true,
+          notes: [{ id: "qa-b", title: "QA note B", body: "silver thermos" }],
+        },
+      };
+      const failedUpdate: ActionResult = {
+        success: false,
+        error: 'No sticky note matches "note-qa-missing".',
+      };
+      const writeReceipt: EffectReceipt = {
+        receiptId: "prior-write-proof",
+        operation: "notes.create",
+        resource: { kind: "note", id: "initial-note" },
+        artifacts: [],
+        outcome: "applied",
+        idempotency: { key: "prior-write", replayed: false },
+        observedAt: "2026-09-08T20:00:00.000Z",
+        commit: {
+          kind: "durable",
+          id: "initial-note",
+          committedAt: "2026-09-08T20:00:00.000Z",
+        },
+      };
+      const priorResult: ActionResult =
+        variant === "unresolved-commit"
+          ? {
+              success: false,
+              data: {
+                readOnlyOperation: true,
+                reconciliationRequired: true,
+                retryable: false,
+              },
+              replyFailure: {
+                kind: "provider_issue",
+                code: "OUTCOME_UNCONFIRMED",
+                message:
+                  "The earlier write outcome is unconfirmed. Do not repeat it.",
+                transient: false,
+              },
+            }
+          : {
+              success: true,
+              // Receipt evidence outranks even contradictory legacy metadata.
+              data: { readOnlyOperation: true },
+              effectReceipts: [writeReceipt],
+              verifiedUserFacing: true,
+              userFacingText: "Created the initial note.",
+              userFacingEffectReceiptIds: [writeReceipt.receiptId],
+            };
+      const resultsByName: Array<[string, ActionResult]> = [
+        ...(variant === "read-only"
+          ? []
+          : ([["NOTES_CREATE", priorResult]] as Array<[string, ActionResult]>)),
+        ["NOTES_LIST", readResult],
+        ["NOTES_UPDATE", failedUpdate],
+      ];
+      const actions: Action[] = resultsByName.map(([name, result]) => ({
+        name,
+        description: name,
+        // Promoted children inherit these mixed parent capabilities.
+        tags: ["capability:read", "capability:write", "capability:delete"],
+        validate: async () => true,
+        handler: vi.fn(async () => result),
+      }));
+      runtime.actions.push(...actions);
+      const settled: ActionResult[] = [];
+      handleMessage.mockImplementation(
+        async (
+          _runtime: AgentRuntime,
+          message: Memory,
+          _callback: unknown,
+          options?: { onSettledActionResult?: (result: ActionResult) => void },
+        ) => {
+          for (const action of actions) {
+            await executePlannedToolCall(
+              runtime,
+              {
+                message,
+                state: { values: {}, data: {}, text: "" },
+                userRoles: ["OWNER"],
+                activeContexts: ["general"],
+              },
+              { name: action.name, params: {} },
+              {
+                actions,
+                onSettledResult: (result) => {
+                  settled.push(result);
+                  options?.onSettledActionResult?.(result);
+                },
+              },
+            );
+          }
+          throw new Error(
+            "grounded reply unavailable after missing-note rejection",
+          );
+        },
+      );
+      const body = {
+        text: "Read QA note B, then update the missing note; do not create or substitute it.",
+        clientMessageId: `partial-failure-${variant}`,
+      };
+      const first = await runRoute("POST", STREAM_PATH, state, body);
+      const done = parseDataFrames(first.record).find(
+        (frame) => frame.type === "done",
+      );
+      expect(done?.messageId).toBeTruthy();
+      expect(settled.at(-2)?.data?.readOnlyOperation).toBe(true);
+      expect(settled.at(-1)?.success).toBe(false);
+      expect(settled.at(-1)?.effectReceipts ?? []).toEqual([]);
+      if (variant === "read-only") {
+        expect(done?.fullText).not.toContain("The action finished");
+        expect(done?.failureKind).toBeTruthy();
+        const assistant = storedMemories.find(
+          (memory) => memory.id === done?.messageId,
+        );
+        expect(assistant?.content.replyRecoveryAvailable).toBeUndefined();
+        expect(assistant?.content.replyFailure).toBeUndefined();
+        expect(assistant?.content.actions ?? []).not.toContain("NOTES_LIST");
+      } else {
+        expect(done?.fullText).toBe(
+          variant === "earlier-write"
+            ? "Created the initial note."
+            : priorResult.replyFailure?.message,
+        );
+        expect(done?.actionResults).toEqual([
+          expect.objectContaining({
+            actionName: "NOTES_CREATE",
+            success: priorResult.success,
+          }),
+          expect.objectContaining({ actionName: "NOTES_LIST", success: true }),
+          expect.objectContaining({
+            actionName: "NOTES_UPDATE",
+            success: false,
+          }),
+        ]);
+        expect(settled[0]?.effectReceipts ?? []).toEqual(
+          priorResult.effectReceipts ?? [],
+        );
+      }
+      for (const memory of storedMemories) {
+        expect(memory.content.chatIdempotency ?? {}).not.toHaveProperty(
+          "replyRecoveryJson",
+        );
+      }
+      const replay = await runRoute("POST", STREAM_PATH, state, body);
+      expect(
+        parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+      ).toMatchObject({
+        fullText: done?.fullText,
+        messageId: done?.messageId,
+      });
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      for (const action of actions)
+        expect(action.handler).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each([
     { failure: "transport abort", abortTransport: true },
     { failure: "message-service exception", abortTransport: false },

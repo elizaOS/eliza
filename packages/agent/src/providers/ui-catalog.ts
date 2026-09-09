@@ -102,11 +102,11 @@ Kinds: reply sends <payload>; navigate opens a "/" route or view id; prompt
 prefills the composer. Labels 1–4 words. Omit when no useful next step exists.
 
 ### [CHOICE:<scope>] — pick one from concrete options
-Use when 2+ explicit choices remove typing or ambiguity. Emit one
-\`<value>=<label>\` per line; tapped value is sent as the user's next message:
-[CHOICE:approval id=req_123]
-Approve request req_123=Approve
-Reject request req_123=Deny
+Use when 2+ explicit choices remove typing or ambiguity. Emit \`<value>=<label>\` per line; tapped value is sent as the user's next message.
+Values use the actual option's stable identity; never invent IDs. Labels name each actual option (title plus distinguishing ID when needed), never generic A/B placeholders:
+[CHOICE:note-selection id=note-choice-123]
+Select note note_123=Travel checklist (note_123)
+Select note note_456=Travel checklist (note_456)
 [/CHOICE]
 
 ### [FORM] — collect several specific values at once
