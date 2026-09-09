@@ -48,6 +48,18 @@ export interface DesktopViewWindow {
 
 export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
   {
+    id: "wallet",
+    label: "Wallet",
+    labelKey: "desktop.views.wallet",
+    path: "/wallet",
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    labelKey: "desktop.views.projects",
+    path: "/apps/tasks",
+  },
+  {
     id: "chat",
     label: "Messages",
     labelKey: "desktop.views.chat",

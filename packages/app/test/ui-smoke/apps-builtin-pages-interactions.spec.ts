@@ -53,13 +53,11 @@ test("plugins view loads plugins and search filters the list", async ({
   await expect.poll(pluginReqs).toBeGreaterThan(0);
 
   // Search now runs through the floating chat composer — the plugins view takes
-  // over its placeholder + live draft (no in-page search box). The stub serves
+  // receives its live draft (no in-page search box). The stub serves
   // openai + anthropic + plugin-browser: a specific search must narrow the
   // visible set; clearing it must restore.
   const search = page.getByTestId("chat-composer-textarea");
-  await expect(search).toHaveAttribute("placeholder", /search plugins/i, {
-    timeout: 15_000,
-  });
+  await expect(search).toBeVisible();
   const cardsAll = await page.locator("[data-plugin-toggle]").count();
   await search.fill("browser");
   await expect
@@ -124,13 +122,10 @@ test("trajectories view loads and search re-queries", async ({ page }) => {
   });
   await expect.poll(trajReqs).toBeGreaterThan(0);
 
-  // Search runs through the floating chat composer now (the view overrides its
-  // placeholder); typing re-queries the trajectories list.
+  // Typing in the shared composer re-queries the trajectories list.
   const before = trajReqs();
   const search = page.getByTestId("chat-composer-textarea");
-  await expect(search).toHaveAttribute("placeholder", /search/i, {
-    timeout: 15_000,
-  });
+  await expect(search).toBeVisible();
   await search.fill("smoke-query");
   await expect.poll(trajReqs).toBeGreaterThan(before);
 });

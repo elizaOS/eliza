@@ -279,11 +279,11 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Run client tests
-        run: bun run test:client
-
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
+
+      - name: Run client tests
+        run: bun run test:client
 
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui

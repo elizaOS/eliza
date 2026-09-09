@@ -9,9 +9,6 @@ mock.module("@elizaos/shared", () => ({
     "X-Eliza-Local-Voice-Conversation-Id",
   REALTIME_VOICE_CLIENT_TRANSPORT: TRANSPORT,
 }));
-mock.module("@/lib/voice-session/eliza-sse-bridge", () => ({
-  VOICE_STREAM_PROTOCOL: "delta-v2",
-}));
 
 const VALID_BODY = JSON.stringify({
   text: "hello locally",

@@ -129,10 +129,16 @@ jobs:
         run: bun run test:scripts
 
   tests_server:
-    name: Tests (server)
+    name: Tests (server ${{ matrix.shard }})
     needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Keep the core, app host, and scenario suites on separate runners while
+    # preserving the canonical runner's complete, deterministic task inventory.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -150,6 +156,8 @@ jobs:
 
       - name: Server tests
         if: needs.changes.outputs.server == 'true'
+        env:
+          TEST_SHARD: ${{ matrix.shard }}/3
         run: bun run test:server
 
       - name: No affected server lane
@@ -175,6 +183,10 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Install Chromium for client browser contracts
+        if: needs.changes.outputs.client == 'true'
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Client tests
         if: needs.changes.outputs.client == 'true'

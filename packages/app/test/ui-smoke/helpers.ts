@@ -424,7 +424,7 @@ async function expectNoFirstRunRedirect(page: Page): Promise<void> {
   await expect(page).not.toHaveURL(/first-run/, { timeout: NAV_TIMEOUT_MS });
 }
 
-async function expectStartupSettled(page: Page): Promise<void> {
+export async function expectStartupSettled(page: Page): Promise<void> {
   // DOMContentLoaded includes the static preboot shell. Its brand copy is not
   // route readiness; wait until the renderer has taken ownership of #root.
   await expect(page.locator(".eliza-preboot-shell")).toHaveCount(0, {
@@ -580,9 +580,7 @@ export async function openSettingsSection(
       window.history.replaceState(null, "", nextUrl);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }, sectionId);
-    await expect(
-      settingsShell.getByRole("heading", { level: 1, name: sectionName }),
-    ).toBeVisible({
+    await expect(settingsShell.locator(`#${sectionId}`)).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });
     return;
@@ -2811,6 +2809,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  const calendarFixtureDay = new Date();
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -2820,14 +2819,10 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     const url = new URL(request.url());
     const timeMin = url.searchParams.get("timeMin") ?? SMOKE_GENERATED_AT;
     const timeMax = url.searchParams.get("timeMax") ?? SMOKE_GENERATED_AT;
-    // Anchor a couple of deterministic events inside the requested window so the
-    // calendar:gui renders populated (event blocks, not just an empty grid).
-    // Place the first event at 09:00 local on the window's first day; the helper
-    // is reused across desktop + mobile (agenda) layouts.
-    const windowStart = new Date(timeMin);
+    // Keep event dates stable when changing the requested month or day.
     const syncedAt = new Date().toISOString();
     const at = (dayOffset: number, hour: number) => {
-      const d = new Date(windowStart);
+      const d = new Date(calendarFixtureDay);
       d.setDate(d.getDate() + dayOffset);
       d.setHours(hour, 0, 0, 0);
       return d.toISOString();
@@ -2869,7 +2864,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         events: [
           smokeEvent("smoke-evt-1", "Design sync", at(0, 9), at(0, 10)),
           smokeEvent("smoke-evt-2", "Standup", at(1, 11), at(1, 12)),
-        ],
+        ].filter((event) => event.startAt < timeMax && event.endAt > timeMin),
         source: "cache",
         state: "complete",
         sources: [
@@ -3597,26 +3592,29 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // smoke server has no native inference or secrets backends, so expose their
   // real healthy-empty envelopes instead of leaking its generic 501 response
   // into otherwise unrelated route and interaction coverage.
-  await page.route("**/api/local-inference/voice-models/preferences", async (route) => {
-    const method = route.request().method();
-    if (method !== "GET" && method !== "POST") {
-      await route.fallback();
-      return;
-    }
-    const preferences = {
-      autoUpdateOnWifi: true,
-      autoUpdateOnCellular: false,
-      autoUpdateOnMetered: false,
-      quietHours: [{ start: "22:00", end: "08:00" }],
-    };
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(
-        method === "GET" ? { preferences } : { ok: true, preferences },
-      ),
-    });
-  });
+  await page.route(
+    "**/api/local-inference/voice-models/preferences",
+    async (route) => {
+      const method = route.request().method();
+      if (method !== "GET" && method !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const preferences = {
+        autoUpdateOnWifi: true,
+        autoUpdateOnCellular: false,
+        autoUpdateOnMetered: false,
+        quietHours: [{ start: "22:00", end: "08:00" }],
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          method === "GET" ? { preferences } : { ok: true, preferences },
+        ),
+      });
+    },
+  );
 
   await page.route("**/api/local-inference/voice-models", async (route) => {
     if (route.request().method() !== "GET") {

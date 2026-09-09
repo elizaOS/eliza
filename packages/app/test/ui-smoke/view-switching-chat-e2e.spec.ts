@@ -26,10 +26,8 @@ const CHAT_SEND_SELECTOR =
 const VIEW_SWITCH_URL_TIMEOUT_MS = LIVE_STACK ? 90_000 : 30_000;
 
 function calendarView(page: Page): Locator {
-  // /calendar mounts the canonical interactive section. The section marker
-  // proves that navigation resolved the current CRUD-capable calendar rather
-  // than a stale read-only view bundle.
-  return page.getByTestId("lifeops-calendar-section").first();
+  // Wait for the routed month and agenda surface after navigation.
+  return page.getByTestId("simple-calendar-view").first();
 }
 
 function inboxView(page: Page): Locator {
@@ -715,9 +713,7 @@ test("agent split-view navigate renders documents and calendar layout", async ({
   await expect(documentsPane.getByTestId("documents-view")).toBeVisible({
     timeout: 30_000,
   });
-  await expect(
-    calendarPane.getByTestId("lifeops-calendar-section"),
-  ).toBeVisible({
+  await expect(calendarPane.getByTestId("simple-calendar-view")).toBeVisible({
     timeout: 30_000,
   });
   await expect(

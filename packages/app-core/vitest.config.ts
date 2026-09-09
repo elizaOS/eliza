@@ -171,6 +171,8 @@ export default defineConfig({
       "scripts/stage-android-agent.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/ensure-fused-inference-install.test.mjs",
+      "scripts/ensure-vision-deps-policy.test.mjs",
+      "scripts/lib/dev-port-ownership.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
       "scripts/lib/electrobun-loopback-hardening.test.mjs",
       "scripts/lib/linux-artifact-permissions.test.mjs",

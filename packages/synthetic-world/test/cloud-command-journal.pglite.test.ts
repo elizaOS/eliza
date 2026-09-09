@@ -1,6 +1,7 @@
 /**
  * Proves the storage-neutral command journal against real Cloud PGlite
- * transactions and the production agents repository without mocks.
+ * transactions and the production agents repository. The expiry regression
+ * advances the database-clock boundary after the mutation to avoid a timer race.
  */
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -12,6 +13,7 @@ import {
   beforeEach,
   describe,
   expect,
+  spyOn,
   test,
 } from "bun:test";
 import type { DbTransaction } from "@elizaos/cloud-shared/db/client";
@@ -20,6 +22,7 @@ import {
   dbWrite,
 } from "@elizaos/cloud-shared/db/client";
 import { agentsRepository } from "@elizaos/cloud-shared/db/repositories/agents/agents";
+import * as databaseClock from "@elizaos/cloud-shared/db/repositories/primary-database-clock";
 import { CloudSyntheticEnvironmentLeaseStore } from "@elizaos/cloud-shared/db/repositories/synthetic-environment-leases";
 import { CloudSyntheticCommandJournalRepository } from "@elizaos/cloud-shared/db/repositories/synthetic-world-commands";
 import { agentTable } from "@elizaos/cloud-shared/db/schemas/eliza";
@@ -258,34 +261,47 @@ describe("Cloud synthetic command journal on PGlite", () => {
       journal.execute(stale, command(stale, "stale-command"), async () => null),
     ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_LOST" });
 
-    const expiring = await acquire("cloud:journal:expiry", 40);
-    const agentId = "00000000-0000-4000-8000-000000000203";
-    await expect(
-      journal.execute(
-        expiring,
-        command(expiring, "expired-agent"),
-        async (tx) => {
-          await agentsRepository.ensure(
-            { id: agentId, name: "Expired Agent" },
-            tx,
-          );
-          await Bun.sleep(80);
-          return { agentId };
-        },
-      ),
-    ).rejects.toMatchObject({
-      code: "SYNTHETIC_COMMAND_FAILURE_CLASSIFICATION_FAILED",
+    const readDatabaseNow = databaseClock.readPostLockDatabaseNow;
+    let expiredDuringMutation = false;
+    const clock = spyOn(
+      databaseClock,
+      "readPostLockDatabaseNow",
+    ).mockImplementation(async (tx) => {
+      const now = await readDatabaseNow(tx);
+      return expiredDuringMutation ? new Date(now.getTime() + 10_000) : now;
     });
-    expect(await agentsRepository.findById(agentId)).toBeNull();
-    expect(
-      await dbWrite
-        .select({
-          phase: syntheticWorldCommands.phase,
-          result: syntheticWorldCommands.result_json,
-        })
-        .from(syntheticWorldCommands)
-        .where(eq(syntheticWorldCommands.command_id, "expired-agent")),
-    ).toEqual([{ phase: "EXECUTING", result: null }]);
+    try {
+      const expiring = await acquire("cloud:journal:expiry");
+      const agentId = "00000000-0000-4000-8000-000000000203";
+      await expect(
+        journal.execute(
+          expiring,
+          command(expiring, "expired-agent"),
+          async (tx) => {
+            await agentsRepository.ensure(
+              { id: agentId, name: "Expired Agent" },
+              tx,
+            );
+            expiredDuringMutation = true;
+            return { agentId };
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "SYNTHETIC_COMMAND_FAILURE_CLASSIFICATION_FAILED",
+      });
+      expect(await agentsRepository.findById(agentId)).toBeNull();
+      expect(
+        await dbWrite
+          .select({
+            phase: syntheticWorldCommands.phase,
+            result: syntheticWorldCommands.result_json,
+          })
+          .from(syntheticWorldCommands)
+          .where(eq(syntheticWorldCommands.command_id, "expired-agent")),
+      ).toEqual([{ phase: "EXECUTING", result: null }]);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test("does not steal same-generation active execution during recovery", async () => {

@@ -693,7 +693,7 @@ export function SimpleCalendarView({
           outline-offset: 2px;
         }
         .eliza-calendar-day[data-outside-month="true"]:not([data-state="on"]) {
-          opacity: .48;
+          color: var(--muted-strong);
         }
         .eliza-calendar-day[data-state="on"] {
           background: transparent !important;

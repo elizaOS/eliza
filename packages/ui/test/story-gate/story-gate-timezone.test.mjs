@@ -56,12 +56,12 @@ it("keeps summer event positions aligned with winter-derived hour labels", () =>
         timeout: 30000,
       },
     );
+    expect(result.status, result.error?.message ?? result.stderr).toBe(0);
     const report = JSON.parse(
       readFileSync(join(directory, "output", "report.json"), "utf8"),
     );
     expect(report.results[0].consoleErrors, result.stderr).toEqual([]);
     expect(report.results[0].verdict).toBe("good");
-    expect(result.status).toBe(0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

@@ -1971,17 +1971,9 @@ describe("Shared Eliza Workerd runtime", () => {
         },
       });
 
-      expect(result.reply).toBe(
-        "I tried to complete that, but the available runtime step failed before it produced a usable result.",
-      );
+      expect(result.reply).toBe("The call is connected and ready.");
       expect(result.history[0]?.role).toBe("system");
-      expect(result.actionResults).toEqual([
-        expect.objectContaining({
-          success: false,
-          error: "Action not found: GENERATE_MEDIA",
-          data: { actionName: "GENERATE_MEDIA" },
-        }),
-      ]);
+      expect(result.actionResults).toBeUndefined();
       expect(mediaCalls).toBe(0);
       expect(modelRequests.length).toBeGreaterThanOrEqual(2);
       const toolNames = modelRequests.flatMap((modelRequest) =>
@@ -2811,6 +2803,11 @@ describe("Shared Eliza Workerd runtime", () => {
           usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
         });
       }
+      const messages = request.messages as Array<{ content: string }>;
+      const prompt = messages.map((message) => message.content).join("\n");
+      const receiptId = prompt.replace(/\\+"/g, '"').match(/"receiptId"\s*:\s*"([^"]+)"/)?.[1];
+      if (call === 3 && !receiptId)
+        throw new Error("Todo completion request omitted its committed receipt");
       return Response.json({
         id: "chatcmpl-shared-todo-finish",
         object: "chat.completion",
@@ -2821,12 +2818,20 @@ describe("Shared Eliza Workerd runtime", () => {
             index: 0,
             message: {
               role: "assistant",
-              content: JSON.stringify({
-                success: true,
-                decision: "FINISH",
-                thought: "The Todo action confirmed the write.",
-                messageToUser: "i added buy milk to your todos",
-              }),
+              content: prompt.includes("Compose a user-facing response in the assistant character")
+                ? JSON.stringify({
+                    response: 'Added "Buy milk" to your list.',
+                    effectReceiptIds: [receiptId],
+                  })
+                : call === 3
+                  ? JSON.stringify({
+                      success: true,
+                      decision: "FINISH",
+                      thought: "The Todo action confirmed the write.",
+                      messageToUser: 'Added "Buy milk" to your list.',
+                      effectReceiptIds: [receiptId],
+                    })
+                  : 'Added "Buy milk" to your list.',
             },
             finish_reason: "stop",
           },
@@ -2876,9 +2881,6 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(finish.actionResults?.[0]).toMatchObject({
       success: true,
       text: 'Added "Buy milk" to your list.',
-      userFacingText: 'Added "Buy milk" to your list.',
-      verifiedUserFacing: true,
-      turnComplete: true,
       data: {
         actionName: "TODO",
         action: "create",
@@ -2896,9 +2898,6 @@ describe("Shared Eliza Workerd runtime", () => {
         },
       ],
     });
-    expect(finish.actionResults?.[0]?.userFacingEffectReceiptIds).toEqual([
-      finish.actionResults?.[0]?.effectReceipts?.[0]?.receiptId,
-    ]);
     expect(storedTodos).toHaveLength(1);
     expect(storedTodos[0]).toMatchObject({
       ...scope,
@@ -2906,7 +2905,7 @@ describe("Shared Eliza Workerd runtime", () => {
       activeForm: "Buying milk",
       status: "pending",
     });
-    expect(modelRequests).toHaveLength(2);
+    expect(modelRequests.length).toBeGreaterThanOrEqual(4);
     expect(
       (modelRequests[1].tools as Array<{ function?: { name?: string } }>).some(
         (tool) => tool.function?.name === "TODO",

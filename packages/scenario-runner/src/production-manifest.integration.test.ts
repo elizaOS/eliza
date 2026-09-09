@@ -28,8 +28,12 @@ import {
 } from "./production-manifest.ts";
 import {
   createScenarioRuntime,
+  loadScenarioTestMocksForTests,
   type RuntimeFactoryResult,
 } from "./runtime-factory.ts";
+
+// Load the compatibility harness before measuring runtime initialization.
+await loadScenarioTestMocksForTests();
 
 describe("production manifest persistence", () => {
   let runtimeResult: RuntimeFactoryResult | undefined;

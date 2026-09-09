@@ -151,9 +151,16 @@ describe("shared reasoning-tag grammar", () => {
 		const large = buildRun(16_000);
 
 		const timeOf = (fn: () => void): number => {
-			const start = performance.now();
-			fn();
-			return performance.now() - start;
+			// Batch enough work to resolve sub-millisecond scans, then use the
+			// median CPU cost so runner preemption and a single GC do not decide
+			// the growth ratio. The input sizes and regression threshold stay fixed.
+			const samples = Array.from({ length: 5 }, () => {
+				const start = process.cpuUsage();
+				for (let iteration = 0; iteration < 20; iteration++) fn();
+				const elapsed = process.cpuUsage(start);
+				return (elapsed.user + elapsed.system) / 1000 / 20;
+			});
+			return samples.sort((left, right) => left - right)[2];
 		};
 
 		// Warm up the JIT on both sizes before taking the measurement that gates

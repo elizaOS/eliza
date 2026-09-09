@@ -96,7 +96,7 @@ function policyBadgeClass(allowed: boolean, mode: BrowserDomainPolicyMode) {
   }
   return allowed
     ? "border-accent/50 bg-accent/15 text-accent"
-    : "border-border bg-muted/40 text-muted-foreground";
+    : "border-border bg-surface text-muted-strong";
 }
 
 type LoadPhase = "loading" | "error" | "ready" | "unsupported";

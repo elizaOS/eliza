@@ -3,6 +3,7 @@
  * in one pass. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -14,7 +15,6 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 type RuntimeWithScenarioModelFixtures = {
   scenarioModelFixtures?: {
@@ -90,6 +90,8 @@ function expectViewsAction(
   if (!action) {
     return `expected VIEWS action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
   }
+  if (action.result?.success !== true)
+    return "VIEWS did not report a successful interaction";
   const params = readParameters(action);
   if (params.action !== expected.action && params.mode !== expected.action) {
     return `expected VIEWS action=${expected.action}, saw ${String(params.action ?? params.mode)}`;
@@ -142,21 +144,32 @@ export default scenario({
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         runtime.scenarioModelFixtures?.register(
-          // The simple-reply path answers straight from the stage-1 router
-          // response (`replyText`); no follow-up TEXT_SMALL call fires. The
-          // router fixture is therefore the required one, and the direct
-          // TEXT_SMALL fixture stays registered only as an optional guard so
-          // a regression that reintroduces the second call still resolves
-          // deterministically instead of failing strict-mode.
           {
             name: "pr-smoke-deterministic-direct-reply",
             match: {
               modelType: ModelType.TEXT_SMALL,
               input: "hello deterministic provider",
             },
-            response: "deterministic-test-response: hello deterministic provider",
+            response:
+              "deterministic-test-response: hello deterministic provider",
             required: false,
             times: { min: 0, max: 1 },
+          },
+          {
+            name: "pr-smoke-deterministic-planner-reply",
+            match: {
+              modelType: ModelType.ACTION_PLANNER,
+              input: matchesScenarioInput("hello deterministic provider"),
+            },
+            response: {
+              text: "deterministic-test-response: hello deterministic provider",
+              messageToUser:
+                "deterministic-test-response: hello deterministic provider",
+              completed: true,
+              finishReason: "stop",
+              toolCalls: [],
+            },
+            times: 1,
           },
           {
             name: "pr-smoke-conversation-needs-no-view",
@@ -299,18 +312,11 @@ export default scenario({
         params: { name: "view-title", value: "Remote Ledger Updated" },
         view: "remote-ledger",
       },
-      responseIncludesAny: [
-        "remote-ledger",
-        "Interacted with view",
-        "Remote Ledger Updated",
-      ],
       assertTurn: (execution) =>
         expectViewsAction(execution, {
           action: "interact",
           capability: "fill-input",
           paramValue: "Remote Ledger Updated",
-          responseText:
-            'Interacted with view "remote-ledger" — capability "fill-input" (returned ok, capability, value).',
           view: "remote-ledger",
         }),
     },

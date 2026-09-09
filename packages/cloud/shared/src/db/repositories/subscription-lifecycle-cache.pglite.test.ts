@@ -31,7 +31,7 @@ mock.module("../../lib/services/inference-credential-revocation", () => ({
   setInferenceSubjectActive: async () => undefined,
 }));
 mock.module("../../lib/services/admin", () => ({
-  adminService: { shouldBlockUser: async () => false },
+  adminService: { shouldBlockUserConsistent: async () => false },
 }));
 mock.module("../../lib/services/content-moderation", () => ({
   contentModerationService: { shouldBlockUser: async () => false },

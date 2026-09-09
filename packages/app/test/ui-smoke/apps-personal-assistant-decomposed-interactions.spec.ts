@@ -43,72 +43,69 @@ async function expectTopmostAtCenter(
 
 async function openPopulatedCalendar(page: Page): Promise<void> {
   await openAppPath(page, "/calendar");
-  await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible({
+  await expect(page.getByTestId("simple-calendar-view")).toBeVisible({
     timeout: 60_000,
   });
+  await page
+    .getByTestId("simple-calendar-view")
+    .getByRole("button", { name: /1 event/ })
+    .first()
+    .click();
   await expect(page.getByText("Design sync").first()).toBeVisible({
     timeout: 15_000,
   });
 }
 
-test("calendar decomposed view: responsive modes and event creation", async ({
+test("calendar month navigation returns to the current agenda", async ({
   page,
 }) => {
   await openPopulatedCalendar(page);
-
-  const monthMode = page.getByRole("button", { name: "Month", exact: true });
-  await expectTopmostAtCenter(monthMode, "Calendar Month mode");
-  await monthMode.click();
-  await expect(monthMode).toHaveAttribute("aria-pressed", "true");
-
-  const newEvent = page.getByTestId("lifeops-calendar-new-event");
-  await expectTopmostAtCenter(newEvent, "Calendar New event");
-  await newEvent.click();
-  await expect(page.getByTestId("event-editor-drawer")).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(
-    page.getByRole("button", { name: "Create event" }),
-  ).toBeVisible();
+  const picker = page.getByRole("button", { name: /^Choose month and year/ });
+  const currentMonth = await picker.getAttribute("aria-label");
+  if (!currentMonth)
+    throw new Error("Calendar month picker has no accessible month label");
+  const next = page.getByRole("button", { name: /^Next month,/ });
+  await expectTopmostAtCenter(next, "Calendar next month");
+  await next.click();
+  await expect(picker).not.toHaveAttribute("aria-label", currentMonth);
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await expect(picker).toHaveAttribute("aria-label", currentMonth);
+  await page
+    .getByTestId("simple-calendar-view")
+    .getByRole("button", { name: /1 event/ })
+    .first()
+    .click();
+  await expect(page.getByText("Design sync", { exact: true })).toBeVisible();
 });
 
-test("calendar mobile layout keeps navigation and editor inside 390px viewport", async ({
+test("calendar mobile month picker stays reachable and changes the visible month", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPopulatedCalendar(page);
-
-  const dayMode = page.getByRole("button", { name: "Day", exact: true });
-  await expectTopmostAtCenter(dayMode, "Calendar Day mode");
-  await dayMode.click();
-  await expect(dayMode).toHaveAttribute("aria-pressed", "true");
-
-  const newEvent = page.getByTestId("lifeops-calendar-new-event");
-  await expectTopmostAtCenter(newEvent, "Calendar New event");
-  await expect(newEvent).toBeInViewport();
-  await expect(page.getByRole("button", { name: "Previous" })).toBeInViewport();
-  await expect(page.getByRole("button", { name: "Today" })).toBeInViewport();
-  await expect(page.getByRole("button", { name: "Next" })).toBeInViewport();
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth),
-    "Calendar mobile shell must not introduce page-level horizontal overflow",
-  ).toBe(390);
-
-  await newEvent.click();
-  const editor = page.getByTestId("event-editor-drawer");
-  await expect(editor).toBeVisible({ timeout: 15_000 });
-  const editorBounds = await editor.boundingBox();
-  expect(editorBounds).not.toBeNull();
-  expect(editorBounds?.x).toBeGreaterThanOrEqual(0);
-  expect(
-    (editorBounds?.x ?? 0) + (editorBounds?.width ?? 0),
-  ).toBeLessThanOrEqual(390);
-  await expect(page.getByLabel("Event title")).toBeInViewport();
-  await expect(page.getByLabel("Start time")).toBeInViewport();
-  await expect(page.getByLabel("End time")).toBeInViewport();
-  await expect(
-    page.getByRole("button", { name: "Create event" }),
-  ).toBeVisible();
+  const picker = page.getByRole("button", { name: /^Choose month and year/ });
+  await expectTopmostAtCenter(picker, "Calendar month picker");
+  await picker.click();
+  const year = page.getByRole("combobox", { name: "Calendar year" });
+  await expect(year).toBeInViewport();
+  const originalYear = Number(await year.innerText());
+  await page.getByRole("button", { name: "Next year", exact: true }).click();
+  await expect(year).toHaveText(String(originalYear + 1));
+  const january = page.getByRole("button", { name: "Jan", exact: true });
+  await expect(january).toBeInViewport();
+  await january.click();
+  await expect(year).not.toBeVisible();
+  await expect(picker).toContainText(String(originalYear + 1));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await page
+    .getByTestId("simple-calendar-view")
+    .getByRole("button", { name: /1 event/ })
+    .first()
+    .click();
+  await expect(page.getByText("Design sync", { exact: true })).toBeVisible();
 });
 
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {

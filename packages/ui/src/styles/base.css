@@ -18,7 +18,7 @@
 
   /* Legacy alias retained for old theme references, neutralized per #8796. */
   --brand-blue: rgba(0, 0, 0, 0.6);
-  /* Retained for wallpaper/content assets; routine product chrome is neutral. */
+  /* Brand accent shared by product controls and content assets. */
   --brand-orange: #ff6a1f;
   /* True black canvas. A warm-tinted near-black (#140c07) was tried here and
      read as brown on OLED at device brightness (owner-reverted 2026-07-07).
@@ -108,13 +108,13 @@
   --scrim: rgba(0, 0, 0, 0.7);
 
   /* Accent */
-  --accent: var(--brand-black);
-  --accent-rgb: 0, 0, 0;
-  --accent-hover: #262626;
-  --accent-muted: #525252;
-  --accent-subtle: rgba(0, 0, 0, 0.08);
+  --accent: #c2410c;
+  --accent-rgb: 194, 65, 12;
+  --accent-hover: #9a3412;
+  --accent-muted: #9a3412;
+  --accent-subtle: rgba(194, 65, 12, 0.08);
   --accent-foreground: var(--brand-white);
-  --primary: var(--brand-black);
+  --primary: var(--accent);
   --primary-foreground: var(--brand-white);
 
   /* Status */
@@ -382,26 +382,26 @@
      :root note. */
   --scrim: rgba(0, 0, 0, 0.72);
 
-  --accent: var(--brand-white);
-  --accent-rgb: 253, 250, 247;
-  --accent-hover: var(--brand-gray);
-  --accent-muted: #a3a3a3;
-  --accent-subtle: rgba(255, 255, 255, 0.12);
+  --accent: var(--brand-orange);
+  --accent-rgb: 255, 106, 31;
+  --accent-hover: #e85d0c;
+  --accent-muted: #c2410c;
+  --accent-subtle: rgba(255, 106, 31, 0.12);
   --accent-foreground: var(--brand-black);
-  --primary: var(--brand-white);
+  --primary: var(--accent);
   --primary-foreground: var(--brand-black);
 
   --ok: #4ade80;
   --ok-foreground: var(--ok);
   --ok-muted: rgba(74, 222, 128, 0.7);
   --ok-subtle: rgba(74, 222, 128, 0.12);
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --destructive-subtle: rgba(239, 68, 68, 0.12);
+  --destructive: #fca5a5;
+  --destructive-foreground: #131313;
+  --destructive-subtle: rgba(252, 165, 165, 0.12);
   --warn: #eab308;
   --warn-muted: rgba(234, 179, 8, 0.7);
   --warn-subtle: rgba(234, 179, 8, 0.1);
-  --danger: #ef4444;
+  --danger: var(--destructive);
   --info: var(--muted-strong);
 
   --status-success: var(--ok);

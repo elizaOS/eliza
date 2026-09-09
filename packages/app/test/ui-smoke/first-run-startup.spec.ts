@@ -12,6 +12,7 @@ import {
 } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
+  expectStartupSettled,
   installDefaultAppRoutes,
   installRenderTelemetryGuard,
   seedAppStorage,
@@ -69,7 +70,7 @@ async function captureFirstRunRestoreEvidence(
   });
 }
 
-// A full-capability host (real API base + Electrobun window marker) so the local
+// A full-capability host (real API base and runtime chooser opt-in) so the local
 // finish path would be reachable; the in-chat conductor seeds the same two
 // runtime choices (Cloud / On this device) regardless ("Bring your own keys" is
 // a provider sub-choice, not a runtime location — removed as a chip in #11509).
@@ -82,7 +83,6 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
       window.location.origin;
     (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
       { apiBase: window.location.origin };
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }
 
@@ -122,6 +122,7 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
   await seedAppStorage(page, { "eliza:first-run-complete": "" });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectStartupSettled(page);
 
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
@@ -213,6 +214,7 @@ test("fresh first-run offers to restore an existing local backup before onboardi
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectStartupSettled(page);
 
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });

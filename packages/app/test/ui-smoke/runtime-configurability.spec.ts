@@ -5,6 +5,7 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
+  expectStartupSettled,
   installDefaultAppRoutes,
   installRenderTelemetryGuard,
   seedAppStorage,
@@ -55,15 +56,13 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
   });
 }
 
-// Pretend to be a host that owns its hardware AND injects a loopback backend —
-// the shape every desktop / device shell presents to the renderer.
+// Exercise the runtime chooser against the browser fixture backend.
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
       { apiBase: window.location.origin };
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }
 
@@ -92,6 +91,7 @@ test("in-chat first-run exposes cloud and local runtimes and Local is configurab
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectStartupSettled(page);
 
   await expectInChatFirstRun(page);
 
@@ -142,12 +142,14 @@ test("in-chat first-run survives browser back and forward while it churns", asyn
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectStartupSettled(page);
   await expectInChatFirstRun(page);
 
   // Churn navigation via the browser history; the in-chat first-run surface must
   // survive every transition without crashing or freezing (the conductor re-seeds
   // the greeting into the live transcript on each shell remount).
   await page.goto("/?runtime=first-run", { waitUntil: "domcontentloaded" });
+  await expectStartupSettled(page);
   await expectInChatFirstRun(page);
   await page.goBack({ waitUntil: "domcontentloaded" });
   await expectInChatFirstRun(page);

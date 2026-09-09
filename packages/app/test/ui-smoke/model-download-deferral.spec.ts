@@ -4,6 +4,7 @@
  */
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
+  expectStartupSettled,
   installDefaultAppRoutes,
   installRenderTelemetryGuard,
   seedAppStorage,
@@ -85,7 +86,6 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
       window.location.origin;
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }
 
@@ -160,6 +160,7 @@ test("selecting on-device inference drops the user into chat while the model dow
     "eliza:enable-runtime-chooser": "1",
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectStartupSettled(page);
 
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });

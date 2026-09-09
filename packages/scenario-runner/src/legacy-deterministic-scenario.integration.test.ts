@@ -8,8 +8,12 @@ import { runScenario } from "./executor.ts";
 import { beginScenarioModelFixtureAttempt } from "./model-fixtures.ts";
 import {
   createScenarioRuntime,
+  loadScenarioTestMocksForTests,
   type RuntimeFactoryResult,
 } from "./runtime-factory.ts";
+
+// Load the compatibility harness before measuring runtime initialization.
+await loadScenarioTestMocksForTests();
 
 describe("legacy deterministic scenario compatibility", () => {
   let runtimeResult: RuntimeFactoryResult | undefined;

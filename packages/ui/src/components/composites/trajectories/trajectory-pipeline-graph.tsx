@@ -118,9 +118,9 @@ function PipelineNodeButton({
       </span>
       <Badge
         asChild
-        variant="secondary"
+        variant={selected ? "metaStrong" : "secondary"}
         size="compact"
-        tone={countTone[node.status]}
+        tone={selected ? "default" : countTone[node.status]}
         className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
       >
         <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>

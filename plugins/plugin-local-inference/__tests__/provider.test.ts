@@ -73,12 +73,12 @@ describe("local inference provider", () => {
 		} as never);
 
 		expect(result).toBe(
-			'system:\nYou are Eliza.\n\nuser:\n[{"type":"text","text":"hello. say hello back"}]',
+      "system:\nYou are Eliza.\n\nuser:\nhello. say hello back",
 		);
 		expect(generate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				prompt:
-					'system:\nYou are Eliza.\n\nuser:\n[{"type":"text","text":"hello. say hello back"}]',
+					'system:\nYou are Eliza.\n\nuser:\nhello. say hello back',
 				maxTokens: 32,
 				topP: 0.9,
 			}),

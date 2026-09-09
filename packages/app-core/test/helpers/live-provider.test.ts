@@ -2,6 +2,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("selectLiveProvider", () => {
@@ -108,12 +109,12 @@ describe("selectLiveProvider", () => {
     const provider = selectLiveProvider();
     expect(provider?.name).toBe("cerebras");
     expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
-    expect(provider?.largeModel).toBe("gemma-4-31b");
-    expect(provider?.smallModel).toBe("gemma-4-31b");
+    expect(provider?.largeModel).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
+    expect(provider?.smallModel).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
     expect(provider?.env.ELIZA_PROVIDER).toBe("cerebras");
-    expect(provider?.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
-    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+    expect(provider?.env.CEREBRAS_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
+    expect(provider?.env.OPENAI_SMALL_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
+    expect(provider?.env.OPENAI_LARGE_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
   });
 
   it("resolves Cerebras vault references in the async selector", async () => {

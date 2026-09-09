@@ -3,7 +3,7 @@
  * and retry delays; these cover the exponential growth, the attempt clamp, the
  * maxMs cap, and the jitter bounds.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type BackoffPolicy, computeBackoff, sleepWithAbort } from "./retry";
 import {
 	type RetryInfo,
@@ -209,21 +209,30 @@ describe("retryAsync numeric-attempts style", () => {
 	});
 
 	it("waits exponentially longer between attempts", async () => {
-		let calls = 0;
-		const started = Date.now();
-		await retryAsync(
-			async () => {
-				calls += 1;
-				if (calls < 3) {
-					throw new Error("flaky");
-				}
-				return "done";
-			},
-			3,
-			20,
-		);
-		expect(Date.now() - started).toBeGreaterThanOrEqual(60); // 20ms + 40ms
-		expect(calls).toBe(3);
+		vi.useFakeTimers();
+		try {
+			let calls = 0;
+			const result = retryAsync(
+				async () => {
+					calls += 1;
+					if (calls < 3) throw new Error("flaky");
+					return "done";
+				},
+				3,
+				20,
+			);
+			await vi.advanceTimersByTimeAsync(19);
+			expect(calls).toBe(1);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(calls).toBe(2);
+			await vi.advanceTimersByTimeAsync(39);
+			expect(calls).toBe(2);
+			await vi.advanceTimersByTimeAsync(1);
+			await expect(result).resolves.toBe("done");
+			expect(calls).toBe(3);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('reports "Retry failed" when every attempt throws a non-Error value', async () => {

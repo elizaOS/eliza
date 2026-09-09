@@ -73,16 +73,9 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Calendar",
     path: "/calendar",
     viewId: "calendar",
-    // The canonical calendar exposes range navigation, view selection, and
-    // event creation through stable agent bridge controls.
-    ready: { testId: "lifeops-calendar-section" },
-    requiredIds: [
-      "calendar-prev",
-      "calendar-today",
-      "calendar-next",
-      "calendar-view-mode",
-      "calendar-new-event",
-    ],
+    // The calendar exposes month navigation and selection through the bridge.
+    ready: { testId: "simple-calendar-view" },
+    requiredIds: ["prev", "today", "next", "month-picker"],
   },
   {
     label: "Inbox",
