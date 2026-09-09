@@ -162,18 +162,16 @@ describe("storage bridge on the electrobun desktop runtime", () => {
     expect(bridge.isStorageBridgeInitialized()).toBe(true);
   });
 
-  it("persists session credentials only in the desktop secure store", async () => {
-    await bridge.setStorageValue(STEWARD_TOKEN_KEY, "desktop-secret");
-    expect(mockDesktopStore.get("session.steward_token")).toBe(
-      "desktop-secret",
-    );
-    expect(rawGetItem(STEWARD_TOKEN_KEY)).toBeNull();
+  it("persists device credentials only in the desktop secure store", async () => {
+    await bridge.setStorageValue("eliza.device.auth", "desktop-secret");
+    expect(mockDesktopStore.get("session.device_auth")).toBe("desktop-secret");
+    expect(rawGetItem("eliza.device.auth")).toBeNull();
     // The installed proxy serves the live credential from its in-memory
     // cache; plaintext must only be absent from the RAW store above.
-    expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+    expect(window.localStorage.getItem("eliza.device.auth")).toBe(
       "desktop-secret",
     );
-    expect(await bridge.getStorageValue(STEWARD_TOKEN_KEY)).toBe(
+    expect(await bridge.getStorageValue("eliza.device.auth")).toBe(
       "desktop-secret",
     );
   });
@@ -181,10 +179,10 @@ describe("storage bridge on the electrobun desktop runtime", () => {
   it("rejects an awaited write the desktop store refused", async () => {
     mockDesktopSecure.rejectSets = true;
     await expect(
-      bridge.setStorageValue(STEWARD_TOKEN_KEY, "refused-write"),
+      bridge.setStorageValue("eliza.device.auth", "refused-write"),
     ).rejects.toThrow("Protected storage rejected write");
-    expect(mockDesktopStore.has("session.steward_token")).toBe(false);
-    expect(rawGetItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(mockDesktopStore.has("session.device_auth")).toBe(false);
+    expect(rawGetItem("eliza.device.auth")).toBeNull();
   });
 
   it("reads a never-stored credential as null", async () => {

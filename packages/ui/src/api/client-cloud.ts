@@ -7,8 +7,12 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core";
 import {
   clearStoredStewardToken,
+  getStewardTabSessionAuthorityCoordinator,
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthorityWorkContext,
+  type StewardSessionNetworkOptions,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
@@ -648,12 +652,39 @@ export function getCloudAuthToken(client?: ElizaClient): string | null {
   return clientToken || null;
 }
 
-async function clearStoredStewardTokenIfCurrent(token: string): Promise<void> {
-  if (readStoredStewardToken()?.trim() !== token) return;
-  await clearStoredStewardToken();
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
-  }
+function captureDirectCloudRejection(
+  token: string,
+  targetIsCurrent: () => boolean,
+): (clearCanonical?: boolean) => Promise<void> {
+  const coordinator = getStewardTabSessionAuthorityCoordinator();
+  const expected = coordinator.readSnapshot();
+  const cloudBase = getBootConfig().cloudApiBase;
+  const validateTarget = () => {
+    if (getBootConfig().cloudApiBase !== cloudBase || !targetIsCurrent())
+      throw new StewardSessionAuthorityError(
+        "The rejected Cloud request belongs to a previous destination",
+        "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+      );
+  };
+  return async (clearCanonical = true) => {
+    coordinator.assertSnapshot(expected);
+    validateTarget();
+    // An explicit or client fallback bearer never owns a different canonical
+    // session. Capture before HTTP, including when canonical storage is empty.
+    if (!clearCanonical || expected.token?.trim() !== token) return;
+    await coordinator.runExclusive({
+      kind: "logout",
+      expectedToken: expected.token,
+      expectedGeneration: expected.generation,
+      expectedScope: expected.scope,
+      work: async (authority) => {
+        validateTarget();
+        await clearStoredStewardToken({ authority });
+      },
+    });
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+  };
 }
 
 function readDirectCloudToken(client: ElizaClient): string | null {
@@ -703,29 +734,75 @@ export function cloudTokenSecsRemaining(token: string): number | null {
  * On native the same endpoint is reached via the configured cloud API base
  * (Bearer-refresh); the caller passes the absolute endpoint via `endpoint`.
  */
-export async function refreshCloudStewardSession(opts?: {
+export interface CloudStewardRefreshOptions
+  extends StewardSessionNetworkOptions {
   endpoint?: string;
   /** Surface throttling/outage responses instead of treating them as logout. */
   throwOnTransientHttpFailure?: boolean;
-}): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
+}
+
+export async function refreshCloudStewardSession(
+  opts: CloudStewardRefreshOptions = {},
+): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
+  const coordinator = getStewardTabSessionAuthorityCoordinator();
+  const expected =
+    opts.expected ?? opts.authority?.revalidate() ?? coordinator.readSnapshot();
+  const run = opts.authority?.runExclusive ?? coordinator.runExclusive;
+  try {
+    return await run({
+      kind: "refresh",
+      expectedToken: expected.token,
+      expectedGeneration: expected.generation,
+      expectedScope: expected.scope,
+      signal: opts.signal,
+      timeoutMs: opts.timeoutMs ?? DIRECT_CLOUD_HTTP_TIMEOUT_MS,
+      work: (authority) => requestCloudStewardRefresh(opts, authority),
+    });
+  } catch (error) {
+    // error-policy:J4 preserve the established standalone timeout result, but
+    // never turn a superseded/cancelled caller's authority into session absence.
+    if (
+      !opts.authority &&
+      !opts.signal?.aborted &&
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "STEWARD_SESSION_AUTHORITY_TIMEOUT"
+    ) {
+      if (opts.throwOnTransientHttpFailure)
+        throw new ElizaError("Steward session refresh timed out", {
+          code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+          context: { endpoint: opts.endpoint ?? STEWARD_REFRESH_ENDPOINT },
+          cause: error,
+        });
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function requestCloudStewardRefresh(
+  opts: CloudStewardRefreshOptions,
+  authority: StewardSessionAuthorityWorkContext,
+): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
   const endpoint = opts?.endpoint ?? STEWARD_REFRESH_ENDPOINT;
+  authority.revalidate();
   if (shouldUseNativeStewardRefreshHttp(endpoint)) {
     const token = readStoredStewardToken()?.trim();
     if (!token) return null;
-    const response = await withDirectCloudHttpTimeout(
-      CapacitorHttp.request({
-        url: endpoint,
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        responseType: "json",
-        connectTimeout: 10_000,
-        readTimeout: 10_000,
-      }),
-      { method: "POST", url: endpoint },
-    );
+    // Capacitor cannot cancel an already-dispatched HTTP mutation. Keep the
+    // origin hold until it settles; the native transport has its own bounds.
+    const response = await CapacitorHttp.request({
+      url: endpoint,
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      responseType: "json",
+      connectTimeout: 10_000,
+      readTimeout: 10_000,
+    });
+    authority.revalidate();
     if (response.status < 200 || response.status >= 300) {
       if (
         opts?.throwOnTransientHttpFailure &&
@@ -762,12 +839,6 @@ export async function refreshCloudStewardSession(opts?: {
   }
 
   if (typeof fetch === "undefined") return null;
-  // Cloud account reads can legitimately take longer than 15 seconds on a cold
-  // regional worker. Keep the request bounded at DIRECT_CLOUD_HTTP_TIMEOUT_MS,
-  // but use the portable helper — `AbortSignal.timeout` is missing on iOS
-  // 16.0-16.3 WKWebView and would throw TypeError before fetch is issued.
-  const { signal: stewardSignal, dispose: disposeStewardSignal } =
-    createTimeoutSignal(DIRECT_CLOUD_HTTP_TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -780,8 +851,9 @@ export async function refreshCloudStewardSession(opts?: {
         "Content-Type": "application/json",
         "X-Eliza-CSRF": "1",
       },
-      signal: stewardSignal,
+      signal: authority.signal,
     });
+    authority.revalidate();
     if (!response.ok) {
       if (
         opts?.throwOnTransientHttpFailure &&
@@ -811,6 +883,7 @@ export async function refreshCloudStewardSession(opts?: {
       expiresAt?: number;
       expiresIn?: number;
     } | null;
+    authority.revalidate();
     if (opts?.throwOnTransientHttpFailure && !parsed?.token?.trim()) {
       // A 2xx whose body carries no usable token is out of the endpoint's
       // success contract (authoritative logout is a 401, never an empty 200):
@@ -826,6 +899,7 @@ export async function refreshCloudStewardSession(opts?: {
     }
     return parsed;
   } catch (err) {
+    authority.revalidate();
     // error-policy:J2 a timeout abort becomes the typed transient-refresh
     // error in throwOnTransient mode; otherwise it fails closed to null,
     // matching every other refresh failure on this endpoint. Non-abort
@@ -841,8 +915,6 @@ export async function refreshCloudStewardSession(opts?: {
       return null;
     }
     throw err;
-  } finally {
-    disposeStewardSignal();
   }
 }
 
@@ -1157,12 +1229,16 @@ export async function verifyDirectCloudStewardSession(options: {
     };
   }
 
+  const rejectStoredSession = captureDirectCloudRejection(
+    stewardToken,
+    () => resolveConfiguredDirectCloudApiBase(options.cloudApiBase) === apiBase,
+  );
   const headers = {
     Accept: "application/json",
     Authorization: `Bearer ${stewardToken}`,
   };
   const rejected = async (): Promise<DirectCloudSessionVerification> => {
-    await clearStoredStewardTokenIfCurrent(stewardToken);
+    await rejectStoredSession();
     return {
       credits: null,
       status: {
@@ -1257,6 +1333,16 @@ async function directCloudRequest<T>(
   const token = readDirectCloudToken(client);
   if (!token) return null;
 
+  const clientRevision = client.getAuthorityRevision();
+  const clientBase = client.baseUrl;
+  const rejectStoredSession = captureDirectCloudRejection(
+    token,
+    () =>
+      client.getAuthorityRevision() === clientRevision &&
+      client.baseUrl === clientBase &&
+      resolveDirectCloudClientApiBase(client) === apiBase &&
+      readDirectCloudToken(client) === token,
+  );
   const url = `${apiBase}${path}`;
   const method = init?.method ?? "GET";
   const headers: Record<string, string> = {
@@ -1282,8 +1368,8 @@ async function directCloudRequest<T>(
       }),
       { method, url },
     );
-    if (res.status === 401) {
-      await clearStoredStewardTokenIfCurrent(token);
+    if (res.status === 401 || res.status === 403) {
+      await rejectStoredSession(res.status === 401);
     }
     const parsed = parseDirectCloudJson(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
@@ -1312,8 +1398,8 @@ async function directCloudRequest<T>(
       text: res.status === 401 ? "" : await res.text(),
     }),
   );
-  if (res.status === 401) {
-    await clearStoredStewardTokenIfCurrent(token);
+  if (res.status === 401 || res.status === 403) {
+    await rejectStoredSession(res.status === 401);
   }
   const data = parseDirectCloudJsonSafe(text);
   if (!isAcceptableDirectCloudResponse(res.status, data)) {
@@ -2033,6 +2119,8 @@ declare module "./client-base" {
       cloudApiBase: string;
       authToken: string;
       signal?: AbortSignal;
+      /** Captured account/target validation before each asynchronous continuation. */
+      revalidate?: () => void;
       onProgress?: (status: string, detail?: string) => void;
       /**
        * User-gesture boundary for an existing-row adoption. Silent startup
@@ -4620,9 +4708,10 @@ function inProgressDedicatedActivationPolicy(
 
 function throwIfDedicatedStartupDeadlineElapsed(
   deadline: number,
-  signal?: AbortSignal,
+  options: { signal?: AbortSignal; revalidate?: () => void },
 ): void {
-  signal?.throwIfAborted();
+  options.revalidate?.();
+  options.signal?.throwIfAborted();
   if (Date.now() >= deadline) {
     throw new DOMException("The startup deadline elapsed", "TimeoutError");
   }
@@ -4792,7 +4881,7 @@ async function adoptSelectedPersonalDedicatedEliza(
 ): Promise<PersonalDedicatedAdoptionTarget | null> {
   const adoptionUrl = `${upgradeUrl}/adopt-existing`;
   const fetchCurrentQuote = async () => {
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const response = await directCloudJsonResponse<unknown>(adoptionUrl, {
       headers: {
         Accept: "application/json",
@@ -4800,14 +4889,14 @@ async function adoptSelectedPersonalDedicatedEliza(
       },
       ...(options.signal ? { signal: options.signal } : {}),
     });
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     return response;
   };
   let quoteResponse = await fetchCurrentQuote();
   let confirmationReason: "initial" | "quote_changed" = "initial";
   let firstTargetId: string | null = null;
   for (;;) {
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const quoteRoot = recordOrNull(quoteResponse.data);
     const responseCode = directCloudErrorMetadata(quoteResponse.data).code;
     if (
@@ -4872,7 +4961,7 @@ async function adoptSelectedPersonalDedicatedEliza(
       reason: confirmationReason,
       ...(options.signal ? { signal: options.signal } : {}),
     });
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     if (
       confirmation?.action !== "adopt_existing_dedicated" ||
       confirmation.quoteId !== quote.quoteId
@@ -4899,7 +4988,7 @@ async function adoptSelectedPersonalDedicatedEliza(
         ...(options.signal ? { signal: options.signal } : {}),
       },
     );
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const adoptionRoot = recordOrNull(adoptionResponse.data);
     const adoptionCode = directCloudErrorMetadata(adoptionResponse.data).code;
     if (
@@ -4974,7 +5063,7 @@ async function waitForPersonalDedicatedProvisionJob(
     options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS;
   const startedAt = Date.now();
   for (;;) {
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const response = await directCloudJsonResponse<unknown>(jobUrl, {
       headers: {
         Accept: "application/json",
@@ -4982,7 +5071,7 @@ async function waitForPersonalDedicatedProvisionJob(
       },
       ...(options.signal ? { signal: options.signal } : {}),
     });
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const root = recordOrNull(response.data);
     const job = recordOrNull(root?.data);
     const jobId = firstString(job?.id);
@@ -5053,16 +5142,16 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
   options: EnsurePersonalDedicatedElizaOptions,
   deadline: number,
 ): ReturnType<ElizaClient["ensurePersonalDedicatedEliza"]> {
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options);
   const personal = await this.getPersonalSharedEliza(options);
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options);
   if (personal.runtime === "dedicated") {
     return { ...personal, runtime: "dedicated" as const };
   }
 
   const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
   const upgradeUrl = `${cloudApiBase}/api/v1/eliza/agents/${encodeURIComponent(personal.personalElizaId)}/upgrade-tier`;
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options);
   options.onProgress?.("provisioning", "Starting your Dedicated agent…");
 
   const quoteResponse = await directCloudJsonResponse<unknown>(upgradeUrl, {
@@ -5072,7 +5161,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     },
     ...(options.signal ? { signal: options.signal } : {}),
   });
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options);
   const quoteRoot = recordOrNull(quoteResponse.data);
   const quote = recordOrNull(quoteRoot?.data);
   const quoteId = firstString(quote?.quoteId);
@@ -5101,7 +5190,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     );
   }
 
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options);
   const quoteActivation = recordOrNull(quote?.activation);
   const activationState = firstString(quoteActivation?.state);
   let quotedTargetId: string | null = null;
@@ -5190,7 +5279,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
         ...(options.signal ? { signal: options.signal } : {}),
       },
     );
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const activationRoot = recordOrNull(activationResponse.data);
     const activation = recordOrNull(activationRoot?.data);
     let activatedTargetId = firstString(activation?.dedicatedAgentId);
@@ -5282,7 +5371,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
 
   const intervalMs = options.pollIntervalMs ?? 5_000;
   for (;;) {
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
       throw new Error(
@@ -5297,7 +5386,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
         authToken: options.authToken,
         signal: options.signal,
       });
-      throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+      throwIfDedicatedStartupDeadlineElapsed(deadline, options);
       options.onProgress?.("ready", "Connected to your Dedicated agent");
       return {
         personalElizaId: personal.personalElizaId,

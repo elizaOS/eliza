@@ -15,6 +15,7 @@
  */
 
 import { logger } from "@elizaos/logger";
+import { isStewardSessionAuthoritySuperseded } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
@@ -206,6 +207,30 @@ export function useStartupCoordinator(
   const [state, dispatch] = useReducer(startupReducer, INITIAL_STARTUP_STATE);
   const policy = useRef(detectPlatformPolicy()).current;
   const effectRunRef = useRef(0);
+  const restoreOwnerRef = useRef<AbortController | null>(null);
+  const restorePageHiddenRef = useRef(false);
+  const [restoreEpoch, restartRestore] = useReducer(
+    (epoch: number) => epoch + 1,
+    0,
+  );
+  useEffect(() => {
+    const cancelOwner = () => {
+      restorePageHiddenRef.current = true;
+      restoreOwnerRef.current?.abort();
+    };
+    const resumeOwner = () => {
+      if (!restorePageHiddenRef.current) return;
+      restorePageHiddenRef.current = false;
+      restartRestore();
+    };
+    window.addEventListener("pagehide", cancelOwner);
+    window.addEventListener("pageshow", resumeOwner);
+    return () => {
+      restoreOwnerRef.current?.abort();
+      window.removeEventListener("pagehide", cancelOwner);
+      window.removeEventListener("pageshow", resumeOwner);
+    };
+  }, []);
   // The reducer only carries `target` through phases that actively use it to
   // configure/start the runtime. Shell consumers still need the resolved
   // topology after hydration (for example, to expose Cloud management only
@@ -243,12 +268,19 @@ export function useStartupCoordinator(
   }, [state.phase]);
 
   // ── Phase: restoring-session ────────────────────────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pageshow must re-enter this effect even while the reducer remains in restoring-session.
   useEffect(() => {
-    if (state.phase !== "restoring-session" || !depsReady) return;
+    if (
+      state.phase !== "restoring-session" ||
+      !depsReady ||
+      restorePageHiddenRef.current
+    )
+      return;
     const d = depsRef.current;
     if (!d) return;
     effectRunRef.current += 1;
     const cancelled = { current: false };
+    let cancelPhase: (() => void) | undefined;
 
     // Boot-time runtime-mode reconciliation (issue #11030): a persisted
     // `eliza:mobile-runtime-mode` that is unusable in THIS build (e.g. a stale
@@ -263,26 +295,73 @@ export function useStartupCoordinator(
     // boot in onboarding instead of polling an agent the native gate refuses
     // to start. No-op on web/desktop and on capable devices.
     enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot();
-    // error-policy:J4 expected failures are dispatched inside the runner; an
-    // unexpected rejection is translated to the visible startup error card.
-    runRestoringSession(d, dispatch, _ctx, cancelled).catch((err: unknown) => {
-      logger.error(
-        { err },
-        "[useStartupCoordinator] restoring-session phase runner threw",
-      );
-      surfaceUnexpectedStartupRunnerError(
-        "session restoration",
-        err,
-        d,
-        dispatch,
-        cancelled,
-      );
-    });
+    const restore = async () => {
+      // A concurrent renewal or selected-account change retires the captured
+      // snapshot, not the agent. Re-read the complete restore input rather than
+      // adopting a new token inside old work. Bound churn so genuine instability
+      // still reaches the existing visible recovery boundary.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (cancelled.current || restorePageHiddenRef.current) return;
+        restoreOwnerRef.current?.abort();
+        const owner = new AbortController();
+        restoreOwnerRef.current = owner;
+        const lifetime = new AbortController();
+        const cancelRestore = () => lifetime.abort();
+        owner.signal.addEventListener("abort", cancelRestore, { once: true });
+        cancelPhase = () => {
+          lifetime.abort();
+          owner.signal.removeEventListener("abort", cancelRestore);
+        };
+        try {
+          await runRestoringSession(
+            d,
+            dispatch,
+            _ctx,
+            cancelled,
+            lifetime.signal,
+            owner.signal,
+          );
+          return;
+        } catch (err: unknown) {
+          // error-policy:J4 retired work is retried from current authority;
+          // cancellation remains inert and genuine/exhausted failures are shown.
+          if (
+            cancelled.current ||
+            lifetime.signal.aborted ||
+            owner.signal.aborted
+          )
+            return;
+          owner.abort();
+          if (isStewardSessionAuthoritySuperseded(err) && attempt < 2) {
+            _ctx.current = null;
+            continue;
+          }
+          logger.error(
+            { err },
+            "[useStartupCoordinator] restoring-session phase runner threw",
+          );
+          surfaceUnexpectedStartupRunnerError(
+            "session restoration",
+            err,
+            d,
+            dispatch,
+            cancelled,
+          );
+          return;
+        } finally {
+          // Detached tier repair retains the owner lifetime after successful
+          // phase completion; it is retired only by a new attempt or pagehide.
+          cancelPhase?.();
+        }
+      }
+    };
+    void restore();
 
     return () => {
       cancelled.current = true;
+      cancelPhase?.();
     };
-  }, [state.phase, depsReady]);
+  }, [state.phase, depsReady, restoreEpoch]);
 
   // ── Phase: resolving-target (auto-advance) ──────────────────────
   useEffect(() => {

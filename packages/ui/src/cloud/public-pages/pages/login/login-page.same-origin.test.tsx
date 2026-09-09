@@ -52,13 +52,6 @@ vi.mock("@elizaos/login", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  hasStewardAuthedCookie: () => false,
-  readStoredStewardToken: () => null,
-  writeStoredStewardToken: () => undefined,
-  StewardSessionError: class extends Error {},
-}));
-
 vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
   consumeStewardTokensFromHash: () => null,
@@ -102,6 +95,8 @@ import StewardLoginSection from "./steward-login-section";
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
+  sessionStorage.clear();
   prepareSsoAccountSwitch.mockReset();
   prepareSsoAccountSwitch.mockResolvedValue(undefined);
   redirectToSsoBridge.mockClear();

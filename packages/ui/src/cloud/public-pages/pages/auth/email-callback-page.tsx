@@ -5,6 +5,11 @@
  * destination `/join` (ordinary Eliza Cloud login).
  */
 
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  STEWARD_SESSION_AUTHORITY_TIMEOUT_MS,
+  StewardSessionAuthorityError,
+} from "@elizaos/shared/steward-session-client";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -20,13 +25,14 @@ import {
   LocalStewardAuthContext,
   StewardAuthProvider,
 } from "../../../shell/StewardProvider";
+import type { LocalStewardAuthValue } from "../../../shell/StewardProviderShared";
 import {
   configuredStewardTenantId,
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
 import {
-  consumePendingOAuthReturnTo,
+  capturePendingOAuthReturnTo,
   defaultLoginReturnTo,
 } from "../../lib/login-return-to";
 import { startStewardEmailLogin } from "../../lib/steward-email-login";
@@ -40,9 +46,10 @@ type ResendStatus = "idle" | "sending" | "sent" | "error";
 const EMAIL_RESEND_COOLDOWN_MS = 30_000;
 const STEWARD_TENANT_ID = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
 
-type EmailVerificationResult = {
-  token: string;
-  refreshToken?: string;
+type PendingEmailVerification = {
+  controller: AbortController;
+  subscribers: Set<symbol>;
+  promise: Promise<string>;
 };
 
 export function resolveEmailCallbackDestination(
@@ -75,38 +82,115 @@ export function classifyEmailCallbackDestination(destination: string): {
   return { isAppAuthorization, isJoinFallback };
 }
 
-const pendingEmailVerifications = new Map<
-  string,
-  Promise<EmailVerificationResult>
->();
+const pendingEmailVerifications = new Map<string, PendingEmailVerification>();
 
 function verifyEmailCallbackSingleFlight(
-  verify: (token: string, email: string) => Promise<EmailVerificationResult>,
+  verify: LocalStewardAuthValue["verifyEmailCallback"],
   token: string,
   email: string,
-): Promise<EmailVerificationResult> {
+  returnTo: string | null,
+): PendingEmailVerification {
   const key = `${email}\0${token}`;
   const pending = pendingEmailVerifications.get(key);
   if (pending) return pending;
 
-  // Deferring the call lets us publish the promise before a non-conforming
-  // verifier can throw synchronously. Entries live only while the upstream
-  // consume is in flight, so a later deliberate replay still reaches Steward.
-  const verification = Promise.resolve()
-    .then(() => verify(token, email))
+  // The whole callback transaction belongs to one flight, including cookie
+  // synchronization and receipt publication. A provider remount cannot consume
+  // the same one-time link again while that transaction is still completing.
+  const authoritySnapshot =
+    getStewardTabSessionAuthorityCoordinator().readSnapshot();
+  const pendingReturnTo = capturePendingOAuthReturnTo();
+  const controller = new AbortController();
+  const deadline = setTimeout(
+    () =>
+      controller.abort(
+        new StewardSessionAuthorityError(
+          "Email sign-in took too long.",
+          "STEWARD_SESSION_AUTHORITY_TIMEOUT",
+        ),
+      ),
+    STEWARD_SESSION_AUTHORITY_TIMEOUT_MS,
+  );
+  const promise = Promise.resolve()
+    .then(async () => {
+      controller.signal.throwIfAborted();
+      const result = await verify(
+        token,
+        email,
+        authoritySnapshot,
+        controller.signal,
+        (candidate, authority) =>
+          syncStewardSessionCookie(candidate.token, candidate.refreshToken, {
+            authority,
+          }),
+      );
+      controller.signal.throwIfAborted();
+      return getStewardTabSessionAuthorityCoordinator().runExclusive({
+        kind: "callback-restore",
+        expectedToken: result.token,
+        expectedGeneration: authoritySnapshot.generation,
+        expectedScope: authoritySnapshot.scope,
+        signal: controller.signal,
+        work: async (authority) => {
+          authority.revalidate();
+          const destination = resolveEmailCallbackDestination(
+            returnTo,
+            pendingReturnTo.returnTo,
+          );
+          pendingReturnTo.consume();
+          if (readStoredAppAuthorizeReturnTo() === returnTo)
+            clearStoredAppAuthorizeReturnTo();
+          publishStewardEmailLoginComplete(email, destination);
+          return destination;
+        },
+      });
+    })
     .finally(() => {
-      if (pendingEmailVerifications.get(key) === verification) {
+      clearTimeout(deadline);
+      if (pendingEmailVerifications.get(key) === flight) {
         pendingEmailVerifications.delete(key);
       }
     });
-  pendingEmailVerifications.set(key, verification);
-  return verification;
+  const flight = { controller, subscribers: new Set<symbol>(), promise };
+  pendingEmailVerifications.set(key, flight);
+  controller.signal.addEventListener(
+    "abort",
+    () => {
+      clearTimeout(deadline);
+      if (pendingEmailVerifications.get(key) === flight)
+        pendingEmailVerifications.delete(key);
+    },
+    { once: true },
+  );
+  return flight;
 }
 
 function describeVerificationError(
   error: unknown,
   t: ReturnType<typeof useCloudT>,
 ): string {
+  if (error instanceof StewardSessionAuthorityError) {
+    if (error.code === "STEWARD_SESSION_AUTHORITY_CANCELLED") {
+      return t("cloud.emailCallback.cancelled", {
+        defaultValue: "Sign-in was cancelled. Please start sign-in again.",
+      });
+    }
+    if (error.code === "STEWARD_SESSION_AUTHORITY_SUPERSEDED") {
+      return t("cloud.emailCallback.sessionChanged", {
+        defaultValue:
+          "Your session changed while this link was being checked. Please start sign-in again.",
+      });
+    }
+    if (error.code === "STEWARD_SESSION_AUTHORITY_TIMEOUT") {
+      return t("cloud.emailCallback.timedOut", {
+        defaultValue: "Sign-in took too long. Please start sign-in again.",
+      });
+    }
+    return t("cloud.emailCallback.sessionUnavailable", {
+      defaultValue:
+        "Sign-in could not be completed safely. Please return to sign-in and try again.",
+    });
+  }
   const status =
     error !== null && typeof error === "object" && "status" in error
       ? Reflect.get(error, "status")
@@ -163,7 +247,12 @@ function EmailCallbackContent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const auth = useContext(LocalStewardAuthContext);
-  const attemptedRef = useRef(false);
+  const callbackRef = useRef<{
+    key: string;
+    flight: PendingEmailVerification;
+  } | null>(null);
+  const translatorRef = useRef(t);
+  translatorRef.current = t;
   const successDestinationRef = useRef<string | null>(null);
   const [status, setStatus] = useState<CallbackStatus>("verifying");
   const [error, setError] = useState<string | null>(null);
@@ -194,9 +283,6 @@ function EmailCallbackContent() {
   }, [resendAvailableAt]);
 
   useEffect(() => {
-    if (attemptedRef.current) return;
-    attemptedRef.current = true;
-
     const token = searchParams.get("token");
     const callbackEmail = searchParams.get("email");
     stripEmailCallbackSecretsFromAddressBar();
@@ -212,17 +298,6 @@ function EmailCallbackContent() {
       return;
     }
 
-    const finishSuccess = () => {
-      const destination = resolveEmailCallbackDestination(
-        returnTo,
-        consumePendingOAuthReturnTo(),
-      );
-      successDestinationRef.current = destination;
-      clearStoredAppAuthorizeReturnTo();
-      if (email) publishStewardEmailLoginComplete(email, destination);
-      setStatus("success");
-    };
-
     if (!token || !callbackEmail) {
       setStatus("error");
       setError(
@@ -233,28 +308,78 @@ function EmailCallbackContent() {
       return;
     }
 
-    void (async () => {
+    const key = `${callbackEmail}\0${token}`;
+    if (callbackRef.current?.key !== key) {
       try {
-        // The Steward context's verifyEmailCallback already throws on MFA, so
-        // the result here is always a completed { token, refreshToken? }.
-        // The module-level single-flight survives StrictMode/provider remounts;
-        // a component-local ref does not, and two concurrent POSTs can consume
-        // the same one-time link before either mount observes authentication.
-        const result = await verifyEmailCallbackSingleFlight(
-          auth.verifyEmailCallback,
-          token,
-          callbackEmail,
-        );
-        await syncStewardSessionCookie(result.token, result.refreshToken);
-        finishSuccess();
-      } catch (err) {
-        // error-policy:J4 expected rejected/expired one-time links render a
-        // distinct recovery message; unexpected failures retain their detail.
+        callbackRef.current = {
+          key,
+          flight: verifyEmailCallbackSingleFlight(
+            auth.verifyEmailCallback,
+            token,
+            callbackEmail,
+            returnTo,
+          ),
+        };
+        setStatus("verifying");
+        setError(null);
+      } catch (error) {
+        // error-policy:J4 unreadable original authority remains visible recovery,
+        // not an effect exception or an implicitly renewed callback attempt.
         setStatus("error");
-        setError(describeVerificationError(err, t));
+        setError(describeVerificationError(error, translatorRef.current));
+        return;
       }
-    })();
-  }, [auth, email, returnTo, searchParams, t]);
+    }
+    const flight = callbackRef.current.flight;
+    const subscriber = Symbol("email-callback");
+    flight.subscribers.add(subscriber);
+    const ownsResult = () =>
+      flight.subscribers.has(subscriber) && !flight.controller.signal.aborted;
+    const showCancellation = () => {
+      if (!flight.subscribers.has(subscriber)) return;
+      setStatus("error");
+      setError(
+        describeVerificationError(
+          flight.controller.signal.reason,
+          translatorRef.current,
+        ),
+      );
+    };
+    const abandon = () =>
+      flight.controller.abort(
+        new StewardSessionAuthorityError(
+          "Sign-in was cancelled. Please start sign-in again.",
+          "STEWARD_SESSION_AUTHORITY_CANCELLED",
+        ),
+      );
+    flight.controller.signal.addEventListener("abort", showCancellation);
+    window.addEventListener("pagehide", abandon);
+    if (flight.controller.signal.aborted) showCancellation();
+    void flight.promise.then(
+      (destination) => {
+        if (!ownsResult()) return;
+        successDestinationRef.current = destination;
+        setStatus("success");
+      },
+      (err: unknown) => {
+        // error-policy:J4 only the active callback subscriber can publish recovery.
+        if (ownsResult()) {
+          setStatus("error");
+          setError(describeVerificationError(err, translatorRef.current));
+        }
+      },
+    );
+    return () => {
+      window.removeEventListener("pagehide", abandon);
+      flight.controller.signal.removeEventListener("abort", showCancellation);
+      flight.subscribers.delete(subscriber);
+      // Immediate StrictMode/provider resubscription keeps the one-time flight;
+      // real route departure cancels its remaining network and commit work.
+      queueMicrotask(() => {
+        if (flight.subscribers.size === 0) abandon();
+      });
+    };
+  }, [auth, returnTo, searchParams, t]);
 
   async function handleResend() {
     if (!email || resendStatus === "sending" || resendRemainingSeconds > 0) {
@@ -304,7 +429,9 @@ function EmailCallbackContent() {
             defaultValue: "Sign-in failed",
           })}
         </h1>
-        <p className="max-w-xs text-center text-sm text-muted">{error}</p>
+        <p className="max-w-xs text-center text-sm text-muted" role="alert">
+          {error}
+        </p>
         {resendStatus === "sent" && (
           <p className="text-center text-sm text-muted" role="status">
             {t("cloud.emailCallback.resent", {

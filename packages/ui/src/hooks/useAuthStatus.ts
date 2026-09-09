@@ -429,6 +429,10 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
             ...accountConfig
           } = getBootConfig();
           setBootConfig(accountConfig);
+          // Credential teardown emits synchronous token-sync events. A probe
+          // started by those events still belongs to the ending selection and
+          // must not overwrite this terminal state after cleanup completes.
+          authStatusEpoch += 1;
           publishAuthStatus({
             phase: "unauthenticated",
             reason: "remote_auth_required",

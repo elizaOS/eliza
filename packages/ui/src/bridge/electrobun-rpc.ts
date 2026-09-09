@@ -3,6 +3,13 @@
  * and the typed bridge-request helpers other modules call. The seam between the
  * web renderer and the native host.
  */
+
+import { ElizaError } from "@elizaos/core/errors";
+import type {
+  RendererSecureSlot,
+  RendererSecureTransactionRequest,
+  RendererSecureTransactionResult,
+} from "@elizaos/shared/types";
 import type { ExistingElizaInstallInfo } from "../types/index.js";
 
 export type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
@@ -113,11 +120,38 @@ export interface DetectedProvider {
   status?: string;
 }
 
-export type DesktopSecureStoreKind =
-  | "session.device_auth"
-  | "session.steward_token"
-  | "runtime.active_server"
-  | "runtime.agent_profiles";
+export type DesktopSecureStoreKind = RendererSecureSlot;
+
+/** Missing, rejected and timed-out transport never falls back to an unconditional write. */
+export async function desktopSecureStoreTransaction(
+  params: RendererSecureTransactionRequest,
+): Promise<RendererSecureTransactionResult> {
+  const result =
+    await invokeDesktopBridgeRequestWithTimeout<RendererSecureTransactionResult>(
+      {
+        rpcMethod: "secureStoreTransaction",
+        ipcChannel: "secureStore:transaction",
+        params,
+        timeoutMs: 35_000,
+      },
+    );
+  if (result.status !== "ok") {
+    throw new ElizaError("Desktop credential transaction did not acknowledge", {
+      code: "NATIVE_STORE_TRANSPORT_UNAVAILABLE",
+      severity: "ephemeral",
+      cause: result.status === "rejected" ? result.error : result.status,
+    });
+  }
+  if (!result.value || result.value.operation !== params.operation)
+    throw new ElizaError(
+      "Desktop credential transaction reply does not match request",
+      {
+        code: "NATIVE_STORE_INVALID_REPLY",
+        severity: "ephemeral",
+      },
+    );
+  return result.value;
+}
 
 export type DesktopSecureStoreResult =
   | { ok: true; value?: string; deleted?: boolean }

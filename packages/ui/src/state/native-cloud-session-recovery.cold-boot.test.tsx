@@ -19,6 +19,7 @@ const clientMock = vi.hoisted(() => ({
   getCloudCompatAgents: vi.fn(),
   hasToken: vi.fn(() => true),
   getBaseUrl: vi.fn(() => "https://agent-123.elizacloud.ai"),
+  getAuthorityRevision: vi.fn(() => 0),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
 }));
@@ -52,6 +53,7 @@ vi.mock("../hooks/useAuthStatus", () => ({
 }));
 
 import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
+import * as storageBridge from "../bridge/storage-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { useAgentSessionRecovery } from "../hooks/useAgentSessionRecovery";
 import { getActiveProfile, loadAgentProfileRegistry } from "./agent-profiles";
@@ -133,6 +135,7 @@ describe("managed-native stale-session cold boot", () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     globalThis.fetch = originalFetch;
     setBootConfig(originalBootConfig);
     if (originalCapacitor === undefined) {
@@ -142,137 +145,164 @@ describe("managed-native stale-session cold boot", () => {
     }
   });
 
-  it("advances out of startup, exchanges once, and atomically replaces every stale bearer mirror", async () => {
-    const activeServer = {
-      id: `cloud:${AGENT_ID}`,
-      kind: "cloud" as const,
-      label: "Dedicated agent",
-      apiBase: AGENT_BASE,
-      accessToken: "stale-agent-bearer",
-    };
-    savePersistedActiveServer(activeServer);
-    // Exercise the real legacy-active-server migration so the recovery commit
-    // must update both the active-server record and its active profile.
-    expect(loadAgentProfileRegistry().profiles).toHaveLength(1);
+  it.each([false, true])(
+    "handles companion-profile storage before reporting recovery (reject=%s)",
+    async (rejectProfile) => {
+      if (rejectProfile) {
+        const write = storageBridge.setStorageValue;
+        vi.spyOn(storageBridge, "setStorageValue").mockImplementation(
+          async (key, value, options) => {
+            if (key === "elizaos:agent-profiles")
+              throw new Error("Profile storage unavailable");
+            return write(key, value, options);
+          },
+        );
+      }
+      const activeServer = {
+        id: `cloud:${AGENT_ID}`,
+        kind: "cloud" as const,
+        label: "Dedicated agent",
+        apiBase: AGENT_BASE,
+        accessToken: "stale-agent-bearer",
+      };
+      savePersistedActiveServer(activeServer);
+      // Exercise the real legacy-active-server migration so the recovery commit
+      // must update both the active-server record and its active profile.
+      expect(loadAgentProfileRegistry().profiles).toHaveLength(1);
 
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, _init: RequestInit | undefined) => {
-        const url = String(input);
-        if (url.endsWith(`/api/v1/eliza/agents/${AGENT_ID}/pairing-token`)) {
-          return new Response(
-            JSON.stringify({
-              data: {
-                redirectUrl: `${AGENT_BASE}/pair?token=one-time-native`,
+      const fetchMock = vi.fn(
+        async (input: RequestInfo | URL, _init: RequestInit | undefined) => {
+          const url = String(input);
+          if (url.endsWith(`/api/v1/eliza/agents/${AGENT_ID}/pairing-token`)) {
+            return new Response(
+              JSON.stringify({
+                data: {
+                  redirectUrl: `${AGENT_BASE}/pair?token=one-time-native`,
+                },
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            );
+          }
+          if (
+            url === `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/auth/pair/native`
+          ) {
+            return new Response(
+              JSON.stringify({
+                apiKey: "fresh-agent-bearer",
+                agentId: AGENT_ID,
+              }),
+              {
+                status: 200,
+                headers: { "content-type": "application/json" },
               },
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          );
-        }
-        if (
-          url === `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/auth/pair/native`
-        ) {
-          return new Response(
-            JSON.stringify({
-              apiKey: "fresh-agent-bearer",
-              agentId: AGENT_ID,
-            }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          );
-        }
-        throw new Error(`Unexpected recovery request: ${url}`);
-      },
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+            );
+          }
+          throw new Error(`Unexpected recovery request: ${url}`);
+        },
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const pollingDeps = createPollingDeps();
-    const startupEvents: StartupEvent[] = [];
-    const ctx: RestoringSessionCtx = {
-      persistedActiveServer: activeServer,
-      restoredActiveServer: activeServer,
-      shouldPreserveCompletedFirstRun: true,
-      hadPriorFirstRun: true,
-    };
+      const pollingDeps = createPollingDeps();
+      const startupEvents: StartupEvent[] = [];
+      const ctx: RestoringSessionCtx = {
+        persistedActiveServer: activeServer,
+        restoredActiveServer: activeServer,
+        shouldPreserveCompletedFirstRun: true,
+        hadPriorFirstRun: true,
+      };
 
-    await runPollingBackend(
-      pollingDeps,
-      (event) => startupEvents.push(event),
-      {
-        supportsLocalRuntime: true,
-        backendTimeoutMs: 1_000,
-        agentReadyTimeoutMs: 1_000,
-        probeForExistingInstall: true,
-        defaultTarget: "cloud-managed",
-      },
-      ctx,
-      1,
-      { current: 1 },
-      { current: false },
-      { current: null },
-    );
+      await runPollingBackend(
+        pollingDeps,
+        (event) => startupEvents.push(event),
+        {
+          supportsLocalRuntime: true,
+          backendTimeoutMs: 1_000,
+          agentReadyTimeoutMs: 1_000,
+          probeForExistingInstall: true,
+          defaultTarget: "cloud-managed",
+        },
+        ctx,
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+      );
 
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(startupEvents).toEqual([
-      { type: "BACKEND_REACHED", firstRunComplete: true },
-    ]);
-    let startupState: StartupState = {
-      phase: "polling-backend",
-      target: "cloud-managed",
-      attempts: 0,
-    };
-    startupState = startupReducer(startupState, startupEvents[0]);
-    expect(startupState).toMatchObject({
-      phase: "starting-runtime",
-      target: "cloud-managed",
-    });
-    startupState = startupReducer(startupState, { type: "AGENT_RUNNING" });
-    startupState = startupReducer(startupState, {
-      type: "HYDRATION_COMPLETE",
-    });
-    expect(startupState).toEqual({ phase: "ready" });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(startupEvents).toEqual([
+        { type: "BACKEND_REACHED", firstRunComplete: true },
+      ]);
+      let startupState: StartupState = {
+        phase: "polling-backend",
+        target: "cloud-managed",
+        attempts: 0,
+      };
+      startupState = startupReducer(startupState, startupEvents[0]);
+      expect(startupState).toMatchObject({
+        phase: "starting-runtime",
+        target: "cloud-managed",
+      });
+      startupState = startupReducer(startupState, { type: "AGENT_RUNNING" });
+      startupState = startupReducer(startupState, {
+        type: "HYDRATION_COMPLETE",
+      });
+      expect(startupState).toEqual({ phase: "ready" });
 
-    const statuses: string[] = [];
-    const onRecovered = vi.fn();
-    render(
-      <RecoveryProbe
-        onRecovered={onRecovered}
-        onStatus={(status) => statuses.push(status)}
-      />,
-    );
+      const statuses: string[] = [];
+      const onRecovered = vi.fn();
+      render(
+        <RecoveryProbe
+          onRecovered={onRecovered}
+          onStatus={(status) => statuses.push(status)}
+        />,
+      );
 
-    await waitFor(() => {
-      expect(onRecovered).toHaveBeenCalledTimes(1);
-    });
+      if (rejectProfile) {
+        await waitFor(() => expect(statuses).toContain("cloud-retry-required"));
+        expect(onRecovered).not.toHaveBeenCalled();
+        expect(clientMock.setToken).not.toHaveBeenCalled();
+        expect(getActiveProfile()?.accessToken).toBe("stale-agent-bearer");
+        expect(
+          localStorage.getItem(`eliza:cloud-pair:api-token:${AGENT_ID}`),
+        ).toBeNull();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        return;
+      }
 
-    expect(statuses).toContain("recovering");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(clientMock.setToken).toHaveBeenCalledWith("fresh-agent-bearer");
-    // The durable pair token is persisted under the per-agent key (#17579);
-    // the legacy global key must stay empty so another agent's boot can never
-    // adopt this credential.
-    expect(localStorage.getItem(`eliza:cloud-pair:api-token:${AGENT_ID}`)).toBe(
-      "fresh-agent-bearer",
-    );
-    expect(
-      sessionStorage.getItem(`eliza:cloud-pair:api-token:${AGENT_ID}`),
-    ).toBe("fresh-agent-bearer");
-    expect(localStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
-    expect(sessionStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
-    expect(loadPersistedActiveServer()?.accessToken).toBe("fresh-agent-bearer");
-    expect(getActiveProfile()?.accessToken).toBe("fresh-agent-bearer");
+      await waitFor(() => {
+        expect(onRecovered).toHaveBeenCalledTimes(1);
+      });
 
-    const nativeExchange = fetchMock.mock.calls[1];
-    const exchangeInit = nativeExchange?.[1] as RequestInit | undefined;
-    expect(exchangeInit?.headers).toMatchObject({
-      Authorization: "Bearer steward.jwt.native-session",
-      "content-type": "application/json",
-    });
-    expect(JSON.parse(String(exchangeInit?.body))).toEqual({
-      token: "one-time-native",
-      agentId: AGENT_ID,
-      expectedOrigin: AGENT_BASE,
-    });
-  });
+      expect(statuses).toContain("recovering");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(clientMock.setToken).toHaveBeenCalledWith("fresh-agent-bearer");
+      // The durable pair token is persisted under the per-agent key (#17579);
+      // the legacy global key must stay empty so another agent's boot can never
+      // adopt this credential.
+      expect(
+        localStorage.getItem(`eliza:cloud-pair:api-token:${AGENT_ID}`),
+      ).toBe("fresh-agent-bearer");
+      expect(
+        sessionStorage.getItem(`eliza:cloud-pair:api-token:${AGENT_ID}`),
+      ).toBe("fresh-agent-bearer");
+      expect(localStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
+      expect(sessionStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
+      expect(loadPersistedActiveServer()?.accessToken).toBe(
+        "fresh-agent-bearer",
+      );
+      expect(getActiveProfile()?.accessToken).toBe("fresh-agent-bearer");
+
+      const nativeExchange = fetchMock.mock.calls[1];
+      const exchangeInit = nativeExchange?.[1] as RequestInit | undefined;
+      expect(exchangeInit?.headers).toMatchObject({
+        Authorization: "Bearer steward.jwt.native-session",
+        "content-type": "application/json",
+      });
+      expect(JSON.parse(String(exchangeInit?.body))).toEqual({
+        token: "one-time-native",
+        agentId: AGENT_ID,
+        expectedOrigin: AGENT_BASE,
+      });
+    },
+  );
 });

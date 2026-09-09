@@ -25,7 +25,10 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  StewardSessionAuthorityError,
+} from "@elizaos/shared/steward-session-client";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Card } from "../../components/ui/card";
@@ -36,6 +39,7 @@ import {
   buildBridgeExchangeUrl,
   buildSsoBridgeErrorUrl,
   burnSsoBridgeCode,
+  consumeSsoBridgeAuthority,
   consumeSsoBridgeState,
   consumeSsoBridgeVerifier,
   isWellFormedSsoChallenge,
@@ -101,6 +105,25 @@ function appLoginUrl(appOrigin: string, returnTo: string): string {
   return `${appOrigin}/login?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
+function redirectToAppLogin(hostname: string, returnTo: string): boolean {
+  const appOrigin = pairedAppOrigin(hostname);
+  try {
+    appModeNavigation.replace(
+      appOrigin ? appLoginUrl(appOrigin, returnTo) : "/",
+    );
+    return true;
+  } catch (error) {
+    // error-policy:J1 failed navigation is diagnosed and the caller displays
+    // the distinct authentication-error route with a recovery destination.
+    reportRendererDiagnostic({
+      scope: "steward.sso-bridge.login-navigation",
+      error,
+      severity: "error",
+    });
+    return false;
+  }
+}
+
 /**
  * Remove single-use exchange credentials from the visible URL without
  * notifying the router. ExchangeLeg already captured both values as props, so
@@ -143,12 +166,10 @@ function referrerIsPairedAppOrigin(
 }
 
 type MintedCodeHandoff = {
-  /** Recheck the minting account at the navigation boundary. */
-  isCurrent(): boolean;
+  /** Navigate only while holding the original minting session authority. */
+  navigate(): Promise<boolean>;
   /** Destroy the code while this document still owns it. Idempotent. */
   burn(): void;
-  /** Relinquish custody after the browser accepts the app-origin navigation. */
-  transfer(): void;
 };
 
 type MintLegOutcome =
@@ -161,6 +182,7 @@ async function runMintLegOperation(
   state: string,
   challenge: string,
   returnTo: string,
+  signal: AbortSignal,
 ): Promise<MintLegOutcome> {
   const appOrigin = pairedAppOrigin(hostname);
   if (!appOrigin) return { kind: "not-initiated" };
@@ -198,7 +220,6 @@ async function runMintLegOperation(
   }
 
   forgetMintIntent(state);
-  const mintingToken = readStoredStewardToken();
   let mintedCode: string | null = null;
   const burnMintedCodeOnce = (): void => {
     if (!mintedCode) return;
@@ -208,19 +229,17 @@ async function runMintLegOperation(
   };
 
   try {
-    const result = await mintSsoCode(hostname, challenge);
+    const coordinator = getStewardTabSessionAuthorityCoordinator();
+    const expected = coordinator.readSnapshot();
+    const result = await mintSsoCode(hostname, challenge, fetch, {
+      expected,
+      signal,
+    });
     if (!result.ok) {
       return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
     }
 
     mintedCode = result.code;
-    if (
-      readStoredStewardToken() !== mintingToken ||
-      !hasHydratableStewardToken()
-    ) {
-      burnMintedCodeOnce();
-      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
-    }
     const url = buildBridgeExchangeUrl(hostname, result.code, state, returnTo);
     if (!url) {
       burnMintedCodeOnce();
@@ -229,13 +248,33 @@ async function runMintLegOperation(
 
     return {
       handoff: {
-        isCurrent: () =>
-          readStoredStewardToken() === mintingToken &&
-          hasHydratableStewardToken(),
-        burn: burnMintedCodeOnce,
-        transfer: () => {
-          mintedCode = null;
+        navigate: async () => {
+          try {
+            return await coordinator.runExclusive({
+              kind: "callback-restore",
+              requireOriginWide: true,
+              expectedToken: expected.token,
+              expectedGeneration: expected.generation,
+              expectedScope: expected.scope,
+              signal,
+              work: async (authority) => {
+                authority.revalidate();
+                if (!mintedCode || !hasHydratableStewardToken()) return false;
+                appModeNavigation.replace(url);
+                // The browser accepted navigation; this document no longer owns
+                // the code, including if navigation tears down its React route.
+                mintedCode = null;
+                return true;
+              },
+            });
+          } catch (error) {
+            // error-policy:J4 a superseded/cancelled handoff goes to ordinary login;
+            // unexpected navigation failures retain their distinct UI boundary.
+            if (error instanceof StewardSessionAuthorityError) return false;
+            throw error;
+          }
         },
+        burn: burnMintedCodeOnce,
       },
       kind: "redirect",
       url,
@@ -266,58 +305,70 @@ function MintLeg({
 }): React.JSX.Element {
   const operationRef = useRef<{
     activeEffects: Set<number>;
+    controller: AbortController;
     key: string;
     promise: Promise<MintLegOutcome>;
   } | null>(null);
   const effectGenerationRef = useRef(0);
+  const retired = useRef(false);
   const [notInitiated, setNotInitiated] = useState(false);
   const [unexpectedFailure, setUnexpectedFailure] = useState(false);
 
   useEffect(() => {
+    const hide = () => {
+      retired.current = true;
+      operationRef.current?.controller.abort();
+    };
+    const show = () => {
+      if (retired.current && !redirectToAppLogin(hostname, returnTo))
+        setUnexpectedFailure(true);
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    return () => {
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
+    };
+  }, [hostname, returnTo]);
+
+  useEffect(() => {
+    // A restored bridge must not replay a single-use challenge. Its page
+    // listener sends it to ordinary login while preserving the destination.
+    if (retired.current) return;
     const effectGeneration = effectGenerationRef.current + 1;
     effectGenerationRef.current = effectGeneration;
     const effectIsCurrent = () =>
-      effectGenerationRef.current === effectGeneration;
+      !retired.current && effectGenerationRef.current === effectGeneration;
     const operationKey = JSON.stringify([hostname, state, challenge, returnTo]);
     const previousOperation = operationRef.current;
+    const controller = new AbortController();
     const operation =
       previousOperation?.key === operationKey
         ? previousOperation
         : {
             activeEffects: new Set<number>(),
+            controller,
             key: operationKey,
-            promise: runMintLegOperation(hostname, state, challenge, returnTo),
+            promise: runMintLegOperation(
+              hostname,
+              state,
+              challenge,
+              returnTo,
+              controller.signal,
+            ),
           };
     operationRef.current = operation;
     operation.activeEffects.add(effectGeneration);
 
-    const redirectToAppLogin = (): boolean => {
-      const appOrigin = pairedAppOrigin(hostname);
-      try {
-        appModeNavigation.replace(
-          appOrigin ? appLoginUrl(appOrigin, returnTo) : "/",
-        );
-        return true;
-      } catch (error) {
-        // error-policy:J1 the UI navigation boundary reports the browser error;
-        // its caller renders the distinct authentication-error route.
-        reportRendererDiagnostic({
-          scope: "steward.sso-bridge.login-navigation",
-          error,
-          severity: "error",
-        });
-        return false;
-      }
-    };
-
     void operation.promise
-      .then((outcome) => {
+      .then(async (outcome) => {
         if (!effectIsCurrent()) {
           if (outcome.kind === "redirect" && outcome.handoff) {
             // StrictMode immediately re-subscribes to the same operation. A
             // microtask distinguishes that replay from a real abandonment.
             queueMicrotask(() => {
-              if (operation.activeEffects.size === 0) outcome.handoff?.burn();
+              if (retired.current || operation.activeEffects.size === 0)
+                outcome.handoff?.burn();
             });
           }
           return;
@@ -326,14 +377,16 @@ function MintLeg({
           setNotInitiated(true);
           return;
         }
-        if (outcome.handoff && !outcome.handoff.isCurrent()) {
-          outcome.handoff.burn();
-          if (!redirectToAppLogin()) setUnexpectedFailure(true);
-          return;
-        }
         try {
-          appModeNavigation.replace(outcome.url);
-          outcome.handoff?.transfer();
+          if (outcome.handoff) {
+            if (!(await outcome.handoff.navigate())) {
+              outcome.handoff.burn();
+              if (effectIsCurrent() && !redirectToAppLogin(hostname, returnTo))
+                setUnexpectedFailure(true);
+            }
+          } else {
+            appModeNavigation.replace(outcome.url);
+          }
         } catch (error) {
           // error-policy:J1 report the failed handoff navigation at the UI
           // boundary before burning custody. Only the expected browser-policy
@@ -344,11 +397,12 @@ function MintLeg({
             severity: "error",
           });
           outcome.handoff?.burn();
+          if (!effectIsCurrent()) return;
           if (
             !(
               error instanceof DOMException && error.name === "SecurityError"
             ) ||
-            !redirectToAppLogin()
+            !redirectToAppLogin(hostname, returnTo)
           ) {
             setUnexpectedFailure(true);
           }
@@ -370,6 +424,9 @@ function MintLeg({
       if (effectIsCurrent()) {
         effectGenerationRef.current = effectGeneration + 1;
       }
+      queueMicrotask(() => {
+        if (operation.activeEffects.size === 0) operation.controller.abort();
+      });
     };
   }, [hostname, state, challenge, returnTo]);
 
@@ -395,38 +452,87 @@ function ExchangeLeg({
   state: string | null;
   returnTo: string;
 }): React.JSX.Element {
-  const startedRef = useRef(false);
+  const operationRef = useRef<{
+    controller: AbortController;
+    subscribers: number;
+    promise: ReturnType<typeof performSsoExchange>;
+  } | null>(null);
   const navigate = useNavigate();
+  const retired = useRef(false);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    stripExchangeCredentialsFromAddressBar();
+    const hide = () => {
+      retired.current = true;
+      operationRef.current?.controller.abort();
+    };
+    const show = () => {
+      if (retired.current) setFailed(true);
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    return () => {
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
+    };
+  }, []);
 
-    // State nonce first, before ANY network call: the stored value is
-    // consumed single-shot, and only an exact echo of what THIS origin
-    // created may proceed. Missing/mismatched state (a handshake this origin
-    // never initiated — login CSRF) aborts to the local login; the code is
-    // never EXCHANGED, but a well-formed one is BURNED so it cannot remain
-    // redeemable from previously recorded redirect/request logs for its TTL.
-    const stored = consumeSsoBridgeState();
-    const verifier = consumeSsoBridgeVerifier();
-    const stateOk =
-      stored !== null && isWellFormedSsoState(state) && stored === state;
-    if (!stateOk || !isWellFormedSsoCode(code) || verifier === null) {
-      if (isWellFormedSsoCode(code)) burnSsoBridgeCode(code, hostname);
-      setFailed(true);
-      return;
-    }
+  useEffect(() => {
+    if (retired.current) return;
+    let operation = operationRef.current;
+    if (!operation) {
+      stripExchangeCredentialsFromAddressBar();
 
-    void performSsoExchange(code, verifier, hostname).then((result) => {
-      if (result.ok) {
-        navigate(returnTo, { replace: true });
+      // State nonce first, before ANY network call: the stored value is
+      // consumed single-shot, and only an exact echo of what THIS origin
+      // created may proceed. Missing/mismatched state (a handshake this origin
+      // never initiated — login CSRF) aborts to the local login; the code is
+      // never EXCHANGED, but a well-formed one is BURNED so it cannot remain
+      // redeemable from previously recorded redirect/request logs for its TTL.
+      const stored = consumeSsoBridgeState();
+      const verifier = consumeSsoBridgeVerifier();
+      const expected = consumeSsoBridgeAuthority(stored);
+      const stateOk =
+        stored !== null && isWellFormedSsoState(state) && stored === state;
+      if (
+        !stateOk ||
+        !isWellFormedSsoCode(code) ||
+        verifier === null ||
+        !expected
+      ) {
+        if (isWellFormedSsoCode(code)) burnSsoBridgeCode(code, hostname);
+        setFailed(true);
         return;
       }
-      setFailed(true);
+
+      const controller = new AbortController();
+      operation = {
+        controller,
+        subscribers: 0,
+        promise: performSsoExchange(code, verifier, hostname, fetch, {
+          expected,
+          signal: controller.signal,
+          onEstablished: () => navigate(returnTo, { replace: true }),
+        }),
+      };
+      operationRef.current = operation;
+    }
+    const currentOperation = operation;
+    currentOperation.subscribers += 1;
+    let active = true;
+    void currentOperation.promise.then((result) => {
+      if (active && !retired.current && !result.ok) setFailed(true);
     });
+    return () => {
+      active = false;
+      currentOperation.subscribers -= 1;
+      // StrictMode re-subscribes synchronously; real abandonment cancels the
+      // held transport and cannot publish or navigate on a late response.
+      queueMicrotask(() => {
+        if (currentOperation.subscribers === 0)
+          currentOperation.controller.abort();
+      });
+    };
   }, [hostname, code, state, returnTo, navigate]);
 
   if (failed) {
@@ -475,6 +581,12 @@ export function SsoBridgeRoute({
 
   return (
     <ExchangeLeg
+      key={JSON.stringify([
+        hostname,
+        params.get("code"),
+        params.get("state"),
+        returnTo,
+      ])}
       hostname={hostname}
       code={params.get("code")}
       state={params.get("state")}

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "sourceAtomicSchemaVersion": 1,
-  "scannedFiles": 908,
+  "scannedFiles": 909,
   "canonicalContracts": [
     {
       "id": "auth-result-shell",

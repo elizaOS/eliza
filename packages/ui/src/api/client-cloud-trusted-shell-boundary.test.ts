@@ -1,32 +1,68 @@
 /**
  * Verifies dedicated-agent account management crosses to the Cloud control
  * plane only from trusted native, desktop, and local-development app shells.
+ * Desktop persistence runs the real RPC/SQLite host in an isolated fixture;
+ * provider responses and the OS credential store remain deterministic doubles.
  */
 // @vitest-environment jsdom
+/// <reference types="bun-types/sqlite" />
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { constants, runInThisContext } from "node:vm";
 import {
+  clearStoredStewardToken,
+  configureStoredStewardTokenScope,
+  readStoredStewardToken,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RendererSecureTransactionRequest } from "@elizaos/shared/types";
+import { build } from "esbuild";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import type { createRendererSecureStoreRpc } from "../../../app-core/platforms/electrobun/src/renderer-secure-store-rpc";
 
 const platform = vi.hoisted(() => ({
   native: false,
+  secureValues: new Map<string, string>(),
   request: vi.fn(),
+  rpc: null as ReturnType<typeof createRendererSecureStoreRpc> | null,
+  directory: "",
 }));
 
 vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
-  desktopSecureStoreGet: vi.fn(async () => ({
-    ok: false,
-    reason: "not_found",
-  })),
-  desktopSecureStoreSet: vi.fn(async () => ({ ok: true })),
-  desktopSecureStoreDelete: vi.fn(async () => {
-    localStorage.removeItem(STEWARD_TOKEN_KEY);
-    return { ok: true, deleted: true };
-  }),
+  desktopSecureStoreGet: async (kind: string) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreGet({ kind });
+  },
+  desktopSecureStoreSet: async (kind: string, value: string) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreSet({ kind, value });
+  },
+  desktopSecureStoreDelete: async (kind: string) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreDelete({ kind });
+  },
+  desktopSecureStoreTransaction: async (
+    request: RendererSecureTransactionRequest,
+  ) => {
+    if (!platform.rpc) throw new Error("desktop fixture unavailable");
+    return platform.rpc.secureStoreTransaction(request);
+  },
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -46,6 +82,43 @@ import { STAGING_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 const DEDICATED_STAGING_BASE =
   "https://11111111-1111-4111-8111-111111111111.staging.elizacloud.ai";
 const STAGING_CONTROL_PLANE = STAGING_DIRECT_CLOUD_API_BASE_URL;
+let createRpc: typeof createRendererSecureStoreRpc;
+let hostBundleDirectory: string;
+beforeAll(async () => {
+  hostBundleDirectory = mkdtempSync(
+    join(process.cwd(), ".trusted-shell-host-"),
+  );
+  const output = join(hostBundleDirectory, "rpc.mjs");
+  await build({
+    entryPoints: [
+      join(
+        import.meta.dirname,
+        "../../../app-core/platforms/electrobun/src/renderer-secure-store-rpc.ts",
+      ),
+    ],
+    outfile: output,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    banner: {
+      js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+    },
+    external: ["bun:*", "node:*"],
+  });
+  // Native code executes under Node's loader, not jsdom's browser transform,
+  // which cannot resolve the unused Bun SQLite branch. Source is bundled fresh.
+  const loadNativeModule = runInThisContext("(url) => import(url)", {
+    importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+  }) as (url: string) => Promise<{
+    createRendererSecureStoreRpc: typeof createRendererSecureStoreRpc;
+  }>;
+  createRpc = (await loadNativeModule(pathToFileURL(output).href))
+    .createRendererSecureStoreRpc;
+});
+afterAll(() => {
+  if (hostBundleDirectory)
+    rmSync(hostBundleDirectory, { recursive: true, force: true });
+});
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
@@ -100,6 +173,8 @@ function setPageLocation(
 function setElectrobunRuntime(enabled: boolean): void {
   const runtimeWindow = window as ElectrobunWindow;
   if (enabled) {
+    // Match launcher bootstrap before the first canonical native token write.
+    configureStoredStewardTokenScope(STAGING_CONTROL_PLANE);
     Object.defineProperty(runtimeWindow, "__electrobunWindowId", {
       configurable: true,
       value: 1,
@@ -125,14 +200,14 @@ function configureTrustedShell(shell: (typeof TRUSTED_SHELL_CASES)[number]) {
 function mockTrustedShellResponse(
   body: unknown,
   status = 200,
-  beforeResponse?: () => void,
+  beforeResponse?: () => void | Promise<void>,
 ) {
   platform.request.mockImplementationOnce(async () => {
-    beforeResponse?.();
+    await beforeResponse?.();
     return { status, data: body };
   });
   return vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () => {
-    beforeResponse?.();
+    await beforeResponse?.();
     return jsonResponse(body, status);
   });
 }
@@ -152,6 +227,24 @@ function assertStewardRequests(
 }
 
 beforeEach(() => {
+  platform.directory = mkdtempSync(join(tmpdir(), "eliza-trusted-shell-"));
+  platform.secureValues.clear();
+  platform.rpc = createRpc({
+    directory: platform.directory,
+    vault: "fixture-trusted-shell",
+    store: {
+      async get(vault, slot) {
+        const value = platform.secureValues.get(`${vault}:${slot}`);
+        return value === undefined
+          ? { ok: false, reason: "not_found" }
+          : { ok: true, value };
+      },
+      async set(vault, slot, value) {
+        platform.secureValues.set(`${vault}:${slot}`, value);
+        return { ok: true };
+      },
+    },
+  });
   platform.native = false;
   platform.request.mockReset();
   localStorage.removeItem(STEWARD_TOKEN_KEY);
@@ -162,13 +255,18 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  localStorage.removeItem(STEWARD_TOKEN_KEY);
-  setElectrobunRuntime(false);
-  if (originalLocationDescriptor) {
-    Object.defineProperty(window, "location", originalLocationDescriptor);
+afterEach(async () => {
+  try {
+    await clearStoredStewardToken();
+  } finally {
+    setElectrobunRuntime(false);
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, "location", originalLocationDescriptor);
+    }
+    vi.restoreAllMocks();
+    platform.rpc = null;
+    rmSync(platform.directory, { recursive: true, force: true });
   }
-  vi.restoreAllMocks();
 });
 
 describe("dedicated Cloud account boundary on trusted app shells", () => {
@@ -178,7 +276,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       branding: {},
       cloudApiBase: "http://127.0.0.1:18787",
     });
-    localStorage.setItem(STEWARD_TOKEN_KEY, "local-test-api-key");
+    await writeStoredStewardToken("local-test-api-key");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(
@@ -202,7 +300,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     "preserves a healthy $label Steward session when the dedicated client mirrors the same token",
     async (shell) => {
       configureTrustedShell(shell);
-      localStorage.setItem(STEWARD_TOKEN_KEY, "shared-steward-token");
+      await writeStoredStewardToken("shared-steward-token");
       const fetchSpy = mockTrustedShellResponse({
         id: "user-1",
         organization_id: "org-1",
@@ -217,9 +315,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
         userId: "user-1",
         organizationId: "org-1",
       });
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
-        "shared-steward-token",
-      );
+      expect(readStoredStewardToken()).toBe("shared-steward-token");
 
       if (shell.native) {
         expect(platform.request).toHaveBeenCalledTimes(1);
@@ -242,7 +338,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     "clears only the rejected current $label token after a control-plane 401",
     async (shell) => {
       configureTrustedShell(shell);
-      localStorage.setItem(STEWARD_TOKEN_KEY, "  rejected-token  ");
+      await writeStoredStewardToken("  rejected-token  ");
       const fetchSpy = mockTrustedShellResponse({ error: "unauthorized" }, 401);
       const syncListener = vi.fn();
       const sessionTransitions: StewardSessionChangeDetail[] = [];
@@ -259,7 +355,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
         connected: false,
         reason: "auth-rejected",
       });
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(readStoredStewardToken()).toBeNull();
       expect(syncListener).toHaveBeenCalledTimes(1);
       expect(sessionTransitions).toHaveLength(1);
       expect(sessionTransitions[0]?.state).toBe("cleared");
@@ -284,19 +380,19 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       label: "dedicated request switched to self-host",
       initialBase: DEDICATED_STAGING_BASE,
       switchedBase: "https://agent.example.test",
-      expectedToken: null,
+      expectedToken: "rejected-token",
     },
     {
       label: "direct account request switched to dedicated",
       initialBase: STAGING_CONTROL_PLANE,
       switchedBase: DEDICATED_STAGING_BASE,
-      expectedToken: null,
+      expectedToken: "rejected-token",
     },
   ])(
     "uses the request-time client scope for a $label 401",
     async ({ initialBase, switchedBase, expectedToken }) => {
       setPageLocation("localhost");
-      localStorage.setItem(STEWARD_TOKEN_KEY, "rejected-token");
+      await writeStoredStewardToken("rejected-token");
       let client: ElizaClient;
       vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () => {
         client.setBaseUrl(switchedBase, { persist: false });
@@ -304,12 +400,11 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       });
       client = new ElizaClient(initialBase, "rejected-token");
 
-      await expect(client.getCloudStatus()).resolves.toMatchObject({
-        connected: false,
-        reason: "auth-rejected",
+      await expect(client.getCloudStatus()).rejects.toMatchObject({
+        code: "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
       });
 
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(expectedToken);
+      expect(readStoredStewardToken()).toBe(expectedToken);
     },
   );
 
@@ -332,14 +427,14 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       const fetchSpy = mockTrustedShellResponse(
         { error: "unauthorized" },
         401,
-        () => localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token"),
+        async () => writeStoredStewardToken("preserved-token"),
       );
       const client = new ElizaClient(baseUrl, "client-token");
 
       await client.getCloudStatus().catch(() => undefined);
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("preserved-token");
+      expect(readStoredStewardToken()).toBe("preserved-token");
     },
   );
 
@@ -347,21 +442,20 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     "preserves a refreshed $label token when an older in-flight request returns 401",
     async (shell) => {
       configureTrustedShell(shell);
-      localStorage.setItem(STEWARD_TOKEN_KEY, "old-token");
+      await writeStoredStewardToken("old-token");
       const fetchSpy = mockTrustedShellResponse(
         { error: "unauthorized" },
         401,
-        () => localStorage.setItem(STEWARD_TOKEN_KEY, "fresh-token"),
+        async () => writeStoredStewardToken("fresh-token"),
       );
       const syncListener = vi.fn();
       window.addEventListener("steward-token-sync", syncListener);
       const client = new ElizaClient(DEDICATED_STAGING_BASE, "old-token");
 
-      await expect(client.getCloudStatus()).resolves.toMatchObject({
-        connected: false,
-        reason: "auth-rejected",
+      await expect(client.getCloudStatus()).rejects.toMatchObject({
+        code: "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
       });
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("fresh-token");
+      expect(readStoredStewardToken()).toBe("fresh-token");
       expect(syncListener).not.toHaveBeenCalled();
 
       if (shell.native) {
@@ -378,7 +472,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     "preserves the stored token after $label HTTP $status",
     async (shell) => {
       configureTrustedShell(shell);
-      localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token");
+      await writeStoredStewardToken("preserved-token");
       mockTrustedShellResponse({ error: "request rejected" }, shell.status);
       const client = new ElizaClient(DEDICATED_STAGING_BASE, "preserved-token");
 
@@ -392,7 +486,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
           status: shell.status,
         });
       }
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("preserved-token");
+      expect(readStoredStewardToken()).toBe("preserved-token");
     },
   );
 
@@ -400,19 +494,19 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     "preserves the stored $label token after a network failure",
     async (shell) => {
       configureTrustedShell(shell);
-      localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token");
+      await writeStoredStewardToken("preserved-token");
       platform.request.mockRejectedValueOnce(new Error("offline"));
       vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("offline"));
       const client = new ElizaClient(DEDICATED_STAGING_BASE, "preserved-token");
 
       await expect(client.getCloudStatus()).rejects.toThrow("offline");
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("preserved-token");
+      expect(readStoredStewardToken()).toBe("preserved-token");
     },
   );
 
   it("uses only the stored Steward session for native list, create, and lifecycle requests", async () => {
     platform.native = true;
-    localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
+    await writeStoredStewardToken("steward-jwt");
     platform.request
       .mockResolvedValueOnce({
         status: 200,
@@ -506,7 +600,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     });
     expect(platform.request).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(readStoredStewardToken()).toBeNull();
   });
 
   it.each([
@@ -517,7 +611,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     async ({ hostname, electrobun }) => {
       setPageLocation(hostname);
       setElectrobunRuntime(electrobun);
-      localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
+      await writeStoredStewardToken("steward-jwt");
       const fetchSpy = vi
         .spyOn(globalThis, "fetch")
         .mockResolvedValueOnce(jsonResponse({ success: true, data: [] }))
@@ -607,7 +701,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
         data: { status: "auth-missing" },
       });
       expect(fetchSpy).not.toHaveBeenCalled();
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(readStoredStewardToken()).toBeNull();
     },
   );
 
@@ -640,7 +734,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
         branding: {},
         cloudApiBase: "https://attacker.example",
       });
-      localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
+      await writeStoredStewardToken("steward-jwt");
       const fetchSpy = vi.spyOn(globalThis, "fetch");
       const client = new ElizaClient(DEDICATED_STAGING_BASE, "agent-bearer");
 
@@ -704,9 +798,9 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       }),
     ).rejects.toThrow("requires a signed-in direct Eliza Cloud session");
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(readStoredStewardToken()).toBeNull();
 
-    localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
+    await writeStoredStewardToken("steward-jwt");
     await client.getCloudCompatAgents();
     await expect(
       client.createCloudCompatAgent({

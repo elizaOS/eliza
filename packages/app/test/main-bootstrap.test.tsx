@@ -2,14 +2,32 @@
  * Exercise the actual entrypoint bootstrap with real React roots in jsdom.
  * Like cloud-pair-session-token.test, isolate source from main's native/plugin
  * imports; select whole declarations with the TS AST, not copied boot logic.
+ * The real recovery boundary gates fixture account consumers; storage availability
+ * and completion are controlled collaborators, not native persistence proof.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { StorageRecoveryBoundary } from "@elizaos/ui/components/shell/StorageRecoveryBoundary";
+import { fireEvent, screen } from "@testing-library/react";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const storage = vi.hoisted(() => ({
+  required: false,
+  listeners: new Set<() => void>(),
+  initialize: vi.fn(async (): Promise<void> => undefined),
+}));
+vi.mock("@elizaos/ui/bridge/storage-bridge", () => ({
+  initializeStorageBridge: storage.initialize,
+  isStorageRecoveryRequired: () => storage.required,
+  subscribeStorageRecovery: (listener: () => void) => {
+    storage.listeners.add(listener);
+    return () => storage.listeners.delete(listener);
+  },
+}));
 
 const mainSource = ts.createSourceFile(
   "main.tsx",
@@ -123,7 +141,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
   };
   const appRender = vi.fn();
   const initializeAppModules = vi.fn(async () => {});
-  const initializeStorageBridge = vi.fn(async () => {});
+  const initializeStorageBridge = storage.initialize;
   const initializePlatform = vi.fn(async () => {});
   const initializeDeepLinks = vi.fn();
   const renderBootFailure = vi.fn(() => {
@@ -184,6 +202,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
       return <App />;
     },
     AppProvider,
+    StorageRecoveryBoundary,
     ErrorBoundary: Children,
     RenderTelemetryProfiler: Children,
     ShellModalityProvider: Children,
@@ -256,6 +275,8 @@ function createHarness(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  storage.required = false;
+  storage.initialize.mockReset().mockResolvedValue(undefined);
   document.body.innerHTML = '<div id="root"></div>';
   vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
 });
@@ -265,10 +286,55 @@ afterEach(async () => {
   await act(async () => {
     for (const root of roots.splice(0)) root.unmount();
   });
+  storage.listeners.clear();
   vi.restoreAllMocks();
 });
 
 describe("main renderer bootstrap ownership", () => {
+  it.each([true, false])(
+    "withholds account consumers until recovery finishes (web shell: %s)",
+    async (webShell) => {
+      storage.required = true;
+      const accountRead = vi.fn();
+      const harness = createHarness({
+        shouldMountWebShell: () => webShell,
+        AppProvider: ({ children }: React.PropsWithChildren) => {
+          accountRead();
+          return <>{children}</>;
+        },
+      });
+      await act(async () => {
+        const module = harness.evaluate("recovery", false);
+        await module.state.bootPromise;
+      });
+      expect(accountRead).not.toHaveBeenCalled();
+      expect(harness.appRender).not.toHaveBeenCalled();
+      expect(harness.renderBootFailure).not.toHaveBeenCalled();
+      expect(screen.queryByRole("textbox")).toBeNull();
+
+      const completion = Promise.withResolvers<void>();
+      storage.initialize.mockImplementationOnce(() => completion.promise);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      });
+      expect(storage.initialize).toHaveBeenCalledTimes(2);
+      // The signal may clear before the owner's remaining hydration completes.
+      await act(async () => {
+        storage.required = false;
+        for (const listener of storage.listeners) listener();
+      });
+      expect(accountRead).not.toHaveBeenCalled();
+      expect(harness.appRender).not.toHaveBeenCalled();
+      await act(async () => completion.resolve());
+      expect(accountRead).toHaveBeenCalled();
+      expect(
+        screen.getByRole("textbox", { name: "Chat composer" }),
+      ).toBeTruthy();
+      expect(harness.rootFactory).toHaveBeenCalledOnce();
+      expect(harness.initializePlatform).toHaveBeenCalledOnce();
+    },
+  );
+
   it.each([true, false])(
     "initializes and mounts once (hot context: %s)",
     async (hotEnabled) => {

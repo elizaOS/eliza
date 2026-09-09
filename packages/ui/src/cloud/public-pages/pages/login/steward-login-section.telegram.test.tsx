@@ -52,21 +52,29 @@ vi.mock("@elizaos/login", () => ({
   LoginApiError: class extends Error {},
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  STEWARD_TOKEN_KEY: "steward_session_token",
-  registerStewardTokenPersistence: vi.fn(),
-  registerStewardTokenRemoval: vi.fn(),
-  buildStewardOAuthAuthorizeUrl: vi.fn(),
-  generateStewardOAuthState: vi.fn(),
-  hasStewardAuthedCookie: () => false,
-  peekStewardOAuthState: () => null,
-  readStoredStewardToken: () => harness.storedToken,
-  StewardSessionError: class extends Error {},
-  writeStoredStewardToken: (token: string) => {
-    harness.storedToken = token;
-    return harness.writeToken(token);
-  },
-}));
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@elizaos/shared/steward-session-client")
+    >();
+  return {
+    ...actual,
+    buildStewardOAuthAuthorizeUrl: vi.fn(),
+    generateStewardOAuthState: vi.fn(),
+    hasStewardAuthedCookie: () => false,
+    peekStewardOAuthState: () => null,
+    readStoredStewardToken: () => harness.storedToken,
+    StewardSessionError: class extends Error {},
+    writeStoredStewardToken: async (
+      token: string,
+      options?: import("@elizaos/shared/steward-session-client").StewardTokenMutationOptions,
+    ) => {
+      await actual.writeStoredStewardToken(token, options);
+      harness.storedToken = token;
+      return harness.writeToken(token);
+    },
+  };
+});
 
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
@@ -121,6 +129,7 @@ describe("StewardLoginSection Telegram login", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_TELEGRAM_BOT_USERNAME", "elizastagingfelibot");
     harness.storedToken = null;
+    window.localStorage.clear();
     harness.signInWithTelegram.mockResolvedValue({
       token: "steward-token",
       refreshToken: "refresh-token",
@@ -205,6 +214,11 @@ describe("StewardLoginSection Telegram login", () => {
     expect(harness.syncSessionCookie).toHaveBeenCalledWith(
       "steward-token",
       "refresh-token",
+      expect.objectContaining({
+        authority: expect.objectContaining({
+          revalidate: expect.any(Function),
+        }),
+      }),
     );
     expect(harness.writeToken).toHaveBeenCalledWith("steward-token");
   });

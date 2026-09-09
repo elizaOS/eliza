@@ -10,8 +10,16 @@
  * surface server rejections verbatim instead of minting a fake session.
  */
 
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  registerStewardTokenPersistence,
+  resetStewardTabSessionAuthorityCoordinatorForTests,
+  STEWARD_TOKEN_KEY,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
+import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -151,6 +159,8 @@ function jsonResponse(body: unknown, status: number): Response {
 describe("StewardLoginSection local test account sign-in", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
+    resetStewardTabSessionAuthorityCoordinatorForTests();
     setCookie("eliza-test-auth=; Max-Age=0; Path=/");
     sessionSpies.sync.mockResolvedValue(undefined);
     sessionSpies.recover.mockResolvedValue({ ok: true });
@@ -160,6 +170,8 @@ describe("StewardLoginSection local test account sign-in", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+    resetStewardTabSessionAuthorityCoordinatorForTests();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -240,4 +252,144 @@ describe("StewardLoginSection local test account sign-in", () => {
     expect(readStoredStewardToken()).toBeNull();
     expect(hasTestAuthMarker()).toBe(false);
   });
+
+  it.each(["unmount", "pagehide", "replacement"])(
+    "does not publish a delayed local session after %s",
+    async (winner) => {
+      const response = Promise.withResolvers<Response>();
+      const fetchMock = vi.fn(
+        (_input: RequestInfo | URL, _init?: RequestInit) => response.promise,
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const view = renderSectionWithEnv({
+        testAuth: "true",
+        localKey: LOCAL_KEY,
+      });
+      fireEvent.click(await screen.findByRole("button", { name: BUTTON_NAME }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      if (winner === "unmount") view.unmount();
+      if (winner === "pagehide") fireEvent(window, new Event("pagehide"));
+      if (winner === "replacement")
+        localStorage.setItem(STEWARD_TOKEN_KEY, "replacement-fixture");
+      await act(async () => {
+        response.resolve(
+          jsonResponse({ token: "synthetic-local-session" }, 200),
+        );
+      });
+      expect(readStoredStewardToken()).toBe(
+        winner === "replacement" ? "replacement-fixture" : null,
+      );
+      expect(hasTestAuthMarker()).toBe(false);
+      if (winner !== "replacement")
+        expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    },
+  );
+
+  it("does not plant the authenticated marker if canonical persistence fails", async () => {
+    const unregister = registerStewardTokenPersistence(async () => {
+      throw new Error("Synthetic storage unavailable");
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ token: "synthetic-local-session" }, 200),
+      ),
+    );
+    try {
+      renderSectionWithEnv({ testAuth: "true", localKey: LOCAL_KEY });
+      fireEvent.click(await screen.findByRole("button", { name: BUTTON_NAME }));
+      await screen.findByRole("alert");
+      expect(readStoredStewardToken()).toBeNull();
+      expect(hasTestAuthMarker()).toBe(false);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("orders a queued logout after the local cookie request and canonical publication", async () => {
+    const response = Promise.withResolvers<Response>();
+    const fetchMock = vi.fn(() => response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    renderSectionWithEnv({ testAuth: "true", localKey: LOCAL_KEY });
+    fireEvent.click(await screen.findByRole("button", { name: BUTTON_NAME }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    let ended = false;
+    const logout = clearStoredStewardToken().then(() => {
+      ended = true;
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const endedBeforeResponse = ended;
+    await act(async () => {
+      response.resolve(jsonResponse({ token: "synthetic-local-session" }, 200));
+      await logout;
+    });
+    expect(endedBeforeResponse).toBe(false);
+    expect(readStoredStewardToken()).toBeNull();
+  });
+
+  it.each(["headers", "body"])(
+    "bounds stalled response %s and leaves later sign-in usable",
+    async (stage) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const response = Promise.withResolvers<Response>();
+      let streamController:
+        | ReadableStreamDefaultController<Uint8Array>
+        | undefined;
+      const streamed = new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+          },
+        }),
+      );
+      const fetchMock = vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) => {
+          // Model fetch's abort contract for both headers and body consumption.
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              const error = new DOMException("Aborted", "AbortError");
+              if (stage === "headers") response.reject(error);
+              else streamController?.error(error);
+            },
+            { once: true },
+          );
+          return stage === "headers"
+            ? response.promise
+            : Promise.resolve(streamed);
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        renderSectionWithEnv({ testAuth: "true", localKey: LOCAL_KEY });
+        fireEvent.click(
+          await screen.findByRole("button", { name: BUTTON_NAME }),
+        );
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10_001);
+        });
+        expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+        expect(screen.getByRole("alert")).toBeTruthy();
+        expect(
+          screen
+            .getByRole("button", { name: BUTTON_NAME })
+            .hasAttribute("disabled"),
+        ).toBe(false);
+        expect(hasTestAuthMarker()).toBe(false);
+        await act(async () => {
+          await writeStoredStewardToken("new-session-fixture");
+        });
+        expect(readStoredStewardToken()).toBe("new-session-fixture");
+        expect(hasTestAuthMarker()).toBe(false);
+      } finally {
+        response.resolve(
+          jsonResponse({ token: "synthetic-local-session" }, 200),
+        );
+        vi.useRealTimers();
+      }
+    },
+  );
 });

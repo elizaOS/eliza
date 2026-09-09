@@ -14,6 +14,7 @@ export interface JoinFlowClient {
     cloudApiBase: string;
     authToken: string;
     signal?: AbortSignal;
+    revalidate?: () => void;
     onProgress?: (status: string, detail?: string) => void;
     requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
   }): Promise<{
@@ -38,7 +39,7 @@ export interface JoinFlowEffects {
     accessToken?: string;
     cloudRuntimeAgentId?: string;
     cloudRuntime?: "shared" | "dedicated";
-  }): void;
+  }): boolean | void | Promise<boolean | void>;
   savePersistedFirstRunComplete(complete: boolean): void;
 }
 
@@ -49,6 +50,8 @@ export interface RunJoinFlowArgs {
   authToken: string;
   onProgress?: (status: string, detail?: string) => void;
   signal?: AbortSignal;
+  /** Original account/target guard, checked by the request owner and at publication. */
+  revalidate?: () => void;
   requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
 }
 
@@ -72,9 +75,11 @@ export async function runJoinFlow(
     authToken,
     onProgress,
     signal,
+    revalidate,
     requestDedicatedAdoptionConfirmation,
   } = args;
   signal?.throwIfAborted();
+  revalidate?.();
   onProgress?.("connecting", "Opening your personal Eliza…");
 
   const selected = await client.ensurePersonalDedicatedEliza({
@@ -82,11 +87,13 @@ export async function runJoinFlow(
     authToken,
     ...(onProgress ? { onProgress } : {}),
     ...(signal ? { signal } : {}),
+    ...(revalidate ? { revalidate } : {}),
     ...(requestDedicatedAdoptionConfirmation
       ? { requestDedicatedAdoptionConfirmation }
       : {}),
   });
   signal?.throwIfAborted();
+  revalidate?.();
 
   onProgress?.("connecting", "Connecting to your Dedicated agent…");
 
@@ -103,12 +110,9 @@ export async function runJoinFlow(
     );
   }
 
-  client.setBaseUrl(selected.apiBase);
-  client.setToken(authToken);
-
   onProgress?.("connecting", "Finishing setup…");
-
-  effects.savePersistedActiveServer({
+  revalidate?.();
+  const persisted = await effects.savePersistedActiveServer({
     id: `cloud:${selected.agentId}`,
     kind: "cloud",
     label: selected.agentName || "Eliza",
@@ -117,6 +121,14 @@ export async function runJoinFlow(
     cloudRuntimeAgentId: selected.activeAgentId,
     cloudRuntime: selected.runtime,
   });
+  if (persisted === false)
+    throw new Error("Could not persist the selected Cloud agent");
+  signal?.throwIfAborted();
+  revalidate?.();
+  client.setBaseUrl(selected.apiBase);
+  revalidate?.();
+  client.setToken(authToken);
+  revalidate?.();
   effects.savePersistedFirstRunComplete(true);
 
   return {

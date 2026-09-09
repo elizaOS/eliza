@@ -104,16 +104,36 @@ vi.mock("../../lib/steward-email-login", () => ({
   pollStewardEmailSignInStatus: emailLoginSpies.poll,
 }));
 
-vi.mock("../../lib/steward-session", () => ({
-  hasStewardOAuthCallbackInUrl: () => false,
-  consumeStewardCodeFromQuery: () => null,
-  stripLegacyTokenHashFromAddressBar: () => false,
-  exchangeStewardCodeViaApi: vi.fn(),
-  recoverStewardEmailSessionViaCookie: sessionSpies.recoverEmail,
-  recoverStewardSessionViaCookie: sessionSpies.recover,
-  refreshStewardSessionViaCookie: vi.fn(),
-  syncStewardSessionCookie: sessionSpies.sync,
-}));
+vi.mock("../../lib/steward-session", async () => {
+  const { getStewardTabSessionAuthorityCoordinator } = await import(
+    "@elizaos/shared/steward-session-client"
+  );
+  return {
+    hasStewardOAuthCallbackInUrl: () => false,
+    consumeStewardCodeFromQuery: () => null,
+    stripLegacyTokenHashFromAddressBar: () => false,
+    exchangeStewardCodeViaApi: vi.fn(),
+    recoverStewardEmailSessionViaCookie: async (
+      ...args: Parameters<
+        typeof import("../../lib/steward-session").recoverStewardEmailSessionViaCookie
+      >
+    ) => {
+      const session = await sessionSpies.recoverEmail(...args);
+      if (!session || args[1]?.signal?.aborted) return null;
+      await getStewardTabSessionAuthorityCoordinator().runExclusive({
+        kind: "refresh",
+        signal: args[1]?.signal,
+        work: async (authority) => {
+          await args[1]?.onRecovered?.(session, authority);
+        },
+      });
+      return session;
+    },
+    recoverStewardSessionViaCookie: sessionSpies.recover,
+    refreshStewardSessionViaCookie: vi.fn(),
+    syncStewardSessionCookie: sessionSpies.sync,
+  };
+});
 
 vi.mock("../../lib/steward-email-login-complete", () => ({
   subscribeStewardEmailLoginComplete: vi.fn(
@@ -150,6 +170,13 @@ async function startEmailLogin() {
   await screen.findByLabelText("Six-digit code");
 }
 
+function verifiedEmailFixture(email = "person@example.com") {
+  return {
+    ok: true as const,
+    token: `e30.${btoa(JSON.stringify({ email, userId: "email-fixture", exp: 4102444800 }))}.synthetic`,
+  };
+}
+
 describe("StewardLoginSection email magic-link companion code", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -167,7 +194,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
     emailLoginSpies.poll.mockResolvedValue("pending");
     sessionSpies.sync.mockResolvedValue(undefined);
     sessionSpies.recover.mockResolvedValue({ ok: true });
-    sessionSpies.recoverEmail.mockResolvedValue({ ok: true });
+    sessionSpies.recoverEmail.mockResolvedValue(verifiedEmailFixture());
     sessionSpies.hasAuthedCookie.mockReturnValue(false);
     emailCompleteSpies.listener = null;
     emailCompleteSpies.unsubscribe.mockReset();
@@ -194,6 +221,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
         {
           baseUrl: "https://api.example.test/steward",
           tenantId: "elizacloud",
+          signal: expect.any(AbortSignal),
         },
         "person@example.com",
         "123456",
@@ -203,6 +231,12 @@ describe("StewardLoginSection email magic-link companion code", () => {
       expect(sessionSpies.sync).toHaveBeenCalledWith(
         "session-token",
         "refresh-token",
+        expect.objectContaining({
+          authority: expect.objectContaining({
+            revalidate: expect.any(Function),
+          }),
+          signal: expect.any(AbortSignal),
+        }),
       ),
     );
     expect(window.localStorage.getItem("eliza_sso_logged_out")).toBeNull();
@@ -210,10 +244,12 @@ describe("StewardLoginSection email magic-link companion code", () => {
 
   it("binds consumed-link recovery to the challenged email", async () => {
     emailLoginSpies.poll.mockResolvedValue("consumed");
-    let finishRecovery: ((value: { ok: true }) => void) | undefined;
+    let finishRecovery:
+      | ((value: ReturnType<typeof verifiedEmailFixture>) => void)
+      | undefined;
     sessionSpies.recoverEmail.mockImplementation(
       () =>
-        new Promise<{ ok: true }>((resolve) => {
+        new Promise<ReturnType<typeof verifiedEmailFixture>>((resolve) => {
           finishRecovery = resolve;
         }),
     );
@@ -231,7 +267,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
     expect(screen.getByLabelText("Six-digit code")).toBeTruthy();
 
     await act(async () => {
-      finishRecovery?.({ ok: true });
+      finishRecovery?.(verifiedEmailFixture());
     });
 
     expect(await screen.findByText("Signed in")).toBeTruthy();
@@ -247,12 +283,16 @@ describe("StewardLoginSection email magic-link companion code", () => {
 
   it("aborts an abandoned challenge's recovery and never hands it to a later email", async () => {
     emailLoginSpies.poll.mockResolvedValue("consumed");
-    const pendingRecoveries: Array<(value: { ok: true } | null) => void> = [];
+    const pendingRecoveries: Array<
+      (value: ReturnType<typeof verifiedEmailFixture> | null) => void
+    > = [];
     sessionSpies.recoverEmail.mockImplementation(
       () =>
-        new Promise<{ ok: true } | null>((resolve) => {
-          pendingRecoveries.push(resolve);
-        }),
+        new Promise<ReturnType<typeof verifiedEmailFixture> | null>(
+          (resolve) => {
+            pendingRecoveries.push(resolve);
+          },
+        ),
     );
     renderSection();
     await startEmailLogin();
@@ -297,14 +337,14 @@ describe("StewardLoginSection email magic-link companion code", () => {
 
     // The abandoned email-A recovery resolving late must not sign email B in.
     await act(async () => {
-      pendingRecoveries[0]?.({ ok: true });
+      pendingRecoveries[0]?.(verifiedEmailFixture());
     });
     expect(screen.queryByText("Signed in")).toBeNull();
     expect(screen.getByLabelText("Six-digit code")).toBeTruthy();
 
     // Only email B's own keyed recovery completes the waiting tab.
     await act(async () => {
-      pendingRecoveries[1]?.({ ok: true });
+      pendingRecoveries[1]?.(verifiedEmailFixture("other@example.com"));
     });
     expect(await screen.findByText("Signed in")).toBeTruthy();
   });
@@ -331,7 +371,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
 
   it("falls back to /join for a hostile waiting-tab returnTo", async () => {
     emailLoginSpies.poll.mockResolvedValue("consumed");
-    sessionSpies.recoverEmail.mockResolvedValue({ ok: true });
+    sessionSpies.recoverEmail.mockResolvedValue(verifiedEmailFixture());
     renderSection("/login?returnTo=%2F%5C%5Cevil.example");
     await startEmailLogin();
 
@@ -368,10 +408,12 @@ describe("StewardLoginSection email magic-link companion code", () => {
   });
 
   it("keeps the waiting form live until advisory recovery is account-bound", async () => {
-    let finishRecovery: ((value: { ok: true }) => void) | undefined;
+    let finishRecovery:
+      | ((value: ReturnType<typeof verifiedEmailFixture>) => void)
+      | undefined;
     sessionSpies.recoverEmail.mockImplementation(
       () =>
-        new Promise<{ ok: true }>((resolve) => {
+        new Promise<ReturnType<typeof verifiedEmailFixture>>((resolve) => {
           finishRecovery = resolve;
         }),
     );
@@ -392,7 +434,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
     expect(screen.getByLabelText("Six-digit code")).toBeTruthy();
 
     await act(async () => {
-      finishRecovery?.({ ok: true });
+      finishRecovery?.(verifiedEmailFixture());
     });
 
     expect(await screen.findByText("Signed in")).toBeTruthy();

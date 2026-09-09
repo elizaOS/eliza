@@ -11,14 +11,27 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { ElizaError } from "@elizaos/core/errors";
 import { logger } from "@elizaos/logger";
 import {
+  getStewardTokenDeploymentScope,
   registerStewardTokenPersistence,
+  registerStewardTokenReader,
   registerStewardTokenRemoval,
+  STEWARD_PENDING_WRITE_KEY,
   STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
+  type StewardTokenScopePublication,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
+import {
+  captureDesktopStorageAuthority,
+  type DesktopStorageAuthority,
+  mutateDesktopSecureSlot,
+  recoverDesktopSecureSlot,
+} from "./desktop-secure-store-transaction";
 import {
   type DesktopSecureStoreKind,
   desktopSecureStoreDelete,
@@ -120,6 +133,150 @@ const PROTECTED_STORAGE_KIND = new Map<string, DesktopSecureStoreKind>([
 const protectedStorageCache = new Map<string, string>();
 const protectedStorageMutationVersion = new Map<string, number>();
 const protectedStorageMutationTail = new Map<string, Promise<void>>();
+const protectedStorageRecoveryFailures = new Set<string>();
+// A shared marker can disappear or be replaced in another renderer. Neither
+// event authorizes this renderer to recover a different interrupted operation.
+const protectedStorageRecoveryIdentity = new Map<string, string>();
+const storageRecoveryListeners = new Set<() => void>();
+
+/** Non-secret availability signal; active writes alone do not interrupt the mounted app. */
+export function isStorageRecoveryRequired(): boolean {
+  return protectedStorageRecoveryFailures.size > 0;
+}
+
+/** Observe settled storage failures and verified recovery, without exposing credentials or markers. */
+export function subscribeStorageRecovery(listener: () => void): () => void {
+  storageRecoveryListeners.add(listener);
+  return () => {
+    storageRecoveryListeners.delete(listener);
+  };
+}
+
+function reportStorageRecovery(
+  key: string,
+  required: boolean,
+  interruptedOperation?: string,
+): void {
+  // Mobile has a different recovery protocol and must retain its existing login surface.
+  if (isNativePlatform() || !isElectrobunRuntime()) return;
+  if (
+    !required &&
+    (pendingProtectedWrite(key) !== null ||
+      (key === STEWARD_TOKEN_KEY && pendingStewardWrite() !== null))
+  )
+    return;
+  const before = isStorageRecoveryRequired();
+  if (required) {
+    protectedStorageRecoveryFailures.add(key);
+    // Only serialized caller-owned writes supply this identity. A newly
+    // attempted own write replaces an older failure; a shared marker never does.
+    if (interruptedOperation)
+      protectedStorageRecoveryIdentity.set(key, interruptedOperation);
+  } else {
+    protectedStorageRecoveryFailures.delete(key);
+    protectedStorageRecoveryIdentity.delete(key);
+  }
+  if (before !== isStorageRecoveryRequired())
+    for (const listener of storageRecoveryListeners) {
+      try {
+        listener();
+      } catch (error) {
+        // error-policy:J7 a presentation subscriber cannot change native publication success.
+        logger.warn(
+          { err: error },
+          "[StorageBridge] recovery subscriber failed",
+        );
+      }
+    }
+}
+// Contains only an operation identifier, never a credential. A surviving marker
+// makes an interrupted native write unavailable on the next renderer startup.
+let activeStewardWrite: string | null = null;
+const activeGuardedWrites = new Map<string, string>();
+
+/** Non-secret interruption marker for guarded runtime/profile persistence. */
+function protectedPendingKey(key: string): string {
+  return `eliza:protected-storage-pending:${key}`;
+}
+
+function pendingProtectedWrite(key: string): string | null {
+  return window.localStorage.getItem(protectedPendingKey(key));
+}
+
+function clearPendingProtectedWrite(
+  key: string,
+  expected: string | null,
+): void {
+  if (expected === null || pendingProtectedWrite(key) !== expected) return;
+  runAsPrivilegedShell(() =>
+    window.localStorage.removeItem(protectedPendingKey(key)),
+  );
+  if (pendingProtectedWrite(key) === expected)
+    throw new Error("Protected write quarantine could not be cleared");
+}
+
+function pendingStewardWrite(): string | null {
+  return window.localStorage.getItem(STEWARD_PENDING_WRITE_KEY);
+}
+
+function clearPendingStewardWrite(expected: string | null): void {
+  if (expected === null || pendingStewardWrite() !== expected) return;
+  runAsPrivilegedShell(() =>
+    window.localStorage.removeItem(STEWARD_PENDING_WRITE_KEY),
+  );
+  if (pendingStewardWrite() === expected)
+    throw new Error("Steward write quarantine could not be cleared");
+}
+
+function readProtectedToken(): string | null {
+  const guarded = pendingProtectedWrite(STEWARD_TOKEN_KEY);
+  if (
+    guarded !== null &&
+    activeGuardedWrites.get(STEWARD_TOKEN_KEY) !== guarded
+  )
+    return null;
+  const pending = pendingStewardWrite();
+  if (pending !== null && pending !== activeStewardWrite) return null;
+  const value = protectedStorageCache.get(STEWARD_TOKEN_KEY) ?? null;
+  return !isNativePlatform() && isElectrobunRuntime()
+    ? readDesktopStewardToken(value)
+    : value;
+}
+
+/** Native storage spans renderer origins, so token and environment must be one protected payload. */
+function desktopStewardPayload(token: string, scope: string | null): string {
+  if (!scope || scope.startsWith("invalid:"))
+    throw new ElizaError("Desktop session environment is unavailable", {
+      code: "NATIVE_STORE_RECOVERY_REQUIRED",
+    });
+  return JSON.stringify({ schema: "eliza.steward-token/v1", token, scope });
+}
+
+/** Legacy unscoped tokens are preserved but cannot inherit the current renderer's environment. */
+function readDesktopStewardToken(value: string | null): string | null {
+  if (value === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    // error-policy:J3 unscoped legacy or malformed payload requires a new verified login.
+    return null;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("schema" in parsed) ||
+    parsed.schema !== "eliza.steward-token/v1" ||
+    !("token" in parsed) ||
+    typeof parsed.token !== "string" ||
+    !("scope" in parsed) ||
+    typeof parsed.scope !== "string" ||
+    parsed.scope.startsWith("invalid:") ||
+    parsed.scope !== getStewardTokenDeploymentScope()
+  )
+    return null;
+  return parsed.token;
+}
 
 function markProtectedStorageMutation(key: string): number {
   const version = (protectedStorageMutationVersion.get(key) ?? 0) + 1;
@@ -151,17 +308,31 @@ function serializeProtectedStorageMutation<T>(
 function serializedProtectedStoreSet(
   key: string,
   value: string,
+  deferUntilNextTask = false,
 ): Promise<boolean> {
   return serializeProtectedStorageMutation(key, async () => {
+    // Legacy Web Storage callers stay sync-fast, but must join the queue now:
+    // a delayed enqueue could overwrite a later awaited write after it resolves.
+    if (deferUntilNextTask)
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const pending = key === STEWARD_TOKEN_KEY ? pendingStewardWrite() : null;
+    const guardedPending = pendingProtectedWrite(key);
     if (!(await protectedStoreSet(key, value))) return false;
-    return (await protectedStoreGet(key)) === value;
+    if ((await protectedStoreGet(key)) !== value) return false;
+    if (key === STEWARD_TOKEN_KEY) clearPendingStewardWrite(pending);
+    clearPendingProtectedWrite(key, guardedPending);
+    return true;
   });
 }
 
 function serializedProtectedStoreDelete(key: string): Promise<void> {
-  return serializeProtectedStorageMutation(key, () =>
-    protectedStoreDelete(key),
-  );
+  return serializeProtectedStorageMutation(key, async () => {
+    const pending = key === STEWARD_TOKEN_KEY ? pendingStewardWrite() : null;
+    const guardedPending = pendingProtectedWrite(key);
+    await protectedStoreDelete(key);
+    if (key === STEWARD_TOKEN_KEY) clearPendingStewardWrite(pending);
+    clearPendingProtectedWrite(key, guardedPending);
+  });
 }
 
 function isProtectedStorageHost(): boolean {
@@ -323,7 +494,11 @@ async function readPreferenceWithTimeout(key: string): Promise<string | null> {
  * into the in-memory cache and optionally syncs them to localStorage.
  */
 export async function initializeStorageBridge(): Promise<void> {
-  if (initialized) {
+  // Desktop callers may retry after an acknowledged boot but an interrupted
+  // later write. Reconcile only that write, without adopting newer native
+  // values for the rest of this already-mounted renderer's account/selection.
+  const recoveryOnly = initialized;
+  if (recoveryOnly && (isNativePlatform() || !isElectrobunRuntime())) {
     return;
   }
 
@@ -415,41 +590,142 @@ export async function initializeStorageBridge(): Promise<void> {
   if (isProtectedStorageHost()) {
     for (const key of PROTECTED_STORAGE_KIND.keys()) {
       try {
-        const protectedValue = await protectedStoreGet(key);
-        if (protectedValue !== null) {
-          protectedStorageCache.set(key, protectedValue);
+        await serializeProtectedStorageMutation(key, async () => {
+          const version = protectedStorageMutationVersion.get(key);
+          const pending =
+            key === STEWARD_TOKEN_KEY
+              ? (pendingStewardWrite() ?? pendingProtectedWrite(key))
+              : pendingProtectedWrite(key);
+          if (!isNativePlatform() && isElectrobunRuntime()) {
+            const observed = protectedStorageRecoveryIdentity.get(key);
+            if (observed !== undefined && pending !== observed)
+              throw new ElizaError(
+                "Interrupted storage recovery identity changed",
+                { code: "NATIVE_STORE_RECOVERY_REQUIRED" },
+              );
+            if (pending !== null)
+              protectedStorageRecoveryIdentity.set(key, pending);
+          }
+          if (recoveryOnly && pending === null) {
+            if (protectedStorageRecoveryFailures.has(key))
+              throw new ElizaError(
+                "Interrupted storage no longer has its recovery identity",
+                {
+                  code: "NATIVE_STORE_RECOVERY_REQUIRED",
+                },
+              );
+            return;
+          }
+          if (pending !== null) {
+            // An interrupted renderer cannot hydrate by value alone. Desktop
+            // recovery requires this operation's own terminal native receipt.
+            protectedStorageCache.delete(key);
+            if (!isNativePlatform() && isElectrobunRuntime()) {
+              if (
+                key === STEWARD_TOKEN_KEY &&
+                pendingStewardWrite() !== null &&
+                pendingProtectedWrite(key) !== null &&
+                pendingStewardWrite() !== pendingProtectedWrite(key)
+              )
+                throw new ElizaError(
+                  "Multiple interrupted session writes require explicit recovery",
+                  { code: "NATIVE_STORE_RECOVERY_REQUIRED" },
+                );
+              const scope = getStewardTokenDeploymentScope();
+              const kind = PROTECTED_STORAGE_KIND.get(key);
+              if (!kind)
+                throw new ElizaError(
+                  "Protected storage kind is not registered",
+                  { code: "NATIVE_STORE_INVALID_INPUT" },
+                );
+              const validate = () => {
+                if (
+                  protectedStorageMutationVersion.get(key) !== version ||
+                  (key === STEWARD_TOKEN_KEY
+                    ? (pendingStewardWrite() ?? pendingProtectedWrite(key))
+                    : pendingProtectedWrite(key)) !== pending ||
+                  getStewardTokenDeploymentScope() !== scope
+                )
+                  throw new ElizaError(
+                    "Native storage recovery was superseded",
+                    { code: "NATIVE_STORE_SUPERSEDED" },
+                  );
+              };
+              const recovered = await recoverDesktopSecureSlot(
+                kind,
+                pending,
+                validate,
+              );
+              validate();
+              // The native receipt, not the old renderer marker, owns the value.
+              // Repair companion scope only for a token valid in this deployment.
+              if (
+                key === STEWARD_TOKEN_KEY &&
+                readDesktopStewardToken(recovered.value) !== null &&
+                scope !== null
+              ) {
+                runAsPrivilegedShell(() =>
+                  window.localStorage.setItem(STEWARD_TOKEN_SCOPE_KEY, scope),
+                );
+                if (
+                  window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) !== scope
+                )
+                  throw new ElizaError(
+                    "Recovered session scope did not round-trip",
+                    { code: "NATIVE_STORE_RECOVERY_REQUIRED" },
+                  );
+              }
+              validate();
+              if (key === STEWARD_TOKEN_KEY) clearPendingStewardWrite(pending);
+              clearPendingProtectedWrite(key, pending);
+              if (recovered.value !== null)
+                protectedStorageCache.set(key, recovered.value);
+              originalRemoveItem(key);
+            }
+            return;
+          }
+          const protectedValue = await protectedStoreGet(key);
+          if (protectedValue !== null) {
+            if (protectedStorageMutationVersion.get(key) === version)
+              protectedStorageCache.set(key, protectedValue);
+            originalRemoveItem(key);
+            if (isNativePlatform()) {
+              const { Preferences } = await loadPreferences();
+              await Preferences.remove({ key });
+            }
+            return;
+          }
+
+          const preferenceValue = isNativePlatform()
+            ? await readPreferenceWithTimeout(key)
+            : null;
+          const legacyValue = preferenceValue ?? originalGetItem(key);
+          if (legacyValue === null) return;
+
+          const stored = await protectedStoreSet(key, legacyValue);
+          const verified = stored ? await protectedStoreGet(key) : null;
+          if (verified !== legacyValue) {
+            throw new ElizaError("Protected-storage migration did not verify", {
+              code: "NATIVE_STORE_RECOVERY_REQUIRED",
+            });
+          }
+          if (protectedStorageMutationVersion.get(key) === version)
+            protectedStorageCache.set(key, legacyValue);
           originalRemoveItem(key);
           if (isNativePlatform()) {
             const { Preferences } = await loadPreferences();
             await Preferences.remove({ key });
           }
-          continue;
-        }
-
-        const preferenceValue = isNativePlatform()
-          ? await readPreferenceWithTimeout(key)
-          : null;
-        const legacyValue = preferenceValue ?? originalGetItem(key);
-        if (legacyValue === null) continue;
-
-        protectedStorageCache.set(key, legacyValue);
-        const stored = await protectedStoreSet(key, legacyValue);
-        const verified = stored ? await protectedStoreGet(key) : null;
-        if (verified !== legacyValue) {
-          protectedStoreResponded = false;
-          logger.error(
-            { key },
-            "[StorageBridge] protected-storage migration did not verify",
-          );
-          continue;
-        }
-        originalRemoveItem(key);
-        if (isNativePlatform()) {
-          const { Preferences } = await loadPreferences();
-          await Preferences.remove({ key });
-        }
+        });
+        if (
+          pendingProtectedWrite(key) === null &&
+          (key !== STEWARD_TOKEN_KEY || pendingStewardWrite() === null)
+        )
+          reportStorageRecovery(key, false);
       } catch (err) {
+        // error-policy:J4 preserve the unavailable session and expose an explicit retry surface.
         protectedStoreResponded = false;
+        reportStorageRecovery(key, true);
         logger.error(
           { err, key },
           "[StorageBridge] protected-storage hydration failed",
@@ -501,6 +777,22 @@ function setupStorageProxy(): void {
   const { prototypeSetItem, prototypeGetItem, prototypeRemoveItem } =
     nativeStorage;
   const secureSetItem = (key: string, value: string): void => {
+    if (
+      key === STEWARD_TOKEN_KEY &&
+      !isNativePlatform() &&
+      isElectrobunRuntime()
+    ) {
+      originalRemoveItem(key);
+      // error-policy:J4 synchronous legacy callers cannot observe durable failure;
+      // retain the verified mirror and report it instead of optimistic login.
+      void writeStoredStewardToken(value).catch((err) => {
+        logger.error(
+          { err, key },
+          "[StorageBridge] canonical desktop token write failed",
+        );
+      });
+      return;
+    }
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
       // Web Storage is synchronous, so this legacy-compatible surface remains
       // explicitly optimistic. Security-critical producers use the awaited
@@ -509,23 +801,21 @@ function setupStorageProxy(): void {
       markProtectedStorageMutation(key);
       protectedStorageCache.set(key, value);
       originalRemoveItem(key);
-      setTimeout(() => {
-        serializedProtectedStoreSet(key, value)
-          .then((stored) => {
-            if (!stored) {
-              logger.error(
-                { key },
-                "[StorageBridge] secure-store rejected protected write",
-              );
-            }
-          })
-          .catch((err) => {
+      void serializedProtectedStoreSet(key, value, true)
+        .then((stored) => {
+          if (!stored) {
             logger.error(
-              { err, key },
-              "[StorageBridge] failed to persist protected key",
+              { key },
+              "[StorageBridge] secure-store rejected protected write",
             );
-          });
-      }, 0);
+          }
+        })
+        .catch((err) => {
+          logger.error(
+            { err, key },
+            "[StorageBridge] failed to persist protected key",
+          );
+        });
       return;
     }
     // Always set in localStorage first
@@ -556,6 +846,10 @@ function setupStorageProxy(): void {
   // Override getItem
   const secureGetItem = (key: string): string | null => {
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+      const pending = pendingProtectedWrite(key);
+      if (pending !== null && activeGuardedWrites.get(key) !== pending)
+        return null;
+      if (key === STEWARD_TOKEN_KEY) return readProtectedToken();
       return protectedStorageCache.get(key) ?? null;
     }
     // For synced keys, prefer the cache (which was loaded from Preferences)
@@ -674,9 +968,24 @@ function setupStorageProxy(): void {
  */
 export async function getStorageValue(key: string): Promise<string | null> {
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
-    const value = await protectedStoreGet(key);
-    if (value !== null) protectedStorageCache.set(key, value);
-    return value ?? protectedStorageCache.get(key) ?? null;
+    return serializeProtectedStorageMutation(key, async () => {
+      if (
+        (key === STEWARD_TOKEN_KEY && pendingStewardWrite() !== null) ||
+        pendingProtectedWrite(key) !== null
+      )
+        return null;
+      const version = protectedStorageMutationVersion.get(key);
+      const value = await protectedStoreGet(key);
+      if (protectedStorageMutationVersion.get(key) === version) {
+        if (value === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, value);
+      }
+      return key === STEWARD_TOKEN_KEY &&
+        !isNativePlatform() &&
+        isElectrobunRuntime()
+        ? readDesktopStewardToken(value)
+        : value;
+    });
   }
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     const { Preferences } = await loadPreferences();
@@ -686,14 +995,186 @@ export async function getStorageValue(key: string): Promise<string | null> {
   return window.localStorage.getItem(key);
 }
 
-/**
- * Set a value in storage (works on both native and web)
- */
+export interface StorageMutationOptions {
+  revalidate?: () => void;
+  nativeAuthority?: DesktopStorageAuthority;
+  signal?: AbortSignal;
+}
+
+/** Pin this workflow to the native values its renderer actually observed. */
+export async function captureStorageMutationAuthority(
+  revalidate: () => void,
+): Promise<DesktopStorageAuthority | undefined> {
+  revalidate();
+  if (isNativePlatform() || !isElectrobunRuntime()) return undefined;
+  const values = new Map<DesktopSecureStoreKind, string | null>();
+  for (const [key, kind] of PROTECTED_STORAGE_KIND) {
+    if (
+      pendingProtectedWrite(key) !== null ||
+      (key === STEWARD_TOKEN_KEY && pendingStewardWrite() !== null)
+    )
+      throw new ElizaError("Interrupted native storage requires recovery", {
+        code: "NATIVE_STORE_RECOVERY_REQUIRED",
+        severity: "ephemeral",
+      });
+    values.set(kind, protectedStorageCache.get(key) ?? null);
+  }
+  return captureDesktopStorageAuthority(values, revalidate);
+}
+
+/** Serialize a guarded native write or deletion without adopting another workflow's authority. */
+async function mutateProtectedStorageValue(
+  key: string,
+  value: string | null,
+  revalidate: () => void,
+  nativeAuthority?: DesktopStorageAuthority,
+  signal?: AbortSignal,
+): Promise<void> {
+  const mutationVersion = markProtectedStorageMutation(key);
+  await serializeProtectedStorageMutation(key, async () => {
+    const validate = () => {
+      revalidate();
+      if (protectedStorageMutationVersion.get(key) !== mutationVersion)
+        throw new Error("Protected storage write was superseded");
+    };
+    validate();
+    if (!isNativePlatform() && isElectrobunRuntime()) {
+      const kind = PROTECTED_STORAGE_KIND.get(key);
+      if (!kind)
+        throw new ElizaError("Protected storage kind is not registered", {
+          code: "NATIVE_STORE_INVALID_INPUT",
+        });
+      const writeId = crypto.randomUUID();
+      runAsPrivilegedShell(() =>
+        window.localStorage.setItem(protectedPendingKey(key), writeId),
+      );
+      if (pendingProtectedWrite(key) !== writeId)
+        throw new ElizaError("Protected write quarantine did not round-trip", {
+          code: "NATIVE_STORE_QUARANTINE_FAILED",
+        });
+      const validateOwnMirror = () => {
+        // Only this synchronous authority check can see its predecessor. All
+        // unrelated reads during native awaits remain quarantined.
+        activeGuardedWrites.set(key, writeId);
+        try {
+          validate();
+        } finally {
+          activeGuardedWrites.delete(key);
+        }
+      };
+      try {
+        const published = await mutateDesktopSecureSlot(
+          kind,
+          value,
+          validateOwnMirror,
+          nativeAuthority?.expected(kind),
+          signal,
+          writeId,
+        );
+        // A cancelled caller must not publish a stale renderer mirror even
+        // when native seal already completed. It cannot undo that durable seal.
+        validateOwnMirror();
+        if (published.value !== value)
+          throw new ElizaError(
+            "Protected storage publication did not round-trip",
+            { code: "NATIVE_STORE_INVALID_REPLY" },
+          );
+        nativeAuthority?.acceptOwned(kind, published);
+        clearPendingProtectedWrite(key, writeId);
+        if (value === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, value);
+        reportStorageRecovery(key, false);
+      } catch (error) {
+        // error-policy:J2 retain quarantine for explicit recovery. The native
+        // helper reconciles only its own unsealed receipt, never old values.
+        if (protectedStorageMutationVersion.get(key) === mutationVersion)
+          protectedStorageCache.delete(key);
+        reportStorageRecovery(key, true, writeId);
+        throw error;
+      }
+      return;
+    }
+    const previous =
+      pendingProtectedWrite(key) === null ? await protectedStoreGet(key) : null;
+    validate();
+    // A surviving marker made this old cache unavailable. Starting a new
+    // writer may expose only that unavailable state, not resurrect it.
+    if (pendingProtectedWrite(key) !== null) protectedStorageCache.delete(key);
+    const writeId = crypto.randomUUID();
+    runAsPrivilegedShell(() =>
+      window.localStorage.setItem(protectedPendingKey(key), writeId),
+    );
+    if (pendingProtectedWrite(key) !== writeId)
+      throw new Error("Protected write quarantine did not round-trip");
+    activeGuardedWrites.set(key, writeId);
+    try {
+      if (value === null) await protectedStoreDelete(key);
+      else if (!(await protectedStoreSet(key, value)))
+        throw new Error(`Protected storage rejected write for ${key}`);
+      validate();
+      if ((await protectedStoreGet(key)) !== value)
+        throw new Error("Protected storage write did not round-trip");
+      validate();
+      clearPendingProtectedWrite(key, writeId);
+      if (value === null) protectedStorageCache.delete(key);
+      else protectedStorageCache.set(key, value);
+    } catch (error) {
+      // error-policy:J2 native transport may finish after cancellation.
+      // Compensate within this key's existing queue before newer writers
+      // proceed; never replace their already-published renderer cache.
+      activeGuardedWrites.delete(key);
+      if (previous === null) await protectedStoreDelete(key);
+      else if (!(await protectedStoreSet(key, previous)))
+        throw new Error("Protected storage rollback was rejected", {
+          cause: error,
+        });
+      if ((await protectedStoreGet(key)) !== previous)
+        throw new Error("Protected storage rollback did not round-trip", {
+          cause: error,
+        });
+      if (protectedStorageMutationVersion.get(key) === mutationVersion) {
+        if (previous === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, previous);
+      }
+      clearPendingProtectedWrite(key, writeId);
+      throw error;
+    } finally {
+      if (activeGuardedWrites.get(key) === writeId)
+        activeGuardedWrites.delete(key);
+    }
+  });
+}
+
+/** Set a value in storage, waiting for protected native acknowledgement when applicable. */
 export async function setStorageValue(
   key: string,
   value: string,
+  options: StorageMutationOptions = {},
 ): Promise<void> {
+  options.revalidate?.();
+  if (
+    key === STEWARD_TOKEN_KEY &&
+    !isNativePlatform() &&
+    isElectrobunRuntime()
+  ) {
+    await writeStoredStewardToken(value, {
+      beforePublish: options.revalidate,
+      signal: options.signal,
+      nativeAuthority: options.nativeAuthority,
+    });
+    return;
+  }
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+    if (options.revalidate) {
+      await mutateProtectedStorageValue(
+        key,
+        value,
+        options.revalidate,
+        options.nativeAuthority,
+        options.signal,
+      );
+      return;
+    }
     const mutationVersion = markProtectedStorageMutation(key);
     if (!(await serializedProtectedStoreSet(key, value))) {
       throw new Error(`Protected storage rejected write for ${key}`);
@@ -717,8 +1198,22 @@ export async function setStorageValue(
 /**
  * Remove a value from storage (works on both native and web)
  */
-export async function removeStorageValue(key: string): Promise<void> {
+export async function removeStorageValue(
+  key: string,
+  options: StorageMutationOptions = {},
+): Promise<void> {
+  options.revalidate?.();
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+    if (options.revalidate) {
+      await mutateProtectedStorageValue(
+        key,
+        null,
+        options.revalidate,
+        options.nativeAuthority,
+        options.signal,
+      );
+      return;
+    }
     const removalVersion = markProtectedStorageMutation(key);
     await serializedProtectedStoreDelete(key);
     if (protectedStorageMutationVersion.get(key) === removalVersion) {
@@ -748,7 +1243,190 @@ export function isStorageBridgeInitialized(): boolean {
   return initialized;
 }
 
-registerStewardTokenRemoval(() => removeStorageValue(STEWARD_TOKEN_KEY));
-registerStewardTokenPersistence((token) =>
-  setStorageValue(STEWARD_TOKEN_KEY, token),
+/** Publish a desktop token only through the operation's native receipt and captured authority. */
+async function persistDesktopStewardToken(
+  token: string,
+  revalidate: () => void,
+  scope: StewardTokenScopePublication,
+  signal: AbortSignal,
+): Promise<void> {
+  const payload = desktopStewardPayload(token, scope.deploymentScope);
+  const key = STEWARD_TOKEN_KEY;
+  const version = markProtectedStorageMutation(key);
+  await serializeProtectedStorageMutation(key, async () => {
+    const validate = () => {
+      revalidate();
+      if (protectedStorageMutationVersion.get(key) !== version)
+        throw new ElizaError("Protected Steward write was superseded", {
+          code: "NATIVE_STORE_SUPERSEDED",
+        });
+    };
+    const authority =
+      scope.nativeAuthority ??
+      (await captureStorageMutationAuthority(validate));
+    if (!authority)
+      throw new ElizaError("Desktop token authority is unavailable", {
+        code: "NATIVE_STORE_RECOVERY_REQUIRED",
+      });
+    validate();
+    const writeId = crypto.randomUUID();
+    runAsPrivilegedShell(() =>
+      window.localStorage.setItem(STEWARD_PENDING_WRITE_KEY, writeId),
+    );
+    if (pendingStewardWrite() !== writeId)
+      throw new ElizaError("Steward write quarantine did not round-trip", {
+        code: "NATIVE_STORE_QUARANTINE_FAILED",
+      });
+    const withOwnMirror = <T>(operation: () => T): T => {
+      activeStewardWrite = writeId;
+      try {
+        return operation();
+      } finally {
+        activeStewardWrite = null;
+      }
+    };
+    let scopeAttempted = false;
+    try {
+      const published = await mutateDesktopSecureSlot(
+        "session.steward_token",
+        payload,
+        () => withOwnMirror(validate),
+        authority.expected("session.steward_token"),
+        signal,
+        writeId,
+      );
+      withOwnMirror(() => {
+        validate();
+        scopeAttempted = true;
+        scope.commit(() => {
+          authority.acceptOwned("session.steward_token", published);
+          clearPendingStewardWrite(writeId);
+          protectedStorageCache.set(key, payload);
+          reportStorageRecovery(key, false);
+        });
+      });
+    } catch (error) {
+      // error-policy:J2 only the helper may reconcile its owned native receipt.
+      // A sealed token cannot be blindly restored if renderer scope publication
+      // fails; keep it quarantined for explicit recovery instead.
+      if (protectedStorageMutationVersion.get(key) === version)
+        protectedStorageCache.delete(key);
+      reportStorageRecovery(key, true, writeId);
+      if (pendingStewardWrite() === null) {
+        runAsPrivilegedShell(() =>
+          window.localStorage.setItem(STEWARD_PENDING_WRITE_KEY, writeId),
+        );
+        if (pendingStewardWrite() !== writeId)
+          throw new ElizaError("Steward recovery quarantine is unavailable", {
+            code: "NATIVE_STORE_QUARANTINE_FAILED",
+            cause: error,
+          });
+      }
+      if (scopeAttempted) scope.rollback();
+      throw error;
+    }
+  });
+}
+
+/** Delegate desktop ownership to native receipts; mobile retains its serialized compensation boundary. */
+async function persistStewardToken(
+  token: string,
+  revalidate: () => void,
+  scope: StewardTokenScopePublication,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!isProtectedStorageHost()) {
+    revalidate();
+    const previous = window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    try {
+      scope.commit(() =>
+        runAsPrivilegedShell(() => {
+          window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+          if (window.localStorage.getItem(STEWARD_TOKEN_KEY) !== token)
+            throw new Error("Browser Steward token did not round-trip");
+        }),
+      );
+    } catch (error) {
+      // error-policy:J2 preserve the complete browser token/scope pair on failure.
+      runAsPrivilegedShell(() => {
+        if (previous === null)
+          window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+        else window.localStorage.setItem(STEWARD_TOKEN_KEY, previous);
+      });
+      scope.rollback();
+      throw error;
+    }
+    return;
+  }
+  if (!isNativePlatform() && isElectrobunRuntime()) {
+    await persistDesktopStewardToken(token, revalidate, scope, signal);
+    return;
+  }
+  const key = STEWARD_TOKEN_KEY;
+  const version = markProtectedStorageMutation(key);
+  await serializeProtectedStorageMutation(key, async () => {
+    revalidate();
+    const previous =
+      pendingStewardWrite() === null ? await protectedStoreGet(key) : null;
+    revalidate();
+    if (pendingStewardWrite() !== null) protectedStorageCache.delete(key);
+    const writeId = crypto.randomUUID();
+    runAsPrivilegedShell(() =>
+      window.localStorage.setItem(STEWARD_PENDING_WRITE_KEY, writeId),
+    );
+    if (pendingStewardWrite() !== writeId)
+      throw new Error("Steward write quarantine did not round-trip");
+    activeStewardWrite = writeId;
+    try {
+      if (!(await protectedStoreSet(key, token))) {
+        throw new Error("Protected storage rejected Steward token write");
+      }
+      revalidate();
+      if ((await protectedStoreGet(key)) !== token) {
+        throw new Error("Protected Steward token did not round-trip");
+      }
+      revalidate();
+      if (protectedStorageMutationVersion.get(key) !== version)
+        throw new Error("Protected Steward write was superseded");
+      scope.commit(() => {
+        clearPendingStewardWrite(writeId);
+        protectedStorageCache.set(key, token);
+      });
+    } catch (error) {
+      // error-policy:J2 a native write may have happened despite rejection or
+      // abandonment. Restore its predecessor before any queued writer proceeds.
+      // No reader may use the active-writer bypass during asynchronous rollback.
+      activeStewardWrite = null;
+      if ((await protectedStoreGet(key)) !== previous) {
+        if (previous === null) await protectedStoreDelete(key);
+        else if (!(await protectedStoreSet(key, previous))) {
+          throw new Error("Protected Steward rollback was rejected", {
+            cause: error,
+          });
+        }
+        if ((await protectedStoreGet(key)) !== previous) {
+          throw new Error("Protected Steward rollback did not round-trip", {
+            cause: error,
+          });
+        }
+      }
+      scope.rollback();
+      if (protectedStorageMutationVersion.get(key) === version) {
+        if (previous === null) protectedStorageCache.delete(key);
+        else protectedStorageCache.set(key, previous);
+      }
+      clearPendingStewardWrite(writeId);
+      throw error;
+    } finally {
+      if (activeStewardWrite === writeId) activeStewardWrite = null;
+    }
+  });
+}
+
+registerStewardTokenReader(() =>
+  isProtectedStorageHost()
+    ? readProtectedToken()
+    : window.localStorage.getItem(STEWARD_TOKEN_KEY),
 );
+registerStewardTokenRemoval(() => removeStorageValue(STEWARD_TOKEN_KEY));
+registerStewardTokenPersistence(persistStewardToken);

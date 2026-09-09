@@ -10,6 +10,7 @@
  * singleton + the background model download).
  */
 
+import { registerStewardTokenPersistence } from "@elizaos/shared/steward-session-client";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,9 +58,11 @@ const mocks = vi.hoisted(() => ({
     submitFirstRun: vi.fn(async () => undefined),
     getFirstRunStatus: vi.fn(async () => ({ complete: false })),
     getBaseUrl: vi.fn(() => ""),
+    getAuthorityRevision: vi.fn(() => 0),
+    onAuthorityChange: vi.fn((_listener: () => void) => () => {}),
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
-    getRestAuthToken: vi.fn(() => null),
+    getRestAuthToken: vi.fn((): string | null => null),
     cloudLoginDirect: vi.fn(async (cloudApiBase: string) => ({
       ok: true,
       apiBase: cloudApiBase,
@@ -75,7 +78,9 @@ const mocks = vi.hoisted(() => ({
   // boundary like the client, mocked so the silent cookie-recovery entry
   // (#15133) is drivable without a real .elizacloud.ai session.
   refreshCloudStewardSession: vi.fn(
-    async (): Promise<{ token?: string } | null> => null,
+    async (
+      _options?: import("../api/client-cloud").CloudStewardRefreshOptions,
+    ): Promise<{ token?: string } | null> => null,
   ),
   preOpenCloudLoginWindow: vi.fn((): Window | null => null),
   // The device RAM probe is a native boundary like the client: tests inject a
@@ -167,6 +172,7 @@ import {
   CLOUD_LOGIN_POPUP_NAME,
 } from "../state/cloud-login-launch";
 import type { AppContextValue } from "../state/internal";
+import { loadPersistedActiveServer } from "../state/persistence";
 import { classifyDeviceRamTier } from "./device-ram-tier";
 import {
   tryHandleFirstRunAction,
@@ -375,7 +381,7 @@ beforeEach(() => {
   // default resolved implementations that individual tests override (a leaked
   // `mockRejectedValue`/`mockResolvedValue` would otherwise poison later tests).
   mocks.client.submitFirstRun.mockResolvedValue(undefined);
-  mocks.client.getPersonalSharedEliza.mockResolvedValue({
+  mocks.client.getPersonalSharedEliza.mockReset().mockResolvedValue({
     personalElizaId: PERSONAL_ELIZA_ID,
     agentId: PERSONAL_ELIZA_ID,
     activeAgentId: PERSONAL_ELIZA_ID,
@@ -388,6 +394,14 @@ beforeEach(() => {
     data: [],
   });
   mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+  mocks.client.getBaseUrl.mockReturnValue("");
+  mocks.client.getRestAuthToken.mockReturnValue(null);
+  mocks.client.setBaseUrl.mockImplementation((base: string | null) => {
+    mocks.client.getBaseUrl.mockReturnValue(base ?? "");
+  });
+  mocks.client.setToken.mockImplementation((token: string | null) => {
+    mocks.client.getRestAuthToken.mockReturnValue(token);
+  });
   mocks.client.cloudLoginDirect.mockResolvedValue({
     ok: true,
     apiBase: "https://eliza.app",
@@ -416,6 +430,7 @@ afterEach(() => {
   // Drop the steward-authed marker cookie some cloud-only tests plant — a
   // leaked cookie would flip later mounts into the silent recovery branch.
   writeTestCookie("steward-authed=; expires=Thu, 01 Jan 1970 00:00:00 GMT");
+  vi.unstubAllGlobals();
 });
 
 function writeTestCookie(value: string): void {
@@ -424,6 +439,81 @@ function writeTestCookie(value: string): void {
 }
 
 describe("useFirstRunConductor", () => {
+  it.each(["pagehide", "unmount"])(
+    "retires a chooser Cloud attempt on %s without publishing its late target",
+    async (departure) => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let signal: AbortSignal | undefined;
+      mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+        async (options) => {
+          signal = options.signal as AbortSignal;
+          await held;
+          return {
+            personalElizaId: PERSONAL_ELIZA_ID,
+            agentId: PERSONAL_ELIZA_ID,
+            activeAgentId: PERSONAL_ELIZA_ID,
+            agentName: "Eliza Cloud",
+            apiBase: PERSONAL_ELIZA_API_BASE,
+            runtime: "dedicated" as const,
+          };
+        },
+      );
+      const spies = seedAppStore();
+      const mounted = renderConductor();
+      try {
+        act(() => {
+          tryHandleFirstRunAction("__first_run__:runtime:cloud");
+        });
+        await waitFor(() =>
+          expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledOnce(),
+        );
+        if (departure === "unmount") mounted.unmount();
+        else
+          act(() => {
+            window.dispatchEvent(new Event("pagehide"));
+          });
+        expect(signal?.aborted).toBe(true);
+        release();
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        });
+        expect(loadPersistedActiveServer()).toBeNull();
+        expect(mocks.client.setBaseUrl).not.toHaveBeenCalled();
+        expect(spies.completeFirstRun).not.toHaveBeenCalled();
+        expect(mounted.turn("first-run:tutorial")).toBeUndefined();
+        if (departure === "pagehide") {
+          act(() => {
+            tryHandleFirstRunAction("__first_run__:cloud-login:retry");
+          });
+          expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledOnce();
+          act(() => {
+            window.dispatchEvent(new Event("pageshow"));
+          });
+          const error = mounted.transcript.current.find((turn) =>
+            turn.text.includes("__first_run__:error:retry="),
+          );
+          expect(error).toBeTruthy();
+          act(() => {
+            tryHandleFirstRunAction("__first_run__:error:retry");
+          });
+          await waitForTurn(mounted.turn, "first-run:tutorial");
+          expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(2);
+          expect(loadPersistedActiveServer()?.kind).toBe("cloud");
+          act(() => {
+            tryHandleFirstRunAction("__first_run__:tutorial:skip");
+          });
+          expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+        }
+      } finally {
+        release();
+        mounted.unmount();
+      }
+    },
+  );
+
   it("keeps cloud-only onboarding locked when a stale developer override enables the chooser", async () => {
     localStorage.removeItem("steward_session_token");
     localStorage.setItem("eliza:enable-runtime-chooser", "1");
@@ -1028,8 +1118,17 @@ describe("useFirstRunConductor", () => {
 
   it("keeps native Settings recovery retryable until the window opens, then returns the overlay to chat", async () => {
     windowWithElectrobun.__electrobunWindowId = 1;
-    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
-      new Error("Couldn't reach Eliza Cloud"),
+    // Native credentials come from the secure bridge or paired client, never
+    // the plaintext browser fixture. With no native RPC this must fail before
+    // account lookup, while still exposing the same retryable Settings escape.
+    mocks.client.getRestAuthToken.mockReturnValue("cloud-token");
+    localStorage.setItem(
+      "elizaos:agent-profiles",
+      JSON.stringify({
+        version: 1,
+        activeProfileId: null,
+        profiles: [],
+      }),
     );
     const spies = seedAppStore();
     const { transcript, turn, unmount } = renderConductor();
@@ -1043,6 +1142,16 @@ describe("useFirstRunConductor", () => {
     mocks.openDesktopSettingsWindow.mockRejectedValueOnce(
       new Error("Window unavailable"),
     );
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(
+      transcript.current.some(
+        (message) =>
+          message.id.startsWith("first-run:error:") &&
+          message.text.includes(
+            "Desktop credential transaction did not acknowledge",
+          ),
+      ),
+    ).toBe(true);
     tryHandleFirstRunAction("__first_run__:error:settings");
     await waitFor(() => {
       expect(
@@ -1133,7 +1242,12 @@ describe("useFirstRunConductor", () => {
     // "Try again" re-runs the SAME (cloud) flow and calls the shared selector
     // again without rendering a second in-chat OAuth card.
     expect(tryHandleFirstRunAction("__first_run__:error:retry")).toBe(true);
-    await waitForTurn(turn, "first-run:tutorial");
+    await waitFor(() => {
+      expect(
+        turn("first-run:tutorial"),
+        JSON.stringify(transcript.current),
+      ).toBeDefined();
+    });
     expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(2);
     expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     expect(turn("first-run:cloud-oauth")).toBeUndefined();
@@ -1824,15 +1938,8 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // #19511: the bind takes no agent inventory; the account's one personal
     // Eliza is resolved server-side. The signal lets a bounded first-run
     // attempt cancel this request without changing that server-side policy.
-    expect(
-      Object.keys(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).sort(),
-    ).toEqual([
-      "authToken",
-      "cloudApiBase",
-      "onProgress",
-      "requestDedicatedAdoptionConfirmation",
-      "signal",
-    ]);
+    expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
     expect(
       mocks.client.getPersonalSharedEliza.mock.calls[0][0]?.signal,
     ).toBeInstanceOf(AbortSignal);
@@ -2126,6 +2233,269 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       null,
     );
     unmount();
+  });
+
+  it.each(["unmount", "pagehide", "target", "session", "client-revision"])(
+    "does not publish or resume after %s during cookie-session persistence",
+    async (change) => {
+      localStorage.removeItem("steward_session_token");
+      writeTestCookie("steward-authed=1");
+      const actual = await vi.importActual<
+        typeof import("../api/client-cloud")
+      >("../api/client-cloud");
+      mocks.refreshCloudStewardSession.mockImplementation(
+        actual.refreshCloudStewardSession,
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json({ token: "late-cookie-token" })),
+      );
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let entered = false;
+      const unregister = registerStewardTokenPersistence(
+        async (token, _validate, scope) => {
+          entered = true;
+          await held;
+          scope.commit(() =>
+            localStorage.setItem("steward_session_token", token),
+          );
+        },
+      );
+      const spies = seedAppStore({ elizaCloudConnected: false });
+      const mounted = renderConductor();
+      try {
+        await waitFor(() => expect(entered).toBe(true));
+        if (change === "unmount") mounted.unmount();
+        else if (change === "pagehide")
+          act(() => window.dispatchEvent(new Event("pagehide")));
+        else if (change === "session")
+          localStorage.setItem("steward_session_token", "other-account-token");
+        else if (change === "client-revision")
+          mocks.client.getAuthorityRevision.mockReturnValue(2);
+        else
+          mocks.client.getBaseUrl.mockReturnValue("https://other.example.test");
+        release();
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        });
+        expect(localStorage.getItem("steward_session_token")).toBe(
+          change === "session" ? "other-account-token" : null,
+        );
+        expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+        expect(spies.completeFirstRun).not.toHaveBeenCalled();
+        if (change === "target")
+          expect(mounted.turn("first-run:cloud-oauth")).toBeTruthy();
+      } finally {
+        release();
+        mounted.unmount();
+        unregister();
+        mocks.client.getBaseUrl.mockReturnValue("");
+        mocks.client.getAuthorityRevision.mockReturnValue(0);
+      }
+    },
+  );
+
+  it("recovers through the actual cookie HTTP path and resumes the same account into chat", async () => {
+    localStorage.removeItem("steward_session_token");
+    writeTestCookie("steward-authed=1");
+    const actual = await vi.importActual<typeof import("../api/client-cloud")>(
+      "../api/client-cloud",
+    );
+    mocks.refreshCloudStewardSession.mockImplementation(
+      actual.refreshCloudStewardSession,
+    );
+    const request = vi.fn(async () =>
+      Response.json({ token: "http-cookie-token" }),
+    );
+    vi.stubGlobal("fetch", request);
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const mounted = renderConductor();
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
+    expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith(
+      "/api/auth/steward-refresh",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+    expect(localStorage.getItem("steward_session_token")).toBe(
+      "http-cookie-token",
+    );
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      authToken: "http-cookie-token",
+    });
+    expect(mounted.transcript.current).toEqual([]);
+    mounted.unmount();
+  });
+
+  it.each(["session", "target", "client-revision"])(
+    "does not bind the recovered account after %s changes during agent selection",
+    async (change) => {
+      localStorage.removeItem("steward_session_token");
+      writeTestCookie("steward-authed=1");
+      const actual = await vi.importActual<
+        typeof import("../api/client-cloud")
+      >("../api/client-cloud");
+      mocks.refreshCloudStewardSession.mockImplementation(
+        actual.refreshCloudStewardSession,
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json({ token: "recovered-account-token" })),
+      );
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      mocks.client.getPersonalSharedEliza.mockImplementationOnce(async () => {
+        await held;
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: PERSONAL_ELIZA_ID,
+          agentName: "Eliza Cloud",
+          apiBase: PERSONAL_ELIZA_API_BASE,
+          runtime: "dedicated" as const,
+        };
+      });
+      const spies = seedAppStore({ elizaCloudConnected: false });
+      const mounted = renderConductor();
+      try {
+        await waitFor(() =>
+          expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledOnce(),
+        );
+        expect(localStorage.getItem("steward_session_token")).toBe(
+          "recovered-account-token",
+        );
+        if (change === "session")
+          localStorage.setItem("steward_session_token", "new-account-token");
+        else if (change === "target")
+          mocks.client.getBaseUrl.mockReturnValue(
+            "https://new-agent.example.test",
+          );
+        else mocks.client.getAuthorityRevision.mockReturnValue(2);
+        release();
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        });
+        expect(mocks.client.setToken).not.toHaveBeenCalled();
+        expect(mocks.client.setBaseUrl).not.toHaveBeenCalled();
+        expect(loadPersistedActiveServer()).toBeNull();
+        expect(spies.completeFirstRun).not.toHaveBeenCalled();
+      } finally {
+        release();
+        mounted.unmount();
+        mocks.client.getBaseUrl.mockReturnValue("");
+        mocks.client.getAuthorityRevision.mockReturnValue(0);
+      }
+    },
+  );
+
+  it("starts a fresh recovery after BFCache return without publishing the departed request", async () => {
+    localStorage.removeItem("steward_session_token");
+    writeTestCookie("steward-authed=1");
+    const actual = await vi.importActual<typeof import("../api/client-cloud")>(
+      "../api/client-cloud",
+    );
+    mocks.refreshCloudStewardSession.mockImplementation(
+      actual.refreshCloudStewardSession,
+    );
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const request = vi.fn(async () =>
+      Response.json({ token: "returned-cookie-token" }),
+    );
+    request.mockImplementationOnce(async () => {
+      await held;
+      return Response.json({ token: "departed-cookie-token" });
+    });
+    vi.stubGlobal("fetch", request);
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const mounted = renderConductor();
+    try {
+      await waitFor(() => expect(request).toHaveBeenCalledOnce());
+      act(() => window.dispatchEvent(new Event("pagehide")));
+      await act(async () => {
+        localStorage.setItem(
+          "steward_session_token",
+          "background-account-token",
+        );
+        seedAppStore({ ...spies, elizaCloudConnected: true });
+      });
+      expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+      localStorage.removeItem("steward_session_token");
+      act(() => {
+        seedAppStore({ ...spies, elizaCloudConnected: false });
+      });
+      act(() => window.dispatchEvent(new Event("pageshow")));
+      expect(request).toHaveBeenCalledOnce();
+      release();
+      await waitFor(() =>
+        expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+      );
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(localStorage.getItem("steward_session_token")).toBe(
+        "returned-cookie-token",
+      );
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledOnce();
+      expect(
+        mocks.client.getPersonalSharedEliza.mock.calls[0][0],
+      ).toMatchObject({ authToken: "returned-cookie-token" });
+    } finally {
+      release();
+      mounted.unmount();
+    }
+  });
+
+  it("shows an actionable sign-in after the cookie deadline and refuses the late HTTP result", async () => {
+    localStorage.removeItem("steward_session_token");
+    writeTestCookie("steward-authed=1");
+    const actual = await vi.importActual<typeof import("../api/client-cloud")>(
+      "../api/client-cloud",
+    );
+    mocks.refreshCloudStewardSession.mockImplementation(
+      actual.refreshCloudStewardSession,
+    );
+    let release!: () => void;
+    let signal: AbortSignal | null | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init: RequestInit) => {
+        signal = init.signal;
+        await held;
+        return Response.json({ token: "late-cookie-token" });
+      }),
+    );
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const mounted = renderConductor();
+    try {
+      await waitFor(
+        () =>
+          expect(mounted.turn("first-run:cloud-oauth")?.text).toContain(
+            "Sign in to Eliza Cloud",
+          ),
+        { timeout: 5_000 },
+      );
+      expect(signal?.aborted).toBe(true);
+      release();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      expect(localStorage.getItem("steward_session_token")).toBeNull();
+      expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+      expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    } finally {
+      release();
+      mounted.unmount();
+    }
   });
 
   it("a stale marker cookie degrades to today's sign-in greeting after the bounded refresh fails — then the token poll still upgrades to welcome-back", async () => {

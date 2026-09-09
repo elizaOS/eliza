@@ -19,6 +19,7 @@ import { logger } from "@elizaos/logger";
 import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import {
   clearStoredStewardToken,
+  getStewardTabSessionAuthorityCoordinator,
   readStoredStewardToken,
   replaceStoredStewardTokenIfCurrent,
   writeStoredStewardToken,
@@ -2019,8 +2020,9 @@ export function useCloudState({
   useEffect(() => {
     if (!readStoredStewardToken()?.trim()) return;
 
-    let disposed = false;
+    let lifetime = new AbortController();
     const checkAndRefresh = async () => {
+      if (lifetime.signal.aborted) return;
       const storedToken = readStoredStewardToken();
       if (!storedToken) return;
       const token = storedToken.trim();
@@ -2029,15 +2031,33 @@ export function useCloudState({
       // No `exp` (opaque token / device-code session) → nothing to refresh.
       if (secs === null) return;
       if (secs >= STEWARD_REFRESH_AHEAD_SECS) return;
-      let result: Awaited<ReturnType<typeof refreshCloudStewardSession>>;
       try {
-        result = await refreshCloudStewardSession({
-          endpoint: resolveStewardRefreshEndpoint(),
+        const coordinator = getStewardTabSessionAuthorityCoordinator();
+        const expected = coordinator.readSnapshot();
+        await coordinator.runExclusive({
+          kind: "refresh",
+          expectedToken: expected.token,
+          expectedGeneration: expected.generation,
+          expectedScope: expected.scope,
+          signal: lifetime.signal,
+          timeoutMs: 30_000,
+          work: async (authority) => {
+            const result = await refreshCloudStewardSession({
+              endpoint: resolveStewardRefreshEndpoint(),
+              authority,
+            });
+            authority.revalidate();
+            if (result?.token) {
+              await replaceStoredStewardTokenIfCurrent(
+                storedToken,
+                result.token,
+                {
+                  authority,
+                },
+              );
+            }
+          },
         });
-        if (disposed) return;
-        if (result?.token) {
-          await replaceStoredStewardTokenIfCurrent(storedToken, result.token);
-        }
       } catch (err: unknown) {
         // error-policy:J4 a pre-emptive refresh or protected persistence
         // failure keeps the prior durable token until an auth boundary exposes
@@ -2047,6 +2067,16 @@ export function useCloudState({
       }
     };
 
+    const cancelRefresh = () => lifetime.abort();
+    const resumeRefresh = () => {
+      if (!lifetime.signal.aborted) return;
+      // A BFCache return starts a new attempt against the current session;
+      // it must never revive the request or publication cancelled at pagehide.
+      lifetime = new AbortController();
+      void checkAndRefresh();
+    };
+    window.addEventListener("pagehide", cancelRefresh);
+    window.addEventListener("pageshow", resumeRefresh);
     void checkAndRefresh();
     const interval = window.setInterval(() => {
       if (
@@ -2059,7 +2089,9 @@ export function useCloudState({
     }, STEWARD_REFRESH_CHECK_INTERVAL_MS);
 
     return () => {
-      disposed = true;
+      lifetime.abort();
+      window.removeEventListener("pagehide", cancelRefresh);
+      window.removeEventListener("pageshow", resumeRefresh);
       clearInterval(interval);
     };
   }, [elizaCloudConnected]);

@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@elizaos/logger";
+import type { DesktopStorageAuthority } from "../bridge/desktop-secure-store-transaction";
 import { setStorageValue } from "../bridge/storage-bridge";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
@@ -48,7 +49,9 @@ function emptyRegistry(): AgentProfileRegistry {
  * Attempt to migrate a single-agent `PersistedActiveServer` entry into a
  * profile registry.  Returns null if no prior server is found.
  */
-function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
+function migrateFromPersistedActiveServer(
+  persist: boolean,
+): AgentProfileRegistry | null {
   const raw = localStorage.getItem(ACTIVE_SERVER_KEY);
   if (!raw) return null;
 
@@ -88,7 +91,7 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
   };
 
   // Persist immediately so migration only runs once.
-  shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
+  if (persist) shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
   // Leave elizaos:active-server intact for rollback.
   return registry;
 }
@@ -96,6 +99,12 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
 /* ── Public API ──────────────────────────────────────────────────────── */
 
 export function loadAgentProfileRegistry(): AgentProfileRegistry {
+  return readAgentProfileRegistry(true);
+}
+
+function readAgentProfileRegistry(
+  persistMigration: boolean,
+): AgentProfileRegistry {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -105,8 +114,34 @@ export function loadAgentProfileRegistry(): AgentProfileRegistry {
       }
     }
     // No registry yet — try migrating from legacy single-server entry.
-    return migrateFromPersistedActiveServer() ?? emptyRegistry();
+    return (
+      migrateFromPersistedActiveServer(persistMigration) ?? emptyRegistry()
+    );
   }, emptyRegistry());
+}
+
+/** Materialize legacy or empty profiles durably before a first-run server can become a migration source. */
+export async function prepareAgentProfileRegistryDurably(
+  revalidate: () => void,
+  nativeAuthority?: DesktopStorageAuthority,
+  signal?: AbortSignal,
+): Promise<string> {
+  revalidate();
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const serialized = JSON.stringify(readAgentProfileRegistry(false));
+  const validate = () => {
+    revalidate();
+    if (window.localStorage.getItem(STORAGE_KEY) !== previous)
+      throw new Error("First-run profile selection changed");
+  };
+  validate();
+  if (serialized !== previous)
+    await setStorageValue(STORAGE_KEY, serialized, {
+      revalidate: validate,
+      nativeAuthority,
+      signal,
+    });
+  return serialized;
 }
 
 export function saveAgentProfileRegistry(
@@ -222,6 +257,39 @@ export function addAgentProfile(
   return full;
 }
 
+/** Publish a first-run profile only after the protected store acknowledges the still-owned registry write. */
+export async function addAgentProfileDurably(
+  profile: Omit<AgentProfile, "id" | "createdAt">,
+  revalidate: () => void,
+  nativeAuthority?: DesktopStorageAuthority,
+  signal?: AbortSignal,
+): Promise<AgentProfile> {
+  revalidate();
+  const registry = readAgentProfileRegistry(false);
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const full: AgentProfile = {
+    ...profile,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
+  const validate = () => {
+    revalidate();
+    if (window.localStorage.getItem(STORAGE_KEY) !== previous)
+      throw new Error("First-run profile selection changed");
+  };
+  validate();
+  await setStorageValue(
+    STORAGE_KEY,
+    JSON.stringify({
+      ...registry,
+      profiles: [...registry.profiles, full],
+      activeProfileId: full.id,
+    }),
+    { revalidate: validate, nativeAuthority, signal },
+  );
+  return full;
+}
+
 /** Trailing-slash-insensitive apiBase compare (both sides may be normalized differently). */
 function sameApiBase(a: string | undefined, b: string | undefined): boolean {
   const norm = (v: string | undefined) => (v ?? "").replace(/\/+$/, "");
@@ -259,10 +327,28 @@ export function upsertAndActivateAgentProfile(
   profile: Omit<AgentProfile, "id" | "createdAt">,
 ): AgentProfile {
   const registry = loadAgentProfileRegistry();
+  const merged = upsertProfileInRegistry(registry, profile);
+  saveAgentProfileRegistry(registry);
+  return merged;
+}
+
+function upsertProfileInRegistry(
+  registry: AgentProfileRegistry,
+  profile: Omit<AgentProfile, "id" | "createdAt">,
+): AgentProfile {
   const existingIdx = registry.profiles.findIndex((stored) =>
     sameProfileIdentity(stored, profile),
   );
-  if (existingIdx === -1) return addAgentProfile(profile);
+  if (existingIdx === -1) {
+    const added: AgentProfile = {
+      ...profile,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+    };
+    registry.profiles.push(added);
+    registry.activeProfileId = added.id;
+    return added;
+  }
   const merged: AgentProfile = {
     ...registry.profiles[existingIdx],
     label: profile.label || registry.profiles[existingIdx].label,
@@ -278,8 +364,53 @@ export function upsertAndActivateAgentProfile(
   };
   registry.profiles[existingIdx] = merged;
   registry.activeProfileId = merged.id;
-  saveAgentProfileRegistry(registry);
   return merged;
+}
+
+async function commitProfileRegistryDurably(
+  registry: AgentProfileRegistry,
+  previous: string | null,
+  revalidate: () => void,
+): Promise<void> {
+  const validate = () => {
+    revalidate();
+    if (window.localStorage.getItem(STORAGE_KEY) !== previous)
+      throw new Error("Credential profile registry changed");
+  };
+  await setStorageValue(STORAGE_KEY, JSON.stringify(registry), {
+    revalidate: validate,
+  });
+}
+
+/** Await the matching profile's protected write before recovery can report success. */
+export async function updateAgentProfileDurably(
+  id: string,
+  updates: Partial<Omit<AgentProfile, "id" | "createdAt">>,
+  revalidate: () => void,
+): Promise<AgentProfile> {
+  revalidate();
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const registry = readAgentProfileRegistry(false);
+  const index = registry.profiles.findIndex((profile) => profile.id === id);
+  if (index === -1)
+    throw new Error("Credential profile is no longer available");
+  const updated = { ...registry.profiles[index], ...updates };
+  registry.profiles[index] = updated;
+  await commitProfileRegistryDurably(registry, previous, revalidate);
+  return updated;
+}
+
+/** Pairing uses the same identity merge as the picker, but awaits durable publication. */
+export async function upsertAndActivateAgentProfileDurably(
+  profile: Omit<AgentProfile, "id" | "createdAt">,
+  revalidate: () => void,
+): Promise<AgentProfile> {
+  revalidate();
+  const previous = window.localStorage.getItem(STORAGE_KEY);
+  const registry = readAgentProfileRegistry(false);
+  const updated = upsertProfileInRegistry(registry, profile);
+  await commitProfileRegistryDurably(registry, previous, revalidate);
+  return updated;
 }
 
 /** Preserve a cloud agent's platform identity when a profile becomes active. */

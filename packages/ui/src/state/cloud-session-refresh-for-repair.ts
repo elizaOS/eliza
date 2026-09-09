@@ -30,9 +30,11 @@
  */
 
 import {
+  getStewardTabSessionAuthorityCoordinator,
   hasStewardAuthedCookie,
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
+  type StewardTokenWriteOptions,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { refreshCloudStewardSession } from "../api/client-cloud";
@@ -48,7 +50,16 @@ export interface EnsureCloudSessionForRepairDeps {
   /** Injected (tests). Defaults to the canonical Steward refresh. */
   refreshFn?: typeof refreshCloudStewardSession;
   /** Injected (tests). Defaults to the localStorage Steward mirror write. */
-  writeToken?: (token: string) => Promise<void> | void;
+  writeToken?: (
+    token: string,
+    options?: StewardTokenWriteOptions,
+  ) => Promise<void> | void;
+  /** Lifetime of the UI recovery that will consume the result. */
+  signal?: AbortSignal;
+  /** Reject a replaced agent/target before publication and continuation. */
+  beforePublish?: () => void;
+  /** The continuing owner can omit its own legacy re-arm event; canonical publication still fires. */
+  emitSyncEvent?: boolean;
   /** Injected (tests). Defaults to the real refresh timeout. */
   timeoutMs?: number;
   /** Injected (tests). Defaults to real setTimeout-based race. */
@@ -96,6 +107,8 @@ export async function ensureCloudSessionForRepair(
     raceTimeout = defaultRaceTimeout,
   } = deps;
 
+  if (deps.signal?.aborted) return null;
+
   // Fast path: the app-origin mirror already has a token — nothing to recover.
   const existing = readToken()?.trim();
   if (existing) return existing;
@@ -106,28 +119,61 @@ export async function ensureCloudSessionForRepair(
   if (typeof window === "undefined") return null;
   if (!hasCookie()) return null;
 
-  let recovered: Awaited<ReturnType<typeof refreshCloudStewardSession>> = null;
+  const lifetime = new AbortController();
+  const cancel = () => lifetime.abort();
+  deps.signal?.addEventListener("abort", cancel, { once: true });
+  window.addEventListener("pagehide", cancel);
   try {
-    // error-policy:J4 a failed/absent cookie refresh yields null → the caller
-    // keeps the wall; it NEVER fabricates a session.
-    recovered = await raceTimeout(
-      refreshFn({ endpoint: resolveRepairRefreshEndpoint() }).catch(() => null),
-      timeoutMs,
-    );
+    const coordinator = getStewardTabSessionAuthorityCoordinator();
+    const expected = coordinator.readSnapshot();
+    const recovery = coordinator
+      .runExclusive({
+        kind: "refresh",
+        signal: lifetime.signal,
+        expectedToken: expected.token,
+        expectedGeneration: expected.generation,
+        expectedScope: expected.scope,
+        timeoutMs,
+        work: async (authority) => {
+          const validate = () => {
+            authority.revalidate();
+            deps.beforePublish?.();
+          };
+          validate();
+          const recovered = await refreshFn({
+            endpoint: resolveRepairRefreshEndpoint(),
+            authority,
+            timeoutMs,
+          });
+          validate();
+          const token = recovered?.token?.trim();
+          if (!token) return null;
+          await writeToken(token, { authority, beforePublish: validate });
+          validate();
+          if (
+            deps.emitSyncEvent !== false &&
+            typeof CustomEvent === "function"
+          ) {
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          }
+          return token;
+        },
+      })
+      .catch(() => {
+        // error-policy:J4 the recovery result is observed even if an injected
+        // UI deadline resolves first; failed work cannot publish a session.
+        return null;
+      });
+    // The UI deadline does not release the underlying coordinator hold: any
+    // unabortable transport retains ownership until its actual settlement.
+    return await raceTimeout(recovery, timeoutMs);
   } catch {
+    // error-policy:J4 failed/absent/cancelled recovery keeps the explicit wall;
+    // no fresh authority is borrowed to publish a late result.
     return null;
+  } finally {
+    lifetime.abort();
+    deps.signal?.removeEventListener("abort", cancel);
+    window.removeEventListener("pagehide", cancel);
   }
-
-  const token = recovered?.token?.trim();
-  if (!token) return null;
-
-  await writeToken(token);
-  // error-policy:J6 best-effort nudge — token consumers re-read next tick.
-  // dispatchEvent reports listener errors instead of rethrowing, so no
-  // try/catch is needed; the guard only skips environments without
-  // CustomEvent (never a real browser).
-  if (typeof CustomEvent === "function") {
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
-  }
-  return token;
 }

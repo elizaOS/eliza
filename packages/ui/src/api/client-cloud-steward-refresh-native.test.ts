@@ -6,7 +6,10 @@
  * Capacitor forced native + CapacitorHttp mocked, no live cloud.
  */
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  STEWARD_TOKEN_KEY,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorMocks = vi.hoisted(() => ({
@@ -29,6 +32,43 @@ vi.mock("../bridge/electrobun-runtime", () => ({
 import { refreshCloudStewardSession } from "./client-cloud";
 
 describe("refreshCloudStewardSession native bearer refresh", () => {
+  it("holds session authority until an abandoned native request actually settles", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "previous-owner");
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    capacitorMocks.request.mockImplementation(async () => {
+      await held;
+      return { status: 200, data: { token: "late-native-result" } };
+    });
+    const controller = new AbortController();
+    const result = refreshCloudStewardSession({
+      endpoint: "https://api.eliza.app/api/auth/steward-refresh",
+      signal: controller.signal,
+    }).then(
+      () => "accepted",
+      (error: Error) => error.name,
+    );
+    await vi.waitFor(() =>
+      expect(capacitorMocks.request).toHaveBeenCalledTimes(1),
+    );
+    controller.abort();
+    let newerCommitted = false;
+    const newer = writeStoredStewardToken("newer-owner").then(() => {
+      newerCommitted = true;
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(newerCommitted).toBe(false);
+    } finally {
+      release();
+      await newer;
+    }
+    expect(await result).toBe("StewardSessionAuthorityError");
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("newer-owner");
+  });
+
   const realFetch = globalThis.fetch;
 
   beforeEach(() => {

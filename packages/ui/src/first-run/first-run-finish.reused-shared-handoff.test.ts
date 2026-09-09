@@ -50,6 +50,8 @@ const clientMock = vi.hoisted(() => ({
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
   getBaseUrl: vi.fn(() => ""),
+  getAuthorityRevision: vi.fn(() => 0),
+  onAuthorityChange: vi.fn((_listener: () => void) => () => {}),
   createCloudCompatAgent: vi.fn(),
   startCloudAgentHandoff: vi.fn(),
   deleteSharedBridgeAgent: vi.fn(async () => ({ success: true })),
@@ -98,14 +100,18 @@ vi.mock("../config/boot-config", () => ({
   getBootConfig: () => bootConfigMock,
 }));
 
-vi.mock("../state", () => ({
-  addAgentProfile: vi.fn(() => ({ id: "profile-1" })),
-  createPersistedActiveServer: vi.fn((v) => ({ label: "Eliza Cloud", ...v })),
-  loadPersistedActiveServer: loadPersistedActiveServerMock,
-  removeAgentProfile: removeAgentProfileMock,
-  savePersistedActiveServer: vi.fn(),
-  savePersistedFirstRunComplete: savePersistedFirstRunCompleteMock,
-}));
+vi.mock("../state", async () => {
+  const actual = await vi.importActual<typeof import("../state")>("../state");
+  return {
+    ...actual,
+    addAgentProfile: vi.fn(actual.addAgentProfile),
+    createPersistedActiveServer: actual.createPersistedActiveServer,
+    loadPersistedActiveServer: loadPersistedActiveServerMock,
+    removeAgentProfile: removeAgentProfileMock,
+    savePersistedActiveServer: vi.fn(),
+    savePersistedFirstRunComplete: savePersistedFirstRunCompleteMock,
+  };
+});
 
 vi.mock("./mobile-runtime-mode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./mobile-runtime-mode")>()),
@@ -162,6 +168,14 @@ beforeEach(() => {
   window.localStorage.clear();
   clientMock.getCloudStatus.mockResolvedValue(null);
   clientMock.getRestAuthToken.mockReturnValue(null);
+  clientMock.getBaseUrl.mockReturnValue("");
+  clientMock.getRestAuthToken.mockReturnValue(null);
+  clientMock.setBaseUrl.mockImplementation((base: string | null) => {
+    clientMock.getBaseUrl.mockReturnValue(base ?? "");
+  });
+  clientMock.setToken.mockImplementation((token: string | null) => {
+    clientMock.getRestAuthToken.mockReturnValue(token);
+  });
   clientMock.getPersonalSharedEliza.mockResolvedValue({
     personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
     agentId: "personal:00000000-0000-5000-8000-000000000001",

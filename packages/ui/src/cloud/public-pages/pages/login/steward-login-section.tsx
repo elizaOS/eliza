@@ -27,11 +27,18 @@ import { LoginApiError, LoginAuth } from "@elizaos/login";
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
   clearStoredStewardToken,
+  consumeStewardOAuthAttempt,
+  createStewardOAuthAuthorityBinding,
   generateStewardOAuthState,
+  getStewardTabSessionAuthorityCoordinator,
   hasStewardAuthedCookie,
-  peekStewardOAuthState,
   readStoredStewardToken,
+  runStewardSessionAuthorityExclusive,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthoritySnapshot,
+  type StewardSessionAuthorityWorkContext,
   StewardSessionError,
+  type StewardTokenMutationOptions,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import type { CountryCode } from "libphonenumber-js/min";
@@ -91,7 +98,6 @@ import {
 import { subscribeStewardEmailLoginComplete } from "../../lib/steward-email-login-complete";
 import {
   buildStewardOAuthRedirectUri,
-  consumeStewardPkceVerifier,
   createStewardPkcePair,
   type StewardOAuthProvider,
   storeStewardPkceVerifier,
@@ -124,6 +130,11 @@ import {
   normalizePhoneForCountry,
   PHONE_COUNTRY_OPTIONS,
 } from "./phone-country";
+import {
+  createSignInAttempt,
+  type SignInAttempt,
+  withSignInAttempt,
+} from "./sign-in-attempt";
 import {
   configuredTelegramBotUsername,
   TelegramLoginWidget,
@@ -174,14 +185,35 @@ type EmailCheckState =
   | "locked"
   | "invalid";
 
-async function persistStewardToken(token: string): Promise<void> {
-  await writeStoredStewardToken(token);
-  if (readStoredStewardToken() !== token) {
-    throw new Error(
-      "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
-    );
-  }
-  clearSsoLoggedOut();
+async function persistStewardToken(
+  token: string,
+  options: StewardTokenMutationOptions = {},
+  onPersisted?: (authority: StewardSessionAuthorityWorkContext) => void,
+): Promise<void> {
+  const expected =
+    options.expected ??
+    options.authority?.revalidate() ??
+    getStewardTabSessionAuthorityCoordinator().readSnapshot();
+  const run =
+    options.authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+  await run({
+    kind: "token-write",
+    expectedToken: expected.token,
+    expectedGeneration: expected.generation,
+    expectedScope: expected.scope,
+    signal: options.signal,
+    work: async (authority) => {
+      await writeStoredStewardToken(token, { authority });
+      authority.revalidate();
+      if (readStoredStewardToken() !== token) {
+        throw new Error(
+          "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
+        );
+      }
+      clearSsoLoggedOut();
+      onPersisted?.(authority);
+    },
+  });
 }
 
 /**
@@ -321,6 +353,17 @@ function requireCompletedAuth(
  * their real message.
  */
 function describeCodeExchangeError(error: unknown, t: LoginTranslator): string {
+  if (error instanceof StewardSessionAuthorityError) {
+    if (error.code === "STEWARD_SESSION_AUTHORITY_SUPERSEDED") {
+      return t("cloud.login.sessionChanged", {
+        defaultValue:
+          "Your session changed during sign-in. Please sign in again below.",
+      });
+    }
+    return t("cloud.login.sessionInterrupted", {
+      defaultValue: "Sign-in could not finish safely. Please try again below.",
+    });
+  }
   if (
     error instanceof StewardSessionError &&
     (error.status === 401 || error.status === 403 || error.status === 410)
@@ -606,6 +649,9 @@ export default function StewardLoginSection() {
   const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
     PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
   const t = useCloudT();
+  // Changing display language must not restart a cookie mutation in progress.
+  const recoveryTranslator = useRef(t);
+  recoveryTranslator.current = t;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const pathname = useLocation().pathname;
@@ -656,6 +702,37 @@ export default function StewardLoginSection() {
   const [resendRemainingSeconds, setResendRemainingSeconds] = useState(0);
   const [resendAvailableAt, setResendAvailableAt] = useState(0);
   const [step, setStep] = useState<AuthStep>("idle");
+  const emailAttemptRef = useRef<SignInAttempt | null>(null);
+  const smsAttemptRef = useRef<SignInAttempt | null>(null);
+  const passkeyAttemptRef = useRef<SignInAttempt | null>(null);
+  const telegramAttemptRef = useRef<SignInAttempt | null>(null);
+  const walletAttemptRef = useRef<SignInAttempt | null>(null);
+  const oauthAttemptRef = useRef<SignInAttempt | null>(null);
+  const oauthCallbackRef = useRef<{
+    code: string;
+    state: string | null;
+    controller: AbortController;
+    subscribers: Set<symbol>;
+    promise: Promise<string>;
+  } | null>(null);
+  const localAttemptRef = useRef<SignInAttempt | null>(null);
+  useEffect(
+    () => () => {
+      emailAttemptRef.current?.controller.abort();
+      smsAttemptRef.current?.controller.abort();
+      passkeyAttemptRef.current?.controller.abort();
+      telegramAttemptRef.current?.controller.abort();
+      walletAttemptRef.current?.controller.abort();
+      oauthAttemptRef.current?.controller.abort();
+      localAttemptRef.current?.controller.abort();
+    },
+    [],
+  );
+
+  const externalSuccessAuthorityRef =
+    useRef<StewardSessionAuthoritySnapshot | null>(null);
+  const externalNavigationControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => externalNavigationControllerRef.current?.abort(), []);
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [accountSwitchError, setAccountSwitchError] = useState<string | null>(
@@ -673,11 +750,67 @@ export default function StewardLoginSection() {
   const [autoStartWallet, setAutoStartWallet] = useState<WalletKind | null>(
     null,
   );
+  useEffect(() => {
+    // The page owns the first intent even while the lazy wallet tree is
+    // suspended and has no mounted cleanup listener of its own.
+    const leaveProviderPage = () => {
+      const abandonedCodeOrTelegram = Boolean(
+        emailAttemptRef.current ||
+          smsAttemptRef.current ||
+          telegramAttemptRef.current,
+      );
+      emailAttemptRef.current?.controller.abort();
+      smsAttemptRef.current?.controller.abort();
+      telegramAttemptRef.current?.controller.abort();
+      emailAttemptRef.current = null;
+      smsAttemptRef.current = null;
+      telegramAttemptRef.current = null;
+      sharedSessionRecoveryRef.current?.controller.abort();
+      sharedSessionRecoveryRef.current = undefined;
+      if (abandonedCodeOrTelegram) {
+        setStep("idle");
+        setEmailChallenge(null);
+        setEmailCode("");
+        setSmsCode("");
+        setTelegramIntent(false);
+        setLoading(null);
+        setError(null);
+      }
+      if (passkeyAttemptRef.current) {
+        passkeyAttemptRef.current.controller.abort();
+        passkeyAttemptRef.current = null;
+        // BFCache preserves the tree: never restore an enabled enrollment
+        // button backed by an aborted attempt and an obsolete email grant.
+        setStep((current) => (current === "otp-entry" ? "idle" : current));
+        setOtpCode("");
+        setPasskeyEmailGrant(null);
+        setShowPasskeyRecovery(false);
+        setShowPasskeyEnrollmentRecovery(false);
+        setError(null);
+      }
+      walletAttemptRef.current?.controller.abort();
+      oauthAttemptRef.current?.controller.abort();
+      localAttemptRef.current?.controller.abort();
+      setAutoStartWallet(null);
+      setLoading((current) =>
+        current === "ethereum" ||
+        current === "solana" ||
+        current === "local" ||
+        current === "passkey" ||
+        STEWARD_OAUTH_PROVIDERS.some((provider) => provider === current)
+          ? null
+          : current,
+      );
+    };
+    window.addEventListener("pagehide", leaveProviderPage);
+    return () => window.removeEventListener("pagehide", leaveProviderPage);
+  }, []);
   // Wallet methods are collapsed behind a single toggle by default so email /
   // Magic Link is the clear above-the-fold primary action (#19217). Expanding
   // reveals the EVM / Solana peer buttons; clicking one mounts the lazy wallet
   // stack as before.
   const [showWalletOptions, setShowWalletOptions] = useState(false);
+  const passiveRecoveryPageHiddenRef = useRef(false);
   // Focus target for the controlled wallet region. After a chain intent locks
   // the disclosure toggle (walletButtonsMounted), keyboard focus must move
   // into this live region so it is not stranded on a newly-disabled control or
@@ -702,7 +835,11 @@ export default function StewardLoginSection() {
     | {
         email: string;
         controller: AbortController;
-        promise: ReturnType<typeof recoverStewardEmailSessionViaCookie>;
+        promise: Promise<{
+          token: string;
+          expected: StewardSessionAuthoritySnapshot;
+          signal: AbortSignal;
+        } | null>;
       }
     | undefined
   >(undefined);
@@ -781,7 +918,53 @@ export default function StewardLoginSection() {
     pending.controller.abort();
   }, []);
 
+  const beginSignInAttempt = useCallback(
+    (
+      kind:
+        | "email"
+        | "sms"
+        | "passkey"
+        | "telegram"
+        | "oauth"
+        | "local"
+        | WalletKind,
+    ): SignInAttempt => {
+      oauthCallbackRef.current?.controller.abort();
+      emailAttemptRef.current?.controller.abort();
+      smsAttemptRef.current?.controller.abort();
+      passkeyAttemptRef.current?.controller.abort();
+      telegramAttemptRef.current?.controller.abort();
+      walletAttemptRef.current?.controller.abort();
+      oauthAttemptRef.current?.controller.abort();
+      localAttemptRef.current?.controller.abort();
+      emailAttemptRef.current = null;
+      smsAttemptRef.current = null;
+      passkeyAttemptRef.current = null;
+      telegramAttemptRef.current = null;
+      walletAttemptRef.current = null;
+      oauthAttemptRef.current = null;
+      localAttemptRef.current = null;
+      setAutoStartWallet(null);
+      setTelegramIntent(kind === "telegram");
+      abortSharedEmailSessionRecovery();
+      setEmailChallenge(null);
+      const attempt = createSignInAttempt();
+      if (kind === "email") emailAttemptRef.current = attempt;
+      else if (kind === "sms") smsAttemptRef.current = attempt;
+      else if (kind === "passkey") passkeyAttemptRef.current = attempt;
+      else if (kind === "telegram") telegramAttemptRef.current = attempt;
+      else if (kind === "oauth") oauthAttemptRef.current = attempt;
+      else if (kind === "local") localAttemptRef.current = attempt;
+      else walletAttemptRef.current = attempt;
+      return attempt;
+    },
+    [abortSharedEmailSessionRecovery],
+  );
+
   const recoverSharedEmailSession = useCallback(() => {
+    const attempt = emailAttemptRef.current;
+    if (!attempt?.ready || attempt.controller.signal.aborted)
+      return Promise.resolve(null);
     const expected = email.trim().toLowerCase();
     const pending = sharedSessionRecoveryRef.current;
     if (pending?.email === expected && !pending.controller.signal.aborted) {
@@ -792,12 +975,41 @@ export default function StewardLoginSection() {
     pending?.controller.abort();
 
     const controller = new AbortController();
+    const cancelAttemptRecovery = () => controller.abort();
+    attempt.controller.signal.addEventListener("abort", cancelAttemptRecovery, {
+      once: true,
+    });
+    let receipt: StewardSessionAuthoritySnapshot | null = null;
+    let returnedReceipt = false;
     const promise = recoverStewardEmailSessionViaCookie(email, {
       signal: controller.signal,
+      expected: attempt.expected,
+      onRecovered: (_session, authority) => {
+        receipt = authority.revalidate();
+      },
     })
-      .then((session) => (controller.signal.aborted ? null : session))
+      .then((session) => {
+        if (controller.signal.aborted || !session?.token || !receipt)
+          return null;
+        returnedReceipt = true;
+        return {
+          token: session.token,
+          expected: receipt,
+          signal: controller.signal,
+        };
+      })
       .finally(() => {
-        if (sharedSessionRecoveryRef.current?.controller === controller) {
+        if (!returnedReceipt)
+          attempt.controller.signal.removeEventListener(
+            "abort",
+            cancelAttemptRecovery,
+          );
+        // Keep successful receipt cancellation owned until the waiting challenge
+        // leaves; unmount must also revoke a commit queued after HTTP settles.
+        if (
+          !returnedReceipt &&
+          sharedSessionRecoveryRef.current?.controller === controller
+        ) {
           sharedSessionRecoveryRef.current = undefined;
         }
       });
@@ -932,69 +1144,108 @@ export default function StewardLoginSection() {
     };
   }, [PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a router query change can deliver a new callback to this mounted route; the helpers consume its proof directly from the address bar.
   useEffect(() => {
     const code = consumeStewardCodeFromQuery();
-    if (code) {
-      // The OAuth `state` echo must exactly match the value stashed at
-      // /authorize time, and the PKCE verifier must still be in storage. A
-      // callback missing either is a planted or stale link: refusing the
-      // exchange is what stops a harvested `?code=` from logging this browser
-      // into the attacker's account. The verifier is consumed ONLY when the
-      // state matches, so the user's own in-flight flow survives clicking a
-      // foreign link.
-      const returnedState = consumeStewardOAuthStateFromCallback();
-      const expectedState = peekStewardOAuthState();
-      if (!returnedState || !expectedState || returnedState !== expectedState) {
-        stripLegacyTokenParamsFromAddressBar();
+    const returnedState = code ? consumeStewardOAuthStateFromCallback() : null;
+    let flight = oauthCallbackRef.current;
+    if (
+      code &&
+      (!flight || code !== flight.code || returnedState !== flight.state)
+    ) {
+      flight?.controller.abort();
+      const controller = new AbortController();
+      const promise = Promise.resolve().then(async () => {
+        controller.signal.throwIfAborted();
+        if (!returnedState) {
+          stripLegacyTokenParamsFromAddressBar();
+          throw new Error(
+            recoveryTranslator.current("cloud.login.callbackStateMismatch", {
+              defaultValue:
+                "This sign-in link is invalid or has expired. Please start sign-in again.",
+            }),
+          );
+        }
+        const { codeVerifier, expected, returnTo } =
+          await consumeStewardOAuthAttempt(returnedState, controller.signal);
+        const options = { expected, signal: controller.signal };
+        const res = await exchangeStewardCodeViaApi(code, {
+          redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
+          tenantId: STEWARD_TENANT_ID,
+          codeVerifier,
+          ...options,
+        });
+        let token = res?.token;
+        if (!token) {
+          const refreshed = await refreshStewardSessionViaCookie(options);
+          token = refreshed?.token;
+        }
+        if (!token) {
+          throw new Error(
+            "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
+          );
+        }
+        let destination: string | null = null;
+        await persistStewardToken(token, options, () => {
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          // Intent belongs to the selected state/verifier record, not to an
+          // unrelated tab's pending email intent or a modified callback URL.
+          destination = resolveLoginReturnTo(new URLSearchParams(), returnTo);
+        });
+        if (destination === null)
+          throw new Error("The sign-in destination could not be resolved.");
+        return destination;
+      });
+      flight = {
+        code,
+        state: returnedState,
+        controller,
+        subscribers: new Set(),
+        promise,
+      };
+      oauthCallbackRef.current = flight;
+    }
+    if (flight) {
+      const current = flight;
+      const subscriber = Symbol("oauth-callback");
+      current.subscribers.add(subscriber);
+      const ownsResult = () =>
+        current.subscribers.has(subscriber) &&
+        !current.controller.signal.aborted;
+      void current.promise.then(
+        (destination) => {
+          if (ownsResult()) setRedirectTo(destination);
+        },
+        (sessionError: unknown) => {
+          // error-policy:J4 only the live subscriber may display failure/recovery.
+          if (!ownsResult()) return;
+          setCompletingCallback(false);
+          setCallbackError(
+            describeCodeExchangeError(sessionError, recoveryTranslator.current),
+          );
+        },
+      );
+      const abandon = () => {
+        if (current.controller.signal.aborted) return;
+        current.controller.abort();
         setCompletingCallback(false);
         setCallbackError(
-          t("cloud.login.callbackStateMismatch", {
+          recoveryTranslator.current("cloud.login.callbackStateMismatch", {
             defaultValue:
               "This sign-in link is invalid or has expired. Please start sign-in again.",
           }),
         );
-        return;
-      }
-      const codeVerifier = consumeStewardPkceVerifier();
-      if (!codeVerifier) {
-        setCompletingCallback(false);
-        setCallbackError(
-          t("cloud.login.callbackVerifierMissing", {
-            defaultValue:
-              "This sign-in was started in another tab or has expired. Please start sign-in again.",
-          }),
-        );
-        return;
-      }
-      exchangeStewardCodeViaApi(code, {
-        redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
-        tenantId: STEWARD_TENANT_ID,
-        codeVerifier,
-      })
-        .then(async (res) => {
-          let token = res?.token;
-          if (!token) {
-            const refreshed = await refreshStewardSessionViaCookie().catch(
-              () => null,
-            );
-            token = refreshed?.token;
-          }
-          if (!token) {
-            throw new Error(
-              "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
-            );
-          }
-          await persistStewardToken(token);
-          window.dispatchEvent(new CustomEvent("steward-token-sync"));
-          setRedirectTo(
-            resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
-          );
-        })
-        .catch((sessionError) => {
-          setCompletingCallback(false);
-          setCallbackError(describeCodeExchangeError(sessionError, t));
+      };
+      window.addEventListener("pagehide", abandon);
+      return () => {
+        window.removeEventListener("pagehide", abandon);
+        current.subscribers.delete(subscriber);
+        // StrictMode immediately resubscribes to this same one-time operation;
+        // actual route departure cancels its remaining network/commit lifetime.
+        queueMicrotask(() => {
+          if (current.subscribers.size === 0) current.controller.abort();
         });
-      return;
+      };
     }
 
     // No OAuth code: drop any legacy credential link from the address bar.
@@ -1005,7 +1256,7 @@ export default function StewardLoginSection() {
     stripLegacyTokenParamsFromAddressBar();
     stripLegacyTokenHashFromAddressBar();
     setCompletingCallback(false);
-  }, [searchParams, t]);
+  }, [searchParams]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -1046,7 +1297,7 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (searchParams.get("switchAccount") === "1") return;
-    if (searchParams.get("code")) {
+    if (oauthCallbackRef.current || searchParams.get("code")) {
       setSessionRecoveryComplete(true);
       return;
     }
@@ -1059,67 +1310,131 @@ export default function StewardLoginSection() {
       return;
     }
 
-    setSessionRecoveryComplete(false);
-    let cancelled = false;
+    const beginRecovery = () => {
+      let cancelled = false;
+      const recoveryController = new AbortController();
+      let expected = getStewardTabSessionAuthorityCoordinator().readSnapshot();
 
-    const tryRecoverSession = async () => {
-      try {
-        let storedToken = readStoredStewardToken();
-        if (storedToken && !hasHydratableStewardToken()) {
-          // Expired, malformed, and identity-less local proofs cannot restore
-          // a session. Clear them before any network call so an unusable token
-          // cannot hide fresh sign-in controls behind session sync. A valid
-          // HttpOnly cookie is independent and still recovers below.
-          await clearStoredStewardToken();
-          storedToken = null;
-          window.dispatchEvent(new CustomEvent("steward-token-sync"));
-        }
-        if (storedToken) {
-          try {
-            // Session recovery establishes auth only. A pending Telegram claim
-            // remains inert until /get-started previews it and the user
-            // confirms it explicitly.
-            await syncStewardSessionCookie(storedToken, null);
-            if (!cancelled) {
-              setRedirectTo(resolveLoginReturnTo(searchParams));
+      const tryRecoverSession = async () => {
+        try {
+          let storedToken = expected.token;
+          if (storedToken && !hasHydratableStewardToken()) {
+            // Expired, malformed, and identity-less local proofs cannot restore
+            // a session. Clear them before any network call so an unusable token
+            // cannot hide fresh sign-in controls behind session sync. A valid
+            // HttpOnly cookie is independent and still recovers below.
+            expected = await runStewardSessionAuthorityExclusive({
+              kind: "callback-restore",
+              expectedToken: expected.token,
+              expectedGeneration: expected.generation,
+              expectedScope: expected.scope,
+              signal: recoveryController.signal,
+              work: async (authority) => {
+                await clearStoredStewardToken({ authority });
+                const cleared = authority.revalidate();
+                window.dispatchEvent(new CustomEvent("steward-token-sync"));
+                return cleared;
+              },
+            });
+            storedToken = null;
+          }
+          if (storedToken) {
+            try {
+              // Session recovery establishes auth only. A pending Telegram claim
+              // remains inert until /get-started previews it and the user
+              // confirms it explicitly.
+              const tokenToRestore = storedToken;
+              await runStewardSessionAuthorityExclusive({
+                kind: "callback-restore",
+                expectedToken: expected.token,
+                expectedGeneration: expected.generation,
+                expectedScope: expected.scope,
+                signal: recoveryController.signal,
+                work: async (authority) => {
+                  await syncStewardSessionCookie(tokenToRestore, null, {
+                    authority,
+                  });
+                  authority.revalidate();
+                  if (!cancelled)
+                    setRedirectTo(resolveLoginReturnTo(searchParams));
+                },
+              });
+              return;
+            } catch (storedTokenError) {
+              // error-policy:J4 A stale browser token may coexist with a valid
+              // HttpOnly refresh cookie. Retry only through the server-owned
+              // cookie boundary; never reintroduce a browser refresh token.
+              if (!hasStewardAuthedCookie()) throw storedTokenError;
+            }
+          }
+
+          if (hasStewardAuthedCookie()) {
+            const refreshed = await recoverStewardSessionViaCookie({
+              expected,
+              signal: recoveryController.signal,
+            });
+            if (cancelled) return;
+            if (refreshed?.token) {
+              await persistStewardToken(
+                refreshed.token,
+                {
+                  expected,
+                  signal: recoveryController.signal,
+                },
+                () => {
+                  window.dispatchEvent(new CustomEvent("steward-token-sync"));
+                  setRedirectTo(resolveLoginReturnTo(searchParams));
+                },
+              );
             }
             return;
-          } catch (storedTokenError) {
-            // error-policy:J4 A stale browser token may coexist with a valid
-            // HttpOnly refresh cookie. Retry only through the server-owned
-            // cookie boundary; never reintroduce a browser refresh token.
-            if (!hasStewardAuthedCookie()) throw storedTokenError;
           }
+        } catch (sessionError) {
+          if (!cancelled) {
+            setError(
+              describeCodeExchangeError(
+                sessionError,
+                recoveryTranslator.current,
+              ),
+            );
+          }
+        } finally {
+          if (!cancelled) setSessionRecoveryComplete(true);
         }
+      };
 
-        if (hasStewardAuthedCookie()) {
-          const refreshed = await recoverStewardSessionViaCookie();
-          if (cancelled) return;
-          if (refreshed?.token) {
-            await writeStoredStewardToken(refreshed.token);
-            window.dispatchEvent(new CustomEvent("steward-token-sync"));
-            setRedirectTo(resolveLoginReturnTo(searchParams));
-          }
-          return;
-        }
-      } catch (sessionError) {
-        if (!cancelled) {
-          setError(
-            getErrorMessage(
-              sessionError,
-              "Could not restore the local Steward session",
-            ),
-          );
-        }
-      } finally {
-        if (!cancelled) setSessionRecoveryComplete(true);
-      }
+      void tryRecoverSession();
+
+      return () => {
+        cancelled = true;
+        recoveryController.abort();
+      };
     };
 
-    void tryRecoverSession();
-
+    let abandon = () => {};
+    const start = () => {
+      setSessionRecoveryComplete(false);
+      if (!passiveRecoveryPageHiddenRef.current) abandon = beginRecovery();
+    };
+    const leave = () => {
+      passiveRecoveryPageHiddenRef.current = true;
+      abandon();
+      setSessionRecoveryComplete(false);
+    };
+    const resume = () => {
+      if (!passiveRecoveryPageHiddenRef.current) return;
+      passiveRecoveryPageHiddenRef.current = false;
+      // BFCache retains React: capture a fresh authority and controller rather
+      // than permitting a response from the departed page to resume publication.
+      start();
+    };
+    window.addEventListener("pagehide", leave);
+    window.addEventListener("pageshow", resume);
+    start();
     return () => {
-      cancelled = true;
+      abandon();
+      window.removeEventListener("pagehide", leave);
+      window.removeEventListener("pageshow", resume);
     };
   }, [searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
@@ -1169,14 +1484,20 @@ export default function StewardLoginSection() {
             const recovered = await recoverSharedEmailSession();
             if (cancelled) return;
             if (recovered) {
-              if (recovered.token) {
-                await persistStewardToken(recovered.token);
-                window.dispatchEvent(new CustomEvent("steward-token-sync"));
-              }
-              setExternalSuccessDestination(resolveLoginReturnTo(searchParams));
-              setEmailCheckState("approved");
-              setError(null);
-              setStep("external-success");
+              await persistStewardToken(
+                recovered.token,
+                recovered,
+                (authority) => {
+                  window.dispatchEvent(new CustomEvent("steward-token-sync"));
+                  externalSuccessAuthorityRef.current = authority.revalidate();
+                  setExternalSuccessDestination(
+                    resolveLoginReturnTo(searchParams),
+                  );
+                  setEmailCheckState("approved");
+                  setError(null);
+                  setStep("external-success");
+                },
+              );
             } else {
               setEmailCheckState("approved");
               setError(
@@ -1230,7 +1551,7 @@ export default function StewardLoginSection() {
   ]);
 
   useEffect(() => {
-    if (step !== "email-sent" || !email.trim()) return;
+    if (step !== "email-sent" || !email.trim() || !emailChallenge) return;
     let cancelled = false;
     const unsubscribe = subscribeStewardEmailLoginComplete(email, (message) => {
       void (async () => {
@@ -1244,14 +1565,14 @@ export default function StewardLoginSection() {
             );
             return;
           }
-          if (recovered.token) {
-            await persistStewardToken(recovered.token);
+          await persistStewardToken(recovered.token, recovered, (authority) => {
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
-          }
-          setExternalSuccessDestination(message.destination);
-          setEmailCheckState("approved");
-          setError(null);
-          setStep("external-success");
+            externalSuccessAuthorityRef.current = authority.revalidate();
+            setExternalSuccessDestination(message.destination);
+            setEmailCheckState("approved");
+            setError(null);
+            setStep("external-success");
+          });
         } catch (sessionError) {
           // error-policy:J4 the advisory signal cannot create a signed-in UI;
           // failed authoritative recovery stays visible with resend available.
@@ -1271,7 +1592,7 @@ export default function StewardLoginSection() {
       cancelled = true;
       unsubscribe();
     };
-  }, [email, recoverSharedEmailSession, step]);
+  }, [email, emailChallenge, recoverSharedEmailSession, step]);
 
   useEffect(() => {
     const tracksEmailExpiry = step === "email-sent" && emailChallenge !== null;
@@ -1299,31 +1620,85 @@ export default function StewardLoginSection() {
     return () => clearInterval(interval);
   }, [emailChallenge, emailCheckState, resendAvailableAt, step]);
 
+  async function continueRecoveredEmailSession() {
+    if (externalNavigationControllerRef.current) return;
+    const controller = new AbortController();
+    externalNavigationControllerRef.current = controller;
+    try {
+      const expected = externalSuccessAuthorityRef.current;
+      if (!expected)
+        throw new StewardSessionAuthorityError(
+          "Email completion is no longer current.",
+          "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+        );
+      await runStewardSessionAuthorityExclusive({
+        kind: "callback-restore",
+        expectedToken: expected.token,
+        expectedGeneration: expected.generation,
+        expectedScope: expected.scope,
+        signal: controller.signal,
+        work: async (authority) => {
+          authority.revalidate();
+          navigate(
+            externalSuccessDestination ?? resolveLoginReturnTo(searchParams),
+            { replace: true },
+          );
+        },
+      });
+    } catch (sessionError) {
+      // error-policy:J4 an obsolete completion must offer fresh login, not carry
+      // a previous account's conversation intent into a different session.
+      if (!controller.signal.aborted) {
+        setError(
+          describeCodeExchangeError(sessionError, recoveryTranslator.current),
+        );
+        setStep("idle");
+      }
+    } finally {
+      if (externalNavigationControllerRef.current === controller)
+        externalNavigationControllerRef.current = null;
+    }
+  }
+
   async function handleSuccess(
     token: string,
     refreshToken?: string | null,
-    options?: { verifiedPhone: string },
+    options: StewardTokenMutationOptions & { verifiedPhone?: string } = {},
   ) {
-    setPasskeyEmailGrant(null);
-    setShowPasskeyEnrollmentRecovery(false);
-    if (options) {
-      await syncStewardSessionCookie(token, refreshToken, options);
-    } else {
-      await syncStewardSessionCookie(token, refreshToken);
-    }
-    // Publish the browser token only after the authoritative Cloud sync wins.
-    // Otherwise StewardProviderRuntime can race a second unhinted sync against
-    // phone-account promotion.
-    await persistStewardToken(token);
-    toast.success("Signed in!");
-    setRedirectTo(
-      resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
-    );
-    setStep("success");
+    const expected =
+      options.expected ??
+      options.authority?.revalidate() ??
+      getStewardTabSessionAuthorityCoordinator().readSnapshot();
+    const run =
+      options.authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+    await run({
+      kind: "session-sync",
+      expectedToken: expected.token,
+      expectedGeneration: expected.generation,
+      expectedScope: expected.scope,
+      signal: options.signal,
+      work: async (authority) => {
+        await syncStewardSessionCookie(token, refreshToken, {
+          ...options,
+          authority,
+        });
+        await persistStewardToken(token, { authority }, () => {
+          setPasskeyEmailGrant(null);
+          setShowPasskeyEnrollmentRecovery(false);
+          toast.success("Signed in!");
+          setRedirectTo(
+            resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+          );
+          setStep("success");
+        });
+      },
+    });
   }
 
   async function handleLocalDedicatedSignIn() {
-    if (!LOCAL_DEDICATED_TEST_API_KEY) return;
+    if (!LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED || !LOCAL_DEDICATED_TEST_API_KEY)
+      return;
+    const attempt = beginSignInAttempt("local");
     setLoading("local");
     setError(null);
     try {
@@ -1331,38 +1706,62 @@ export default function StewardLoginSection() {
         "/api/test/auth/session",
         import.meta.env.VITE_API_URL || window.location.origin,
       );
-      const response = await fetch(localSessionUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          Authorization: `Bearer ${LOCAL_DEDICATED_TEST_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+      await withSignInAttempt(attempt, async (authority) => {
+        const response = await fetch(localSessionUrl, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            Authorization: `Bearer ${LOCAL_DEDICATED_TEST_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          signal: authority.signal,
+        });
+        authority.revalidate();
+        const result = parseLocalTestSessionResponse(await response.text());
+        authority.revalidate();
+        if (!response.ok || !result.token) {
+          throw new Error(
+            result.error ?? "Could not start the local Cloud test session.",
+          );
+        }
+        await persistStewardToken(LOCAL_DEDICATED_TEST_API_KEY, { authority });
+        authority.revalidate();
+        // The dev-only readable marker must not advertise success before
+        // canonical persistence. Cookie response and publication share a hold.
+        // biome-ignore lint/suspicious/noDocumentCookie: useSessionAuth synchronously reads this test-only marker; Cookie Store is not universally available.
+        document.cookie =
+          "eliza-test-auth=1; Path=/; SameSite=Lax; Max-Age=3600";
+        window.dispatchEvent(new CustomEvent("steward-token-sync"));
+        setRedirectTo(resolveLoginReturnTo(searchParams));
+        setStep("success");
       });
-      const result = parseLocalTestSessionResponse(await response.text());
-      if (!response.ok || !result.token) {
-        throw new Error(
-          result.error ?? "Could not start the local Cloud test session.",
-        );
-      }
-      // `useSessionAuth` recognises the Playwright marker cookie as the
-      // test-session signal; the API only sets the httpOnly session cookie,
-      // so this dev-only path must plant the readable marker itself.
-      // biome-ignore lint/suspicious/noDocumentCookie: the marker must be readable synchronously by the session hook; the Cookie Store API is async and not universally available.
-      document.cookie = "eliza-test-auth=1; Path=/; SameSite=Lax; Max-Age=3600";
-      await persistStewardToken(LOCAL_DEDICATED_TEST_API_KEY);
-      window.dispatchEvent(new CustomEvent("steward-token-sync"));
-      setRedirectTo(resolveLoginReturnTo(searchParams));
-      setStep("success");
     } catch (localSignInError) {
+      // error-policy:J4 Only the current local attempt can publish recovery UI.
+      if (
+        attempt.controller.signal.aborted ||
+        localAttemptRef.current !== attempt
+      )
+        return;
       setError(
-        getErrorMessage(
-          localSignInError,
-          "Could not start the local Cloud test session.",
-        ),
+        localSignInError instanceof StewardSessionAuthorityError
+          ? describeCodeExchangeError(
+              localSignInError,
+              recoveryTranslator.current,
+            )
+          : getErrorMessage(
+              localSignInError,
+              "Could not start the local Cloud test session.",
+            ),
       );
     } finally {
-      setLoading(null);
+      if (
+        !attempt.controller.signal.aborted &&
+        localAttemptRef.current === attempt
+      ) {
+        setLoading(null);
+        localAttemptRef.current = null;
+        attempt.controller.abort();
+      }
     }
   }
 
@@ -1443,20 +1842,36 @@ export default function StewardLoginSection() {
     return true;
   }
 
-  async function runScopedPasskeyLogin() {
+  async function runScopedPasskeyLogin(
+    attempt = beginSignInAttempt("passkey"),
+  ) {
     setLoading("passkey");
     setError(null);
     setShowPasskeyRecovery(false);
     setShowPasskeyEnrollmentRecovery(false);
     try {
+      await withSignInAttempt(attempt, async () => {});
       const result = requireCompletedAuth(
         await auth.signInWithPasskey(email.trim(), {
           fallbackToRegistration: false,
+          signal: attempt.controller.signal,
+          assertActive: () =>
+            getStewardTabSessionAuthorityCoordinator().assertSnapshot(
+              attempt.expected,
+            ),
         }),
       );
-      await rememberPasskeyDeviceHint(email);
-      await handleSuccess(result.token, result.refreshToken);
+      await withSignInAttempt(attempt, async (authority) => {
+        await rememberPasskeyDeviceHint(email);
+        authority.revalidate();
+        await handleSuccess(result.token, result.refreshToken, { authority });
+      });
     } catch (e: unknown) {
+      if (
+        attempt.controller.signal.aborted ||
+        passkeyAttemptRef.current !== attempt
+      )
+        return;
       // error-policy:J4 authentication failures remain visibly distinct and
       // only the ambiguous browser-owned credential outcome offers recovery.
       if (isUserVerificationError(e)) {
@@ -1470,7 +1885,11 @@ export default function StewardLoginSection() {
         setShowPasskeyRecovery(true);
         setLoading(null);
       } else {
-        setError(getErrorMessage(e, "Passkey sign-in failed. Try again."));
+        setError(
+          e instanceof StewardSessionAuthorityError
+            ? describeCodeExchangeError(e, recoveryTranslator.current)
+            : getErrorMessage(e, "Passkey sign-in failed. Try again."),
+        );
         setLoading(null);
       }
     }
@@ -1482,14 +1901,28 @@ export default function StewardLoginSection() {
     setError(null);
     setShowPasskeyRecovery(false);
 
-    const hinted = await hasPasskeyDeviceHint(email);
-    if (!hinted) {
-      // A new device-local email goes straight to verified enrollment. This
-      // decision never asks Steward whether an account or passkey exists.
-      await startPasskeySignup();
-      return;
+    const attempt = beginSignInAttempt("passkey");
+    try {
+      const hinted = await hasPasskeyDeviceHint(email);
+      await withSignInAttempt(attempt, async () => {});
+      if (!hinted) {
+        // A local hint chooses the explicit ceremony without querying account existence.
+        await startPasskeySignup(attempt);
+        return;
+      }
+      await runScopedPasskeyLogin(attempt);
+    } catch (hintError) {
+      // error-policy:J4 A departed or superseded hint lookup cannot start a new ceremony.
+      if (
+        attempt.controller.signal.aborted ||
+        passkeyAttemptRef.current !== attempt
+      )
+        return;
+      setError(
+        describeCodeExchangeError(hintError, recoveryTranslator.current),
+      );
+      setLoading(null);
     }
-    await runScopedPasskeyLogin();
   }
 
   async function handleExistingPasskey() {
@@ -1497,19 +1930,33 @@ export default function StewardLoginSection() {
     await runScopedPasskeyLogin();
   }
 
-  async function startPasskeySignup() {
+  async function startPasskeySignup(attempt = beginSignInAttempt("passkey")) {
     setLoading("passkey");
     setError(null);
     try {
+      await withSignInAttempt(attempt, async () => {});
       await auth.sendEmailOtp(email.trim());
-      setPasskeyEmailGrant(null);
-      setShowPasskeyEnrollmentRecovery(false);
-      setOtpCode("");
-      setShowPasskeyRecovery(false);
-      setStep("otp-entry");
-      setLoading(null);
+      await withSignInAttempt(attempt, async () => {
+        attempt.ready = true;
+        setPasskeyEmailGrant(null);
+        setShowPasskeyEnrollmentRecovery(false);
+        setOtpCode("");
+        setShowPasskeyRecovery(false);
+        setStep("otp-entry");
+        setLoading(null);
+      });
     } catch (e: unknown) {
-      setError(getErrorMessage(e, "Couldn't send your code. Try again."));
+      // error-policy:J4 Failed delivery or obsolete authority offers explicit retry.
+      if (
+        attempt.controller.signal.aborted ||
+        passkeyAttemptRef.current !== attempt
+      )
+        return;
+      setError(
+        e instanceof StewardSessionAuthorityError
+          ? describeCodeExchangeError(e, recoveryTranslator.current)
+          : getErrorMessage(e, "Couldn't send your code. Try again."),
+      );
       setLoading(null);
     }
   }
@@ -1523,35 +1970,81 @@ export default function StewardLoginSection() {
     setLoading("passkey");
     setError(null);
     setShowPasskeyEnrollmentRecovery(false);
+    const attempt = passkeyAttemptRef.current;
     try {
+      if (!attempt?.ready)
+        throw new Error("Request a fresh code before creating a passkey.");
+      await withSignInAttempt(attempt, async () => {});
       let emailGrant = passkeyEmailGrant;
       if (!emailGrant) {
         ({ emailGrant } = await auth.verifyEmailOtp(email.trim(), code));
-        setPasskeyEmailGrant(emailGrant);
+        await withSignInAttempt(attempt, async () => {
+          setPasskeyEmailGrant(emailGrant);
+        });
       }
+      await withSignInAttempt(attempt, async () => {});
       const result = requireCompletedAuth(
-        await auth.addPasskey(email.trim(), { emailGrant }),
+        await auth.addPasskey(email.trim(), {
+          emailGrant,
+          signal: attempt.controller.signal,
+          assertActive: () =>
+            getStewardTabSessionAuthorityCoordinator().assertSnapshot(
+              attempt.expected,
+            ),
+        }),
       );
-      await rememberPasskeyDeviceHint(email);
-      await handleSuccess(result.token, result.refreshToken);
+      await withSignInAttempt(attempt, async (authority) => {
+        await rememberPasskeyDeviceHint(email);
+        authority.revalidate();
+        await handleSuccess(result.token, result.refreshToken, { authority });
+      });
     } catch (e: unknown) {
+      if (
+        attempt &&
+        (attempt.controller.signal.aborted ||
+          passkeyAttemptRef.current !== attempt)
+      )
+        return;
       // error-policy:J4 an OTP-proven account with a persisted credential
       // recovers through authentication; ambiguous browser cancellation keeps
       // registration retry plus explicit alternate sign-in choices visible.
-      if (isPasskeyAlreadyRegistered(e)) {
-        await rememberPasskeyDeviceHint(email);
-        setPasskeyEmailGrant(null);
-        setOtpCode("");
-        setShowPasskeyEnrollmentRecovery(false);
-        setStep("idle");
-        await runScopedPasskeyLogin();
+      if (attempt && isPasskeyAlreadyRegistered(e)) {
+        try {
+          await withSignInAttempt(attempt, async (authority) => {
+            await rememberPasskeyDeviceHint(email);
+            authority.revalidate();
+            setPasskeyEmailGrant(null);
+            setOtpCode("");
+            setShowPasskeyEnrollmentRecovery(false);
+            setStep("idle");
+          });
+          await runScopedPasskeyLogin(attempt);
+        } catch (recoveryError) {
+          // error-policy:J4 Recovery keeps the original attempt; it never adopts a newer account.
+          if (
+            attempt.controller.signal.aborted ||
+            passkeyAttemptRef.current !== attempt
+          )
+            return;
+          setError(
+            describeCodeExchangeError(
+              recoveryError,
+              recoveryTranslator.current,
+            ),
+          );
+          setLoading(null);
+        }
         return;
       }
       if (isUserCancelled(e)) {
         setError("Passkey setup was cancelled. Tap Create passkey to retry.");
         setShowPasskeyEnrollmentRecovery(true);
       } else {
-        setError(getErrorMessage(e, "That code didn't work. Try again."));
+        setError(
+          e instanceof StewardSessionAuthorityError
+            ? describeCodeExchangeError(e, recoveryTranslator.current)
+            : getErrorMessage(e, "That code didn't work. Try again."),
+        );
       }
       setLoading(null);
     }
@@ -1574,24 +2067,45 @@ export default function StewardLoginSection() {
     setError(null);
     setPasskeyEmailGrant(null);
     setShowPasskeyEnrollmentRecovery(false);
+    let attempt: SignInAttempt | null = null;
     try {
+      const currentAttempt = beginSignInAttempt("email");
+      attempt = currentAttempt;
       // The magic link can open in a new same-origin tab. Persist the pending
       // destination before asking Steward to send it so the callback can
       // resume an onboarding continuation instead of falling back to /join.
       storePendingOAuthReturnTo(searchParams);
       const challenge = await startStewardEmailLogin(
-        { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
+        {
+          baseUrl: stewardApiUrl,
+          tenantId: STEWARD_TENANT_ID,
+          signal: attempt.controller.signal,
+        },
         email.trim(),
       );
-      setEmailChallenge(challenge);
-      setEmailCode("");
-      setShowUndeclaredCodeEntry(false);
-      setEmailCheckState("pending");
-      setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
-      setStep("email-sent");
-      setLoading(null);
+      await withSignInAttempt(attempt, async () => {
+        currentAttempt.ready = true;
+        setEmailChallenge(challenge);
+        setEmailCode("");
+        setShowUndeclaredCodeEntry(false);
+        setEmailCheckState("pending");
+        setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
+        setStep("email-sent");
+        setLoading(null);
+      });
     } catch (e: unknown) {
-      setError(describeEmailLoginError(e, "Failed to send sign-in email."));
+      if (
+        attempt &&
+        (attempt.controller.signal.aborted ||
+          emailAttemptRef.current !== attempt)
+      )
+        return;
+      // error-policy:J4 Superseded attempts offer a fresh login rather than a raw authority error.
+      setError(
+        e instanceof StewardSessionAuthorityError
+          ? describeCodeExchangeError(e, recoveryTranslator.current)
+          : describeEmailLoginError(e, "Failed to send sign-in email."),
+      );
       setLoading(null);
     }
   }
@@ -1614,20 +2128,38 @@ export default function StewardLoginSection() {
 
     setLoading("sms");
     setError(null);
+    let attempt: SignInAttempt | null = null;
     try {
+      const currentAttempt = beginSignInAttempt("sms");
+      attempt = currentAttempt;
       await auth.sendSmsOtp(normalizedPhone);
-      setPhone(normalizedPhone);
-      setSmsCode("");
-      setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
-      setResendRemainingSeconds(AUTH_CODE_RESEND_COOLDOWN_MS / 1000);
-      setStep("sms-code");
+      await withSignInAttempt(attempt, async () => {
+        currentAttempt.ready = true;
+        setPhone(normalizedPhone);
+        setSmsCode("");
+        setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
+        setResendRemainingSeconds(AUTH_CODE_RESEND_COOLDOWN_MS / 1000);
+        setStep("sms-code");
+      });
     } catch (smsError) {
+      if (
+        attempt &&
+        (attempt.controller.signal.aborted || smsAttemptRef.current !== attempt)
+      )
+        return;
       // error-policy:J4 Steward transport failures remain a visible login error.
       setError(
-        getErrorMessage(smsError, "Couldn't send a text code. Try again."),
+        smsError instanceof StewardSessionAuthorityError
+          ? describeCodeExchangeError(smsError, recoveryTranslator.current)
+          : getErrorMessage(smsError, "Couldn't send a text code. Try again."),
       );
     } finally {
-      setLoading(null);
+      if (
+        !attempt ||
+        (smsAttemptRef.current === attempt &&
+          !attempt.controller.signal.aborted)
+      )
+        setLoading(null);
     }
   }
 
@@ -1640,20 +2172,42 @@ export default function StewardLoginSection() {
 
     setLoading("sms");
     setError(null);
+    const attempt = smsAttemptRef.current;
     try {
+      if (!attempt?.ready)
+        throw new Error("Request a fresh text code before signing in.");
+      await withSignInAttempt(attempt, async () => {});
       const result = requireCompletedAuth(await auth.verifySmsOtp(phone, code));
       await handleSuccess(result.token, result.refreshToken, {
         verifiedPhone: phone,
+        expected: attempt.expected,
+        signal: attempt.controller.signal,
       });
     } catch (smsError) {
+      if (
+        attempt &&
+        (attempt.controller.signal.aborted || smsAttemptRef.current !== attempt)
+      )
+        return;
       // error-policy:J4 Rejected or failed SMS verification stays recoverable.
-      setError(getErrorMessage(smsError, "That code didn't work. Try again."));
+      setError(
+        smsError instanceof StewardSessionAuthorityError
+          ? describeCodeExchangeError(smsError, recoveryTranslator.current)
+          : getErrorMessage(smsError, "That code didn't work. Try again."),
+      );
     } finally {
-      setLoading(null);
+      if (
+        !attempt ||
+        (smsAttemptRef.current === attempt &&
+          !attempt.controller.signal.aborted)
+      )
+        setLoading(null);
     }
   }
 
   function cancelSmsLogin() {
+    smsAttemptRef.current?.controller.abort();
+    smsAttemptRef.current = null;
     setStep("idle");
     setSmsCode("");
     setError(null);
@@ -1668,9 +2222,19 @@ export default function StewardLoginSection() {
     }
     setLoading("email");
     setError(null);
+    const attempt = emailAttemptRef.current;
     try {
+      if (!attempt?.ready)
+        throw new Error(
+          "Request a fresh sign-in email before verifying a code.",
+        );
+      await withSignInAttempt(attempt, async () => {});
       const result = await verifyStewardEmailSignInCode(
-        { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
+        {
+          baseUrl: stewardApiUrl,
+          tenantId: STEWARD_TENANT_ID,
+          signal: attempt.controller.signal,
+        },
         email.trim(),
         code,
       );
@@ -1679,16 +2243,30 @@ export default function StewardLoginSection() {
           "Additional verification is required to finish signing in.",
         );
       }
-      await handleSuccess(result.token, result.refreshToken);
+      await handleSuccess(result.token, result.refreshToken, {
+        expected: attempt.expected,
+        signal: attempt.controller.signal,
+      });
     } catch (e: unknown) {
+      if (
+        attempt &&
+        (attempt.controller.signal.aborted ||
+          emailAttemptRef.current !== attempt)
+      )
+        return;
+      // error-policy:J4 Rejected and obsolete code attempts stay visibly recoverable.
       setError(
-        describeEmailLoginError(e, "That code did not work. Try again."),
+        e instanceof StewardSessionAuthorityError
+          ? describeCodeExchangeError(e, recoveryTranslator.current)
+          : describeEmailLoginError(e, "That code did not work. Try again."),
       );
       setLoading(null);
     }
   }
 
   function cancelEmailLogin() {
+    emailAttemptRef.current?.controller.abort();
+    emailAttemptRef.current = null;
     setStep("idle");
     setEmailChallenge(null);
     setEmailCode("");
@@ -1700,79 +2278,89 @@ export default function StewardLoginSection() {
 
   const handleOAuth = useCallback(
     async (provider: StewardOAuthProvider) => {
-      if (Capacitor.isNativePlatform()) {
-        // Keep the provider's PKCE verifier, OAuth state, and pending outer
-        // mobile-auth return path in one browser storage authority. Starting
-        // PKCE in this WebView and externalizing only Steward's /authorize URL
-        // strands those values here, so Chrome cannot finish the callback.
-        setLoading(provider);
-        setError(null);
-        try {
+      const attempt = beginSignInAttempt("oauth");
+      let navigating = false;
+      setLoading(provider);
+      setError(null);
+      try {
+        if (Capacitor.isNativePlatform()) {
+          // Keep PKCE and the outer return path in the browser that handles
+          // the callback, not in this WebView. Dispatch remains in the click
+          // gesture; cancellation cannot undo an already-opened OS browser.
           const browserLoginUrl = new URL(window.location.href);
           browserLoginUrl.searchParams.set("nativeProvider", provider);
           const opened = await openExternalUrl(browserLoginUrl.toString());
-          if (!opened) {
-            setError("Could not open the secure sign-in window. Try again.");
-          }
-        } catch (launchError: unknown) {
-          setError(
-            getErrorMessage(
-              launchError,
-              "Could not open the secure sign-in window. Try again.",
-            ),
-          );
-        } finally {
-          setLoading(null);
-        }
-        return;
-      }
-
-      // This component is the sole hosted /login surface. Keep OAuth in its
-      // current document so the callback returns to the same authority that
-      // owns loading/error state and consumes the one-time code. A sibling
-      // popup leaves this form permanently disabled when that window is closed,
-      // blocked, or completes without notifying its opener (#20334).
-      setLoading(provider);
-      setError(null);
-      const host = window.location.hostname.toLowerCase();
-      const oauthOrigin = host.endsWith(".pages.dev")
-        ? "https://staging.eliza.app"
-        : window.location.origin;
-      let codeChallenge: string;
-      let state: string;
-      try {
-        const pkce = await createStewardPkcePair();
-        state = generateStewardOAuthState();
-        // Verifier and state are stashed together: the callback requires the
-        // `?state=` echo to match AND the verifier to survive, so a harvested
-        // callback URL cannot be replayed in another browser.
-        if (!storeStewardPkceVerifier(pkce.verifier, state)) {
-          setError(
-            "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
-          );
-          setLoading(null);
+          await withSignInAttempt(attempt, async () => {
+            if (!opened)
+              throw new Error(
+                "Could not open the secure sign-in window. Try again.",
+              );
+          });
           return;
         }
-        codeChallenge = pkce.challenge;
+        const pkce = await createStewardPkcePair();
+        const oauthAuthority = await createStewardOAuthAuthorityBinding(
+          attempt.expected,
+        );
+        await withSignInAttempt(attempt, async () => {
+          const host = window.location.hostname.toLowerCase();
+          const oauthOrigin = host.endsWith(".pages.dev")
+            ? "https://staging.eliza.app"
+            : window.location.origin;
+          const state = generateStewardOAuthState();
+          const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
+            provider,
+            buildStewardOAuthRedirectUri(oauthOrigin),
+            {
+              stewardApiUrl,
+              stewardTenantId: STEWARD_TENANT_ID,
+              codeChallenge: pkce.challenge,
+              state,
+            },
+          );
+          // State, verifier, original authority and destination travel as one
+          // acknowledged record, including across the local-storage fallback.
+          if (
+            !storeStewardPkceVerifier(
+              pkce.verifier,
+              state,
+              oauthAuthority,
+              resolveLoginReturnTo(searchParams),
+            )
+          ) {
+            throw new Error(
+              "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
+            );
+          }
+          window.location.href = authorizeUrl;
+          navigating = true;
+        });
       } catch (e: unknown) {
-        setError(getErrorMessage(e, "Could not start sign-in"));
-        setLoading(null);
-        return;
+        // error-policy:J4 Only the current launch can replace its loading UI
+        // with a retryable error; an abandoned browser result is nonterminal.
+        if (
+          !attempt.controller.signal.aborted &&
+          oauthAttemptRef.current === attempt
+        ) {
+          setError(
+            e instanceof StewardSessionAuthorityError
+              ? describeCodeExchangeError(e, recoveryTranslator.current)
+              : getErrorMessage(e, "Could not start sign-in"),
+          );
+        }
+      } finally {
+        if (
+          !navigating &&
+          !attempt.controller.signal.aborted &&
+          oauthAttemptRef.current === attempt
+        ) {
+          setLoading(null);
+          oauthAttemptRef.current = null;
+          attempt.controller.abort();
+        }
       }
-      storePendingOAuthReturnTo(searchParams);
-      const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
-        provider,
-        buildStewardOAuthRedirectUri(oauthOrigin),
-        {
-          stewardApiUrl,
-          stewardTenantId: STEWARD_TENANT_ID,
-          codeChallenge,
-          state,
-        },
-      );
-      window.location.href = authorizeUrl;
     },
-    [searchParams, stewardApiUrl],
+    [beginSignInAttempt, searchParams, stewardApiUrl],
   );
 
   useEffect(() => {
@@ -1784,25 +2372,39 @@ export default function StewardLoginSection() {
     );
     if (!requestedProvider || !providersLoaded) return;
 
-    // Consume the marker before starting any async work so reloads, provider
-    // failures, and back/forward restoration cannot auto-launch repeatedly.
-    const cleanUrl = new URL(window.location.href);
-    cleanUrl.searchParams.delete("nativeProvider");
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
-    );
-
-    if (Capacitor.isNativePlatform()) return;
-    const provider = enabledOAuthProviders.find(
-      (candidate) => candidate === requestedProvider,
-    );
-    if (!provider) return;
-    void handleOAuth(provider);
+    // Only a committed effect consumes the marker and starts the attempt;
+    // StrictMode's throwaway setup must not cancel the only auto-launch.
+    let current = true;
+    queueMicrotask(() => {
+      if (!current) return;
+      const cleanUrl = new URL(window.location.href);
+      if (cleanUrl.searchParams.get("nativeProvider") !== requestedProvider)
+        return;
+      cleanUrl.searchParams.delete("nativeProvider");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+      );
+      if (Capacitor.isNativePlatform()) return;
+      const provider = enabledOAuthProviders.find(
+        (candidate) => candidate === requestedProvider,
+      );
+      if (provider) void handleOAuth(provider);
+    });
+    return () => {
+      current = false;
+    };
   }, [enabledOAuthProviders, handleOAuth, providersLoaded]);
 
-  function handleTelegramError(message: string) {
+  function handleTelegramError(message: string, attempt: SignInAttempt | null) {
+    if (
+      attempt?.controller.signal.aborted ||
+      telegramAttemptRef.current !== attempt
+    )
+      return;
+    telegramAttemptRef.current?.controller.abort();
+    telegramAttemptRef.current = null;
     setError(message);
     setLoading(null);
     setTelegramIntent(false);
@@ -1812,21 +2414,46 @@ export default function StewardLoginSection() {
     );
   }
 
-  async function handleTelegramAuth(payload: LoginTelegramLoginPayload) {
+  async function handleTelegramAuth(
+    payload: LoginTelegramLoginPayload,
+    attempt: SignInAttempt | null,
+  ) {
+    if (
+      attempt?.controller.signal.aborted ||
+      telegramAttemptRef.current !== attempt
+    )
+      return;
     setLoading("telegram");
     setError(null);
     try {
+      if (!attempt)
+        throw new Error("Choose Telegram again to restart sign-in.");
+      await withSignInAttempt(attempt, async () => {});
       const result = requireCompletedAuth(
         await auth.signInWithTelegram(payload, {
           tenantId: STEWARD_TENANT_ID,
         }),
       );
-      await handleSuccess(result.token, result.refreshToken);
+      await handleSuccess(result.token, result.refreshToken, {
+        expected: attempt.expected,
+        signal: attempt.controller.signal,
+      });
     } catch (telegramError: unknown) {
+      if (
+        attempt &&
+        (attempt.controller.signal.aborted ||
+          telegramAttemptRef.current !== attempt)
+      )
+        return;
       // error-policy:J4 Steward or Cloud session failures remain visibly
       // distinct and leave the user on the login surface for a safe retry.
       setError(
-        getErrorMessage(telegramError, "Telegram sign-in failed. Try again."),
+        telegramError instanceof StewardSessionAuthorityError
+          ? describeCodeExchangeError(telegramError, recoveryTranslator.current)
+          : getErrorMessage(
+              telegramError,
+              "Telegram sign-in failed. Try again.",
+            ),
       );
       setLoading(null);
       window.setTimeout(
@@ -1840,6 +2467,7 @@ export default function StewardLoginSection() {
   // to auto-start once it's up, so the user doesn't have to click twice.
   function handleWalletIntent(kind: WalletKind) {
     setError(null);
+    beginSignInAttempt(kind);
     setWalletButtonsMounted(true);
     setAutoStartWallet(kind);
   }
@@ -2027,12 +2655,7 @@ export default function StewardLoginSection() {
           <Button
             type="button"
             className="hosted-signin-focus-emphasis w-full"
-            onClick={() =>
-              setRedirectTo(
-                externalSuccessDestination ??
-                  resolveLoginReturnTo(searchParams),
-              )
-            }
+            onClick={() => void continueRecoveredEmailSession()}
           >
             {t("cloud.emailCallback.continue", { defaultValue: "Continue" })}
           </Button>
@@ -2331,6 +2954,8 @@ export default function StewardLoginSection() {
             type="button"
             className=""
             onClick={() => {
+              passkeyAttemptRef.current?.controller.abort();
+              passkeyAttemptRef.current = null;
               setStep("idle");
               setOtpCode("");
               setPasskeyEmailGrant(null);
@@ -2346,7 +2971,7 @@ export default function StewardLoginSection() {
             type="button"
             className=""
             disabled={loading !== null}
-            onClick={startPasskeySignup}
+            onClick={() => void startPasskeySignup()}
           >
             {t("cloud.login.otp.resend", { defaultValue: "Resend code" })}
           </Button>
@@ -2460,6 +3085,7 @@ export default function StewardLoginSection() {
   }
 
   const isLoading = loading !== null;
+  const renderedTelegramAttempt = telegramAttemptRef.current;
   const selectedPhoneCountry =
     PHONE_COUNTRY_OPTIONS.find((option) => option.code === phoneCountry) ??
     PHONE_COUNTRY_OPTIONS.find((option) => option.code === "US");
@@ -2741,7 +3367,7 @@ export default function StewardLoginSection() {
             )}
             <Button
               type="button"
-              onClick={startPasskeySignup}
+              onClick={() => void startPasskeySignup()}
               disabled={isLoading}
               className="hosted-signin-focus-emphasis"
             >
@@ -2789,7 +3415,7 @@ export default function StewardLoginSection() {
               aria-controls="steward-telegram-login-widget"
               onClick={() => {
                 setError(null);
-                setTelegramIntent(true);
+                beginSignInAttempt("telegram");
               }}
               disabled={isLoading || telegramIntent}
               className="hosted-signin-focus-emphasis"
@@ -2848,8 +3474,12 @@ export default function StewardLoginSection() {
             <TelegramLoginWidget
               botUsername={telegramBotUsername}
               disabled={isLoading}
-              onAuth={handleTelegramAuth}
-              onError={handleTelegramError}
+              onAuth={(payload) =>
+                handleTelegramAuth(payload, renderedTelegramAttempt)
+              }
+              onError={(message) =>
+                handleTelegramError(message, renderedTelegramAttempt)
+              }
             />
           ) : (
             <Alert variant="destructive">
@@ -2863,6 +3493,8 @@ export default function StewardLoginSection() {
             variant="ghostMuted"
             type="button"
             onClick={() => {
+              telegramAttemptRef.current?.controller.abort();
+              telegramAttemptRef.current = null;
               setTelegramIntent(false);
               window.setTimeout(
                 () =>
@@ -2905,6 +3537,8 @@ export default function StewardLoginSection() {
                   <WalletButtons
                     auth={auth}
                     autoStart={autoStartWallet}
+                    initialAttempt={walletAttemptRef.current}
+                    onAttemptStart={beginSignInAttempt}
                     disabled={isLoading}
                     siwe={providers.siwe === true}
                     siws={providers.siws === true}
@@ -2915,8 +3549,10 @@ export default function StewardLoginSection() {
                     }
                     onAutoStartHandled={() => setAutoStartWallet(null)}
                     onLoadingChange={(kind) => setLoading(kind)}
-                    onSuccess={(result) =>
-                      handleSuccess(result.token, result.refreshToken)
+                    onSuccess={(result, authority) =>
+                      handleSuccess(result.token, result.refreshToken, {
+                        authority,
+                      })
                     }
                     onError={(walletError) => {
                       setError(
