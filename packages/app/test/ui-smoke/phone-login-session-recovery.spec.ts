@@ -44,7 +44,9 @@ for (const viewport of VIEWPORTS) {
     page,
   }, testInfo) => {
     await page.setViewportSize(viewport);
-    await seedStewardSession(page, { token: "older-session-token" });
+    // A locally valid identity can still be rejected by the session server.
+    // Malformed opaque tokens are cleared before recovery by design.
+    await seedStewardSession(page, { jwt: true, subject: "older-session" });
     await page.addInitScript(() => {
       window.localStorage.setItem(
         "steward_session_token_scope",

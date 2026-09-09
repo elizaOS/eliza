@@ -34,10 +34,10 @@ configure_apt_lock_timeout() {
   echo "::warning::could not configure the apt dpkg lock timeout; relying on install retries alone"
 }
 
-run_install() {
+run_with_retries() {
   local attempt=1
   while true; do
-    if bunx --no-install playwright install "$@"; then
+    if "$@"; then
       return 0
     fi
     if [ "$attempt" -ge "$INSTALL_ATTEMPTS" ]; then
@@ -52,13 +52,35 @@ run_install() {
 }
 
 install_args=()
+apt_config=""
+cleanup() {
+  if [ -n "$apt_config" ]; then
+    rm -f "$apt_config"
+  fi
+}
+trap cleanup EXIT
+
 if [ "${RUNNER_OS:-}" = "Linux" ] || [ "$(uname -s 2>/dev/null || true)" = "Linux" ]; then
   if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     configure_apt_lock_timeout
-    install_args+=("--with-deps")
+    if [ "${RUNNER_ENVIRONMENT:-}" = "github-hosted" ] && [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+      # Playwright needs Ubuntu libraries, not the runner image's third-party
+      # Chrome repository. Scope apt to the signed Ubuntu sources for this
+      # child process so unrelated repository publication failures cannot block
+      # installation. The runner's apt configuration remains unchanged.
+      apt_config=$(mktemp)
+      printf '%s\n' \
+        'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' \
+        'Dir::Etc::sourceparts "-";' \
+        "DPkg::Lock::Timeout \"$APT_LOCK_TIMEOUT_SECONDS\";" > "$apt_config"
+      run_with_retries sudo -n env "APT_CONFIG=$apt_config" "PATH=$PATH" \
+        "$(command -v bunx)" --no-install playwright install-deps "$@"
+    else
+      install_args+=("--with-deps")
+    fi
   else
     echo "::notice::passwordless sudo unavailable; installing Playwright browsers without OS deps"
   fi
 fi
 
-run_install "${install_args[@]+"${install_args[@]}"}" "$@"
+run_with_retries bunx --no-install playwright install "${install_args[@]+"${install_args[@]}"}" "$@"
