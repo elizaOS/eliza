@@ -77,12 +77,16 @@ export function redactWindowTitle(
 ): string | null {
   if (title === null || title === undefined) return null;
   let out = title;
+  // EMAIL runs before the digit passes: a 12+ digit email local part is
+  // digit-shaped, so a CC-first order would shred it into "[redacted-cc]"
+  // before the email pattern could ever match, leaking the local-part prefix
+  // and the domain into the activity report.
+  out = out.replace(EMAIL, "[redacted-email]");
   // Any 12+ digit run is redacted whole. There is deliberately no upper
   // bound: a maximal match may embed a valid PAN next to another numeric
   // field (PAN + expiry, PAN + CVV), and exempting long matches would leak
   // the embedded PAN. See the header for the full rationale.
   out = out.replace(CC_LIKE, "[redacted-cc]");
-  out = out.replace(EMAIL, "[redacted-email]");
   out = out.replace(PHONE, "[redacted-phone]");
   return out;
 }
