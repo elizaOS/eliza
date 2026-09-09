@@ -84,6 +84,88 @@ function selected(
 }
 
 describe("incremental evaluator progress", () => {
+	it("losslessly continues resource-bounded backfill after staged replay and new arrivals", async () => {
+		const h = runtimeWith();
+		const original = Array.from({ length: 5 }, (_, i) =>
+			memory(`page-${i}`, `${i}:\n${"完整🟠 ".repeat(35)}`, { createdAt: i }),
+		);
+		const limit =
+			Math.max(
+				...original.map(
+					(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+				),
+			) + 1;
+		authoritativeRows.get(h.runtime)?.(original);
+		const first = selected(
+			await prepareProgress(h.runtime, original[4], ["facts"], original, {
+				maxEvidenceBytes: limit,
+			}),
+		);
+		expect(first.messages).toEqual([original[0]]);
+		expect(first.remainingSourceCount).toBe(4);
+		await stageEvaluatorOutput(h.runtime, first, {
+			captured: original[0].content.text,
+		});
+		const arrival = memory(
+			"arrival",
+			"New evidence after the initial snapshot",
+			{ createdAt: 8 },
+		);
+		const all = [...original, arrival];
+		const restarted = runtimeWith(h.store);
+		authoritativeRows.get(restarted.runtime)?.(all);
+		const replay = selected(
+			await prepareProgress(restarted.runtime, arrival, ["facts"], all, {
+				maxEvidenceBytes: limit,
+			}),
+		);
+		expect(replay.messages).toEqual(first.messages);
+		expect(replay.pendingOutput).toEqual({
+			captured: original[0].content.text,
+		});
+		await commitEvaluatorProgress(restarted.runtime, replay);
+		const processed = [...replay.messages];
+		for (let i = 0; i < 6; i++) {
+			const next = selected(
+				await prepareProgress(restarted.runtime, arrival, ["facts"], all, {
+					maxEvidenceBytes: limit,
+				}),
+			);
+			if (!next.messages.length) break;
+			if (
+				next.messages.some((row) =>
+					original.some((initial) => initial.id === row.id),
+				)
+			)
+				expect(next.isBackfill).toBe(true);
+			processed.push(...next.messages);
+			await stageEvaluatorOutput(restarted.runtime, next, {});
+			await commitEvaluatorProgress(restarted.runtime, next);
+		}
+		expect(processed).toEqual(all);
+		const done = selected(
+			await prepareProgress(restarted.runtime, arrival, ["facts"], all, {
+				maxEvidenceBytes: limit,
+			}),
+		);
+		expect(done.messages).toEqual([]);
+		expect(done.remainingSourceCount).toBe(0);
+		expect(done.isBackfill).toBe(false);
+	});
+
+	it("rejects a single oversized source intact before staging or acknowledging anything", async () => {
+		const h = runtimeWith();
+		const source = memory("large", "完整".repeat(100));
+		authoritativeRows.get(h.runtime)?.([source]);
+		await expect(
+			prepareProgress(h.runtime, source, ["facts"], [source], {
+				maxEvidenceBytes: 10,
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_SOURCE_TOO_LARGE" });
+		expect(h.setCache).not.toHaveBeenCalled();
+		expect(h.store.size).toBe(0);
+	});
+
 	it("backfills every record without clipping or mutating persisted history", async () => {
 		const { runtime, store } = runtimeWith();
 		const old = memory(

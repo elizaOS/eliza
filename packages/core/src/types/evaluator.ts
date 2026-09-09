@@ -95,6 +95,10 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	modelType?: ModelTypeName;
 	/** Opt in only when prepare consumes extraction and every processor is replay-safe. */
 	incremental?: boolean | ((runtime: IAgentRuntime) => boolean);
+	/** Opt in when prepare is repeatable and prompt fully describes reducer candidates.
+	 * Background inference releases room ownership; prepare/prompt are revalidated
+	 * under a new room lease before any staged output or effects are applied. */
+	background?: boolean;
 
 	shouldRun(context: EvaluatorRunContext): Promise<boolean>;
 	prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>;

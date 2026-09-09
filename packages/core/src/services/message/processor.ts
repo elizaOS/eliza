@@ -1504,9 +1504,8 @@ export class MessageProcessor {
 				responseMessages,
 			));
 
-		// Post-turn evaluation runs first as one structured call over registered
-		// evaluator items. ALWAYS_AFTER actions remain available for plugin hooks
-		// that are not part of the unified evaluator service.
+		// Post-turn evaluation durably queues replay-safe memory extraction. Legacy
+		// evaluators and ALWAYS_AFTER plugin hooks retain their ordered boundary.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
 		const semanticSignal = hasPostTurnSemanticSignal(
@@ -1514,13 +1513,9 @@ export class MessageProcessor {
 			state,
 			responseContent,
 		);
-		// Post-turn work is never part of connector completion. It owns one real
-		// evaluator child step, and the run terminal follows in the same detached
-		// barrier so the parent cannot close while that child's telemetry is still
-		// being written. Child failure is reported at that barrier, which still
-		// releases the trajectory exactly once after the child settles. Fact,
-		// preference and ALWAYS_AFTER writes are room state, not diagnostics;
-		// retain ordering until their processors support conflict-safe commits.
+		// Delivery settlement precedes the durable enqueue. The foreground trajectory
+		// waits for enqueueing and ordered legacy/hooks; TaskService owns subsequent
+		// memory inference in a separate trajectory and reacquires the room to write.
 		runTerminalOwner.trackAfterDelivery("post_turn", async () => {
 			if (actionResults?.some((result) => result.replyFailure !== undefined)) {
 				// The action already settled and response generation is unavailable.

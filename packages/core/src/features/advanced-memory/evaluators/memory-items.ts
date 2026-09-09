@@ -239,6 +239,7 @@ export const longTermMemoryEvaluator: Evaluator<
 	LongTermMemoryPrepared
 > = {
 	name: "longTermMemory",
+	background: true,
 	incremental(runtime) {
 		const service = runtime.getService("memory") as MemoryService | null;
 		return service?.supportsIncrementalExtraction === true;

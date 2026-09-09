@@ -506,6 +506,7 @@ export const preferenceEvaluator: Evaluator<
 > = {
 	name: "preferences",
 	incremental: true,
+	background: true,
 	description:
 		"Extracts user preferences about the agent, views, and interaction style from ordinary conversation.",
 	priority: EvaluatorPriority.REFLECTION_PREFERENCES,

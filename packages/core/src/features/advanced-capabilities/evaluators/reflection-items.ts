@@ -1328,6 +1328,7 @@ ${formatKnownLines(current, "current")}`,
 export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	name: "factMemory",
 	incremental: true,
+	background: true,
 	description:
 		"Extracts durable/current fact-store ops from recent conversation.",
 	priority: EvaluatorPriority.REFLECTION_FACTS,
@@ -1485,6 +1486,7 @@ export const relationshipEvaluator: Evaluator<
 > = {
 	name: "relationships",
 	incremental: true,
+	background: true,
 	description: "Extracts relationship updates between known room participants.",
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
@@ -1564,6 +1566,7 @@ export const identityEvaluator: Evaluator<
 > = {
 	name: "identities",
 	incremental: true,
+	background: true,
 	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
@@ -1646,6 +1649,7 @@ ${actionResultsSection}`,
 export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
 	incremental: true,
+	background: true,
 	description: "Evaluates whether user task is complete this turn.",
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,

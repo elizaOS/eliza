@@ -378,6 +378,7 @@ export const experiencePatternEvaluator: Evaluator<
 > = {
 	name: "experiencePatterns",
 	incremental: true,
+	background: true,
 	description:
 		"Extracts reusable agent lessons from validated conversation events.",
 	priority: EvaluatorPriority.EXPERIENCE,
