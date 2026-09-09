@@ -3,6 +3,10 @@
 import { v4 } from "uuid";
 import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
+import {
+	resolveFailureReplyPolicy,
+	shouldEmitFailureReply,
+} from "../../failure-reply-policy";
 import { decideReplyGate } from "../../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../../features/advanced-capabilities/personality/services/personality-store.ts";
 import {
@@ -927,7 +931,45 @@ export class MessageProcessor {
 				// turn before the runtime died — that is the model evaluation the
 				// deterministic gate defers to, so the anti-spam suppression
 				// (which exists for pre-decision throws) does not apply.
-				if (failureGate.addressed || stage1DecidedRespond) {
+				//
+				// On top of addressing, FAILURE_REPLY_POLICY decides WHERE a canned
+				// failure text is acceptable at all. Under the default `dm-only`
+				// an addressed turn in a public room (guild channel, thread, group)
+				// still stays silent: every reader would see the same outage
+				// apology and nobody can act on it. Private rooms and autonomous
+				// turns keep the reply, where silence reads as a hang.
+				const failureReplyPolicy = resolveFailureReplyPolicy(runtime, {
+					logger: runtime.logger,
+				});
+				const failureReplyDecision = shouldEmitFailureReply({
+					policy: failureReplyPolicy,
+					channelType:
+						(message.content?.channelType as string | undefined) ??
+						(room?.type as string | undefined) ??
+						null,
+					isAutonomous,
+				});
+				if (
+					(failureGate.addressed || stage1DecidedRespond) &&
+					!failureReplyDecision.emit
+				) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+							reason: "policy",
+							policy: failureReplyPolicy,
+							policyReason: failureReplyDecision.reason,
+							channelType: message.content?.channelType ?? room?.type,
+							addressed: failureGate.addressed,
+							stage1DecidedRespond,
+						},
+						"v5 runtime failed on an addressed turn; suppressing failure reply",
+					);
+					shouldRespondToMessage = false;
+					terminalDecision = "IGNORE";
+				} else if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
 					// Distinguish WHY the runtime died so the failure reply names

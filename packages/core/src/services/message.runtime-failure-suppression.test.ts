@@ -71,7 +71,10 @@ function makeState(): State {
 	return { values: {}, data: {}, text: "" };
 }
 
-function makeFailingRuntime(room: Room): IAgentRuntime {
+function makeFailingRuntime(
+	room: Room,
+	settings: Record<string, string> = {},
+): IAgentRuntime {
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
 		responseHandlerFieldRegistry.register(evaluator);
@@ -89,7 +92,7 @@ function makeFailingRuntime(room: Room): IAgentRuntime {
 			error: vi.fn(),
 			trace: vi.fn(),
 		} as unknown as IAgentRuntime["logger"],
-		getSetting: vi.fn(() => undefined),
+		getSetting: vi.fn((key: string) => settings[key]),
 		getService: vi.fn(() => null),
 		getModel: vi.fn(() => async () => {
 			throw RATE_LIMIT_ERROR;
@@ -134,8 +137,12 @@ function makeRoom(type: ChannelType): Room {
 	} as Room;
 }
 
-async function runTurn(message: Memory, room: Room) {
-	const runtime = makeFailingRuntime(room);
+async function runTurn(
+	message: Memory,
+	room: Room,
+	settings: Record<string, string> = {},
+) {
+	const runtime = makeFailingRuntime(room, settings);
 	const service = new DefaultMessageService();
 	const deliveries: Content[] = [];
 	const result = await service.handleMessage(
@@ -180,8 +187,12 @@ describe("v5 runtime failure before a respond decision", () => {
 		expect(terminal?.actions).toEqual(["IGNORE"]);
 	});
 
-	it("still surfaces the failure reply when the agent was platform-mentioned", async () => {
-		const { result, visibleTexts } = await runTurn(
+	it("stays silent on a platform mention in a group room under the default dm-only policy", async () => {
+		// A mention qualifies the turn as addressed, but FAILURE_REPLY_POLICY
+		// defaults to dm-only: a public room must not receive the canned
+		// outage apology (observed live: five identical "I timed out" posts
+		// into a shared channel during a 29h broker outage).
+		const { runtime, result, deliveries, visibleTexts } = await runTurn(
 			makeMessage({
 				text: "@Remilio what's the plan?",
 				mentionContext: { isMention: true },
@@ -189,11 +200,74 @@ describe("v5 runtime failure before a respond decision", () => {
 			makeRoom(ChannelType.GROUP),
 		);
 
+		expect(visibleTexts).toEqual([]);
+		expect(result.didRespond).toBe(false);
+		const terminal = deliveries.find((content) =>
+			Array.isArray(content.actions),
+		);
+		expect(terminal?.actions).toEqual(["IGNORE"]);
+		expect(runtime.logger.info).toHaveBeenCalledWith(
+			expect.objectContaining({
+				reason: "policy",
+				policy: "dm-only",
+				policyReason: "policy-dm-only-public-room",
+				addressed: true,
+			}),
+			"v5 runtime failed on an addressed turn; suppressing failure reply",
+		);
+	});
+
+	it("still surfaces the failure reply on a platform mention when FAILURE_REPLY_POLICY=all", async () => {
+		const { result, visibleTexts } = await runTurn(
+			makeMessage({
+				text: "@Remilio what's the plan?",
+				mentionContext: { isMention: true },
+			}),
+			makeRoom(ChannelType.GROUP),
+			{ FAILURE_REPLY_POLICY: "all" },
+		);
+
 		expect(result.didRespond).toBe(true);
 		expect(visibleTexts).toHaveLength(1);
 		// buildStructuredFailureReply lands on the rate-limited template since
 		// every model call in this turn is rate-limited.
 		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
+	});
+
+	it("keeps the DM failure reply under the default dm-only policy", async () => {
+		const { result, visibleTexts } = await runTurn(
+			makeMessage({ channelType: ChannelType.DM }),
+			makeRoom(ChannelType.DM),
+		);
+
+		expect(result.didRespond).toBe(true);
+		expect(visibleTexts).toHaveLength(1);
+		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
+	});
+
+	it("silences the DM failure reply when FAILURE_REPLY_POLICY=off", async () => {
+		const { result, visibleTexts } = await runTurn(
+			makeMessage({ channelType: ChannelType.DM }),
+			makeRoom(ChannelType.DM),
+			{ FAILURE_REPLY_POLICY: "off" },
+		);
+
+		expect(visibleTexts).toEqual([]);
+		expect(result.didRespond).toBe(false);
+	});
+
+	it("fails closed to dm-only on an unrecognized FAILURE_REPLY_POLICY value", async () => {
+		const { result, visibleTexts } = await runTurn(
+			makeMessage({
+				text: "@Remilio what's the plan?",
+				mentionContext: { isMention: true },
+			}),
+			makeRoom(ChannelType.GROUP),
+			{ FAILURE_REPLY_POLICY: "loud" },
+		);
+
+		expect(visibleTexts).toEqual([]);
+		expect(result.didRespond).toBe(false);
 	});
 
 	it.each([
@@ -572,107 +646,123 @@ describe("planner failure after a promoted stage-1 answer", () => {
 		},
 	);
 
-	it("delivers the failure reply on an unaddressed group turn once stage-1 committed to respond", async () => {
-		// Stage 1 commits to RESPOND on a bare group message but produces no
-		// preservable answer (empty replyText, promoted to planning), and the
-		// planner then dies. The deterministic addressing gate alone would
-		// suppress the failure reply — the model's own RESPOND decision must
-		// qualify the turn for a visible failure instead of dead silence.
-		const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
-		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
-			responseHandlerFieldRegistry.register(evaluator);
-		}
-		let stage1Served = false;
-		const runtime = createMockRuntime({
-			agentId: AGENT,
-			character: { name: "Remilio", bio: "test agent" },
-			logger: {
-				debug: vi.fn(),
-				info: vi.fn(),
-				warn: vi.fn(),
-				error: vi.fn(),
-				trace: vi.fn(),
-			} as unknown as IAgentRuntime["logger"],
-			getSetting: vi.fn(() => undefined),
-			getService: vi.fn(() => null),
-			getModel: vi.fn(() => async () => {
-				throw RATE_LIMIT_ERROR;
-			}),
-			useModel: vi.fn(async (modelType: unknown) => {
-				if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
-					stage1Served = true;
-					return {
-						text: "",
-						toolCalls: [
-							{
-								id: "handle-response-1",
-								name: "HANDLE_RESPONSE",
-								arguments: {
-									shouldRespond: "RESPOND",
-									thought: "",
-									contexts: ["general"],
-									intents: [],
-									candidateActionNames: [],
-									replyText: "",
-									facts: [],
-									relationships: [],
-									addressedTo: [],
+	it.each([
+		["all", true],
+		["dm-only", false],
+	])(
+		"stage-1 RESPOND on an unaddressed group turn, then planner death, under FAILURE_REPLY_POLICY=%s: visible failure=%s",
+		async (policy, expectVisible) => {
+			// Stage 1 commits to RESPOND on a bare group message but produces no
+			// preservable answer (empty replyText, promoted to planning), and the
+			// planner then dies. The deterministic addressing gate alone would
+			// suppress the failure reply — the model's own RESPOND decision
+			// qualifies the turn for a visible failure under `all`. Under the
+			// default `dm-only` the room is still public, so it stays silent.
+			const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+			for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+				responseHandlerFieldRegistry.register(evaluator);
+			}
+			let stage1Served = false;
+			const runtime = createMockRuntime({
+				agentId: AGENT,
+				character: { name: "Remilio", bio: "test agent" },
+				logger: {
+					debug: vi.fn(),
+					info: vi.fn(),
+					warn: vi.fn(),
+					error: vi.fn(),
+					trace: vi.fn(),
+				} as unknown as IAgentRuntime["logger"],
+				getSetting: vi.fn((key: string) =>
+					key === "FAILURE_REPLY_POLICY" ? policy : undefined,
+				),
+				getService: vi.fn(() => null),
+				getModel: vi.fn(() => async () => {
+					throw RATE_LIMIT_ERROR;
+				}),
+				useModel: vi.fn(async (modelType: unknown) => {
+					if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
+						stage1Served = true;
+						return {
+							text: "",
+							toolCalls: [
+								{
+									id: "handle-response-1",
+									name: "HANDLE_RESPONSE",
+									arguments: {
+										shouldRespond: "RESPOND",
+										thought: "",
+										contexts: ["general"],
+										intents: [],
+										candidateActionNames: [],
+										replyText: "",
+										facts: [],
+										relationships: [],
+										addressedTo: [],
+									},
 								},
-							},
-						],
-					};
-				}
-				throw RATE_LIMIT_ERROR;
-			}),
-			composeState: vi.fn(async () => makeState()),
-			runActionsByMode: vi.fn(async () => undefined),
-			applyPipelineHooks: vi.fn(async () => undefined),
-			emitEvent: vi.fn(async () => undefined),
-			reportError: vi.fn(),
-			startRun: vi.fn(() => RUN_ID),
-			getCurrentRunId: vi.fn(() => RUN_ID),
-			endRun: vi.fn(),
-			getMemoryById: vi.fn(async () => null),
-			createMemory: vi.fn(async () => asUUID(v4())),
-			updateMemory: vi.fn(async () => true),
-			queueEmbeddingGeneration: vi.fn(async () => undefined),
-			getParticipantUserState: vi.fn(async () => null),
-			getRoom: vi.fn(async () => makeRoom(ChannelType.GROUP)),
-			getRoomsByIds: vi.fn(async () => [makeRoom(ChannelType.GROUP)]),
-			getMemories: vi.fn(async () => []),
-			isCheckShouldRespondEnabled: vi.fn(() => true),
-			turnControllers: new TurnControllerRegistry(),
-			responseHandlerFieldRegistry,
-			responseHandlerFieldEvaluators: [
-				...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
-			],
-			responseHandlerEvaluators: [
-				{
-					name: "test-clobber-to-ack",
-					priority: 100,
-					shouldRun: () => true,
-					evaluate: () => ({ reply: "On it.", requiresTool: true }),
+							],
+						};
+					}
+					throw RATE_LIMIT_ERROR;
+				}),
+				composeState: vi.fn(async () => makeState()),
+				runActionsByMode: vi.fn(async () => undefined),
+				applyPipelineHooks: vi.fn(async () => undefined),
+				emitEvent: vi.fn(async () => undefined),
+				reportError: vi.fn(),
+				startRun: vi.fn(() => RUN_ID),
+				getCurrentRunId: vi.fn(() => RUN_ID),
+				endRun: vi.fn(),
+				getMemoryById: vi.fn(async () => null),
+				createMemory: vi.fn(async () => asUUID(v4())),
+				updateMemory: vi.fn(async () => true),
+				queueEmbeddingGeneration: vi.fn(async () => undefined),
+				getParticipantUserState: vi.fn(async () => null),
+				getRoom: vi.fn(async () => makeRoom(ChannelType.GROUP)),
+				getRoomsByIds: vi.fn(async () => [makeRoom(ChannelType.GROUP)]),
+				getMemories: vi.fn(async () => []),
+				isCheckShouldRespondEnabled: vi.fn(() => true),
+				turnControllers: new TurnControllerRegistry(),
+				responseHandlerFieldRegistry,
+				responseHandlerFieldEvaluators: [
+					...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+				],
+				responseHandlerEvaluators: [
+					{
+						name: "test-clobber-to-ack",
+						priority: 100,
+						shouldRun: () => true,
+						evaluate: () => ({ reply: "On it.", requiresTool: true }),
+					},
+				],
+			} as never);
+
+			const service = new DefaultMessageService();
+			const deliveries: Content[] = [];
+			const result = await service.handleMessage(
+				runtime,
+				makeMessage({}),
+				async (content) => {
+					deliveries.push(content);
+					return [];
 				},
-			],
-		} as never);
+			);
 
-		const service = new DefaultMessageService();
-		const deliveries: Content[] = [];
-		const result = await service.handleMessage(
-			runtime,
-			makeMessage({}),
-			async (content) => {
-				deliveries.push(content);
-				return [];
-			},
-		);
+			const visibleTexts = deliveries
+				.map((content) =>
+					typeof content.text === "string" ? content.text : "",
+				)
+				.filter((text) => text.trim().length > 0);
 
-		const visibleTexts = deliveries
-			.map((content) => (typeof content.text === "string" ? content.text : ""))
-			.filter((text) => text.trim().length > 0);
-
-		expect(result.didRespond).toBe(true);
-		expect(visibleTexts).toHaveLength(1);
-		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
-	});
+			if (expectVisible) {
+				expect(result.didRespond).toBe(true);
+				expect(visibleTexts).toHaveLength(1);
+				expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
+			} else {
+				expect(result.didRespond).toBe(false);
+				expect(visibleTexts).toEqual([]);
+			}
+		},
+	);
 });

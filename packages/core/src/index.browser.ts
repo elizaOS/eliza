@@ -53,6 +53,7 @@ export * from "./entities";
 // barrel so browser consumers resolve the same canonical truthy set.
 export * from "./env-utils";
 export * from "./errors";
+export * from "./failure-reply-policy";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export {

@@ -20,6 +20,8 @@
  *   (e) bot-reply budget                 -> the human answer does NOT spend it
  *   (f) redelivery/retry                 -> cannot double-send
  *   (g) IGNORE/no-reply                  -> slot released, not resurrected
+ *   (h) FAILURE_REPLY_POLICY             -> suppressed public failure text
+ *                                           still releases the slot + receipt
  */
 import { randomUUID } from "node:crypto";
 import {
@@ -469,6 +471,15 @@ describe("group coordination on the real SQL path — latest-human-edge-wins", (
 				throw new Error("provider exploded");
 			},
 		});
+		// The fence sits immediately before channel.send. Under the default
+		// FAILURE_REPLY_POLICY=dm-only a guild failure never reaches the send
+		// (covered in the FAILURE_REPLY_POLICY suite below); opt into `all` so
+		// this test keeps proving the pre-send fence on the failure-reply path.
+		const baseGetSetting = runtime.getSetting.bind(runtime);
+		runtime.getSetting = ((key: string) =>
+			key === "FAILURE_REPLY_POLICY"
+				? "all"
+				: baseGetSetting(key)) as typeof runtime.getSetting;
 		const chan = makeGuildChannel(AGENT_A, CLIENT_A, channelId, sends);
 		const manager = new MessageManager(
 			makeService(runtime, CLIENT_A, channelId),
@@ -695,5 +706,90 @@ describe("group coordination on the real SQL path — retry and no-reply", () =>
 		// Left `claimed`, this would expire and the sweeper would re-dispatch an
 		// edge the agent chose not to answer, forever.
 		expect(slots[0].state).toBe("released");
+	});
+});
+
+describe("group coordination on the real SQL path — FAILURE_REPLY_POLICY", () => {
+	it("a provider failure under the default dm-only policy releases the slot without a public send", async () => {
+		const channelId = freshChannelId();
+		const sends: Sent[] = [];
+		const runtime = makeRuntime(AGENT_A, "instance-a", {
+			onGenerate: async () => {
+				throw new Error("provider exploded");
+			},
+		});
+		const chan = makeGuildChannel(AGENT_A, CLIENT_A, channelId, sends);
+		const manager = new MessageManager(
+			makeService(runtime, CLIENT_A, channelId),
+			runtime,
+		);
+
+		await manager.handleMessage(
+			makeInbound({
+				channel: chan.channel,
+				guild: chan.guild,
+				channelId,
+				messageId: "222000000000000040",
+				mentionsBotId: CLIENT_A,
+			}),
+		);
+
+		// No canned failure text in the guild channel.
+		expect(sends).toHaveLength(0);
+		// The claimed slot must not be left dangling: `claimed` would expire
+		// and the sweeper would re-dispatch the failed edge.
+		const slots = await slotsFor(channelId);
+		expect(slots).toHaveLength(1);
+		expect(slots[0].state).toBe("released");
+		expect(slots[0].delivered_message_id).toBeNull();
+		// Other participants still see a terminal receipt for this edge.
+		const reconciled = await receiptsFor(channelId, "delivery-reconciled");
+		expect(reconciled).toHaveLength(1);
+		expect(reconciled[0].outcome).toBe("failure-reply-suppressed");
+		expect(
+			(runtime.logger.info as ReturnType<typeof vi.fn>).mock.calls.some(
+				([ctx]) =>
+					(ctx as Record<string, unknown>).code ===
+					"DISCORD_FAILURE_REPLY_SUPPRESSED_PUBLIC",
+			),
+		).toBe(true);
+	});
+
+	it("FAILURE_REPLY_POLICY=all keeps the legacy fenced failure reply in a guild channel", async () => {
+		const channelId = freshChannelId();
+		const sends: Sent[] = [];
+		const runtime = makeRuntime(AGENT_A, "instance-a", {
+			onGenerate: async () => {
+				throw new Error("provider exploded");
+			},
+		});
+		const baseGetSetting = runtime.getSetting.bind(runtime);
+		runtime.getSetting = ((key: string) =>
+			key === "FAILURE_REPLY_POLICY"
+				? "all"
+				: baseGetSetting(key)) as typeof runtime.getSetting;
+		const chan = makeGuildChannel(AGENT_A, CLIENT_A, channelId, sends);
+		const manager = new MessageManager(
+			makeService(runtime, CLIENT_A, channelId),
+			runtime,
+		);
+
+		await manager.handleMessage(
+			makeInbound({
+				channel: chan.channel,
+				guild: chan.guild,
+				channelId,
+				messageId: "222000000000000041",
+				mentionsBotId: CLIENT_A,
+			}),
+		);
+
+		expect(sends).toHaveLength(1);
+		expect(sends[0].content).toContain("provider issue");
+		const slots = await slotsFor(channelId);
+		expect(slots[0].state).toBe("delivered");
+		const reconciled = await receiptsFor(channelId, "delivery-reconciled");
+		expect(reconciled).toHaveLength(1);
+		expect(reconciled[0].outcome).toBe("failure-reply");
 	});
 });

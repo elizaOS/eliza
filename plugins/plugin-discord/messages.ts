@@ -21,10 +21,12 @@ import {
 	type Media,
 	type Memory,
 	MemoryType,
+	resolveFailureReplyPolicy,
 	type SendHandlerPersistenceFailure,
 	type SendHandlerReceipt,
 	type Service,
 	ServiceType,
+	shouldEmitFailureReply,
 	stringToUuid,
 	TurnAbortedError,
 	toWellFormedUnicode,
@@ -2214,7 +2216,83 @@ export class MessageManager {
 				}
 			};
 
-			const sendFailureReply = async (text: string) => {
+			const sendFailureReply = async (
+				text: string,
+				cause: "timeout" | "provider" = "provider",
+			) => {
+				// FAILURE_REPLY_POLICY (default `dm-only`): a canned failure notice
+				// is a courtesy in a DM and noise in a guild channel, where every
+				// reader sees the outage and nobody can act on it. In a public room
+				// the failure signal is the error reaction (already set by the
+				// caller); the text is dropped. The lease bookkeeping still runs:
+				// a claimed slot that never delivers must be released, otherwise the
+				// crash sweeper re-dispatches this edge and the bot-lane budget
+				// stays spent.
+				const failurePolicy = resolveFailureReplyPolicy(this.runtime, {
+					logger: this.runtime.logger,
+				});
+				const failureDecision = shouldEmitFailureReply({
+					policy: failurePolicy,
+					isDm: isDM,
+				});
+				if (!failureDecision.emit) {
+					this.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							code: "DISCORD_FAILURE_REPLY_SUPPRESSED_PUBLIC",
+							channelId: message.channel.id,
+							messageId: message.id,
+							cause,
+							policy: failurePolicy,
+							reason: failureDecision.reason,
+							isDm: isDM,
+						},
+						"Suppressing Discord failure reply under FAILURE_REPLY_POLICY",
+					);
+					if (speakerLease) {
+						try {
+							await releaseSpeakerLease(
+								this.runtime,
+								speakerLease,
+								"failure-reply-suppressed",
+							);
+							await emitCoordinationReceipt(this.runtime, {
+								kind: "delivery-reconciled",
+								channelId: message.channel.id,
+								edgeMessageId: message.id,
+								roomId,
+								entityId: newMessage.entityId,
+								worldId,
+								outcome: "failure-reply-suppressed",
+								generation: speakerLease.generation,
+								holderToken: speakerLease.contenderToken,
+								edgeEpoch: speakerLease.edgeEpoch,
+								detail: {
+									cause,
+									policy: failurePolicy,
+									reason: failureDecision.reason,
+								},
+								scope: coordinationScope,
+							});
+						} catch (leaseError) {
+							this.runtime.logger.warn(
+								{
+									src: "plugin:discord",
+									agentId: this.runtime.agentId,
+									channelId: message.channel.id,
+									messageId: message.id,
+									error:
+										leaseError instanceof Error
+											? leaseError.message
+											: String(leaseError),
+								},
+								"Failed to release speaker lease after suppressing failure reply",
+							);
+						}
+					}
+					return;
+				}
 				try {
 					const fenced = await verifyFencedOutboundSend("failure-reply");
 					if (!fenced) {
@@ -3141,6 +3219,7 @@ export class MessageManager {
 						generationTimedOut
 							? "I timed out while generating that reply. Please retry."
 							: "I hit a provider issue while generating the reply. Please retry.",
+						generationTimedOut ? "timeout" : "provider",
 					);
 				}
 				if (!inboundMemoryCommitted) {

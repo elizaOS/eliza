@@ -104,7 +104,13 @@ function makeFailingRuntime(
 			error: vi.fn(),
 			trace: vi.fn(),
 		} as unknown as IAgentRuntime["logger"],
-		getSetting: vi.fn(() => undefined),
+		// These tests pin the failure-reply TEXT on an addressed group turn.
+		// FAILURE_REPLY_POLICY defaults to dm-only (public rooms stay silent);
+		// opt into `all` so the template path is exercised. Suppression itself
+		// is covered by message.runtime-failure-suppression.test.ts.
+		getSetting: vi.fn((key: string) =>
+			key === "FAILURE_REPLY_POLICY" ? "all" : undefined,
+		),
 		getService: vi.fn(() => null),
 		getModel: vi.fn(() => async () => {
 			throw failure;

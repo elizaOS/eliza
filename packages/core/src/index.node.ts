@@ -115,6 +115,7 @@ export {
 	type ReportedError,
 	toElizaError,
 } from "./errors";
+export * from "./failure-reply-policy";
 export {
 	roleAction,
 	updateRoleAction,
