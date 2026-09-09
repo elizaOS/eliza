@@ -31,6 +31,7 @@ import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { resolveCallbackActionName } from "./action-identifiers.js";
 import { rewriteActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import { financialCompletionIsUngrounded } from "./financial-completion";
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
@@ -38,6 +39,7 @@ import {
 
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
+	| "financial_completion"
 	| "empty_tracked_state";
 
 export function appliedEffectReceiptIdsForReply(
@@ -169,6 +171,9 @@ export function evaluatePlannedReplyEgress(args: {
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
+	if (financialCompletionIsUngrounded(reply, args.actionResults)) {
+		return { verdict: "reject", kind: "financial_completion" };
+	}
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
 			plannedReplyHasClaimGroundingReceipt({
