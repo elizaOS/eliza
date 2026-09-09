@@ -1560,6 +1560,54 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-oblique-markets": {
+      "git": {
+        "repo": "oblique-markets/elizaos-plugin-oblique-markets",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-oblique-markets",
+        "v0": null,
+        "v1": null,
+        "v2": null
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Pay-per-call market data for elizaOS agents over x402 (USDC on Base): live x402 Bazaar market pulse, category heat, price stats, seller rank, new listings and day-over-day deltas, plus Base chain lookups (gas, block, tx status, USDC balance and transfer checks), crypto prices, X post search and Solana priority fees. No accounts, no API keys; a per-call dollar cap bounds spend.",
+      "homepage": "https://oblique.markets",
+      "topics": [
+        "x402",
+        "micropayments",
+        "base",
+        "usdc",
+        "market-data",
+        "bazaar",
+        "agent-economy",
+        "onchain"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-quantumscan": {
       "git": {
         "repo": "quantumscan-io/elizaos-plugin-quantumscan",
