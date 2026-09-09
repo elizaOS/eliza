@@ -243,6 +243,20 @@ describe("redactWindowTitle: emails", () => {
     ).toBe("draft to [redacted-email]");
   });
 
+  it.each([
+    ["12-digit local part", "mail user123456789012@example.com inbox"],
+    ["13-digit local part", "mail user1234567890123@example.com inbox"],
+  ])(
+    "redacts the whole address when the local part carries a %s",
+    (_name, title) => {
+      // EMAIL runs before CC_LIKE: a 12+ digit local part is digit-shaped, so
+      // the CC pass would shred it first and the email pattern could then
+      // never match — leaking the local-part prefix and the domain into the
+      // activity report. The whole address must collapse to one placeholder.
+      expect(redactWindowTitle(title, {})).toBe("mail [redacted-email] inbox");
+    },
+  );
+
   it("does not redact a bare @ without an email domain shape", () => {
     expect(redactWindowTitle("user @ host mention", {})).toBe(
       "user @ host mention",
