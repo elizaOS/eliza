@@ -249,14 +249,20 @@ function installRangeAwareFetchFixture(
 		 * `honor` answers a Range request with the requested tail (the
 		 * HuggingFace CDN); `clamp-to-zero` answers 206 with the whole file and
 		 * `Content-Range: bytes 0-…`, the way a proxy that ignores the requested
-		 * offset but still reports partial content does (#30939).
+		 * offset but still reports partial content does; `honor-no-cr` sends the
+		 * correct tail as a 206 without any Content-Range header; `block-aligned`
+		 * answers from eight bytes before the requested offset, the way a range
+		 * cache that aligns down does (#30939).
 		 */
-		rangeMode?: "honor" | "clamp-to-zero";
+		rangeMode?: "honor" | "clamp-to-zero" | "honor-no-cr" | "block-aligned";
 	} = {},
 ): {
 	rangeRequests: Map<string, string[]>;
+	/** Bytes actually read from each 206 body, in request order, per path. */
+	rangeBodyReads: Map<string, number[]>;
 } {
 	const rangeRequests = new Map<string, string[]>();
+	const rangeBodyReads = new Map<string, number[]>();
 	const rangeMode = options.rangeMode ?? "honor";
 	globalThis.fetch = vi.fn(
 		async (url: string | URL | Request, init?: RequestInit) => {
@@ -273,7 +279,12 @@ function installRangeAwareFetchFixture(
 				rangeRequests.set(remotePath, seen);
 				const match = /^bytes=(\d+)-$/.exec(range);
 				const requestedStart = match?.[1] ? Number.parseInt(match[1], 10) : 0;
-				const start = rangeMode === "clamp-to-zero" ? 0 : requestedStart;
+				const start =
+					rangeMode === "clamp-to-zero"
+						? 0
+						: rangeMode === "block-aligned"
+							? Math.max(0, requestedStart - 8)
+							: requestedStart;
 				const buf = Buffer.from(body);
 				if (start >= buf.length) {
 					return new Response("range not satisfiable", {
@@ -282,11 +293,31 @@ function installRangeAwareFetchFixture(
 					});
 				}
 				const tail = buf.subarray(start);
-				return new Response(tail, {
+				const reads = rangeBodyReads.get(remotePath) ?? [];
+				const readIndex = reads.push(0) - 1;
+				rangeBodyReads.set(remotePath, reads);
+				const counted = new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(new Uint8Array(tail));
+						controller.close();
+					},
+				}).pipeThrough(
+					new TransformStream<Uint8Array, Uint8Array>({
+						transform(chunk, controller) {
+							reads[readIndex] += chunk.length;
+							controller.enqueue(chunk);
+						},
+					}),
+				);
+				return new Response(counted, {
 					status: 206,
 					headers: {
 						"content-length": String(tail.length),
-						"content-range": `bytes ${start}-${buf.length - 1}/${buf.length}`,
+						...(rangeMode === "honor-no-cr"
+							? {}
+							: {
+									"content-range": `bytes ${start}-${buf.length - 1}/${buf.length}`,
+								}),
 					},
 				});
 			}
@@ -296,7 +327,7 @@ function installRangeAwareFetchFixture(
 			});
 		},
 	) as unknown as typeof fetch;
-	return { rangeRequests };
+	return { rangeRequests, rangeBodyReads };
 }
 
 async function startRangeServer(files: Map<string, string>): Promise<{
@@ -1481,6 +1512,88 @@ describe("local inference downloader stale-content robustness", () => {
 		).toBe(freshBundleBytes.text);
 		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
 		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
+	});
+
+	it("keeps resuming a 206 that omits Content-Range, as before (#30939)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		const { rangeRequests } = installRangeAwareFetchFixture(
+			freshBundleFixtureFiles(),
+			{ rangeMode: "honor-no-cr" },
+		);
+		const prefixLen = 17;
+		const textPart = eliza1StagingPartPath(root, CANONICAL_TEXT_PATH);
+		fs.mkdirSync(path.dirname(textPart), { recursive: true });
+		fs.writeFileSync(textPart, freshBundleBytes.text.slice(0, prefixLen));
+		fs.writeFileSync(`${textPart}.expected`, sha256(freshBundleBytes.text));
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		// One Range request, appended, no second fetch.
+		expect(
+			rangeRequests.get(eliza1BundleRemotePath(CANONICAL_TEXT_PATH)),
+		).toEqual([`bytes=${prefixLen}-`]);
+		const textFetches = (
+			globalThis.fetch as ReturnType<typeof vi.fn>
+		).mock.calls.filter(
+			([url]) =>
+				remotePathOf(url as string | URL | Request) ===
+				eliza1BundleRemotePath(CANONICAL_TEXT_PATH),
+		);
+		expect(textFetches).toHaveLength(1);
+		expect(
+			fs.readFileSync(eliza1BundleFinalPath(root, CANONICAL_TEXT_PATH), "utf8"),
+		).toBe(freshBundleBytes.text);
+	});
+
+	it("never writes a 206 body whose Content-Range starts below the partial; it refetches unranged (#30939)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		const { rangeRequests, rangeBodyReads } = installRangeAwareFetchFixture(
+			freshBundleFixtureFiles(),
+			{ rangeMode: "block-aligned" },
+		);
+		const prefixLen = 17;
+		const textPart = eliza1StagingPartPath(root, CANONICAL_TEXT_PATH);
+		fs.mkdirSync(path.dirname(textPart), { recursive: true });
+		fs.writeFileSync(textPart, freshBundleBytes.text.slice(0, prefixLen));
+		fs.writeFileSync(`${textPart}.expected`, sha256(freshBundleBytes.text));
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		const remotePath = eliza1BundleRemotePath(CANONICAL_TEXT_PATH);
+		// The origin answered `bytes 9-` to a request for 17-: that body was
+		// discarded unread and the file was fetched once more without a Range.
+		expect(rangeRequests.get(remotePath)).toEqual([`bytes=${prefixLen}-`]);
+		expect(rangeBodyReads.get(remotePath)).toEqual([0]);
+		const textFetches = (
+			globalThis.fetch as ReturnType<typeof vi.fn>
+		).mock.calls.filter(
+			([url]) => remotePathOf(url as string | URL | Request) === remotePath,
+		);
+		expect(textFetches).toHaveLength(2);
+		const secondHeaders = (textFetches[1]?.[1] as RequestInit | undefined)
+			?.headers as Record<string, string> | undefined;
+		expect(secondHeaders?.range).toBeUndefined();
+		expect(
+			fs.readFileSync(eliza1BundleFinalPath(root, CANONICAL_TEXT_PATH), "utf8"),
+		).toBe(freshBundleBytes.text);
 	});
 
 	it("still range-resumes a valid .part recorded against the current manifest sha", async () => {
