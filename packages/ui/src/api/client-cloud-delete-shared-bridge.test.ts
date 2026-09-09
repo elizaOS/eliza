@@ -4,9 +4,10 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const nativeHttp = vi.hoisted(() => ({ enabled: false, request: vi.fn() }));
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: () => false },
-  CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
+  Capacitor: { isNativePlatform: () => nativeHttp.enabled },
+  CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: nativeHttp.request },
 }));
 
 import { ElizaClient } from "./client-base";
@@ -38,8 +39,75 @@ function makeClient(): ElizaClient {
 
 describe("deleteSharedBridgeAgent", () => {
   afterEach(() => {
+    nativeHttp.enabled = false;
+    nativeHttp.request.mockReset();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it.each([false, true])(
+    "does not dispatch cleanup after its caller has cancelled (native=%s)",
+    async (native) => {
+      nativeHttp.enabled = native;
+      const fetchMock = vi.fn(async () => ({ status: 200 }) as Response);
+      vi.stubGlobal("fetch", fetchMock);
+      const controller = new AbortController();
+      controller.abort();
+      const result = await makeClient().deleteSharedBridgeAgent("shared-1", {
+        cloudApiBase: EXPLICIT_CLOUD_BASE,
+        authToken: "fixture-token",
+        signal: controller.signal,
+      });
+      expect(result.success).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(nativeHttp.request).not.toHaveBeenCalled();
+    },
+  );
+
+  it("cancels the native cleanup wait without replaying or claiming server rollback", async () => {
+    nativeHttp.enabled = true;
+    let resolveResponse!: (response: { status: number }) => void;
+    nativeHttp.request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const attempt = makeClient().deleteSharedBridgeAgent("shared-1", {
+      cloudApiBase: EXPLICIT_CLOUD_BASE,
+      authToken: "fixture-token",
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(nativeHttp.request).toHaveBeenCalledTimes(1));
+    controller.abort();
+    expect((await attempt).success).toBe(false);
+    resolveResponse({ status: 200 });
+    await Promise.resolve();
+    expect(nativeHttp.request).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops waiting for a cancelled cleanup without reporting a late response as success", async () => {
+    let resolveResponse!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const attempt = makeClient().deleteSharedBridgeAgent("shared-1", {
+      cloudApiBase: EXPLICIT_CLOUD_BASE,
+      authToken: "fixture-token",
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+    expect((await attempt).success).toBe(false);
+    resolveResponse(Response.json({ success: true }));
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("pins the DELETE to the explicit cloudApiBase, not the repointed client baseUrl", async () => {

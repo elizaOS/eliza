@@ -34,6 +34,7 @@ import {
   personalSharedAgentId,
 } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import * as dbHelpersActual from "../../shared/src/db/helpers";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -88,11 +89,17 @@ const currentUser = {
   discord_id: null as string | null,
 };
 
+// Already-authenticated session identity at the route seam. These inert fixture
+// labels are not JWTs and never leave the in-memory test application.
+const currentSession = { token: "upgrade-consent-session-a" };
+
 // VALUE snapshot at module evaluation + mock installed in beforeAll — never at
 // module scope: `bun test` evaluates every test file's module scope up front,
 // so a module-scope mock would patch the shared auth module under every OTHER
 // suite in a multi-file run (the coverage lane co-runs changed suites, #15943).
 const realAuthSnapshot = { ...realAuth };
+const dbHelpersSnapshot = { ...dbHelpersActual };
+let beforeLifecycleTransaction: (() => Promise<void>) | undefined;
 
 let cutoverHistory = [
   {
@@ -206,7 +213,30 @@ beforeAll(async () => {
   try {
     mock.module("@/lib/auth", () => ({
       ...realAuthSnapshot,
-      requireAuthOrApiKeyWithOrg: mock(async () => ({ user: currentUser })),
+      requireAuthOrApiKeyWithOrg: mock(async () => ({
+        user: currentUser,
+        authMethod: "session" as const,
+        session_token: currentSession.token,
+      })),
+    }));
+    const realDbWrite = dbHelpersSnapshot.dbWrite;
+    mock.module("../../shared/src/db/helpers", () => ({
+      ...dbHelpersSnapshot,
+      dbWrite: new Proxy(realDbWrite, {
+        get(target, property, receiver) {
+          if (property === "transaction") {
+            return async (
+              ...args: Parameters<typeof realDbWrite.transaction>
+            ) => {
+              const before = beforeLifecycleTransaction;
+              beforeLifecycleTransaction = undefined;
+              if (before) await before();
+              return target.transaction(...args);
+            };
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
     }));
 
     const { closeDatabaseConnectionsForTests, dbWrite } = await import(
@@ -354,6 +384,7 @@ afterAll(async () => {
   // the same process — a leaked module mock patches itself into later suites'
   // imports.
   mock.module("@/lib/auth", () => realAuthSnapshot);
+  mock.module("../../shared/src/db/helpers", () => dbHelpersSnapshot);
 });
 
 function quote(agentId: string) {
@@ -362,6 +393,75 @@ function quote(agentId: string) {
     { method: "GET" },
     ENV,
   );
+}
+
+function confirmQuote(
+  agentId: string,
+  quoteId: string,
+  executionCtx?: Parameters<Hono<AppEnv>["request"]>[3],
+) {
+  return app.request(
+    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "activate_dedicated", quoteId }),
+    },
+    ENV,
+    executionCtx,
+  );
+}
+
+async function withPendingUpgradeTarget(
+  run: (fixture: { sourceId: string; targetId: string }) => Promise<void>,
+) {
+  expect(pgliteReady).toBe(true);
+  const { dbWrite } = await import("@/db/client");
+  const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+  const { jobs } = await import("@/db/schemas/jobs");
+  const { personalDedicatedUpgradeAuthorities } = await import(
+    "@/db/schemas/personal-dedicated-upgrade-authorities"
+  );
+  const sourceId = crypto.randomUUID();
+  const targetId = crypto.randomUUID();
+  await setOrgBalance(ORG_A, "10");
+  await dbWrite.insert(agentSandboxes).values([
+    {
+      id: sourceId,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      execution_tier: "shared",
+      status: "running",
+      database_status: "none",
+    },
+    {
+      id: targetId,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      execution_tier: "dedicated-always",
+      status: "pending",
+      database_status: "none",
+      agent_config: { __agentUpgradedFrom: sourceId },
+    },
+  ]);
+  await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+    organization_id: ORG_A,
+    user_id: USER_A,
+    source_agent_id: sourceId,
+    dedicated_agent_id: targetId,
+  });
+  try {
+    await run({ sourceId, targetId });
+  } finally {
+    beforeLifecycleTransaction = undefined;
+    await dbWrite.delete(jobs).where(eq(jobs.agent_id, targetId));
+    await dbWrite
+      .delete(personalDedicatedUpgradeAuthorities)
+      .where(eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceId));
+    await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, targetId));
+    await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, sourceId));
+    await setOrgBalance(ORG_A, "0.50");
+  }
 }
 
 function cutover(agentId: string, dedicatedAgentId: string) {
@@ -405,7 +505,11 @@ async function upgrade(
   );
 }
 
-async function upgradeWithRetainedNudge(agentId: string, failure?: Error) {
+async function upgradeWithRetainedNudge(
+  agentId: string,
+  failure?: Error,
+  reviewedQuoteId?: string,
+) {
   const { provisioningJobService } = await import(
     "@/lib/services/provisioning-jobs"
   );
@@ -421,7 +525,9 @@ async function upgradeWithRetainedNudge(agentId: string, failure?: Error) {
     props: {},
   };
   try {
-    const response = await upgrade(agentId, executionCtx);
+    const response = reviewedQuoteId
+      ? await confirmQuote(agentId, reviewedQuoteId, executionCtx)
+      : await upgrade(agentId, executionCtx);
     expect(response.status).toBe(202);
     expect(trigger).toHaveBeenCalledTimes(1);
     expect(retained).toHaveLength(1);
@@ -791,6 +897,1081 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     }
   });
 
+  for (const outcome of [
+    "pending",
+    "completed",
+    "failed",
+    "purged",
+    "stopped",
+    "other caller",
+    "foreign job",
+  ] as const) {
+    test(`original confirmation recovery is read-only when its job/target is ${outcome}`, async () => {
+      expect(pgliteReady).toBe(true);
+      const { dbWrite } = await import("@/db/client");
+      const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+      const { jobs } = await import("@/db/schemas/jobs");
+      const { apiKeys } = await import("@/db/schemas/api-keys");
+      const { personalDedicatedUpgradeAuthorities } = await import(
+        "@/db/schemas/personal-dedicated-upgrade-authorities"
+      );
+      const { provisioningJobService } = await import(
+        "@/lib/services/provisioning-jobs"
+      );
+      const sourceId = crypto.randomUUID();
+      await setOrgBalance(ORG_A, "10");
+      await dbWrite.insert(agentSandboxes).values({
+        id: sourceId,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        execution_tier: "shared",
+        status: "running",
+        database_status: "none",
+      });
+      const reviewed = (await (await quote(sourceId)).json()) as {
+        data: { quoteId: string };
+      };
+      const created = await upgradeWithRetainedNudge(
+        sourceId,
+        undefined,
+        reviewed.data.quoteId,
+      );
+      const original = (await created.json()) as {
+        data: { dedicatedAgentId: string; jobId: string };
+      };
+      const targetId = original.data.dedicatedAgentId;
+      const originalCallerId = currentUser.id;
+      const trigger = spyOn(
+        provisioningJobService,
+        "triggerImmediate",
+      ).mockResolvedValue();
+      try {
+        if (outcome === "purged")
+          await dbWrite.delete(jobs).where(eq(jobs.id, original.data.jobId));
+        else if (outcome === "stopped")
+          await dbWrite
+            .update(agentSandboxes)
+            .set({ status: "stopped" })
+            .where(eq(agentSandboxes.id, targetId));
+        else if (outcome === "other caller") currentUser.id = USER_A_OPERATOR;
+        else if (outcome === "foreign job")
+          await dbWrite
+            .update(jobs)
+            .set({ user_id: USER_A_OPERATOR })
+            .where(eq(jobs.id, original.data.jobId));
+        else if (outcome !== "pending")
+          await dbWrite
+            .update(jobs)
+            .set({ status: outcome })
+            .where(eq(jobs.id, original.data.jobId));
+        // Recovery of an already accepted job does not require funding another run.
+        if (outcome === "pending") await setOrgBalance(ORG_A, "0.01");
+        const jobsBefore = await dbWrite.select().from(jobs);
+        const agentsBefore = await dbWrite.select().from(agentSandboxes);
+        const keysBefore = await dbWrite.select().from(apiKeys);
+        const receiptsBefore = await dbWrite
+          .select()
+          .from(personalDedicatedUpgradeAuthorities);
+        const response = await confirmQuote(sourceId, reviewed.data.quoteId);
+        expect(response.status).toBe(outcome === "pending" ? 202 : 409);
+        if (outcome === "pending")
+          expect(await response.json()).toMatchObject({
+            created: false,
+            recovered: true,
+            data: { dedicatedAgentId: targetId, jobId: original.data.jobId },
+          });
+        else
+          expect(await response.json()).toMatchObject({
+            code:
+              outcome === "other caller"
+                ? "dedicated_quote_changed"
+                : "dedicated_activation_recovery_required",
+          });
+        expect(await dbWrite.select().from(jobs)).toEqual(jobsBefore);
+        expect(await dbWrite.select().from(agentSandboxes)).toEqual(
+          agentsBefore,
+        );
+        expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+        expect(
+          await dbWrite.select().from(personalDedicatedUpgradeAuthorities),
+        ).toEqual(receiptsBefore);
+        expect(trigger).not.toHaveBeenCalled();
+      } finally {
+        currentUser.id = originalCallerId;
+        trigger.mockRestore();
+        await dbWrite.delete(jobs).where(eq(jobs.agent_id, targetId));
+        await dbWrite
+          .delete(apiKeys)
+          .where(eq(apiKeys.name, `agent-sandbox:${targetId}`));
+        await dbWrite
+          .delete(personalDedicatedUpgradeAuthorities)
+          .where(
+            eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceId),
+          );
+        await dbWrite
+          .delete(agentSandboxes)
+          .where(eq(agentSandboxes.id, targetId));
+        await dbWrite
+          .delete(agentSandboxes)
+          .where(eq(agentSandboxes.id, sourceId));
+        await setOrgBalance(ORG_A, "0.50");
+      }
+    });
+  }
+
+  for (const phase of ["after review", "during transaction"] as const) {
+    for (const changedField of [
+      "balance",
+      "status",
+      "revision",
+      "target",
+      "job",
+    ] as const) {
+      test(`reattachment refuses a ${changedField} change ${phase}`, async () => {
+        expect(pgliteReady).toBe(true);
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const { jobs } = await import("@/db/schemas/jobs");
+        const { personalDedicatedUpgradeAuthorities } = await import(
+          "@/db/schemas/personal-dedicated-upgrade-authorities"
+        );
+        const sourceId = crypto.randomUUID();
+        let targetId = crypto.randomUUID();
+        await setOrgBalance(ORG_A, "10");
+        await dbWrite.insert(agentSandboxes).values([
+          {
+            id: sourceId,
+            organization_id: ORG_A,
+            user_id: USER_A,
+            execution_tier: "shared",
+            status: "running",
+            database_status: "none",
+          },
+          {
+            id: targetId,
+            organization_id: ORG_A,
+            user_id: USER_A,
+            execution_tier: "dedicated-always",
+            status: "pending",
+            lifecycle_revision: 1,
+            agent_config: { __agentUpgradedFrom: sourceId },
+            database_status: "none",
+          },
+        ]);
+        await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+          organization_id: ORG_A,
+          user_id: USER_A,
+          source_agent_id: sourceId,
+          dedicated_agent_id: targetId,
+        });
+        const initialJobId = crypto.randomUUID();
+        if (changedField === "job")
+          await dbWrite.insert(jobs).values({
+            id: initialJobId,
+            type: "agent_provision",
+            status: "pending",
+            agent_id: targetId,
+            organization_id: ORG_A,
+            user_id: USER_A,
+            data: {
+              agentId: targetId,
+              organizationId: ORG_A,
+              userId: USER_A,
+              agentName: "Pending target",
+            },
+          });
+        let raceReached = false;
+        const change = async () => {
+          raceReached = true;
+          if (changedField === "balance") await setOrgBalance(ORG_A, "9");
+          else if (changedField === "job")
+            await dbWrite
+              .update(jobs)
+              .set({ status: "completed" })
+              .where(eq(jobs.id, initialJobId));
+          else if (changedField === "target") {
+            const [previous] = await dbWrite
+              .select()
+              .from(agentSandboxes)
+              .where(eq(agentSandboxes.id, targetId));
+            if (!previous) throw new Error("missing target fixture");
+            const replacementId = crypto.randomUUID();
+            await dbWrite
+              .insert(agentSandboxes)
+              .values({ ...previous, id: replacementId });
+            await dbWrite
+              .update(personalDedicatedUpgradeAuthorities)
+              .set({ dedicated_agent_id: replacementId })
+              .where(
+                eq(
+                  personalDedicatedUpgradeAuthorities.source_agent_id,
+                  sourceId,
+                ),
+              );
+            await dbWrite
+              .delete(agentSandboxes)
+              .where(eq(agentSandboxes.id, targetId));
+            targetId = replacementId;
+          } else
+            await dbWrite
+              .update(agentSandboxes)
+              .set(
+                changedField === "status"
+                  ? { status: "stopped" }
+                  : { lifecycle_revision: 2 },
+              )
+              .where(eq(agentSandboxes.id, targetId));
+        };
+        try {
+          const reviewed = (await (await quote(sourceId)).json()) as {
+            data: { quoteId: string };
+          };
+          if (phase === "after review") await change();
+          else beforeLifecycleTransaction = change;
+          const response = await confirmQuote(sourceId, reviewed.data.quoteId);
+          expect(raceReached).toBe(true);
+          expect(response.status).toBe(409);
+          expect(await response.json()).toMatchObject({
+            code: "dedicated_quote_changed",
+          });
+          expect(
+            await dbWrite
+              .select()
+              .from(jobs)
+              .where(eq(jobs.agent_id, targetId)),
+          ).toHaveLength(changedField === "job" ? 1 : 0);
+          const accepted = await upgrade(sourceId);
+          expect(accepted.status).toBe(202);
+          expect(
+            await dbWrite
+              .select()
+              .from(jobs)
+              .where(eq(jobs.agent_id, targetId)),
+          ).toHaveLength(changedField === "job" ? 2 : 1);
+        } finally {
+          beforeLifecycleTransaction = undefined;
+          await dbWrite.delete(jobs).where(eq(jobs.agent_id, targetId));
+          await dbWrite
+            .delete(personalDedicatedUpgradeAuthorities)
+            .where(
+              eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceId),
+            );
+          await dbWrite
+            .delete(agentSandboxes)
+            .where(eq(agentSandboxes.id, targetId));
+          await dbWrite
+            .delete(agentSandboxes)
+            .where(eq(agentSandboxes.id, sourceId));
+          await setOrgBalance(ORG_A, "0.50");
+        }
+      });
+    }
+  }
+
+  for (const status of ["pending", "provisioning"] as const) {
+    test(`${status} without an active job requires runway before a new provision`, async () => {
+      await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const { jobs } = await import("@/db/schemas/jobs");
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ status })
+          .where(eq(agentSandboxes.id, targetId));
+        await setOrgBalance(ORG_A, "0.01");
+        const reviewed = (await (await quote(sourceId)).json()) as {
+          data: { quoteId: string; canActivate: boolean };
+        };
+        expect(reviewed.data.canActivate).toBe(false);
+        expect(
+          (await confirmQuote(sourceId, reviewed.data.quoteId)).status,
+        ).toBe(402);
+        expect(
+          await dbWrite.select().from(jobs).where(eq(jobs.agent_id, targetId)),
+        ).toHaveLength(0);
+      });
+    });
+  }
+
+  test("reviewed active-job reuse never enters find-or-enqueue", async () => {
+    await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+      const { dbWrite } = await import("@/db/client");
+      const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+      const { jobs } = await import("@/db/schemas/jobs");
+      const { provisioningJobService } = await import(
+        "@/lib/services/provisioning-jobs"
+      );
+      await upgradeWithRetainedNudge(sourceId);
+      const beforeJobs = await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.agent_id, targetId));
+      const beforeTargets = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, targetId));
+      const enqueue = spyOn(
+        provisioningJobService,
+        "enqueueAgentProvisionOnceInTx",
+      ).mockImplementation(async () => {
+        throw new Error("read-only reuse must not enter enqueue");
+      });
+      try {
+        const response = await upgrade(sourceId);
+        expect(response.status).toBe(202);
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(
+          await dbWrite.select().from(jobs).where(eq(jobs.agent_id, targetId)),
+        ).toEqual(beforeJobs);
+        expect(
+          await dbWrite
+            .select()
+            .from(agentSandboxes)
+            .where(eq(agentSandboxes.id, targetId)),
+        ).toEqual(beforeTargets);
+      } finally {
+        enqueue.mockRestore();
+      }
+    });
+  });
+
+  for (const status of [
+    "pending",
+    "provisioning",
+    "stopped",
+    "sleeping",
+    "error",
+  ] as const) {
+    test(`${status} selected target cannot start a new job through generic reattachment`, async () => {
+      await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const { jobs } = await import("@/db/schemas/jobs");
+        const { personalDedicatedAdoptionSelections: selections } =
+          await import("@/db/schemas/personal-dedicated-adoption-selections");
+        const { provisioningJobService } = await import(
+          "@/lib/services/provisioning-jobs"
+        );
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ status })
+          .where(eq(agentSandboxes.id, targetId));
+        // Install the reviewed selection after quoting, at transaction entry:
+        // an unlocked HTTP-only check would not preserve its restore authority.
+        beforeLifecycleTransaction = async () => {
+          await dbWrite.insert(selections).values({
+            organization_id: ORG_A,
+            user_id: USER_A,
+            source_agent_id: sourceId,
+            dedicated_agent_id: targetId,
+            selection_reason: "duplicate_owned_dedicated_inventory",
+            state_disposition: "fresh_boot_no_verified_backup",
+            activation_kind: "fresh_boot",
+            inventory_fingerprint: "a".repeat(64),
+            candidate_count: 2,
+          });
+        };
+        const before = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, targetId));
+        const nudge = spyOn(
+          provisioningJobService,
+          "triggerImmediate",
+        ).mockResolvedValue(undefined);
+        try {
+          const response = await upgrade(sourceId);
+          expect(response.status).toBe(409);
+          expect(await response.json()).toMatchObject({
+            code: "dedicated_adoption_selection_required",
+          });
+          expect(
+            await dbWrite
+              .select()
+              .from(jobs)
+              .where(eq(jobs.agent_id, targetId)),
+          ).toHaveLength(0);
+          expect(
+            await dbWrite
+              .select()
+              .from(agentSandboxes)
+              .where(eq(agentSandboxes.id, targetId)),
+          ).toEqual(before);
+          expect(nudge).not.toHaveBeenCalled();
+        } finally {
+          nudge.mockRestore();
+          beforeLifecycleTransaction = undefined;
+          await dbWrite
+            .delete(selections)
+            .where(eq(selections.source_agent_id, sourceId));
+        }
+      });
+    });
+  }
+
+  for (const status of ["pending", "provisioning", "running"] as const) {
+    test(`selected ${status} target can reuse accepted work without a new adoption or job`, async () => {
+      await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const { jobs } = await import("@/db/schemas/jobs");
+        const { personalDedicatedAdoptionSelections: selections } =
+          await import("@/db/schemas/personal-dedicated-adoption-selections");
+        const { provisioningJobService } = await import(
+          "@/lib/services/provisioning-jobs"
+        );
+        if (status !== "running")
+          expect((await upgrade(sourceId)).status).toBe(202);
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ status })
+          .where(eq(agentSandboxes.id, targetId));
+        await dbWrite.insert(selections).values({
+          organization_id: ORG_A,
+          user_id: USER_A,
+          source_agent_id: sourceId,
+          dedicated_agent_id: targetId,
+          selection_reason: "duplicate_owned_dedicated_inventory",
+          state_disposition: "fresh_boot_no_verified_backup",
+          activation_kind: "fresh_boot",
+          inventory_fingerprint: "a".repeat(64),
+          candidate_count: 2,
+        });
+        const beforeJobs = await dbWrite
+          .select()
+          .from(jobs)
+          .where(eq(jobs.agent_id, targetId));
+        const beforeTarget = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, targetId));
+        const enqueue = spyOn(
+          provisioningJobService,
+          "enqueueAgentProvisionOnceInTx",
+        );
+        const nudge = spyOn(
+          provisioningJobService,
+          "triggerImmediate",
+        ).mockResolvedValue(undefined);
+        try {
+          const response = await upgrade(sourceId);
+          expect(response.status).toBe(status === "running" ? 200 : 202);
+          expect(
+            await dbWrite
+              .select()
+              .from(jobs)
+              .where(eq(jobs.agent_id, targetId)),
+          ).toEqual(beforeJobs);
+          expect(
+            await dbWrite
+              .select()
+              .from(agentSandboxes)
+              .where(eq(agentSandboxes.id, targetId)),
+          ).toEqual(beforeTarget);
+          expect(enqueue).not.toHaveBeenCalled();
+          expect(nudge).not.toHaveBeenCalled();
+        } finally {
+          enqueue.mockRestore();
+          nudge.mockRestore();
+          await dbWrite
+            .delete(selections)
+            .where(eq(selections.source_agent_id, sourceId));
+        }
+      });
+    });
+  }
+
+  for (const accepted of [false, true]) {
+    for (const invalidation of [
+      "session replacement",
+      "elapsed day",
+    ] as const) {
+      test(`${accepted ? "accepted-result recovery" : "unaccepted reactivation"} requires fresh consent after ${invalidation}`, async () => {
+        await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+          const { dbWrite } = await import("@/db/client");
+          const { jobs } = await import("@/db/schemas/jobs");
+          const { agentSandboxes } = await import(
+            "@/db/schemas/agent-sandboxes"
+          );
+          const { provisioningJobService } = await import(
+            "@/lib/services/provisioning-jobs"
+          );
+          const previousToken = currentSession.token;
+          const reviewed = (await (await quote(sourceId)).json()) as {
+            data: { quoteId: string };
+          };
+          if (accepted)
+            await upgradeWithRetainedNudge(
+              sourceId,
+              undefined,
+              reviewed.data.quoteId,
+            );
+          const beforeJobs = await dbWrite
+            .select()
+            .from(jobs)
+            .where(eq(jobs.agent_id, targetId));
+          const beforeTargets = await dbWrite
+            .select()
+            .from(agentSandboxes)
+            .where(eq(agentSandboxes.id, targetId));
+          const trigger = spyOn(
+            provisioningJobService,
+            "triggerImmediate",
+          ).mockResolvedValue();
+          const now = Date.now();
+          const clock =
+            invalidation === "elapsed day"
+              ? spyOn(Date, "now").mockReturnValue(now + 24 * 60 * 60 * 1000)
+              : undefined;
+          if (invalidation === "session replacement")
+            currentSession.token = "upgrade-consent-session-b";
+          try {
+            const response = await confirmQuote(
+              sourceId,
+              reviewed.data.quoteId,
+            );
+            expect(response.status).toBe(409);
+            expect(trigger).not.toHaveBeenCalled();
+            expect(
+              await dbWrite
+                .select()
+                .from(jobs)
+                .where(eq(jobs.agent_id, targetId)),
+            ).toEqual(beforeJobs);
+            expect(
+              await dbWrite
+                .select()
+                .from(agentSandboxes)
+                .where(eq(agentSandboxes.id, targetId)),
+            ).toEqual(beforeTargets);
+          } finally {
+            currentSession.token = previousToken;
+            clock?.mockRestore();
+            trigger.mockRestore();
+          }
+        });
+      });
+    }
+  }
+
+  for (const boundary of [
+    "transaction acquisition",
+    "job insertion",
+  ] as const) {
+    test(`expiry at ${boundary} rolls back reactivation without a nudge`, async () => {
+      await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+        const { dbWrite } = await import("@/db/client");
+        const { jobs } = await import("@/db/schemas/jobs");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const { provisioningJobService } = await import(
+          "@/lib/services/provisioning-jobs"
+        );
+        const response = await quote(sourceId);
+        expect(response.headers.get("Cache-Control")).toBe("no-store");
+        const reviewed = (await response.json()) as {
+          data: { quoteId: string; issuedAt: number; expiresAt: number };
+        };
+        expect(reviewed.data.expiresAt - reviewed.data.issuedAt).toBe(300_000);
+        const before = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, targetId));
+        let clock: ReturnType<typeof spyOn<typeof Date, "now">> | undefined;
+        const expire = () => {
+          clock = spyOn(Date, "now").mockReturnValue(reviewed.data.expiresAt);
+        };
+        const originalEnqueue =
+          provisioningJobService.enqueueAgentProvisionOnceInTx.bind(
+            provisioningJobService,
+          );
+        const enqueue =
+          boundary === "job insertion"
+            ? spyOn(
+                provisioningJobService,
+                "enqueueAgentProvisionOnceInTx",
+              ).mockImplementationOnce(async (...args) => {
+                const result = await originalEnqueue(...args);
+                expire();
+                return result;
+              })
+            : undefined;
+        const trigger = spyOn(
+          provisioningJobService,
+          "triggerImmediate",
+        ).mockResolvedValue();
+        if (boundary === "transaction acquisition")
+          beforeLifecycleTransaction = async () => {
+            expire();
+          };
+        try {
+          const result = await confirmQuote(sourceId, reviewed.data.quoteId);
+          expect(result.status).toBe(409);
+          expect(trigger).not.toHaveBeenCalled();
+          expect(
+            await dbWrite
+              .select()
+              .from(jobs)
+              .where(eq(jobs.agent_id, targetId)),
+          ).toHaveLength(0);
+          expect(
+            await dbWrite
+              .select()
+              .from(agentSandboxes)
+              .where(eq(agentSandboxes.id, targetId)),
+          ).toEqual(before);
+          if (enqueue) expect(enqueue).toHaveBeenCalledTimes(1);
+        } finally {
+          beforeLifecycleTransaction = undefined;
+          clock?.mockRestore();
+          enqueue?.mockRestore();
+          trigger.mockRestore();
+        }
+      });
+    });
+  }
+
+  test("distinct concurrent reviews require fresh review for the loser without a second job", async () => {
+    await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+      const { dbWrite } = await import("@/db/client");
+      const { jobs } = await import("@/db/schemas/jobs");
+      const { provisioningJobService } = await import(
+        "@/lib/services/provisioning-jobs"
+      );
+      const first = (await (await quote(sourceId)).json()) as {
+        data: { quoteId: string };
+      };
+      const second = (await (await quote(sourceId)).json()) as {
+        data: { quoteId: string };
+      };
+      expect(first.data.quoteId).not.toBe(second.data.quoteId);
+      const trigger = spyOn(
+        provisioningJobService,
+        "triggerImmediate",
+      ).mockResolvedValue();
+      try {
+        const responses = await Promise.all(
+          [first, second].map((reviewed) =>
+            confirmQuote(sourceId, reviewed.data.quoteId),
+          ),
+        );
+        expect(responses.map((response) => response.status).sort()).toEqual([
+          202, 409,
+        ]);
+        expect(
+          await dbWrite.select().from(jobs).where(eq(jobs.agent_id, targetId)),
+        ).toHaveLength(1);
+        expect(trigger).toHaveBeenCalledTimes(1);
+        const fresh = await upgrade(sourceId);
+        expect(fresh.status).toBe(202);
+        expect(trigger).toHaveBeenCalledTimes(1);
+      } finally {
+        trigger.mockRestore();
+      }
+    });
+  });
+
+  test("a newly active job at the enqueue decision invalidates the reviewed absence", async () => {
+    await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+      const { dbWrite } = await import("@/db/client");
+      const { jobs } = await import("@/db/schemas/jobs");
+      const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+      const { provisioningJobService } = await import(
+        "@/lib/services/provisioning-jobs"
+      );
+      const before = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, targetId));
+      const enqueueOnce =
+        provisioningJobService.enqueueAgentProvisionOnceInTx.bind(
+          provisioningJobService,
+        );
+      const enqueue = spyOn(
+        provisioningJobService,
+        "enqueueAgentProvisionOnceInTx",
+      ).mockImplementationOnce(async (...args) => {
+        // Exercise the canonical created:false decision with a real job.
+        // This is a controlled transaction seam, not multi-connection race proof.
+        await enqueueOnce(...args);
+        return enqueueOnce(...args);
+      });
+      try {
+        const response = await upgrade(sourceId);
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          code: "dedicated_quote_changed",
+        });
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(
+          await dbWrite.select().from(jobs).where(eq(jobs.agent_id, targetId)),
+        ).toHaveLength(0);
+        expect(
+          await dbWrite
+            .select()
+            .from(agentSandboxes)
+            .where(eq(agentSandboxes.id, targetId)),
+        ).toEqual(before);
+      } finally {
+        enqueue.mockRestore();
+      }
+    });
+  });
+
+  test("reactivation recovery belongs to the confirming same-org operator", async () => {
+    await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+      const { dbWrite } = await import("@/db/client");
+      const { jobs } = await import("@/db/schemas/jobs");
+      const previousUserId = currentUser.id;
+      try {
+        currentUser.id = USER_A_OPERATOR;
+        const reviewed = (await (await quote(sourceId)).json()) as {
+          data: { quoteId: string };
+        };
+        const accepted = await upgradeWithRetainedNudge(
+          sourceId,
+          undefined,
+          reviewed.data.quoteId,
+        );
+        const body = (await accepted.json()) as { data: { jobId: string } };
+        currentUser.id = USER_A;
+        expect(
+          (await confirmQuote(sourceId, reviewed.data.quoteId)).status,
+        ).toBe(409);
+        currentUser.id = USER_A_OPERATOR;
+        const recovered = await confirmQuote(sourceId, reviewed.data.quoteId);
+        expect(recovered.status).toBe(202);
+        expect(await recovered.json()).toMatchObject({
+          recovered: true,
+          data: { jobId: body.data.jobId },
+        });
+        const targetJobs = await dbWrite
+          .select()
+          .from(jobs)
+          .where(eq(jobs.agent_id, targetId));
+        expect(targetJobs).toHaveLength(1);
+        expect(targetJobs[0]!.user_id).toBe(USER_A_OPERATOR);
+      } finally {
+        currentUser.id = previousUserId;
+      }
+    });
+  });
+
+  test("reactivation receipt failure rolls back its job and consumed lifecycle revision", async () => {
+    await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+      const { dbWrite } = await import("@/db/client");
+      const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+      const { jobs } = await import("@/db/schemas/jobs");
+      const before = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, targetId));
+      await dbWrite.execute(`ALTER TABLE jobs ADD CONSTRAINT test_reject_reactivation_receipt
+        CHECK (NOT (data ? 'dedicatedActivationQuote')) NOT VALID`);
+      try {
+        expect((await upgrade(sourceId)).status).toBe(500);
+        expect(
+          await dbWrite.select().from(jobs).where(eq(jobs.agent_id, targetId)),
+        ).toHaveLength(0);
+        expect(
+          await dbWrite
+            .select()
+            .from(agentSandboxes)
+            .where(eq(agentSandboxes.id, targetId)),
+        ).toEqual(before);
+      } finally {
+        await dbWrite.execute(
+          "ALTER TABLE jobs DROP CONSTRAINT test_reject_reactivation_receipt",
+        );
+      }
+      expect((await upgradeWithRetainedNudge(sourceId)).status).toBe(202);
+    });
+  });
+
+  for (const initialStatus of [
+    "pending",
+    "stopped",
+    "sleeping",
+    "error",
+  ] as const) {
+    test(`a ${initialStatus} reactivation confirmation recovers its exact job and cannot be replayed after purge`, async () => {
+      await withPendingUpgradeTarget(async ({ sourceId, targetId }) => {
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const { jobs } = await import("@/db/schemas/jobs");
+        const { provisioningJobService } = await import(
+          "@/lib/services/provisioning-jobs"
+        );
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ status: initialStatus })
+          .where(eq(agentSandboxes.id, targetId));
+        const reviewed = (await (await quote(sourceId)).json()) as {
+          data: { quoteId: string };
+        };
+        const [before] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, targetId));
+        const created = await upgradeWithRetainedNudge(
+          sourceId,
+          undefined,
+          reviewed.data.quoteId,
+        );
+        const body = (await created.json()) as { data: { jobId: string } };
+        const [after] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, targetId));
+        expect(after!.lifecycle_revision).toBe(before!.lifecycle_revision + 1);
+        const [job] = await dbWrite
+          .select()
+          .from(jobs)
+          .where(eq(jobs.id, body.data.jobId));
+        expect(job!.data).toMatchObject({
+          dedicatedActivationQuote: {
+            sourceAgentId: sourceId,
+            quoteId: reviewed.data.quoteId,
+            quoteVersion: "personal-dedicated-v1",
+            targetLifecycleRevision: after!.lifecycle_revision,
+          },
+        });
+        const trigger = spyOn(
+          provisioningJobService,
+          "triggerImmediate",
+        ).mockResolvedValue();
+        try {
+          const recovered = await confirmQuote(sourceId, reviewed.data.quoteId);
+          expect(recovered.status).toBe(202);
+          expect(await recovered.json()).toMatchObject({
+            recovered: true,
+            data: { jobId: body.data.jobId },
+          });
+          expect(trigger).not.toHaveBeenCalled();
+          await dbWrite.delete(jobs).where(eq(jobs.id, body.data.jobId));
+          expect(
+            (await confirmQuote(sourceId, reviewed.data.quoteId)).status,
+          ).toBe(409);
+          expect(
+            await dbWrite
+              .select()
+              .from(jobs)
+              .where(eq(jobs.agent_id, targetId)),
+          ).toHaveLength(0);
+          expect(trigger).not.toHaveBeenCalled();
+        } finally {
+          trigger.mockRestore();
+        }
+        // A newly reviewed decision, unlike the stale replay, can proceed.
+        expect((await upgradeWithRetainedNudge(sourceId)).status).toBe(202);
+        expect(
+          await dbWrite.select().from(jobs).where(eq(jobs.agent_id, targetId)),
+        ).toHaveLength(1);
+      });
+    });
+  }
+
+  test("returns quote-changed when billing moves during preparation and leaves no activation behind", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const { apiKeys } = await import("@/db/schemas/api-keys");
+    const { apiKeysService } = await import("@/lib/services/api-keys");
+    const realCreateForAgent =
+      apiKeysService.createForAgent.bind(apiKeysService);
+    const create = spyOn(
+      apiKeysService,
+      "createForAgent",
+    ).mockImplementationOnce(async (params) => {
+      const result = await realCreateForAgent(params);
+      await setOrgBalance(ORG_A, "9");
+      return result;
+    });
+    await setOrgBalance(ORG_A, "10");
+    const agentsBefore = await dbWrite.select().from(agentSandboxes);
+    const jobsBefore = await dbWrite.select().from(jobs);
+    const keysBefore = await dbWrite.select().from(apiKeys);
+    try {
+      const response = await upgrade(SHARED_A);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "dedicated_quote_changed",
+      });
+      expect(await dbWrite.select().from(agentSandboxes)).toEqual(agentsBefore);
+      expect(await dbWrite.select().from(jobs)).toEqual(jobsBefore);
+      expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+    } finally {
+      create.mockRestore();
+      await setOrgBalance(ORG_A, "0.50");
+    }
+  });
+
+  test("fresh activation requires the current same-org account's own quote", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const { apiKeys } = await import("@/db/schemas/api-keys");
+    const previousUserId = currentUser.id;
+    await setOrgBalance(ORG_A, "10");
+    try {
+      const quoted = await quote(SHARED_A);
+      expect(quoted.status).toBe(200);
+      const reviewed = (await quoted.json()) as { data: { quoteId: string } };
+      const agentsBefore = await dbWrite.select().from(agentSandboxes);
+      const jobsBefore = await dbWrite.select().from(jobs);
+      const keysBefore = await dbWrite.select().from(apiKeys);
+      currentUser.id = USER_A_OPERATOR;
+      const response = await app.request(
+        `/api/v1/eliza/agents/${SHARED_A}/upgrade-tier`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "activate_dedicated",
+            quoteId: reviewed.data.quoteId,
+          }),
+        },
+        ENV,
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "dedicated_quote_changed",
+      });
+      expect(await dbWrite.select().from(agentSandboxes)).toEqual(agentsBefore);
+      expect(await dbWrite.select().from(jobs)).toEqual(jobsBefore);
+      expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+    } finally {
+      currentUser.id = previousUserId;
+      await setOrgBalance(ORG_A, "0.50");
+    }
+  });
+
+  for (const status of [
+    "running",
+    "pending",
+    "provisioning",
+    "error",
+    "stopped",
+    "sleeping",
+  ] as const) {
+    for (const changedContext of ["balance", "account"] as const) {
+      test(`${status} reattachment rejects ${changedContext}-mismatched consent before any job change`, async () => {
+        expect(pgliteReady).toBe(true);
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const { jobs } = await import("@/db/schemas/jobs");
+        const { apiKeys } = await import("@/db/schemas/api-keys");
+        const { personalDedicatedUpgradeAuthorities } = await import(
+          "@/db/schemas/personal-dedicated-upgrade-authorities"
+        );
+        const sourceId = crypto.randomUUID();
+        const targetId = crypto.randomUUID();
+        const previousUserId = currentUser.id;
+        await setOrgBalance(ORG_A, "10");
+        await dbWrite.insert(agentSandboxes).values([
+          {
+            id: sourceId,
+            organization_id: ORG_A,
+            user_id: USER_A,
+            agent_name: "Consent source",
+            execution_tier: "shared",
+            status: "running",
+            database_status: "none",
+          },
+          {
+            id: targetId,
+            organization_id: ORG_A,
+            user_id: USER_A,
+            agent_name: "Consent target",
+            agent_config: { __agentUpgradedFrom: sourceId },
+            execution_tier: "dedicated-always",
+            status,
+            database_status: "none",
+          },
+        ]);
+        await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+          organization_id: ORG_A,
+          user_id: USER_A,
+          source_agent_id: sourceId,
+          dedicated_agent_id: targetId,
+        });
+        try {
+          const quoted = await quote(sourceId);
+          expect(quoted.status).toBe(200);
+          const reviewed = (await quoted.json()) as {
+            data: { quoteId: string };
+          };
+          if (changedContext === "balance") await setOrgBalance(ORG_A, "11");
+          else currentUser.id = USER_A_OPERATOR;
+
+          const agentsBefore = await dbWrite.select().from(agentSandboxes);
+          const jobsBefore = await dbWrite.select().from(jobs);
+          const keysBefore = await dbWrite.select().from(apiKeys);
+          const response = await app.request(
+            `/api/v1/eliza/agents/${sourceId}/upgrade-tier`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "activate_dedicated",
+                quoteId: reviewed.data.quoteId,
+              }),
+            },
+            ENV,
+          );
+          expect(response.status).toBe(409);
+          expect(await response.json()).toMatchObject({
+            success: false,
+            code: "dedicated_quote_changed",
+          });
+          expect(await dbWrite.select().from(agentSandboxes)).toEqual(
+            agentsBefore,
+          );
+          expect(await dbWrite.select().from(jobs)).toEqual(jobsBefore);
+          expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+
+          // A newly reviewed quote remains usable, including same-org operators.
+          // A running target needs no job; recovery creates one job, then reuses it.
+          if (status === "running") {
+            await setOrgBalance(ORG_A, "0.50");
+          }
+          const accepted = await upgrade(sourceId);
+          expect(accepted.status).toBe(status === "running" ? 200 : 202);
+          expect(await accepted.json()).toMatchObject({
+            success: true,
+            created: false,
+            data: { dedicatedAgentId: targetId },
+          });
+          const retry = await upgrade(sourceId);
+          expect(retry.status).toBe(status === "running" ? 200 : 202);
+          const targetJobs = await dbWrite
+            .select()
+            .from(jobs)
+            .where(eq(jobs.agent_id, targetId));
+          expect(targetJobs).toHaveLength(status === "running" ? 0 : 1);
+          expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+        } finally {
+          currentUser.id = previousUserId;
+          await dbWrite.delete(jobs).where(eq(jobs.agent_id, targetId));
+          await dbWrite
+            .delete(personalDedicatedUpgradeAuthorities)
+            .where(
+              eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceId),
+            );
+          await dbWrite
+            .delete(agentSandboxes)
+            .where(eq(agentSandboxes.id, targetId));
+          await dbWrite
+            .delete(agentSandboxes)
+            .where(eq(agentSandboxes.id, sourceId));
+          await setOrgBalance(ORG_A, "0.50");
+        }
+      });
+    }
+  }
+
   test("a rowless personal Eliza rejects a stale quote, then mints one singleton Dedicated target", async () => {
     expect(pgliteReady).toBe(true);
     await setOrgBalance(ORG_A, "10");
@@ -874,7 +2055,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(pgliteReady).toBe(true);
     await setOrgBalance(ORG_A, "10");
 
-    const res = await upgradeWithRetainedNudge(SHARED_A);
+    const reviewed = (await (await quote(SHARED_A)).json()) as {
+      data: { quoteId: string; quoteVersion: string };
+    };
+
+    const res = await upgradeWithRetainedNudge(
+      SHARED_A,
+      undefined,
+      reviewed.data.quoteId,
+    );
     expect(res.status).toBe(202);
     const body = (await res.json()) as {
       success: boolean;
@@ -950,6 +2139,23 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       .where(eq(jobs.agent_id, dedicated.id));
     expect(jobRows.length).toBe(1);
     expect(jobRows[0]?.type).toBe("agent_provision");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
+    const [receipt] = await dbWrite
+      .select()
+      .from(personalDedicatedUpgradeAuthorities)
+      .where(
+        eq(
+          personalDedicatedUpgradeAuthorities.dedicated_agent_id,
+          dedicated.id,
+        ),
+      );
+    expect(receipt).toMatchObject({
+      originating_activation_quote_id: reviewed.data.quoteId,
+      originating_activation_quote_version: reviewed.data.quoteVersion,
+      originating_provision_job_id: body.data.jobId,
+    });
   });
 
   test("a retry reattaches to the SAME in-flight target instead of minting a second one", async () => {
@@ -1026,7 +2232,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(job?.status).toBe("pending");
   });
 
-  test("concurrent upgrades atomically converge on one target, one job, one credential set", async () => {
+  test("concurrent retries of one confirmation atomically converge on one target, one job, one credential set", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
@@ -1042,8 +2248,13 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       database_status: "none",
     });
 
+    const reviewed = (await (await quote(SHARED_CONCURRENT)).json()) as {
+      data: { quoteId: string };
+    };
     const responses = await Promise.all(
-      Array.from({ length: 8 }, () => upgrade(SHARED_CONCURRENT)),
+      Array.from({ length: 8 }, () =>
+        confirmQuote(SHARED_CONCURRENT, reviewed.data.quoteId),
+      ),
     );
     expect(responses.every((response) => response.status === 202)).toBe(true);
     const bodies = (await Promise.all(

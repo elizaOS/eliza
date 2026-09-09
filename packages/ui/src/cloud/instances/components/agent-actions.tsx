@@ -30,6 +30,12 @@ import {
   formatUSD,
 } from "@elizaos/cloud-sdk/browser-contracts";
 import {
+  STEWARD_ACTIVE_SCOPE_KEY,
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
+} from "@elizaos/shared/steward-session-client";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -50,9 +56,20 @@ import {
   Sun,
   Trash2,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { client, ElizaClient } from "../../../api";
+import {
+  type DedicatedActivationConfirmationQuote,
+  isDedicatedActivationQuoteCurrent,
+  parseDedicatedActivationQuote,
+} from "../../../api/dedicated-activation-quote";
 import { toast } from "../../../bridge/toast";
 import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
@@ -62,6 +79,7 @@ import { directCloudSharedAgentIdFromBase } from "../../../utils/cloud-agent-bas
 import { silentlyRepointToDedicated } from "../../handoff/silent-repoint";
 import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
 import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
+import { useSessionAuth } from "../../lib/use-session-auth";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { useJobPoller } from "../lib/use-job-poller";
@@ -73,26 +91,32 @@ interface ElizaAgentActionsProps {
   showWebUiAction?: boolean;
 }
 
-interface DedicatedActivationQuote {
-  quoteId: string;
+interface DedicatedActivationQuote
+  extends DedicatedActivationConfirmationQuote {
   sourceAgentId: string;
-  hourlyRateUsd: number;
-  dailyRateUsd: number;
-  minimumBalanceUsd: number;
-  minimumRunwayDays: number;
-  balanceUsd: number;
-  deficitUsd: number;
-  canActivate: boolean;
-  requiresConfirmation: true;
-  action: "activate_dedicated";
-  unavailableReason?: string;
-  activation:
-    | { state: "available" }
-    | {
-        state: "in_progress";
-        dedicatedAgentId: string;
-        status: string;
-      };
+}
+
+function requireDedicatedQuote(
+  value: unknown,
+  agentId: string,
+): DedicatedActivationQuote {
+  const quote = parseDedicatedActivationQuote(value);
+  if (!quote) {
+    throw new Error(
+      "Dedicated quote is incomplete or unsupported. Review again.",
+    );
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    !("sourceAgentId" in value) ||
+    value.sourceAgentId !== agentId
+  ) {
+    throw new Error(
+      "Dedicated quote does not match the selected agent. Review again.",
+    );
+  }
+  return { ...quote, sourceAgentId: agentId };
 }
 
 export function ElizaAgentActions({
@@ -103,17 +127,126 @@ export function ElizaAgentActions({
 }: ElizaAgentActionsProps) {
   const t = useT();
   const navigate = useNavigate();
+  const session = useSessionAuth();
+  const sessionUserId = session.authenticated
+    ? (session.user?.id ?? null)
+    : null;
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
   const [upgradeQuote, setUpgradeQuote] =
     useState<DedicatedActivationQuote | null>(null);
+  const [upgradeReviewNotice, setUpgradeReviewNotice] = useState<string | null>(
+    null,
+  );
   // Set for the whole shared→dedicated upgrade span (provision + transcript
   // move); the id is the dedicated migration target this page navigates to on
   // a confirmed switch.
   const [upgradeTargetId, setUpgradeTargetId] = useState<string | null>(null);
   const jobActionById = useRef(new Map<string, string>());
+  // A review belongs to one mounted source/runtime context. Delayed responses
+  // and restored browser pages cannot carry it into another context.
+  const upgradeEpoch = useRef(0);
+  const upgradeRequest = useRef<AbortController | null>(null);
+  const reviewedQuote = useRef<DedicatedActivationQuote | null>(null);
+  // Kept only for the active review, never in query keys or persisted state.
+  const reviewedBearer = useRef<string | null | undefined>(undefined);
+  const upgradeSource = useRef<{
+    agentId: string;
+    executionTier: AgentExecutionTier;
+    status: string;
+    sessionUserId: string | null;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    upgradeSource.current = { agentId, executionTier, status, sessionUserId };
+    function invalidateUpgradeReview() {
+      upgradeRequest.current?.abort();
+      upgradeRequest.current = null;
+      upgradeEpoch.current += 1;
+      reviewedQuote.current = null;
+      reviewedBearer.current = undefined;
+      setUpgradeQuote(null);
+      setUpgradeReviewNotice(null);
+      setShowUpgradeConfirm(false);
+      setUpgradeTargetId(null);
+      setLoading(null);
+    }
+    function onPageShow(event: PageTransitionEvent) {
+      if (event.persisted) invalidateUpgradeReview();
+    }
+    function onSessionChange() {
+      const hadActiveDecision =
+        reviewedQuote.current !== null || upgradeRequest.current !== null;
+      invalidateUpgradeReview();
+      if (hadActiveDecision) {
+        toast.info(
+          "Your Cloud session changed. Review the current agent state and Dedicated quote before continuing.",
+        );
+      }
+    }
+    function onStorage(event: StorageEvent) {
+      if (
+        event.key === null ||
+        event.key === STEWARD_TOKEN_KEY ||
+        event.key === STEWARD_TOKEN_SCOPE_KEY ||
+        event.key === STEWARD_ACTIVE_SCOPE_KEY
+      )
+        onSessionChange();
+    }
+    invalidateUpgradeReview();
+    window.addEventListener("pagehide", invalidateUpgradeReview);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, onSessionChange);
+    window.addEventListener("steward-token-sync", onSessionChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      upgradeRequest.current?.abort();
+      upgradeRequest.current = null;
+      upgradeSource.current = null;
+      upgradeEpoch.current += 1;
+      reviewedQuote.current = null;
+      reviewedBearer.current = undefined;
+      window.removeEventListener("pagehide", invalidateUpgradeReview);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, onSessionChange);
+      window.removeEventListener("steward-token-sync", onSessionChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [agentId, executionTier, status, sessionUserId]);
+
+  const requestFreshUpgradeReview = useCallback(() => {
+    reviewedQuote.current = null;
+    reviewedBearer.current = undefined;
+    setUpgradeReviewNotice(
+      t("cloud.containers.agentActions.upgradeReviewExpired", {
+        defaultValue:
+          "This Dedicated quote expired or changed. Review the current quote before confirming again.",
+      }),
+    );
+    setShowUpgradeConfirm(true);
+  }, [t]);
+
+  useEffect(() => {
+    if (!showUpgradeConfirm || !upgradeQuote || upgradeReviewNotice) return;
+    // No refresh or activation on timeout. Dispatch checks below remain necessary
+    // when a background tab delays timers or the clock changes.
+    const timer = window.setInterval(() => {
+      if (
+        reviewedQuote.current &&
+        !isDedicatedActivationQuoteCurrent(upgradeQuote)
+      ) {
+        requestFreshUpgradeReview();
+      }
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [
+    showUpgradeConfirm,
+    upgradeQuote,
+    upgradeReviewNotice,
+    requestFreshUpgradeReview,
+  ]);
 
   const poller = useJobPoller({
     onComplete: (job) => {
@@ -189,13 +322,14 @@ export function ElizaAgentActions({
   const canWake = isSleeping;
   // Tier upgrade is a shared-agent-only promotion (#15355); a dedicated agent
   // already runs on its own container.
-  const canUpgrade = isRunning && !isDedicated && !upgradeTargetId;
+  const canUpgrade =
+    Boolean(sessionUserId) && isRunning && !isDedicated && !upgradeTargetId;
   const upgradeQuoteQuery = useQuery({
-    queryKey: ["agent-dedicated-upgrade-quote", agentId],
+    queryKey: ["agent-dedicated-upgrade-quote", agentId, "auth", sessionUserId],
     queryFn: async () => {
       const { status: httpStatus, data } = await apiWithStatus<{
         success?: boolean;
-        data?: DedicatedActivationQuote;
+        data?: unknown;
         error?: string;
       }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
         method: "GET",
@@ -203,7 +337,7 @@ export function ElizaAgentActions({
       if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
         throw new Error(data?.error ?? `HTTP ${httpStatus}`);
       }
-      return data.data;
+      return requireDedicatedQuote(data.data, agentId);
     },
     enabled: canUpgrade,
     staleTime: 15_000,
@@ -350,23 +484,51 @@ export function ElizaAgentActions({
   }
 
   async function reviewDedicatedQuote() {
+    const epoch = ++upgradeEpoch.current;
+    reviewedQuote.current = null;
+    reviewedBearer.current = undefined;
+    setShowUpgradeConfirm(false);
+    setUpgradeQuote(null);
+    setUpgradeReviewNotice(null);
     setLoading("upgrade-quote");
     try {
-      const quote =
-        upgradeQuoteQuery.data ?? (await upgradeQuoteQuery.refetch()).data;
+      const bearer = await readCloudBearerToken();
+      if (upgradeEpoch.current !== epoch) return;
+      // A cached mount-time quote is useful for the button label, not consent.
+      // Every review (including one reopened after Cancel) reads current terms.
+      const refreshed = await upgradeQuoteQuery.refetch();
+      if (upgradeEpoch.current !== epoch) return;
+      const currentBearer = await readCloudBearerToken();
+      if (upgradeEpoch.current !== epoch) return;
+      if (currentBearer !== bearer) {
+        throw new Error(
+          "Your Cloud session changed. Review the Dedicated quote again.",
+        );
+      }
+      if (refreshed.isError) throw refreshed.error;
+      const quote = refreshed.data;
       if (!quote) {
         throw (
           upgradeQuoteQuery.error ?? new Error("Dedicated quote unavailable")
         );
       }
       setUpgradeQuote(quote);
+      if (!isDedicatedActivationQuoteCurrent(quote)) {
+        requestFreshUpgradeReview();
+        return;
+      }
+      reviewedQuote.current = quote;
+      reviewedBearer.current = bearer;
       setShowUpgradeConfirm(true);
     } catch (err) {
+      // error-policy:J4 current review failures remain actionable; stale work
+      // cannot display an error or reopen a dialog in a different context.
+      if (upgradeEpoch.current !== epoch) return;
       toast.error(
         `${t("cloud.containers.agentActions.upgradeQuoteFailed", { defaultValue: "Could not load the current Dedicated quote" })}: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
-      setLoading(null);
+      if (upgradeEpoch.current === epoch) setLoading(null);
     }
   }
 
@@ -381,10 +543,47 @@ export function ElizaAgentActions({
    * action can simply be retried.
    */
   async function doUpgrade() {
-    if (!upgradeQuote) return;
+    const quote = reviewedQuote.current;
+    const bearer = reviewedBearer.current;
+    if (
+      !quote ||
+      bearer === undefined ||
+      !canUpgrade ||
+      !quote.canActivate ||
+      upgradeSource.current?.agentId !== agentId ||
+      upgradeSource.current.executionTier !== executionTier ||
+      upgradeSource.current.status !== status ||
+      upgradeSource.current.sessionUserId !== sessionUserId ||
+      quote.sourceAgentId !== agentId ||
+      quote.requiresConfirmation !== true ||
+      quote.action !== "activate_dedicated"
+    )
+      return;
+    if (!isDedicatedActivationQuoteCurrent(quote)) {
+      requestFreshUpgradeReview();
+      return;
+    }
+    // Consume the visible decision synchronously: rapid repeated activation
+    // events must not dispatch this quote twice before React commits loading.
+    reviewedQuote.current = null;
+    reviewedBearer.current = undefined;
+    const epoch = upgradeEpoch.current;
+    const controller = new AbortController();
+    upgradeRequest.current = controller;
     setLoading("upgrade-tier");
     setShowUpgradeConfirm(false);
     try {
+      const currentBearer = await readCloudBearerToken();
+      if (upgradeEpoch.current !== epoch) return;
+      if (currentBearer !== bearer) {
+        throw new Error(
+          "Your Cloud session changed. Review the Dedicated quote again.",
+        );
+      }
+      if (!isDedicatedActivationQuoteCurrent(quote)) {
+        requestFreshUpgradeReview();
+        return;
+      }
       const { status: httpStatus, data } = await apiWithStatus<{
         data?:
           | { dedicatedAgentId?: string; jobId?: string }
@@ -393,19 +592,28 @@ export function ElizaAgentActions({
         error?: string;
       }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
         method: "POST",
+        signal: controller.signal,
+        ...(bearer ? { headers: { Authorization: `Bearer ${bearer}` } } : {}),
         json: {
           action: "activate_dedicated",
-          quoteId: upgradeQuote.quoteId,
+          quoteId: quote.quoteId,
         },
       });
+      if (upgradeEpoch.current !== epoch) return;
 
-      if (
-        httpStatus === 409 &&
-        data?.code === "dedicated_quote_changed" &&
-        data.data &&
-        "quoteId" in data.data
-      ) {
-        setUpgradeQuote(data.data);
+      if (httpStatus === 409 && data?.code === "dedicated_quote_changed") {
+        if (!data.data) {
+          requestFreshUpgradeReview();
+          return;
+        }
+        const updatedQuote = requireDedicatedQuote(data.data, agentId);
+        if (!isDedicatedActivationQuoteCurrent(updatedQuote)) {
+          requestFreshUpgradeReview();
+          return;
+        }
+        reviewedQuote.current = updatedQuote;
+        reviewedBearer.current = bearer;
+        setUpgradeQuote(updatedQuote);
         setShowUpgradeConfirm(true);
         toast.info(
           t("cloud.containers.agentActions.upgradeQuoteChanged", {
@@ -460,6 +668,12 @@ export function ElizaAgentActions({
       const cloudApiBase =
         getBootConfig().cloudApiBase?.trim() || window.location.origin;
       const authToken = await readCloudBearerToken();
+      if (upgradeEpoch.current !== epoch) return;
+      if (authToken !== bearer) {
+        throw new Error(
+          "Your Cloud session changed. Review the current agent state before continuing setup.",
+        );
+      }
       if (!authToken) {
         throw new Error(
           "Cloud session token unavailable — reload the page and try again.",
@@ -470,6 +684,7 @@ export function ElizaAgentActions({
       // provision job itself.
       let activeChatSwitched = false;
       const outcome = await runSharedToDedicatedUpgradeHandoff({
+        signal: controller.signal,
         sharedAgentId: agentId,
         dedicatedAgentId,
         cloudApiBase,
@@ -478,6 +693,7 @@ export function ElizaAgentActions({
         intervalMs: 5_000,
         timeoutMs: 10 * 60_000,
         onSwitch: (containerBase) => {
+          if (upgradeEpoch.current !== epoch) return;
           // A management page can upgrade any owned agent. Repoint only when
           // this is still the Shared agent serving the mounted chat; otherwise
           // completing an unrelated upgrade must not hijack the active runtime.
@@ -495,6 +711,7 @@ export function ElizaAgentActions({
           activeChatSwitched = true;
         },
       });
+      if (upgradeEpoch.current !== epoch) return;
 
       if (
         outcome.status === "switched" ||
@@ -537,13 +754,16 @@ export function ElizaAgentActions({
           }),
       );
     } catch (err) {
+      // error-policy:J4 show upgrade failures only to the initiating context.
+      if (upgradeEpoch.current !== epoch) return;
       setUpgradeTargetId(null);
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(
         `${t("cloud.containers.agentActions.upgradeFailed", { defaultValue: "Upgrade failed" })}: ${msg}`,
       );
     } finally {
-      setLoading(null);
+      if (upgradeRequest.current === controller) upgradeRequest.current = null;
+      if (upgradeEpoch.current === epoch) setLoading(null);
     }
   }
 
@@ -858,7 +1078,16 @@ export function ElizaAgentActions({
           starts until the user confirms that exact quote. */}
       <AlertDialog
         open={showUpgradeConfirm}
-        onOpenChange={setShowUpgradeConfirm}
+        onOpenChange={(open) => {
+          if (!open && (reviewedQuote.current || upgradeReviewNotice)) {
+            upgradeEpoch.current += 1;
+            reviewedQuote.current = null;
+            reviewedBearer.current = undefined;
+            setUpgradeQuote(null);
+            setUpgradeReviewNotice(null);
+          }
+          setShowUpgradeConfirm(open);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -898,6 +1127,13 @@ export function ElizaAgentActions({
                   })}
                 </span>
                 <span className="mt-3 block">
+                  {t("cloud.containers.agentActions.upgradeReviewLifetime", {
+                    defaultValue:
+                      "Review valid until {{time}}. A new review is required after it expires.",
+                    time: new Date(upgradeQuote.expiresAt).toLocaleTimeString(),
+                  })}
+                </span>
+                <span className="mt-3 block">
                   {quotedSetupIsResuming
                     ? t("cloud.containers.agentActions.upgradeResumeBody3", {
                         defaultValue:
@@ -921,6 +1157,11 @@ export function ElizaAgentActions({
               </AlertDialogDescription>
             ) : null}
           </AlertDialogHeader>
+          {upgradeReviewNotice ? (
+            <Alert variant="destructive" role="alert">
+              {upgradeReviewNotice}
+            </Alert>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel asChild>
               <Button variant="outline">
@@ -929,12 +1170,27 @@ export function ElizaAgentActions({
                 })}
               </Button>
             </AlertDialogCancel>
-            {upgradeQuote?.canActivate ? (
+            {upgradeReviewNotice ? (
+              <Button
+                type="button"
+                disabled={!!loading}
+                onClick={() => void reviewDedicatedQuote()}
+              >
+                {t("cloud.containers.agentActions.upgradeReviewAgain", {
+                  defaultValue: "Review current quote",
+                })}
+              </Button>
+            ) : upgradeQuote?.canActivate ? (
               <AlertDialogAction asChild>
                 <Button
                   type="button"
                   disabled={!!loading || isBusy}
-                  onClick={() => void doUpgrade()}
+                  onClick={(event) => {
+                    // doUpgrade owns closing; an expired click must keep the
+                    // recovery dialog open instead of Radix dismissing it.
+                    event.preventDefault();
+                    void doUpgrade();
+                  }}
                   data-testid="agent-upgrade-tier-confirm"
                 >
                   {loading === "upgrade-tier" ? (

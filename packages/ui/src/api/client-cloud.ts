@@ -22,6 +22,7 @@ import {
   startCloudConversationHandoff,
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
+import { runHandoffStep } from "../cloud/handoff/handoff-cancellation";
 import { getBootConfig } from "../config/boot-config";
 import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
@@ -32,6 +33,7 @@ import {
   isPersonalSharedElizaId,
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
+import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -71,6 +73,11 @@ import type {
   SandboxStartResponse,
   SandboxWindowInfo,
 } from "./client-types";
+import {
+  type DedicatedActivationConfirmationQuote,
+  isDedicatedActivationQuoteCurrent,
+  parseDedicatedActivationQuote,
+} from "./dedicated-activation-quote";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import {
   DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
@@ -2112,8 +2119,9 @@ declare module "./client-base" {
     /**
      * Resolve the signed-in account's stable personal identity and guarantee
      * that Dedicated compute is active before returning. When Shared is still
-     * authoritative, this activates the single-flight Dedicated target and
-     * completes the server-owned history cutover.
+     * authoritative, this requires explicit current-quote consent before the
+     * single-flight activation or history cutover. Login uses read-only
+     * getPersonalSharedEliza instead.
      */
     ensurePersonalDedicatedEliza(options: {
       cloudApiBase: string;
@@ -2123,8 +2131,13 @@ declare module "./client-base" {
       revalidate?: () => void;
       onProgress?: (status: string, detail?: string) => void;
       /**
+       * Explicit upgrade decision; absence must never authorize a lifecycle
+       * operation, even when a target is already being provisioned.
+       */
+      requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
+      /**
        * User-gesture boundary for an existing-row adoption. Silent startup
-       * must leave this unset; interactive onboarding supplies it and resolves
+       * must leave this unset; the explicit upgrade UI supplies it and resolves
        * only after rendering the server quote and receiving a visible choice.
        */
       requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
@@ -2139,11 +2152,25 @@ declare module "./client-base" {
       runtime: "dedicated";
     }>;
     /**
-     * Reuse an existing cloud agent when one exists (so we don't mint a brand-new
-     * agent on every sign-in), otherwise create + provision a fresh named one.
-     * Always returns a valid per-agent REST adapter base (`.../agents/<id>`),
-     * never the agent-id-less collection URL.
+     * Read the account's personal runtime or one exact existing picker target.
+     * Never create, wake, warm up, or replace a missing/unavailable selection.
+     * Stale create-new intents are rejected; activation belongs to Settings.
      */
+    resolveCloudAgentForEntry(options: {
+      cloudApiBase: string;
+      authToken: string;
+      preferAgentId?: string | null;
+      forceCreate?: boolean;
+      signal?: AbortSignal;
+    }): Promise<{
+      agentId: string;
+      activeAgentId: string;
+      agentName: string;
+      apiBase: string;
+      runtime: "shared" | "dedicated";
+      requiresAgentPairing?: boolean;
+    }>;
+    /** Explicit runtime-management operation; never call from login or onboarding. */
     selectOrProvisionCloudAgent(options: {
       cloudApiBase: string;
       authToken: string;
@@ -2207,6 +2234,7 @@ declare module "./client-base" {
      * shared adapter.
      */
     startCloudAgentHandoff(options: {
+      signal?: AbortSignal;
       agentId: string;
       sharedApiBase: string;
       conversationId: string;
@@ -2256,7 +2284,11 @@ declare module "./client-base" {
      */
     deleteSharedBridgeAgent(
       agentId: string,
-      options: { cloudApiBase: string; authToken: string },
+      options: {
+        cloudApiBase: string;
+        authToken: string;
+        signal?: AbortSignal;
+      },
     ): Promise<{ success: boolean; error?: string }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
@@ -4680,14 +4712,13 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
 };
 
 type InProgressDedicatedActivationPolicy =
-  | "reattach-without-post"
+  | "confirm-with-server"
   | "resume-with-confirmed-post";
 
 /**
  * The server's `in_progress` quote state means target ownership, not always
- * active work. Only pending/provisioning/running are safe after an ambiguous
- * activation response: stopped/sleeping/error require the server's confirmed
- * POST reactivation contract to validate credit and re-arm the same row.
+ * active work. Every continuation requires a server-confirmed quote. Cold
+ * retained targets first check adoption so their restore authority is preserved.
  */
 function inProgressDedicatedActivationPolicy(
   status: string,
@@ -4696,7 +4727,7 @@ function inProgressDedicatedActivationPolicy(
     case "pending":
     case "provisioning":
     case "running":
-      return "reattach-without-post";
+      return "confirm-with-server";
     case "error":
     case "stopped":
     case "sleeping":
@@ -4720,6 +4751,13 @@ function throwIfDedicatedStartupDeadlineElapsed(
 type EnsurePersonalDedicatedElizaOptions = Parameters<
   ElizaClient["ensurePersonalDedicatedEliza"]
 >[0];
+
+export type { DedicatedActivationConfirmationQuote } from "./dedicated-activation-quote";
+
+export type DedicatedActivationConfirmationRequester = (
+  quote: DedicatedActivationConfirmationQuote,
+  context: { reason: "initial" | "quote_changed"; signal?: AbortSignal },
+) => Promise<{ action: "activate_dedicated"; quoteId: string } | null>;
 
 export type DedicatedAdoptionStateDisposition =
   | "fresh_boot_no_verified_backup"
@@ -4782,6 +4820,47 @@ interface PersonalDedicatedAdoptionTarget {
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Cancellation owns the decision wait even when a UI callback never settles. */
+async function awaitDedicatedDecision<T>(
+  request: (signal?: AbortSignal) => Promise<T>,
+  signal?: AbortSignal,
+  expiry?: { expiresAt: number; error: () => Error },
+): Promise<T> {
+  signal?.throwIfAborted();
+  if (expiry) {
+    const controller = new AbortController();
+    const onParentAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", onParentAbort, { once: true });
+    const timer = setTimeout(
+      () => controller.abort(expiry.error()),
+      Math.min(2_147_483_647, Math.max(0, expiry.expiresAt - Date.now())),
+    );
+    try {
+      return await awaitDedicatedDecision(request, controller.signal);
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onParentAbort);
+    }
+  }
+  if (!signal) return await request();
+  let onAbort!: () => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => {
+        signal.throwIfAborted();
+        return request(signal);
+      }),
+      aborted,
+    ]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
 }
 
 function parseDedicatedAdoptionQuote(
@@ -4878,6 +4957,7 @@ async function adoptSelectedPersonalDedicatedEliza(
   upgradeUrl: string,
   options: EnsurePersonalDedicatedElizaOptions,
   deadline: number,
+  expectedTargetId: string | null = null,
 ): Promise<PersonalDedicatedAdoptionTarget | null> {
   const adoptionUrl = `${upgradeUrl}/adopt-existing`;
   const fetchCurrentQuote = async () => {
@@ -4894,7 +4974,7 @@ async function adoptSelectedPersonalDedicatedEliza(
   };
   let quoteResponse = await fetchCurrentQuote();
   let confirmationReason: "initial" | "quote_changed" = "initial";
-  let firstTargetId: string | null = null;
+  let firstTargetId: string | null = expectedTargetId;
   for (;;) {
     throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     const quoteRoot = recordOrNull(quoteResponse.data);
@@ -4957,10 +5037,14 @@ async function adoptSelectedPersonalDedicatedEliza(
         url: adoptionUrl,
       });
     }
-    const confirmation = await requester(quote, {
-      reason: confirmationReason,
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
+    const confirmation = await awaitDedicatedDecision(
+      () =>
+        requester(quote, {
+          reason: confirmationReason,
+          ...(options.signal ? { signal: options.signal } : {}),
+        }),
+      options.signal,
+    );
     throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     if (
       confirmation?.action !== "adopt_existing_dedicated" ||
@@ -5152,7 +5236,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
   const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
   const upgradeUrl = `${cloudApiBase}/api/v1/eliza/agents/${encodeURIComponent(personal.personalElizaId)}/upgrade-tier`;
   throwIfDedicatedStartupDeadlineElapsed(deadline, options);
-  options.onProgress?.("provisioning", "Starting your Dedicated agent…");
+  options.onProgress?.("connecting", "Checking your Dedicated setup…");
 
   const quoteResponse = await directCloudJsonResponse<unknown>(upgradeUrl, {
     headers: {
@@ -5184,7 +5268,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     throw Object.assign(
       new Error(
         firstString(quote?.unavailableReason) ??
-          "Dedicated compute is required for signed-in Eliza sessions, but this account does not have enough hosting credit.",
+          "This account does not have enough hosting credit for Dedicated activation.",
       ),
       { status: 402, data: quoteResponse.data, url: upgradeUrl },
     );
@@ -5193,6 +5277,78 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
   throwIfDedicatedStartupDeadlineElapsed(deadline, options);
   const quoteActivation = recordOrNull(quote?.activation);
   const activationState = firstString(quoteActivation?.state);
+  if (activationState !== "available" && activationState !== "in_progress") {
+    throw new ElizaError(
+      "Eliza Cloud returned an invalid Dedicated quote state.",
+      {
+        code: "CLOUD_DEDICATED_QUOTE_STATE_UNKNOWN",
+        context: { phase: "quote", field: "activation.state" },
+      },
+    );
+  }
+  const currentQuote = parseDedicatedActivationQuote(quote);
+  if (!currentQuote) {
+    throw new ElizaError(
+      "Eliza Cloud returned an invalid Dedicated activation quote.",
+      {
+        code: "CLOUD_DEDICATED_ACTIVATION_QUOTE_INVALID",
+        context: { phase: "activation-quote" },
+      },
+    );
+  }
+  const requester = options.requestDedicatedActivationConfirmation;
+  // Snapshot the server lifetime before handing a mutable DTO to the caller.
+  const reviewLifetime = {
+    issuedAt: currentQuote.issuedAt,
+    expiresAt: currentQuote.expiresAt,
+  };
+  function activationReviewExpired() {
+    return Object.assign(
+      new ElizaError(
+        "The Dedicated quote expired. Review the current quote before confirming again.",
+        {
+          code: "CLOUD_DEDICATED_ACTIVATION_QUOTE_EXPIRED",
+          context: { phase: "activation-confirmation" },
+        },
+      ),
+      { status: 409, url: upgradeUrl },
+    );
+  }
+  function assertCurrentActivationReview() {
+    if (!isDedicatedActivationQuoteCurrent(reviewLifetime)) {
+      throw activationReviewExpired();
+    }
+  }
+  assertCurrentActivationReview();
+  const confirmation = requester
+    ? await awaitDedicatedDecision(
+        (decisionSignal) =>
+          requester(currentQuote, {
+            reason: "initial",
+            signal: decisionSignal,
+          }),
+        options.signal,
+        { expiresAt: reviewLifetime.expiresAt, error: activationReviewExpired },
+      )
+    : null;
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options);
+  assertCurrentActivationReview();
+  if (
+    confirmation?.action !== "activate_dedicated" ||
+    confirmation.quoteId !== quoteId
+  ) {
+    throw Object.assign(
+      new ElizaError(
+        "Review and confirm the current Dedicated hosting quote before setup continues.",
+        {
+          code: "CLOUD_DEDICATED_ACTIVATION_CONFIRMATION_REQUIRED",
+          context: { phase: "activation-confirmation" },
+        },
+      ),
+      { status: 409, data: quoteResponse.data, url: upgradeUrl },
+    );
+  }
+  options.onProgress?.("provisioning", "Starting your Dedicated agent…");
   let quotedTargetId: string | null = null;
   let activationPostRequired = false;
   let dedicatedAgentId: string | null = null;
@@ -5212,12 +5368,11 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     quotedTargetId = existingTargetId;
     const statusPolicy =
       inProgressDedicatedActivationPolicy(existingTargetStatus);
-    if (statusPolicy === "reattach-without-post") {
-      // A prior POST can commit server-side even if its response body stalls
-      // or the client disconnects. These statuses already own live work (or
-      // healthy compute), so the read-only quote is sufficient authority to
-      // resume cutover without replaying the paid activation POST.
-      dedicatedAgentId = existingTargetId;
+    if (statusPolicy === "confirm-with-server") {
+      // GET is not cutover authority. The server checks the reviewed session,
+      // lifetime and current job before reuse or a new enqueue, and redirects
+      // selected targets that need a new job into reviewed adoption.
+      activationPostRequired = true;
     } else if (statusPolicy === "resume-with-confirmed-post") {
       // An already-selected/adopted retained row must re-enter through the
       // adoption service. The generic activation route can re-arm the same
@@ -5228,6 +5383,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
         upgradeUrl,
         options,
         deadline,
+        existingTargetId,
       );
       if (adoptedTarget) {
         if (adoptedTarget.dedicatedAgentId !== existingTargetId) {
@@ -5266,6 +5422,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
   }
 
   if (activationPostRequired) {
+    assertCurrentActivationReview();
     const activationResponse = await directCloudJsonResponse<unknown>(
       upgradeUrl,
       {
@@ -5296,6 +5453,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
         upgradeUrl,
         options,
         deadline,
+        quotedTargetId,
       );
       activatedTargetId = adoptedTarget?.dedicatedAgentId ?? null;
       provisioningJobId = adoptedTarget?.jobId ?? null;
@@ -5445,6 +5603,97 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
   } finally {
     operationDeadline.dispose();
   }
+};
+
+/** Resolve an entry target without creating, waking, or choosing a fallback agent. */
+ElizaClient.prototype.resolveCloudAgentForEntry = async function (options) {
+  options.signal?.throwIfAborted();
+  if (options.forceCreate) {
+    throw new ElizaError(
+      "Creating an agent requires a current price confirmation. Open your personal Eliza, then review Dedicated activation in Settings.",
+      { code: "CLOUD_ENTRY_CREATION_REQUIRES_CONFIRMATION" },
+    );
+  }
+  const requestedId = options.preferAgentId;
+  if (!requestedId || isPersonalSharedElizaId(requestedId)) {
+    const selected = await this.getPersonalSharedEliza(options);
+    options.signal?.throwIfAborted();
+    if (requestedId && requestedId !== selected.agentId) {
+      throw new ElizaError(
+        "The selected personal Eliza does not belong to this session. Choose your current account's agent.",
+        {
+          code: "CLOUD_ENTRY_AGENT_MISMATCH",
+        },
+      );
+    }
+    return selected;
+  }
+  const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  const url = `${cloudApiBase}/api/v1/eliza/agents/${encodeURIComponent(requestedId)}`;
+  const response = await directCloudJsonResponse<unknown>(url, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${options.authToken}`,
+    },
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  options.signal?.throwIfAborted();
+  if (!response.ok) {
+    throw Object.assign(
+      new ElizaError(
+        directCloudResponseErrorMessage(response.status, response.data),
+        { code: "CLOUD_ENTRY_AGENT_UNAVAILABLE" },
+      ),
+      { status: response.status },
+    );
+  }
+  const root = recordOrNull(response.data);
+  const row = recordOrNull(root?.data);
+  const agentId = firstString(row?.agentId, row?.id);
+  const agentName = firstString(row?.agentName, row?.name);
+  const tier = parseCloudAgentExecutionTier(
+    firstString(row?.executionTier, row?.execution_tier),
+  );
+  if (
+    root?.success !== true ||
+    agentId !== requestedId ||
+    !agentName ||
+    !tier
+  ) {
+    throw new ElizaError(
+      "Cloud did not return the requested agent. Refresh your agent selection and try again.",
+      {
+        code: "CLOUD_ENTRY_AGENT_MISMATCH",
+      },
+    );
+  }
+  if (row?.status !== "running") {
+    throw new ElizaError(
+      "This agent is not running. Review its status and any startup price in Settings before reconnecting.",
+      {
+        code: "CLOUD_ENTRY_AGENT_NOT_RUNNING",
+      },
+    );
+  }
+  const runtime = tier === "shared" ? "shared" : "dedicated";
+  const apiBase =
+    runtime === "shared"
+      ? buildCloudSharedAgentApiBase(cloudApiBase, agentId)
+      : resolveDedicatedCloudAgentApiBase({
+          agentId,
+          cloudApiBase,
+          bridgeUrl: firstString(row?.bridgeUrl, row?.bridge_url),
+          webUiUrl: firstString(row?.webUiUrl, row?.web_ui_url),
+        });
+  if (!isTrustedCloudApiBaseUrl(apiBase, agentId)) {
+    throw new ElizaError(
+      "Cloud returned an invalid connection for the selected agent. Refresh your agent selection and try again.",
+      {
+        code: "CLOUD_ENTRY_AGENT_INVALID_BASE",
+      },
+    );
+  }
+  return { agentId, activeAgentId: agentId, agentName, apiBase, runtime };
 };
 
 ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
@@ -5759,23 +6008,35 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
   // dedicated container subdomain). Both accept the cloud session token —
   // the dedicated-agent proxy swaps it for the container's own token.
   const authedFetch: AuthedAgentFetch = async (base, path, init) => {
-    const res = await directCloudFetch(`${base}${path}`, {
-      method: init?.method ?? "GET",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken}`,
+    return fetchWithDeadline(
+      `${base}${path}`,
+      {
+        method: init?.method ?? "GET",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        ...(init?.body !== undefined
+          ? { body: JSON.stringify(init.body) }
+          : {}),
       },
-      ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
-      signal: AbortSignal.timeout(20_000),
-    });
-    let json: unknown = null;
-    try {
-      json = await res.json();
-    } catch {
-      json = null;
-    }
-    return { status: res.status, json };
+      async (res) => {
+        let json: unknown = null;
+        try {
+          json = await res.json();
+        } catch {
+          // error-policy:J3 an unreadable response is not a valid handoff receipt.
+          json = null;
+        }
+        return { status: res.status, json };
+      },
+      {
+        timeoutMs: 20_000,
+        signal: options.signal,
+        fetchImpl: (input, init) => directCloudFetch(String(input), init),
+      },
+    );
   };
 
   const readiness: AgentReadinessProbe = {
@@ -5793,7 +6054,12 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       const detail = await authedFetch(
         resolvedCloudApiBase,
         `/api/v1/eliza/agents/${encodeURIComponent(readinessAgentId)}`,
-      ).catch(() => null);
+      ).catch(() => {
+        // error-policy:J4 unavailable detail may use the compatibility read;
+        // cancellation must never start that fallback request.
+        options.signal?.throwIfAborted();
+        return null;
+      });
       const detailBody = detail?.json as {
         success?: boolean;
         data?: DirectCloudAgent;
@@ -5805,9 +6071,13 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       // Compatibility fallback for older app proxies and injected clients that
       // do not implement the canonical direct detail envelope.
       if (!agent) {
-        const compatDetail = await this.getCloudCompatAgent(
-          readinessAgentId,
-        ).catch(() => null);
+        const compatDetail = await runHandoffStep(options.signal, () =>
+          this.getCloudCompatAgent(readinessAgentId),
+        ).catch(() => {
+          // error-policy:J4 unavailable compatibility detail remains not-ready.
+          options.signal?.throwIfAborted();
+          return null;
+        });
         agent = compatDetail?.success ? compatDetail.data : null;
       }
       if (!agent) return null;
@@ -5853,6 +6123,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
         // error-policy:J4 readiness probe — an unreachable base is the
         // designed "not ready yet" signal; the poll loop retries within its
         // budget and times out honestly if the container never serves.
+        options.signal?.throwIfAborted();
         return null;
       }
       return base;
@@ -5860,6 +6131,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
   };
 
   return startCloudConversationHandoff({
+    signal: options.signal,
     sharedApiBase,
     conversationId,
     readiness,
@@ -5932,6 +6204,7 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
     Authorization: `Bearer ${options.authToken}`,
   };
   try {
+    options.signal?.throwIfAborted();
     // Route through Capacitor native HTTP on iOS/Android, exactly like every
     // other direct-cloud helper in this file. A bare cross-origin `fetch()`
     // from `capacitor://localhost` is blocked on native, so without this the
@@ -5949,24 +6222,23 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
               readTimeout: 10_000,
             }),
             { method: "DELETE", url },
+            options.signal,
           )
         ).status
-      : await (async () => {
-          // Portable 20 s bound — `AbortSignal.timeout` throws on iOS 16.0-16.3;
-          // use the same helper as the steward/bridge/manifest paths.
-          const { signal, dispose } = createTimeoutSignal(20_000);
-          try {
-            return (
-              await directCloudFetch(resolveBrowserCloudApiRequestUrl(url), {
-                method: "DELETE",
-                headers,
-                signal,
-              })
-            ).status;
-          } finally {
-            dispose();
-          }
-        })();
+      : await fetchWithDeadline(
+          resolveBrowserCloudApiRequestUrl(url),
+          {
+            method: "DELETE",
+            headers,
+          },
+          async (response) => response.status,
+          {
+            timeoutMs: 20_000,
+            signal: options.signal,
+            fetchImpl: (input, init) => directCloudFetch(String(input), init),
+          },
+        );
+    options.signal?.throwIfAborted();
     if (status < 200 || status >= 300) {
       return {
         success: false,
@@ -5975,6 +6247,7 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
     }
     return { success: true };
   } catch (err) {
+    // error-policy:J1 a failed/cancelled cleanup is never reported as deletion.
     return {
       success: false,
       error: err instanceof Error ? err.message : String(err),

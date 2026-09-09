@@ -1027,8 +1027,8 @@ export async function runPollingBackend(
                 // Shared-runtime cloud bridge: no /api/first-run* shell
                 // endpoints exist (we provisioned it, so first-run IS done).
                 // Treat the 404 as complete and go to chat — the bridge serves
-                // /api/conversations via the REST chat adapter. A reload may
-                // have interrupted the shared→dedicated migration — resume it.
+                // /api/conversations via the REST chat adapter. A restored
+                // migration requires a new price review, not automatic resume.
                 resumePendingCloudHandoff();
                 deps.setFirstRunComplete(true);
                 deps.setFirstRunLoading(false);
@@ -1265,8 +1265,8 @@ export async function runPollingBackend(
           // exist (we provisioned it, so first-run IS done). Treat the 404 as
           // complete and go to chat — the bridge serves /api/conversations via
           // the REST chat adapter — instead of wedging on BACKEND_NOT_FOUND.
-          // A reload may have interrupted the shared→dedicated migration —
-          // resume it.
+          // A restored migration requires current consent. Surface review
+          // without starting, waking, or cutting over a runtime on boot.
           resumePendingCloudHandoff();
           deps.setFirstRunComplete(true);
           deps.setFirstRunLoading(false);

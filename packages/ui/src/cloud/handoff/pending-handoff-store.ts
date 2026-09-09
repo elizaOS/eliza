@@ -7,7 +7,8 @@
  * bridge, the provisioning widget shows "Setting up…" with no live phase, and
  * the retry event has no listener. This marker records the deterministic
  * handoff target (the dedicated agent already created for this shared bridge)
- * so boot can RESUME the same migration instead of guessing or re-creating.
+ * so boot can offer recovery of that migration without guessing or re-creating.
+ * The marker carries no price confirmation and never authorizes lifecycle work.
  *
  * Lifecycle: saved when the handoff starts (the dedicated target id is known),
  * cleared by `silentlyRepointToDedicated` (repointed ⇒ nothing pending) and by
@@ -27,7 +28,7 @@ export interface PendingCloudHandoff {
 
 const STORAGE_KEY = "eliza:cloud-handoff-pending";
 
-/** A handoff older than this is dead — the cloud reclaims its resources. */
+/** Retention window for the local recovery hint; expiry does not alter Cloud resources. */
 export const PENDING_HANDOFF_TTL_MS = 24 * 60 * 60 * 1000;
 
 function storage(): Storage | null {

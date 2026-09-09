@@ -1,4 +1,4 @@
-/** Verifies Cloud first-run binds the account identity only after Dedicated activation. */
+/** Exercises Cloud first-run identity binding with deterministic client and persistence seams. */
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,8 +14,7 @@ const SHARED_AGENT_BASE = `https://staging.elizacloud.ai/api/v1/eliza/agents/${S
 
 const clientStub = vi.hoisted(() => ({
   getPersonalSharedEliza: vi.fn(),
-  ensurePersonalDedicatedEliza: vi.fn(),
-  selectOrProvisionCloudAgent: vi.fn(),
+  resolveCloudAgentForEntry: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
@@ -124,7 +123,7 @@ function storeStewardToken(token = "steward-jwt"): void {
 }
 
 function stubSelection(): void {
-  clientStub.selectOrProvisionCloudAgent.mockResolvedValue({
+  clientStub.resolveCloudAgentForEntry.mockResolvedValue({
     agentId: SHARED_AGENT_ID,
     agentName: "Eliza",
     apiBase: SHARED_AGENT_BASE,
@@ -155,14 +154,6 @@ beforeEach(() => {
     apiBase: SHARED_AGENT_BASE,
     runtime: "shared",
   });
-  clientStub.ensurePersonalDedicatedEliza.mockResolvedValue({
-    personalElizaId: SHARED_AGENT_ID,
-    agentId: SHARED_AGENT_ID,
-    activeAgentId: SHARED_AGENT_ID,
-    agentName: "Eliza",
-    apiBase: SHARED_AGENT_BASE,
-    runtime: "dedicated",
-  });
   stubSelection();
 });
 
@@ -173,8 +164,8 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.ensurePersonalDedicatedEliza).toHaveBeenCalledTimes(1);
-    expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    expect(clientStub.resolveCloudAgentForEntry).not.toHaveBeenCalled();
   });
 
   it("lands a new interactive bearer without any agent-list or status probe", async () => {
@@ -186,13 +177,13 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(outcome.kind).toBe("done");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledWith(
       expect.objectContaining({
         cloudApiBase: "https://staging.elizacloud.ai",
         authToken: "fresh-jwt",
       }),
     );
-    expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(clientStub.resolveCloudAgentForEntry).not.toHaveBeenCalled();
   });
 
   it("returns needs-cloud-login when interactive auth lands no bearer", async () => {
@@ -201,12 +192,12 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(outcome.kind).toBe("needs-cloud-login");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
-    expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(clientStub.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(clientStub.resolveCloudAgentForEntry).not.toHaveBeenCalled();
   });
 });
 
-describe("bindCloudAgent — agent-base warm-up", () => {
+describe("bindCloudAgent — no speculative runtime warm-up", () => {
   it("persists the authoritative Cloud agent owner with its profile credential", async () => {
     const outcome = await bindCloudAgent(
       draft(),
@@ -226,7 +217,7 @@ describe("bindCloudAgent — agent-base warm-up", () => {
     );
   });
 
-  it("fires a fire-and-forget conversations fetch on the just-bound base so the post-ready hydrate hits a warm container", async () => {
+  it("binds without a speculative conversations request that could wake compute", async () => {
     const outcome = await bindCloudAgent(
       draft(),
       "steward-token",
@@ -235,7 +226,7 @@ describe("bindCloudAgent — agent-base warm-up", () => {
     );
     expect(outcome.kind).toBe("done");
     expect(clientStub.setBaseUrl).toHaveBeenCalledWith(SHARED_AGENT_BASE);
-    expect(clientStub.listConversations).toHaveBeenCalledTimes(1);
+    expect(clientStub.listConversations).not.toHaveBeenCalled();
   });
 
   it("a hanging or rejecting warm-up never blocks or fails the bind", async () => {

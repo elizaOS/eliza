@@ -7,7 +7,12 @@
 export interface FetchDeadlineOptions {
   timeoutMs: number;
   signal?: AbortSignal;
-  fetchImpl?: typeof fetch;
+  // Adapters implement the browser call contract, not runtime-specific statics
+  // such as Bun's fetch.preconnect.
+  fetchImpl?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>;
 }
 
 function abortReason(signal: AbortSignal): unknown {
@@ -23,6 +28,7 @@ export async function fetchWithDeadline<T>(
   consume: (response: Response) => Promise<T>,
   options: FetchDeadlineOptions,
 ): Promise<T> {
+  options.signal?.throwIfAborted();
   const controller = new AbortController();
   const callerSignal = options.signal;
   const abortFromCaller = () => {

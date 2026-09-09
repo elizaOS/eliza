@@ -1,6 +1,6 @@
 /**
  * Tracks the cloud-handoff banner phase from CLOUD_HANDOFF_PHASE_EVENT. Terminal
- * phases linger briefly then self-clear; migrating/failed/timed-out persist until
+ * phases linger briefly then self-clear; pending and confirmation states persist until
  * the swap or a retry resolves so a failure is never silent.
  */
 import { useEffect, useState } from "react";
@@ -54,6 +54,7 @@ export function useCloudHandoffPhase(): CloudHandoffPhaseDetail | null {
       detail.phase === "migrating" ||
       detail.phase === "timed-out" ||
       detail.phase === "failed" ||
+      detail.phase === "confirmation-required" ||
       detail.phase === "insufficient-credits"
     ) {
       return;

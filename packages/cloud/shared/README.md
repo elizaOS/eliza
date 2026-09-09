@@ -63,6 +63,63 @@ must run before deploying the updated consent repository. Future lifecycle work
 must extend the existing subscription journal rather than treat these account
 records as a second lifecycle authority.
 
+## Dedicated activation origin
+
+Dedicated activation writes its originating quote ID/version and provision-job
+ID into the existing upgrade authority in the same transaction as the target
+and job. Migration `0386_personal_dedicated_activation_origin.sql` must precede
+deploying this writer. Origins are immutable, including their tenant/source/target
+binding; legacy and adoption receipts retain null origins rather than fabricated
+consent. Job cleanup does not erase the origin. Lost commit acknowledgements
+recover that exact job, including terminal results, rather than a later active
+job. Missing origin evidence surfaces uncertainty without re-enqueue or revoking
+a durable target's credentials. The receipt is not reusable authorization for a
+new lifecycle action. The activation route binds new confirmations to the
+quoted target ID, status and lifecycle revision as well as the economic terms.
+An original-quote retry reads only its exact still-active job and pending target;
+terminal/missing jobs or changed target states require a fresh review, without
+enqueue or daemon nudge.
+
+Existing-target quotes also bind the active provision job ID/status (or its
+absence). Reviewed active-job reuse never enters find-or-enqueue. A pending or
+provisioning target without an active job needs hosting runway for a new job.
+An explicitly confirmed reactivation commits its job, consumes the sandbox's
+database-owned lifecycle revision, and records `dedicatedActivationQuote` in
+the job payload in one transaction. This metadata only recovers an accepted
+result for its confirming caller and exact post-acceptance runtime revision;
+it is not authority to enqueue again. Missing metadata or a purged job loses
+that recovery path, but does not restore the consumed quote. The immutable
+creation origin remains unchanged.
+
+Before generic reattachment can create a new job, the locked transaction checks
+for an existing adoption selection for the target. Such a selection requires
+the separate reviewed adoption/restore path (`dedicated_adoption_selection_required`);
+generic reattachment must not drop its restore directive. Reusing a running
+target or an already-active provision job remains read-only and does not require
+another adoption. The frontend confirms pending/provisioning/running targets
+with the server rather than treating a quote GET as cutover authority, and pins
+any redirected adoption review to the target already quoted.
+
+The activation GET now issues a separate short-lived review snapshot through
+the existing environment-scoped cache. Its random 256-bit ID refers to the
+reviewed terms and a one-way binding of the canonical authenticated caller,
+authentication method, credential identity and source. The public response adds
+server `issuedAt` and `expiresAt` timestamps (milliseconds); the current review
+window is five minutes. GET/POST responses use `Cache-Control: no-store`.
+Snapshots are never refreshed on read. Missing, invalid, expired or unavailable
+records require a new review, including for accepted-result recovery. Cache
+loss does not lose the durable lifecycle receipt or authorize replay.
+
+Both creation and reactivation require the review and check its deadline at
+their transaction boundaries, including after job/receipt insertion, before
+returning from the transaction callback. These checks use server time, not a
+client-supplied deadline. This temporary review store is not the lifecycle
+journal or a session revocation store. Authentication must still be current;
+wallet requests retain their per-request canonical signature validation rather
+than gaining a synthetic session. UI expiry presentation, canonical revocation
+qualification, cookie-only completion and downstream handoff/cutover consent
+remain separate integration requirements.
+
 ## Commands
 
 ```bash

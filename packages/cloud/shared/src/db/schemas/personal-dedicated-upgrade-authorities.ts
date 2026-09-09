@@ -23,6 +23,12 @@ export const personalDedicatedUpgradeAuthorities = pgTable(
     dedicated_agent_id: uuid("dedicated_agent_id").notNull(),
     schema_version: integer("schema_version").notNull().default(1),
     bound_at: timestamp("bound_at", { withTimezone: true }).notNull().defaultNow(),
+    // Immutable origin, not permission to enqueue again. Legacy/adoption
+    // receipts stay null rather than inventing historical consent.
+    originating_activation_quote_id: text("originating_activation_quote_id"),
+    originating_activation_quote_version: text("originating_activation_quote_version"),
+    // No FK: deleting an old job must not erase or rewrite its consent receipt.
+    originating_provision_job_id: uuid("originating_provision_job_id"),
     cutover_token: text("cutover_token"),
     shared_message_count: integer("shared_message_count"),
     shared_scheduled_task_count: integer("shared_scheduled_task_count"),
@@ -45,6 +51,20 @@ export const personalDedicatedUpgradeAuthorities = pgTable(
     version_check: check(
       "personal_dedicated_upgrade_authorities_version_check",
       sql`${table.schema_version} = 1`,
+    ),
+    activation_origin_check: check(
+      "personal_dedicated_upgrade_authorities_activation_origin_check",
+      sql`(
+        ${table.originating_activation_quote_id} IS NULL
+        AND ${table.originating_activation_quote_version} IS NULL
+        AND ${table.originating_provision_job_id} IS NULL
+      ) OR (
+        ${table.originating_activation_quote_id} IS NOT NULL
+        AND ${table.originating_activation_quote_id} ~ '^[a-f0-9]{64}$'
+        AND ${table.originating_activation_quote_version} IS NOT NULL
+        AND ${table.originating_activation_quote_version} ~ '^[a-z0-9][a-z0-9._-]{0,63}$'
+        AND ${table.originating_provision_job_id} IS NOT NULL
+      )`,
     ),
     cutover_check: check(
       "personal_dedicated_upgrade_authorities_cutover_check",

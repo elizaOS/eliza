@@ -113,6 +113,8 @@ export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
  * dedicated container (`switched-empty` when there was nothing to copy yet).
  * `timed-out` / `failed` — the container never became ready (or an I/O step
  * threw); the user safely stays on the working shared adapter.
+ * `confirmation-required` — restored setup has no current user consent; offer
+ * price review without starting or retrying any lifecycle operation.
  * `insufficient-credits` — the dedicated upgrade was refused by the credit gate
  * (HTTP 402): the user keeps the free shared agent, but this is a FIRST-CLASS
  * state (a distinct "add credits for your own dedicated agent" surface), never a
@@ -125,6 +127,7 @@ export type CloudHandoffPhase =
   | "switched-empty"
   | "timed-out"
   | "failed"
+  | "confirmation-required"
   | "insufficient-credits";
 
 export interface CloudHandoffPhaseDetail {

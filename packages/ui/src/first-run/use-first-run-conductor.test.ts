@@ -36,7 +36,7 @@ const mocks = vi.hoisted(() => ({
       }),
     ),
     // Takes the provisioning options so `.mock.calls[0][0]` is inspectable.
-    selectOrProvisionCloudAgent: vi.fn(
+    resolveCloudAgentForEntry: vi.fn(
       async (_options: Record<string, unknown>) => ({
         apiBase: "https://agent.example.test",
         agentId: "agent-1",
@@ -46,7 +46,9 @@ const mocks = vi.hoisted(() => ({
     // Personal-Eliza bind (#19511): the cloud path resolves the account's one
     // personal Eliza instead of listing/creating compat agents.
     getPersonalSharedEliza: vi.fn(
-      async (_options: Record<string, unknown>) => ({
+      async (
+        _options: Record<string, unknown>,
+      ): Promise<import("../cloud/join/lib/run-join-flow").JoinFlowResult> => ({
         personalElizaId: PERSONAL_ELIZA_ID,
         agentId: PERSONAL_ELIZA_ID,
         activeAgentId: PERSONAL_ELIZA_ID,
@@ -90,10 +92,6 @@ const mocks = vi.hoisted(() => ({
     | import("./device-ram-tier").DeviceRamTierAssessment
     | null,
 }));
-
-Object.assign(mocks.client, {
-  ensurePersonalDedicatedEliza: mocks.client.getPersonalSharedEliza,
-});
 
 vi.mock("../utils/desktop-workspace", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/desktop-workspace")>()),
@@ -1946,130 +1944,47 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
-  it("shows the exact safe Dedicated terms and waits for a visible confirmation gesture", async () => {
-    const quoteId = "b".repeat(64);
-    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
-    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
-      async (options: Record<string, unknown>) => {
-        const request = options.requestDedicatedAdoptionConfirmation as (
-          quote: Record<string, unknown>,
-          context: { reason: "initial"; signal?: AbortSignal },
-        ) => Promise<Record<string, unknown> | null>;
-        const confirmation = await request(
-          {
-            quoteId,
-            dedicatedAgentId,
-            adoptionState: "available",
-            status: "error",
-            startsCompute: true,
-            hourlyRateUsd: 0.01,
-            dailyRateUsd: 0.24,
-            minimumBalanceUsd: 0.72,
-            minimumRunwayDays: 3,
-            balanceUsd: 115.54,
-            deficitUsd: 0,
-            stateDisposition: "verified_backup_present",
-            canAdopt: true,
-            requiresCatalogRestore: false,
-            requiresConfirmation: true,
-            action: "adopt_existing_dedicated",
-          },
-          {
-            reason: "initial",
-            signal: options.signal as AbortSignal,
-          },
-        );
-        expect(confirmation).toEqual({
-          action: "adopt_existing_dedicated",
-          quoteId,
-        });
-        return {
-          personalElizaId: PERSONAL_ELIZA_ID,
-          agentId: PERSONAL_ELIZA_ID,
-          activeAgentId: dedicatedAgentId,
-          agentName: "Eliza Cloud",
-          apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
-          runtime: "dedicated" as const,
-        };
-      },
-    );
+  it("completes Shared onboarding without offering or waiting for Dedicated adoption", async () => {
+    mocks.client.getPersonalSharedEliza.mockResolvedValueOnce({
+      personalElizaId: PERSONAL_ELIZA_ID,
+      agentId: PERSONAL_ELIZA_ID,
+      activeAgentId: PERSONAL_ELIZA_ID,
+      agentName: "Eliza Cloud",
+      apiBase: PERSONAL_ELIZA_API_BASE,
+      runtime: "shared",
+    });
     const spies = seedAppStore({ elizaCloudConnected: true });
     const { turn, unmount } = renderConductor();
 
-    const confirmationTurn = await waitForTurn(
-      turn,
-      "first-run:dedicated-adoption",
-    );
-    expect(confirmationTurn.text).toContain("$0.01/hour ($0.24/day)");
-    expect(confirmationTurn.text).toContain("Current status: error");
-    expect(confirmationTurn.text).toContain("Balance: $115.54");
-    expect(confirmationTurn.text).toContain("3 days of runway");
-    expect(confirmationTurn.text).toContain("starts Dedicated compute");
-    expect(confirmationTurn.text).toContain("restore its reviewed backup");
-    expect(confirmationTurn.text).not.toContain(quoteId);
-    expect(confirmationTurn.text).not.toContain(dedicatedAgentId);
-    expect(spies.completeFirstRun).not.toHaveBeenCalled();
-
-    expect(
-      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
-    ).toBe(true);
     await waitFor(() =>
       expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
     );
+    expect(turn("first-run:dedicated-adoption")).toBeUndefined();
+    expect(mocks.client.setBaseUrl).toHaveBeenCalledWith(
+      PERSONAL_ELIZA_API_BASE,
+    );
+    expect(mocks.client.resolveCloudAgentForEntry).not.toHaveBeenCalled();
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
     unmount();
   });
 
-  it("restores pending Dedicated consent after server history replaces the onboarding transcript", async () => {
-    const quoteId = "c".repeat(64);
+  it("does not revive an old adoption decision while personal entry is pending", async () => {
+    let resolveIdentity!: (
+      result: Awaited<ReturnType<typeof mocks.client.getPersonalSharedEliza>>,
+    ) => void;
     mocks.client.getPersonalSharedEliza.mockImplementationOnce(
-      async (options: Record<string, unknown>) => {
-        const request = options.requestDedicatedAdoptionConfirmation as (
-          quote: Record<string, unknown>,
-          context: { reason: "initial"; signal?: AbortSignal },
-        ) => Promise<Record<string, unknown> | null>;
-        await request(
-          {
-            quoteId,
-            dedicatedAgentId: "00000000-0000-4000-8000-000000000021",
-            adoptionState: "available",
-            status: "stopped",
-            startsCompute: true,
-            hourlyRateUsd: 0.01,
-            dailyRateUsd: 0.24,
-            minimumBalanceUsd: 0.72,
-            minimumRunwayDays: 3,
-            balanceUsd: 10,
-            deficitUsd: 0,
-            stateDisposition: "verified_backup_present",
-            canAdopt: true,
-            requiresCatalogRestore: false,
-            requiresConfirmation: true,
-            action: "adopt_existing_dedicated",
-          },
-          { reason: "initial", signal: options.signal as AbortSignal },
-        );
-        return {
-          personalElizaId: PERSONAL_ELIZA_ID,
-          agentId: PERSONAL_ELIZA_ID,
-          activeAgentId: "00000000-0000-4000-8000-000000000021",
-          agentName: "Eliza Cloud",
-          apiBase: "https://dedicated.example.test",
-          runtime: "dedicated" as const,
-        };
-      },
+      () =>
+        new Promise((resolve) => {
+          resolveIdentity = resolve;
+        }),
     );
     const spies = seedAppStore({ elizaCloudConnected: true });
-    const { replaceTranscript, transcript, unmount } = renderConductor({
+    const { replaceTranscript, turn, unmount } = renderConductor({
       statefulTranscript: true,
     });
-
-    await waitFor(() => {
-      expect(
-        transcript.current.some((message) =>
-          message.text.includes("Use your existing Dedicated agent?"),
-        ),
-      ).toBe(true);
-    });
+    await waitFor(() =>
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1),
+    );
     act(() => {
       replaceTranscript([
         {
@@ -2079,19 +1994,25 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
           timestamp: 1,
         } as ConversationMessage,
       ]);
+      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm");
     });
-    await waitFor(() => {
-      expect(transcript.current.map((message) => message.id)).toContain(
-        "first-run:dedicated-adoption",
-      );
-    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(turn("first-run:dedicated-adoption")).toBeUndefined();
+    expect(mocks.client.resolveCloudAgentForEntry).not.toHaveBeenCalled();
 
-    expect(
-      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
-    ).toBe(true);
+    resolveIdentity({
+      personalElizaId: PERSONAL_ELIZA_ID,
+      agentId: PERSONAL_ELIZA_ID,
+      activeAgentId: PERSONAL_ELIZA_ID,
+      agentName: "Eliza Cloud",
+      apiBase: PERSONAL_ELIZA_API_BASE,
+      runtime: "shared",
+    });
     await waitFor(() =>
       expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
     );
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    expect(mocks.client.resolveCloudAgentForEntry).not.toHaveBeenCalled();
     unmount();
   });
 

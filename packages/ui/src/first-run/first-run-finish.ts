@@ -15,10 +15,7 @@
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
-import {
-  getCloudAuthToken,
-  isDirectCloudSharedAgentBase,
-} from "../api/client-cloud";
+import { getCloudAuthToken } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
@@ -26,10 +23,7 @@ import { setStorageValue } from "../bridge/storage-bridge";
 import {
   clearPendingCloudHandoff,
   loadPendingCloudHandoff,
-  savePendingCloudHandoff,
 } from "../cloud/handoff/pending-handoff-store";
-import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
-import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
 import { getBootConfig } from "../config/boot-config";
@@ -45,7 +39,6 @@ import {
   addAgentProfile,
   createPersistedActiveServer,
   loadPersistedActiveServer,
-  removeAgentProfile,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "../state";
@@ -54,8 +47,6 @@ import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner"
 import { isPersistedActiveServerAllowed } from "../state/persistence";
 import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
-import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
-import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { createCloudContinuationAuthority } from "./cloud-continuation-authority";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -517,9 +508,8 @@ async function finishLocal(
 // ── Cloud runtime finish ─────────────────────────────────────────────────────
 
 /**
- * The provisioning tail of the cloud flow — both the silent auto-create path (0
- * agents) and the picker's pick / create-new feed their choice
- * (preferAgentId / forceCreate) into the SAME provisioning call.
+ * Bind the personal identity or the exact existing agent selected by the picker.
+ * Completing onboarding never authorizes runtime creation, wake, or migration.
  */
 export async function bindCloudAgent(
   sourceDraft: FirstRunProfileDraft,
@@ -532,28 +522,18 @@ export async function bindCloudAgent(
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
   ports.signal?.throwIfAborted();
-  ports.onStatus?.("Setting up your cloud agent", "setup");
+  ports.onStatus?.("Opening your cloud agent", "setup");
   const plan = buildFirstRunSubmitPlan({
     draft: { ...sourceDraft, runtime: "cloud" },
     uiLanguage: ports.uiLanguage,
   });
-  const name =
-    typeof plan.payload.name === "string" ? plan.payload.name : "Eliza";
-  const bio = Array.isArray(plan.payload.bio)
-    ? plan.payload.bio.filter(
-        (entry): entry is string => typeof entry === "string",
-      )
-    : ["An autonomous AI agent."];
   const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
-  const selectedAgent = await client.selectOrProvisionCloudAgent({
+  const selectedAgent = await client.resolveCloudAgentForEntry({
     cloudApiBase,
     authToken,
-    name,
-    bio,
     ...(opts.preferAgentId ? { preferAgentId: opts.preferAgentId } : {}),
     ...(opts.forceCreate ? { forceCreate: true } : {}),
-    ...(opts.knownAgents ? { knownAgents: opts.knownAgents } : {}),
-    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+    ...(ports.signal ? { signal: ports.signal } : {}),
   });
   // The remote agent now exists/was selected; every step after this point
   // mutates local durable state, so an abandoned attempt stops HERE (#19255).
@@ -597,34 +577,24 @@ export async function bindCloudAgent(
   }
   client.setBaseUrl(cloudAgentApiBase);
   client.setToken(authToken);
-  // Warm the agent base NOW, overlapping everything between here and the
-  // hydrate phase's real conversation fetch (persist, coordinator phase
-  // transitions, the auth gate's /api/auth/me — measured 2.3s cold on
-  // staging, FIRSTLOAD-REAL-2026-07-22). The first request to a cold cloud
-  // container pays connection setup + worker/container wake; issuing a
-  // throwaway list here means the post-ready /api/conversations hits a warm
-  // path instead of serializing the full cold cost behind auth/me.
-  // Fire-and-forget: the result is discarded and failures are irrelevant —
-  // the hydrate call remains the authoritative fetch. Optional-chained so
-  // chat-surface-less client shims (tests, legacy) are a no-op; the
-  // Promise.resolve().then wrapper absorbs a synchronous throw from a
-  // non-conforming shim without an empty catch block.
-  // error-policy:J6 best-effort warm-up — failure is fully degradable.
-  void Promise.resolve()
-    .then(() => client.listConversations?.())
-    .catch(() => undefined);
+  // Do not pre-warm a runtime during entry: its proxy may wake paid compute.
+  // The authenticated chat surface owns its actual conversation reads.
   ports.signal?.throwIfAborted();
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     id: `cloud:${selectedAgent.agentId}`,
     apiBase: cloudAgentApiBase,
     accessToken: authToken,
+    cloudRuntime: selectedAgent.runtime,
+    cloudRuntimeAgentId: selectedAgent.activeAgentId,
   });
   savePersistedActiveServer(activeServer);
-  const sharedAgentProfile = addAgentProfile({
+  addAgentProfile({
     kind: "cloud",
     label: activeServer.label,
     cloudAgentId: selectedAgent.agentId,
+    cloudRuntime: selectedAgent.runtime,
+    cloudRuntimeAgentId: selectedAgent.activeAgentId,
     ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
     ...(activeServer.accessToken
       ? { accessToken: activeServer.accessToken }
@@ -677,127 +647,16 @@ export async function bindCloudAgent(
     clearPendingCloudHandoff();
   }
 
-  // Legacy Shared→Dedicated recovery — new signed-in onboarding never enters
-  // this path because Shared-first defaults are retired. A host restoring an
-  // older Shared profile must explicitly enable both compatibility switches;
-  // the pricing/credit boundary still owns the billable mutation (#15355).
-  //
-  // When the host does opt in, the handoff fires for a NEWLY created shared
-  // agent AND for a REUSED one (`created:false`, e.g. re-login after a failed
-  // first run) — #15310 #3: the old `created`-only gate meant a reused shared
-  // agent never re-entered the upgrade path, stranding the user on the shared
-  // adapter with the provisioning tile forever. Two reuse cases must NOT start
-  // a fresh handoff:
-  //  - an interrupted-but-live one (a pending marker FOR THIS AGENT):
-  //    resumePendingCloudHandoff owns it below — it verifies the target and
-  //    re-arms a fresh create itself when the target is dead; double-firing
-  //    here would provision a second dedicated agent;
-  //  - a reused agent that already OWNS a dedicated container (`bridgeUrl`
-  //    set) but was bound via the shared adapter by tier preference — minting
-  //    another dedicated agent for it would duplicate a billed container
-  //    (#15902 run-2 class).
-  // Cloud agent discovery runs from the renderer and therefore needs its own
-  // bearer even when the local server already has a healthy Cloud connection.
-  if (
-    getBootConfig().preferSharedCloudTier &&
-    getBootConfig().autoUpgradeSharedToDedicated &&
-    !selectedAgent.bridgeUrl &&
-    (selectedAgent.created || pendingHandoffForThisAgent === null) &&
-    isDirectCloudSharedAgentBase(cloudAgentApiBase)
-  ) {
-    const sharedAgentId = selectedAgent.agentId;
-    const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
-    const createDedicatedHandoffTarget = async (): Promise<string> => {
-      const dedicated = await client.createCloudCompatAgent({
-        agentName: name,
-        ...(bio.length ? { agentConfig: { bio } } : {}),
-        forceCreate: true,
-      });
-      if (!dedicated.success || !dedicated.data.agentId) {
-        throw new Error(
-          dedicated.success
-            ? "Dedicated agent creation returned no agent id."
-            : (dedicated.data.message ?? "Dedicated agent creation failed."),
-        );
-      }
-      const dedicatedAgentId = dedicated.data.agentId;
-      // Reload insurance, persisted the INSTANT the dedicated target id is known
-      // — before the 30-120s container boot in startCloudAgentHandoff, with no
-      // await between learning the id and persisting it. The supervisor is
-      // in-memory, so a kill mid-boot resumes THIS exact handoff at startup
-      // (resumePendingCloudHandoff) instead of stranding the user on the shared
-      // adapter off the auto-upgrade path; silentlyRepointToDedicated clears the
-      // marker once the swap lands.
-      savePendingCloudHandoff({
-        sharedAgentId,
-        dedicatedAgentId,
-        sharedApiBase: cloudAgentApiBase,
-        cloudApiBase,
-        startedAt: Date.now(),
-      });
-      return dedicatedAgentId;
-    };
-    runCloudAgentHandoff(
-      sharedAgentId,
-      async () => {
-        const dedicatedAgentId = await createDedicatedHandoffTarget();
-        return await client.startCloudAgentHandoff({
-          agentId: sharedAgentId,
-          sharedApiBase: cloudAgentApiBase,
-          conversationId: sharedAgentId,
-          dedicatedAgentId,
-          cloudApiBase,
-          authToken,
-          onSwitch: async (containerBase) => {
-            silentlyRepointToDedicated({
-              containerBase,
-              dedicatedAgentId,
-              authToken,
-              ...(isPersonalSharedElizaId(sharedAgentId)
-                ? { personalElizaId: sharedAgentId }
-                : {}),
-            });
-          },
-        });
-      },
-      () => {
-        removeAgentProfile(sharedAgentProfile.id);
-        void client
-          .deleteSharedBridgeAgent(sharedAgentId, {
-            cloudApiBase,
-            authToken,
-          })
-          .then((res) => {
-            if (!res.success) {
-              reportRendererDiagnostic({
-                scope: "first-run.shared-bridge-cleanup",
-                error: new Error(res.error ?? "Shared bridge cleanup failed"),
-                severity: "warning",
-                context: { sharedAgentId },
-              });
-            }
-          });
-      },
-    );
-  } else if (
-    pendingHandoffForThisAgent &&
-    isDirectCloudSharedAgentBase(cloudAgentApiBase)
-  ) {
-    // Interrupted-but-live migration for THIS shared agent: resume it at the
-    // landing instead of waiting for a later boot's 404 path to notice — the
-    // resume path verifies the persisted dedicated target, clears the marker
-    // when it is provably dead, and re-runs the same migration otherwise, so
-    // the provisioning tile tracks a live handoff rather than pinning
-    // "Setting up…" forever (#15902).
-    resumePendingCloudHandoff();
-  }
+  // Host flags and reload markers carry no current quote-bound consent.
+  // Preserve a matching marker for explicit recovery, but never start or
+  // resume a paid migration as a side effect of completing onboarding.
   return { kind: "done" };
 }
 
 /**
- * Cloud finish entry: connect Eliza Cloud (Steward), then bind the best healthy
- * existing agent or create one if needed. First-run stays a single clean path;
- * specific agent management belongs in Settings after onboarding.
+ * Cloud finish entry: connect Eliza Cloud (Steward), then bind the account's
+ * current personal runtime without provisioning. Runtime lifecycle management
+ * belongs in Settings after onboarding, behind explicit consent.
  */
 export async function listOrAutoProvisionCloudAgent(
   sourceDraft: FirstRunProfileDraft,

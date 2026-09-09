@@ -51,6 +51,16 @@ describe("useCloudHandoffPhase", () => {
     expect(result.current?.phase).toBe("migrating");
   });
 
+  it("keeps a required confirmation visible for late subscribers until the user acts", () => {
+    dispatchCloudHandoffPhase({
+      agentId: "a1",
+      phase: "confirmation-required",
+    });
+    const { result } = renderHook(() => useCloudHandoffPhase());
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(result.current?.phase).toBe("confirmation-required");
+  });
+
   it("auto-clears a success phase after its linger window", () => {
     const { result } = renderHook(() => useCloudHandoffPhase());
     emit({ agentId: "a1", phase: "switched", imported: 3 });

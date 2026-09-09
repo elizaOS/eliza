@@ -1,15 +1,8 @@
 /**
- * Wires the (pure, separately-tested) conversation-handoff orchestrator to the
- * live Eliza Cloud surface.
- *
- * Onboarding context: when a user provisions a personal cloud agent they start
- * chatting immediately against the shared REST adapter for that agent id while
- * the dedicated container boots. This supervisor watches for the container
- * becoming reachable, copies the conversation they built on the shared adapter
- * into the container (silent import, no inference), and switches the live client
- * to the container — seamlessly. It runs in the background and never blocks
- * onboarding; if it fails or times out the user simply stays on the shared
- * adapter, which keeps working.
+ * Connects an explicitly approved conversation handoff to Cloud readiness,
+ * history and import endpoints. The orchestrator owns sequencing and caller
+ * cancellation; the supplied transport owns credentials and request aborts.
+ * Neither authentication nor mounting this supervisor authorizes activation.
  */
 
 import {
@@ -35,6 +28,7 @@ export interface AgentReadinessProbe {
 }
 
 export interface CloudHandoffSupervisorParams {
+  signal?: AbortSignal;
   /** The shared REST adapter base the user is currently chatting against. */
   sharedApiBase: string;
   /** Conversation id on the shared adapter (canonical id === agent id). */
@@ -90,9 +84,7 @@ async function authedFetchExpectingOk(
 }
 
 /**
- * Start the shared→personal handoff for a freshly provisioned cloud agent.
- * Resolves with the handoff outcome (the caller may ignore it — it's a
- * background, best-effort migration).
+ * Drive the approved Shared-to-Dedicated handoff and return its actual outcome.
  */
 export async function startCloudConversationHandoff(
   params: CloudHandoffSupervisorParams,
@@ -100,6 +92,7 @@ export async function startCloudConversationHandoff(
   let containerBase: string | null = null;
 
   return runConversationHandoff({
+    signal: params.signal,
     intervalMs: params.intervalMs,
     timeoutMs: params.timeoutMs,
     log: params.log,

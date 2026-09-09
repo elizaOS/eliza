@@ -18,7 +18,10 @@ import { CloudCog } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import { isDirectCloudSharedAgentBase } from "../../../api/client-cloud";
-import { openCloudBillingConsole } from "../../../cloud/billing-console";
+import {
+  openCloudAgentConsole,
+  openCloudBillingConsole,
+} from "../../../cloud/billing-console";
 import { loadPendingCloudHandoff } from "../../../cloud/handoff/pending-handoff-store";
 import {
   type CloudHandoffPhaseDetail,
@@ -87,6 +90,7 @@ export function AgentProvisioningWidget(
   const spanClassName = props.spanClassName ?? DEFAULT_SPAN;
   const nav = useWidgetNavigation();
   const handoff = useCloudHandoffPhase();
+  const [reviewOpenFailed, setReviewOpenFailed] = useState(false);
 
   // Resolved once on mount: is the active runtime a cloud agent still on the
   // shared adapter? (i.e. provisioning relevant). The live handoff phase can
@@ -106,7 +110,8 @@ export function AgentProvisioningWidget(
   // generic copy is used. Re-runs when the tracked agent changes.
   const [statusText, setStatusText] = useState<string | null>(null);
   const lastPolledAgentRef = useRef<string | null>(null);
-  const phase = detail?.phase;
+  const phase =
+    detail?.phase ?? (mountedTarget ? "confirmation-required" : undefined);
   useEffect(() => {
     if (phase !== "migrating" || !agentId) return;
     if (lastPolledAgentRef.current === agentId) return;
@@ -162,6 +167,37 @@ export function AgentProvisioningWidget(
           ariaLabel="You're on the free shared agent. Add credits to get your own dedicated agent."
           onActivate={() => {
             void openCloudBillingConsole();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (phase === "confirmation-required") {
+    return (
+      <div className={spanClassName}>
+        <HomeWidgetCard
+          icon={<CloudCog />}
+          label="Dedicated setup"
+          value={
+            reviewOpenFailed ? "Could not open review" : "Confirmation required"
+          }
+          tone="warn"
+          badge="Review"
+          testId="chat-widget-agent-provisioning"
+          ariaLabel={
+            reviewOpenFailed
+              ? "Could not open Cloud management. Review Dedicated setup again."
+              : "Review the current price and Dedicated setup before confirming. Your shared agent remains available."
+          }
+          onActivate={() => {
+            setReviewOpenFailed(false);
+            void openCloudAgentConsole(agentId)
+              .then((opened) => setReviewOpenFailed(!opened))
+              .catch(() => {
+                // error-policy:J4 keep the review control available after a browser-launch failure.
+                setReviewOpenFailed(true);
+              });
           }}
         />
       </div>

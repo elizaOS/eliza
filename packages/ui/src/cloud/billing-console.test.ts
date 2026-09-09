@@ -20,6 +20,7 @@ vi.mock("../utils/openExternalUrl", () => ({
 import { setBootConfig } from "../config/boot-config";
 import {
   cloudBillingConsoleUrl,
+  openCloudAgentConsole,
   openCloudBillingConsole,
 } from "./billing-console";
 
@@ -59,6 +60,21 @@ describe("cloudBillingConsoleUrl", () => {
 });
 
 describe("openCloudBillingConsole", () => {
+  it("opens the existing agent's management page through the platform browser", async () => {
+    await openCloudAgentConsole("agent-123", "https://staging.elizacloud.ai");
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://cloud-staging.eliza.app/cloud/agents/agent-123",
+    );
+  });
+  it("opens the personal card instead of a rowless identity's unsupported detail route", async () => {
+    await openCloudAgentConsole(
+      "personal:00000000-0000-5000-8000-000000000001",
+      "https://staging.elizacloud.ai",
+    );
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://cloud-staging.eliza.app/cloud/agents",
+    );
+  });
   it("opens the resolved console URL via the platform opener", async () => {
     await openCloudBillingConsole("https://elizacloud.ai");
     expect(openExternalUrlMock).toHaveBeenCalledWith(

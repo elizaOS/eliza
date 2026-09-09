@@ -1,20 +1,52 @@
 /** Unit coverage for caller cancellation and full-response fetch deadlines. */
 
 import { describe, expect, it } from "vitest";
-import { fetchWithDeadline } from "./fetch-with-deadline";
+import {
+  type FetchDeadlineOptions,
+  fetchWithDeadline,
+} from "./fetch-with-deadline";
 
-function stallOnSignal(): typeof fetch {
-  return ((_input, init) =>
+function stallOnSignal(): NonNullable<FetchDeadlineOptions["fetchImpl"]> {
+  return (_input, init) =>
     new Promise<Response>((_resolve, reject) => {
       const signal = init?.signal;
       if (!signal) throw new Error("expected an abort signal");
       signal.addEventListener("abort", () => reject(signal.reason), {
         once: true,
       });
-    })) as typeof fetch;
+    });
 }
 
 describe("fetchWithDeadline", () => {
+  it("does not dispatch a mutation when the caller already cancelled", async () => {
+    const caller = new AbortController();
+    const reason = new DOMException("consent withdrawn", "AbortError");
+    caller.abort(reason);
+    let dispatched = 0;
+    let consumed = 0;
+
+    await expect(
+      fetchWithDeadline(
+        "https://example.test/activation",
+        { method: "POST" },
+        async (response) => {
+          consumed += 1;
+          return response.text();
+        },
+        {
+          signal: caller.signal,
+          timeoutMs: 1_000,
+          fetchImpl: async () => {
+            dispatched += 1;
+            return new Response("accepted");
+          },
+        },
+      ),
+    ).rejects.toBe(reason);
+    expect(dispatched).toBe(0);
+    expect(consumed).toBe(0);
+  });
+
   it("aborts a stalled request when its deadline expires", async () => {
     await expect(
       fetchWithDeadline(
@@ -48,7 +80,10 @@ describe("fetchWithDeadline", () => {
 
   it("keeps the deadline active while the response body is consumed", async () => {
     let requestSignal: AbortSignal | undefined;
-    const fetchImpl: typeof fetch = async (_input, init) => {
+    const fetchImpl: FetchDeadlineOptions["fetchImpl"] = async (
+      _input,
+      init,
+    ) => {
       requestSignal = init?.signal ?? undefined;
       return new Response("headers arrived");
     };

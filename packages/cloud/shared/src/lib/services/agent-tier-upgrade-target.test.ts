@@ -28,6 +28,7 @@ process.env.MOCK_REDIS = "1";
 
 import { eq, like } from "drizzle-orm";
 import * as dbHelpersActual from "../../db/helpers";
+import { AGENT_PRICING } from "../constants/agent-pricing";
 import * as agentEnvCryptoActual from "./agent-env-crypto";
 import * as managedConfigActual from "./managed-eliza-config";
 
@@ -42,6 +43,7 @@ const realPrepareManagedElizaSharedEnvironment =
 let prepDelayMs = 0;
 let prepFailNext = false;
 let prepCalls = 0;
+let afterPreparation: (() => Promise<void>) | undefined;
 
 // Installed in beforeAll — never at module scope: `bun test` evaluates every
 // test file's module scope up front, so a module-scope mock would clobber the
@@ -62,7 +64,11 @@ function installPrepSeam(): void {
         prepDelayMs = 0;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      return realPrepareManagedElizaSharedEnvironment(params);
+      const prepared = await realPrepareManagedElizaSharedEnvironment(params);
+      const onPrepared = afterPreparation;
+      afterPreparation = undefined;
+      if (onPrepared) await onPrepared();
+      return prepared;
     },
   }));
 }
@@ -96,6 +102,7 @@ function installEncryptionSeam(): void {
 const dbHelpersSnapshot = { ...dbHelpersActual };
 let commitAckLossCountdown = 0;
 let verifySelectFailNext = false;
+let afterCommitBeforeAckLoss: (() => Promise<void>) | undefined;
 
 function installCommitAckSeam(): void {
   const realDbWrite = dbHelpersSnapshot.dbWrite;
@@ -106,6 +113,9 @@ function installCommitAckSeam(): void {
           commitAckLossCountdown -= 1;
           const committed = await target.transaction(...args);
           if (commitAckLossCountdown === 0) {
+            const afterCommit = afterCommitBeforeAckLoss;
+            afterCommitBeforeAckLoss = undefined;
+            if (afterCommit) await afterCommit();
             throw new Error("simulated commit-acknowledgment loss");
           }
           return committed;
@@ -199,19 +209,25 @@ beforeAll(async () => {
     for (const ddl of TIER_UPGRADE_TEST_TABLES) {
       await dbWrite.execute(ddl);
     }
+    const originMigration = await Bun.file(
+      new URL("../../db/migrations/0386_personal_dedicated_activation_origin.sql", import.meta.url),
+    ).text();
+    for (const statement of originMigration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(statement);
+    }
 
     await installOrganizationPolicyTestSchema((query) =>
       client.getPgliteClientForTests().exec(query),
     );
     await dbWrite.insert(organizations).values([
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "100" },
-      { id: ORG_QUOTA, name: "Org Quota", slug: "org-quota", credit_balance: "0.5" },
-      { id: ORG_RACE, name: "Org Race", slug: "org-race", credit_balance: "0.5" },
+      { id: ORG_QUOTA, name: "Org Quota", slug: "org-quota", credit_balance: "0.8" },
+      { id: ORG_RACE, name: "Org Race", slug: "org-race", credit_balance: "0.8" },
       {
         id: ORG_RACE_CREATE,
         name: "Org Race Create",
         slug: "org-race-create",
-        credit_balance: "0.5",
+        credit_balance: "0.8",
       },
     ]);
     await dbWrite.insert(users).values([
@@ -252,7 +268,8 @@ beforeAll(async () => {
       agent_config: { __agentUpgradedFrom: "quota-fixture-existing-source" },
     });
 
-    // Five is the persisted legacy catalog ceiling at this balance. Reserve
+    // 0.80 funds the Dedicated runway while retaining the five-slot legacy
+    // catalog ceiling. These races exercise quota, not insufficient credit. Reserve
     // four slots so each race still competes for exactly one remaining slot.
     for (const organizationId of [ORG_QUOTA, ORG_RACE, ORG_RACE_CREATE]) {
       for (let index = 0; index < 4; index++)
@@ -275,14 +292,17 @@ beforeAll(async () => {
 }, PGLITE_TIMEOUT);
 
 afterEach(() => {
+  afterPreparation = undefined;
   prepDelayMs = 0;
   prepFailNext = false;
   encryptionFailNext = false;
   commitAckLossCountdown = 0;
   verifySelectFailNext = false;
+  afterCommitBeforeAckLoss = undefined;
 });
 
 function upgradeParams(sourceAgentId: string, overrides: Record<string, unknown> = {}) {
+  const issuedAt = Date.now();
   return {
     sourceAgentId,
     organizationId: ORG_A,
@@ -291,6 +311,22 @@ function upgradeParams(sourceAgentId: string, overrides: Record<string, unknown>
     agentConfig: { character: { name: "Aurora" }, __agentUpgradedFrom: "forged-by-caller" },
     environmentVars: { MY_CUSTOM_VAR: "keep-me" },
     maxNonTerminalAgents: 50,
+    activationReceipt: { quoteId: "a".repeat(64), quoteVersion: "personal-dedicated-v1" },
+    activationReview: {
+      version: 1 as const,
+      quoteId: "a".repeat(64),
+      binding: "b".repeat(64),
+      termsId: "c".repeat(64),
+      issuedAt,
+      expiresAt: issuedAt + 300_000,
+    },
+    activationQuote: {
+      balanceUsd: overrides.organizationId && overrides.organizationId !== ORG_A ? 0.8 : 100,
+      hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
+      dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
+      minimumBalanceUsd: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
+      minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+    },
     ...overrides,
   };
 }
@@ -308,6 +344,14 @@ async function jobsForAgent(agentId: string) {
   return dbWrite.select().from(jobs).where(eq(jobs.agent_id, agentId));
 }
 
+async function receiptForSource(sourceId: string) {
+  const [receipt] = await dbWrite
+    .select()
+    .from(personalDedicatedUpgradeAuthorities)
+    .where(eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceId));
+  return receipt;
+}
+
 /**
  * Global no-dangling-credentials invariant: every `agent-sandbox:<id>` API key
  * must belong to an EXISTING sandbox row. Candidates minted by losers/failed
@@ -323,6 +367,191 @@ async function expectNoOrphanAgentKeys() {
 }
 
 describe("createTierUpgradeTargetWithProvision — durable single-flight boundary", () => {
+  for (const terminalStatus of ["completed", "failed"] as const) {
+    test(
+      `lost acknowledgment recovers the original ${terminalStatus} job, never a later pending job`,
+      async () => {
+        expect(pgliteReady).toBe(true);
+        const sourceId = crypto.randomUUID();
+        let originalJobId: string | undefined;
+        afterCommitBeforeAckLoss = async () => {
+          const receipt = await receiptForSource(sourceId);
+          originalJobId = receipt?.originating_provision_job_id ?? undefined;
+          if (!originalJobId) throw new Error("missing origin job");
+          const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, originalJobId));
+          if (!job) throw new Error("missing committed job");
+          await dbWrite
+            .update(jobs)
+            .set({ status: terminalStatus })
+            .where(eq(jobs.id, originalJobId));
+          // A separate later action exists already. Recovery must not attribute
+          // that action's job to this request's original confirmation.
+          await dbWrite.insert(jobs).values({ ...job, id: crypto.randomUUID(), status: "pending" });
+        };
+        commitAckLossCountdown = 2;
+        const recovered = await svc.createTierUpgradeTargetWithProvision(upgradeParams(sourceId));
+        expect(recovered.created).toBe(true);
+        if (!recovered.created) throw new Error("expected recovered creation");
+        expect(recovered.job.id).toBe(originalJobId!);
+        expect(recovered.job.status).toBe(terminalStatus);
+        expect(await jobsForAgent(recovered.agent.id)).toHaveLength(2);
+        await expectNoOrphanAgentKeys();
+      },
+      PGLITE_TIMEOUT,
+    );
+  }
+
+  test(
+    "a purged originating job after commit surfaces uncertainty without rearming or revoking",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const sourceId = crypto.randomUUID();
+      afterCommitBeforeAckLoss = async () => {
+        const receipt = await receiptForSource(sourceId);
+        if (!receipt?.originating_provision_job_id) throw new Error("missing origin job");
+        await dbWrite.delete(jobs).where(eq(jobs.id, receipt.originating_provision_job_id));
+      };
+      commitAckLossCountdown = 2;
+      await expect(
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(sourceId)),
+      ).rejects.toThrow("simulated commit-acknowledgment loss");
+      const [target] = await targetsForSource(sourceId);
+      expect(target).toBeTruthy();
+      expect(await jobsForAgent(target!.id)).toHaveLength(0);
+      const keys = await dbWrite
+        .select()
+        .from(apiKeys)
+        .where(eq(apiKeys.name, `agent-sandbox:${target!.id}`));
+      expect(keys).toHaveLength(1);
+      expect(keys[0]?.is_active).toBe(true);
+      expect((await receiptForSource(sourceId))?.originating_provision_job_id).toBeTruthy();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a receipt write failure rolls back the already enqueued job and target",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const jobsBefore = await dbWrite.select().from(jobs);
+      const sourceId = "receipt-insert-failure";
+      await dbWrite.execute(`ALTER TABLE personal_dedicated_upgrade_authorities
+      ADD CONSTRAINT test_reject_activation_origin CHECK (source_agent_id <> 'receipt-insert-failure')`);
+      try {
+        await expect(
+          svc.createTierUpgradeTargetWithProvision(upgradeParams(sourceId)),
+        ).rejects.toThrow();
+        expect(await targetsForSource(sourceId)).toHaveLength(0);
+        expect(await receiptForSource(sourceId)).toBeUndefined();
+        expect(await dbWrite.select().from(jobs)).toEqual(jobsBefore);
+        await expectNoOrphanAgentKeys();
+      } finally {
+        await dbWrite.execute(`ALTER TABLE personal_dedicated_upgrade_authorities
+        DROP CONSTRAINT test_reject_activation_origin`);
+      }
+      const retry = await svc.createTierUpgradeTargetWithProvision(upgradeParams(sourceId));
+      expect(retry.created).toBe(true);
+      if (!retry.created) throw new Error("expected fresh creation");
+      expect(await receiptForSource(sourceId)).toMatchObject({
+        originating_provision_job_id: retry.job.id,
+      });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "rejects missing or malformed originating consent before preparing credentials",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const callsBefore = prepCalls;
+      for (const activationReceipt of [
+        undefined,
+        { quoteId: "bad", quoteVersion: "personal-dedicated-v1" },
+        { quoteId: "a".repeat(64), quoteVersion: "" },
+        { quoteId: "a".repeat(64), quoteVersion: "x".repeat(65) },
+      ]) {
+        const sourceId = crypto.randomUUID();
+        await expect(
+          svc.createTierUpgradeTargetWithProvision(upgradeParams(sourceId, { activationReceipt })),
+        ).rejects.toMatchObject({ code: "PERSONAL_DEDICATED_ACTIVATION_QUOTE_CHANGED" });
+        expect(await targetsForSource(sourceId)).toHaveLength(0);
+        expect(await receiptForSource(sourceId)).toBeUndefined();
+      }
+      expect(prepCalls).toBe(callsBefore);
+      await expectNoOrphanAgentKeys();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  for (const phase of ["before preparation", "after preparation"] as const) {
+    for (const balance of ["99", "0.50"]) {
+      test(
+        `refuses changed balance ${balance} ${phase} without committing a target or job`,
+        async () => {
+          expect(pgliteReady).toBe(true);
+          const { organizations } = await import("../../db/schemas/organizations");
+          const sourceId = crypto.randomUUID();
+          const reviewed = upgradeParams(sourceId);
+          const changeBalance = async () => {
+            await dbWrite
+              .update(organizations)
+              .set({ credit_balance: balance })
+              .where(eq(organizations.id, ORG_A));
+          };
+          const agentsBefore = await dbWrite.select().from(agentSandboxes);
+          const jobsBefore = await dbWrite.select().from(jobs);
+          const callsBefore = prepCalls;
+          if (phase === "before preparation") await changeBalance();
+          else afterPreparation = changeBalance;
+          try {
+            await expect(svc.createTierUpgradeTargetWithProvision(reviewed)).rejects.toMatchObject({
+              code: "PERSONAL_DEDICATED_ACTIVATION_QUOTE_CHANGED",
+            });
+            expect(prepCalls - callsBefore).toBe(phase === "before preparation" ? 0 : 1);
+            expect(await dbWrite.select().from(agentSandboxes)).toEqual(agentsBefore);
+            expect(await dbWrite.select().from(jobs)).toEqual(jobsBefore);
+            expect(
+              await dbWrite
+                .select()
+                .from(personalDedicatedUpgradeAuthorities)
+                .where(eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceId)),
+            ).toHaveLength(0);
+            await expectNoOrphanAgentKeys();
+          } finally {
+            afterPreparation = undefined;
+            await dbWrite
+              .update(organizations)
+              .set({ credit_balance: "100" })
+              .where(eq(organizations.id, ORG_A));
+          }
+        },
+        PGLITE_TIMEOUT,
+      );
+    }
+  }
+
+  test(
+    "refuses a missing or mismatched economic snapshot before preparing credentials",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const callsBefore = prepCalls;
+      for (const activationQuote of [
+        undefined,
+        { ...upgradeParams(crypto.randomUUID()).activationQuote, hourlyRateUsd: 0.02 },
+        { ...upgradeParams(crypto.randomUUID()).activationQuote, balanceUsd: Number.NaN },
+      ]) {
+        const sourceId = crypto.randomUUID();
+        await expect(
+          svc.createTierUpgradeTargetWithProvision(upgradeParams(sourceId, { activationQuote })),
+        ).rejects.toMatchObject({ code: "PERSONAL_DEDICATED_ACTIVATION_QUOTE_CHANGED" });
+        expect(await targetsForSource(sourceId)).toHaveLength(0);
+      }
+      expect(prepCalls).toBe(callsBefore);
+      await expectNoOrphanAgentKeys();
+    },
+    PGLITE_TIMEOUT,
+  );
+
   test(
     "a retained authority whose target is absent fails typed before credential preparation",
     async () => {
@@ -470,6 +699,11 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       expect(jobRows[0]?.type).toBe("agent_provision");
       expect(jobRows[0]?.status).toBe("pending");
       expect(result.job.id).toBe(jobRows[0]?.id ?? "");
+      expect(await receiptForSource(SRC_BASIC)).toMatchObject({
+        originating_activation_quote_id: upgradeParams(SRC_BASIC).activationReceipt.quoteId,
+        originating_activation_quote_version: "personal-dedicated-v1",
+        originating_provision_job_id: result.job.id,
+      });
 
       // Exactly one credential set, bound to the committed target.
       const keyRows = await dbWrite
@@ -488,7 +722,22 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       expect(pgliteReady).toBe(true);
 
       const callsBefore = prepCalls;
-      const result = await svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_BASIC));
+      const receiptBefore = await receiptForSource(SRC_BASIC);
+      const issuedAt = Date.now();
+      const result = await svc.createTierUpgradeTargetWithProvision(
+        upgradeParams(SRC_BASIC, {
+          activationReceipt: { quoteId: "b".repeat(64), quoteVersion: "personal-dedicated-v1" },
+          activationReview: {
+            version: 1 as const,
+            quoteId: "b".repeat(64),
+            binding: "b".repeat(64),
+            termsId: "c".repeat(64),
+            issuedAt,
+            expiresAt: issuedAt + 300_000,
+          },
+        }),
+      );
+      expect(await receiptForSource(SRC_BASIC)).toEqual(receiptBefore);
       expect(result.created).toBe(false);
       const [target] = await targetsForSource(SRC_BASIC);
       expect(result.agent.id).toBe(target?.id ?? "");
@@ -591,6 +840,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
         // Atomic rollback: no half-created target a cleanup would have to
         // delete, no job, no surviving candidate credentials.
         expect(await targetsForSource(SRC_ENQUEUE_FAIL)).toHaveLength(0);
+        expect(await receiptForSource(SRC_ENQUEUE_FAIL)).toBeUndefined();
         await expectNoOrphanAgentKeys();
 
         // Retry (spy restored to the real implementation) converges cleanly.
@@ -729,6 +979,13 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       expect(targets).toHaveLength(1);
       expect(targets[0]?.id).toBe(result.agent.id);
       expect(await jobsForAgent(result.agent.id)).toHaveLength(1);
+      if (!result.created) throw new Error("expected recovered creation");
+      const receipt = await receiptForSource(SRC_ACK_LOSS);
+      expect(receipt).toMatchObject({
+        originating_activation_quote_id: upgradeParams(SRC_ACK_LOSS).activationReceipt.quoteId,
+        originating_activation_quote_version: "personal-dedicated-v1",
+        originating_provision_job_id: result.job.id,
+      });
 
       // The live target's credential was NEVER revoked — the row stays bootable.
       const keyRows = await dbWrite
@@ -742,6 +999,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       const retry = await svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_ACK_LOSS));
       expect(retry.created).toBe(false);
       expect(retry.agent.id).toBe(result.agent.id);
+      expect(await receiptForSource(SRC_ACK_LOSS)).toEqual(receipt);
       await expectNoOrphanAgentKeys();
     },
     PGLITE_TIMEOUT,
