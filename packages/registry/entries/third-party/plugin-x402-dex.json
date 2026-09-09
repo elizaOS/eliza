@@ -4,6 +4,6 @@
   "kind": "plugin",
   "description": "Real-time DEX market intelligence for ElizaOS agents via x402 Base Mainnet micropayments.",
   "homepage": "https://github.com/Zydanny/plugin-x402-dex",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "tags": ["x402", "base", "dex", "trading", "market-intel"]
 }
