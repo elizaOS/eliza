@@ -269,15 +269,21 @@ function normalizeGithubRepo(value: string | null | undefined): string | null {
   } else if (input.startsWith("git+")) {
     input = input.slice("git+".length);
   }
+  // Host prefixes first. An ssh URL may carry an explicit port
+  // (`ssh://git@github.com:22/owner/name`), which must not survive as the
+  // owner segment. Then the fragment and any `/tree/` or `/blob/` path, and
+  // only then the trailing `.git`, so `name.git/tree/main` still yields
+  // `owner/name`.
   input = input
     .replace(/^https?:\/\/github\.com\//, "")
-    .replace(/^ssh:\/\/git@github\.com[:/]/, "")
+    .replace(/^ssh:\/\/git@github\.com(?::\d+)?\//, "")
     .replace(/^git:\/\/github\.com\//, "")
     .replace(/^git@github\.com:/, "")
-    .replace(/\.git$/, "")
+    .replace(/#.*$/, "")
     .replace(/\/tree\/.*$/, "")
     .replace(/\/blob\/.*$/, "")
-    .replace(/#.*$/, "");
+    .replace(/\/$/, "")
+    .replace(/\.git$/, "");
   const [owner, repo] = input.split("/");
   return owner && repo ? `${owner}/${repo}` : null;
 }
