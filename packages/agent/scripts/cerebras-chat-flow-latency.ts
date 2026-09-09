@@ -662,6 +662,29 @@ async function main(): Promise<void> {
     "ELIZA_CEREBRAS_CHAT_WARMUPS",
     DEFAULT_WARMUPS,
   );
+  const interTurnPacingMs = positiveIntegerSetting(
+    "ELIZA_CEREBRAS_CHAT_PACING_MS",
+    0,
+  );
+  const isolationCooldownMs = positiveIntegerSetting(
+    "ELIZA_CEREBRAS_ISOLATION_COOLDOWN_MS",
+    0,
+  );
+  const pacingWaits: Array<{
+    phase: string;
+    requestedMs: number;
+    elapsedMs: number;
+  }> = [];
+  const pace = async (phase: string, requestedMs: number) => {
+    if (!requestedMs) return;
+    const startedAt = performance.now();
+    await new Promise((resolve) => setTimeout(resolve, requestedMs));
+    pacingWaits.push({
+      phase,
+      requestedMs,
+      elapsedMs: performance.now() - startedAt,
+    });
+  };
   const sourceRevision = sourceRevisionEvidence();
   const nativeEmbedding =
     process.env.ELIZA_CEREBRAS_EMBEDDING_MODE === "native";
@@ -1166,7 +1189,10 @@ async function main(): Promise<void> {
       idleMs,
       initialRoom: roomId,
       prepareRoom,
-      runTurn,
+      runTurn: async (index, prime, room) => {
+        await pace(prime ? "priming" : "sample", interTurnPacingMs);
+        return runTurn(index, prime, room);
+      },
       wait: async (milliseconds) => {
         process.stderr.write(
           `Waiting ${milliseconds}ms before resuming ${sampleCount} separately primed rooms.\n`,
@@ -1188,6 +1214,7 @@ async function main(): Promise<void> {
       );
     }
 
+    await pace("before-isolation", isolationCooldownMs);
     const isolationRooms = await Promise.all([prepareRoom(), prepareRoom()]);
     const isolationProofs = [
       `PARCEL-A-${randomUUID()}`,
@@ -1474,6 +1501,13 @@ async function main(): Promise<void> {
         "production generateChatResponse path with streaming, persistence, and distinct proof validation",
       warmups: warmupCount,
       samples: sampleCount,
+      pacing: {
+        interTurnPacingMs,
+        isolationCooldownMs,
+        waits: pacingWaits,
+        boundary:
+          "Explicit workload waits occur before timed turns; all foreground and post-delivery model usage remains included in per-turn modelUsages.",
+      },
       registeredProviders: registeredProviderNames,
       wallMs: distribution(turns.map((turn) => turn.wallMs)),
       wallMsBoundary:
@@ -1539,6 +1573,7 @@ async function main(): Promise<void> {
       modelExecutions,
       returnedChatResponses,
       turnObservations,
+      pacing: { interTurnPacingMs, isolationCooldownMs, waits: pacingWaits },
       requestedSamples: sampleCount,
       requestedWarmups: warmupCount,
       requestedIdleMs: idleMs,
