@@ -97,6 +97,135 @@ async function execute(runtime: AgentRuntime, task: Task) {
 }
 
 describe("durable background memory", () => {
+	it("supplies the complete future trigger and receipts only when their evidence page is selected", async () => {
+		const { runtime, service, message } = await setup();
+		const old = {
+			...message,
+			id: stringToUuid("earlier-own-statement"),
+			createdAt: 0,
+			content: {
+				text: "Earlier complete owner statement with violet notebook.",
+			},
+		};
+		await runtime.upsertMemory(old, "messages");
+		const stored = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			unique: false,
+			includeEmbedding: false,
+		});
+		const budget =
+			Math.max(
+				...stored.map(
+					(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+				),
+			) + 1;
+		vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+			key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+		);
+		runtime.registerEvaluator(evaluator());
+		runtime.useModel = vi.fn(
+			async () => '{"memory":{"ok":true}}',
+		) as AgentRuntime["useModel"];
+		await service.enqueue(
+			message,
+			{
+				...state,
+				data: {
+					actionResults: [{ success: true, text: "FUTURE_TURN_RECEIPT" }],
+				},
+			},
+			{ phase: "post_turn" },
+		);
+		const task = await job(runtime);
+		await execute(runtime, task);
+		const params = vi.mocked(runtime.useModel).mock.calls[0][1] as {
+			messages: Array<{ content: string }>;
+		};
+		const first = params.messages.map((row) => row.content).join("\n");
+		expect(first).toContain(old.content.text);
+		expect(first).not.toContain(message.content.text);
+		expect(first).not.toContain("FUTURE_TURN_RECEIPT");
+		expect(first).toContain("later evidence page");
+		await execute(runtime, task);
+		const last = vi.mocked(runtime.useModel).mock.calls[1][1] as {
+			messages: Array<{ content: string }>;
+		};
+		expect(last.messages.map((row) => row.content).join("\n")).toContain(
+			message.content.text,
+		);
+		expect(last.messages.map((row) => row.content).join("\n")).toContain(
+			"FUTURE_TURN_RECEIPT",
+		);
+		expect(await runtime.getTask(task.id)).toBeNull();
+	});
+
+	it("keeps diverged full pages queued when their union exceeds the shared request budget", async () => {
+		const { runtime, service, message } = await setup();
+		const observed: Record<string, string[]> = { lead: [], lag: [] };
+		const lane = (name: string) => ({
+			...evaluator(),
+			name,
+			processors: [
+				{
+					process: async ({
+						options,
+					}: Parameters<
+						NonNullable<RegisteredEvaluator["processors"]>[number]["process"]
+					>[0]) => {
+						observed[name].push(
+							...(options.extraction?.messages ?? []).map((row) =>
+								String(row.id),
+							),
+						);
+						return undefined;
+					},
+				},
+			],
+		});
+		runtime.registerEvaluator(lane("lead"));
+		runtime.useModel = vi.fn(async () =>
+			JSON.stringify({ lead: { ok: true }, lag: { ok: true } }),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const next = {
+			...message,
+			id: stringToUuid("bounded-union-next"),
+			createdAt: 20,
+			content: { text: "The complete next source, with its detail intact." },
+		};
+		await runtime.upsertMemory(next, "messages");
+		const stored = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			unique: false,
+			includeEmbedding: false,
+		});
+		const budget =
+			Math.max(
+				...stored.map(
+					(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+				),
+			) + 1;
+		vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+			key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+		);
+		runtime.registerEvaluator(lane("lag"));
+		await service.enqueue(next, state, { phase: "post_turn" });
+		const task = await job(runtime);
+		await execute(runtime, task);
+		expect(await runtime.getTask(task.id)).not.toBeNull();
+		for (let i = 0; i < 3 && (await runtime.getTask(task.id)); i++)
+			await execute(runtime, task);
+		expect(observed).toEqual({
+			lead: [message.id, next.id],
+			lag: [message.id, next.id],
+		});
+		expect(await runtime.getTask(task.id)).toBeNull();
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+	});
+
 	it("shares exact selected ID lists between diverged lanes without losing evidence", async () => {
 		const { runtime, service, message } = await setup();
 		for (const name of ["leadA", "leadB"])

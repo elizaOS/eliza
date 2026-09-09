@@ -44,3 +44,43 @@ export function previousEvidencePage(
 		hasEarlier: start > 0,
 	};
 }
+
+/** Admit complete evaluator pages against one shared evidence budget. Matching
+ * records are charged once; pages that do not fit remain unacknowledged work. */
+export function selectSharedEvidencePages<T>(
+	entries: readonly T[],
+	sources: (entry: T) => readonly Memory[],
+	maxBytes: number,
+): { selected: T[]; deferred: T[] } {
+	if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)
+		throw new ElizaError("Evidence page requires a positive byte budget", {
+			code: "EVALUATOR_BATCH_LIMIT_INVALID",
+		});
+	const selected: T[] = [];
+	const deferred: T[] = [];
+	const included = new Set<Memory["id"]>();
+	let total = 0;
+	for (const entry of entries) {
+		const page = new Map(sources(entry).map((source) => [source.id, source]));
+		let pageBytes = 0;
+		let added = 0;
+		for (const [id, source] of page) {
+			const bytes = new TextEncoder().encode(JSON.stringify(source)).byteLength;
+			pageBytes += bytes;
+			if (!included.has(id)) added += bytes;
+		}
+		if (pageBytes > maxBytes)
+			throw new ElizaError(
+				"One complete evaluator page exceeds the shared evidence budget",
+				{ code: "EVALUATOR_SOURCE_TOO_LARGE" },
+			);
+		if (total + added > maxBytes) {
+			deferred.push(entry);
+			continue;
+		}
+		selected.push(entry);
+		total += added;
+		for (const id of page.keys()) included.add(id);
+	}
+	return { selected, deferred };
+}

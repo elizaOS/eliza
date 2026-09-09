@@ -59,6 +59,7 @@ import { CONVERSATION_MESSAGES_HEADER_PREFIX, stringToUuid } from "../utils.ts";
 import {
 	DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES,
 	previousEvidencePage,
+	selectSharedEvidencePages,
 } from "./evaluator-evidence-page.ts";
 import {
 	bindEvaluatorReferenceEvidence,
@@ -271,16 +272,27 @@ function buildPrompt(params: {
 	const { runtime, message, state, active, options } = params;
 	const incremental = active.every((entry) => entry.progress !== undefined);
 	const agentName = runtime.character.name ?? "Agent";
-	const latestMessage = message.content.text ?? "";
-	const responseTexts = (options.responses ?? [])
+
+	const selectedSourceIds = new Set(
+		params.roomTranscript?.map((record) => record.id),
+	);
+	const triggerDeferred =
+		incremental &&
+		params.roomTranscript !== null &&
+		!selectedSourceIds.has(message.id);
+	const latestMessage = triggerDeferred
+		? "(Job trigger is in a later evidence page. Its complete text and turn receipts remain deferred; extract only the selected source records below.)"
+		: (message.content.text ?? "");
+	const responseTexts = (triggerDeferred ? [] : (options.responses ?? []))
 		.map((response) => response.content.text)
 		.filter(
 			(text): text is string => typeof text === "string" && text.length > 0,
 		)
 		.join("\n");
-	const actionResults = isRecord(state.data)
-		? state.data.actionResults
-		: undefined;
+	const actionResults =
+		!triggerDeferred && isRecord(state.data)
+			? state.data.actionResults
+			: undefined;
 	const providerContext = state.text.trim() || "(none)";
 	// The RECENT_MESSAGES provider renders the canonical complete room
 	// conversation (same retained rows, same hygiene and dedupe as
@@ -433,7 +445,7 @@ function buildPrompt(params: {
 					};
 					evidenceSets.set(key, set);
 				}
-				evidenceSelection = `only the exact source IDs in ${set.id} below`;
+				evidenceSelection = `only the exact source IDs in ${set.id} defined above`;
 			}
 		}
 		dynamic.push({
@@ -1672,10 +1684,12 @@ export class EvaluatorService extends BaseService {
 			results.push(await this.runBatch(legacy, message, state, options));
 		return {
 			skipped: results.every((result) => result.skipped),
-			hasMoreEvidence: results.some((result) =>
-				result.processedEvaluators.some(
-					(name) => (progress.get(name)?.remainingSourceCount ?? 0) > 0,
-				),
+			hasMoreEvidence: results.some(
+				(result) =>
+					result.hasMoreEvidence ||
+					result.processedEvaluators.some(
+						(name) => (progress.get(name)?.remainingSourceCount ?? 0) > 0,
+					),
 			),
 			activeEvaluators: results.flatMap((result) => result.activeEvaluators),
 			processedEvaluators: results.flatMap(
@@ -1756,7 +1770,7 @@ export class EvaluatorService extends BaseService {
 							return null;
 						}),
 			]);
-			const preparedEntries = await this.collectPreparedEntries(
+			let preparedEntries = await this.collectPreparedEntries(
 				active,
 				message,
 				composedState,
@@ -1764,6 +1778,21 @@ export class EvaluatorService extends BaseService {
 				errors,
 				progress,
 			);
+			let hasDeferredEvidence = false;
+			if (background && progress) {
+				const admission = selectSharedEvidencePages(
+					preparedEntries,
+					(entry) =>
+						entry.progress?.pendingOutput !== undefined ||
+						entry.resolvedOutput !== undefined
+							? []
+							: (entry.options.extraction?.messages ?? []),
+					this.evidenceBatchBytes(),
+				);
+				preparedEntries = admission.selected;
+				hasDeferredEvidence = admission.deferred.length > 0;
+			}
+
 			if (preparedEntries.length === 0) {
 				return this.skippedResult({
 					activeEvaluators: active.map((evaluator) => evaluator.name),
@@ -1788,11 +1817,22 @@ export class EvaluatorService extends BaseService {
 					// writes may have changed candidates; do not mistake that for fresh inference.
 				} else entry.inputBinding = binding;
 			}
-			return { preparedEntries, composedState, errors, legacyRoomTranscript };
+			return {
+				preparedEntries,
+				composedState,
+				errors,
+				legacyRoomTranscript,
+				hasDeferredEvidence,
+			};
 		});
 		if (!("preparedEntries" in preparation)) return preparation;
-		const { preparedEntries, composedState, errors, legacyRoomTranscript } =
-			preparation;
+		const {
+			preparedEntries,
+			composedState,
+			errors,
+			legacyRoomTranscript,
+			hasDeferredEvidence,
+		} = preparation;
 		const freshEntries = preparedEntries.filter(
 			(entry) =>
 				entry.progress?.pendingOutput === undefined &&
@@ -2072,6 +2112,7 @@ ${JSON.stringify(references)}`
 
 		return {
 			skipped: false,
+			hasMoreEvidence: hasDeferredEvidence,
 			activeEvaluators: preparedEntries.map(({ evaluator }) => evaluator.name),
 			processedEvaluators,
 			results,
