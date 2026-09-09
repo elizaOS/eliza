@@ -889,11 +889,16 @@ describe("transport failure mapping", () => {
 			.requestJson(client.url("/v1/geocode"), {}, payloadSchema)
 			.catch((caught: unknown) => caught);
 
+		// A redirect past the budget is a deterministic policy block; retrying
+		// it can never succeed, so it must not surface as a retryable network
+		// failure (#29931).
 		expect(error).toMatchObject({
 			name: "ManagedProviderError",
-			code: "PROVIDER_NETWORK",
+			code: "ENDPOINT_BLOCKED",
 		});
-		expect((error as ManagedProviderError).cause).toBeInstanceOf(Error);
+		expect((error as ManagedProviderError).cause).toBeInstanceOf(
+			SsrfBlockedError,
+		);
 		expect(String((error as ManagedProviderError).cause)).toContain("redirect");
 	});
 
