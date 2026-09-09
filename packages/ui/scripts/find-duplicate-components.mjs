@@ -140,6 +140,13 @@ export function isMaintainedSource(file) {
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
       rel,
     );
+  if (maintained && /\.jsx?$/.test(rel)) {
+    // Compilers may emit beside a typed input while other workspace gates run.
+    // The authored module owns the inventory entry throughout that build.
+    const stem = file.replace(/\.jsx?$/, "");
+    if (fs.existsSync(`${stem}.ts`) || fs.existsSync(`${stem}.tsx`))
+      return false;
+  }
   if (!maintained || /\.[jt]sx$/.test(rel)) return maintained;
   let source;
   try {

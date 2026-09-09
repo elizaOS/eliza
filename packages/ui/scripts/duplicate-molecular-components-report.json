@@ -108,7 +108,7 @@
       "maintainedReferences": 2
     }
   ],
-  "eligibleComponents": 101,
+  "eligibleComponents": 103,
   "clusters": [
     {
       "archetype": "row",
@@ -937,6 +937,72 @@
     {
       "archetype": "panel",
       "atomicDependencies": [
+        "alert",
+        "button"
+      ],
+      "entries": [
+        {
+          "atomicDependencies": [
+            "alert",
+            "button"
+          ],
+          "file": "packages/ui/src/components/local-inference/LocalInferencePanel.tsx",
+          "line": 50,
+          "name": "LocalInferencePanel",
+          "renderedTags": [
+            "ActiveModelBar",
+            "AdvancedSettingsDisclosure",
+            "Alert",
+            "AlertDescription",
+            "Button",
+            "DeviceBridgeStatusBar",
+            "DevicesPanel",
+            "DownloadQueue",
+            "FirstRunOffer",
+            "HardwareBadge",
+            "ModelHubView",
+            "VoiceModelUpdatesSection",
+            "div",
+            "nav",
+            "p",
+            "span"
+          ],
+          "archetype": "panel"
+        },
+        {
+          "atomicDependencies": [
+            "alert",
+            "button"
+          ],
+          "file": "packages/ui/src/components/settings/ProviderPanels.tsx",
+          "line": 193,
+          "name": "CloudPanel",
+          "renderedTags": [
+            "Alert",
+            "AlertDescription",
+            "Button",
+            "Cloud",
+            "LogIn",
+            "ProviderPanelHeader",
+            "ProviderRoutingPanel",
+            "SettingsActionButton",
+            "div"
+          ],
+          "archetype": "panel"
+        }
+      ],
+      "signature": "panel:alert+button",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Cloud sign-in reopens an existing browser authorization session and tracks login completion. Local inference refreshes authenticated model snapshots, retains the last valid download state on failure, and fences obsolete responses. Their Alert and Button atoms are shared; session handoff and download reconciliation have separate state owners and recovery contracts.",
+      "memberComponentIds": [
+        "packages/ui/src/components/local-inference/LocalInferencePanel.tsx:LocalInferencePanel",
+        "packages/ui/src/components/settings/ProviderPanels.tsx:CloudPanel"
+      ],
+      "semanticFingerprint": "sha256:a14d378f1e6f547c20aa0f5a4b83c7fe183474e48738c53e3a3ae19765696f1b"
+    },
+    {
+      "archetype": "panel",
+      "atomicDependencies": [
         "button",
         "input"
       ],
@@ -1050,8 +1116,8 @@
     }
   ],
   "summary": {
-    "clusterCount": 11,
-    "clusteredComponents": 29,
+    "clusterCount": 12,
+    "clusteredComponents": 31,
     "largestCluster": 4
   }
 }

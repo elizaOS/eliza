@@ -103,6 +103,34 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
     cleanup();
   });
 
+  it("keeps a failed hardware assessment unavailable and retries on reopening", async () => {
+    let rejectProbe!: (error: Error) => void;
+    clientMock.getLocalInferenceDeviceTier.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectProbe = reject;
+      }),
+    );
+    const first = render(<VoiceSectionMount />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Checking hardware",
+    );
+    expect(screen.queryByTestId("voice-tier-banner")).toBeNull();
+
+    await act(async () => rejectProbe(new Error("device probe unavailable")));
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Hardware assessment unavailable",
+    );
+    expect(screen.queryByTestId("voice-tier-banner")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+
+    first.unmount();
+    render(<VoiceSectionMount />);
+    await waitFor(() =>
+      expect(screen.getByTestId("voice-tier-banner")).toBeTruthy(),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("defaults the wake-word toggle ON (no stored pref) and reflects it", async () => {
     render(<VoiceSectionMount />);
     const toggle = await screen.findByTestId("voice-section-wake-toggle");

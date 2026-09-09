@@ -1026,6 +1026,10 @@ export async function startMockApiServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/api/approvals") {
+      json(res, 200, { approvals: [], pending: [], pendingUserActions: [] });
+      return;
+    }
     if (method === "GET" && pathname === "/api/computer-use/approvals") {
       json(res, 200, emptyComputerUseApprovalSnapshot);
       return;

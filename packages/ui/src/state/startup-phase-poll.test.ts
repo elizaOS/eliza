@@ -17,6 +17,7 @@ import {
 import type { RestoringSessionCtx } from "./startup-phase-restore";
 
 const clientMock = vi.hoisted(() => ({
+  getStatus: vi.fn(),
   getAuthStatus: vi.fn(),
   getFirstRunStatus: vi.fn(),
   getFirstRunOptions: vi.fn(),
@@ -203,6 +204,62 @@ describe("resolveStartupCloudControlPlaneBase", () => {
 });
 
 describe("runPollingBackend", () => {
+  it.each(["not_started", "running", "completed_during_probe"] as const)(
+    "reconciles saved completion with an incomplete %s backend",
+    async (state) => {
+      const deps = createDeps();
+      deps.firstRunCompletionCommittedRef.current =
+        state !== "completed_during_probe";
+      clientMock.getStatus.mockResolvedValue({
+        state: state === "completed_during_probe" ? "not_started" : state,
+      });
+      if (state === "completed_during_probe") {
+        clientMock.getFirstRunStatus.mockImplementation(async () => {
+          deps.firstRunCompletionCommittedRef.current = true;
+          return { complete: false, cloudProvisioned: false };
+        });
+      }
+      clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31338");
+      const server = {
+        id: "desktop-local",
+        kind: "local" as const,
+        label: "This Mac",
+        apiBase: "http://127.0.0.1:31338",
+      };
+      const dispatch = vi.fn();
+      await runPollingBackend(
+        deps,
+        dispatch,
+        {
+          supportsLocalRuntime: true,
+          backendTimeoutMs: 1000,
+          agentReadyTimeoutMs: 1000,
+          probeForExistingInstall: true,
+          defaultTarget: "embedded-local",
+        },
+        {
+          persistedActiveServer: server,
+          restoredActiveServer: server,
+          shouldPreserveCompletedFirstRun: false,
+          hadPriorFirstRun: true,
+        },
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+      );
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "BACKEND_REACHED",
+        firstRunComplete: state !== "not_started",
+      });
+      if (state === "not_started") {
+        expect(deps.setFirstRunOptions).toHaveBeenCalled();
+      } else {
+        expect(deps.setFirstRunOptions).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it("does not let stale persisted first-run completion override an incomplete backend", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();

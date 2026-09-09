@@ -92,6 +92,24 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
     vi.restoreAllMocks();
   });
 
+  it("returns a retryable login failure when session creation stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(globalThis, "fetch").mockImplementation(
+        () => new Promise(() => undefined),
+      );
+      const client = new ElizaClient("http://localhost:2138");
+      const result = client.cloudLoginDirect("https://staging.elizacloud.ai");
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(result).resolves.toMatchObject({
+        ok: false,
+        error: expect.stringContaining("timed out"),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("creates CLI sessions through the same-origin proxy and opens staging auth", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
