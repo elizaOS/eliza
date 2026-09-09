@@ -350,6 +350,14 @@ export class ExperienceService extends Service {
 				typeof rawData?.correctedBelief === "string"
 					? rawData.correctedBelief
 					: undefined,
+			extractionStatus:
+				rawData?.extractionStatus === "source_invalidated"
+					? "source_invalidated"
+					: undefined,
+			extractionReconciliationId:
+				typeof rawData?.extractionReconciliationId === "string"
+					? rawData.extractionReconciliationId
+					: undefined,
 			sourceMessageIds: this.asOptionalUuidArray(rawData?.sourceMessageIds),
 			sourceMessageRevisions:
 				rawData?.sourceMessageRevisions &&
@@ -470,6 +478,10 @@ export class ExperienceService extends Service {
 		if (experience.sourceMessageIds !== undefined) {
 			data.sourceMessageIds = experience.sourceMessageIds;
 		}
+		if (experience.extractionStatus !== undefined)
+			data.extractionStatus = experience.extractionStatus;
+		if (experience.extractionReconciliationId !== undefined)
+			data.extractionReconciliationId = experience.extractionReconciliationId;
 		if (experience.sourceMessageRevisions !== undefined) {
 			data.sourceMessageRevisions = { ...experience.sourceMessageRevisions };
 		}
@@ -886,7 +898,12 @@ export class ExperienceService extends Service {
 			const related = Array.from(relatedIds)
 				.map((id) => this.experiences.get(id))
 				.filter((exp): exp is Experience => exp !== undefined)
-				.filter((exp) => !results.some((r) => r.id === exp.id));
+				.filter(
+					(exp) =>
+						(query.includeInactive ||
+							exp.extractionStatus !== "source_invalidated") &&
+						!results.some((r) => r.id === exp.id),
+				);
 
 			results.push(...related);
 		}
@@ -903,7 +920,11 @@ export class ExperienceService extends Service {
 		candidates: Experience[],
 		query: ExperienceQuery,
 	): Experience[] {
-		let filtered = candidates;
+		let filtered = query.includeInactive
+			? candidates
+			: candidates.filter(
+					(row) => row.extractionStatus !== "source_invalidated",
+				);
 
 		if (query.type) {
 			const types = Array.isArray(query.type) ? query.type : [query.type];

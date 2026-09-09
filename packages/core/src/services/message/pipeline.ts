@@ -3,6 +3,7 @@
 import { TurnAbortedError } from "../../runtime/turn-controller";
 import { getStreamingContext } from "../../streaming-context";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
+import type { EvaluatorService } from "../evaluator";
 import { generateStage1Decision } from "./stage1-decision.js";
 
 export { directCodingResponseHandlerResult } from "./stage1-decision.js";
@@ -390,6 +391,9 @@ export async function runV5MessageRuntimeStage1(
 			}
 		}
 
+		// First-party background reducers validate the canonical source in their
+		// shared durable model batch. Keep the parallel legacy validator only
+		// when those reducers cannot own the work.
 		// Kick off the FACTS_AND_RELATIONSHIPS stage in parallel with whichever
 		// Stage 2 path runs (simple reply or planner). This stage is purely a
 		// side-effect: it dedups + persists user-stated facts/relationships
@@ -402,29 +406,36 @@ export async function runV5MessageRuntimeStage1(
 			((messageHandler.extract.facts?.length ?? 0) > 0 ||
 				(messageHandler.extract.relationships?.length ?? 0) > 0)
 		) {
-			const startedAt = Date.now();
-			factsTask = runFactsAndRelationshipsStage({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				extract: messageHandler.extract,
-			})
-				.then((result) => ({ startedAt, endedAt: Date.now(), result }))
-				.catch((error) => {
-					// error-policy:J7 Facts persistence is detached from reply delivery;
-					// its explicit failed outcome is recorded in the trajectory below.
-					args.runtime.reportError(
-						"MessageService.factsAndRelationships",
-						error,
-						{ roomId: args.message.roomId },
-					);
-					return { startedAt, endedAt: Date.now(), result: null, error };
+			const memoryWorker =
+				args.runtime.getService<EvaluatorService>("evaluator");
+			// The ordinary post-delivery boundary persists this work only after
+			// canonical assistant-history settlement. A failed settlement must
+			// not freeze or acknowledge a partial conversation snapshot.
+			if (!memoryWorker?.ownsDeferredFacts?.(args.message)) {
+				const startedAt = Date.now();
+				factsTask = runFactsAndRelationshipsStage({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					extract: messageHandler.extract,
 				})
-				.then((outcome) => {
-					settledFactsOutcome = outcome;
-					return outcome;
-				});
-			args.runTerminalOwner?.adopt("facts-and-relationships", factsTask);
+					.then((result) => ({ startedAt, endedAt: Date.now(), result }))
+					.catch((error) => {
+						// error-policy:J7 Facts persistence is detached from reply delivery;
+						// its explicit failed outcome is recorded in the trajectory below.
+						args.runtime.reportError(
+							"MessageService.factsAndRelationships",
+							error,
+							{ roomId: args.message.roomId },
+						);
+						return { startedAt, endedAt: Date.now(), result: null, error };
+					})
+					.then((outcome) => {
+						settledFactsOutcome = outcome;
+						return outcome;
+					});
+				args.runTerminalOwner?.adopt("facts-and-relationships", factsTask);
+			}
 		}
 
 		// Persist `addressedTo` as relationship edges from the speaker to each

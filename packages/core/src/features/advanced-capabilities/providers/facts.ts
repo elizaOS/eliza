@@ -39,6 +39,7 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
+import { isActiveMemoryEvidence } from "../../../utils/extraction-evidence.ts";
 import {
 	buildFactQueryText,
 	scoreFactKeywordRelevance,
@@ -463,7 +464,9 @@ const factsProvider: Provider = {
 
 			const minimizePrivateFacts = shouldMinimizePrivateFactsForTurn(message);
 			const dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
-				(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
+				(memory) =>
+					isActiveMemoryEvidence(memory) &&
+					(!minimizePrivateFacts || !isMarkedPrivateFact(memory)),
 			);
 			const { durable: durableCandidates, current: currentCandidates } =
 				partitionByKind(dedupedPool);

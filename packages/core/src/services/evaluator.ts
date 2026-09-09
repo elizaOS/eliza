@@ -7,6 +7,7 @@
  * per runtime, when a provider rejects schema-constrained output and falls back to
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
+
 import { v4 as uuidv4 } from "uuid";
 import { ElizaError } from "../errors.ts";
 import {
@@ -44,6 +45,7 @@ import type {
 	Service,
 	State,
 	Task,
+	UUID,
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
 import { ChannelType } from "../types/primitives.ts";
@@ -55,8 +57,14 @@ import {
 } from "../utils/well-formed.ts";
 import { CONVERSATION_MESSAGES_HEADER_PREFIX, stringToUuid } from "../utils.ts";
 import {
+	DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES,
+	previousEvidencePage,
+} from "./evaluator-evidence-page.ts";
+import {
+	bindEvaluatorReferenceEvidence,
 	commitEvaluatorProgress,
 	type EvaluatorProgressSnapshot,
+	evaluatorSourceRevision,
 	prepareEvaluatorProgress,
 	stageEvaluatorOutput,
 } from "./evaluator-progress.ts";
@@ -84,6 +92,8 @@ function extractionOptions(
 ): NonNullable<EvaluatorRunOptions["extraction"]> {
 	return {
 		isBackfill: snapshot.isBackfill,
+		remainingSourceCount: snapshot.remainingSourceCount,
+		referenceRevisions: snapshot.referenceRevisions,
 		messages: canonicalEvaluatorMessages(snapshot.messages, runtime.agentId),
 		sourceRevisions: snapshot.sourceRevisions,
 		changedMessageIds: snapshot.changedMessageIds,
@@ -239,6 +249,7 @@ ${part("actionResults", "[]")}
 
 ${ROOM_TRANSCRIPT_HEADING} (${parts.evidenceMode ?? "complete, oldest first"}):
 ${part("roomTranscript")}
+${parts.referenceContext ?? ""}
 
 Provider context:
 ${part("providerContext")}
@@ -254,6 +265,7 @@ function buildPrompt(params: {
 	active: PreparedEntry[];
 	options: EvaluatorRunOptions;
 	schema: JSONSchema;
+	referenceContext?: string;
 }): RenderedEvaluatorPrompt {
 	const { runtime, message, state, active, options } = params;
 	const incremental = active.every((entry) => entry.progress !== undefined);
@@ -280,6 +292,7 @@ function buildPrompt(params: {
 	// The merged evaluator prompt uses complete model projections while the
 	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
+		referenceContext: params.referenceContext ?? "",
 		evidenceMode: incremental
 			? "complete pending evidence records; processed history remains in storage"
 			: "complete, oldest first",
@@ -656,6 +669,36 @@ export class EvaluatorService extends BaseService {
 		options: EvaluatorRunOptions,
 	): Promise<EvaluatorRunResult> {
 		if (options.phase !== "post_turn") return this.run(message, state, options);
+		await this.enqueueBackground(message, state, options);
+		return this.runSelected(
+			this.runtime.evaluators.filter((entry) => !this.isBackground(entry)),
+			message,
+			state,
+			options,
+		);
+	}
+
+	/** Both built-in reducers must own the replacement. Legacy/custom runtimes and
+	 * voice/mobile keep their existing validation path. */
+	ownsDeferredFacts(message: Memory): boolean {
+		return (
+			!isMobilePlatform() &&
+			message.content.channelType !== ChannelType.VOICE_DM &&
+			message.content.channelType !== ChannelType.VOICE_GROUP &&
+			["factMemory", "relationships"].every((name) =>
+				this.runtime.evaluators.some(
+					(entry) => entry.name === name && this.isBackground(entry),
+				),
+			)
+		);
+	}
+
+	/** Persist the post-delivery source job without invoking legacy evaluators or a model. */
+	private async enqueueBackground(
+		message: Memory,
+		state: State | undefined,
+		options: EvaluatorRunOptions,
+	): Promise<void> {
 		const background = this.runtime.evaluators.filter((entry) =>
 			this.isBackground(entry),
 		);
@@ -668,8 +711,9 @@ export class EvaluatorService extends BaseService {
 			const id = stringToUuid(
 				`post-turn-memory:${this.runtime.agentId}:${message.roomId}:${message.entityId}:${message.id}`,
 			);
-			if (!(await this.runtime.getTask(id))) {
-				await this.runtime.createTask({
+			{
+				const existing = await this.runtime.getTask(id);
+				const task: Task = {
 					id,
 					name: "POST_TURN_MEMORY",
 					agentId: this.runtime.agentId,
@@ -692,15 +736,137 @@ export class EvaluatorService extends BaseService {
 							composeToolDiagnosticRedactor(this.runtime),
 						) as ActionResult[],
 					},
-				});
+				};
+				if (existing)
+					await this.runtime.updateTask(id, {
+						metadata: { ...existing.metadata, ...task.metadata },
+					});
+				else await this.runtime.createTask(task);
 			}
 		}
-		return this.runSelected(
-			this.runtime.evaluators.filter((entry) => !this.isBackground(entry)),
-			message,
-			state,
-			options,
+	}
+
+	/** Persist a repair intent before changing canonical evidence. Only real message
+	 * edits enter this path; embedding/bookkeeping updates do not wake extraction. */
+	async mutateSourceEvidence<T>(
+		ids: UUID[],
+		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+		write: () => Promise<T>,
+	): Promise<T> {
+		const initial = (
+			await this.runtime.getMemoriesByIds(ids, "messages")
+		).filter((row) => row.agentId === this.runtime.agentId);
+		if (!initial.length) return write();
+		return this.runtime.roomHandlerQueue.withLeases(
+			initial.map((row) => row.roomId),
+			async (leases) => {
+				const current = (
+					await this.runtime.getMemoriesByIds(ids, "messages")
+				).filter((row) => row.agentId === this.runtime.agentId);
+				if (current.some((row) => !leases.has(row.roomId)))
+					throw new ElizaError("Source moved outside the mutation lease", {
+						code: "EVALUATOR_SOURCE_SCOPE_CHANGED",
+					});
+				const patches = new Map(updates?.map((row) => [row.id, row]));
+				const changed = current.filter(
+					(row) =>
+						!updates ||
+						evaluatorSourceRevision(row) !==
+							evaluatorSourceRevision({
+								...row,
+								...patches.get(row.id as UUID),
+							}),
+				);
+				if (!changed.length) return write();
+				const intents: Task[] = [];
+				for (const roomId of new Set(changed.map((row) => row.roomId))) {
+					const transcript = await this.runtime.getMemories({
+						tableName: "messages",
+						roomId,
+						agentId: this.runtime.agentId,
+						unique: false,
+						includeEmbedding: false,
+					});
+					const owners = [
+						...new Set(
+							transcript
+								.map((row) => row.entityId)
+								.filter((id) => id !== this.runtime.agentId),
+						),
+					];
+					for (const entityId of owners) {
+						const trigger = transcript.find((row) => row.entityId === entityId);
+						if (!trigger?.id) continue;
+						const id = stringToUuid(
+							`reconcile-memory:${this.runtime.agentId}:${roomId}:${entityId}:${hashStableJson({ before: changed.map(evaluatorSourceRevision), after: updates ?? null })}`,
+						);
+						const task: Task = {
+							id,
+							name: "POST_TURN_MEMORY",
+							agentId: this.runtime.agentId,
+							roomId,
+							entityId,
+							tags: ["queue", "repeat"],
+							metadata: {
+								updateInterval: 1000,
+								baseInterval: 1000,
+								maxFailures: 5,
+								reconciliation: true,
+								messageId: trigger.id,
+								semanticSignal: true,
+							},
+						};
+						if (!(await this.runtime.getTask(id)))
+							await this.runtime.createTask(task);
+						intents.push(task);
+					}
+				}
+				const result = await write();
+				// Retirement has no model dependency and finishes inside the edit's lease.
+				// Re-extraction remains durable scheduler work even if this process exits.
+				for (const task of intents) await this.reconcileTaskSources(task);
+				return result;
+			},
 		);
+	}
+
+	private async reconcileTaskSources(task: Task): Promise<void> {
+		const message: Memory = {
+			id: task.metadata?.messageId as UUID,
+			agentId: this.runtime.agentId,
+			roomId: task.roomId as UUID,
+			entityId: task.entityId as UUID,
+			content: {},
+		};
+		// This identity-only context is never sent to a model or persisted as a message.
+		const transcript = await this.runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			agentId: this.runtime.agentId,
+			unique: false,
+			includeEmbedding: false,
+		});
+		for (const evaluator of this.runtime.evaluators) {
+			const reconcile = evaluator.reconcileEvidence;
+			if (!this.isBackground(evaluator) || !reconcile) continue;
+			await prepareEvaluatorProgress(
+				this.runtime,
+				message,
+				[evaluator.name],
+				transcript,
+				{
+					reconcileOnly: true,
+					reconcile: (reconciliation) =>
+						reconcile({
+							runtime: this.runtime,
+							message,
+							state: undefined,
+							options: { phase: "post_turn" },
+							reconciliation,
+						}),
+				},
+			);
+		}
 	}
 
 	private async executeBackgroundTask(
@@ -737,7 +903,31 @@ export class EvaluatorService extends BaseService {
 						},
 					},
 					async () => {
-						const message = await this.runtime.getMemoryById(messageId);
+						let message = await this.runtime.getMemoryById(messageId);
+						if (task.metadata?.reconciliation === true) {
+							await this.runtime.roomHandlerQueue.withLease(
+								task.roomId as UUID,
+								() => this.reconcileTaskSources(task),
+							);
+							if (!message) {
+								const retained = await this.runtime.getMemories({
+									tableName: "messages",
+									roomId: task.roomId,
+									agentId: this.runtime.agentId,
+									entityId: task.entityId,
+									authorEntityIds: [task.entityId as UUID],
+									unique: false,
+									includeEmbedding: false,
+								});
+								message =
+									retained.find((row) => row.entityId === task.entityId) ??
+									null;
+								if (!message) {
+									await this.runtime.deleteTask(taskId);
+									return { preserveTask: true };
+								}
+							}
+						}
 						if (
 							!message ||
 							message.agentId !== task.agentId ||
@@ -790,6 +980,7 @@ export class EvaluatorService extends BaseService {
 								code: "EVALUATOR_JOB_PENDING",
 								context: { errors: result.errors },
 							});
+						if (result.hasMoreEvidence) return undefined;
 						await this.runtime.deleteTask(taskId);
 						return { preserveTask: true };
 					},
@@ -798,6 +989,20 @@ export class EvaluatorService extends BaseService {
 		} finally {
 			this.backgroundRunning = false;
 		}
+	}
+
+	private evidenceBatchBytes(): number {
+		const configured = this.runtime.getSetting("MEMORY_EVIDENCE_BATCH_BYTES");
+		const limit =
+			configured === undefined || configured === null || configured === ""
+				? DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES
+				: Number(configured);
+		if (!Number.isSafeInteger(limit) || limit <= 0)
+			throw new ElizaError(
+				"Memory evidence budget must be a positive byte count",
+				{ code: "EVALUATOR_BATCH_LIMIT_INVALID" },
+			);
+		return limit;
 	}
 
 	private inRoom<T>(
@@ -1326,16 +1531,39 @@ export class EvaluatorService extends BaseService {
 					orderDirection: "asc",
 					includeEmbedding: false,
 				});
+				transcript.sort(
+					(left, right) =>
+						(left.createdAt ?? 0) - (right.createdAt ?? 0) ||
+						String(left.id).localeCompare(String(right.id)),
+				);
 				const progress = new Map<string, EvaluatorProgressSnapshot>();
 				const progressErrors: EvaluatorRunResult["errors"] = [];
 				await Promise.all(
 					incremental.map(async (evaluator) => {
+						const reconcileEvidence = evaluator.reconcileEvidence;
 						try {
 							const snapshots = await prepareEvaluatorProgress(
 								this.runtime,
 								message,
 								[evaluator.name],
 								transcript,
+								{
+									...(background
+										? { maxEvidenceBytes: this.evidenceBatchBytes() }
+										: {}),
+									...(reconcileEvidence
+										? {
+												reconcile: (reconciliation) =>
+													reconcileEvidence({
+														runtime: this.runtime,
+														message,
+														state,
+														options,
+														reconciliation,
+													}),
+											}
+										: {}),
+								},
 							);
 							for (const [name, snapshot] of snapshots)
 								progress.set(name, snapshot);
@@ -1385,6 +1613,11 @@ export class EvaluatorService extends BaseService {
 			results.push(await this.runBatch(legacy, message, state, options));
 		return {
 			skipped: results.every((result) => result.skipped),
+			hasMoreEvidence: results.some((result) =>
+				result.processedEvaluators.some(
+					(name) => (progress.get(name)?.remainingSourceCount ?? 0) > 0,
+				),
+			),
 			activeEvaluators: results.flatMap((result) => result.activeEvaluators),
 			processedEvaluators: results.flatMap(
 				(result) => result.processedEvaluators,
@@ -1525,13 +1758,39 @@ export class EvaluatorService extends BaseService {
 				)
 			: legacyRoomTranscript;
 		const schema = buildMergedSchema(freshEntries);
-		const rendered =
+		if (background && freshEntries.length)
+			schema.properties = {
+				...schema.properties,
+				restoreContextBefore: {
+					type: "string",
+					description:
+						"Request the immediately preceding complete historical evidence page using a visible source ID. Omit when current evidence suffices. All evaluator effects are deferred while requesting context.",
+				},
+			};
+		const references: Memory[] = [];
+		const requestedCursors = new Set<string>();
+		const restoredRanges: Array<{
+			before: string;
+			firstId: string | undefined;
+			hasEarlier: boolean;
+		}> = [];
+		const hasEarlier = freshEntries.some(
+			(entry) => entry.progress?.hasEarlierEvidence,
+		);
+		const referenceContext = () =>
+			background
+				? `Historical context is available through explicit ordered pagination. Selected evidence is one complete pending page per evaluator; later pages remain durable work: ${JSON.stringify(Object.fromEntries(freshEntries.map((entry) => [entry.evaluator.name, entry.progress?.remainingSourceCount ?? 0])))}. Earlier history available: ${hasEarlier}. If a pronoun, correction, or claim needs earlier evidence, request restoreContextBefore using a visible message ID immediately after the missing historical range; all output sections will be ignored until those complete records are restored. Never guess missing context or treat reference records as new personal statements. Restored ranges: ${JSON.stringify(restoredRanges)}.
+Historical reference records (context only; do not cite as newly selected evidence):
+${JSON.stringify(references)}`
+				: "";
+		let rendered =
 			freshEntries.length > 0
 				? buildPrompt({
 						runtime: this.runtime,
 						message,
 						state: composedState,
 						roomTranscript,
+						referenceContext: referenceContext(),
 						active: freshEntries,
 						options,
 						schema,
@@ -1556,13 +1815,116 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const { output, error } = rendered
+		let { output, error } = rendered
 			? await this.readEvaluatorOutput({
 					evaluatorId,
 					rendered,
 					schema,
 				})
 			: { output: {}, error: undefined };
+
+		while (
+			background &&
+			output &&
+			Object.hasOwn(output, "restoreContextBefore")
+		) {
+			const cursor = output.restoreContextBefore;
+			if (cursor === "" || cursor === null) {
+				delete output.restoreContextBefore;
+				break;
+			}
+			const visible = [...references, ...(roomTranscript ?? [])];
+			if (
+				typeof cursor !== "string" ||
+				!visible.some((row) => row.id === cursor) ||
+				requestedCursors.has(cursor)
+			)
+				throw new ElizaError(
+					"Evaluator requested an invalid or exhausted reference cursor",
+					{ code: "EVALUATOR_REFERENCE_CURSOR_INVALID" },
+				);
+			const page = await this.inRoom(message, background, async () => {
+				const complete = canonicalEvaluatorMessages(
+					await this.runtime.getMemories({
+						tableName: "messages",
+						roomId: message.roomId,
+						agentId: this.runtime.agentId,
+						unique: false,
+						includeEmbedding: false,
+						orderDirection: "asc",
+					}),
+					this.runtime.agentId,
+				);
+				const page = previousEvidencePage(
+					complete,
+					cursor,
+					this.evidenceBatchBytes(),
+				);
+				if (!page.messages.length)
+					throw new ElizaError(
+						"No earlier evidence is available for this cursor",
+						{ code: "EVALUATOR_REFERENCE_CURSOR_INVALID" },
+					);
+				const referenceBytes = new TextEncoder().encode(
+					JSON.stringify([...page.messages, ...references]),
+				).byteLength;
+				if (referenceBytes > this.evidenceBatchBytes() * 4)
+					throw new ElizaError(
+						"Requested complete reference context exceeds the explicit restoration budget",
+						{
+							code: "EVALUATOR_REFERENCE_BUDGET_EXCEEDED",
+							context: {
+								referenceBytes,
+								budget: this.evidenceBatchBytes() * 4,
+							},
+						},
+					);
+				for (const entry of freshEntries)
+					if (entry.progress)
+						bindEvaluatorReferenceEvidence(
+							this.runtime,
+							entry.progress,
+							page.messages,
+						);
+				return page;
+			});
+			requestedCursors.add(cursor);
+			restoredRanges.push({
+				before: cursor,
+				firstId: page.messages[0]?.id,
+				hasEarlier: page.hasEarlier,
+			});
+			const selectedIds = new Set((roomTranscript ?? []).map((row) => row.id));
+			const union = new Map(
+				[...page.messages, ...references]
+					.filter((row) => !selectedIds.has(row.id))
+					.map((row) => [row.id, row]),
+			);
+			references.splice(
+				0,
+				references.length,
+				...[...union.values()].sort(
+					(left, right) =>
+						(left.createdAt ?? 0) - (right.createdAt ?? 0) ||
+						String(left.id).localeCompare(String(right.id)),
+				),
+			);
+			rendered = buildPrompt({
+				runtime: this.runtime,
+				message,
+				state: composedState,
+				roomTranscript,
+				referenceContext: referenceContext(),
+				active: freshEntries,
+				options,
+				schema,
+			});
+			({ output, error } = await this.readEvaluatorOutput({
+				evaluatorId,
+				rendered,
+				schema,
+			}));
+		}
 		if (
 			!output &&
 			preparedEntries.every(
@@ -1599,7 +1961,19 @@ export class EvaluatorService extends BaseService {
 						const context = {
 							runtime: this.runtime,
 							message: entry.message,
-							options: entry.options,
+							// Reflection caches are keyed by the evidence array. A fresh array
+							// keeps the same source records while forcing candidate reads.
+							options: {
+								...entry.options,
+								...(entry.options.extraction
+									? {
+											extraction: {
+												...entry.options.extraction,
+												messages: [...entry.options.extraction.messages],
+											},
+										}
+									: {}),
+							},
 							state: currentState,
 						};
 						const prepared = entry.evaluator.prepare
@@ -1616,6 +1990,7 @@ export class EvaluatorService extends BaseService {
 								{ code: "EVALUATOR_CANDIDATES_CHANGED", severity: "ephemeral" },
 							);
 						entry.prepared = prepared;
+						entry.options = context.options;
 					}
 				}
 				return this.processPreparedEntries({

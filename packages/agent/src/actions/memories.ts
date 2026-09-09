@@ -23,6 +23,7 @@ import {
   factClaimsEquivalent,
   getRelatedEntityIds,
   inflectionTermKeys,
+  isActiveMemoryEvidence,
   logger,
   ModelType,
   readStoredFactKeywords,
@@ -63,6 +64,8 @@ interface MemoryParams {
 }
 
 interface MemoryListItem {
+  /** Historical/review evidence remains searchable but is never presented as an active claim. */
+  evidenceStatus?: "inactive";
   id: string;
   type: MemoryType;
   text: string;
@@ -251,6 +254,9 @@ function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
     id: memory.id ?? "",
     type,
     text: searchableMemoryText(memory),
+    ...(!isActiveMemoryEvidence(memory)
+      ? { evidenceStatus: "inactive" as const }
+      : {}),
     entityId: memory.entityId,
     roomId: memory.roomId,
     agentId: memory.agentId ?? null,
@@ -647,6 +653,7 @@ function memoryPageSnapshot(items: readonly MemoryListItem[]): string {
       item.roomId,
       item.agentId,
       item.createdAt,
+      item.evidenceStatus ?? null,
     ]);
     hash.update(String(Buffer.byteLength(canonical)));
     hash.update(":");
@@ -945,7 +952,7 @@ async function doSearch(
   // complete records remain machine data for state and trajectory consumers.
   const lines = items.map(
     (m) =>
-      `- [${m.type}] ${m.id} at ${new Date(m.createdAt).toISOString()}: ${toWellFormedUnicode(m.text)}`,
+      `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}: ${toWellFormedUnicode(m.text)}`,
   );
   const renderNote =
     limit === undefined

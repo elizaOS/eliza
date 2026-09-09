@@ -13,7 +13,9 @@ import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-pr
 import { recentMessagesSection } from "../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
+	EvaluatorEvidenceReconciliation,
 	EvaluatorPromptContext,
+	EvaluatorRunContext,
 	EvaluatorRunOptions,
 	IAgentRuntime,
 	JSONSchema,
@@ -21,6 +23,7 @@ import type {
 	RegisteredEvaluator,
 	UUID,
 } from "../../../types/index.ts";
+import { isProtectedMemoryEvidence } from "../../../utils/extraction-evidence.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { stringToUuid } from "../../../utils.ts";
@@ -232,6 +235,61 @@ async function prepareLongTermMemory(
 	};
 }
 
+async function reconcileLongTermEvidence({
+	runtime,
+	message,
+	reconciliation,
+}: EvaluatorRunContext & {
+	reconciliation: EvaluatorEvidenceReconciliation;
+}): Promise<{ reprocessSourceIds: string[] }> {
+	const service = runtime.getService("memory") as MemoryService | null;
+	if (!service)
+		throw new ElizaError("Memory service unavailable during reconciliation", {
+			code: "EVALUATOR_RECONCILIATION_UNAVAILABLE",
+		});
+	const reprocess = new Set<string>();
+	for (const memory of await service.getLongTermMemories(
+		message.entityId,
+		undefined,
+		undefined,
+		{ includeInactive: true },
+	)) {
+		if (
+			memory.agentId !== runtime.agentId ||
+			memory.metadata?.roomId !== message.roomId ||
+			memory.source === "MEMORY" ||
+			isProtectedMemoryEvidence(memory)
+		)
+			continue;
+		const revisions = isRecord(memory.metadata?.sourceMessageRevisions)
+			? memory.metadata.sourceMessageRevisions
+			: {};
+		const changed = Object.keys(revisions).filter(
+			(id) =>
+				reconciliation.changedMessageIds.includes(id) ||
+				reconciliation.removedMessageIds.includes(id),
+		);
+		const pending =
+			reconciliation.pendingEvidenceId !== undefined &&
+			memory.metadata?.extractionEvidenceId ===
+				reconciliation.pendingEvidenceId;
+		if (!pending && !changed.length) continue;
+		for (const id of Object.keys(revisions))
+			if (reconciliation.currentSourceRevisions[id] !== undefined)
+				reprocess.add(id);
+		if (memory.metadata?.extractionStatus === "source_invalidated") continue;
+		await service.updateLongTermMemory(memory.id, memory.entityId, {
+			metadata: {
+				...memory.metadata,
+				extractionStatus: "source_invalidated",
+				extractionReconciliationId: reconciliation.id,
+				extractionChangedSourceIds: changed,
+			},
+		});
+	}
+	return { reprocessSourceIds: [...reprocess] };
+}
+
 export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
 
 export const longTermMemoryEvaluator: Evaluator<
@@ -239,6 +297,7 @@ export const longTermMemoryEvaluator: Evaluator<
 	LongTermMemoryPrepared
 > = {
 	name: "longTermMemory",
+	reconcileEvidence: reconcileLongTermEvidence,
 	background: true,
 	incremental(runtime) {
 		const service = runtime.getService("memory") as MemoryService | null;
@@ -272,7 +331,10 @@ export const longTermMemoryEvaluator: Evaluator<
 			// old total-count watermark, determines when another interval is due.
 			return (
 				count >= config.longTermExtractionThreshold &&
-				options.extraction.messages.length >= config.longTermExtractionInterval
+				(options.extraction.isBackfill ||
+					(options.extraction.remainingSourceCount ?? 0) > 0 ||
+					options.extraction.messages.length >=
+						config.longTermExtractionInterval)
 			);
 		}
 		return shouldExtractLongTerm(runtime, message, memoryService);
@@ -337,12 +399,15 @@ ${recentMessages}`;
 							...(evidence
 								? {
 										extractionEvidenceId: evidence.evidenceId,
-										sourceMessageRevisions: Object.fromEntries(
-											(extraction.sourceMessageIds ?? []).map((id) => [
-												id,
-												evidence.sourceRevisions[id],
-											]),
-										),
+										sourceMessageRevisions: {
+											...evidence.referenceRevisions,
+											...Object.fromEntries(
+												(extraction.sourceMessageIds ?? []).map((id) => [
+													id,
+													evidence.sourceRevisions[id],
+												]),
+											),
+										},
 									}
 								: {}),
 						},

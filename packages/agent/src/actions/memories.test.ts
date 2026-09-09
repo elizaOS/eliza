@@ -1218,6 +1218,38 @@ describe("MEMORY op:create", () => {
     expect(entityPool[0].content.text).toBe("the user's dog is named Jeff");
   });
 
+  it("labels retired inference evidence without hiding its original text or explicit saved memories", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "favorite tea is jasmine",
+      entityId: USER_ID,
+      metadata: { extractionStatus: "source_invalidated" },
+    });
+    seedFact(rows, {
+      text: "favorite tea is rooibos",
+      entityId: USER_ID,
+      metadata: { source: "MEMORY", extractionStatus: "source_invalidated" },
+    });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "favorite tea",
+    });
+    expect(result.success).toBe(true);
+    const memories = (
+      result.data as {
+        memories: Array<{ text: string; evidenceStatus?: string }>;
+      }
+    ).memories;
+    expect(
+      memories.find((row) => row.text.includes("jasmine"))?.evidenceStatus,
+    ).toBe("inactive");
+    expect(
+      memories.find((row) => row.text.includes("rooibos"))?.evidenceStatus,
+    ).toBeUndefined();
+    expect(result.text).toContain("INACTIVE source evidence");
+    expect(result.text).toContain("favorite tea is jasmine");
+  });
+
   it("is found by MEMORY op:search after create", async () => {
     const { runtime } = makeRuntime();
     const message = makeMessage();

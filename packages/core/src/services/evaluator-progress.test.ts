@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../types/index.ts";
 import {
 	assertExtractionSourcesUnchanged,
+	bindEvaluatorReferenceEvidence,
 	commitEvaluatorProgress,
 	type EvaluatorProgressSnapshot,
 	prepareEvaluatorProgress as prepareProgress,
@@ -84,6 +85,173 @@ function selected(
 }
 
 describe("incremental evaluator progress", () => {
+	it("journals old output before retirement and retries a partial reconciliation without losing unrelated progress", async () => {
+		const h = runtimeWith();
+		const a = memory("a", "source A");
+		const b = memory("b", "source B");
+		const first = selected(
+			await prepareEvaluatorProgress(h.runtime, b, ["facts"], [a, b]),
+		);
+		await stageEvaluatorOutput(h.runtime, first, { original: "model output" });
+		await commitEvaluatorProgress(h.runtime, first);
+		const edited = { ...a, content: { text: "revised A" } };
+		const rows = [edited, b];
+		authoritativeRows.get(h.runtime)?.(rows);
+		const reconcile = vi.fn(async () => {
+			throw new Error("retirement temporarily unavailable");
+		});
+		await expect(
+			prepareProgress(h.runtime, b, ["facts"], rows, { reconcile }),
+		).rejects.toThrow("retirement temporarily unavailable");
+		const audit = [...h.store.entries()].find(([key]) =>
+			key.startsWith("evaluator-reconciliation:"),
+		);
+		expect(audit?.[1]).toMatchObject({
+			status: "prepared",
+			previous: { completed: first.sourceRevisions },
+		});
+		const restarted = runtimeWith(h.store);
+		authoritativeRows.get(restarted.runtime)?.(rows);
+		const success = vi.fn(async () => ({ reprocessSourceIds: ["a"] }));
+		const next = selected(
+			await prepareProgress(restarted.runtime, b, ["facts"], rows, {
+				reconcile: success,
+			}),
+		);
+		expect(next.messages).toEqual([edited]);
+		expect(next.changedMessageIds).toEqual([]);
+		expect(success).toHaveBeenCalledOnce();
+		expect(
+			[...h.store.keys()].filter((key) =>
+				key.startsWith("evaluator-reconciliation:"),
+			),
+		).toHaveLength(1);
+		expect(
+			[...h.store.values()].find(
+				(value) => (value as { status?: string }).status === "completed",
+			),
+		).toMatchObject({ previous: { completed: first.sourceRevisions } });
+		await stageEvaluatorOutput(restarted.runtime, next, {});
+		await commitEvaluatorProgress(restarted.runtime, next);
+		expect(
+			selected(
+				await prepareEvaluatorProgress(restarted.runtime, b, ["facts"], rows),
+			).messages,
+		).toEqual([]);
+	});
+
+	it("can retire the final deleted source with no fabricated replacement message", async () => {
+		const h = runtimeWith();
+		const a = memory("a", "only source");
+		const first = selected(
+			await prepareEvaluatorProgress(h.runtime, a, ["facts"], [a]),
+		);
+		await stageEvaluatorOutput(h.runtime, first, { original: "staged" });
+		const reconcile = vi.fn(async () => ({ reprocessSourceIds: [] }));
+		expect(
+			await prepareProgress(h.runtime, a, ["facts"], [], {
+				reconcile,
+				reconcileOnly: true,
+			}),
+		).toEqual(new Map());
+		expect(reconcile).toHaveBeenCalledWith(
+			expect.objectContaining({
+				removedMessageIds: ["a"],
+				pendingEvidenceId: first.evidenceId,
+			}),
+		);
+		expect(
+			[...h.store.values()].find(
+				(value) => (value as { status?: string }).status === "completed",
+			),
+		).toMatchObject({
+			previous: { pending: { output: { original: "staged" } } },
+		});
+	});
+
+	it("repairs a failed final reconciliation receipt from its durable progress pointer without retiring twice", async () => {
+		const h = runtimeWith();
+		const a = memory("a", "old source");
+		const first = selected(
+			await prepareEvaluatorProgress(h.runtime, a, ["facts"], [a]),
+		);
+		await stageEvaluatorOutput(h.runtime, first, {});
+		await commitEvaluatorProgress(h.runtime, first);
+		const updated = { ...a, content: { text: "edited source" } };
+		authoritativeRows.get(h.runtime)?.([updated]);
+		const originalWrite = h.runtime.setCache.bind(h.runtime);
+		let fail = true;
+		h.runtime.setCache = async (key, value) => {
+			if (
+				key.startsWith("evaluator-reconciliation:") &&
+				(value as { status?: string }).status === "completed" &&
+				fail
+			) {
+				fail = false;
+				return false;
+			}
+			return originalWrite(key, value);
+		};
+		const reconcile = vi.fn(async () => ({ reprocessSourceIds: [] }));
+		await expect(
+			prepareProgress(h.runtime, updated, ["facts"], [updated], { reconcile }),
+		).rejects.toMatchObject({ code: "EVALUATOR_RECONCILIATION_WRITE_FAILED" });
+		const next = selected(
+			await prepareProgress(h.runtime, updated, ["facts"], [updated], {
+				reconcile,
+			}),
+		);
+		expect(next.messages).toEqual([updated]);
+		expect(reconcile).toHaveBeenCalledOnce();
+		expect(
+			[...h.store.values()].find(
+				(value) =>
+					(value as { recoveredFromProgress?: boolean }).recoveredFromProgress,
+			),
+		).toMatchObject({
+			status: "completed",
+			previous: { completed: first.sourceRevisions },
+		});
+	});
+
+	it("retains reference revisions through staged replay and refuses an edited reference", async () => {
+		const h = runtimeWith();
+		const old = memory("older", "A complete prior reference", { createdAt: 1 });
+		const first = selected(
+			await prepareEvaluatorProgress(h.runtime, old, ["facts"], [old]),
+		);
+		await stageEvaluatorOutput(h.runtime, first, {});
+		await commitEvaluatorProgress(h.runtime, first);
+		const current = memory("current", "That same notebook is mine", {
+			createdAt: 2,
+		});
+		const sources = [old, current];
+		const next = selected(
+			await prepareEvaluatorProgress(h.runtime, current, ["facts"], sources),
+		);
+		bindEvaluatorReferenceEvidence(h.runtime, next, [old]);
+		await stageEvaluatorOutput(h.runtime, next, { grounded: true });
+		const restarted = runtimeWith(h.store);
+		const replay = selected(
+			await prepareEvaluatorProgress(
+				restarted.runtime,
+				current,
+				["facts"],
+				sources,
+			),
+		);
+		expect(replay.referenceRevisions).toEqual(next.referenceRevisions);
+		expect(replay.pendingOutput).toEqual({ grounded: true });
+		await expect(
+			prepareEvaluatorProgress(
+				restarted.runtime,
+				current,
+				["facts"],
+				[{ ...old, content: { text: "A changed earlier reference" } }, current],
+			),
+		).rejects.toMatchObject({ code: "EVALUATOR_PROGRESS_STALE_EVIDENCE" });
+	});
+
 	it("losslessly continues resource-bounded backfill after staged replay and new arrivals", async () => {
 		const h = runtimeWith();
 		const original = Array.from({ length: 5 }, (_, i) =>

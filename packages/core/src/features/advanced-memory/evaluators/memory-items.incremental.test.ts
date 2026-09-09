@@ -101,6 +101,19 @@ describe("long-term incremental extraction", () => {
 		).not.toHaveBeenCalled();
 	});
 
+	it("drains partial backfill pages even when each page is smaller than the extraction cadence", async () => {
+		const context = fixture();
+		context.options.extraction.isBackfill = true;
+		await expect(longTermMemoryEvaluator.shouldRun(context)).resolves.toBe(
+			true,
+		);
+		context.options.extraction.isBackfill = false;
+		context.options.extraction.remainingSourceCount = 4;
+		await expect(longTermMemoryEvaluator.shouldRun(context)).resolves.toBe(
+			true,
+		);
+	});
+
 	it("passes stable IDs and revisions on retry and never advances the legacy count checkpoint", async () => {
 		const context = fixture();
 		const prepared = await prepare(context);

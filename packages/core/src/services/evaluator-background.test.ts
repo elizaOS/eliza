@@ -1,7 +1,10 @@
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { factMemoryEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items";
+import {
+	factMemoryEvaluator,
+	relationshipEvaluator,
+} from "../features/advanced-capabilities/evaluators/reflection-items";
 import { AgentRuntime } from "../runtime";
 import {
 	ChannelType,
@@ -11,6 +14,8 @@ import {
 	type State,
 	type Task,
 } from "../types";
+import { stringToUuid } from "../utils";
+import { isActiveMemoryEvidence } from "../utils/extraction-evidence";
 import { EvaluatorService } from "./evaluator";
 
 const state: State = { values: {}, data: {}, text: "" };
@@ -293,4 +298,390 @@ describe("durable background memory", () => {
 		await running;
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
+	it("processes a lossless initial backfill over durable ordered worker invocations", async () => {
+		const { runtime, service, message } = await setup();
+		const earlier = Array.from({ length: 5 }, (_, i) => ({
+			...message,
+			id: stringToUuid(`backfill:${i}`),
+			createdAt: i,
+			content: { text: `Complete record ${i}\n🍊 ${"source ".repeat(15)}` },
+		}));
+		for (const source of earlier)
+			await runtime.upsertMemory(source, "messages");
+		const stored = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			unique: false,
+			includeEmbedding: false,
+			orderDirection: "asc",
+		});
+		const budget =
+			Math.max(
+				...stored.map(
+					(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+				),
+			) + 1;
+		vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+			key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+		);
+		const observed: Memory[] = [];
+		const item = evaluator();
+		item.processors = [
+			{
+				process: async ({ options }) => {
+					observed.push(...(options.extraction?.messages ?? []));
+					return undefined;
+				},
+			},
+		];
+		runtime.registerEvaluator(item);
+		runtime.useModel = vi.fn(
+			async () => '{"memory":{"ok":true}}',
+		) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const task = await job(runtime);
+		for (let i = 0; i < stored.length; i++) await execute(runtime, task);
+		expect(
+			observed.map((row) => ({ id: row.id, content: row.content })),
+		).toEqual(
+			[...earlier, message].map((row) => ({
+				id: row.id,
+				content: row.content,
+			})),
+		);
+		expect(await runtime.getTask(task.id)).toBeNull();
+		expect(runtime.useModel).toHaveBeenCalledTimes(stored.length);
+	});
+
+	it.each([false, true])(
+		"restores a full prior page before effects and rejects changed reference evidence (changed=%s)",
+		async (changeReference) => {
+			const { runtime, service, message } = await setup();
+			const earlier = {
+				...message,
+				id: stringToUuid("prior-detail"),
+				createdAt: 1,
+				content: {
+					text: "The notebook in this story is violet.\nFull reference 🍊",
+				},
+			};
+			await runtime.upsertMemory(earlier, "messages");
+			const stored = await runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				unique: false,
+				includeEmbedding: false,
+				orderDirection: "asc",
+			});
+			const budget =
+				Math.max(
+					...stored.map(
+						(row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+					),
+				) + 1;
+			vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+				key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+			);
+			const processor = vi.fn(async () => undefined);
+			runtime.registerEvaluator(evaluator(processor));
+			let call = 0;
+			runtime.useModel = vi.fn(async (_type, params) => {
+				call++;
+				if (call === 2)
+					return JSON.stringify({
+						restoreContextBefore: message.id,
+						memory: { ok: false },
+					});
+				if (call === 3) {
+					expect(JSON.stringify(params)).toContain(
+						"The notebook in this story is violet.",
+					);
+					expect(JSON.stringify(params)).toContain("Full reference 🍊");
+					expect(processor).toHaveBeenCalledTimes(1);
+					if (changeReference)
+						await runtime.roomHandlerQueue.withLease(
+							message.roomId,
+							async () => {
+								await runtime.updateMemory({
+									id: earlier.id,
+									content: { text: "The notebook is copper." },
+								});
+							},
+						);
+				}
+				return '{"memory":{"ok":true}}';
+			}) as AgentRuntime["useModel"];
+			await service.enqueue(message, state, { phase: "post_turn" });
+			const task = await job(runtime);
+			await execute(runtime, task);
+			if (changeReference) {
+				await expect(execute(runtime, task)).rejects.toMatchObject({
+					code: "EVALUATOR_JOB_PENDING",
+					context: {
+						errors: [
+							{
+								evaluatorName: "memory",
+								error: expect.stringContaining(
+									"Staged evaluator evidence changed",
+								),
+							},
+						],
+					},
+				});
+				expect(processor).toHaveBeenCalledTimes(1);
+			} else {
+				await execute(runtime, task);
+				expect(processor).toHaveBeenCalledTimes(2);
+				expect(await runtime.getTask(task.id)).toBeNull();
+			}
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		},
+	);
+	it.each(["edit", "delete"])(
+		"reconciles a %s on the next authoritative scan while preserving explicit and foreign records",
+		async (change) => {
+			const { runtime, service, message } = await setup();
+			runtime.registerEvaluator(factMemoryEvaluator);
+			let city = "Berlin";
+			runtime.useModel = vi.fn(async () =>
+				JSON.stringify({
+					factMemory: {
+						ops: city
+							? [
+									{
+										op: "add_durable",
+										claim: `lives in ${city}`,
+										category: "identity",
+										keywords: [city.toLowerCase()],
+										structured_fields: { city },
+										sourceMessageIds: [message.id],
+									},
+								]
+							: [],
+					},
+				}),
+			) as AgentRuntime["useModel"];
+			await service.enqueue(message, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			const original = (
+				await runtime.getMemories({
+					tableName: "facts",
+					roomId: message.roomId,
+					unique: false,
+				})
+			)[0];
+			const explicit: Memory = {
+				...original,
+				id: stringToUuid(`manual:${change}`),
+				content: { text: "Owner saved record", source: "MEMORY" },
+				metadata: { ...original.metadata, type: "custom", source: "MEMORY" },
+			};
+			const foreign: Memory = {
+				...original,
+				id: stringToUuid(`foreign:${change}`),
+				entityId: stringToUuid("other-person"),
+				content: { text: "Other person's record" },
+			};
+			await runtime.upsertMemory(explicit, "facts");
+			await runtime.upsertMemory(foreign, "facts");
+			let trigger = message;
+			if (change === "edit") {
+				city = "Paris";
+				await runtime.updateMemory({
+					id: message.id as NonNullable<Memory["id"]>,
+					content: { text: "I live in Paris." },
+				});
+				trigger = { ...message, content: { text: "I live in Paris." } };
+			} else {
+				city = "";
+				await runtime.deleteMemory(message.id as NonNullable<Memory["id"]>);
+				trigger = {
+					...message,
+					id: stringToUuid("after-delete"),
+					createdAt: 20,
+					content: { text: "Continue our conversation." },
+				};
+				await runtime.upsertMemory(trigger, "messages");
+			}
+			await service.enqueue(trigger, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			const all = await runtime.getMemories({
+				tableName: "facts",
+				roomId: message.roomId,
+				unique: false,
+			});
+			const retired = all.find((row) => row.id === original.id);
+			expect(retired?.content).toEqual(original.content);
+			expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
+			expect(all.find((row) => row.id === explicit.id)).toEqual(explicit);
+			expect(all.find((row) => row.id === foreign.id)).toEqual(foreign);
+			const ownActive = all.filter(
+				(row) =>
+					row.entityId === message.entityId &&
+					row.id !== explicit.id &&
+					isActiveMemoryEvidence(row),
+			);
+			expect(ownActive.map((row) => row.content.text)).toEqual(
+				change === "edit" ? ["lives in Paris"] : [],
+			);
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		},
+	);
+
+	it("re-examines unchanged surviving support instead of losing a multiply-supported claim", async () => {
+		const { runtime, service, message } = await setup();
+		const second = {
+			...message,
+			id: stringToUuid("independent-support"),
+			createdAt: 11,
+			content: { text: "Berlin is still my home." },
+		};
+		await runtime.upsertMemory(second, "messages");
+		runtime.registerEvaluator(factMemoryEvaluator);
+		let sources = [message.id, second.id];
+		runtime.useModel = vi.fn(async () =>
+			JSON.stringify({
+				factMemory: {
+					ops: [
+						{
+							op: "add_durable",
+							claim: "lives in Berlin",
+							category: "identity",
+							keywords: ["berlin"],
+							structured_fields: { city: "Berlin" },
+							sourceMessageIds: sources,
+						},
+					],
+				},
+			}),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(second, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		await runtime.deleteMemory(message.id as NonNullable<Memory["id"]>);
+		sources = [second.id];
+		await service.enqueue(second, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const facts = await runtime.getMemories({
+			tableName: "facts",
+			roomId: message.roomId,
+			unique: false,
+		});
+		expect(facts).toHaveLength(2);
+		expect(facts.filter(isActiveMemoryEvidence)).toHaveLength(1);
+		expect(facts.filter(isActiveMemoryEvidence)[0].content.text).toBe(
+			"lives in Berlin",
+		);
+	});
+
+	it("rereads real relationship candidates after foreground changes during inference", async () => {
+		const { runtime, service, message } = await setup();
+		const other = stringToUuid("candidate-change-peer");
+		await runtime.createEntities([
+			{ id: other, agentId: runtime.agentId, names: ["Peer"] },
+		]);
+		await runtime.createRoomParticipants([other], message.roomId);
+		runtime.registerEvaluator(relationshipEvaluator);
+		const started = deferred<void>();
+		const release = deferred<string>();
+		runtime.useModel = vi.fn(async () => {
+			started.resolve();
+			return release.promise;
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const running = execute(runtime, await job(runtime));
+		await started.promise;
+		await runtime.roomHandlerQueue.withLease(message.roomId, () =>
+			runtime.createRelationship({
+				sourceEntityId: message.entityId,
+				targetEntityId: other,
+				tags: ["friend"],
+			}),
+		);
+		release.resolve(JSON.stringify({ relationships: [] }));
+		await expect(running).rejects.toMatchObject({
+			code: "EVALUATOR_CANDIDATES_CHANGED",
+		});
+	});
+
+	it.each(["update", "upsert", "delete"])(
+		"automatically retires source-derived facts on %s without another conversation",
+		async (operation) => {
+			const { runtime, service, message } = await setup();
+			runtime.services.set("evaluator", [service]);
+			runtime.registerEvaluator(factMemoryEvaluator);
+			let city = "Berlin";
+			runtime.useModel = vi.fn(async () =>
+				JSON.stringify({
+					factMemory: {
+						ops: [
+							{
+								op: "add_durable",
+								claim: `lives in ${city}`,
+								category: "identity",
+								keywords: [city.toLowerCase()],
+								structured_fields: { city },
+								sourceMessageIds: [message.id],
+							},
+						],
+					},
+				}),
+			) as AgentRuntime["useModel"];
+			await service.enqueue(message, state, { phase: "post_turn" });
+			await execute(runtime, await job(runtime));
+			const oldFact = (
+				await runtime.getMemories({
+					tableName: "facts",
+					roomId: message.roomId,
+					unique: false,
+				})
+			)[0];
+			// Embedding bookkeeping does not queue a second model call.
+			await runtime.updateMemory({
+				id: message.id as NonNullable<Memory["id"]>,
+				embedding: [1, 0, 0],
+			});
+			expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toHaveLength(0);
+			city = "Paris";
+			await runtime.roomHandlerQueue.withLease(message.roomId, async () => {
+				if (operation === "delete")
+					await runtime.deleteMemory(message.id as NonNullable<Memory["id"]>);
+				else if (operation === "upsert")
+					await runtime.upsertMemory(
+						{ ...message, content: { text: "I live in Paris." } },
+						"messages",
+					);
+				else
+					await runtime.updateMemory({
+						id: message.id as NonNullable<Memory["id"]>,
+						content: { text: "I live in Paris." },
+					});
+			});
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			const retired = await runtime.getMemoryById(
+				oldFact.id as NonNullable<Memory["id"]>,
+			);
+			expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
+			expect(retired?.content).toEqual(oldFact.content);
+			const task = await job(runtime);
+			// Resume using a new service instance, as on restart.
+			await EvaluatorService.start(runtime);
+			await execute(runtime, task);
+			expect(
+				await runtime.getTask(task.id as NonNullable<Task["id"]>),
+			).toBeNull();
+			const active = (
+				await runtime.getMemories({
+					tableName: "facts",
+					roomId: message.roomId,
+					unique: false,
+				})
+			).filter(isActiveMemoryEvidence);
+			expect(active.map((row) => row.content.text)).toEqual(
+				operation === "delete" ? [] : ["lives in Paris"],
+			);
+			expect(runtime.useModel).toHaveBeenCalledTimes(
+				operation === "delete" ? 1 : 2,
+			);
+		},
+	);
 });

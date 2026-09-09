@@ -13,6 +13,7 @@
  * auto-record confidence threshold.
  */
 
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import { stringifyForDiagnostics } from "../../../../runtime/json-output.ts";
 import { renderStoredEnvelopesForPrompt } from "../../../../security/external-content";
@@ -24,6 +25,8 @@ import {
 } from "../../../../services/evaluator-transcript.ts";
 import type {
 	Evaluator,
+	EvaluatorEvidenceReconciliation,
+	EvaluatorRunContext,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
@@ -372,11 +375,62 @@ function sanitizeConversationText(
 		.trim();
 }
 
+async function reconcileExperienceEvidence({
+	runtime,
+	message,
+	reconciliation,
+}: EvaluatorRunContext & {
+	reconciliation: EvaluatorEvidenceReconciliation;
+}): Promise<{ reprocessSourceIds: string[] }> {
+	const service = runtime.getService<ExperienceService>("EXPERIENCE");
+	if (!service)
+		throw new ElizaError(
+			"Experience service unavailable during reconciliation",
+			{ code: "EVALUATOR_RECONCILIATION_UNAVAILABLE" },
+		);
+	const reprocess = new Set<string>();
+	for (const experience of await service.listExperiences({
+		includeInactive: true,
+	})) {
+		if (
+			experience.agentId !== runtime.agentId ||
+			experience.sourceRoomId !== message.roomId ||
+			experience.extractionMethod !== "experience_evaluator"
+		)
+			continue;
+		const revisions = experience.sourceMessageRevisions ?? {};
+		const changed = Object.keys(revisions).some(
+			(id) =>
+				reconciliation.changedMessageIds.includes(id) ||
+				reconciliation.removedMessageIds.includes(id),
+		);
+		const pending =
+			reconciliation.pendingEvidenceId !== undefined &&
+			experience.extractionEvidenceId === reconciliation.pendingEvidenceId;
+		if (!pending && !changed) continue;
+		for (const id of Object.keys(revisions))
+			if (reconciliation.currentSourceRevisions[id] !== undefined)
+				reprocess.add(id);
+		if (experience.extractionStatus === "source_invalidated") continue;
+		if (
+			!(await service.updateExperience(experience.id, {
+				extractionStatus: "source_invalidated",
+				extractionReconciliationId: reconciliation.id,
+			}))
+		)
+			throw new ElizaError("Experience retirement failed", {
+				code: "EVALUATOR_RECONCILIATION_WRITE_FAILED",
+			});
+	}
+	return { reprocessSourceIds: [...reprocess] };
+}
+
 export const experiencePatternEvaluator: Evaluator<
 	ExperienceOutput,
 	ExperiencePrepared
 > = {
 	name: "experiencePatterns",
+	reconcileEvidence: reconcileExperienceEvidence,
 	incremental: true,
 	background: true,
 	description:
@@ -395,6 +449,8 @@ export const experiencePatternEvaluator: Evaluator<
 			// The incremental journal retains skipped evidence; cadence must not
 			// acknowledge a batch before its processors have persisted it.
 			return (
+				options.extraction.isBackfill ||
+				(options.extraction.remainingSourceCount ?? 0) > 0 ||
 				scoreExperienceSignals({
 					latestText: getMessageText(message),
 					responseTexts: (options.responses ?? []).map(getMessageText),
@@ -607,6 +663,7 @@ ${formatExistingExperiences(prepared.existingExperiences)}`;
 									),
 									extractionEvidenceId: options.extraction.evidenceId,
 									sourceMessageRevisions: {
+										...options.extraction.referenceRevisions,
 										...options.extraction.sourceRevisions,
 									},
 								}

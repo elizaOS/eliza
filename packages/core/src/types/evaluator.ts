@@ -10,6 +10,16 @@ import type { JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
+/** Source-change plan captured under room ownership before retiring derived effects. */
+export interface EvaluatorEvidenceReconciliation {
+	id: string;
+	changedMessageIds: string[];
+	removedMessageIds: string[];
+	currentSourceRevisions: Record<string, string>;
+	/** All effects from an interrupted batch must be retired before regenerating it. */
+	pendingEvidenceId?: string;
+}
+
 export interface EvaluatorRunOptions {
 	didRespond?: boolean;
 	responses?: Memory[];
@@ -28,6 +38,8 @@ export interface EvaluatorRunOptions {
 	 */
 	extraction?: {
 		isBackfill: boolean;
+		remainingSourceCount?: number;
+		referenceRevisions?: Record<string, string>;
 		messages: Memory[];
 		sourceRevisions: Record<string, string>;
 		changedMessageIds: string[];
@@ -99,6 +111,13 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	 * Background inference releases room ownership; prepare/prompt are revalidated
 	 * under a new room lease before any staged output or effects are applied. */
 	background?: boolean;
+	/** Must preserve originals/manual records, durably retire invalid derived effects,
+	 * and return other retained supporting sources requiring re-evaluation. */
+	reconcileEvidence?(
+		context: EvaluatorRunContext & {
+			reconciliation: EvaluatorEvidenceReconciliation;
+		},
+	): Promise<{ reprocessSourceIds: string[] }>;
 
 	shouldRun(context: EvaluatorRunContext): Promise<boolean>;
 	prepare?(context: EvaluatorRunContext & { state: State }): Promise<TPrepared>;
@@ -132,6 +151,8 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 export type RegisteredEvaluator = Evaluator<unknown, unknown>;
 
 export interface EvaluatorRunResult {
+	/** At least one processed lane has another full evidence page to consume. */
+	hasMoreEvidence?: boolean;
 	skipped: boolean;
 	activeEvaluators: string[];
 	processedEvaluators: string[];

@@ -1,3 +1,4 @@
+import { isActiveMemoryEvidence } from "../utils/extraction-evidence.ts";
 /**
  * Structural write-time dedupe for the `facts` table: before a fact insert,
  * find an existing row with the same normalized text in the same
@@ -66,6 +67,7 @@ export async function findEquivalentFact(
 		unique: false,
 	});
 	for (const candidate of existing) {
+		if (!isActiveMemoryEvidence(candidate)) continue;
 		if (!candidate.id || candidate.id === memory.id) continue;
 		if ((candidate.entityId ?? null) !== (memory.entityId ?? null)) continue;
 		const candidateText =

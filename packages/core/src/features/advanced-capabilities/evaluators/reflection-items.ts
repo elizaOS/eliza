@@ -59,6 +59,10 @@ import type {
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
 import { stableStringify } from "../../../utils/deterministic.ts";
+import {
+	isActiveMemoryEvidence,
+	isProtectedMemoryEvidence,
+} from "../../../utils/extraction-evidence.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { stringToUuid } from "../../../utils.ts";
 import {
@@ -67,6 +71,7 @@ import {
 	factClaimsEquivalent,
 } from "../fact-keywords.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
+import { reconcileFactEvidence } from "./extraction-reconciliation.ts";
 import {
 	type AddCurrentOp,
 	type AddDurableOp,
@@ -572,7 +577,8 @@ async function prepareFacts(
 	const seen = new Set<string>();
 	const knownFacts: Memory[] = [];
 	for (const fact of [...roomFacts, ...entityFacts]) {
-		if (!fact.id || seen.has(fact.id)) continue;
+		if (!fact.id || seen.has(fact.id) || !isActiveMemoryEvidence(fact))
+			continue;
 		seen.add(fact.id);
 		knownFacts.push(fact);
 	}
@@ -657,6 +663,7 @@ export function extractionEvidenceMetadata(
 						),
 					)
 				: {}),
+			...extraction.referenceRevisions,
 			...extraction.sourceRevisions,
 		},
 	};
@@ -748,6 +755,7 @@ export async function reviewChangedExtractionSources(
 	if (!extraction) return 0;
 	let reviewed = 0;
 	for (const fact of facts) {
+		if (isProtectedMemoryEvidence(fact)) continue;
 		const metadata = fact.metadata as CustomMetadata | undefined;
 		const revisions = metadata?.extractionSourceRevisions;
 		if (!revisions || typeof revisions !== "object" || Array.isArray(revisions))
@@ -1292,6 +1300,8 @@ Fact stores:
 - current: now/near-term state. Categories: feeling, physical_state, working_on, going_through, schedule_context.
 
 Rules:
+- Fiction, examples, roleplay, and hypothetical stories are not personal facts about the speaker. Do not store them as personal memories.
+- Explicit requests to remember, edit, or forget a fact are owned by the MEMORY action; do not duplicate or undo that requested operation. Independently stated new facts can still be extracted.
 - Only extract claims grounded in this speaker's own new messages. Other participants, historical reference messages, and stored facts are context, not new evidence to reinforce or new claims about this speaker.
 - In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
 - No meaningful new/changed fact -> {"ops":[]}.
@@ -1327,6 +1337,7 @@ ${formatKnownLines(current, "current")}`,
 
 export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	name: "factMemory",
+	reconcileEvidence: reconcileFactEvidence,
 	incremental: true,
 	background: true,
 	description:
