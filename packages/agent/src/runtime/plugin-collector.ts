@@ -1067,56 +1067,49 @@ export function collectPluginNames(
   // the launcher-owned development Cloud policy.
   if (devCloudAuthority) applyProviderPrecedence();
 
-  orderPersonalAssistantBeforeComposedPlugins(pluginsToLoad);
+  withholdPluginsComposedByPersonalAssistant(pluginsToLoad, track);
   return pluginsToLoad;
 }
 
 /**
  * Plugins whose same-named actions `@elizaos/plugin-personal-assistant`
  * composes itself: CALENDAR and CONFLICT_DETECT from the calendar plugin,
- * OWNER_GOALS from the goals plugin. The assistant withholds those names when
- * its init registers these plugins, but if either is already in the runtime
- * the runtime's first-wins collision policy keeps the standalone action and
- * the composed surface (travel buffers, approval gateway, bulk_reschedule) is
- * silently skipped (#30943). Cross-plugin `override` is deliberately
- * neutralized by the plugin lifecycle (#12658), so registration order is the
- * only lever: the assistant must be registered before either plugin.
- *
- * Keep this list in step with the names the assistant withholds in
- * `plugins/plugin-personal-assistant/src/plugin.ts`
- * (`ensureLifeOpsCalendarPluginRegistered`, `ensureLifeOpsGoalsPluginRegistered`);
- * `composed-action-order.test.ts` there registers the collector's own order
- * and fails if a composed name is lost.
- *
- * With an app manifest that marks the assistant `requiredForReady` (the Eliza
- * app), the resolver's phase partition already loads it in the blocking wave
- * ahead of every deferred plugin, and this reorder is a no-op; it matters for
- * the manifest-less standalone agent, where both land in one wave.
+ * OWNER_GOALS from the goals plugin. The assistant's init registers both
+ * plugins and withholds those names (`ensureLifeOpsCalendarPluginRegistered`,
+ * `ensureLifeOpsGoalsPluginRegistered` in
+ * `plugins/plugin-personal-assistant/src/plugin.ts`), but only when they are
+ * not already in the runtime. `AgentRuntime.initialize` registers the
+ * non-core plugins concurrently, so a standalone calendar or goals entry in
+ * the same load set registers its actions while the assistant's init is still
+ * awaiting, the runtime's first-wins collision policy keeps the standalone
+ * action, and the composed surface (travel buffers, approval gateway,
+ * bulk_reschedule) is silently skipped (#30943). Cross-plugin `override` is
+ * neutralized by the plugin lifecycle (#12658) and array order does not
+ * survive concurrent registration, so the only deterministic lever is to let
+ * the assistant register these plugins itself.
  */
-const PERSONAL_ASSISTANT_COMPOSED_PLUGINS: readonly string[] = [
+const PLUGINS_COMPOSED_BY_PERSONAL_ASSISTANT: readonly string[] = [
   "@elizaos/plugin-calendar",
   "@elizaos/plugin-goals",
 ];
 
 /**
- * Reorder an insertion-ordered load set in place so the personal assistant
- * precedes every plugin whose actions it composes. Membership is unchanged.
+ * Remove the standalone entries for plugins the personal assistant registers
+ * itself, in place, when the assistant is in the load set. Every other entry
+ * is untouched; without the assistant the set is unchanged.
  */
-export function orderPersonalAssistantBeforeComposedPlugins(
+export function withholdPluginsComposedByPersonalAssistant(
   pluginsToLoad: Set<string>,
+  track?: (pluginName: string, reason: string) => void,
 ): void {
-  const assistant = "@elizaos/plugin-personal-assistant";
-  if (!pluginsToLoad.has(assistant)) return;
-  const ordered = Array.from(pluginsToLoad);
-  const firstComposed = ordered.findIndex((name) =>
-    PERSONAL_ASSISTANT_COMPOSED_PLUGINS.includes(name),
-  );
-  const assistantIndex = ordered.indexOf(assistant);
-  if (firstComposed === -1 || assistantIndex < firstComposed) return;
-  ordered.splice(assistantIndex, 1);
-  ordered.splice(firstComposed, 0, assistant);
-  pluginsToLoad.clear();
-  for (const name of ordered) pluginsToLoad.add(name);
+  if (!pluginsToLoad.has("@elizaos/plugin-personal-assistant")) return;
+  for (const name of PLUGINS_COMPOSED_BY_PERSONAL_ASSISTANT) {
+    if (!pluginsToLoad.delete(name)) continue;
+    track?.(
+      name,
+      "registered by plugin-personal-assistant with its composed action names withheld (#30943)",
+    );
+  }
 }
 
 function resolveCloudPluginRequirement(

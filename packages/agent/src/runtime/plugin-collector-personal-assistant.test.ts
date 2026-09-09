@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   collectPluginNames,
-  orderPersonalAssistantBeforeComposedPlugins,
+  withholdPluginsComposedByPersonalAssistant,
 } from "./plugin-collector.ts";
 
 const PA = "@elizaos/plugin-personal-assistant";
@@ -94,15 +94,14 @@ describe("collectPluginNames personal-assistant host gate (#17023)", () => {
     expect(collectPluginNames(enabledConfig()).has(PA)).toBe(false);
   });
 
-  it("registers the assistant before the calendar and goals plugins it composes (#30943)", () => {
+  it("withholds the standalone calendar and goals entries when the assistant is enabled (#30943)", () => {
     const names = Array.from(collectPluginNames(enabledConfig()));
-    const assistant = names.indexOf(PA);
-    const calendar = names.indexOf("@elizaos/plugin-calendar");
-    expect(assistant).toBeGreaterThanOrEqual(0);
-    expect(calendar).toBeGreaterThanOrEqual(0);
-    expect(assistant).toBeLessThan(calendar);
-    const goals = names.indexOf("@elizaos/plugin-goals");
-    if (goals !== -1) expect(assistant).toBeLessThan(goals);
+    expect(names).toContain(PA);
+    // The assistant's init registers both plugins itself with the composed
+    // CALENDAR, CONFLICT_DETECT, and OWNER_GOALS names withheld; a standalone
+    // entry would register concurrently and win first-wins.
+    expect(names).not.toContain("@elizaos/plugin-calendar");
+    expect(names).not.toContain("@elizaos/plugin-goals");
   });
 
   it("keeps the calendar plugin in place when the assistant is absent", () => {
@@ -112,8 +111,8 @@ describe("collectPluginNames personal-assistant host gate (#17023)", () => {
   });
 });
 
-describe("orderPersonalAssistantBeforeComposedPlugins", () => {
-  it("moves the assistant ahead of the first composed plugin and keeps every other position", () => {
+describe("withholdPluginsComposedByPersonalAssistant", () => {
+  it("removes only the composed plugins and keeps every other position", () => {
     const set = new Set([
       "@elizaos/plugin-sql",
       "@elizaos/plugin-calendar",
@@ -122,27 +121,26 @@ describe("orderPersonalAssistantBeforeComposedPlugins", () => {
       PA,
       "@elizaos/plugin-finances",
     ]);
-    orderPersonalAssistantBeforeComposedPlugins(set);
+    const tracked: string[] = [];
+    withholdPluginsComposedByPersonalAssistant(set, (name) => {
+      tracked.push(name);
+    });
     expect(Array.from(set)).toEqual([
       "@elizaos/plugin-sql",
-      PA,
-      "@elizaos/plugin-calendar",
       "@elizaos/plugin-scheduling",
-      "@elizaos/plugin-goals",
+      PA,
       "@elizaos/plugin-finances",
+    ]);
+    expect(tracked).toEqual([
+      "@elizaos/plugin-calendar",
+      "@elizaos/plugin-goals",
     ]);
   });
 
-  it("is a no-op when the assistant already precedes them or is absent", () => {
-    const already = new Set([PA, "@elizaos/plugin-calendar"]);
-    orderPersonalAssistantBeforeComposedPlugins(already);
-    expect(Array.from(already)).toEqual([PA, "@elizaos/plugin-calendar"]);
-    const absent = new Set([
-      "@elizaos/plugin-calendar",
-      "@elizaos/plugin-goals",
-    ]);
-    orderPersonalAssistantBeforeComposedPlugins(absent);
-    expect(Array.from(absent)).toEqual([
+  it("is a no-op when the assistant is absent", () => {
+    const set = new Set(["@elizaos/plugin-calendar", "@elizaos/plugin-goals"]);
+    withholdPluginsComposedByPersonalAssistant(set);
+    expect(Array.from(set)).toEqual([
       "@elizaos/plugin-calendar",
       "@elizaos/plugin-goals",
     ]);
