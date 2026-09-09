@@ -2835,6 +2835,36 @@ const ChatWidgetHarness = lazy(async () => {
   return { default: mod.ChatWidgetHarness };
 });
 
+// Explicit, tab-local opt-in. Ordinary app bundles never import the inspector.
+const DeveloperWorkspace = lazy(async () => {
+  const mod = await import(
+    "@elizaos/ui/components/developer/DeveloperWorkspace"
+  );
+  return { default: mod.DeveloperWorkspace };
+});
+const developerWorkspaceEnabled = (() => {
+  if (
+    !import.meta.env.DEV ||
+    !["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname)
+  )
+    return false;
+  const flag = new URLSearchParams(window.location.search).get("devtools");
+  try {
+    if (flag === "0")
+      window.sessionStorage.removeItem("eliza.developer-workspace");
+    if (flag === "1")
+      window.sessionStorage.setItem("eliza.developer-workspace", "1");
+    return (
+      flag === "1" ||
+      (flag !== "0" &&
+        window.sessionStorage.getItem("eliza.developer-workspace") === "1")
+    );
+  } catch {
+    // error-policy:J4 Storage-disabled tabs can still explicitly opt in by URL.
+    return flag === "1";
+  }
+})();
+
 /**
  * The shell owns the parametric cloud / public / auth / payment routes and
  * renders the tab/view app as the catch-all. It applies only to the main
@@ -2876,7 +2906,13 @@ function mountReactApp(): void {
           any view can gate developer/owner surfaces with useRole/<RoleGate>. */}
       <ShellModalityProvider modality="gui">
         <ShellRoleProvider>
-          <App />
+          {developerWorkspaceEnabled && !isSpecialWindowShell ? (
+            <DeveloperWorkspace>
+              <App />
+            </DeveloperWorkspace>
+          ) : (
+            <App />
+          )}
         </ShellRoleProvider>
       </ShellModalityProvider>
     </>
