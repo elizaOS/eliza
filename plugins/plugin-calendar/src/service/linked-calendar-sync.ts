@@ -440,6 +440,7 @@ export class LinkedCalendarReconciler {
     private readonly repository: LinkedCalendarCheckpointStore,
     private readonly local: LinkedCalendarLocalPort,
     private readonly provider: LinkedCalendarProviderPort,
+    private readonly onProviderMutation?: () => void,
   ) {}
 
   async reconcile(
@@ -454,7 +455,10 @@ export class LinkedCalendarReconciler {
       if (record.pendingOperation === "delete") {
         const provider = await this.provider.get(record);
         try {
-          if (provider) await this.provider.delete(record);
+          if (provider) {
+            this.onProviderMutation?.();
+            await this.provider.delete(record);
+          }
         } catch (error) {
           const mutationFailure = googleMutationFailure(error);
           if (mutationFailure?.outcome === "not_accepted") {
@@ -745,7 +749,10 @@ export class LinkedCalendarReconciler {
     }
     try {
       if (operation === "delete") {
-        if (provider) await this.provider.delete(pending);
+        if (provider) {
+          this.onProviderMutation?.();
+          await this.provider.delete(pending);
+        }
         await this.repository.save(pending, {
           providerEventId: provider?.eventId ?? pending.providerEventId,
           providerEtag: null,
@@ -756,6 +763,7 @@ export class LinkedCalendarReconciler {
           lastErrorMessage: null,
         });
       } else {
+        this.onProviderMutation?.();
         const written =
           operation === "create"
             ? await this.provider.create(pending, local.event)

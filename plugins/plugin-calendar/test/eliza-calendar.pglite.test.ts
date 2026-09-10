@@ -533,6 +533,110 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       .toBe("delete");
   });
 
+  it.each(["read", "write"])(
+    "handles a %s failure without losing dispatch safety",
+    async (failureAt) => {
+      const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+        title: "Credential readiness",
+        startAt: "2026-08-14T19:00:00.000Z",
+        endAt: "2026-08-14T20:00:00.000Z",
+        timeZone: "America/New_York",
+        idempotencyKey: "credential-readiness",
+      });
+      if (!created.event)
+        throw new Error("Expected a persisted built-in event");
+      const event = created.event;
+      const links = new LinkedCalendarRepository(runtime);
+      const link = await links.create({
+        agentId: AGENT_ID,
+        localEventId: event.id,
+        connectorAccountId: "shawgotbags",
+        providerCalendarId: "reviewed-calendar",
+        localRevision: 1,
+      });
+      let credentialsReady = failureAt === "write";
+      let writes = 0;
+      const google = {
+        findEventByIdempotencyKey: async () => {
+          if (!credentialsReady)
+            throw new Error("Credential store is not ready");
+          return null;
+        },
+        createEvent: async () => {
+          writes += 1;
+          if (failureAt === "write")
+            throw new Error("Connection lost after dispatch");
+          return {
+            id: "credential-ready-event",
+            title: event.title,
+            start: event.startAt,
+            end: event.endAt,
+            timeZone: event.timezone,
+            metadata: { etag: '"v1"' },
+          };
+        },
+      };
+      const scopedRuntime = {
+        ...runtime,
+        getService: (name: string) =>
+          name === "google" ? google : runtime.getService(name),
+      } as unknown as IAgentRuntime;
+      const retryService = new CalendarService(scopedRuntime);
+      retryService.setGate(connectedGoogleGate());
+      const controls = new LinkedCalendarControlRepository(runtime);
+      const initial = await controls.read();
+      const selected = await controls.selectDestination(initial.revision, {
+        connectorAccountId: "shawgotbags",
+        providerCalendarId: "reviewed-calendar",
+      });
+      await controls.resume(selected.revision);
+      if (failureAt === "write") {
+        const failed = await retryService.executeLinkedCalendarReconciliation(
+          link.id,
+          {
+            expectedUpdatedAt: link.updatedAt,
+            idempotencyKey: "uncertain-write",
+          },
+        );
+        expect(failed.outcome).toBe("quarantined");
+        expect(writes).toBe(1);
+        expect((await controls.read()).dispatch?.linkId).toBe(link.id);
+        const retried = await retryService.executeLinkedCalendarReconciliation(
+          link.id,
+          {
+            expectedUpdatedAt: failed.link.updatedAt,
+            idempotencyKey: "do-not-repeat-write",
+          },
+        );
+        expect(retried.outcome).toBe("paused");
+        expect(writes).toBe(1);
+        return;
+      }
+      await expect(
+        retryService.executeLinkedCalendarReconciliation(link.id, {
+          expectedUpdatedAt: link.updatedAt,
+          idempotencyKey: "credential-failure",
+        }),
+      ).rejects.toThrow("Credential store is not ready");
+      expect(writes).toBe(0);
+      expect((await controls.read()).dispatch).toBeNull();
+      credentialsReady = true;
+      const current = await links.getById(AGENT_ID, link.id);
+      if (!current) throw new Error("Expected queued link");
+      const result = await retryService.executeLinkedCalendarReconciliation(
+        link.id,
+        {
+          expectedUpdatedAt: current.updatedAt,
+          idempotencyKey: "credential-retry",
+        },
+      );
+      expect(result.outcome).toBe("pushed");
+      expect(result.link.state).toBe("clean");
+      expect(writes).toBe(1);
+      expect((await controls.read()).dispatch).toBeNull();
+    },
+  );
+
   it("keeps existing local events unlinked until a destination is selected and activated", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Created before Google",

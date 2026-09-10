@@ -1349,7 +1349,9 @@ export class CalendarService extends Service {
     };
   }
 
-  private linkedReconciler(): LinkedCalendarReconciler {
+  private linkedReconciler(
+    onProviderMutation?: () => void,
+  ): LinkedCalendarReconciler {
     const google = this.runtime.getService("google");
     if (!google || typeof google !== "object") {
       throw new CalendarServiceError(
@@ -1362,6 +1364,7 @@ export class CalendarService extends Service {
       this.linkedRepo,
       this.linkedLocalPort(),
       new GoogleLinkedCalendarProviderPort(google as IGoogleWorkspaceService),
+      onProviderMutation,
     );
   }
 
@@ -1400,7 +1403,10 @@ export class CalendarService extends Service {
     const control = await this.linkedControl.read();
     if (control.paused || control.dispatch) return "paused" as const;
     if (!(await this.activeLinkedCalendarTarget())) return "paused" as const;
-    const reconciler = this.linkedReconciler();
+    let providerMutationAttempted = false;
+    const reconciler = this.linkedReconciler(() => {
+      providerMutationAttempted = true;
+    });
     const token = await this.linkedControl.acquireDispatch(
       control.revision,
       record.id,
@@ -1409,8 +1415,8 @@ export class CalendarService extends Service {
         providerCalendarId: record.providerCalendarId,
       },
     );
-    // A thrown provider/checkpoint error retains the durable receipt. A restart
-    // must reconcile its outcome before admitting another operation or cutover.
+    // Once a provider mutation starts, thrown failures retain the receipt for
+    // recovery. A failed read before dispatch cannot have changed the provider.
     this.activeLinkedDispatches.add(token);
     try {
       const outcome = strategy
@@ -1420,6 +1426,12 @@ export class CalendarService extends Service {
         await this.linkedControl.settleDispatch(token);
       }
       return outcome;
+    } catch (error) {
+      // error-policy:J2 Preserve the original failure while releasing only a
+      // receipt whose execution never attempted an external mutation.
+      if (!providerMutationAttempted)
+        await this.linkedControl.settleDispatch(token);
+      throw error;
     } finally {
       this.activeLinkedDispatches.delete(token);
     }
