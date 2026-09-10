@@ -22,6 +22,10 @@ import {
   type Plugin,
   transformWithOxc,
 } from "vite";
+import {
+  ANDROID_CLOUD_ROUTING_MARKERS,
+  findAndroidCloudRoutingMarkers,
+} from "../app-core/scripts/lib/android-cloud-routing-markers.mjs";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
@@ -1077,14 +1081,8 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
-export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
-  "32437",
-  "32438",
-  "10.0.2.2",
-  "adb reverse",
-  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "navigator.serviceWorker",
-]);
+export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS =
+  ANDROID_CLOUD_ROUTING_MARKERS;
 
 type AndroidCloudAuditOutput = {
   type: "chunk" | "asset";
@@ -1113,10 +1111,8 @@ export function findAndroidCloudEmittedRoutingFindings(
             ? new TextDecoder().decode(output.source)
             : undefined;
     if (!content) continue;
-    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
-      if (content.toLowerCase().includes(marker.toLowerCase())) {
-        findings.push(`${fileName}: ${marker}`);
-      }
+    for (const marker of findAndroidCloudRoutingMarkers(content)) {
+      findings.push(`${fileName}: ${marker}`);
     }
   }
   return findings.sort();
