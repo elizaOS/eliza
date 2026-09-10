@@ -7,7 +7,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { type AuditOcrControls, bindAuditOcrControls } from "../../scripts/lib/audit-capture-manifest";
+import {
+  type AuditOcrControls,
+  bindAuditOcrControls,
+} from "../../scripts/lib/audit-capture-manifest";
 import { readAuditFindings, writeAuditFinding } from "./aesthetic-audit-report";
 import {
   type AestheticMetricBudget,
@@ -2462,6 +2465,29 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               `(documentElement.scrollWidth exceeds innerWidth — likely overflow-y ` +
               `without overflow-x:hidden)`,
           ).toBeLessThanOrEqual(HORIZONTAL_OVERFLOW_TOLERANCE_PX);
+        }
+        if (view.slug === "builtin-relationships") {
+          // Measure and capture the rest state above before scrolling. The
+          // actual last-row action must remain reachable beneath the composer.
+          const lastRowAction = viewRoot.getByRole("button", {
+            name: "Open Acme Corp",
+            exact: true,
+          });
+          await lastRowAction.scrollIntoViewIfNeeded();
+          const messageResponse = page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              /\/api\/conversations\/[^/]+\/messages$/.test(
+                new URL(response.url()).pathname,
+              ),
+          );
+          await lastRowAction.click();
+          const response = await messageResponse;
+          expect(response.status()).toBe(200);
+          expect(response.request().postDataJSON()).toMatchObject({
+            text: "Tell me about ent-acme in my relationships graph.",
+            channelType: "DM",
+          });
         }
         if (view.fixtureState === "cloud-signed-out") {
           await viewRoot
