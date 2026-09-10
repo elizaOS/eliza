@@ -341,40 +341,116 @@ try {
       !multiSeed.calendarKeys.some((key) => key.endsWith('"primary"]')),
     "account switching excludes hidden calendars from another Google grant",
   );
-  await multiAccount.getByRole("combobox", { name: "Destination for built-in calendar events" }).click();
-  await multiAccount.getByRole("option", { name: "Second work — fixture-second@example.test", exact: true }).click();
-  await multiAccount.getByRole("button", { name: "Verify and save destination" }).click();
-  await multiAccount.getByText("Current destination: Second work — fixture-second@example.test", { exact: true }).waitFor();
-  assert(await multiAccount.getByText("Synchronization is paused.", { exact: true }).count() === 1,
-    "saving a reviewed destination does not resume synchronization");
-  await multiAccount.getByRole("button", { name: "Verify and resume sync" }).click();
-  await multiAccount.getByText("Synchronization is enabled.", { exact: true }).waitFor();
-  assert(await multiAccount.getByRole("combobox", { name: "Destination for built-in calendar events" }).isDisabled(),
-    "active synchronization prevents changing the reviewed destination");
+  await multiAccount
+    .getByRole("combobox", { name: "Destination for built-in calendar events" })
+    .click();
+  await multiAccount
+    .getByRole("option", {
+      name: "Second work — fixture-second@example.test",
+      exact: true,
+    })
+    .click();
+  await multiAccount
+    .getByRole("button", { name: "Verify and save destination" })
+    .click();
+  await multiAccount
+    .getByText(
+      "Current destination: Second work — fixture-second@example.test",
+      { exact: true },
+    )
+    .waitFor();
+  assert(
+    (await multiAccount
+      .getByText("Synchronization is paused.", { exact: true })
+      .count()) === 1,
+    "saving a reviewed destination does not resume synchronization",
+  );
+  await multiAccount
+    .getByRole("button", { name: "Verify and resume sync" })
+    .click();
+  await multiAccount
+    .getByText("Synchronization is enabled.", { exact: true })
+    .waitFor();
+  assert(
+    await multiAccount
+      .getByRole("combobox", {
+        name: "Destination for built-in calendar events",
+      })
+      .isDisabled(),
+    "active synchronization prevents changing the reviewed destination",
+  );
   await multiAccount.getByRole("button", { name: "Pause sync" }).click();
-  await multiAccount.getByText("Synchronization is paused.", { exact: true }).waitFor();
-  await multiAccount.screenshot({ path: join(outputDir, "calendar-sync-reviewed-desktop.png"), fullPage: true });
+  await multiAccount
+    .getByText("Synchronization is paused.", { exact: true })
+    .waitFor();
+  await multiAccount.screenshot({
+    path: join(outputDir, "calendar-sync-reviewed-desktop.png"),
+    fullPage: true,
+  });
   await multiAccount.close();
 
   for (const unresolved of [true, false]) {
-    const recovery = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await recovery.goto(`${baseURL}?pending-sync=1${unresolved ? "&failure=recover" : ""}`);
-    const resume = recovery.getByRole("button", { name: "Verify and resume sync" });
-    await recovery.getByRole("button", { name: "Check pending operation" }).waitFor();
-    assert(await resume.isDisabled(), "pending operation blocks resume before verification");
-    await recovery.getByRole("button", { name: "Check pending operation" }).click();
+    const recovery = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+    });
+    await recovery.goto(
+      `${baseURL}?pending-sync=1${unresolved ? "&failure=recover" : ""}`,
+    );
+    const resume = recovery.getByRole("button", {
+      name: "Verify and resume sync",
+    });
+    await recovery
+      .getByRole("button", { name: "Check pending operation" })
+      .waitFor();
+    assert(
+      await resume.isDisabled(),
+      "pending operation blocks resume before verification",
+    );
+    await recovery
+      .getByRole("button", { name: "Check pending operation" })
+      .click();
     if (unresolved) {
-      await recovery.getByRole("alert").filter({ hasText: "Provider outcome is still uncertain" }).waitFor();
-      assert(await resume.isDisabled(), "unresolved provider outcome preserves the resume barrier");
+      await recovery
+        .getByRole("alert")
+        .filter({ hasText: "Provider outcome is still uncertain" })
+        .waitFor();
+      assert(
+        await resume.isDisabled(),
+        "unresolved provider outcome preserves the resume barrier",
+      );
     } else {
-      await recovery.getByRole("button", { name: "Check pending operation" }).waitFor({ state: "detached" });
-      assert(!(await resume.isDisabled()), "provider-confirmed recovery permits a separate resume review");
+      await recovery
+        .getByRole("button", { name: "Check pending operation" })
+        .waitFor({ state: "detached" });
+      assert(
+        !(await resume.isDisabled()),
+        "provider-confirmed recovery permits a separate resume review",
+      );
     }
-    assert(await recovery.getByText("Synchronization is paused.", { exact: true }).count() === 1,
-      "recovery never resumes synchronization automatically");
-    await recovery.getByRole("heading", { name: "Calendar synchronization" }).scrollIntoViewIfNeeded();
-    await recovery.screenshot({ path: join(outputDir, `calendar-sync-recovery-${unresolved ? "unresolved" : "verified"}-mobile.png`) });
-    await recovery.getByRole("heading", { name: "Calendar synchronization" }).locator("..").screenshot({ path: join(outputDir, `calendar-sync-recovery-${unresolved ? "unresolved" : "verified"}-panel.png`) });
+    assert(
+      (await recovery
+        .getByText("Synchronization is paused.", { exact: true })
+        .count()) === 1,
+      "recovery never resumes synchronization automatically",
+    );
+    await recovery
+      .getByRole("heading", { name: "Calendar synchronization" })
+      .scrollIntoViewIfNeeded();
+    await recovery.screenshot({
+      path: join(
+        outputDir,
+        `calendar-sync-recovery-${unresolved ? "unresolved" : "verified"}-mobile.png`,
+      ),
+    });
+    await recovery
+      .getByRole("heading", { name: "Calendar synchronization" })
+      .locator("..")
+      .screenshot({
+        path: join(
+          outputDir,
+          `calendar-sync-recovery-${unresolved ? "unresolved" : "verified"}-panel.png`,
+        ),
+      });
     await recovery.close();
   }
 
