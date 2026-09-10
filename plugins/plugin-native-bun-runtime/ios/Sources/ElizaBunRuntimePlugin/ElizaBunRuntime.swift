@@ -296,7 +296,11 @@ public final class ElizaBunRuntime {
         env: [String: String]
     ) throws {
         let requestedEngine = IosRuntimePolicy.normalizeEngine(engine)
-        let runtimeEnv = IosRuntimePolicy.sanitizeEnvironment(env)
+        let paths = SandboxPaths()
+        var runtimeEnv = IosRuntimePolicy.sanitizeEnvironment(env)
+        runtimeEnv["ELIZA_STATE_DIR"] = paths.appSupport.resolvingSymlinksInPath().path
+        runtimeEnv["ELIZA_IOS_APP_DATA_DIR"] = paths.appSupport
+            .deletingLastPathComponent().resolvingSymlinksInPath().path
 #if ELIZA_IOS_FULL_BUN_ENGINE
         let compiledEngine = "full-bun"
 #else
@@ -306,8 +310,7 @@ public final class ElizaBunRuntime {
         if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
             let host = FullBunEngineHost.shared
             do {
-                let paths = SandboxPaths()
-                let appSupportDir = paths.appSupport.path
+                let appSupportDir = paths.appSupport.resolvingSymlinksInPath().path
                 let workspaceDir = paths.appSupport.appendingPathComponent("workspace").path
                 let pgliteDir = paths.appSupport.appendingPathComponent(".elizadb").path
                 let resolvedBundlePath = try resolveFullBunAgentBundlePath(override: bundlePath)
@@ -397,7 +400,7 @@ public final class ElizaBunRuntime {
         let pluginRef = CAPPluginRef(plugin)
         let kit = BridgeInstaller.install(
             into: ctx,
-            paths: SandboxPaths(),
+            paths: paths,
             plugin: pluginRef,
             argv: argv,
             env: runtimeEnv,
