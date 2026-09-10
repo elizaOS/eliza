@@ -6,6 +6,8 @@
  * root-owned ancestor is allowed), and every candidate cleanup matches
  * device/inode before unlinking. Same-UID
  * processes are therefore inside the runtime installation's trust domain.
+ * Native Android and iOS hosts supply their app sandbox boundary; platform
+ * ancestors retain inode checks while the app-owned boundary remains strict.
  * Windows fails closed because this package has no ACL primitive that can prove
  * the equivalent boundary.
  */
@@ -34,18 +36,20 @@ interface TrustedParentDirectory {
   handle?: FileHandle;
   path: string;
   stat: FileStat;
-  validation: "descriptor" | "android-platform";
+  validation: "descriptor" | "mobile-platform";
 }
 
 interface TrustedLexicalEntry {
   handle?: FileHandle;
   path: string;
   stat: FileStat;
-  validation: "descriptor" | "symlink" | "android-platform";
+  validation: "descriptor" | "symlink" | "mobile-platform";
 }
 
-interface AndroidStateBoundary {
+interface MobileStateBoundary {
   appDataDirectory: string;
+  platformName: "Android" | "iOS";
+  environmentKey: string;
 }
 
 export class RuntimeInstallationIdentityUnsupportedError extends Error {
@@ -133,30 +137,34 @@ function isSameOrDescendant(candidate: string, directory: string): boolean {
   );
 }
 
-function resolveAndroidStateBoundary(
+function resolveMobileStateBoundary(
   stateDirectory: string,
-): AndroidStateBoundary | undefined {
-  if (readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() !== "android") {
-    return undefined;
-  }
-  const configured = process.env.ELIZA_ANDROID_APP_DATA_DIR?.trim();
+): MobileStateBoundary | undefined {
+  const platform = readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase();
+  if (platform !== "android" && platform !== "ios") return undefined;
+  const platformName = platform === "android" ? "Android" : "iOS";
+  const environmentKey =
+    platform === "android"
+      ? "ELIZA_ANDROID_APP_DATA_DIR"
+      : "ELIZA_IOS_APP_DATA_DIR";
+  const configured = process.env[environmentKey]?.trim();
   if (!configured || !path.isAbsolute(configured)) {
     throw new Error(
-      "Android runtime installation identity requires an absolute ELIZA_ANDROID_APP_DATA_DIR.",
+      `${platformName} runtime installation identity requires an absolute ${environmentKey}.`,
     );
   }
   const appDataDirectory = path.resolve(configured);
   if (!isSameOrDescendant(path.resolve(stateDirectory), appDataDirectory)) {
     throw new Error(
-      "Android runtime state directory must remain inside ELIZA_ANDROID_APP_DATA_DIR.",
+      `${platformName} runtime state directory must remain inside ${environmentKey}.`,
     );
   }
-  return { appDataDirectory };
+  return { appDataDirectory, platformName, environmentKey };
 }
 
-function isAndroidPlatformAncestor(
+function isMobilePlatformAncestor(
   entryPath: string,
-  boundary: AndroidStateBoundary | undefined,
+  boundary: MobileStateBoundary | undefined,
 ): boolean {
   return (
     boundary !== undefined &&
@@ -165,9 +173,9 @@ function isAndroidPlatformAncestor(
   );
 }
 
-function assertAndroidPlatformAncestorStat(stat: FileStat): void {
+function assertMobilePlatformAncestorStat(stat: FileStat): void {
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("Android app-data ancestor must be a real directory.");
+    throw new Error("Mobile app-data ancestor must be a real directory.");
   }
 }
 
@@ -217,7 +225,7 @@ function assertTrustedSymlinkStat(stat: FileStat): void {
 
 async function openTrustedLexicalChain(
   directory: string,
-  androidBoundary: AndroidStateBoundary | undefined,
+  mobileBoundary: MobileStateBoundary | undefined,
 ): Promise<TrustedLexicalEntry[]> {
   const paths = ancestorPaths(directory);
   const trusted: TrustedLexicalEntry[] = [];
@@ -227,7 +235,7 @@ async function openTrustedLexicalChain(
       if (stat.isSymbolicLink()) {
         if (
           index === paths.length - 1 ||
-          entryPath === androidBoundary?.appDataDirectory
+          entryPath === mobileBoundary?.appDataDirectory
         ) {
           throw new Error("Runtime state parent must be a real directory.");
         }
@@ -235,12 +243,12 @@ async function openTrustedLexicalChain(
         trusted.push({ path: entryPath, stat, validation: "symlink" });
         continue;
       }
-      if (isAndroidPlatformAncestor(entryPath, androidBoundary)) {
-        assertAndroidPlatformAncestorStat(stat);
+      if (isMobilePlatformAncestor(entryPath, mobileBoundary)) {
+        assertMobilePlatformAncestorStat(stat);
         trusted.push({
           path: entryPath,
           stat,
-          validation: "android-platform",
+          validation: "mobile-platform",
         });
         continue;
       }
@@ -272,8 +280,8 @@ async function revalidateLexicalChain(
     if (!sameIdentity(pathStat, ancestor.stat)) {
       throw new Error("Runtime state lexical path changed during validation.");
     }
-    if (ancestor.validation === "android-platform") {
-      assertAndroidPlatformAncestorStat(pathStat);
+    if (ancestor.validation === "mobile-platform") {
+      assertMobilePlatformAncestorStat(pathStat);
       continue;
     }
     if (ancestor.validation === "symlink") {
@@ -302,8 +310,8 @@ async function revalidateParentPath(
   trusted: TrustedParentDirectory,
 ): Promise<void> {
   const pathStat = await fs.lstat(trusted.path);
-  if (trusted.validation === "android-platform") {
-    assertAndroidPlatformAncestorStat(pathStat);
+  if (trusted.validation === "mobile-platform") {
+    assertMobilePlatformAncestorStat(pathStat);
     if (!sameIdentity(pathStat, trusted.stat)) {
       throw new Error("Runtime state parent changed during validation.");
     }
@@ -341,19 +349,19 @@ async function revalidateDirectoryPath(
 async function openTrustedStateDirectory(
   stateDirectory: string,
   lexicalAncestors: TrustedLexicalEntry[],
-  androidBoundary: AndroidStateBoundary | undefined,
+  mobileBoundary: MobileStateBoundary | undefined,
 ): Promise<TrustedDirectory> {
   const parentPath = path.dirname(stateDirectory);
   const ancestors: TrustedParentDirectory[] = [];
   try {
     for (const ancestorPath of ancestorPaths(parentPath)) {
       const ancestorStat = await fs.lstat(ancestorPath);
-      if (isAndroidPlatformAncestor(ancestorPath, androidBoundary)) {
-        assertAndroidPlatformAncestorStat(ancestorStat);
+      if (isMobilePlatformAncestor(ancestorPath, mobileBoundary)) {
+        assertMobilePlatformAncestorStat(ancestorStat);
         ancestors.push({
           path: ancestorPath,
           stat: ancestorStat,
-          validation: "android-platform",
+          validation: "mobile-platform",
         });
         continue;
       }
@@ -610,11 +618,11 @@ async function loadOrCreateRuntimeInstallationIdImpl(
   stateDirectory: string,
 ): Promise<UUID> {
   const requestedStateDirectory = path.resolve(stateDirectory);
-  const androidBoundary = resolveAndroidStateBoundary(requestedStateDirectory);
+  const mobileBoundary = resolveMobileStateBoundary(requestedStateDirectory);
   const requestedParent = path.dirname(requestedStateDirectory);
   const lexicalAncestors = await openTrustedLexicalChain(
     requestedParent,
-    androidBoundary,
+    mobileBoundary,
   );
   let trustedDirectory: TrustedDirectory;
   let resolvedStateDirectory: string;
@@ -622,9 +630,10 @@ async function loadOrCreateRuntimeInstallationIdImpl(
     // Android may expose the app through the platform-owned /data/user/0
     // symlink. Containment must compare both paths in the same namespace;
     // the captured lexical chain continues to detect alias replacement.
-    const resolvedAndroidBoundary = androidBoundary
+    const resolvedMobileBoundary = mobileBoundary
       ? {
-          appDataDirectory: await fs.realpath(androidBoundary.appDataDirectory),
+          ...mobileBoundary,
+          appDataDirectory: await fs.realpath(mobileBoundary.appDataDirectory),
         }
       : undefined;
     resolvedStateDirectory = path.join(
@@ -632,20 +641,20 @@ async function loadOrCreateRuntimeInstallationIdImpl(
       path.basename(requestedStateDirectory),
     );
     if (
-      resolvedAndroidBoundary &&
+      resolvedMobileBoundary &&
       !isSameOrDescendant(
         resolvedStateDirectory,
-        resolvedAndroidBoundary.appDataDirectory,
+        resolvedMobileBoundary.appDataDirectory,
       )
     ) {
       throw new Error(
-        "Resolved Android runtime state directory escaped ELIZA_ANDROID_APP_DATA_DIR.",
+        `Resolved ${resolvedMobileBoundary.platformName} runtime state directory escaped ${resolvedMobileBoundary.environmentKey}.`,
       );
     }
     trustedDirectory = await openTrustedStateDirectory(
       resolvedStateDirectory,
       lexicalAncestors,
-      resolvedAndroidBoundary,
+      resolvedMobileBoundary,
     );
   } catch (error) {
     await closeLexicalAncestors(lexicalAncestors);
