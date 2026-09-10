@@ -7,7 +7,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   CalendarService,
@@ -410,6 +410,34 @@ export class FamilyWorkflowRuntimeService extends Service {
       );
     }
     return this.packets.createExternalDraft(packet, { ...input, recipient });
+  }
+
+  async reviseDraft(input: {
+    packetId: string;
+    expectedDraftVersion: number;
+    body: string;
+    subject: string;
+  }): Promise<MonthlyFamilyDraft> {
+    const previous = await this.packets.readDraft(
+      input.packetId,
+      input.expectedDraftVersion,
+    );
+    if (!previous?.email)
+      throw new ElizaError("Email draft not found", {
+        code: "FAMILY_PACKET_DRAFT_STALE",
+        context: {
+          packetId: input.packetId,
+          draftVersion: input.expectedDraftVersion,
+        },
+      });
+    await this.validateRecipientIdentity(previous);
+    await new LifeOpsService(this.runtime).requireGoogleGmailSendGrant(
+      new URL("http://localhost"),
+      "local",
+      "owner",
+      previous.email.senderGrantId,
+    );
+    return this.packets.reviseDraft(input);
   }
 
   async emailOptions(): Promise<FamilyEmailOptions> {

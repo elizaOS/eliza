@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 909 maintained React files. 102 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 910 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -29,6 +29,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | card | badge, button, card, checkbox, dialog, spinner | 2 | distinct-domain-compositions |
 | card | button, input | 2 | distinct-domain-compositions |
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
+| form | button, input, textarea | 2 | distinct-domain-compositions |
 | panel | button, input | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
@@ -103,6 +104,13 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `InviteMemberDialog` in `packages/ui/src/cloud/organization/invite-member-dialog.tsx:66`
 - Fingerprint: `sha256:d79bada7a8fe1a7748f1f3ed393b0ad8b5ea866611e2a11e24b9ad1b779b20c6`
 - Decision: **distinct-domain-compositions**. The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles.
+
+### form: button + input + textarea
+
+- `CockpitNewSessionForm` in `packages/ui/src/components/cockpit/CockpitNewSessionForm.tsx:64`
+- `PacketDraftEditor` in `plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:6`
+- Fingerprint: `sha256:196ade46f34e4d8113fc4aa4183c97de7758ffccda155b3dd6c5cfcd93ae95d2`
+- Decision: **distinct-domain-compositions**. Session creation owns model, mode, and initial prompt selection. Family email revision owns immutable draft versions, stale approval rejection, and preservation of unsaved edits. Their shared field and button behavior remains in canonical atoms.
 
 ### panel: button + input
 

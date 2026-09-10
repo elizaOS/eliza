@@ -278,6 +278,103 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
     expect(full.body).toContain("Private custody title");
   });
 
+  it("saves owner edits as a new immutable email version and rejects the previous approval", async () => {
+    const packet = await service.buildInternal(period("2026-09"), [claim("a")]);
+    const first = await service.createExternalDraft(packet, {
+      ...guestDraft,
+      email: { subject: "September", senderGrantId: "sender-1" },
+    });
+    const request = await service.enqueueDraftApproval({
+      draft: first,
+      queue: {
+        enqueueTransactional: async (input) => ({
+          request: approval(input),
+          reused: false,
+        }),
+        surfaceEnqueuedApproval: async () => undefined,
+      },
+      requestedBy: "owner",
+      subjectUserId: "owner",
+      expiresAt: new Date("2026-10-01T00:00:00Z"),
+    });
+    const revised = await service.reviseDraft({
+      packetId: first.packetId,
+      expectedDraftVersion: first.draftVersion,
+      subject: "September plans",
+      body: "Please confirm pickup at 3 PM.\nThank you.",
+    });
+    expect(revised.bodySha256).toBe(digest(revised.body));
+    expect(revised.recipient).toBe(first.recipient);
+    expect(revised.email).toEqual({
+      subject: "September plans",
+      senderGrantId: "sender-1",
+    });
+    expect(
+      (await service.readDraft(first.packetId, first.draftVersion))?.body,
+    ).toBe(first.body);
+    expect(
+      await service.readDraftApprovalId(first.packetId, revised.draftVersion),
+    ).toBeNull();
+    await expect(
+      service.validateApprovedDraft({ ...request, state: "approved" }),
+    ).rejects.toMatchObject({ code: "FAMILY_PACKET_APPROVAL_STALE" });
+    await expect(
+      service.reviseDraft({
+        packetId: first.packetId,
+        expectedDraftVersion: first.draftVersion,
+        subject: "Stale",
+        body: "Stale edit",
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_PACKET_DRAFT_STALE" });
+  });
+
+  it("keeps invalid or private edits out of persisted drafts and serializes concurrent edits", async () => {
+    const packet = await service.buildInternal(period("2026-09"), [
+      claim("private", {
+        visibility: "owner_only",
+        statement: "Private canary",
+      }),
+    ]);
+    const first = await service.createExternalDraft(packet, {
+      ...guestDraft,
+      email: { subject: "Plans", senderGrantId: "sender-1" },
+    });
+    const input = {
+      packetId: first.packetId,
+      expectedDraftVersion: first.draftVersion,
+      subject: "Updated plans",
+      body: "A safe owner edit",
+    };
+    await expect(
+      service.reviseDraft({ ...input, body: "" }),
+    ).rejects.toMatchObject({ code: "FAMILY_PACKET_EDIT_INVALID" });
+    await expect(
+      service.reviseDraft({ ...input, body: "Private canary" }),
+    ).rejects.toMatchObject({ code: "FAMILY_PACKET_PRIVACY_LEAK" });
+    await expect(
+      service.reviseDraft({
+        ...input,
+        subject: "Plans\nBcc: stranger@example.test",
+      }),
+    ).rejects.toMatchObject({ code: "FAMILY_PACKET_EDIT_INVALID" });
+    expect((await service.readLatestDraft(first.packetId))?.draftVersion).toBe(
+      first.draftVersion,
+    );
+    const raced = await Promise.allSettled([
+      service.reviseDraft(input),
+      service.reviseDraft({ ...input, body: "A competing edit" }),
+    ]);
+    expect(
+      raced.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(raced.filter((result) => result.status === "rejected")).toHaveLength(
+      1,
+    );
+    expect((await service.readLatestDraft(first.packetId))?.draftVersion).toBe(
+      first.draftVersion + 1,
+    );
+  });
+
   it("omits agreement claims when the exact resource grant cannot be proven", async () => {
     const packet = await service.buildInternal(period("2026-09"), [
       claim("agreement", {

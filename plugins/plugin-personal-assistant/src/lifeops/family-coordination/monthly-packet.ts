@@ -108,6 +108,7 @@ export interface FamilyPacketTransformation {
     | "internal_metadata_omitted"
     | "contradiction_surfaced"
     | "missing_section_surfaced"
+    | "owner_text_edited"
     | "unanswered_carried_once";
   readonly claimId: string | null;
   readonly detail: string;
@@ -665,6 +666,94 @@ export class MonthlyFamilyPacketService {
       this.runtime,
       `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)},${draft.email ? sqlQuote(JSON.stringify(draft.email)) : "NULL"})`,
     );
+    return draft;
+  }
+
+  async reviseDraft(input: {
+    packetId: string;
+    expectedDraftVersion: number;
+    body: string;
+    subject: string;
+  }): Promise<MonthlyFamilyDraft> {
+    await this.ensureSchema();
+    if (
+      !Number.isSafeInteger(input.expectedDraftVersion) ||
+      input.expectedDraftVersion < 1
+    )
+      fail(
+        "A valid saved draft version is required",
+        "FAMILY_PACKET_EDIT_INVALID",
+      );
+    if (
+      !input.body.trim() ||
+      !input.subject.trim() ||
+      /[\r\n]/u.test(input.subject)
+    )
+      fail(
+        "Email text and a single-line subject are required",
+        "FAMILY_PACKET_EDIT_INVALID",
+      );
+    const previous = await this.readDraft(
+      input.packetId,
+      input.expectedDraftVersion,
+    );
+    if (!previous?.email)
+      fail("Email draft not found", "FAMILY_PACKET_DRAFT_STALE");
+    const packet = await this.read(input.packetId);
+    if (!packet || packet.version !== previous.internalVersion)
+      fail(
+        "Regenerate the draft from the current packet before editing",
+        "FAMILY_PACKET_INTERNAL_STALE",
+      );
+    for (const claim of packet.claims) {
+      if (
+        claim.visibility === "owner_only" &&
+        (input.body.includes(claim.statement) ||
+          input.subject.includes(claim.statement))
+      )
+        fail(
+          "Owner-only content cannot be included in an external draft",
+          "FAMILY_PACKET_PRIVACY_LEAK",
+        );
+    }
+    const draft: MonthlyFamilyDraft = {
+      ...previous,
+      draftVersion: previous.draftVersion + 1,
+      body: input.body,
+      bodySha256: sha256(input.body),
+      email: { ...previous.email, subject: input.subject },
+      createdAt: this.now().toISOString(),
+      transformations: [
+        ...previous.transformations,
+        {
+          kind: "owner_text_edited",
+          claimId: null,
+          detail: `Owner revised draft ${previous.draftVersion}; a fresh approval is required.`,
+        },
+      ],
+    };
+    await withRequiredTransaction(this.runtime, async (tx) => {
+      // Serialize edits on the persisted packet before checking the current draft.
+      const packets = await executeRawSqlTx(
+        tx,
+        `SELECT internal_version FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)} ORDER BY internal_version DESC LIMIT 1 FOR UPDATE`,
+      );
+      if (toNumber(packets[0]?.internal_version) !== previous.internalVersion)
+        fail("Packet changed while editing", "FAMILY_PACKET_INTERNAL_STALE");
+      const versions = await executeRawSqlTx(
+        tx,
+        `SELECT MAX(draft_version) AS version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(input.packetId)}`,
+      );
+      if (toNumber(versions[0]?.version) !== input.expectedDraftVersion)
+        fail(
+          "Another draft was saved; reload before editing",
+          "FAMILY_PACKET_DRAFT_STALE",
+        );
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at,email_json) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(draft.packetId)},${draft.internalVersion},${draft.draftVersion},${sqlQuote(draft.recipient)},${sqlQuote(draft.recipientEntityId)},${sqlQuote(draft.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(draft.body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(draft.transformations))},${sqlQuote(draft.createdAt)},${sqlQuote(JSON.stringify(draft.email))})`,
+      );
+    });
     return draft;
   }
 

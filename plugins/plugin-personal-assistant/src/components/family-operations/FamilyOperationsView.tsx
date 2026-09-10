@@ -38,6 +38,7 @@ import {
 } from "react";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
+import { PacketDraftEditor } from "./PacketDraftEditor.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
@@ -1183,18 +1184,16 @@ function PacketPanel({
                     Download draft record
                   </a>
                 </p>
-                {!packet.draft.approvalId ? (
-                  <Button
-                    onClick={() =>
-                      void requestApproval(
-                        packet.packetId,
-                        packet.draft?.draftVersion as number,
-                      )
-                    }
-                  >
-                    Request owner approval
-                  </Button>
-                ) : null}
+                <PacketDraftEditor
+                  key={packet.draft.draftVersion}
+                  packetId={packet.packetId}
+                  draft={packet.draft}
+                  adapter={adapter}
+                  refresh={refresh}
+                  requestApproval={(version) =>
+                    requestApproval(packet.packetId, version)
+                  }
+                />
               </details>
             ) : (
               <Empty>No shareable draft yet.</Empty>

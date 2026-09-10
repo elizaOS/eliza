@@ -130,5 +130,11 @@ export interface FamilyOperationsAdapter {
   approveSchoolDiff(runId: string): Promise<void>;
   generatePacket(periodKey: string): Promise<void>;
   createPacketDraft(input: PacketDraftInput): Promise<void>;
+  revisePacketDraft(input: {
+    packetId: string;
+    expectedDraftVersion: number;
+    body: string;
+    subject: string;
+  }): Promise<void>;
   requestPacketApproval(packetId: string, draftVersion: number): Promise<void>;
 }

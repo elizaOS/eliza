@@ -4,7 +4,7 @@
  * screenshots only to a temporary directory outside the repository.
  */
 
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,7 +34,8 @@ const result = await viteBuild({
       enforce: "pre",
       resolveId(source, importer) {
         return source === "./adapter.js" &&
-          importer?.endsWith("LifeOpsConnectionsView.tsx")
+          (importer?.endsWith("LifeOpsConnectionsView.tsx") ||
+            importer?.endsWith("FamilyOperationsView.tsx"))
           ? adapterStub
           : null;
       },
@@ -570,6 +571,125 @@ try {
     );
     await faultPage.close();
   }
+
+  for (const width of [1180, 390]) {
+    const family = await browser.newPage({
+      viewport: { width, height: 850 },
+      hasTouch: width === 390,
+      isMobile: width === 390,
+    });
+    const familyErrors = [];
+    family.on("pageerror", (error) => familyErrors.push(String(error)));
+    await family.goto(`${baseURL}?scenario=family-packet`);
+    await family
+      .getByRole("button", { name: "Monthly packet", exact: true })
+      .click();
+    await family.getByText(/Review guest-shareable draft/).click();
+    await family.getByRole("button", { name: "Edit email draft" }).click();
+    const editor = family.getByRole("group", { name: "Edit saved email" });
+    await editor
+      .getByLabel("Email text", { exact: true })
+      .fill("Please confirm pickup at 3 PM.\nThank you.");
+    await editor
+      .getByLabel("Email subject", { exact: true })
+      .fill("Updated October plans");
+    assert(
+      (await family
+        .getByRole("button", { name: "Request owner approval" })
+        .count()) === 0,
+      `${width}px hides approval while unsaved text is being edited`,
+    );
+    await editor.screenshot({
+      path: join(outputDir, `family-editor-${width}.png`),
+      animations: "disabled",
+    });
+    const saveButton = editor.getByRole("button", { name: "Save new draft" });
+    if (width === 1180) {
+      await saveButton.hover();
+      const colors = await saveButton.evaluate((element) => ({
+        foreground: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+      }));
+      assert(
+        contrastRatio(colors.foreground, colors.background) >= 4.5,
+        "email save hover preserves readable contrast",
+      );
+      await editor.screenshot({
+        path: join(outputDir, "family-editor-hover.png"),
+        animations: "disabled",
+      });
+    }
+    await saveButton.click();
+    await family.getByText(/Review guest-shareable draft v2/).waitFor();
+    await family
+      .getByRole("button", { name: "Request owner approval" })
+      .click();
+    await family.waitForFunction(
+      () => document.documentElement.dataset.familyApprovalVersion === "2",
+    );
+    assert(
+      (await family.evaluate(
+        () => document.documentElement.dataset.familyApprovalVersion,
+      )) === "2",
+      `${width}px approval uses the saved new version`,
+    );
+    const downloading = family.waitForEvent("download");
+    await family.getByRole("link", { name: "Download draft record" }).click();
+    const download = await downloading;
+    const downloadPath = await download.path();
+    if (!downloadPath)
+      throw new Error("Browser did not write the draft download");
+    const recordText = await readFile(downloadPath, "utf8");
+    const record = JSON.parse(recordText);
+    assert(
+      record.draft.body === "Please confirm pickup at 3 PM.\nThank you." &&
+        record.draft.email.subject === "Updated October plans",
+      `${width}px downloaded record preserves saved edits`,
+    );
+    assert(
+      !recordText.includes("Private fixture canary"),
+      `${width}px downloaded draft excludes owner-private claims`,
+    );
+    assert(
+      await family.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+      `${width}px editor has no horizontal overflow`,
+    );
+    assert(
+      familyErrors.length === 0,
+      `${width}px family editing has no page errors`,
+    );
+    await family.close();
+  }
+  const failedEdit = await browser.newPage();
+  await failedEdit.goto(`${baseURL}?scenario=family-packet&failure=revision`);
+  await failedEdit
+    .getByRole("button", { name: "Monthly packet", exact: true })
+    .click();
+  await failedEdit.getByText(/Review guest-shareable draft/).click();
+  await failedEdit.getByRole("button", { name: "Edit email draft" }).click();
+  await failedEdit
+    .getByLabel("Email text", { exact: true })
+    .fill("Keep this unsaved owner text.");
+  await failedEdit.getByRole("button", { name: "Save new draft" }).click();
+  await failedEdit
+    .getByRole("alert")
+    .filter({ hasText: "Fixture revision could not be saved." })
+    .waitFor();
+  assert(
+    (await failedEdit
+      .getByLabel("Email text", { exact: true })
+      .inputValue()) === "Keep this unsaved owner text.",
+    "failed save preserves unsaved owner text",
+  );
+  assert(
+    (await failedEdit
+      .getByRole("button", { name: "Request owner approval" })
+      .count()) === 0,
+    "failed save cannot approve unsaved edits",
+  );
+  await failedEdit.close();
 
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },

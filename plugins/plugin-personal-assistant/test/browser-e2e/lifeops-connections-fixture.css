@@ -3,4 +3,5 @@
 @import "../../../../packages/ui/src/styles/base.css";
 @import "../../../../packages/ui/src/styles/tailwind-theme.css";
 @source "../../src/components/lifeops-connections";
+@source "../../src/components/family-operations";
 @source "../../../../packages/ui/src";

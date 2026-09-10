@@ -232,6 +232,31 @@ export async function handleFamilyWorkflowRoutes(
       );
       return true;
     }
+    const revisionMatch = pathname.match(
+      /^\/api\/lifeops\/family-workflows\/packets\/([^/]+)\/drafts\/(\d+)\/revision$/u,
+    );
+    if (method === "POST" && revisionMatch) {
+      const body = await readJsonBody<{ body?: unknown; subject?: unknown }>(
+        req,
+        res,
+      );
+      if (!body) return true;
+      if (typeof body.body !== "string" || typeof body.subject !== "string") {
+        ctx.error(res, "Email body and subject are required", 400);
+        return true;
+      }
+      json(
+        res,
+        await runtimeService.reviseDraft({
+          packetId: decodeURIComponent(revisionMatch[1] ?? ""),
+          expectedDraftVersion: Number(revisionMatch[2]),
+          body: body.body,
+          subject: body.subject,
+        }),
+        201,
+      );
+      return true;
+    }
     const approvalMatch = pathname.match(
       /^\/api\/lifeops\/family-workflows\/packets\/([^/]+)\/drafts\/(\d+)\/approval$/u,
     );

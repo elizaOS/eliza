@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -131,6 +132,7 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     generatePacket: vi.fn(async () => undefined),
     uploadAgreement: vi.fn(async () => undefined),
     createPacketDraft: vi.fn(async () => undefined),
+    revisePacketDraft: vi.fn(async () => undefined),
     requestPacketApproval: vi.fn(async () => undefined),
   } as FamilyOperationsAdapter;
 }
@@ -366,6 +368,61 @@ describe("FamilyOperationsView", () => {
     );
     await waitFor(() =>
       expect(local.requestPacketApproval).toHaveBeenCalledWith("packet/1", 2),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit email draft" }));
+    fireEvent.change(screen.getByLabelText("Email text"), {
+      target: { value: "Please confirm pickup at 3 PM." },
+    });
+    fireEvent.change(
+      within(
+        screen.getByRole("group", { name: "Edit saved email" }),
+      ).getByLabelText("Email subject"),
+      {
+        target: { value: "Updated monthly plans" },
+      },
+    );
+    expect(
+      screen.queryByRole("button", { name: "Request owner approval" }),
+    ).toBeNull();
+    const saved = data.packets.data[0].draft;
+    if (!saved) throw new Error("Fixture omitted saved draft");
+    vi.mocked(local.load).mockResolvedValue({
+      ...data,
+      packets: {
+        status: "ready",
+        data: [
+          {
+            ...data.packets.data[0],
+            draft: {
+              ...saved,
+              draftVersion: 3,
+              body: "Please confirm pickup at 3 PM.",
+              email: {
+                subject: "Updated monthly plans",
+                senderGrantId: "sender-1",
+              },
+            },
+          },
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save new draft" }));
+    await waitFor(() =>
+      expect(local.revisePacketDraft).toHaveBeenCalledWith({
+        packetId: "packet/1",
+        expectedDraftVersion: 2,
+        subject: "Updated monthly plans",
+        body: "Please confirm pickup at 3 PM.",
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Request owner approval" }),
+    );
+    await waitFor(() =>
+      expect(local.requestPacketApproval).toHaveBeenLastCalledWith(
+        "packet/1",
+        3,
+      ),
     );
   });
 });

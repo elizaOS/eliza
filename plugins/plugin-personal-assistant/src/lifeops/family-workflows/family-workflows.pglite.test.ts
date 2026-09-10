@@ -298,6 +298,10 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
       createdAt: "2026-09-01T13:00:00.000Z",
       email: null,
     });
+    const reviseDraft = vi.spyOn(service, "reviseDraft").mockResolvedValue({
+      packetId: "packet/1",
+      draftVersion: 3,
+    } as never);
     const requestDraftApproval = vi
       .spyOn(service, "requestDraftApproval")
       .mockResolvedValue({ id: "approval-1" } as never);
@@ -336,6 +340,33 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "busy_only",
     });
+
+    await route(
+      "/api/lifeops/family-workflows/packets/packet%2F1/drafts/2/revision",
+      {
+        body: "Updated plans",
+        subject: "October",
+        recipient: "attacker@example.test",
+        senderGrantId: "unapproved-grant",
+      },
+    );
+    expect(status).toBe(201);
+    expect(reviseDraft).toHaveBeenCalledWith({
+      packetId: "packet/1",
+      expectedDraftVersion: 2,
+      body: "Updated plans",
+      subject: "October",
+    });
+    reviseDraft.mockClear();
+    await route(
+      "/api/lifeops/family-workflows/packets/packet%2F1/drafts/2/revision",
+      {
+        body: 42,
+        subject: "October",
+      },
+    );
+    expect(status).toBe(400);
+    expect(reviseDraft).not.toHaveBeenCalled();
 
     await route(
       "/api/lifeops/family-workflows/packets/packet%2F1/drafts/2/approval",

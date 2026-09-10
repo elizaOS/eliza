@@ -456,6 +456,15 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       },
     );
   },
+  async revisePacketDraft(input) {
+    await request(
+      `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts/${input.expectedDraftVersion}/revision`,
+      {
+        method: "POST",
+        body: JSON.stringify({ body: input.body, subject: input.subject }),
+      },
+    );
+  },
   async requestPacketApproval(packetId, draftVersion) {
     await request(
       `/api/lifeops/family-workflows/packets/${encodeURIComponent(packetId)}/drafts/${draftVersion}/approval`,
