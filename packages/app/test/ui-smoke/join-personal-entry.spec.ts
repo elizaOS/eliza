@@ -67,6 +67,8 @@ for (const viewport of [
         let identityReads = 0;
         let conversationReads = 0;
         let conversationCreates = 0;
+        let conversationMessageReads = 0;
+        let conversationSends = 0;
         let available = false;
         const activeAgentId = runtime === "shared" ? personalId : dedicatedId;
         const corsHeaders = () => ({
@@ -116,6 +118,16 @@ for (const viewport of [
           `https://${dedicatedId}.cloud.eliza.app/api/`,
           `https://api.eliza.app/api/v1/eliza/agents/${encodeURIComponent(personalId)}/api/`,
         ];
+        const expectedRuntimePrefix =
+          runtimePrefixes[runtime === "dedicated" ? 0 : 1];
+        const restoredMessage = `Personal ${runtime} conversation restored.`;
+        const userMessage = `Check my ${runtime} conversation.`;
+        const messages: {
+          id: string;
+          role: "user" | "assistant";
+          text: string;
+          timestamp: number;
+        }[] = [];
         const conversation = {
           id: "personal-entry-conversation",
           roomId: "personal-entry-room",
@@ -132,6 +144,9 @@ for (const viewport of [
               request.url().startsWith(candidate),
             );
             if (!prefix) throw new Error("Unexpected runtime fixture origin");
+            // A correct persisted binding is insufficient if the HTTP client
+            // still dispatches conversation traffic to the other runtime.
+            expect(prefix).toBe(expectedRuntimePrefix);
             const path = request.url().slice(prefix.length).split("?")[0];
             const method = request.method();
             const fulfill = (json: object) =>
@@ -157,6 +172,37 @@ for (const viewport of [
               await fulfill({ conversation });
               return;
             }
+            if (
+              path === `conversations/${conversation.id}/messages/stream` &&
+              method === "POST"
+            ) {
+              expect(request.postDataJSON()).toMatchObject({
+                text: userMessage,
+              });
+              conversationSends += 1;
+              messages.push(
+                {
+                  id: "personal-entry-user",
+                  role: "user",
+                  text: userMessage,
+                  timestamp: Date.now(),
+                },
+                {
+                  id: "personal-entry-assistant",
+                  role: "assistant",
+                  text: restoredMessage,
+                  timestamp: Date.now(),
+                },
+              );
+              await route.fulfill({
+                headers: corsHeaders(),
+                contentType: "text/event-stream",
+                body:
+                  `data: ${JSON.stringify({ type: "token", text: restoredMessage, fullText: restoredMessage })}\n\n` +
+                  `data: ${JSON.stringify({ type: "done", fullText: restoredMessage, agentName: "Eliza" })}\n\n`,
+              });
+              return;
+            }
             if (method === "GET") {
               if (path === "agent/events") {
                 await fulfill({
@@ -172,7 +218,8 @@ for (const viewport of [
                 return;
               }
               if (path === `conversations/${conversation.id}/messages`) {
-                await fulfill({ messages: [] });
+                conversationMessageReads += 1;
+                await fulfill({ messages });
                 return;
               }
               if (path === `conversations/${conversation.id}/greeting`) {
@@ -302,10 +349,60 @@ for (const viewport of [
         expect(identityReads).toBeGreaterThanOrEqual(3);
         expect(requests).toEqual([]);
         expect(pageErrors).toEqual([]);
+        // Exercise the real composer and stream client against the isolated
+        // runtime store. A fresh empty thread has no history to reveal yet.
+        const composer = page.getByTestId("chat-composer-textarea");
+        await expect(composer).toBeEnabled();
+        await composer.fill(userMessage);
+        await page.getByTestId("chat-composer-action").click();
+        const showConversation = async () => {
+          await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+            "data-conversation-id",
+            conversation.id,
+          );
+          // The pill first reveals the composer; its separate accessible
+          // disclosure then opens history. Never press the inert hidden handle.
+          const pill = page.getByRole("button", {
+            name: "open chat",
+            exact: true,
+          });
+          if (await pill.count()) await pill.press("ArrowUp");
+          if (
+            (await page
+              .getByTestId("chat-sheet")
+              .getAttribute("data-variant")) !== "open"
+          ) {
+            await page
+              .getByRole("button", {
+                name: "drag up to open chat",
+                exact: true,
+              })
+              .press("ArrowUp");
+          }
+          await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
+            "data-open",
+            "true",
+          );
+          for (const text of [userMessage, restoredMessage]) {
+            const line = page
+              .getByTestId("thread-line")
+              .filter({ hasText: text })
+              .first();
+            await expect(line).toBeVisible();
+            // Mounted text can still be clipped by the opening spring. Capture
+            // only after both messages are fully inside the visible thread.
+            await expect(line).toBeInViewport({ ratio: 1 });
+          }
+          await expect(
+            page.getByTestId("chat-composer-textarea"),
+          ).toBeEnabled();
+        };
+        await showConversation();
         await page.screenshot({
           path: testInfo.outputPath("entry-complete.jpg"),
           fullPage: true,
         });
+        const messageReadsBeforeReload = conversationMessageReads;
         await page.reload();
         await expect(page.getByTestId("chat-pill")).toBeVisible({
           timeout: 60_000,
@@ -314,11 +411,20 @@ for (const viewport of [
         await expect
           .poll(readBinding)
           .toEqual({ id: `cloud:${personalId}`, runtime, activeAgentId });
+        await showConversation();
+        await page.screenshot({
+          path: testInfo.outputPath("entry-restored.jpg"),
+          fullPage: true,
+        });
         expect(requests).toEqual([]);
         expect(pageErrors).toEqual([]);
         expect(unexpectedRemoteRequests).toEqual([]);
         expect(conversationReads).toBeGreaterThanOrEqual(2);
         expect(conversationCreates).toBe(1);
+        expect(conversationSends).toBe(1);
+        expect(conversationMessageReads).toBeGreaterThan(
+          messageReadsBeforeReload,
+        );
         expect(
           consoleMessages.filter(
             (message) =>
@@ -337,6 +443,8 @@ for (const viewport of [
               identityReads,
               conversationReads,
               conversationCreates,
+              conversationMessageReads,
+              conversationSends,
               forbiddenRequests: requests,
               unexpectedRemoteRequests,
               pageErrors,
