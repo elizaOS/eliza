@@ -742,6 +742,25 @@ function sanitizeToolDescriptionPreservingDescriptors<T extends object>(tool: T)
   return sanitized;
 }
 
+/** Resolve optional-property opt-in before choosing request-wide provider strictness. */
+function nativeToolStrictness(
+  tool: Record<string, unknown>,
+  functionTool: Record<string, unknown>,
+  cerebrasMode: boolean | undefined
+): boolean | undefined {
+  const declared =
+    typeof tool.strict === "boolean"
+      ? tool.strict
+      : typeof functionTool.strict === "boolean"
+        ? functionTool.strict
+        : undefined;
+  const optionalCompatible =
+    typeof tool.strictWithOptionalProperties === "boolean"
+      ? tool.strictWithOptionalProperties
+      : functionTool.strictWithOptionalProperties === true;
+  return declared === false && cerebrasMode && optionalCompatible ? true : declared;
+}
+
 /**
  * Native tool normalization plus the strict-safe record/map transform selected
  * for #13111. Tool schemas still close every object with additionalProperties:
@@ -818,20 +837,14 @@ function normalizeNativeToolsForCall(
   // per-tool: one non-strict (or unflagged) tool downgrades every tool in the
   // call, so the wire flag must be emitted uniformly — and always explicitly,
   // since an omitted flag is not the same as false to the compiler. Schema
-  // handling below still follows each tool's declared flag (a declared
-  // non-strict schema passes through raw; everything else is sanitized).
+  // Optional-property-compatible actions can retain strict enforcement here;
+  // unopted non-strict tools still keep the whole request non-strict.
   const cerebrasRequestStrict =
     options.cerebrasMode === true &&
     tools.every((rawTool) => {
       const tool = asRecord(rawTool);
       const functionTool = asRecord(tool.function);
-      const declared =
-        typeof tool.strict === "boolean"
-          ? tool.strict
-          : typeof functionTool.strict === "boolean"
-            ? functionTool.strict
-            : undefined;
-      return declared === true;
+      return nativeToolStrictness(tool, functionTool, options.cerebrasMode) === true;
     });
 
   for (const rawTool of tools) {
@@ -849,12 +862,7 @@ function normalizeNativeToolsForCall(
     // shape required by strict grammar compilers.
     const declaredSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
-    const strict =
-      typeof tool.strict === "boolean"
-        ? tool.strict
-        : typeof functionTool.strict === "boolean"
-          ? functionTool.strict
-          : undefined;
+    const strict = nativeToolStrictness(tool, functionTool, options.cerebrasMode);
     const recordArgTransforms: RecordArgTransform[] = [];
     // The production strict Cerebras path used to call sanitizeJsonSchema
     // (raw Array.isArray / object spread / Object.entries / .map / unbounded
