@@ -658,6 +658,76 @@ describe("LinkedCalendarReconciler", () => {
 });
 
 describe("all-day reconciliation", () => {
+  it("refreshes an obsolete checkpoint without rewriting equal local and provider events", async () => {
+    const event = {
+      ...baseEvent,
+      isAllDay: true,
+      startAt: "2026-11-01T00:00:00.000Z",
+      endAt: "2026-11-03T00:00:00.000Z",
+    };
+    const store = new MemoryStore(
+      record({
+        providerEventId: "google-event-1",
+        state: "clean",
+        pendingOperation: null,
+        lastCommonSemanticHash: "prior-semantic-normalization",
+      }),
+    );
+    const harness = ports({
+      local: { eventId: "local-1", revision: 1, event },
+      provider: {
+        eventId: "google-event-1",
+        etag: '"g1"',
+        event: { ...event, timeZone: null },
+      },
+    });
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      harness.localPort,
+      harness.providerPort,
+    );
+    expect(await reconciler.reconcile(store.current)).toBe("clean");
+    expect(await reconciler.reconcile(store.current)).toBe("clean");
+    expect(harness.counts()).toEqual({ creates: 0, updates: 0 });
+    expect(store.current.lastCommonSemanticHash).toBe(
+      linkedCalendarSemanticHash(event),
+    );
+  });
+
+  it("does not rewrite date-only events when Google omits their timezone", async () => {
+    const localEvent = {
+      ...baseEvent,
+      isAllDay: true,
+      startAt: "2026-11-01T00:00:00.000Z",
+      endAt: "2026-11-03T00:00:00.000Z",
+    };
+    const providerEvent = { ...localEvent, timeZone: null };
+    const store = new MemoryStore(
+      record({
+        providerEventId: "google-event-1",
+        state: "clean",
+        pendingOperation: null,
+        lastCommonSemanticHash: linkedCalendarSemanticHash(providerEvent),
+      }),
+    );
+    const harness = ports({
+      local: { eventId: "local-1", revision: 1, event: localEvent },
+      provider: {
+        eventId: "google-event-1",
+        etag: '"g1"',
+        event: providerEvent,
+      },
+    });
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      harness.localPort,
+      harness.providerPort,
+    );
+    expect(await reconciler.reconcile(store.current)).toBe("clean");
+    expect(await reconciler.reconcile(store.current)).toBe("clean");
+    expect(harness.counts()).toEqual({ creates: 0, updates: 0 });
+  });
+
   it("repairs an unchanged provider event written with legacy timed semantics once", async () => {
     const timed = {
       ...baseEvent,

@@ -194,7 +194,7 @@ export function linkedCalendarSemanticHash(
     location: event.location.trim(),
     startAt: event.startAt,
     endAt: event.endAt,
-    timeZone: event.timeZone,
+    timeZone: event.isAllDay ? null : event.timeZone,
     // Retain timed-event checkpoints; all-day semantics need a distinct hash.
     ...(event.isAllDay ? { isAllDay: true } : {}),
     attendees: [...event.attendees]
@@ -597,12 +597,13 @@ export class LinkedCalendarReconciler {
       return "pulled";
     }
 
-    if (!provider || localChanged) {
+    if (!provider || (localChanged && localHash !== providerHash)) {
       return this.push(record, local, provider);
     }
 
     if (
       record.state !== "clean" ||
+      record.lastCommonSemanticHash !== localHash ||
       record.localRevision !== local.revision ||
       record.providerEtag !== provider.etag
     ) {
