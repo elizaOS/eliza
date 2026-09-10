@@ -148,21 +148,32 @@ function redactValue(
   if (typeof value === "string") {
     return redactString(rawKey, value, opts);
   }
+  // `seen` is the ancestor path, not every object visited: an entry is
+  // removed once its subtree is redacted, so a value shared by two keys is
+  // redacted in full at both sites and only a true cycle collapses.
   if (Array.isArray(value)) {
     if (seen.has(value)) return "[Circular]";
     seen.add(value);
-    // Arrays use the parent key for redaction context (e.g. `toList: [...]`).
-    return value.map((entry) => redactValue(rawKey, entry, opts, seen));
+    try {
+      // Arrays use the parent key for redaction context (e.g. `toList: [...]`).
+      return value.map((entry) => redactValue(rawKey, entry, opts, seen));
+    } finally {
+      seen.delete(value);
+    }
   }
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
     if (seen.has(obj)) return "[Circular]";
     seen.add(obj);
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      out[k] = redactValue(k, v, opts, seen);
+    try {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        out[k] = redactValue(k, v, opts, seen);
+      }
+      return out;
+    } finally {
+      seen.delete(obj);
     }
-    return out;
   }
   // numbers / booleans / bigint / symbol — pass through unchanged.
   return value;

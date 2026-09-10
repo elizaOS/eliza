@@ -44,6 +44,15 @@ describe("ttsDebug", () => {
     );
   });
 
+  it("renders a shared (non-cyclic) diagnostic value in full at every site", () => {
+    const shared = { voice: "alloy" };
+    ttsDebug("play:start", { a: shared, b: shared, list: [shared, shared] });
+
+    expect(info).toHaveBeenCalledWith(
+      '[eliza][tts] play:start {"a":{"voice":"alloy"},"b":{"voice":"alloy"},"list":[{"voice":"alloy"},{"voice":"alloy"}]}',
+    );
+  });
+
   it("keeps the no-detail log form", () => {
     ttsDebug("play:end");
 
