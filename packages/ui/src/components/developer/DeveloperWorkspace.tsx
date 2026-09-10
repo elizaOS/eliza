@@ -33,6 +33,11 @@ import { ModelConfigurationPanel } from "../settings/ModelConfigurationPanel";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -41,7 +46,8 @@ import {
 } from "../ui/dialog";
 import { NativeSelect } from "../ui/native-select";
 import { SemanticForm } from "../ui/semantic-form";
-import { Table } from "../ui/table";
+import { Separator } from "../ui/separator";
+import { Table, TableRow } from "../ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Textarea } from "../ui/textarea";
 import {
@@ -95,7 +101,8 @@ export function DeveloperTrace({
   const hasMeasuredInputs = calls.some((call) => call.promptTokens != null);
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3 border-y border-border py-3">
+      <Separator />
+      <div className="grid grid-cols-3 gap-3 py-3">
         <div>
           <div className="text-xs text-muted">Recorded calls</div>
           <div className="text-lg tabular-nums">{detail.llmCalls.length}</div>
@@ -118,6 +125,7 @@ export function DeveloperTrace({
           </div>
         </div>
       </div>
+      <Separator />
       <p className="text-xs leading-relaxed text-muted">
         Run input includes every recorded model call in this run, including
         evaluation. Evaluation stages do not establish whether a call ran before
@@ -140,10 +148,7 @@ export function DeveloperTrace({
           </thead>
           <tbody>
             {detail.llmCalls.map((call, index) => (
-              <tr
-                key={call.id || index}
-                className="border-t border-border align-top"
-              >
+              <TableRow key={call.id || index} className="align-top">
                 <td className="py-3 pr-3">
                   <div className="font-medium">
                     {index + 1}. {recordedStage(call, detail)}
@@ -168,32 +173,36 @@ export function DeveloperTrace({
                 <td className="py-3 text-right tabular-nums">
                   {duration(call.latencyMs)}
                 </td>
-              </tr>
+              </TableRow>
             ))}
           </tbody>
         </Table>
       </div>
       {detail.semanticStages?.length ? (
-        <details>
-          <summary className="cursor-pointer py-2 text-sm font-medium">
-            Recorded stages ({detail.semanticStages.length})
-          </summary>
-          <ol className="space-y-2 py-2 text-xs">
-            {detail.semanticStages.map((stage) => (
-              <li key={stage.stageId} className="flex justify-between gap-3">
-                <span>
-                  {stage.kind}
-                  {stage.iteration == null
-                    ? ""
-                    : ` · iteration ${stage.iteration}`}
-                </span>
-                <span className="tabular-nums text-muted">
-                  {duration(stage.latencyMs)}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </details>
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="touch">
+              Recorded stages ({detail.semanticStages.length})
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ol className="space-y-2 py-2 text-xs">
+              {detail.semanticStages.map((stage) => (
+                <li key={stage.stageId} className="flex justify-between gap-3">
+                  <span>
+                    {stage.kind}
+                    {stage.iteration == null
+                      ? ""
+                      : ` · iteration ${stage.iteration}`}
+                  </span>
+                  <span className="tabular-nums text-muted">
+                    {duration(stage.latencyMs)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
       <div className="break-all text-xs text-muted">
         Run: {record.id}
@@ -237,16 +246,15 @@ function WireEvidence({ record }: { record: TrajectoryRecord }) {
     return JSON.stringify(part === "all" || !stage ? wire : stage, null, 2);
   }, [wire, part]);
   return (
-    <details
-      open={open}
-      className="border-t border-border pt-2"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="cursor-pointer py-2 text-sm font-medium">
-        Full prompts, tools, results &amp; context
-      </summary>
+    <Collapsible open={open} onOpenChange={setOpen} className="pt-2">
+      <Separator />
+      <CollapsibleTrigger asChild>
+        <Button variant="ghost" size="touch">
+          Full prompts, tools, results &amp; context
+        </Button>
+      </CollapsibleTrigger>
       {open ? (
-        <div className="space-y-3 py-2">
+        <CollapsibleContent className="space-y-3 py-2">
           <p className="text-xs text-muted">
             Full recorded evidence, loaded on demand. This can be large and
             contain private conversation content. No prompt truncation is
@@ -275,20 +283,19 @@ function WireEvidence({ record }: { record: TrajectoryRecord }) {
               Evidence could not be loaded. Close and reopen to retry.
             </p>
           ) : wire ? (
-            <section
-              className="max-h-[60dvh] overflow-auto rounded-md bg-bg p-3 text-xs leading-relaxed"
-              // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll the full evidence region.
-              tabIndex={0}
+            <Textarea
+              variant="codeEditor"
+              className="h-[45dvh] max-h-[60dvh] text-xs leading-relaxed"
               aria-label="Full trajectory JSON"
-            >
-              <pre>{evidence}</pre>
-            </section>
+              readOnly
+              value={evidence}
+            />
           ) : (
             <p role="status">Loading recorded evidence…</p>
           )}
-        </div>
+        </CollapsibleContent>
       ) : null}
-    </details>
+    </Collapsible>
   );
 }
 

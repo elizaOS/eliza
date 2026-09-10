@@ -312,7 +312,7 @@ function ChatModelGroup({
                 agentId={`models-${target}-cancel`}
                 type="button"
                 variant="outline"
-                className="h-9 rounded-md px-3 text-xs font-medium"
+                className="h-9 px-3 text-xs font-medium"
                 onClick={group.cancelSave}
               >
                 {t("modelconfig.cancel", { defaultValue: "Cancel" })}
@@ -321,7 +321,7 @@ function ChatModelGroup({
                 agentId={`models-${target}-confirm-restart`}
                 type="button"
                 variant="default"
-                className="h-9 rounded-md px-3 text-xs font-medium"
+                className="h-9 px-3 text-xs font-medium"
                 onClick={group.confirmSave}
               >
                 {t("modelconfig.confirmRestart", {
@@ -347,7 +347,7 @@ function ChatModelGroup({
                   agentId={`models-${target}-save`}
                   type="button"
                   variant="outline"
-                  className="h-9 rounded-md px-3 text-xs font-medium"
+                  className="h-9 px-3 text-xs font-medium"
                   disabled={!group.model}
                   onClick={group.requestSave}
                 >
@@ -484,7 +484,7 @@ function CodingModelGroup({
                 agentId="models-coding-save"
                 type="button"
                 variant="outline"
-                className="h-9 rounded-md px-3 text-xs font-medium"
+                className="h-9 px-3 text-xs font-medium"
                 disabled={!group.model.trim()}
                 onClick={group.saveNow}
               >
@@ -581,7 +581,7 @@ export function ModelConfigurationPanelView({
             agentId="models-retry"
             type="button"
             variant="outline"
-            className="h-9 w-fit rounded-md px-3 text-xs font-medium"
+            className="h-9 w-fit px-3 text-xs font-medium"
             onClick={state.retry}
           >
             {t("modelconfig.retry", { defaultValue: "Retry" })}
@@ -607,7 +607,7 @@ export function ModelConfigurationPanelView({
             agentId="models-retry"
             type="button"
             variant="outline"
-            className="h-9 w-fit rounded-md px-3 text-xs font-medium"
+            className="h-9 w-fit px-3 text-xs font-medium"
             onClick={state.retry}
           >
             {t("modelconfig.retry", { defaultValue: "Retry" })}

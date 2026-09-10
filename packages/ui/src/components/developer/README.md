@@ -82,7 +82,7 @@ input remains viewable and copyable.
 The transcript follows new replies only while the user is near the bottom.
 The inspection dialog keeps controls outside the raw-text scroll area, traps
 keyboard focus and restores focus to **Inspect** when closed. Escape closes it.
-Unchanged messages are memoized across polls. The composer remains outside the
+Details disclosures use the shared Collapsible and Button controls; complete JSON uses a read-only Textarea so it remains keyboard-selectable. Borders and table rows use the shared Separator and TableRow owners. Unchanged messages are memoized across polls. The composer remains outside the
 scroll region. Enter sends; Shift+Enter inserts a newline; IME composition does
 not submit. Failed sends preserve the draft without replacing newly typed text.
 
