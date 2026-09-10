@@ -13,7 +13,7 @@ import {
   CalendarService,
 } from "@elizaos/plugin-calendar";
 import { getScheduledTaskRunner } from "@elizaos/plugin-scheduling";
-import { type LifeOpsCalendarEvent, SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalRequest } from "../approval-queue.types.js";
 import { CalendarCardAccessStore } from "../calendar-card.js";
@@ -46,6 +46,7 @@ import {
 import type { SourceFact } from "../school/types.js";
 import { LifeOpsService } from "../service.js";
 import { executeRawSql, parseJsonValue, sqlQuote, toText } from "../sql.js";
+import { collectCalendarClaims } from "./calendar-claims.js";
 import {
   familyPacketCalendarWindow,
   nextFamilyPacketPeriod,
@@ -73,29 +74,6 @@ const RUN_SCHEMA = [
 
 function hash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
-function calendarClaim(event: LifeOpsCalendarEvent): FamilyPacketClaim {
-  return {
-    claimId: `calendar:${event.provider}:${event.calendarId}:${event.externalId}`,
-    stableKey: `calendar:${event.provider}:${event.calendarId}:${event.externalId}`,
-    section: "custody_calendar",
-    statement: event.title,
-    visibility: "owner_only",
-    provenance: [
-      {
-        source: "calendar",
-        sourceId: event.id,
-        observedAt: event.updatedAt,
-        contentSha256: hash(event),
-      },
-    ],
-    dates: [`${event.startAt} through ${event.endAt}`],
-    requests: [],
-    urgency: null,
-    commitments: [],
-    accountability: [],
-  };
 }
 
 function schoolClaim(fact: SourceFact): FamilyPacketClaim {
@@ -302,7 +280,13 @@ export class FamilyWorkflowRuntimeService extends Service {
         new URL("http://localhost/api/lifeops/calendar/feed"),
         familyPacketCalendarWindow(period),
       );
-      claims.push(...feed.events.map(calendarClaim));
+      claims.push(
+        ...collectCalendarClaims(
+          feed,
+          await calendar.listLinkedCalendarEvents(),
+          await this.school.listImportedEvents(),
+        ),
+      );
     }
     const school = getSchoolSourceFactRuntimeService(this.runtime);
     if (school) claims.push(...(await school.listFacts()).map(schoolClaim));
