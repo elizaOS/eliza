@@ -1,5 +1,5 @@
 /**
- * CalendarSection — Google Calendar-style week/day/month views.
+ * Renders the owner's calendar as selectable day, week, and month grids.
  *
  * Day/week views render an hour-by-hour grid and position events by their
  * actual start/end time. Month view renders a 5-6 row day grid. Events get
@@ -7,10 +7,8 @@
  * the same feed keeps the same colour across renders.
  *
  * Shell concerns (selection state, chat launching, and the primed-event
- * lookup cache) are injected as props so the component stays decoupled from
- * the LifeOps dashboard shell. `@elizaos/plugin-personal-assistant` wraps this with a
- * thin adapter that wires its own selection context, chat launcher, and
- * event prime cache.
+ * lookup cache) are injected as props so route and embedded consumers share
+ * the same event editor and calendar mutation boundary.
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
@@ -23,10 +21,16 @@ import {
   SegmentedControl,
   Spinner,
 } from "@elizaos/ui/components";
-import { useMediaQuery } from "@elizaos/ui/hooks";
+import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
 import { useAppSelector } from "@elizaos/ui/state";
 import { CalendarClock, ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   type CalendarViewMode,
   useCalendarWeek,
@@ -411,7 +415,7 @@ function DayColumnHeader({ day, isFirst }: { day: Date; isFirst: boolean }) {
   const isToday = isSameDayKey(day, new Date());
   return (
     <div
-      className={`flex items-center justify-center gap-1.5 ${isFirst ? "" : "border-l border-border/12"} px-2 text-[11px] font-medium ${
+      className={`flex items-center justify-center gap-1.5 ${isFirst ? "" : "border-l border-border"} px-2 text-[11px] font-medium ${
         isToday ? "bg-accent/8" : ""
       }`}
       style={{ height: `${HEADER_ROW_HEIGHT_REM}rem` }}
@@ -445,7 +449,7 @@ function AllDayBandCell({
 }) {
   return (
     <fieldset
-      className={`m-0 min-w-0 space-y-0.5 border-0 p-1 ${isFirst ? "" : "border-l border-border/12"}`}
+      className={`m-0 min-w-0 space-y-0.5 border-0 p-1 ${isFirst ? "" : "border-l border-border"}`}
       aria-label={`All-day events for ${day.toISOString()}`}
     >
       {events.map((event) => {
@@ -524,7 +528,7 @@ function DayColumnGrid({
 
   return (
     <div
-      className={`relative ${isFirst ? "" : "border-l border-border/12"} ${isToday ? "bg-accent/5" : ""}`}
+      className={`relative ${isFirst ? "" : "border-l border-border"} ${isToday ? "bg-accent/5" : ""}`}
       style={{ height: `${gridHeight}px` }}
     >
       {/* hour lines */}
@@ -532,7 +536,7 @@ function DayColumnGrid({
         (hour) => (
           <div
             key={hour}
-            className="pointer-events-none absolute inset-x-0 border-t border-border/6"
+            className="pointer-events-none absolute inset-x-0 border-t border-border"
             style={{ top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX}px` }}
           />
         ),
@@ -663,7 +667,7 @@ function TimeGrid({
     <div className="overflow-hidden" data-testid="calendar-time-grid">
       {/* Header row: empty cell above rail, then weekday + date per column */}
       <div
-        className="grid border-b border-border/12"
+        className="grid border-b border-border"
         style={{ gridTemplateColumns }}
       >
         <div aria-hidden style={{ height: `${HEADER_ROW_HEIGHT_REM}rem` }} />
@@ -679,7 +683,7 @@ function TimeGrid({
       {/* All-day band: stays aligned row-wise with the header */}
       {hasAnyAllDay ? (
         <div
-          className="grid border-b border-border/12 bg-bg-muted/15"
+          className="grid border-b border-border bg-bg-muted/15"
           style={{ gridTemplateColumns }}
         >
           <div
@@ -760,11 +764,15 @@ function MonthGrid({
   eventsByDay,
   selectedEventId,
   onSelectEvent,
+  onSelectDay,
+  selectedDay,
 }: {
   baseDate: Date;
   eventsByDay: Map<string, LifeOpsCalendarEvent[]>;
   selectedEventId: string | null;
   onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+  onSelectDay: (day: Date) => void;
+  selectedDay: Date | null;
 }) {
   const start = startOfMonthGrid(baseDate);
   const days = buildDays(start, 42);
@@ -783,7 +791,7 @@ function MonthGrid({
   return (
     <div className="overflow-hidden" data-testid="calendar-month-grid">
       <div
-        className="grid border-b border-border/12 text-[10px] font-medium text-muted"
+        className="grid border-b border-border text-[10px] font-medium text-muted"
         style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
       >
         {weekdayLabels.map((label) => (
@@ -804,21 +812,18 @@ function MonthGrid({
           return (
             <div
               key={key}
-              className={`flex min-h-24 flex-col gap-1 bg-bg p-1.5 text-left ${
+              className={`flex min-h-24 min-w-0 flex-col gap-1 bg-bg p-1 text-left md:p-1.5 ${
                 inMonth ? "" : "opacity-55"
               }`}
             >
-              <div
-                className={`text-[11px] font-medium ${
-                  isToday
-                    ? "inline-flex h-5 w-5 items-center justify-center self-start rounded-full bg-accent text-accent-fg"
-                    : inMonth
-                      ? "text-txt"
-                      : "text-muted"
-                }`}
-              >
-                {formatDayNumber(day)}
-              </div>
+              <MonthDayButton
+                day={day}
+                today={isToday}
+                selected={
+                  selectedDay !== null && isSameDayKey(day, selectedDay)
+                }
+                onSelectDay={onSelectDay}
+              />
               <div className="flex flex-col gap-0.5">
                 {dayEvents.slice(0, 3).map((event) => {
                   const color = paletteFor(event);
@@ -910,6 +915,45 @@ function MonthGrid({
         })}
       </div>
     </div>
+  );
+}
+
+function MonthDayButton({
+  day,
+  today,
+  selected,
+  onSelectDay,
+}: {
+  day: Date;
+  today: boolean;
+  selected: boolean;
+  onSelectDay: (day: Date) => void;
+}) {
+  const label = formatAgendaDayLabel(day);
+  const selectDay = () => onSelectDay(day);
+  const control = useAgentElement<HTMLButtonElement>({
+    id: `calendar-day-${toLocalDayKey(day)}`,
+    role: "button",
+    label,
+    group: "calendar-days",
+    onActivate: selectDay,
+  });
+  return (
+    <Button
+      ref={control.ref}
+      variant="selection"
+      size="touch"
+      type="button"
+      className="min-w-0 self-start px-1"
+      aria-label={label}
+      aria-current={today ? "date" : undefined}
+      aria-pressed={selected}
+      data-state={selected ? "on" : "off"}
+      onClick={selectDay}
+      {...control.agentProps}
+    >
+      {formatDayNumber(day)}
+    </Button>
   );
 }
 
@@ -1044,7 +1088,10 @@ export function CalendarSection({
 }: CalendarSectionProps) {
   const t = useAppSelector((s) => s.t);
   const calendar = useCalendarWeek();
-  const compactLayout = useMediaQuery("(max-width: 767px)");
+  useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
+    void calendar.refresh();
+  }, [calendar.refresh]);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [drawerEvent, setDrawerEvent] = useState<LifeOpsCalendarEvent | null>(
     null,
   );
@@ -1181,6 +1228,14 @@ export function CalendarSection({
     <>
       <section
         className="flex min-h-full flex-col gap-4"
+        style={
+          {
+            "--accent": "var(--eliza-brand-orange, #ff5800)",
+            "--accent-foreground": "#111111",
+            "--accent-muted":
+              "color-mix(in srgb, var(--eliza-brand-orange, #ff5800) 75%, #111111)",
+          } as CSSProperties
+        }
         data-testid="lifeops-calendar-section"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1228,7 +1283,7 @@ export function CalendarSection({
             </h2>
           </div>
 
-          <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="flex items-center gap-2">
             <SegmentedControl<CalendarViewMode>
               aria-label={t("lifeopsCalendar.viewModeAria", {
                 defaultValue: "Calendar view",
@@ -1236,8 +1291,8 @@ export function CalendarSection({
               value={calendar.viewMode}
               onValueChange={calendar.setViewMode}
               items={VIEW_ITEMS}
-              className="w-full border-0 bg-transparent p-0.5"
-              buttonClassName="min-h-8 flex-1 px-3 py-1 text-xs"
+              className="border-0 bg-transparent p-0.5"
+              buttonClassName="min-h-8 px-3 py-1 text-xs"
               {...viewMode.agentProps}
             />
             <Button
@@ -1277,6 +1332,35 @@ export function CalendarSection({
             {calendar.error}
           </div>
         ) : null}
+        {calendar.status === "empty" ? (
+          <p role="status" className="text-sm text-muted">
+            {t("lifeopsCalendar.noEvents", {
+              defaultValue: "No events in this range",
+            })}
+          </p>
+        ) : null}
+        {calendar.status === "partial" ? (
+          <p role="status" className="text-sm text-muted">
+            {t("lifeopsCalendar.partialFeed", {
+              defaultValue:
+                "Some calendar sources are unavailable. Events may be incomplete.",
+            })}
+          </p>
+        ) : null}
+        {calendar.status === "error" ||
+        calendar.status === "unavailable" ||
+        calendar.status === "partial" ? (
+          <Button
+            type="button"
+            variant="surface"
+            size="touch"
+            className="self-start"
+            disabled={calendar.refreshing}
+            onClick={() => void calendar.refresh()}
+          >
+            {t("common.retry", { defaultValue: "Retry" })}
+          </Button>
+        ) : null}
 
         {calendar.status === "loading" ? (
           <CalendarStatusIcon
@@ -1297,45 +1381,40 @@ export function CalendarSection({
               defaultValue: "Calendar could not load",
             })}
           />
-        ) : compactLayout && calendar.status === "empty" ? (
-          <CalendarStatusIcon
-            label={t("lifeopsCalendar.noEvents", {
-              defaultValue: "No events in this range",
-            })}
-          />
-        ) : compactLayout &&
-          calendar.status === "partial" &&
-          calendar.events.length === 0 ? (
-          <CalendarStatusIcon
-            label={t("lifeopsCalendar.noEventsPartial", {
-              defaultValue: "No events from available sources",
-            })}
-          />
-        ) : compactLayout ? (
-          <AgendaView
-            days={days}
-            eventsByDay={eventsByDay}
-            selectedEventId={selectedEventId}
-            onSelectEvent={handleSelectEvent}
-            emptyLabel={t("lifeopsCalendar.empty", {
-              defaultValue: "Clear",
-            })}
-          />
         ) : calendar.viewMode === "month" ? (
           <MonthGrid
             baseDate={calendar.baseDate}
             eventsByDay={eventsByDay}
             selectedEventId={selectedEventId}
             onSelectEvent={handleSelectEvent}
+            onSelectDay={setSelectedDay}
+            selectedDay={selectedDay}
           />
         ) : (
-          <TimeGrid
-            days={days}
-            eventsByDay={eventsByDay}
-            selectedEventId={selectedEventId}
-            onSelectEvent={handleSelectEvent}
-          />
+          <div className="min-w-0 overflow-x-auto">
+            <div className={days.length > 1 ? "min-w-3xl" : "min-w-0"}>
+              <TimeGrid
+                days={days}
+                eventsByDay={eventsByDay}
+                selectedEventId={selectedEventId}
+                onSelectEvent={handleSelectEvent}
+              />
+            </div>
+          </div>
         )}
+        {calendar.viewMode === "month" &&
+        selectedDay &&
+        days.some((day) => isSameDayKey(day, selectedDay)) ? (
+          <section aria-label={formatAgendaDayLabel(selectedDay)}>
+            <AgendaView
+              days={[selectedDay]}
+              eventsByDay={eventsByDay}
+              selectedEventId={selectedEventId}
+              onSelectEvent={handleSelectEvent}
+              emptyLabel={t("lifeopsCalendar.empty", { defaultValue: "Clear" })}
+            />
+          </section>
+        ) : null}
       </section>
 
       <EventEditorDrawer

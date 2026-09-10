@@ -56,10 +56,31 @@ test("calendar decomposed view: responsive modes and event creation", async ({
 }) => {
   await openPopulatedCalendar(page);
 
+  if ((await page.evaluate(() => window.innerWidth)) >= 768) {
+    const todayBounds = await page
+      .getByRole("button", { name: "Today", exact: true })
+      .boundingBox();
+    const createBounds = await page
+      .getByTestId("lifeops-calendar-new-event")
+      .boundingBox();
+    if (!todayBounds || !createBounds)
+      throw new Error("Calendar toolbar controls are missing");
+    expect(
+      Math.abs(
+        todayBounds.y +
+          todayBounds.height / 2 -
+          createBounds.y -
+          createBounds.height / 2,
+      ),
+      "Desktop calendar navigation and creation should share one compact toolbar row",
+    ).toBeLessThan(4);
+  }
+
   const monthMode = page.getByRole("button", { name: "Month", exact: true });
   await expectTopmostAtCenter(monthMode, "Calendar Month mode");
   await monthMode.click();
   await expect(monthMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("calendar-month-grid")).toBeVisible();
 
   const newEvent = page.getByTestId("lifeops-calendar-new-event");
   await expectTopmostAtCenter(newEvent, "Calendar New event");
@@ -82,6 +103,7 @@ test("calendar mobile layout keeps navigation and editor inside 390px viewport",
   await expectTopmostAtCenter(dayMode, "Calendar Day mode");
   await dayMode.click();
   await expect(dayMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("calendar-time-grid")).toBeVisible();
 
   const newEvent = page.getByTestId("lifeops-calendar-new-event");
   await expectTopmostAtCenter(newEvent, "Calendar New event");
@@ -110,6 +132,50 @@ test("calendar mobile layout keeps navigation and editor inside 390px viewport",
     page.getByRole("button", { name: "Create event" }),
   ).toBeVisible();
 });
+
+for (const width of [1280, 390]) {
+  test(`empty calendar preserves selected projections and creation at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          calendarId: "primary",
+          events: [],
+          source: "cache",
+          state: "complete",
+          sources: [],
+          timeMin: url.searchParams.get("timeMin"),
+          timeMax: url.searchParams.get("timeMax"),
+          syncedAt: new Date().toISOString(),
+        }),
+      });
+    });
+    await openAppPath(page, "/calendar");
+    for (const mode of ["Day", "Week", "Month"]) {
+      const control = page.getByRole("button", { name: mode, exact: true });
+      await control.click();
+      await expect(control).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        page.getByTestId(
+          mode === "Month" ? "calendar-month-grid" : "calendar-time-grid",
+        ),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+    }
+    await page.getByTestId("lifeops-calendar-new-event").click();
+    await expect(page.getByLabel("Event title")).toBeInViewport();
+    await expect(
+      page.getByRole("button", { name: "Create event" }),
+    ).toBeVisible();
+  });
+}
 
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   // /inbox renders the populated triage list from the inbox mock: an Email
