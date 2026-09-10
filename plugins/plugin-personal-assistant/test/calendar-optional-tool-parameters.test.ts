@@ -7,7 +7,10 @@ import type { Action, ActionParameterSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { promoteSubactionsToActions } from "../../../packages/core/src/actions/promote-subactions.js";
 import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool.js";
-import { validateToolArgs } from "../../../packages/core/src/actions/validate-tool-args.js";
+import {
+  validateSchema,
+  validateToolArgs,
+} from "../../../packages/core/src/actions/validate-tool-args.js";
 import { createCalendarActionRunner } from "../../plugin-calendar/src/actions/calendar-handler.js";
 import { __INTERNAL_normalizeNativeToolsForCall as normalizeNativeToolsForCall } from "../../plugin-openai/models/text.js";
 import { calendarAction } from "../src/actions/calendar.js";
@@ -39,15 +42,25 @@ describe.each([
           strict?: boolean;
           inputSchema: { jsonSchema: ActionParameterSchema };
         };
-        expect(tool.strict).toBe(false);
         const details = tool.inputSchema.jsonSchema.properties?.details;
         if (
           action.parameters?.some((parameter) => parameter.name === "details")
         ) {
-          expect(details?.properties?.travelOriginAddress).toMatchObject({
-            type: "string",
-          });
-          expect(details?.required ?? []).toEqual([]);
+          if (!details)
+            throw new Error(
+              "Normalized calendar tool omitted its details schema",
+            );
+          const omittedErrors: string[] = [];
+          validateSchema(details, {}, "details", omittedErrors);
+          expect(omittedErrors).toEqual([]);
+          const invalidErrors: string[] = [];
+          validateSchema(
+            details,
+            { travelOriginAddress: false },
+            "details",
+            invalidErrors,
+          );
+          expect(invalidErrors.length).toBeGreaterThan(0);
         }
       }
     },
