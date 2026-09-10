@@ -476,6 +476,7 @@ async function materializeCopiedCharacter(
   input: Readonly<MaterializeAgentBackupRestoreV3CandidateCharacterInput>,
   component: Readonly<AgentBackupRestoreV3ComponentReceipt>,
   maximumBytes: number,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateCharacterReceipt>> {
   if (
     component.payloadBytes <= 0 ||
@@ -496,10 +497,12 @@ async function materializeCopiedCharacter(
   let result: Readonly<AgentBackupRestoreV3CandidateCharacterReceipt> | null =
     null;
   try {
-    lock = await input.candidateFs.acquireLock(
-      ".restore-v3-materialize-c0.lock",
-      input.control,
-    );
+    lock =
+      heldLock ??
+      (await input.candidateFs.acquireLock(
+        ".restore-v3-materialize-c0.lock",
+        input.control,
+      ));
     await bindAgentBackupRestoreV3CandidateRecordSession({
       candidateFs: input.candidateFs,
       session: input.session,
@@ -654,7 +657,7 @@ async function materializeCopiedCharacter(
     primaryFailure = cause;
   }
   let cleanupFailure: unknown;
-  if (lock) {
+  if (lock && !heldLock) {
     try {
       await lock.release(input.control);
     } catch (cause) {
@@ -683,6 +686,7 @@ async function materializeCopiedCharacter(
 /** Validates and preserves the exact original JSON bytes below the candidate. */
 export function materializeAgentBackupRestoreV3CandidateCharacter(
   input: Readonly<MaterializeAgentBackupRestoreV3CandidateCharacterInput>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateCharacterReceipt>> {
   const exactInput = snapshotPlainDataRecord(
     input,
@@ -722,5 +726,6 @@ export function materializeAgentBackupRestoreV3CandidateCharacter(
     }),
     receipt,
     maximumBytes,
+    heldLock,
   );
 }

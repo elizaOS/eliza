@@ -6,6 +6,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash, Hash } from "node:crypto";
+import { fstatSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -139,6 +140,62 @@ afterEach(async () => {
 });
 
 describe("restore-v3 candidate filesystem", () => {
+  it("retains the inode lock until its inherited-descriptor consumer settles", async () => {
+    const { candidate } = await fixture();
+    const control = operationControl();
+    const lock = await candidate.acquireLock(
+      ".restore-v3-child-test.lock",
+      control,
+    );
+    let enter: () => void = () => {
+      throw new Error("entry promise was not initialized");
+    };
+    let finish: () => void = () => {
+      throw new Error("finish promise was not initialized");
+    };
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const running = candidate.withInheritedLockDescriptor(
+      lock,
+      async (descriptor) => {
+        const root = fstatSync(descriptor, { bigint: true });
+        expect(root.isDirectory()).toBe(true);
+        expect(root.ino.toString()).toBe(candidate.attemptRootIdentity.inode);
+        enter();
+        await finished;
+      },
+      control,
+    );
+    await entered;
+    let released = false;
+    const release = lock.release(control).then(() => {
+      released = true;
+    });
+    await Promise.resolve();
+    expect(released).toBe(false);
+    finish();
+    await running;
+    await release;
+    expect(released).toBe(true);
+    await expect(
+      candidate.withInheritedLockDescriptor(
+        lock,
+        async () => {
+          throw new Error("released descriptor escaped");
+        },
+        control,
+      ),
+    ).rejects.toThrow();
+    const next = await candidate.acquireLock(
+      ".restore-v3-next-child-test.lock",
+      control,
+    );
+    await next.release(control);
+  });
   it("fails closed off Linux unless the explicit test emulation is enabled", async () => {
     if (process.platform === "linux") return;
     const trustedRoot = await privateTemporaryRoot(

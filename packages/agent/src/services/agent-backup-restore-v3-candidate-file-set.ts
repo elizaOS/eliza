@@ -543,6 +543,7 @@ async function validatePersistedFinish(
 async function materializeCopiedFileSet(
   input: MaterializeAgentBackupRestoreV3CandidateFileSetInput,
   component: Readonly<AgentBackupRestoreV3ComponentReceipt>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateFileSetReceipt>> {
   const limits = snapshotLimits(input.limits);
   const policy =
@@ -628,10 +629,12 @@ async function materializeCopiedFileSet(
   };
 
   try {
-    lock = await input.candidateFs.acquireLock(
-      `.restore-v3-materialize-c${component.componentIndex}.lock`,
-      input.control,
-    );
+    lock =
+      heldLock ??
+      (await input.candidateFs.acquireLock(
+        `.restore-v3-materialize-c${component.componentIndex}.lock`,
+        input.control,
+      ));
     const boundSessionSha256 =
       await bindAgentBackupRestoreV3CandidateRecordSession({
         candidateFs: input.candidateFs,
@@ -845,7 +848,7 @@ async function materializeCopiedFileSet(
       cleanupFailures.push(cause);
     }
   }
-  if (lock) {
+  if (lock && !heldLock) {
     try {
       await lock.release(input.control);
     } catch (cause) {
@@ -874,6 +877,7 @@ async function materializeCopiedFileSet(
 /** Snapshots the authenticated receipt synchronously, then replays its inbox. */
 export function materializeAgentBackupRestoreV3CandidateFileSet(
   input: Readonly<MaterializeAgentBackupRestoreV3CandidateFileSetInput>,
+  heldLock?: AgentBackupRestoreV3CandidateFsLock,
 ): Promise<Readonly<AgentBackupRestoreV3CandidateFileSetReceipt>> {
   const exactInput = snapshotPlainDataRecord(
     input,
@@ -914,5 +918,6 @@ export function materializeAgentBackupRestoreV3CandidateFileSet(
       testOnlyLifecycle,
     }),
     receipt,
+    heldLock,
   );
 }

@@ -19,6 +19,36 @@ bun run test
 
 See `package.json` for `build`, `lint`, and other scripts.
 
+## Manifest-v3 quarantine materialization
+
+`createAgentBackupRestoreV3ProcessMaterializer` implements the durable restore
+coordinator's record, component and assembly effects in private one-shot Agent
+processes. It requires an existing isolated `CandidateFs` authority and retains
+the exact root device/inode identities. It does not boot a runtime, register
+plugins, open a listener, authorize a generation commit, or publish routes.
+
+The worker receives bounded metadata and raw record bytes in one length-delimited
+frame on stdin (private transport version 2). Stdin must stay open after that
+frame: EOF or additional bytes cancel the operation. No inherited fd 3 is needed.
+Only the digest of the completed canonical receipt is returned. Cancellation
+closes stdin and waits for worker settlement, including nested database
+validation, before the adapter returns.
+Credentials and process preload options are not inherited. This is a trusted
+local-process transport, not an authenticated remote Docker endpoint; its
+caller must exclusively own both the transport and the quarantined roots.
+Production filesystem authority requires Linux. Non-Linux pathname emulation
+is explicitly test-only and makes no cross-process kernel-lock claim.
+
+The opt-in `agent-backup-restore-v3-materializer-docker.test.ts` suite exercises
+the built worker through real `docker exec -i` in a networkless Linux container,
+including database-validator cancellation and exact retry. Build this package
+first and preload `node:24.15.0-alpine`, then run the suite with
+`AGENT_RESTORE_V3_DOCKER_TESTS=1`. When using a named Docker context, explicitly
+set `DOCKER_CONFIG` to its configuration directory: Vitest isolates the home
+directory. The harness creates only test-owned containers and tmpfs data and
+removes them after each test; it never pulls an image implicitly. Its idle
+container is a test fixture, not the production quarantine bootstrap.
+
 ## Research tasks
 
 `ResearchTaskExecutor` requires a provider registered for
