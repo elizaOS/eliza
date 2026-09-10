@@ -18,7 +18,7 @@ const badgeVariants = cva(
           "border-transparent bg-primary text-primary-fg hover:bg-primary/80",
         secondary: "border-transparent bg-bg-accent text-txt hover:bg-bg-hover",
         destructive:
-          "border-transparent bg-destructive text-destructive-fg hover:bg-destructive/80",
+          "border-transparent bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover",
         outline: "text-txt border-border",
         ownerOverlay:
           "absolute -right-0.5 -top-0.5 border-0 bg-bg/90 p-0.5 text-accent shadow",

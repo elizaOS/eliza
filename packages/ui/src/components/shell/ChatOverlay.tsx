@@ -45,7 +45,7 @@ type ChatSheetMotionStyle = MotionStyle & {
   "--chat-composer-border"?: string | MotionValue<string>;
   "--chat-composer-shadow"?: string | MotionValue<string>;
   "--chat-sheet-background"?: string | MotionValue<string>;
-  "--chat-sheet-backdrop-filter"?: string;
+  "--chat-sheet-backdrop-filter"?: string | MotionValue<string>;
   "--chat-sheet-image"?: string;
   "--chat-sheet-radius"?: string | MotionValue<string>;
   "--chat-sheet-shadow"?: string | MotionValue<string>;
@@ -3428,6 +3428,11 @@ export function ChatOverlay({
     const percent = (clamp01(t) * 100).toFixed(3);
     return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
   });
+  // Opaque sheets do not need to filter the hidden backdrop.
+  const surfaceBackdropFilter = useTransform(
+    surfaceBlackout,
+    (t: number): string => (t >= 1 ? "none" : GLASS_SHEET_BACKDROP_FILTER),
+  );
   // Keep transformed transcript children one physical border-width inside the
   // inset glass. The rim is translucent, so clipping at its outer edge lets
   // compositor-promoted text show through the antialiased top curve even when
@@ -5771,12 +5776,6 @@ export function ChatOverlay({
     tintColor: NATIVE_GLASS_DARK_TINT,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
-  // Keep the CSS material identity stable through fullscreen and its restore.
-  // Toggling backdrop-filter on at the first downward frame forces a new
-  // compositor surface exactly when the finger needs the frame budget. The
-  // fullscreen fill is opaque, so the already-present filter is visually inert
-  // there; retaining it makes restore the same warm compositor path as maximize.
-  const cssSheetBackdropActive = !nativeInsetSheet;
   // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
   // half of the tier system's J4 degrades, rendered into the AX probe below.
   const nativeGlassDiag = useNativeGlassDiag();
@@ -6054,12 +6053,11 @@ export function ChatOverlay({
                       firstRunOpen || nativeInsetSheet
                         ? "var(--bg)"
                         : surfaceBackgroundColor,
-                    "--chat-sheet-backdrop-filter": cssSheetBackdropActive
-                      ? GLASS_SHEET_BACKDROP_FILTER
-                      : undefined,
-                    // The strong perimeter and drag handle own the sheet edge. A
-                    // directional bevel, specular wash, or outer shadow stacks into
-                    // a distracting white arc above the conversation.
+                    "--chat-sheet-backdrop-filter":
+                      firstRunOpen || nativeInsetSheet
+                        ? "none"
+                        : surfaceBackdropFilter,
+                    // The strong perimeter and drag handle own the sheet edge.
                     "--chat-sheet-shadow": "none",
                     "--chat-sheet-image": "none",
                   } satisfies ChatSheetMotionStyle),

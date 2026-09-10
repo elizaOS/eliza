@@ -9,7 +9,7 @@ name: PR Static Smoke
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, staging, main]
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]

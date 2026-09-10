@@ -369,9 +369,7 @@ export function ChatVoiceStatusBar({
       >
         {formatLatency(primaryLatency)}
         {cached ? (
-          <span className="text-3xs uppercase tracking-wider opacity-70">
-            cached
-          </span>
+          <span className="text-3xs uppercase tracking-wider">cached</span>
         ) : null}
       </Badge>
 

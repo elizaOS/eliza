@@ -89,10 +89,10 @@ function validateTarget(
       ...process.env,
       DESIRED_ENABLED: "true",
       EDGE_SECRET_NAME: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED",
-      EXPECTED_BRANCH: "develop",
+      EXPECTED_BRANCH: "staging",
       EXPECTED_SOURCE_SHA: "a".repeat(40),
       GATEWAY_URL: "https://gateway-webhook-stg-staging.up.railway.app",
-      GITHUB_REF: "refs/heads/develop",
+      GITHUB_REF: "refs/heads/staging",
       GITHUB_REPOSITORY: "elizaOS/eliza",
       HEALTH_URL: "https://api-staging.eliza.app/api/health",
       PRODUCTION_APPROVAL_COMMENT_URL: "",
@@ -255,7 +255,7 @@ esac
       {
         env: {
           ...process.env,
-          EXPECTED_BRANCH: "develop",
+          EXPECTED_BRANCH: "staging",
           EXPECTED_GATEWAY_SERVICE_NAME: "gateway-webhook-stg",
           EXPECTED_SOURCE_SHA: sourceSha,
           GATEWAY_URL: "https://gateway.example",
@@ -419,7 +419,7 @@ describe("Personal Shared Telegram edge deploy", () => {
       "${{ inputs.environment == 'production' && 'production' || 'staging' }}",
     );
     expect(job?.env?.EXPECTED_BRANCH).toBe(
-      "${{ inputs.environment == 'production' && 'main' || 'develop' }}",
+      "${{ inputs.environment == 'production' && 'main' || 'staging' }}",
     );
     expect(job?.env?.EDGE_SECRET_NAME).toBe(
       "${{ inputs.environment == 'production' && 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED' || 'PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED' }}",

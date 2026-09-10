@@ -19,6 +19,12 @@ bun run test
 
 See `package.json` for `build`, `lint`, and other scripts.
 
+The default test command runs isolated Vitest batches. The repository runner
+requests `--reporter=default --reporter=junit --outputFile.junit=<path>` and the
+batch runner validates every report before writing one combined JUnit artifact.
+Missing, malformed or failed batch evidence rejects the run; entirely skipped
+suites do not satisfy the repository's required-work gate.
+
 ## Research tasks
 
 `ResearchTaskExecutor` requires a provider registered for

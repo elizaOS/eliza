@@ -298,7 +298,8 @@ export function WorkflowTriggerPanel({
                 onChange={(event) =>
                   setEventMode(event.target.value as EventMode)
                 }
-                className="h-8 min-w-28 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
+                presentation="compact"
+                className="min-w-28"
               >
                 {EVENT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -311,7 +312,8 @@ export function WorkflowTriggerPanel({
                   aria-label="Source workflow"
                   value={sourceWorkflowId}
                   onChange={(event) => setSourceWorkflowId(event.target.value)}
-                  className="h-8 min-w-32 flex-1 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
+                  presentation="compact"
+                  className="min-w-32 flex-1"
                 >
                   {sources.length === 0 ? (
                     <option value="">No source</option>
@@ -328,7 +330,8 @@ export function WorkflowTriggerPanel({
                   aria-label="Source step"
                   value={sourceStepId}
                   onChange={(event) => setSourceStepId(event.target.value)}
-                  className="h-8 min-w-28 flex-1 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
+                  presentation="compact"
+                  className="min-w-28 flex-1"
                 >
                   {(sourceWorkflow?.steps ?? []).length === 0 ? (
                     <option value="">No steps</option>
