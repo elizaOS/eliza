@@ -158,10 +158,11 @@ async function readRoute(pathname: string): Promise<{
       state.body = payload ? JSON.parse(payload) : undefined;
     },
   } as unknown as ServerResponse;
+  const url = new URL(`http://localhost${pathname}`);
   const handled = await tryHandleTrajectoryReadRoutes({
-    pathname,
+    pathname: url.pathname,
     method: "GET",
-    url: new URL(`http://localhost${pathname}`),
+    url,
     runtime,
     res: response,
   });
@@ -2025,7 +2026,7 @@ describe("trajectory capture -> DB -> viewer", () => {
     },
   );
 
-  it("retains required provider fields after bounded SQL persistence", async () => {
+  it("retains complete provider context through SQL, viewer reads and native export", async () => {
     const logger = runtime.getService(
       "trajectories",
     ) as unknown as TrajLogger | null;
@@ -2047,7 +2048,16 @@ describe("trajectory capture -> DB -> viewer", () => {
       stepId,
       providerName: "KNOWLEDGE",
       purpose: "Provider KNOWLEDGE accessed for context",
+      query: { message: "Find my workout correction" },
+      startedAt: 1000,
+      endedAt: 1004,
+      durationMs: 4,
       data,
+    });
+    logger.logLlmCall({
+      ...llmCall(stepId, "test", "provider-roundtrip", "Complete answer"),
+      messages: [{ role: "user", content: "  Full model input\n" }],
+      tools: [{ name: "REPLY", description: "Complete tool definition" }],
     });
     await flushTrajectoryWrites(runtime);
     await logger.flushWriteQueue?.(trajectoryId);
@@ -2082,6 +2092,48 @@ describe("trajectory capture -> DB -> viewer", () => {
     expect(readback?.providerId).toBeTypeOf("string");
     expect(readback?.timestamp).toBeTypeOf("number");
     expect(readback?.data).toBeTypeOf("object");
+
+    const route = await readRoute(`/api/trajectories/${trajectoryId}`);
+    expect(route.status).toBe(200);
+    const accesses = asRecord(route.body)?.providerAccesses;
+    expect(accesses).toEqual([
+      expect.objectContaining({
+        ...readback,
+        stepId,
+        trajectoryId,
+        query: { message: "Find my workout correction" },
+        startedAt: 1000,
+        endedAt: 1004,
+        durationMs: 4,
+        data,
+      }),
+    ]);
+    const summary = await readRoute(
+      `/api/trajectories/${trajectoryId}?includePayloads=0`,
+    );
+    const summaryAccesses = asRecord(summary.body)?.providerAccesses;
+    expect(summaryAccesses).toEqual([
+      expect.objectContaining({ stepId, trajectoryId, durationMs: 4 }),
+    ]);
+    expect(JSON.stringify(summaryAccesses)).not.toContain("chunk-0");
+    expect(JSON.stringify(summaryAccesses)).not.toContain(
+      "Find my workout correction",
+    );
+    const exported = await logger.exportTrajectories({
+      format: "jsonl",
+      trajectoryIds: [trajectoryId],
+    });
+    const native = JSON.parse(exported.data.trim());
+    expect(native.request.system).toBe("You are a test agent.");
+    expect(native.request.messages).toEqual([
+      { role: "user", content: "  Full model input\n" },
+    ]);
+    expect(asRecord(route.body)?.llmCalls).toEqual([
+      expect.objectContaining({
+        messages: [{ role: "user", content: "  Full model input\n" }],
+        tools: [{ name: "REPLY", description: "Complete tool definition" }],
+      }),
+    ]);
 
     await logger.endTrajectory(trajectoryId, "completed");
     await flushTrajectoryWrites(runtime);
