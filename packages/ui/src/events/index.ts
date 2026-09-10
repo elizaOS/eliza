@@ -283,13 +283,11 @@ export type ConnectRequestResult =
   | { status: "superseded" }
   | { status: "failed"; message: string };
 
-type ConnectRequestListener = (
-  detail: ConnectRequestDetail,
-) =>
+type ConnectRequestListener = (detail: ConnectRequestDetail) =>
   | ConnectRequestResult
   | void
-  | Promise<ConnectRequestResult | undefined>
-  | Promise<void>;
+  // biome-ignore lint/suspicious/noConfusingVoidType: legacy async owners return void; absent completion is an explicit failed result.
+  | Promise<ConnectRequestResult | void>;
 
 type ConnectRequestState = {
   claimed: boolean;
