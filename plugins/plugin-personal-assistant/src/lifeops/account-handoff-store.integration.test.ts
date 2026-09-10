@@ -48,6 +48,7 @@ const review: AccountHandoffReview = {
       recipientId: "owner@example.test",
     },
   ],
+  calendarLinks: [],
   importedData: "retain",
   retireApprovalIds: ["old-draft"],
 };
@@ -456,9 +457,121 @@ describe("account handoff persistence", () => {
     );
   });
 
+  it("checkpoints each reviewed mapping without advancing the phase or overwriting recovery history", async () => {
+    const store = new AccountHandoffStore(
+      result.runtime,
+      "mapping-checkpoints",
+    );
+    const links = ["first-link", "second-link"].map((linkId) => ({
+      linkId,
+      expectedUpdatedAt: "2026-09-10T12:00:00Z",
+      expectedLocalRevision: 1,
+      disposition: "copy_to_replacement" as const,
+    }));
+    let record = await store.review("mapping-checkpoints", {
+      ...review,
+      calendarLinks: links,
+    });
+    for (const phase of [
+      "pausing",
+      "draining",
+      "retiring_approvals",
+      "applying_mappings",
+    ] as const)
+      record = await store.advance({
+        operationId: record.operationId,
+        expectedRevision: record.revision,
+        expectedPhase: record.phase,
+        phase,
+        receipt: {},
+      });
+    const checkpoint = {
+      operationId: record.operationId,
+      expectedRevision: record.revision,
+      receipt: {
+        linkId: "first-link",
+        disposition: "copy_to_replacement" as const,
+        operationKey: "first-mapping",
+        controlRevision: 8,
+      },
+    };
+    const raced = await Promise.allSettled([
+      store.checkpointMapping(checkpoint),
+      store.checkpointMapping(checkpoint),
+    ]);
+    expect(
+      raced.filter((outcome) => outcome.status === "fulfilled"),
+    ).toHaveLength(1);
+    const reopened = new AccountHandoffStore(
+      result.runtime,
+      "mapping-checkpoints",
+    );
+    const first = await reopened.read(record.operationId);
+    if (!first) throw new Error("Expected mapping checkpoint");
+    expect(first.phase).toBe("applying_mappings");
+    expect(first.receipt["mapping:first-link"]).toEqual(checkpoint.receipt);
+    await expect(
+      reopened.advance({
+        operationId: first.operationId,
+        expectedRevision: first.revision,
+        expectedPhase: first.phase,
+        phase: "verifying_replacement",
+        receipt: {},
+      }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_MAPPINGS_INCOMPLETE" });
+    await expect(
+      reopened.checkpointMapping({
+        ...checkpoint,
+        expectedRevision: first.revision,
+        receipt: { ...checkpoint.receipt, controlRevision: 99 },
+      }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_CONFLICT" });
+    await expect(
+      reopened.checkpointMapping({
+        ...checkpoint,
+        expectedRevision: first.revision,
+        receipt: { ...checkpoint.receipt, linkId: "unreviewed-link" },
+      }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_MAPPING_NOT_REVIEWED" });
+    const second = await reopened.checkpointMapping({
+      ...checkpoint,
+      expectedRevision: first.revision,
+      receipt: {
+        ...checkpoint.receipt,
+        linkId: "second-link",
+        operationKey: "second-mapping",
+        controlRevision: 9,
+      },
+    });
+    const ready = await reopened.advance({
+      operationId: second.operationId,
+      expectedRevision: second.revision,
+      expectedPhase: second.phase,
+      phase: "verifying_replacement",
+      receipt: {},
+    });
+    expect(ready.receipt["mapping:first-link"]).toEqual(checkpoint.receipt);
+    expect(ready.review.calendarLinks).toEqual(links);
+  });
+
   it("rejects mismatched calendar ownership and duplicate accounts before persisting a review", async () => {
     const store = new AccountHandoffStore(result.runtime, "invalid-owner");
     await expect(store.review(" padded-operation ", review)).rejects.toThrow();
+    await expect(
+      store.review("copy-without-destination", {
+        ...review,
+        writeCalendar: null,
+        calendarLinks: [
+          {
+            linkId: "copy-link",
+            expectedUpdatedAt: "2026-09-10T12:00:00Z",
+            expectedLocalRevision: 1,
+            disposition: "copy_to_replacement",
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+
     await expect(
       store.review("bad-calendar", {
         ...review,

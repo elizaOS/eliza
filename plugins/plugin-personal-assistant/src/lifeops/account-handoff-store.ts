@@ -39,6 +39,22 @@ export const accountHandoffReviewSchema = z
     replacement: googleAccount,
     readCalendars: z.array(calendar),
     writeCalendar: calendar.nullable(),
+    calendarLinks: z
+      .array(
+        z
+          .object({
+            linkId: identity,
+            expectedUpdatedAt: z.iso.datetime({ offset: true }),
+            expectedLocalRevision: z.number().int().nonnegative(),
+            disposition: z.enum(["retain_local", "copy_to_replacement"]),
+          })
+          .strict(),
+      )
+      .refine(
+        (links) =>
+          new Set(links.map((link) => link.linkId)).size === links.length,
+        "Review each calendar link only once",
+      ),
     messageDestinations: z.array(
       z
         .object({
@@ -53,6 +69,19 @@ export const accountHandoffReviewSchema = z
   })
   .strict()
   .superRefine((review, ctx) => {
+    if (
+      !review.writeCalendar &&
+      review.calendarLinks.some(
+        (link) => link.disposition === "copy_to_replacement",
+      )
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Select a writable replacement calendar before copying linked events",
+      });
+    }
+
     if (
       review.previous.grantId === review.replacement.grantId ||
       review.previous.connectorAccountId ===
@@ -132,6 +161,22 @@ function decode(row: Record<string, unknown>): AccountHandoffRecord {
   };
 }
 
+const mappingReceiptSchema = z
+  .object({
+    linkId: identity,
+    disposition: z.enum(["retain_local", "copy_to_replacement"]),
+    operationKey: identity,
+    controlRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+type HandoffCheckpointMutation = {
+  operationId: string;
+  expectedRevision: number;
+  expectedPhase: AccountHandoffPhase;
+  phase: AccountHandoffPhase;
+  receipt: AccountHandoffReceipt;
+};
+
 export class AccountHandoffStore {
   constructor(
     private readonly db: LifeOpsDatabaseContext,
@@ -182,13 +227,9 @@ export class AccountHandoffStore {
     throw this.conflict();
   }
 
-  async advance(input: {
-    operationId: string;
-    expectedRevision: number;
-    expectedPhase: AccountHandoffPhase;
-    phase: AccountHandoffPhase;
-    receipt: AccountHandoffReceipt;
-  }): Promise<AccountHandoffRecord> {
+  async advance(
+    input: HandoffCheckpointMutation,
+  ): Promise<AccountHandoffRecord> {
     identity.parse(input.operationId);
     z.number().int().min(0).max(2_147_483_646).parse(input.expectedRevision);
     if (
@@ -199,6 +240,70 @@ export class AccountHandoffStore {
         code: "ACCOUNT_HANDOFF_STEP_INVALID",
       });
     }
+    if (
+      input.expectedPhase === "applying_mappings" &&
+      input.phase === "verifying_replacement"
+    ) {
+      const record = await this.read(input.operationId);
+      if (
+        !record ||
+        record.revision !== input.expectedRevision ||
+        record.phase !== input.expectedPhase
+      )
+        throw this.conflict();
+      for (const link of record.review.calendarLinks) {
+        const parsed = mappingReceiptSchema.safeParse(
+          record.receipt[`mapping:${link.linkId}`],
+        );
+        if (
+          !parsed.success ||
+          parsed.data.linkId !== link.linkId ||
+          parsed.data.disposition !== link.disposition
+        )
+          throw new ElizaError(
+            "Finish every reviewed calendar mapping before verifying the replacement",
+            { code: "ACCOUNT_HANDOFF_MAPPINGS_INCOMPLETE" },
+          );
+      }
+    }
+    return this.writeCheckpoint(input);
+  }
+
+  async checkpointMapping(input: {
+    operationId: string;
+    expectedRevision: number;
+    receipt: z.infer<typeof mappingReceiptSchema>;
+  }): Promise<AccountHandoffRecord> {
+    const receipt = mappingReceiptSchema.parse(input.receipt);
+    const record = await this.read(input.operationId);
+    if (
+      !record ||
+      record.revision !== input.expectedRevision ||
+      record.phase !== "applying_mappings"
+    )
+      throw this.conflict();
+    const reviewed = record.review.calendarLinks.find(
+      (link) => link.linkId === receipt.linkId,
+    );
+    if (!reviewed || reviewed.disposition !== receipt.disposition)
+      throw new ElizaError(
+        "This calendar mapping was not part of the saved review",
+        { code: "ACCOUNT_HANDOFF_MAPPING_NOT_REVIEWED" },
+      );
+    return this.writeCheckpoint({
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      expectedPhase: "applying_mappings",
+      phase: "applying_mappings",
+      receipt: { [`mapping:${receipt.linkId}`]: receipt },
+    });
+  }
+
+  private async writeCheckpoint(
+    input: HandoffCheckpointMutation,
+  ): Promise<AccountHandoffRecord> {
+    identity.parse(input.operationId);
+    z.number().int().min(0).max(2_147_483_646).parse(input.expectedRevision);
     const rows = await executeRawSql(
       this.db,
       `UPDATE app_lifeops.life_account_handoffs
