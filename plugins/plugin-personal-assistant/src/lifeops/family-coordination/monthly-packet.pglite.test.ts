@@ -96,9 +96,11 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
   let db: PGlite;
   let runtime: IAgentRuntime;
   let service: MonthlyFamilyPacketService;
+  let beforeNextTransaction: (() => Promise<void>) | null;
 
   beforeEach(async () => {
     db = await PGlite.create();
+    beforeNextTransaction = null;
     runtime = {
       agentId: "agent-a",
       getService: () => null,
@@ -112,8 +114,11 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
             fn: (tx: {
               execute: (query: RawSqlQuery) => Promise<unknown>;
             }) => Promise<T> | T,
-          ) =>
-            db.transaction(async (transaction) =>
+          ) => {
+            const barrier = beforeNextTransaction;
+            beforeNextTransaction = null;
+            if (barrier) await barrier();
+            return db.transaction(async (transaction) =>
               fn({
                 execute: async (query) =>
                   transaction.query(
@@ -122,7 +127,8 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
                       .join(""),
                   ),
               }),
-            ),
+            );
+          },
         },
       },
     } as unknown as IAgentRuntime;
@@ -133,6 +139,79 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
   });
 
   afterEach(async () => db.close());
+
+  it("deduplicates simultaneous packet generation and retains both concurrent draft requests", async () => {
+    const peer = new MonthlyFamilyPacketService(runtime);
+    await service.list();
+    await peer.list();
+    const [first, duplicate] = await Promise.all([
+      service.buildInternal(period("2026-09"), [claim("same")]),
+      peer.buildInternal(period("2026-09"), [claim("same")]),
+    ]);
+    expect(duplicate).toEqual(first);
+    const [left, right] = await Promise.all([
+      service.createExternalDraft(first, guestDraft),
+      peer.createExternalDraft(first, guestDraft),
+    ]);
+    expect(left.draftVersion).not.toBe(right.draftVersion);
+    expect(await service.readDraft(left.packetId, left.draftVersion)).toEqual(
+      left,
+    );
+    expect(await service.readDraft(right.packetId, right.draftVersion)).toEqual(
+      right,
+    );
+    const changed = await Promise.all([
+      service.buildInternal(period("2026-09"), [claim("changed-a")]),
+      peer.buildInternal(period("2026-09"), [claim("changed-b")]),
+    ]);
+    expect(changed[0].version).not.toBe(changed[1].version);
+    for (const packet of changed)
+      expect(await service.read(packet.packetId, packet.version)).toEqual(
+        packet,
+      );
+  });
+
+  it("rejects an approval if regeneration commits while approval publication waits", async () => {
+    const packet = await service.buildInternal(period("2026-09"), [
+      claim("initial"),
+    ]);
+    const draft = await service.createExternalDraft(packet, guestDraft);
+    const reached = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    beforeNextTransaction = async () => {
+      reached.resolve();
+      await resume.promise;
+    };
+    const queue = {
+      enqueueTransactional: vi.fn(async (input: ApprovalEnqueueInput) => ({
+        request: approval(input),
+        created: true,
+      })),
+      surfaceEnqueuedApproval: vi.fn(async () => undefined),
+    };
+    const pending = service.enqueueDraftApproval({
+      draft,
+      queue,
+      requestedBy: "owner",
+      subjectUserId: "owner",
+      expiresAt: new Date("2026-09-30T12:00:00.000Z"),
+    });
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: "FAMILY_PACKET_INTERNAL_STALE",
+    });
+    await reached.promise;
+    try {
+      await service.buildInternal(period("2026-09"), [claim("replacement")]);
+    } finally {
+      resume.resolve();
+    }
+    await rejected;
+    expect(queue.enqueueTransactional).not.toHaveBeenCalled();
+    expect(queue.surfaceEnqueuedApproval).not.toHaveBeenCalled();
+    expect(
+      await service.readDraftApprovalId(draft.packetId, draft.draftVersion),
+    ).toBeNull();
+  });
 
   it("survives restart, preserves provenance, deduplicates content, and versions changed internal packets", async () => {
     const first = await service.buildInternal(period("2026-09"), [claim("a")]);
