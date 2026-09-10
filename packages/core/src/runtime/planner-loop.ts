@@ -939,7 +939,15 @@ async function runPlannerLoopIterations(
 							instruction:
 								"Planning stopped with PLANNER_SCOPE_DECLARATION_REQUIRED after repeated invalid turn-scope declarations. Do not call any tool or claim the whole request completed. Explain which earlier operations are confirmed by the complete recorded results and which requested work remains unfinished. Every call in the rejected batches did not run. Preserve exact returned identifiers and do not ask the user to repeat already settled mutations.",
 						});
-						return { ...summary, terminalFailure };
+						return {
+							...summary,
+							terminalFailure: {
+								...terminalFailure,
+								message: summary.finalMessage?.trim()
+									? summary.finalMessage
+									: terminalFailure.message,
+							},
+						};
 					} catch (error) {
 						// error-policy:J1 Presentation failure preserves settled action evidence at the planner boundary.
 						params.runtime.logger?.warn?.(

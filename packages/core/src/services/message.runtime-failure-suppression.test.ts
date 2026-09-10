@@ -1015,11 +1015,15 @@ it.each([
 				name,
 			);
 		if (presentation === "available") {
+			expect(result.terminalFailure?.message).toBe(partial);
 			expect(delivered.map((content) => content.text)).toContain(partial);
 			expect(
 				delivered.find((content) => content.text === partial)?.effectReceiptIds,
 			).toEqual(receipts.map((receipt) => receipt.receiptId));
 		} else {
+			expect(result.terminalFailure?.message).toContain(
+				"Earlier action outcomes are preserved; the rejected batch did not run.",
+			);
 			expect(delivered).toEqual([]);
 			expect(result.responseContent).toBeNull();
 		}
