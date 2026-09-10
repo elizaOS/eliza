@@ -217,11 +217,16 @@ export function CalendarSyncPanel({
           </Select>
           <div className="flex flex-wrap gap-2 pt-3">
             {control.paused && control.pendingDispatch ? (
-              <Button disabled={busy} onClick={() => void run("recover")}>
+              <Button
+                variant="accentDarkHover"
+                disabled={busy}
+                onClick={() => void run("recover")}
+              >
                 Check pending operation
               </Button>
             ) : null}
             <Button
+              variant="accentDarkHover"
               disabled={
                 busy ||
                 !control.paused ||
@@ -235,6 +240,7 @@ export function CalendarSyncPanel({
             {control.paused ? (
               control.destination ? (
                 <Button
+                  variant="accentDarkHover"
                   disabled={
                     busy ||
                     !control.destination ||
@@ -247,7 +253,11 @@ export function CalendarSyncPanel({
                 </Button>
               ) : null
             ) : (
-              <Button disabled={busy} onClick={() => void run("pause")}>
+              <Button
+                variant="accentDarkHover"
+                disabled={busy}
+                onClick={() => void run("pause")}
+              >
                 Pause sync
               </Button>
             )}
