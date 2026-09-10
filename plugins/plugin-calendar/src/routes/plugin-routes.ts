@@ -326,6 +326,8 @@ function isCalendarOwnerMutationGateway(
   return (
     typeof value === "object" &&
     value !== null &&
+    typeof (value as CalendarOwnerMutationGateway)
+      .updateLinkedCalendarControl === "function" &&
     typeof (value as CalendarOwnerMutationGateway).create === "function" &&
     typeof (value as CalendarOwnerMutationGateway).update === "function" &&
     typeof (value as CalendarOwnerMutationGateway).cancel === "function" &&
@@ -617,6 +619,11 @@ export function calendarRouteHandler(): LegacyRouteHandler {
       serviceError: (status, message) =>
         new CalendarServiceError(status, message),
       mutationGateway: {
+        async updateLinkedCalendarControl(requestUrl, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.updateLinkedCalendarControl(requestUrl, request);
+        },
         async create(requestUrl, request) {
           const gateway =
             await requireCalendarOwnerMutationGateway(agentRuntime);

@@ -17,15 +17,21 @@ import type {
   LifeOpsCalendarRecurrenceScope,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsLinkedCalendarControl,
   LifeOpsLinkedCalendarMutationResponse,
   ResolveLifeOpsLinkedCalendarConflictRequest,
   RunLifeOpsLinkedCalendarReconciliationRequest,
+  UpdateLifeOpsLinkedCalendarControlRequest,
 } from "@elizaos/shared";
 
 export const CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE =
   "calendar_owner_mutation_gateway";
 
 export interface CalendarOwnerMutationGateway {
+  updateLinkedCalendarControl(
+    requestUrl: URL,
+    request: UpdateLifeOpsLinkedCalendarControlRequest,
+  ): Promise<LifeOpsLinkedCalendarControl>;
   create(
     requestUrl: URL,
     request: CreateLifeOpsCalendarEventRequest,

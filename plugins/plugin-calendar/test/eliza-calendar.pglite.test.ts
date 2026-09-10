@@ -30,6 +30,7 @@ import {
   CalendarService,
   calendarSchema,
 } from "../src/service/index.js";
+import { LinkedCalendarControlRepository } from "../src/service/linked-calendar-control.js";
 
 const AGENT_ID = "eliza-calendar-pglite-agent";
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
@@ -139,6 +140,7 @@ beforeAll(async () => {
 }, 30_000);
 
 beforeEach(async () => {
+  await pg.query("DELETE FROM app_calendar.linked_calendar_control");
   await pg.query("DELETE FROM app_calendar.linked_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
@@ -462,7 +464,14 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(await service.getCalendarEventById(event.id)).toBeNull();
   });
 
-  it("durably queues built-in create, update, and delete for the preferred Google primary calendar", async () => {
+  it("durably queues built-in create, update, and delete for the explicitly selected Google calendar", async () => {
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const initial = await controls.read();
+    const selected = await controls.selectDestination(initial.revision, {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    });
+    await controls.resume(selected.revision);
     service.setGate(connectedGoogleGate());
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "School pickup",
@@ -486,7 +495,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       })
       .toMatchObject({
         connector_account_id: "shawgotbags",
-        provider_calendar_id: "primary",
+        provider_calendar_id: "reviewed-calendar",
         pending_operation: "create",
       });
 
@@ -522,7 +531,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       .toBe("delete");
   });
 
-  it("bootstraps existing local events as soon as a writable Google gate connects", async () => {
+  it("keeps existing local events unlinked until a destination is selected and activated", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Created before Google",
       startAt: "2026-08-14T19:00:00.000Z",
@@ -537,6 +546,20 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         .rows,
     ).toHaveLength(0);
 
+    service.setGate(connectedGoogleGate());
+
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const initial = await controls.read();
+    expect(initial.paused).toBe(true);
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.linked_calendar_events"))
+        .rows,
+    ).toHaveLength(0);
+    const selected = await controls.selectDestination(initial.revision, {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    });
+    await controls.resume(selected.revision);
     service.setGate(connectedGoogleGate());
 
     await expect
@@ -554,7 +577,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       .toMatchObject({
         local_event_id: event.id,
         connector_account_id: "shawgotbags",
-        provider_calendar_id: "primary",
+        provider_calendar_id: "reviewed-calendar",
         pending_operation: "create",
       });
   });

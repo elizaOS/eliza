@@ -21,6 +21,12 @@ function route(
     getLinkedCalendarEvent: vi.fn(async () => ({ id: "link-1" })),
   };
   const mutationGateway = {
+    updateLinkedCalendarControl: vi.fn(async () => ({
+      revision: 4,
+      paused: true,
+      destination: null,
+      pendingDispatch: null,
+    })),
     create: vi.fn(),
     update: vi.fn(),
     cancel: vi.fn(),
@@ -85,5 +91,24 @@ describe("linked calendar owner routes", () => {
       request,
     );
     expect(test.json).toHaveBeenCalledWith({ outcome: "paused" });
+  });
+
+  it("routes a revision-bound pause through the owner mutation gateway", async () => {
+    const request = {
+      operation: "pause",
+      expectedRevision: 3,
+      idempotencyKey: "pause-review",
+    };
+    const test = route("POST", "/api/lifeops/calendar/sync-control", request);
+    await expect(handleCalendarRoutes(test.deps)).resolves.toBe(true);
+    expect(
+      test.mutationGateway.updateLinkedCalendarControl,
+    ).toHaveBeenCalledWith(test.deps.url, request);
+    expect(test.json).toHaveBeenCalledWith({
+      revision: 4,
+      paused: true,
+      destination: null,
+      pendingDispatch: null,
+    });
   });
 });

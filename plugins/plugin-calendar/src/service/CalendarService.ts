@@ -63,6 +63,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsIcsCalendarSource,
   LifeOpsIcsCalendarSyncResponse,
+  LifeOpsLinkedCalendarControl,
   LifeOpsLinkedCalendarLink,
   LifeOpsLinkedCalendarMutationResponse,
   LifeOpsNextCalendarEventContext,
@@ -74,6 +75,7 @@ import type {
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
+  UpdateLifeOpsLinkedCalendarControlRequest,
 } from "@elizaos/shared";
 import {
   APPLE_CALENDAR_ACCOUNT_LABEL,
@@ -1539,6 +1541,165 @@ export class CalendarService extends Service {
     return (await this.linkedRepo.listForAgent(this.agentId())).map((record) =>
       this.publicLinkedCalendar(record),
     );
+  }
+
+  async getLinkedCalendarControl(): Promise<LifeOpsLinkedCalendarControl> {
+    const control = await this.linkedControl.read();
+    return {
+      revision: control.revision,
+      paused: control.paused,
+      destination: control.destination,
+      pendingDispatch: control.dispatch
+        ? { linkId: control.dispatch.linkId }
+        : null,
+    };
+  }
+
+  private async verifyLinkedDestination(
+    requestUrl: URL,
+    destination: NonNullable<LifeOpsLinkedCalendarControl["destination"]>,
+  ): Promise<void> {
+    const accounts = await this.gate.getGoogleConnectorAccounts(
+      requestUrl,
+      "owner",
+    );
+    if (
+      !accounts.some(
+        (account) =>
+          account.connected &&
+          account.grant &&
+          accountIdForGrant(account.grant) === destination.connectorAccountId &&
+          account.grant.capabilities.includes("google.calendar.read") &&
+          account.grant.capabilities.includes("google.calendar.write"),
+      )
+    ) {
+      throw new CalendarServiceError(
+        409,
+        "The selected account needs both calendar read and write permissions.",
+        "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+      );
+    }
+    const calendars = await this.listCalendars(requestUrl, { side: "owner" });
+    if (
+      !calendars.some(
+        (calendar) =>
+          calendar.provider === "google" &&
+          calendar.side === "owner" &&
+          calendar.connectorAccountId === destination.connectorAccountId &&
+          calendar.calendarId === destination.providerCalendarId &&
+          (calendar.accessRole === "owner" || calendar.accessRole === "writer"),
+      )
+    ) {
+      throw new CalendarServiceError(
+        409,
+        "The selected calendar is unavailable or is not writable. Refresh the connected calendars and select a writable destination.",
+        "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+      );
+    }
+  }
+
+  async executeLinkedCalendarControl(
+    requestUrl: URL,
+    request: UpdateLifeOpsLinkedCalendarControlRequest,
+  ): Promise<LifeOpsLinkedCalendarControl> {
+    if (
+      !Number.isSafeInteger(request.expectedRevision) ||
+      request.expectedRevision < 0
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "expectedRevision must be a nonnegative integer.",
+      );
+    }
+    const current = await this.linkedControl.read();
+    if (current.revision !== request.expectedRevision) {
+      throw new CalendarServiceError(
+        409,
+        "Calendar sync changed; refresh its review.",
+        "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED",
+      );
+    }
+    try {
+      switch (request.operation) {
+        case "pause":
+          await this.linkedControl.pause(request.expectedRevision);
+          break;
+        case "select": {
+          if (request.destination === undefined) {
+            throw new CalendarServiceError(
+              400,
+              "A destination or explicit null is required.",
+            );
+          }
+          const destination =
+            request.destination === null
+              ? null
+              : {
+                  connectorAccountId: requireNonEmptyString(
+                    request.destination.connectorAccountId,
+                    "connectorAccountId",
+                  ),
+                  providerCalendarId: requireNonEmptyString(
+                    request.destination.providerCalendarId,
+                    "providerCalendarId",
+                  ),
+                };
+          if (destination)
+            await this.verifyLinkedDestination(requestUrl, destination);
+          await this.linkedControl.selectDestination(
+            request.expectedRevision,
+            destination,
+          );
+          break;
+        }
+        case "resume": {
+          if (!current.destination) {
+            throw new CalendarServiceError(
+              409,
+              "Select and verify a destination before resuming calendar sync.",
+            );
+          }
+          await this.verifyLinkedDestination(requestUrl, current.destination);
+          const mismatched = (
+            await this.linkedRepo.listForAgent(this.agentId())
+          ).some(
+            (link) =>
+              link.state !== "paused" &&
+              (link.connectorAccountId !==
+                current.destination?.connectorAccountId ||
+                link.providerCalendarId !==
+                  current.destination?.providerCalendarId),
+          );
+          if (mismatched) {
+            throw new CalendarServiceError(
+              409,
+              "Review existing calendar mappings before resuming with a different destination.",
+              "LINKED_CALENDAR_MAPPING_REVIEW_REQUIRED",
+            );
+          }
+          await this.linkedControl.resume(request.expectedRevision);
+          await this.bootstrapActiveLinkedCalendarSync();
+          break;
+        }
+        default:
+          throw new CalendarServiceError(
+            400,
+            "operation must be pause, select, or resume.",
+          );
+      }
+    } catch (error) {
+      // error-policy:J1 Translate a concurrent control transition to a refreshable HTTP conflict.
+      if (
+        error instanceof ElizaError &&
+        error.code === "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED"
+      ) {
+        throw new CalendarServiceError(409, error.message, error.code, {
+          cause: error,
+        });
+      }
+      throw error;
+    }
+    return this.getLinkedCalendarControl();
   }
 
   async getLinkedCalendarEvent(

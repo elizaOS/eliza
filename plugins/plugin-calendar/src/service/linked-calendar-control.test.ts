@@ -49,6 +49,42 @@ afterEach(async () => {
 });
 
 describe("durable linked calendar review", { timeout: 30_000 }, () => {
+  it("exposes pending work without its receipt and returns a conflict for a blocked owner change", async () => {
+    const h = await harness();
+    const initial = await h.controls().read();
+    const selected = await h
+      .controls()
+      .selectDestination(initial.revision, destination);
+    const active = await h.controls().resume(selected.revision);
+    const token = await h
+      .controls()
+      .acquireDispatch(active.revision, "owner-review-event", destination);
+    const service = new CalendarService(h.runtime());
+    const paused = await service.executeLinkedCalendarControl(
+      new URL("http://localhost"),
+      {
+        operation: "pause",
+        expectedRevision: active.revision,
+        idempotencyKey: "pause-owner-review",
+      },
+    );
+    expect(paused.paused).toBe(true);
+    expect(paused.pendingDispatch?.linkId).toBe("owner-review-event");
+    expect(JSON.stringify(paused)).not.toContain(token);
+    await expect(
+      service.executeLinkedCalendarControl(new URL("http://localhost"), {
+        operation: "select",
+        destination: null,
+        expectedRevision: paused.revision,
+        idempotencyKey: "replace-while-busy",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED",
+    });
+    expect((await h.controls().read()).destination).toEqual(destination);
+  });
+
   it("keeps the public reconciliation path paused without initializing a provider", async () => {
     const h = await harness();
     const runtime = {

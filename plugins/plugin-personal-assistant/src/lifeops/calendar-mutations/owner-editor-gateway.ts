@@ -49,6 +49,7 @@ export interface OwnerCalendarMutationGatewayDeps {
   readonly calendar?: Pick<
     CalendarService,
     | "getConditionalCalendarMutationTarget"
+    | "executeLinkedCalendarControl"
     | "executeLinkedCalendarLink"
     | "executeLinkedCalendarReconciliation"
     | "executeLinkedCalendarConflictResolution"
@@ -411,6 +412,7 @@ export class OwnerCalendarMutationGatewayService
   private calendar(): Pick<
     CalendarService,
     | "getConditionalCalendarMutationTarget"
+    | "executeLinkedCalendarControl"
     | "executeLinkedCalendarLink"
     | "executeLinkedCalendarReconciliation"
     | "executeLinkedCalendarConflictResolution"
@@ -692,6 +694,16 @@ export class OwnerCalendarMutationGatewayService
   ) {
     requireOperationKey(request.idempotencyKey);
     return this.calendar().executeLinkedCalendarLink(request);
+  }
+
+  async updateLinkedCalendarControl(
+    requestUrl: URL,
+    request: Parameters<
+      CalendarOwnerMutationGateway["updateLinkedCalendarControl"]
+    >[1],
+  ) {
+    requireOperationKey(request.idempotencyKey);
+    return this.calendar().executeLinkedCalendarControl(requestUrl, request);
   }
 
   async reconcileLinkedCalendar(
