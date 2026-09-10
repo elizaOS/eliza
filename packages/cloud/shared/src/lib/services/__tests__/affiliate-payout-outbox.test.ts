@@ -6,6 +6,8 @@
 
 import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
+const originalCacheEnabled = process.env.CACHE_ENABLED;
+process.env.CACHE_ENABLED = "true";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -140,7 +142,12 @@ beforeAll(async () => {
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
-  await closeDatabaseConnectionsForTests();
+  try {
+    await closeDatabaseConnectionsForTests();
+  } finally {
+    if (originalCacheEnabled === undefined) delete process.env.CACHE_ENABLED;
+    else process.env.CACHE_ENABLED = originalCacheEnabled;
+  }
 });
 
 describe("affiliate payout outbox", () => {
