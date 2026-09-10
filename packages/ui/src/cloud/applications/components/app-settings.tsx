@@ -49,6 +49,7 @@ import {
   updateApp,
 } from "../lib/apps";
 import { storeOneTimeAppApiKey } from "../lib/one-time-app-api-key";
+import { useApplicationsBasePath } from "../use-applications-base-path";
 
 interface AppSettingsProps {
   app: App;
@@ -57,6 +58,7 @@ interface AppSettingsProps {
 export function AppSettings({ app }: AppSettingsProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+  const appsBasePath = useApplicationsBasePath();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -127,7 +129,7 @@ export function AppSettings({ app }: AppSettingsProps) {
           }),
         },
       );
-      navigate(`/cloud/apps/${app.id}?tab=overview`, {
+      navigate(`${appsBasePath}/${app.id}?tab=overview`, {
         preventScrollReset: true,
       });
     } catch (error) {
@@ -159,7 +161,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         }),
       );
       await queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY });
-      navigate("/cloud/apps");
+      navigate(appsBasePath);
     } catch (error) {
       toast.error(
         t("cloud.appSettings.deleteFailed", {

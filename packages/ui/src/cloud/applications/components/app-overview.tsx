@@ -58,6 +58,7 @@ import {
   validateDeployAppInput,
 } from "../lib/apps";
 import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
+import { useApplicationsBasePath } from "../use-applications-base-path";
 
 interface AppOverviewProps {
   app: App;
@@ -74,6 +75,7 @@ function wait(ms: number): Promise<void> {
 export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+  const appsBasePath = useApplicationsBasePath();
   const queryClient = useQueryClient();
   const [displayApiKey, setDisplayApiKey] = useState(showApiKey || "");
   const [showKey, setShowKey] = useState(!!showApiKey);
@@ -680,7 +682,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 size="icon-sm"
                 type="button"
                 onClick={() =>
-                  navigate(`/cloud/apps/${app.id}?tab=monetization`)
+                  navigate(`${appsBasePath}/${app.id}?tab=monetization`)
                 }
               >
                 <ChevronRight className="size-4 text-neutral-400" />
@@ -700,7 +702,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           <Button
             variant="ghost"
             type="button"
-            onClick={() => navigate(`/cloud/apps/${app.id}?tab=settings`)}
+            onClick={() => navigate(`${appsBasePath}/${app.id}?tab=settings`)}
           >
             Edit
           </Button>

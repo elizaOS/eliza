@@ -23,12 +23,14 @@ import { AppsListView } from "../../../cloud-ui/components/data-list";
 import { copyTextToClipboard } from "../../../utils/clipboard";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { APPS_QUERY_KEY, type App, deleteApp } from "../lib/apps";
+import { useApplicationsBasePath } from "../use-applications-base-path";
 
 /** How long to wait before re-syncing the list from the server after a
  * delete — long enough for the API's eventual consistency to settle. */
 const POST_DELETE_RESYNC_MS = 8_000;
 
 export function AppsTable({ apps }: { apps: App[] }) {
+  const appsBasePath = useApplicationsBasePath();
   const t = useCloudT();
   const queryClient = useQueryClient();
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(
@@ -142,7 +144,7 @@ export function AppsTable({ apps }: { apps: App[] }) {
         apps={apps}
         deletingId={deletingIds.size === 1 ? [...deletingIds][0] : null}
         renderAppLink={({ app, className, children }) => (
-          <Link to={`/cloud/apps/${app.id}`} className={className}>
+          <Link to={`${appsBasePath}/${app.id}`} className={className}>
             {children}
           </Link>
         )}

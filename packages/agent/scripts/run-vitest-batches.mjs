@@ -294,6 +294,7 @@ async function main() {
     });
     if (failures.length > 0) {
       for (const failure of failures) {
+        console.error(`[agent-test] failed batch: ${failure.batch.join(", ")}`);
         if (failure.error) {
           console.error(
             `[agent-test] ${failure.batch.join(", ")}: ${failure.error instanceof Error ? failure.error.message : String(failure.error)}`,

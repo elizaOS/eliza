@@ -47,7 +47,6 @@ import {
 import {
   afterAll,
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -66,7 +65,7 @@ let getChatDedupeTtlMs: () => number;
 let markChatMessageSeen: typeof import("../chat-routes.ts")["isDuplicateChatMessage"];
 let setChatOutcome: typeof import("../chat-routes.ts")["setChatMessageIdOutcome"];
 
-beforeAll(async () => {
+{
   vi.resetModules();
   const chatRoutes = await import("../chat-routes.ts");
   resetChatDedupe = chatRoutes.__resetChatDedupeForTests;
@@ -74,7 +73,7 @@ beforeAll(async () => {
   markChatMessageSeen = chatRoutes.isDuplicateChatMessage;
   setChatOutcome = chatRoutes.setChatMessageIdOutcome;
   ({ handleConversationRoutes } = await import("../conversation-routes.ts"));
-});
+}
 
 // Symmetric hygiene: drop this suite's real module graph from the shared
 // worker cache so a later file's `vi.mock` factories apply to fresh imports

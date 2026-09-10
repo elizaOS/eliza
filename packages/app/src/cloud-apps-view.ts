@@ -40,6 +40,7 @@ registerAppShellPage({
   label: "Cloud Apps",
   icon: "Grid3x3",
   path: "/cloud-apps",
+  pathPatterns: ["/cloud-apps/:id"],
   loader: () =>
     loadCloudAppsStudio().then((module) => ({ default: module.default })),
 });

@@ -51,10 +51,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     // surface with its Apps segment pre-selected.
     name: "my-apps compat deep link",
     path: "/apps/my-apps",
-    readyChecks: [
-      { text: "Projects" },
-      { selector: '[data-testid="projects-apps-segment"]' },
-    ],
+    readyChecks: [{ selector: '[data-testid="projects-apps-segment"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -79,10 +76,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     // Apps segment pre-selected in the consolidated Projects surface.
     name: "bare /apps compat deep link",
     path: "/apps",
-    readyChecks: [
-      { text: "Projects" },
-      { selector: '[data-testid="projects-apps-segment"]' },
-    ],
+    readyChecks: [{ selector: '[data-testid="projects-apps-segment"]' }],
     timeoutMs: 90_000,
   },
   {

@@ -7,16 +7,12 @@
  * (src/deep-link-routing.ts — unit-tested there). This spec proves the OTHER
  * half in a real Chromium shell: dispatching that intent on the
  * `eliza:navigate:view` bus mounts the registered `cloud-apps` app-shell page
- * (NativeAppsStudio → ApplicationsPage → ApplicationDetailPage), all the way to
+ * (WebAppsStudio → ApplicationsPage → ApplicationDetailPage), all the way to
  * the repo/ref Deploy control and its Cloud API request payload.
  *
- * The `cloud-apps` page registers only on non-web platforms (the web build
- * serves the Applications surfaces via CloudRouterShell), so the Electrobun
- * runtime marker is injected BEFORE boot — the same desktop-platform signal the
- * packaged shell provides (precedent: voice-desktop-selftest.spec.ts). Eliza
- * Cloud API traffic (`https://api.eliza.app/**`) is route-mocked: this lane
- * proves the SHELL wiring; the cloud API contract itself is covered by the
- * packages/ui mock-cloud client e2e and the cloud API's own suites.
+ * The registered web app-shell page uses WebAppsStudio with the shell's cloud
+ * providers. Cloud API traffic is fixed at the network boundary; the actual
+ * renderer, navigation listener, and Applications components run unchanged.
  *
  *   bun run --cwd packages/app test:e2e test/ui-smoke/cloud-apps-deploy-deeplink.spec.ts
  */
@@ -99,13 +95,13 @@ async function fulfillJson(
   });
 }
 
-/** Mock the Eliza Cloud control plane the NativeAppsStudio pages call. */
+/** Serve the Applications control plane at its same-origin web boundary. */
 async function installCloudApiMocks(
   page: Page,
   unmocked: string[],
   deployRequests: unknown[],
 ): Promise<void> {
-  await page.route("https://api.eliza.app/**", async (route) => {
+  await page.route("**/api/v1/apps{,/**}", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
     const method = route.request().method();
@@ -159,13 +155,6 @@ async function installCloudApiMocks(
 }
 
 test.beforeEach(async ({ page }) => {
-  // Desktop-platform signal BEFORE boot: registers the `cloud-apps` app-shell
-  // page (web builds route Applications through CloudRouterShell instead).
-  await page.addInitScript(() => {
-    (
-      window as unknown as { __electrobunWindowId?: number }
-    ).__electrobunWindowId = 1;
-  });
   await seedStewardSession(page, {
     jwt: true,
     subject: "user-deploy-proof",
@@ -177,13 +166,6 @@ test.beforeEach(async ({ page }) => {
   // test assumes an already-set-up shell, not the onboarding flow.
   await seedAppStorage(page, {
     "eliza:ui-shell-mode": "web",
-    "elizaos:active-server": JSON.stringify({
-      id: "cloud:deploy-proof",
-      kind: "cloud",
-      label: "Eliza Cloud",
-      apiBase: "https://api.eliza.app/api/v1",
-      accessToken: "shared-agent-token",
-    }),
   });
   // Instrument the navigate-view bus BEFORE boot: the listener count is the
   // explicit shell-ready boundary the deep-link dispatch below waits on, and

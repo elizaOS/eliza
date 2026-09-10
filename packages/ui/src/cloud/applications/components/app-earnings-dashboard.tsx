@@ -43,6 +43,7 @@ import {
 } from "../../../components/ui/select";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
+import { useApplicationsBasePath } from "../use-applications-base-path";
 import { WithdrawDialog } from "./withdraw-dialog";
 
 interface EarningsSummary {
@@ -104,6 +105,7 @@ const PAYOUT_THRESHOLD = 25;
 
 export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   const navigate = useNavigate();
+  const appsBasePath = useApplicationsBasePath();
   const [searchParams] = useSearchParams();
   const testDataParam = searchParams.get("testData") === "true";
 
@@ -243,7 +245,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               </p>
               <Button
                 onClick={() => {
-                  navigate(`/cloud/apps/${appId}?tab=monetization`);
+                  navigate(`${appsBasePath}/${appId}?tab=monetization`);
                 }}
               >
                 Enable Monetization

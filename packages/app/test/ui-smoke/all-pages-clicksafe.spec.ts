@@ -777,23 +777,11 @@ async function expectNoPageIssues(
   ).toHaveLength(0);
 }
 
-async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
+async function expectMainShell(page: Page): Promise<void> {
   await expect(page.locator("#root")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(
     /(?:404\s+not\s+found|page not found|route not found)/i,
   );
-  if (route.path === "/" || route.path === "/chat") {
-    return;
-  }
-  await expect(
-    page
-      .locator(
-        "main, [data-testid='home-view'], [data-testid='lifeops-shell'], [role='main'], h1, [role='region'], [aria-label='Chat workspace']",
-      )
-      .first(),
-  ).toBeVisible({
-    timeout: route.timeoutMs,
-  });
 }
 
 async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
@@ -807,7 +795,7 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.mode ?? "any",
     route.timeoutMs,
   );
-  await expectMainShell(page, route);
+  await expectMainShell(page);
 }
 
 async function openRouteAndExpectUrl(

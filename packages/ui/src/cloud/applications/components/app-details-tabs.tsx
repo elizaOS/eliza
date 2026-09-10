@@ -19,6 +19,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
+import { useApplicationsBasePath } from "../use-applications-base-path";
 import { AppAnalytics } from "./app-analytics";
 import { AppDomains } from "./app-domains";
 import { AppEarningsDashboard } from "./app-earnings-dashboard";
@@ -100,13 +101,14 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
   ];
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const appsBasePath = useApplicationsBasePath();
   const activeTab = (searchParams.get("tab") || "overview") as TabValue;
 
   const handleTabChange = (value: TabValue) => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("showApiKey");
     params.set("tab", value);
-    navigate(`/cloud/apps/${app.id}?${params.toString()}`, {
+    navigate(`${appsBasePath}/${app.id}?${params.toString()}`, {
       preventScrollReset: true,
     });
   };

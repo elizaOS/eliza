@@ -167,7 +167,10 @@ async function assertStableContrast(
   await page.waitForTimeout(200);
   const hover = await readContrast(button);
   if (hoverCapable) {
-    expect(hover.backgroundColor).not.toBe(rest.backgroundColor);
+    expect([hover.backgroundColor, hover.color]).not.toEqual([
+      rest.backgroundColor,
+      rest.color,
+    ]);
   } else {
     expect(hover.backgroundColor).toBe(rest.backgroundColor);
   }

@@ -49,6 +49,7 @@ import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 import { appQueryKey } from "../lib/apps";
 import { openCloudConsoleRouteExternally } from "../lib/native-cloud-nav";
+import { useApplicationsBasePath } from "../use-applications-base-path";
 
 interface MonetizationSettings {
   monetizationEnabled: boolean;
@@ -81,6 +82,7 @@ interface AppMonetizationSettingsProps {
 export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+  const appsBasePath = useApplicationsBasePath();
   const queryClient = useQueryClient();
   const appId = app.id;
   const [isLoading, setIsLoading] = useState(true);
@@ -428,7 +430,9 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() => navigate(`/cloud/apps/${appId}?tab=earnings`)}
+                  onClick={() =>
+                    navigate(`${appsBasePath}/${appId}?tab=earnings`)
+                  }
                 >
                   {t("cloud.monetization.earned", {
                     amount: settings.totalCreatorEarnings.toFixed(2),

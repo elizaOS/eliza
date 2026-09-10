@@ -23,9 +23,11 @@ import { AppPageWrapper } from "./components/single-app-page-wrapper";
 import { useApp } from "./lib/apps";
 import { consumeOneTimeAppApiKey } from "./lib/one-time-app-api-key";
 import { isValidUUID } from "./lib/utils";
+import { useApplicationsBasePath } from "./use-applications-base-path";
 
 /** /cloud/apps/:id */
 export default function ApplicationDetailPage() {
+  const appsBasePath = useApplicationsBasePath();
   const t = useCloudT();
   const { id } = useParams<{ id: string }>();
   const session = useSessionAuth();
@@ -59,7 +61,7 @@ export default function ApplicationDetailPage() {
   }, [legacyQueryApiKey, location.pathname, location.search, navigate]);
 
   if (id && !isValidUUID(id)) {
-    return <Navigate to="/cloud/apps" replace />;
+    return <Navigate to={appsBasePath} replace />;
   }
 
   if (!session.ready || isLoading) {
@@ -87,7 +89,7 @@ export default function ApplicationDetailPage() {
   }
 
   if (!app) {
-    return <Navigate to="/cloud/apps" replace />;
+    return <Navigate to={appsBasePath} replace />;
   }
 
   return (
