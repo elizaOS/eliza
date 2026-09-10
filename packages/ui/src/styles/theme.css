@@ -18,6 +18,7 @@
   --bg-muted: rgba(0, 0, 0, 0.08);
   --card: var(--brand-white);
   --card-foreground: var(--brand-black);
+  --card-hover: color-mix(in srgb, var(--card) 92%, var(--card-foreground) 8%);
   --surface: rgba(0, 0, 0, 0.04);
   --text: var(--brand-black);
   --text-strong: var(--brand-black);
@@ -72,6 +73,7 @@
   --surface-3: #242424;
   --card: var(--surface-1);
   --card-foreground: var(--brand-white);
+  --card-hover: color-mix(in srgb, var(--card) 92%, var(--card-foreground) 8%);
   --surface: rgba(255, 255, 255, 0.06);
   --text: var(--brand-white);
   --text-strong: var(--brand-white);

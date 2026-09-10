@@ -14,6 +14,7 @@
   --color-bg-hover: var(--bg-hover);
   --color-bg-muted: var(--bg-muted);
   --color-card: var(--card);
+  --color-bg-choice-hover: var(--card-hover);
   --color-bg-card-hover: color-mix(
     in srgb,
     var(--card) 92%,

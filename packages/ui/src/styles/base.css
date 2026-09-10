@@ -42,6 +42,7 @@
 
   --card: var(--brand-white);
   --card-foreground: var(--brand-black);
+  --card-hover: color-mix(in srgb, var(--card) 92%, var(--card-foreground) 8%);
   --surface: rgba(0, 0, 0, 0.04);
   /* Stable inverse pair for light controls on dark or accent contexts. */
   --inverse: var(--brand-white);
@@ -360,6 +361,7 @@
   --surface-3: #242424;
   --card: var(--surface-1);
   --card-foreground: var(--brand-white);
+  --card-hover: color-mix(in srgb, var(--card) 92%, var(--card-foreground) 8%);
   --surface: rgba(255, 255, 255, 0.06);
 
   --text: var(--brand-white);
@@ -732,6 +734,7 @@ body.pwa-standalone * {
 
   --card: var(--brand-black);
   --card-foreground: var(--brand-white);
+  --card-hover: color-mix(in srgb, var(--card) 92%, var(--card-foreground) 8%);
   --surface: rgba(255, 255, 255, 0.04);
 
   --text: var(--brand-white);
@@ -775,6 +778,7 @@ body.pwa-standalone * {
 
   --card: var(--brand-black);
   --card-foreground: var(--brand-white);
+  --card-hover: color-mix(in srgb, var(--card) 92%, var(--card-foreground) 8%);
   --surface: rgba(255, 255, 255, 0.08);
 
   --text: var(--brand-white);
@@ -818,6 +822,7 @@ body.pwa-standalone * {
 
   --card: var(--brand-orange);
   --card-foreground: var(--brand-black);
+  --card-hover: color-mix(in srgb, var(--card) 92%, var(--card-foreground) 8%);
   --surface: rgba(0, 0, 0, 0.04);
 
   --text: var(--brand-black);
