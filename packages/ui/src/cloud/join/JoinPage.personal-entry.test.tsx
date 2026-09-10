@@ -134,6 +134,7 @@ describe("JoinPage read-only personal entry", () => {
     "session replacement",
     "silent replacement",
     "session ABA",
+    "sync-event reversal",
     "page restoration",
   ] as const)(
     "does not publish a late identity after %s and permits an explicit fresh retry",
@@ -154,11 +155,23 @@ describe("JoinPage read-only personal entry", () => {
         if (change !== "page restoration") {
           localStorage.setItem(STEWARD_TOKEN_KEY, "replacement-fixture-token");
           if (change !== "silent replacement") {
-            window.dispatchEvent(new Event(STEWARD_SESSION_CHANGE_EVENT));
+            window.dispatchEvent(
+              new Event(
+                change === "sync-event reversal"
+                  ? "steward-token-sync"
+                  : STEWARD_SESSION_CHANGE_EVENT,
+              ),
+            );
           }
-          if (change === "session ABA") {
+          if (change === "session ABA" || change === "sync-event reversal") {
             localStorage.setItem(STEWARD_TOKEN_KEY, "join-fixture-token");
-            window.dispatchEvent(new Event(STEWARD_SESSION_CHANGE_EVENT));
+            window.dispatchEvent(
+              new Event(
+                change === "sync-event reversal"
+                  ? "steward-token-sync"
+                  : STEWARD_SESSION_CHANGE_EVENT,
+              ),
+            );
           }
         } else {
           window.dispatchEvent(
@@ -205,7 +218,7 @@ describe("JoinPage read-only personal entry", () => {
     await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
     await act(async () => {
       window.dispatchEvent(new Event(STEWARD_SESSION_CHANGE_EVENT));
-      window.dispatchEvent(new Event("token-sync"));
+      window.dispatchEvent(new Event("steward-token-sync"));
       window.dispatchEvent(
         new StorageEvent("storage", { key: "unrelated-preference" }),
       );

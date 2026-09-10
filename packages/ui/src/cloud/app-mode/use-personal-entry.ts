@@ -35,26 +35,77 @@ import { type JoinFlowResult, runJoinFlow } from "../join/lib/run-join-flow";
 interface PersonalEntryHandoff {
   authToken: string;
   result: JoinFlowResult;
+  revalidate: () => void;
+  dispose: () => void;
 }
 
 let pendingPersonalEntryHandoff: PersonalEntryHandoff | null = null;
 
 /**
  * Carry the already-authoritative `/join` result across the public-to-full
- * renderer swap. The Steward token binds the one-shot receipt to the session
- * that resolved it, so a later account can never consume stale identity state.
+ * renderer swap. The one-shot receipt retains canonical session authority and
+ * page lifetime until consumed; a matching bearer alone cannot revive it.
  */
 export function publishPersonalEntryHandoff(
   authToken: string,
   result: JoinFlowResult,
 ): void {
-  pendingPersonalEntryHandoff = { authToken, result };
+  pendingPersonalEntryHandoff?.dispose();
+  pendingPersonalEntryHandoff = null;
+  const coordinator = getStewardTabSessionAuthorityCoordinator();
+  const snapshot = coordinator.readSnapshot();
+  const cloudApiBase = resolveJoinCloudApiBase();
+  let invalidated = false;
+  const revalidate = () => {
+    if (invalidated || resolveJoinCloudApiBase() !== cloudApiBase) {
+      throw new StewardSessionAuthorityError(
+        "Personal entry handoff changed. Try again.",
+        "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+      );
+    }
+    coordinator.assertSnapshot(snapshot);
+  };
+  const invalidate = () => {
+    invalidated = true;
+    dispose();
+  };
+  const checkSession = () => {
+    try {
+      revalidate();
+    } catch {
+      // error-policy:J4 the next consumer must show recovery for this retired receipt.
+      invalidate();
+    }
+  };
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) invalidate();
+  };
+  const dispose = () => {
+    window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
+    window.removeEventListener("steward-token-sync", checkSession);
+    window.removeEventListener("storage", checkSession);
+    window.removeEventListener("pagehide", invalidate);
+    window.removeEventListener("pageshow", onPageShow);
+  };
+  window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
+  window.addEventListener("steward-token-sync", checkSession);
+  window.addEventListener("storage", checkSession);
+  window.addEventListener("pagehide", invalidate);
+  window.addEventListener("pageshow", onPageShow);
+  pendingPersonalEntryHandoff = { authToken, result, revalidate, dispose };
 }
 
 function takePersonalEntryHandoff(authToken: string): JoinFlowResult | null {
   const pending = pendingPersonalEntryHandoff;
   pendingPersonalEntryHandoff = null;
-  return pending?.authToken === authToken ? pending.result : null;
+  if (!pending) return null;
+  try {
+    if (pending.authToken !== authToken) return null;
+    pending.revalidate();
+    return pending.result;
+  } finally {
+    pending.dispose();
+  }
 }
 
 /** The persisted-active-server id a resolved personal Eliza binds under. */
@@ -154,13 +205,13 @@ export function usePersonalEntry(enabled: boolean): Pick<
       if (event.persisted) invalidate();
     };
     window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
-    window.addEventListener("token-sync", checkSession);
+    window.addEventListener("steward-token-sync", checkSession);
     window.addEventListener("storage", checkSession);
     window.addEventListener("pagehide", invalidate);
     window.addEventListener("pageshow", onPageShow);
     return () => {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
-      window.removeEventListener("token-sync", checkSession);
+      window.removeEventListener("steward-token-sync", checkSession);
       window.removeEventListener("storage", checkSession);
       window.removeEventListener("pagehide", invalidate);
       window.removeEventListener("pageshow", onPageShow);

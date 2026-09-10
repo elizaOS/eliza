@@ -2,12 +2,14 @@
 // @vitest-environment jsdom
 
 import {
+  STEWARD_LOGOUT_GENERATION_KEY,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,6 +17,7 @@ import {
   savePersistedActiveServer,
 } from "../../state/persistence";
 import JoinPage from "../join/JoinPage";
+import { authenticatedQueryKey } from "../lib/auth-query";
 import { CloudI18nProvider } from "../shell/CloudI18nProvider";
 import { LocalStewardAuthContext } from "../shell/StewardProviderShared";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
@@ -134,6 +137,7 @@ function renderEntry(
     sessionLoading?: boolean;
     queryClient?: QueryClient;
     realJoin?: boolean;
+    strictMode?: boolean;
   },
 ): void {
   const queryClient =
@@ -197,7 +201,7 @@ function renderEntry(
     );
     return;
   }
-  render(entry);
+  render(options?.strictMode ? <StrictMode>{entry}</StrictMode> : entry);
 }
 
 afterEach(() => {
@@ -510,6 +514,30 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     });
   }
 
+  it("completes rowless entry after the StrictMode setup/cleanup probe", async () => {
+    signIn();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      authenticatedQueryKey(["agent", "agents"], {
+        enabled: true,
+        userId: "u1",
+      }),
+      [],
+    );
+    stubNetwork({ agents: agentsOk([]), personal: personalSharedOk() });
+    renderEntry("/", { queryClient, strictMode: true });
+    await screen.findByTestId("agent-app");
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: `cloud:${PERSONAL_ID}`,
+      cloudRuntime: "shared",
+    });
+    expect(personalDedicatedRequests()).toEqual([]);
+    cleanup();
+    queryClient.clear();
+  });
+
   it.each(["session replacement", "page restoration"] as const)(
     "never boots a late personal identity after %s",
     async (change) => {
@@ -611,6 +639,73 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     ).toEqual([]);
     expect(assignedUrls).toEqual([]);
   });
+
+  it.each([
+    "logout generation",
+    "page restoration",
+    "session reversal",
+    "sync-event reversal",
+  ] as const)(
+    "requires explicit recovery when a join receipt outlives its %s",
+    async (change) => {
+      const authToken = signIn();
+      bindPersonal();
+      publishPersonalEntryHandoff(authToken, {
+        personalElizaId: PERSONAL_ID,
+        agentId: PERSONAL_ID,
+        activeAgentId: DEDICATED_ID,
+        agentName: "Eliza",
+        apiBase: DEDICATED_BASE,
+        runtime: "dedicated",
+      });
+      if (change === "logout generation") {
+        localStorage.setItem(STEWARD_LOGOUT_GENERATION_KEY, "1:fixture");
+      } else if (
+        change === "session reversal" ||
+        change === "sync-event reversal"
+      ) {
+        localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken("u2"));
+        window.dispatchEvent(
+          new Event(
+            change === "sync-event reversal"
+              ? "steward-token-sync"
+              : STEWARD_SESSION_CHANGE_EVENT,
+          ),
+        );
+        localStorage.setItem(STEWARD_TOKEN_KEY, authToken);
+        window.dispatchEvent(
+          new Event(
+            change === "sync-event reversal"
+              ? "steward-token-sync"
+              : STEWARD_SESSION_CHANGE_EVENT,
+          ),
+        );
+      } else {
+        window.dispatchEvent(
+          new PageTransitionEvent("pagehide", { persisted: true }),
+        );
+        window.dispatchEvent(
+          new PageTransitionEvent("pageshow", { persisted: true }),
+        );
+      }
+      stubNetwork({ agents: agentsOk([]), personal: personalSharedOk() });
+      renderEntry("/", { realJoin: true });
+      await screen.findByRole("alert");
+      expect(screen.queryByTestId("agent-app")).toBeNull();
+      expect(
+        fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
+      ).toHaveLength(0);
+      await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+      await screen.findByTestId("agent-app");
+      expect(loadPersistedActiveServer()).toMatchObject({
+        cloudRuntime: "shared",
+      });
+      expect(
+        fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
+      ).toHaveLength(1);
+      expect(personalDedicatedRequests()).toEqual([]);
+    },
+  );
 
   it("discards a /join handoff from a different Steward session", async () => {
     signIn();

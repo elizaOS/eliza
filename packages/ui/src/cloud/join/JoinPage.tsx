@@ -204,13 +204,13 @@ export default function JoinPage(): React.JSX.Element {
       if (event.persisted) invalidate();
     };
     window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
-    window.addEventListener("token-sync", checkSession);
+    window.addEventListener("steward-token-sync", checkSession);
     window.addEventListener("storage", checkSession);
     window.addEventListener("pagehide", invalidate);
     window.addEventListener("pageshow", onPageShow);
     return () => {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
-      window.removeEventListener("token-sync", checkSession);
+      window.removeEventListener("steward-token-sync", checkSession);
       window.removeEventListener("storage", checkSession);
       window.removeEventListener("pagehide", invalidate);
       window.removeEventListener("pageshow", onPageShow);
