@@ -36,9 +36,30 @@ describe("provider authoring", () => {
 				{ modelType: "text", handler },
 				{ modelType: "text", handler },
 			]),
-		).toThrow("Duplicate model registration");
+		).toThrow(
+			expect.objectContaining({
+				code: "DUPLICATE_MODEL_REGISTRATION",
+				context: { provider: "provider", modelType: "text" },
+			}),
+		);
 		expect(registerModel).not.toHaveBeenCalled();
 	});
+
+	it.each([
+		[" ", "text", "INVALID_MODEL_PROVIDER"],
+		["provider", " ", "INVALID_MODEL_TYPE"],
+	])(
+		"rejects invalid registration before dispatch (%s, %s)",
+		(provider, modelType, code) => {
+			const registerModel = vi.fn();
+			expect(() =>
+				registerProviderModels({ registerModel }, provider, [
+					{ modelType, handler: async () => ({}) },
+				]),
+			).toThrow(expect.objectContaining({ code }));
+			expect(registerModel).not.toHaveBeenCalled();
+		},
+	);
 
 	it("summarizes provider errors without copying secret-bearing response data", () => {
 		const error = Object.assign(new Error("request failed"), {

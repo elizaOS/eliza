@@ -23,6 +23,7 @@
 
 import Handlebars from "handlebars";
 import z from "zod";
+import { ElizaError } from "./errors";
 import logger from "./logger";
 import { replaceIndexedNameTokens } from "./name-tokens";
 import { renderStoredEnvelopesForPrompt } from "./security/external-content";
@@ -1564,13 +1565,26 @@ export function registerProviderModels(
 ): void {
 	const normalizedProvider = provider.trim();
 	if (!normalizedProvider)
-		throw new Error("Model provider name must not be blank");
+		throw new ElizaError("Model provider name must not be blank", {
+			code: "INVALID_MODEL_PROVIDER",
+			context: { provider },
+		});
 	const seen = new Set<string>();
 	for (const registration of registrations) {
 		const modelType = registration.modelType.trim();
-		if (!modelType) throw new Error("Model type must not be blank");
+		if (!modelType)
+			throw new ElizaError("Model type must not be blank", {
+				code: "INVALID_MODEL_TYPE",
+				context: {
+					provider: normalizedProvider,
+					modelType: registration.modelType,
+				},
+			});
 		if (seen.has(modelType))
-			throw new Error(`Duplicate model registration for ${modelType}`);
+			throw new ElizaError(`Duplicate model registration for ${modelType}`, {
+				code: "DUPLICATE_MODEL_REGISTRATION",
+				context: { provider: normalizedProvider, modelType },
+			});
 		seen.add(modelType);
 	}
 	for (const registration of registrations) {
