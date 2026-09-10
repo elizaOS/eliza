@@ -28,8 +28,13 @@ Each branch has an effect registry: `develop-effects.json`,
 `staging-effects.json`, and `main-effects.json`. All three publish a verified
 agent image for their own commit. Staging and main then deploy their apps
 worker, provisioning worker, and Cloud release in that order, using their
-respective environment credentials. Production additionally requires the
-existing certificate for the byte-identical staging tree.
+respective environment credentials. Production requires an unexpired immutable
+staging certificate for the byte-identical staging tree before publishing its
+image or dispatching either daemon deployment. The certificate expiry is checked
+again between effects. Protected jobs verify the certificate after admission,
+before image publication or database migration; remote host steps recheck its
+verified expiry after waiting for their deployment lock. The Cloud release
+retains its protected certificate gate.
 
 The reconciler records exact-commit effects in GitHub Deployments. Interrupted
 effects require an unambiguous workflow run matching the branch, SHA, workflow,
@@ -55,6 +60,27 @@ a workflow-run approval, distinct from approving the code review.
 The staging application uses the `staging.eliza-app.pages.dev` alias.
 `staging-approval` contains deployment policy only and accepts the `staging`
 branch; runtime credentials stay in `staging`. Production accepts `main`.
+
+### Deployment cutover prerequisites
+
+Merging these definitions does not provision branch policies, environment
+credentials, DNS, or activate reconciliation. Keep the legacy reconciler disabled
+until an owner completes and reads back the reviewed cutover under issue #30855:
+
+1. Establish the canonical `staging` branch from reviewed source and apply the
+   checked-in branch rulesets with explicit administration authorization.
+2. Restrict `staging-approval` and `staging` to `staging`, and production to
+   `main`; verify required reviewers, environment credentials, and each runtime's
+   deployment configuration against the selected branch.
+3. Apply the reviewed staging Pages alias and DNS plan and verify its served
+   source. A healthy endpoint alone does not certify the selected tree.
+4. Enable reconciliation only after those readbacks, then inspect the first
+   exact-source validation, effect ledger, staging certification, and reviewed
+   promotion. Workflow admission approval and code review remain separate gates.
+
+Source validation and disposable contract tests do not replace this live cutover
+evidence. An absent staging branch or missing policy is an unfinished activation
+prerequisite, not permission to bypass promotion checks.
 
 The delegated `platform-smoke.yml` family preserves macOS and Windows core
 proof without a separate periodic authority. Its additional manual dispatch
@@ -258,7 +284,7 @@ Representative examples:
   CNAME/TXT values as DNS-only records and imports existing records only by
   reviewed Cloudflare id.
 - `deploy-gateway-webhook.yml` is the protected Railway release path for the
-  multi-platform webhook gateway. Staging dispatches must select `develop` and
+  multi-platform webhook gateway. Staging dispatches must select `staging` and
   production dispatches must select `main`. The workflow validates the exact
   protected Railway project, environment, service, and public URL; uploads the
   exact dispatch SHA from the repository root with a byte-identical root copy
@@ -285,7 +311,7 @@ Representative examples:
   secret. Existing sensitive service values stay in Railway and are checked by
   name without being printed or rewritten, including the required
   `ELIZA_APP_WEBHOOK_GATEWAY_SECRET` BFF-forwarding trust gate. Staging is
-  protected by the workflow's exact `develop` branch and environment-scoped
+  protected by the workflow's exact `staging` branch and environment-scoped
   configuration gates but does not currently require a reviewer; production
   retains its required-reviewer approval.
 
@@ -294,7 +320,7 @@ Representative examples:
 
   | Dispatch / GitHub Environment | Source branch | Railway service       |
   | ----------------------------- | ------------- | --------------------- |
-  | `staging`                     | `develop`     | `gateway-webhook-stg` |
+  | `staging`                     | `staging`     | `gateway-webhook-stg` |
   | `production`                  | `main`        | `gateway-webhook`     |
 
   The pinned Railway CLI is invoked without a relative path so its explicit
@@ -307,7 +333,7 @@ These workflows use `workflow_dispatch` and never run for pull requests.
 
 ## Deployments
 
-Path-scoped deployment workflows may run after changes land on `develop` or
+Path-scoped deployment workflows may run after changes land on `develop`, `staging`, or
 `main`. They do not create pull-request checks. GitHub environments own
 production approvals and credentials.
 

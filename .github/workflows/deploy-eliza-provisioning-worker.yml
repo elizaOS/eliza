@@ -55,6 +55,7 @@ concurrency:
 # Default to least privilege. Override per-job where needed.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   determine-env:
@@ -534,6 +535,7 @@ jobs:
         if: steps.deploy_config.outputs.configured == 'true'
         timeout-minutes: 10
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           # Resolve only from the already-selected protected environment. The
           # value is passed directly to the migrator and is never printed.
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
@@ -548,6 +550,9 @@ jobs:
             exit 1
           }
           node packages/shared/scripts/generate-keywords.mjs
+          if [ "$DEPLOY_BRANCH" = main ]; then
+            node packages/cloud/scripts/production-effect-certification.mjs "$DEPLOY_SHA"
+          fi
           bun run db:cloud:migrate
 
       - name: Recheck current branch SHA before host deployment
@@ -564,16 +569,33 @@ jobs:
             exit 1
           }
 
+      - name: Verify production staging certification after admission
+        id: production_certification
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && needs.determine-env.outputs.environment == 'production' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+        run: node packages/cloud/scripts/production-effect-certification.mjs "$SOURCE_SHA"
+
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
+        env:
+          PRODUCTION_CERTIFICATION_EXPIRES_EPOCH: ${{ steps.production_certification.outputs.expires_epoch }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
+          envs: DEPLOY_BRANCH,PRODUCTION_CERTIFICATION_EXPIRES_EPOCH
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
           script: |
             set -euo pipefail
+            if [ "$DEPLOY_BRANCH" = main ]; then
+              [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
+                echo "::error::Production certification expired before host mutation"
+                exit 1
+              }
+            fi
             # Idempotent safety net for hosts provisioned BEFORE the cloud-init
             # template that pre-installs these. Each block is a no-op if already
             # set up — runs on every deploy so any host drift self-heals.
@@ -677,6 +699,7 @@ jobs:
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
         env:
+          PRODUCTION_CERTIFICATION_EXPIRES_EPOCH: ${{ steps.production_certification.outputs.expires_epoch }}
           HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
           CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
           SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
@@ -698,7 +721,7 @@ jobs:
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
           command_timeout: 40m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SOURCE_BUNDLE_SHA256,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,VPN_REGISTRATION_TIMEOUT_MS,CONTAINERS_SSH_KEY,CONTAINERS_PREPULL_SELF_HEAL_RESTART,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
+          envs: PRODUCTION_CERTIFICATION_EXPIRES_EPOCH,DEPLOY_BRANCH,DEPLOY_SHA,SOURCE_BUNDLE_SHA256,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,VPN_REGISTRATION_TIMEOUT_MS,CONTAINERS_SSH_KEY,CONTAINERS_PREPULL_SELF_HEAL_RESTART,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,STEWARD_API_URL,STEWARD_PLATFORM_KEYS,AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -712,6 +735,12 @@ jobs:
               echo "Timed out waiting for the previous provisioning deploy"
               exit 1
             }
+            if [ "$DEPLOY_BRANCH" = main ]; then
+              [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
+                echo "::error::Production certification expired before host mutation"
+                exit 1
+              }
+            fi
 
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
 

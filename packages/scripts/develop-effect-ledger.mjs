@@ -10,6 +10,10 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertProductionCertificationFresh,
+  requireProductionCertification,
+} from "../cloud/scripts/production-effect-certification.mjs";
+import {
   canonicalJson,
   verifyCompleteManifest,
 } from "./develop-impact-evidence.mjs";
@@ -416,7 +420,7 @@ class GitHubApi {
     this.token = token;
   }
 
-  async request(method, endpoint, body) {
+  async request(method, endpoint, body, responseMode = "json") {
     const response = await fetch(
       `${this.apiUrl}/repos/${this.repository}${endpoint}`,
       {
@@ -430,6 +434,11 @@ class GitHubApi {
         body: body === undefined ? undefined : JSON.stringify(body),
       },
     );
+    if (responseMode === "bytes") {
+      if (!response.ok)
+        throw new Error(`GitHub artifact download failed (${response.status})`);
+      return Buffer.from(await response.arrayBuffer());
+    }
     const text = await response.text();
     if (!response.ok) {
       throw new Error(
@@ -681,6 +690,10 @@ export async function reconcileEffect(api, plan, context) {
       "queued",
       "Awaiting exact downstream dispatch",
     );
+    if (context.productionCertification)
+      assertProductionCertificationFresh(
+        context.productionCertification.expiresAt,
+      );
     runId = await dispatchEffect(api, plan, context.sourceSha);
     await setDeploymentStatus(
       api,
@@ -772,6 +785,55 @@ export async function verifyIncomingEffectProofs(
   }
 }
 
+/** Runs the destination admission before starting the ordered branch effect plan. */
+export async function reconcileBranchEffects({
+  api,
+  sourceBranch,
+  sourceSha,
+  repoRoot,
+  plans,
+  context,
+}) {
+  let productionCertification;
+  if (sourceBranch !== "develop") {
+    const incoming = await verifyMergedPromotion(api, sourceBranch, sourceSha);
+    const previousRegistry = validateRegistry(
+      readJson(
+        path.join(repoRoot, `.github/${incoming.sourceBranch}-effects.json`),
+      ),
+    );
+    await verifyIncomingEffectProofs(api, incoming, previousRegistry);
+    if (sourceBranch === "main") {
+      productionCertification = await requireProductionCertification({
+        api,
+        repository: context.repository,
+        treeSha: incoming.treeSha,
+        repoRoot,
+      });
+    }
+  }
+  const completed = new Map();
+  for (const plan of plans.plans) {
+    const stillCurrent = await getRefSha(api, sourceBranch);
+    if (stillCurrent !== sourceSha) {
+      console.log(
+        `[develop-effects] ${sourceBranch} advanced before ${plan.id}; stopping reconciliation`,
+      );
+      return;
+    }
+    if (productionCertification)
+      assertProductionCertificationFresh(productionCertification.expiresAt);
+    completed.set(
+      plan.id,
+      await reconcileEffect(api, plan, { ...context, productionCertification }),
+    );
+  }
+  const promotion = plans.promotion
+    ? await reconcilePromotion(api, plans.promotion, context, completed)
+    : { action: "complete" };
+  return { completed, promotion };
+}
+
 async function reconcileCommand(args) {
   const repoRoot = path.resolve(args.repo ?? DEFAULT_REPO_ROOT);
   const sourceSha = requireString(args, "source-sha");
@@ -824,29 +886,16 @@ async function reconcileCommand(args) {
     sourceRunId,
     sourceSha,
   };
-  if (sourceBranch !== "develop") {
-    const incoming = await verifyMergedPromotion(api, sourceBranch, sourceSha);
-    const previousRegistry = validateRegistry(
-      readJson(
-        path.join(repoRoot, `.github/${incoming.sourceBranch}-effects.json`),
-      ),
-    );
-    await verifyIncomingEffectProofs(api, incoming, previousRegistry);
-  }
-  const completed = new Map();
-  for (const plan of plans.plans) {
-    const stillCurrent = await getRefSha(api, sourceBranch);
-    if (stillCurrent !== sourceSha) {
-      console.log(
-        `[develop-effects] ${sourceBranch} advanced before ${plan.id}; stopping reconciliation`,
-      );
-      return;
-    }
-    completed.set(plan.id, await reconcileEffect(api, plan, context));
-  }
-  const promotion = plans.promotion
-    ? await reconcilePromotion(api, plans.promotion, context, completed)
-    : { action: "complete" };
+  const result = await reconcileBranchEffects({
+    api,
+    sourceBranch,
+    sourceSha,
+    repoRoot,
+    plans,
+    context,
+  });
+  if (!result) return;
+  const { completed, promotion } = result;
   console.log(
     `[develop-effects] reconciled ${completed.size} effects; promotion=${promotion.action}`,
   );

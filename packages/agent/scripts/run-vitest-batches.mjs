@@ -157,20 +157,33 @@ export function resolveBunExecutable(
 
 export function parseAgentTestArgs(argv) {
   let junit = false;
+  let reporterRequested = false;
   let reporterOutfile;
+  const selectors = [];
   for (const arg of argv) {
-    if (arg === "--reporter=default") continue;
-    if (arg === "--reporter=junit" && !junit) junit = true;
-    else if (arg.startsWith("--outputFile.junit=") && !reporterOutfile) {
+    if (arg === "--reporter=default") {
+      reporterRequested = true;
+      continue;
+    }
+    if (arg === "--reporter=junit" && !junit) {
+      reporterRequested = true;
+      junit = true;
+    } else if (
+      arg.startsWith("--outputFile.junit=") &&
+      reporterOutfile === undefined
+    ) {
+      reporterRequested = true;
       reporterOutfile = arg.slice("--outputFile.junit=".length);
+    } else if (arg === "--" || !arg.startsWith("-")) {
+      selectors.push(arg);
     } else throw new Error(`Unsupported agent test argument: ${arg}`);
   }
-  if (argv.length > 0 && (!junit || !reporterOutfile)) {
+  if (reporterRequested && (!junit || !reporterOutfile)) {
     throw new Error(
       "JUnit evidence requires --reporter=junit and --outputFile.junit=<path>.",
     );
   }
-  return { reporterOutfile };
+  return { reporterOutfile, selectors };
 }
 
 export function mergeAgentJunit(fragments, destination) {
@@ -279,7 +292,9 @@ function runBatch(batch, nodeOptions, active, bunExecutable, fragmentPath) {
 }
 
 async function main() {
-  const { reporterOutfile } = parseAgentTestArgs(process.argv.slice(2));
+  const { reporterOutfile, selectors } = parseAgentTestArgs(
+    process.argv.slice(2),
+  );
   const batchSize = positiveInteger(
     process.env.AGENT_TEST_BATCH_SIZE,
     "AGENT_TEST_BATCH_SIZE",
@@ -303,7 +318,7 @@ async function main() {
     return out;
   });
   discoveredFiles.sort();
-  const files = selectTestFiles(discoveredFiles, process.argv.slice(2));
+  const files = selectTestFiles(discoveredFiles, selectors);
   if (files.length === 0) {
     throw new Error("No test files matched the package Vitest config.");
   }

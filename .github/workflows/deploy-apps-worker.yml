@@ -58,6 +58,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   determine-env:
@@ -145,6 +146,27 @@ jobs:
           fi
           echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout exact production source for certificate admission
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && needs.determine-env.outputs.environment == 'production' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && needs.determine-env.outputs.environment == 'production' }}
+        with:
+          node-version: "24.15.0"
+
+      - name: Verify production staging certification after admission
+        id: production_certification
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && needs.determine-env.outputs.environment == 'production' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: node packages/cloud/scripts/production-effect-certification.mjs "$SOURCE_SHA"
+
       - name: Fence current staging SHA before host mutation
         if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
         env:
@@ -158,14 +180,23 @@ jobs:
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
+        env:
+          PRODUCTION_CERTIFICATION_EXPIRES_EPOCH: ${{ steps.production_certification.outputs.expires_epoch }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
+          envs: DEPLOY_BRANCH,PRODUCTION_CERTIFICATION_EXPIRES_EPOCH
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 5m
           script: |
             set -euo pipefail
+            if [ "$DEPLOY_BRANCH" = main ]; then
+              [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
+                echo "::error::Production certification expired before host mutation"
+                exit 1
+              }
+            fi
             if ! command -v node >/dev/null 2>&1; then
               echo "[host-prereqs] installing Node 24"
               curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash -
@@ -198,6 +229,7 @@ jobs:
       - name: Deploy and restart apps worker
         if: steps.deploy_config.outputs.configured == 'true'
         env:
+          PRODUCTION_CERTIFICATION_EXPIRES_EPOCH: ${{ steps.production_certification.outputs.expires_epoch }}
           TARGET_SHA: ${{ steps.source.outputs.sha }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
@@ -205,7 +237,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,TARGET_SHA
+          envs: PRODUCTION_CERTIFICATION_EXPIRES_EPOCH,DEPLOY_BRANCH,SYSTEMD_UNIT,TARGET_SHA
           script: |
             set -euo pipefail
             # Serialize deploys on the host. The workflow-level concurrency
@@ -217,6 +249,12 @@ jobs:
             # 540s keeps the lock wait under this step's 10m command_timeout so
             # a starved waiter fails with THIS message, not an opaque SSH kill.
             flock -w 540 9 || { echo "::error::another apps-worker deploy holds the host lock after 9m"; exit 1; }
+            if [ "$DEPLOY_BRANCH" = main ]; then
+              [[ "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$PRODUCTION_CERTIFICATION_EXPIRES_EPOCH" ] || {
+                echo "::error::Production certification expired before host mutation"
+                exit 1
+              }
+            fi
             echo "=== Deploying eliza-apps-worker ($TARGET_SHA from $DEPLOY_BRANCH) ==="
 
             DEPLOY_MARKER=/var/lib/eliza/apps-worker-deployed-sha

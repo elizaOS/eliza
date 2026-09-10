@@ -1,6 +1,12 @@
 /** Tests the real batch runner with deterministic file discovery, fake child processes, and filesystem evidence reconciliation. */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -310,7 +316,6 @@ describe("agent Vitest batch orchestration", () => {
       expect(existsSync(destination)).toBe(false);
     }
     expect(() => mergeAgentJunit([], destination)).toThrow();
-
   });
 
   test("keeps sorted file membership isolated and complete", () => {
