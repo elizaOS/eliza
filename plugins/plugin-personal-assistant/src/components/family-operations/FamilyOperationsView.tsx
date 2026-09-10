@@ -36,6 +36,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import type { FamilyPacketSection } from "../../lifeops/family-coordination/index.js";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 import { PacketDraftEditor } from "./PacketDraftEditor.js";
@@ -43,6 +44,20 @@ import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
 } from "./types.js";
+
+const packetSectionLabels: Record<FamilyPacketSection, string> = {
+  custody_calendar: "Parenting schedule",
+  school: "School",
+  approved_obligations: "Agreement obligations",
+  travel_consent_health: "Travel, consent and health",
+  unanswered: "Unanswered requests",
+};
+
+const packetStatusLabels = {
+  complete: "Source material available for every section",
+  missing: "Some sections need source material",
+  contradictory: "Conflicting sources need review",
+};
 
 type Tab = "agreements" | "calendar" | "school" | "packets";
 
@@ -1116,14 +1131,57 @@ function PacketPanel({
           <Card
             key={`${packet.packetId}:${packet.version}`}
             title={`${packet.periodKey} · version ${packet.version}`}
-            detail={`Built ${date(packet.createdAt)} · ${packet.status}`}
+            detail={`Built ${date(packet.createdAt)} · ${packetStatusLabels[packet.status]}`}
           >
-            <ul>
-              {packet.claims.map((claim) => (
-                <li key={claim.id}>
-                  <strong>{claim.section}:</strong> {claim.text}
-                </li>
+            {packet.sections
+              .filter((section) => section.state !== "complete")
+              .map((section) => (
+                <section
+                  key={section.section}
+                  aria-label={`${packetSectionLabels[section.section]} review`}
+                >
+                  <h3>{packetSectionLabels[section.section]}</h3>
+                  {section.state === "missing" ? (
+                    <p>
+                      No source material is recorded for this section. Add the
+                      relevant information before regenerating the packet; an
+                      empty section does not confirm there is nothing to report.
+                    </p>
+                  ) : (
+                    <>
+                      <p>
+                        These sources disagree. Review and correct the
+                        underlying information before regenerating the packet.
+                      </p>
+                      <ul>
+                        {packet.claims
+                          .filter((claim) =>
+                            section.claimIds.includes(claim.id),
+                          )
+                          .map((claim) => (
+                            <li key={claim.id}>{claim.text}</li>
+                          ))}
+                      </ul>
+                    </>
+                  )}
+                </section>
               ))}
+            <ul>
+              {packet.claims
+                .filter(
+                  (claim) =>
+                    !packet.sections.some(
+                      (section) =>
+                        section.state === "contradictory" &&
+                        section.claimIds.includes(claim.id),
+                    ),
+                )
+                .map((claim) => (
+                  <li key={claim.id}>
+                    <strong>{packetSectionLabels[claim.section]}:</strong>{" "}
+                    {claim.text}
+                  </li>
+                ))}
             </ul>
             <div style={{ marginBottom: 12 }}>
               <Button

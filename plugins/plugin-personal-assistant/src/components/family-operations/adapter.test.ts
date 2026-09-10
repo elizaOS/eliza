@@ -275,7 +275,14 @@ describe("defaultFamilyOperationsAdapter", () => {
       },
       version: 1,
       createdAt: "2026-08-30T12:00:00.000Z",
-      sections: [],
+      sections: [
+        {
+          section: "school",
+          state: "contradictory",
+          claimIds: ["a", "b"],
+          contradictoryKeys: ["pickup"],
+        },
+      ],
       claims: [],
     };
     vi.stubGlobal(
@@ -323,6 +330,8 @@ describe("defaultFamilyOperationsAdapter", () => {
       data: [
         {
           packetId: "packet-1",
+          sections: packet.sections,
+          status: "contradictory",
           draft: {
             draftVersion: 2,
             recipientEntityId: "guest-1",
