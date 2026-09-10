@@ -27,8 +27,7 @@ function firstNonBlankString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
-/** Resolves legacy first-run fields into the complete canonical connector. */
-export function resolveBlooioFirstRunConfig(input: {
+interface BlooioFirstRunInput {
   current?: Record<string, unknown> | null;
   explicit?: Record<string, unknown> | null;
   explicitConnectorRequested?: boolean;
@@ -36,17 +35,9 @@ export function resolveBlooioFirstRunConfig(input: {
   blooioWebhookSecret?: unknown;
   blooioPhoneNumber?: unknown;
   blooioChannelId?: unknown;
-}): BlooioFirstRunResolution {
-  const legacyRequested = [
-    input.blooioApiKey,
-    input.blooioWebhookSecret,
-    input.blooioPhoneNumber,
-    input.blooioChannelId,
-  ].some((value) => value !== undefined);
-  const requested =
-    input.explicitConnectorRequested === true || legacyRequested;
-  if (!requested) return { requested: false };
+}
 
+function readBlooioFields(input: BlooioFirstRunInput) {
   const apiKey = firstNonBlankString(
     input.explicit?.apiKey,
     input.blooioApiKey,
@@ -69,6 +60,26 @@ export function resolveBlooioFirstRunConfig(input: {
     input.blooioChannelId,
     input.current?.channelId,
   );
+
+  return { apiKey, webhookSecret, fromNumber, channelId };
+}
+
+/** Resolves legacy first-run fields into the complete canonical connector. */
+export function resolveBlooioFirstRunConfig(
+  input: BlooioFirstRunInput,
+): BlooioFirstRunResolution {
+  const legacyRequested = [
+    input.blooioApiKey,
+    input.blooioWebhookSecret,
+    input.blooioPhoneNumber,
+    input.blooioChannelId,
+  ].some((value) => value !== undefined);
+  const requested =
+    input.explicitConnectorRequested === true || legacyRequested;
+  if (!requested) return { requested: false };
+
+  const { apiKey, webhookSecret, fromNumber, channelId } =
+    readBlooioFields(input);
 
   const missing = [
     ["apiKey", apiKey],
@@ -115,19 +126,20 @@ export function prepareFirstRunConnectors(
   const blooioDisabled =
     explicitBlooio?.enabled === false ||
     (explicitBlooio?.enabled !== true && savedBlooio?.enabled === false);
+  const blooioInput: BlooioFirstRunInput = {
+    current: savedBlooio,
+    explicit: explicitBlooio,
+    explicitConnectorRequested: Boolean(
+      requested && Object.hasOwn(requested, "blooio"),
+    ),
+    blooioApiKey: body.blooioApiKey,
+    blooioWebhookSecret: body.blooioWebhookSecret,
+    blooioPhoneNumber: body.blooioPhoneNumber,
+    blooioChannelId: body.blooioChannelId,
+  };
   const blooio: BlooioFirstRunResolution = blooioDisabled
     ? { requested: false }
-    : resolveBlooioFirstRunConfig({
-        current: savedBlooio,
-        explicit: explicitBlooio,
-        explicitConnectorRequested: Boolean(
-          requested && Object.hasOwn(requested, "blooio"),
-        ),
-        blooioApiKey: body.blooioApiKey,
-        blooioWebhookSecret: body.blooioWebhookSecret,
-        blooioPhoneNumber: body.blooioPhoneNumber,
-        blooioChannelId: body.blooioChannelId,
-      });
+    : resolveBlooioFirstRunConfig(blooioInput);
   if ("error" in blooio) return { ok: false, error: blooio.error };
   const connectors = { ...current.connectors };
   const env: Record<string, string> = {};
@@ -138,6 +150,14 @@ export function prepareFirstRunConnectors(
         ...connectors[name],
         ...connector,
       } as ConnectorConfig;
+    }
+  }
+  if (blooioDisabled) {
+    const supplied = readBlooioFields({ ...blooioInput, current: undefined });
+    for (const [field, value] of Object.entries(supplied)) {
+      if (value !== undefined) {
+        connectors.blooio = { ...connectors.blooio, [field]: value };
+      }
     }
   }
   const telegramToken = firstNonBlankString(body.telegramToken);

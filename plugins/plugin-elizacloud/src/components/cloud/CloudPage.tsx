@@ -11,9 +11,7 @@ import { CloudView, type CloudViewProps } from "./CloudView.tsx";
 export function CloudPage(props: CloudViewProps = {}): JSX.Element {
   return (
     <PluginPageFrame title="Eliza Cloud">
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        <CloudView {...props} showTitle={false} />
-      </div>
+      <CloudView {...props} showTitle={false} />
     </PluginPageFrame>
   );
 }

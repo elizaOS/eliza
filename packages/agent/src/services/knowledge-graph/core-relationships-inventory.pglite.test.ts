@@ -174,8 +174,10 @@ describe("Core relationships inventory — real PGlite", () => {
     Promise.all(
       tables.map(async (table) =>
         (
-          await execute(`SELECT * FROM ${table} t ORDER BY to_jsonb(t)::text`)
-        ).map((row) => JSON.parse(JSON.stringify(row))),
+          await execute(
+            `SELECT row_to_json(t)::text AS payload FROM ${table} t ORDER BY to_jsonb(t)::text`,
+          )
+        ).map((row) => JSON.parse(String(row.payload))),
       ),
     );
   const run = () =>
@@ -184,6 +186,55 @@ describe("Core relationships inventory — real PGlite", () => {
     execute(
       "SELECT * FROM app_lifeops.core_relationships_source_records ORDER BY agent_id, source_kind, source_id",
     );
+
+  it.each([
+    ["entities", "entity", AGENT_ID, "metadata", "created_at"],
+    ["components", "contact_component", COMPONENT_ID, "data", "created_at"],
+    [
+      "relationships",
+      "relationship",
+      RELATIONSHIP_ID,
+      "metadata",
+      "created_at",
+    ],
+    [
+      "entity_identities",
+      "identity",
+      IDENTITY_ID,
+      "evidence_message_ids",
+      "created_at",
+    ],
+    [
+      "entity_merge_candidates",
+      "merge_candidate",
+      CANDIDATE_ID,
+      "evidence",
+      "proposed_at",
+    ],
+  ] as const)(
+    "preserves PostgreSQL JSONB and timestamp precision for %s",
+    async (table, kind, id, jsonField, timeField) => {
+      await database.exec(`UPDATE ${table} SET ${jsonField} =
+      '{"integer":9007199254740993,"decimal":0.123456789012345678901234567890,"nested":{"tail":"complete"}}'::jsonb,
+      ${timeField} = '2026-01-02T03:04:05.123456Z' WHERE id = '${id}'`);
+      const source = await execute(
+        `SELECT row_to_json(t)::text AS payload FROM ${table} t WHERE id = '${id}'`,
+      );
+      await run();
+      const comparison = await execute(`SELECT
+      source.${jsonField} = archived.payload_json::jsonb -> '${jsonField}' AS json_equal,
+      source.${timeField} = (archived.payload_json::jsonb ->> '${timeField}')::timestamptz AS timestamp_equal
+      FROM ${table} source JOIN app_lifeops.core_relationships_source_records archived
+      ON archived.source_id = source.id::text AND archived.source_kind = '${kind}'
+      AND archived.agent_id = '${AGENT_ID}' WHERE source.id = '${id}'`);
+      expect(comparison).toEqual([{ json_equal: true, timestamp_equal: true }]);
+      expect(
+        await execute(
+          `SELECT row_to_json(t)::text AS payload FROM ${table} t WHERE id = '${id}'`,
+        ),
+      ).toEqual(source);
+    },
+  );
 
   it("archives full scoped rows while preserving source and canonical retirement/deletion on replay", async () => {
     await database.exec(`INSERT INTO app_lifeops.life_relationships_v2 VALUES (

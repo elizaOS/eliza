@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { ElizaConfig } from "@elizaos/shared/config/types.eliza";
+import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../../../../plugins/plugin-imessage/auto-enable.ts";
 import type { FirstRunRouteContext } from "../../../agent/src/api/first-run-routes.ts";
@@ -289,6 +290,58 @@ describe.each(["agent", "app-core"] as const)(
           }),
         ).toBe(beforeEnabled);
         expect(process.env.IMESSAGE_TRANSPORT).toBe(beforeTransport);
+      },
+    );
+
+    it.each([false, true])(
+      "persists credential rotation while disabled (canonical override=%s)",
+      async (canonicalOverride) => {
+        const current = loadElizaConfig();
+        current.connectors = {
+          ...current.connectors,
+          blooio: {
+            enabled: false,
+            webhookSecret: "saved-secret",
+            deliveryPolicy: "manual",
+          },
+        };
+        saveElizaConfig(current);
+        const body = {
+          name: "Eliza",
+          blooioApiKey: " rotated-key ",
+          blooioPhoneNumber: " +15550001111 ",
+          ...(canonicalOverride
+            ? {
+                connectors: {
+                  blooio: {
+                    apiKey: " explicit-key ",
+                    fromNumber: " +15550002222 ",
+                  },
+                },
+              }
+            : {}),
+        };
+        const prepared = prepareFirstRunConnectors(current, body);
+        expect(prepared.ok).toBe(true);
+        if (!prepared.ok) throw new Error(prepared.error);
+        expect(prepared.env).toEqual({});
+        const result = await post(host, body);
+        expect(result.res.statusCode).toBe(200);
+        const reloaded = loadElizaConfig();
+        expect(reloaded.connectors?.blooio).toEqual({
+          enabled: false,
+          webhookSecret: "saved-secret",
+          deliveryPolicy: "manual",
+          apiKey: canonicalOverride ? "explicit-key" : "rotated-key",
+          fromNumber: canonicalOverride ? "+15550002222" : "+15550001111",
+        });
+        expect(
+          shouldEnable({
+            config: { connectors: reloaded.connectors },
+            env: {},
+            isNativePlatform: false,
+          }),
+        ).toBe(false);
       },
     );
 

@@ -24,7 +24,7 @@ import {
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { type ComponentProps, useState } from "react";
+import { type ComponentProps, useCallback, useState } from "react";
 
 /** A typed edge shown under its source entity, already projected for display. */
 export interface RelationshipEdge {
@@ -91,6 +91,7 @@ function RelationshipActionButton({
   agentId,
   agentLabel,
   onAgentActivate,
+  ref: forwardedRef,
   ...props
 }: ComponentProps<typeof Button> & {
   agentId: string;
@@ -104,7 +105,26 @@ function RelationshipActionButton({
     group: "relationships",
     onActivate: onAgentActivate,
   });
-  return <Button ref={ref} {...agentProps} {...props} />;
+  const composedRef = useCallback(
+    (node: HTMLButtonElement | null) => {
+      ref.current = node;
+      if (typeof forwardedRef === "function") {
+        const cleanup = forwardedRef(node);
+        return () => {
+          ref.current = null;
+          if (typeof cleanup === "function") cleanup();
+          else forwardedRef(null);
+        };
+      }
+      if (forwardedRef) forwardedRef.current = node;
+      return () => {
+        ref.current = null;
+        if (forwardedRef) forwardedRef.current = null;
+      };
+    },
+    [ref, forwardedRef],
+  );
+  return <Button {...agentProps} {...props} ref={composedRef} />;
 }
 
 function RelationshipFilterItem({
@@ -242,6 +262,7 @@ function KindFilters({
   active: string;
   onSelect: (kind: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const allKindsValue = "__all__";
   const selectedLabel =
     filters.find((filter) => filter.kind === active)?.label ?? "All";
@@ -249,13 +270,14 @@ function KindFilters({
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
       <span className="text-sm text-muted">Type</span>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <RelationshipActionButton
             type="button"
             size="dense"
             variant="ghostMuted"
             className="min-w-32 justify-between"
+            onAgentActivate={() => setOpen(true)}
             agentId="relationships-kind-filter"
             agentLabel={`Filter relationship type, ${selectedLabel} selected`}
             aria-label={`Filter relationship type, ${selectedLabel} selected`}

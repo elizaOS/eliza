@@ -2,6 +2,8 @@
  * Archives a complete current snapshot of one agent's legacy relationship rows.
  * The explicit maintenance operation reads source tables under a serializable
  * transaction and verifies full payload hashes after writing the snapshot.
+ * PostgreSQL serializes each complete row; payload text stays opaque so native
+ * numeric and timestamp precision survives driver conversion.
  * It never writes canonical graph tables or changes source authority. A later
  * successful run replaces this agent's snapshot; this is not immutable history.
  */
@@ -48,23 +50,6 @@ function quote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-function normalize(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map(normalize);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, normalize(item)]),
-    );
-  }
-  return value;
-}
-
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(normalize(value));
-}
-
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -88,20 +73,20 @@ async function loadSource(
 ): Promise<SourceRecord[]> {
   const agent = quote(agentId);
   const contacts = await exec(
-    `SELECT * FROM components WHERE agent_id::text = ${agent}
+    `SELECT id::text, entity_id::text, row_to_json(source_row)::text AS source_json FROM components source_row WHERE agent_id::text = ${agent}
       AND type = 'contact_info'
       AND world_id::text = ${quote(relationshipsWorldId)}
       AND source_entity_id::text = ${agent}
       ORDER BY id`,
   );
   const relationships = await exec(
-    `SELECT * FROM relationships WHERE agent_id::text = ${agent} ORDER BY id`,
+    `SELECT id::text, source_entity_id::text, target_entity_id::text, row_to_json(source_row)::text AS source_json FROM relationships source_row WHERE agent_id::text = ${agent} ORDER BY id`,
   );
   const identities = await exec(
-    `SELECT * FROM entity_identities WHERE agent_id::text = ${agent} ORDER BY id`,
+    `SELECT id::text, entity_id::text, row_to_json(source_row)::text AS source_json FROM entity_identities source_row WHERE agent_id::text = ${agent} ORDER BY id`,
   );
   const merges = await exec(
-    `SELECT * FROM entity_merge_candidates WHERE agent_id::text = ${agent} ORDER BY id`,
+    `SELECT id::text, entity_a::text, entity_b::text, row_to_json(source_row)::text AS source_json FROM entity_merge_candidates source_row WHERE agent_id::text = ${agent} ORDER BY id`,
   );
   const referenced = new Set<string>([agentId]);
   for (const row of contacts) referenced.add(text(row.entity_id));
@@ -117,7 +102,7 @@ async function loadSource(
   const entityIds = [...referenced].filter(Boolean).map(quote).join(", ");
   const entities = entityIds
     ? await exec(
-        `SELECT * FROM entities WHERE agent_id::text = ${agent} AND id::text IN (${entityIds}) ORDER BY id`,
+        `SELECT id::text, row_to_json(source_row)::text AS source_json FROM entities source_row WHERE agent_id::text = ${agent} AND id::text IN (${entityIds}) ORDER BY id`,
       )
     : [];
   const groups: Array<
@@ -131,7 +116,12 @@ async function loadSource(
   ];
   return groups.flatMap(([kind, rows]) =>
     rows.map((row) => {
-      const payload = canonicalJson(row);
+      const payload = row.source_json;
+      if (typeof payload !== "string" || payload.length === 0) {
+        throw new Error(
+          `Core relationships source row lacks PostgreSQL JSON: ${kind}:${recordId(row)}`,
+        );
+      }
       return { kind, id: recordId(row), payload, hash: hash(payload) };
     }),
   );
