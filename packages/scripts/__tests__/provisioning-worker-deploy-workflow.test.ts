@@ -195,6 +195,7 @@ describe("provisioning worker deployment contract", () => {
 
   it("scopes protected values away from checkout, setup, and install actions", () => {
     const secretNames = [
+      "GITHUB_TOKEN",
       "DEPLOY_HOST",
       "DEPLOY_SSH_KEY",
       "HEADSCALE_API_KEY",
@@ -230,6 +231,7 @@ describe("provisioning worker deployment contract", () => {
 
     const migration = deployStep("Run exact-SHA canonical database migrations");
     expect(Object.keys(migration.env ?? {})).toEqual([
+      "GITHUB_TOKEN",
       "DATABASE_URL",
       "DATABASE_IDENTITY_GATE_MODE",
       "DATABASE_IDENTITY_ENVIRONMENT",
