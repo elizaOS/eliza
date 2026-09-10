@@ -263,6 +263,10 @@ p.on("pageerror", (e) => pageErrors.push(String(e)));
 
 await p.goto(url, { waitUntil: "domcontentloaded" });
 await p.waitForSelector('[data-testid="desktop-settings-navigation"]');
+assert(
+  await p.getByRole("button", { name: "Back to launcher" }).count() === 0,
+  "desktop Settings preserves the shell's headerless launcher navigation",
+);
 
 // ── 1. Persistent desktop rail structure ────────────────────────────────────
 const railText = await p
@@ -435,6 +439,10 @@ mobile.on("pageerror", (e) => pageErrors.push(String(e)));
 await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.goto(url, { waitUntil: "domcontentloaded" });
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
+assert(
+  await mobile.getByRole("button", { name: "Back to launcher" }).count() === 0,
+  "the compact Settings hub does not introduce a launcher control",
+);
 const firstMobileGroup = await mobile
   .locator('[data-slot="settings-group-surface"]')
   .first()
@@ -459,8 +467,14 @@ assert(
 );
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-appearance-mobile`);
 shotIndex += 1;
+await mobile.getByRole("button", { name: "Back to Settings" }).hover();
+await snap(mobile, "appearance-mobile-back-hover");
 await mobile.getByRole("button", { name: "Back to Settings" }).click();
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
+assert(
+  await mobile.getByRole("button", { name: "Back to Settings" }).count() === 0,
+  "returning to the hub removes the nested navigation control",
+);
 await mobile.locator('[data-testid="settings-hub-row-voice"]').click();
 await mobile.waitForSelector("#voice");
 await assertSectionRendered(mobile, "mobile Voice");

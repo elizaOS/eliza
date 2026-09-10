@@ -268,7 +268,6 @@ export function SettingsView({
     loadPlugins: s.loadPlugins,
     walletEnabled: s.walletEnabled,
   }));
-  const plugins = useAppSelector((s) => s.plugins);
   const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
   const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
   const managedCloudRuntime =
@@ -527,25 +526,10 @@ export function SettingsView({
     settingsRoute.kind === "connector-detail"
       ? settingsRoute.connectorId
       : null;
-  const connectorDetailName = connectorDetailId
-    ? (plugins.find((p) => p.id === connectorDetailId)?.name ??
-      connectorDetailId)
-    : null;
-  const headerTitle = connectorDetailName
-    ? connectorDetailName
-    : activeSectionDef
-      ? settingsSectionTitle(activeSectionDef, t)
-      : settingsTitle;
-  const onBack = connectorDetailId
-    ? backToConnectorsIndex
-    : activeSectionDef
-      ? backToHub
-      : navigateBackToLauncher;
+  const onBack = connectorDetailId ? backToConnectorsIndex : backToHub;
   const backLabel = connectorDetailId
     ? "Back to Connectors"
-    : activeSectionDef
-      ? "Back to Settings"
-      : "Back to launcher";
+    : "Back to Settings";
   const desktopSidebar = isWideSettings ? (
     <DesktopSettingsNavigation
       grouped={navigationGrouped}
@@ -606,18 +590,15 @@ export function SettingsView({
                 isNativeCompactSettings && "pt-[var(--safe-area-top,0px)]",
               )}
             >
-              <nav
-                aria-label={settingsTitle}
-                data-testid="view-header"
-                className="flex shrink-0 items-center gap-3 px-1.5 py-2 sm:px-1.5"
-              >
-                {activeSectionDef || !detachedSettingsShell ? (
+              {activeSectionDef || connectorDetailId ? (
+                <nav
+                  aria-label={settingsTitle}
+                  data-testid="view-header"
+                  className="flex shrink-0 items-center px-1.5 py-2 sm:px-1.5"
+                >
                   <ViewBackButton onBack={onBack} label={backLabel} />
-                ) : null}
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {headerTitle}
-                </span>
-              </nav>
+                </nav>
+              ) : null}
             </div>
           ) : null}
 
