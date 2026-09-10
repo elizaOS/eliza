@@ -41,6 +41,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import * as AgentSurfaceHost from "../../agent-surface";
 import {
@@ -83,6 +84,7 @@ import {
   getActiveSurfaceRealmScope,
   SurfaceRealmDeniedError,
   type SurfaceRealmScope,
+  subscribeActiveSurfaceRealmScope,
 } from "../../surface-realm-broker";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -414,33 +416,33 @@ function resolveSurfaceRealmScopeForHostExternal(
   detail: string,
 ): SurfaceRealmScope | null {
   const activeScope = getActiveSurfaceRealmScope();
-  if (!boundScope) return activeScope;
   if (activeScope === boundScope) return boundScope;
   throw new SurfaceRealmDeniedError(
-    boundScope.viewId,
+    boundScope?.viewId ?? "unbound",
     vector,
     `stale host external call after surface deactivation: ${detail}`,
   );
 }
 
-async function importUiRootCompat(): Promise<Record<string, unknown>> {
+async function importUiRootCompat(
+  boundScope: SurfaceRealmScope | null = getActiveSurfaceRealmScope(),
+): Promise<Record<string, unknown>> {
   // The root package is deliberately limited to design-system primitives. The
   // brokered navigation and bridge adapters are overlaid for older view bundles
   // that still request those names from the root specifier; raw shell-global
   // channels are not part of the root namespace and therefore cannot leak here.
   const [rootModule, appNavigateView, bridge] = await Promise.all([
     import("../../index.ts"),
-    importUiAppNavigateViewCompat(),
-    importUiBridgeCompat(),
+    importUiAppNavigateViewCompat(boundScope),
+    importUiBridgeCompat(boundScope),
   ]);
   return { ...rootModule, ...appNavigateView, ...bridge };
 }
 
-async function importUiAppNavigateViewCompat(): Promise<
-  Record<string, unknown>
-> {
+async function importUiAppNavigateViewCompat(
+  boundScope: SurfaceRealmScope | null = getActiveSurfaceRealmScope(),
+): Promise<Record<string, unknown>> {
   const appNavigateView = await import("../../app-navigate-view.ts");
-  const boundScope = getActiveSurfaceRealmScope();
   return {
     ...appNavigateView,
     navigateBrowserPath(path: string): void {
@@ -458,9 +460,10 @@ async function importUiAppNavigateViewCompat(): Promise<
   };
 }
 
-async function importUiBridgeCompat(): Promise<Record<string, unknown>> {
+async function importUiBridgeCompat(
+  boundScope: SurfaceRealmScope | null = getActiveSurfaceRealmScope(),
+): Promise<Record<string, unknown>> {
   const bridge = await import("../../bridge/index.ts");
-  const boundScope = getActiveSurfaceRealmScope();
   // The bridge barrel carries the shell-privileged raw-global channel for shell
   // code outside packages/ui; handing it to a view bundle would let the view
   // disarm the raw-global guards on itself. Views get the scoped storage
@@ -774,7 +777,17 @@ export async function importAuthenticatedViewBundle(
  * HostModuleImporter} it resolves its externals through — no `globalThis` bridge.
  * Exported so tests can exercise the resolver the factory receives.
  */
-export const hostImport: HostModuleImporter = async (specifier) => {
+export const hostImport: HostModuleImporter = (specifier) =>
+  importHostForScope(specifier, getActiveSurfaceRealmScope());
+
+async function importHostForScope(
+  specifier: string,
+  scope: SurfaceRealmScope | null,
+): Promise<Record<string, unknown>> {
+  if (specifier === "@elizaos/ui") return importUiRootCompat(scope);
+  if (specifier === "@elizaos/ui/app-navigate-view")
+    return importUiAppNavigateViewCompat(scope);
+  if (specifier === "@elizaos/ui/bridge") return importUiBridgeCompat(scope);
   const importer = resolveHostExternalImporter(specifier);
   if (!importer) {
     throw new Error(
@@ -782,7 +795,7 @@ export const hostImport: HostModuleImporter = async (specifier) => {
     );
   }
   return importer();
-};
+}
 
 /**
  * A served view bundle's default export is a `HostExternalBundleFactory`: call
@@ -792,10 +805,20 @@ export const hostImport: HostModuleImporter = async (specifier) => {
  */
 async function resolveBundleNamespace(
   mod: Record<string, unknown>,
+  scope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
+  if (scope !== getActiveSurfaceRealmScope()) {
+    throw new SurfaceRealmDeniedError(
+      scope?.viewId ?? "unbound",
+      "navigate",
+      "view bundle authority changed before evaluation",
+    );
+  }
   const factory = mod.default;
   if (typeof factory !== "function") return mod;
-  return (factory as HostExternalBundleFactory)(hostImport);
+  return (factory as HostExternalBundleFactory)((specifier) =>
+    importHostForScope(specifier, scope),
+  );
 }
 
 /** Dev-mode polling interval in ms. Not used in production builds. */
@@ -825,6 +848,7 @@ export function isSameOriginBundleUrl(bundleUrl: string): boolean {
 
 async function importViewBundle(
   bundleUrl: string,
+  scope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
   if (
     (import.meta.env.DEV ||
@@ -846,6 +870,7 @@ async function importViewBundle(
   if (hostExternalUrl) {
     return resolveBundleNamespace(
       await importAuthenticatedViewBundle(hostExternalUrl),
+      scope,
     );
   }
 
@@ -866,6 +891,7 @@ async function importViewBundle(
   }
   return resolveBundleNamespace(
     await importAuthenticatedViewBundle(rewrittenUrl),
+    scope,
   );
 }
 
@@ -882,11 +908,31 @@ function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   return rewrittenUrl.href;
 }
 
+// Evaluated namespaces capture broker handles. Reuse is valid only within the
+// scope that evaluated them, even when another backend serves the same URL.
+const bundleScopeIds = new WeakMap<SurfaceRealmScope, number>();
+let nextBundleScopeId = 0;
+function bundleCacheKey(
+  bundleUrl: string,
+  componentExport: string,
+  scope: SurfaceRealmScope | null,
+): string {
+  const base = `${bundleUrl}::${componentExport}`;
+  if (!scope) return base;
+  let id = bundleScopeIds.get(scope);
+  if (id === undefined) {
+    id = ++nextBundleScopeId;
+    bundleScopeIds.set(scope, id);
+  }
+  return `${base}::scope:${id}`;
+}
+
 function ensureBundleModuleEntry(
   bundleUrl: string,
   componentExport: string,
+  scope: SurfaceRealmScope | null,
 ): ViewBundleCacheEntry {
-  const cacheKey = `${bundleUrl}::${componentExport}`;
+  const cacheKey = bundleCacheKey(bundleUrl, componentExport, scope);
   const cached = bundleModuleCache.get(cacheKey);
   if (cached) {
     cached.lastUsedAt = Date.now();
@@ -894,7 +940,7 @@ function ensureBundleModuleEntry(
   }
 
   let entry: ViewBundleCacheEntry;
-  const promise = importViewBundle(bundleUrl).then(
+  const promise = importViewBundle(bundleUrl, scope).then(
     (mod: Record<string, unknown>) => {
       const exported = mod[componentExport] ?? mod.default;
       if (!isReactComponentExport(exported)) {
@@ -957,13 +1003,14 @@ function ensureBundleModuleEntry(
 function acquireBundleModule(
   bundleUrl: string,
   componentExport: string,
+  scope: SurfaceRealmScope | null,
 ): {
   cacheKey: string;
   promise: Promise<ViewBundleModule>;
   release: () => void;
 } {
   installBundleCacheLifecycle();
-  const entry = ensureBundleModuleEntry(bundleUrl, componentExport);
+  const entry = ensureBundleModuleEntry(bundleUrl, componentExport, scope);
   entry.refCount += 1;
   entry.lastUsedAt = Date.now();
   if (entry.retentionTimer) {
@@ -1390,6 +1437,45 @@ interface DynamicViewLoaderProps {
   surface?: SurfaceManifest;
 }
 
+interface ViewRealmBinding {
+  viewId: string;
+  scope: SurfaceRealmScope | null;
+  admitted: boolean;
+}
+
+function useViewRealmBinding(viewId: string): ViewRealmBinding {
+  const published = useSyncExternalStore(
+    subscribeActiveSurfaceRealmScope,
+    getActiveSurfaceRealmScope,
+    getActiveSurfaceRealmScope,
+  );
+  const initialBinding = (): ViewRealmBinding => ({
+    viewId,
+    scope: published?.ownsView(viewId) ? published : null,
+    admitted: published === null || published.ownsView(viewId),
+  });
+  const [binding, setBinding] = useState(initialBinding);
+  // Retained background views keep their old lease and denied handles. They
+  // must never re-evaluate under the foreground owner's grants. A composed
+  // layout admits its explicit members under the shared default-deny scope.
+  if (binding.viewId !== viewId) {
+    const next = initialBinding();
+    setBinding(next);
+    return next;
+  }
+  if (published?.ownsView(viewId) && binding.scope !== published) {
+    const next = { viewId, scope: published, admitted: true };
+    setBinding(next);
+    return next;
+  }
+  if (published && binding.scope === null && binding.admitted) {
+    const next = { viewId, scope: null, admitted: false };
+    setBinding(next);
+    return next;
+  }
+  return binding;
+}
+
 /**
  * Loads and mounts a view component from a remote bundle URL.
  *
@@ -1425,6 +1511,8 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // and talks to the shell only through the postMessage broker, so the in-realm
   // bundle-load / interact-registry path below is skipped for it.
   const isSandboxed = resolvedManifest.isolation === "sandboxed-iframe";
+  const { scope: activeScope, admitted: scopeAdmitted } =
+    useViewRealmBinding(viewId);
   const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
   // Incrementing this key invalidates the module cache entry and forces a
@@ -1446,10 +1534,15 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // re-run this effect to invalidate the module cache.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a manual cache-bust trigger
   useEffect(() => {
+    if (!scopeAdmitted) {
+      setBundle(null);
+      setLoadError(null);
+      return;
+    }
     if (!dynamicLoadingAllowed || isSandboxed || !bundleUrl) return;
 
     let cancelled = false;
-    const lease = acquireBundleModule(bundleUrl, componentExport);
+    const lease = acquireBundleModule(bundleUrl, componentExport, activeScope);
 
     setBundle(null);
     setLoadError(null);
@@ -1475,6 +1568,8 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       lease.release();
     };
   }, [
+    activeScope,
+    scopeAdmitted,
     bundleUrl,
     componentExport,
     dynamicLoadingAllowed,
@@ -1526,7 +1621,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
               params,
               containerRef.current,
               setReloadKey,
-              `${bundleUrl}::${componentExport}`,
+              bundleCacheKey(bundleUrl, componentExport, activeScope),
               registry,
             );
           }
@@ -1542,7 +1637,15 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     );
 
     return unregister;
-  }, [bundle, bundleUrl, componentExport, resolvedManifest, viewId, viewType]);
+  }, [
+    activeScope,
+    bundle,
+    bundleUrl,
+    componentExport,
+    resolvedManifest,
+    viewId,
+    viewType,
+  ]);
 
   // Dev-mode only: poll the bundle URL with HEAD requests every 2s. When the
   // ETag changes the bundle has been rebuilt — evict the cache entry and bump
@@ -1551,7 +1654,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   useEffect(() => {
     if (!import.meta.env.DEV || !bundleUrl || !dynamicLoadingAllowed) return;
 
-    const cacheKey = `${bundleUrl}::${componentExport}`;
+    const cacheKey = bundleCacheKey(bundleUrl, componentExport, activeScope);
     let requestPath: string;
     try {
       requestPath = trustedBundleRequestPath(bundleUrl);
@@ -1580,7 +1683,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     }, DEV_POLL_INTERVAL_MS);
 
     return () => clearInterval(id);
-  }, [bundleUrl, componentExport, dynamicLoadingAllowed]);
+  }, [activeScope, bundleUrl, componentExport, dynamicLoadingAllowed]);
 
   // Recover from a load failure or render crash: evict the cached module so the
   // next import re-fetches a fresh copy, clear the latched error, and bump
@@ -1589,10 +1692,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // crashed at render is genuinely retried, not stuck behind a latched boundary.
   const recoverView = useCallback(() => {
     if (!bundleUrl) return;
-    invalidateBundleModule(`${bundleUrl}::${componentExport}`);
+    invalidateBundleModule(
+      bundleCacheKey(bundleUrl, componentExport, activeScope),
+    );
     setLoadError(null);
     setReloadKey((k) => k + 1);
-  }, [bundleUrl, componentExport]);
+  }, [activeScope, bundleUrl, componentExport]);
 
   // iOS App Store and Google Play builds cannot load remote JS or HTML frame
   // documents at runtime; both execute plugin-provided code.
