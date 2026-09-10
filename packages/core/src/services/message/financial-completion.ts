@@ -21,7 +21,7 @@ const NON_ASSERTION =
 function financialClaims(reply: string): FinancialClaim[] {
 	const claims: FinancialClaim[] = [];
 	for (const sentence of reply.split(
-		/(?<=[.!?;])\s+|\n|\s+(?:but|however)\s+/iu,
+		/(?<=[.!?;])\s+|\n|\s+(?:but|however)\s+|\s+and\s+(?=(?:I|we|the|your)\b)/iu,
 	)) {
 		const completion = COMPLETION.exec(sentence);
 		if (

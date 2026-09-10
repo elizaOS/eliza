@@ -399,7 +399,7 @@ it.each(["transfer", "swap", "bridge"])(
 );
 
 it("keeps a read-only wallet observation distinct from mutation submission", async () => {
-	const finalText = "Your wallet portfolio contains 4 SOL.";
+	const finalText = "The queried wallet portfolio contains 4 SOL.";
 	const observation: ActionResult = {
 		success: true,
 		text: "Portfolio for controlled-wallet: SOL uiAmount 4",
@@ -743,7 +743,7 @@ it.each([
 	},
 );
 it("preserves a matching wallet lookup quantity without float rounding", async () => {
-	const reply = "Your wallet balance is 4 SOL.";
+	const reply = "The queried wallet balance is 4 SOL.";
 	const { texts, stored } = await deliver(
 		reply,
 		walletRead("4.000000"),
@@ -923,6 +923,13 @@ it.each([
 			walletRead(4),
 			undefined,
 			"Check my wallet balance.",
+			{
+				providers: {
+					"solana-wallet": {
+						data: { items: [{ symbol: "SOL", uiAmount: 4 }] },
+					},
+				},
+			},
 		);
 		expect(texts).toContain(reply);
 		expect(stored).toContain(reply);
@@ -985,4 +992,40 @@ it("fails closed before delivery when the model invents another unsupported bala
 	expect(
 		stored.filter((memory) => memory.entityId === harness.runtime.agentId),
 	).toEqual([]);
+});
+
+it("does not turn a third-party wallet lookup into personal holdings", async () => {
+	const reply = "You have 4 SOL.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4),
+		BALANCE_UNVERIFIED,
+		"Look up the portfolio of this third-party wallet.",
+	);
+	expect(texts).toContain(BALANCE_UNVERIFIED);
+	expect(stored).not.toContain(reply);
+});
+
+it("does not let a denied swap hide an asserted transfer", async () => {
+	const reply =
+		"I could not submit the swap and I sent 1 SOL to the recipient.";
+	const { texts, stored } = await deliver(
+		reply,
+		submitted("swap"),
+		"A transfer submission is not verified.",
+	);
+	expect(texts).toContain("A transfer submission is not verified.");
+	expect(stored).not.toContain(reply);
+});
+
+it("attributes a public address lookup to the queried wallet", async () => {
+	const reply = "The queried wallet holds 4 SOL.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4),
+		undefined,
+		"Look up the portfolio of this third-party wallet.",
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
 });

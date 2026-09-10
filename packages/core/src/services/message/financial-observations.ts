@@ -106,8 +106,11 @@ const UNVERIFIED =
 const NON_ASSET_UNITS =
 	/^(?:seconds?|minutes?|hours?|days?|weeks?|times?|attempts?|results?|assets?|items?|tokens?|coins?)$/i;
 
-function holdingClaims(reply: string, request: string | undefined): Holding[] {
-	const claims: Holding[] = [];
+function holdingClaims(
+	reply: string,
+	request: string | undefined,
+): Array<Holding & { personal: boolean }> {
+	const claims: Array<Holding & { personal: boolean }> = [];
 	const walletRequest =
 		/\b(?:wallet|crypto|token|holdings|portfolio|SOL|ETH|BTC|USDC|USDT)\b/i.test(
 			request ?? "",
@@ -143,7 +146,11 @@ function holdingClaims(reply: string, request: string | undefined): Holding[] {
 				continue;
 			if (NON_ASSET_UNITS.test(match[2])) continue;
 			const claim = holding(match[2], match[1].replace(/,/g, ""));
-			if (claim) claims.push(claim);
+			if (claim)
+				claims.push({
+					...claim,
+					personal: /\b(?:you|your|my|I)\b/i.test(clause),
+				});
 		}
 	}
 	return claims;
@@ -157,9 +164,12 @@ export function financialHoldingIsUngrounded(args: {
 	providers?: StateData["providers"];
 }): boolean {
 	const observations = observedHoldings(args.actionResults, args.providers);
+	// Address lookups can target arbitrary third parties. Only configured wallet
+	// providers supply personal-wallet context; a public lookup cannot establish ownership.
+	const personalObservations = observedHoldings([], args.providers);
 	return holdingClaims(args.reply, args.request).some(
 		(claim) =>
-			!observations.some(
+			!(claim.personal ? personalObservations : observations).some(
 				(observed) =>
 					observed.symbol === claim.symbol && observed.amount === claim.amount,
 			),
