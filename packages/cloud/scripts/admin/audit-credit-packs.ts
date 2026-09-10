@@ -25,6 +25,7 @@
  * per-pack STRIPE_*_PACK_* env vars to cross-check the seeder's wiring) from
  * .env/.env.local, same loading convention as seed-credit-packs.ts.
  */
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "../../shared/src/billing/organization-credits";
 import { loadEnvFiles } from "./local-dev-helpers";
 
 // In --json mode the script's stdout is machine-parsed; silence dotenv banners.
@@ -64,6 +65,7 @@ interface PackAudit {
   customPathUsdPerCredit: number; // live custom top-up economics: 1 credit = $1
   economicsNote: string | null;
   stripePriceId: string | null;
+  stripeProductId: string | null;
   stripeChecks: PriceRead | null;
   deploymentCurrencyUsd: boolean | null;
   seededWiringMatches: boolean | null;
@@ -130,7 +132,7 @@ async function main() {
     const empty = {
       summary: "No credit packs exist in the database.",
       packs: [] as PackAudit[],
-      note: "The seed script has never been run against this environment; the credit_packs table is empty and only the custom-amount path ($1-$1000, 1:1 credits) is sellable.",
+      note: `The seed script has never been run against this environment; the credit_packs table is empty and only the custom-amount path ($${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd}-$${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd}, 1:1 credits) is sellable.`,
     };
     console.log(asJson ? JSON.stringify(empty, null, 2) : empty.summary);
     return;
@@ -267,6 +269,7 @@ async function main() {
       customPathUsdPerCredit: 1,
       economicsNote,
       stripePriceId: pack.stripe_price_id,
+      stripeProductId: pack.stripe_product_id,
       stripeChecks,
       deploymentCurrencyUsd,
       seededWiringMatches,
@@ -281,7 +284,11 @@ async function main() {
     deprecated: results.filter((r) => r.classification === "DEPRECATED").length,
     erroneous: results.filter((r) => r.classification === "ERRONEOUS").length,
     unknown: results.filter((r) => r.classification === "UNKNOWN").length,
-    liveCustomPath: { minUsd: 1, maxUsd: 1000, usdPerCredit: 1 },
+    liveCustomPath: {
+      minUsd: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+      maxUsd: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
+      usdPerCredit: 1,
+    },
     deploymentCurrencyUsd,
   };
 
@@ -291,7 +298,9 @@ async function main() {
   }
 
   console.log("\n=== Credit-pack reconciliation audit (#22963) ===\n");
-  console.log(`Live custom-amount path: $1-$1000, 1 credit = $1.00\n`);
+  console.log(
+    `Live custom-amount path: $${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd}-$${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd}, 1 credit = $1.00\n`,
+  );
   for (const r of results) {
     console.log(`${r.classification.padEnd(10)} ${r.name}`);
     console.log(
