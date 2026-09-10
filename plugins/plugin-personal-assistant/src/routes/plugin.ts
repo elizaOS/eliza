@@ -320,6 +320,8 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/calendar/calendars" },
   { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
+  { type: "GET", path: "/api/lifeops/calendar/sync-control" },
+  { type: "POST", path: "/api/lifeops/calendar/sync-control" },
   { type: "GET", path: "/api/lifeops/calendar/links" },
   { type: "POST", path: "/api/lifeops/calendar/links" },
   { type: "POST", path: "/api/lifeops/calendar/cards" },
