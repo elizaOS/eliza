@@ -300,6 +300,55 @@ describe("FamilyOperationsView", () => {
     await waitFor(() => expect(local.uploadAgreement).toHaveBeenCalled());
   });
 
+  it("keeps missing sections distinct from conflicting sources during packet review", async () => {
+    const data = snapshot();
+    data.packets = {
+      status: "ready",
+      data: [
+        {
+          packetId: "review-packet",
+          periodKey: "2026-10",
+          version: 1,
+          createdAt: "2026-09-10T12:00:00Z",
+          status: "contradictory",
+          sections: [
+            {
+              section: "school",
+              state: "contradictory",
+              claimIds: ["school-a", "school-b"],
+              contradictoryKeys: ["pickup"],
+            },
+            {
+              section: "approved_obligations",
+              state: "missing",
+              claimIds: [],
+              contradictoryKeys: [],
+            },
+          ],
+          claims: [
+            { id: "school-a", section: "school", text: "Pickup is at noon." },
+            { id: "school-b", section: "school", text: "Pickup is at 3 PM." },
+          ],
+        },
+      ],
+    };
+    render(<FamilyOperationsView adapter={adapter(data)} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    const conflict = screen.getByRole("region", { name: "School review" });
+    expect(within(conflict).getByText("Pickup is at noon.")).toBeTruthy();
+    expect(within(conflict).getByText("Pickup is at 3 PM.")).toBeTruthy();
+    const missing = screen.getByRole("region", {
+      name: "Agreement obligations review",
+    });
+    expect(
+      within(missing).getByText(/No source material is recorded/),
+    ).toBeTruthy();
+    expect(within(missing).queryByText(/These sources disagree/)).toBeNull();
+    expect(screen.getAllByText("Pickup is at noon.")).toHaveLength(1);
+  });
+
   it("creates, reviews, and requests approval for an immutable packet draft", async () => {
     const data = snapshot();
     data.packets = {
@@ -311,11 +360,12 @@ describe("FamilyOperationsView", () => {
           version: 1,
           createdAt: "2026-08-30T12:00:00.000Z",
           status: "complete",
+          sections: [],
           claims: [
             { id: "claim-1", section: "school", text: "No school." },
             {
               id: "private-claim",
-              section: "owner",
+              section: "travel_consent_health",
               text: "Private owner note omitted by the disclosure policy.",
             },
           ],

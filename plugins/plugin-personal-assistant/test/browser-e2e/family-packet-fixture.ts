@@ -14,8 +14,13 @@ export function createFamilyPacketFixture(
     version: 1,
     createdAt: "2026-09-20T12:00:00Z",
     status: "complete",
+    sections: [],
     claims: [
-      { id: "private", section: "owner", text: "Private fixture canary" },
+      {
+        id: "private",
+        section: "travel_consent_health",
+        text: "Private fixture canary",
+      },
     ],
     draft: {
       draftVersion: 1,

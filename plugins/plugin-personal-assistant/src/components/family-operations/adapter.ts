@@ -139,6 +139,7 @@ function packetView(
       : states.includes("missing")
         ? "missing"
         : "complete",
+    sections: packet.sections,
     claims: packet.claims.map((claim) => ({
       id: claim.claimId,
       section: claim.section,

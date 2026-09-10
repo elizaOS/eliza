@@ -1,6 +1,10 @@
 /** View contracts for the owner-facing Family Operations workspace. */
 
-import type { FamilyPacketEmailDelivery } from "../../lifeops/family-coordination/index.js";
+import type {
+  FamilyPacketEmailDelivery,
+  FamilyPacketSection,
+  FamilyPacketSectionSummary,
+} from "../../lifeops/family-coordination/index.js";
 import type { FamilyEmailOptions } from "../../lifeops/family-workflows/runtime.js";
 import type {
   AgreementGuestGrantPreview,
@@ -48,7 +52,8 @@ export interface FamilyPacketView {
   version: number;
   createdAt: string;
   status: "complete" | "missing" | "contradictory";
-  claims: Array<{ id: string; section: string; text: string }>;
+  sections: readonly FamilyPacketSectionSummary[];
+  claims: Array<{ id: string; section: FamilyPacketSection; text: string }>;
   draft?: {
     draftVersion: number;
     recipient: string;
