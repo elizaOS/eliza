@@ -8,12 +8,17 @@ const cacheGet = mock();
 const cacheSet = mock();
 const getConnectedPlatforms = mock();
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: cacheGet,
     set: cacheSet,
     del: mock(async () => {}),
     delPattern: mock(async () => {}),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

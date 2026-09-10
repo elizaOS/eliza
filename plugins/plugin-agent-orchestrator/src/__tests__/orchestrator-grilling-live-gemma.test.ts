@@ -5,18 +5,20 @@
  * this drives the real `OrchestratorTaskService` verify loop with the real judge
  * model, so it proves the loop actually verifies when the live model — not a
  * hand-written stub — reads the pasted test evidence. Gated behind
- * `CEREBRAS_API_KEY`; skipped in keyless CI. The deterministic evidence-bundle
- * assertion (capturing model, no live judge) lives ONLY in
+ * `ELIZA_RUN_LIVE_TESTS=1` and `CEREBRAS_API_KEY`; skipped from the normal
+ * package lane. The deterministic evidence-bundle assertion (capturing model,
+ * no live judge) lives ONLY in
  * `orchestrator-scenario-logic.test.ts` — it is not duplicated here under a
  * "live" banner.
  *
- * Run: CEREBRAS_API_KEY=csk-... bunx vitest run orchestrator-grilling-live-gemma
+ * Run: ELIZA_RUN_LIVE_TESTS=1 CEREBRAS_API_KEY=csk-... bunx vitest run orchestrator-grilling-live-gemma
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runGrillingHappyPathCheck } from "../../test/scenarios/_helpers/grilling-scenario.ts";
 
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY?.trim() ?? "";
+const RUN_LIVE = process.env.ELIZA_RUN_LIVE_TESTS === "1";
 const MODEL = process.env.GEMMA_MODEL?.trim() || "gemma-4-31b";
 const BASE_URL =
   process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
@@ -94,7 +96,7 @@ afterEach(() => {
   }
 });
 
-describe.skipIf(!CEREBRAS_KEY)(
+describe.skipIf(!RUN_LIVE || !CEREBRAS_KEY)(
   `orchestrator grilling loop — LIVE ${MODEL} (Cerebras)`,
   () => {
     it("grills a no-evidence completion, then verifies done once real Gemma reads pasted passing tests", async () => {

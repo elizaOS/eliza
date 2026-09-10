@@ -9,8 +9,12 @@
  * `TELEGRAM_BOT_TOKEN`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
+  selectDefaultConnectorAccountId,
+} from "@elizaos/core";
 
-export const DEFAULT_ACCOUNT_ID = "default";
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 export interface TelegramAccountConfig {
   name?: string;
@@ -81,10 +85,7 @@ export function listTelegramAccountIds(runtime: IAgentRuntime): string[] {
 export function resolveDefaultTelegramAccountId(
   runtime: IAgentRuntime,
 ): string {
-  const ids = listTelegramAccountIds(runtime);
-  return ids.includes(DEFAULT_ACCOUNT_ID)
-    ? DEFAULT_ACCOUNT_ID
-    : (ids[0] ?? DEFAULT_ACCOUNT_ID);
+  return selectDefaultConnectorAccountId(listTelegramAccountIds(runtime));
 }
 
 function getAccountConfig(

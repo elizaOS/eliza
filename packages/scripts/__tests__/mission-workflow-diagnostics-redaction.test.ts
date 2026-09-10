@@ -188,9 +188,11 @@ exit 17
     expect(converge).toContain(
       "grep -hEo 'category=(headscale|cp-router)-[a-z0-9-]+'",
     );
-    expect(converge).toContain("headscale-*|cp-router-*) ;;");
-    expect(converge).toContain('safe_category="headscale-remote-failed"');
+    expect(converge).toContain('case "$safe_category" in');
+    expect(converge).toContain("headscale-*|cp-router-*)");
+    expect(converge).toContain('*) safe_category="headscale-remote-failed" ;;');
     expect(converge).toContain("category=$safe_category");
+    expect(converge).toContain("raw-output=suppressed");
     expect(converge).toContain('rm -f -- "$' + '{cleanup_paths[@]}"');
     expect(converge).not.toContain('cat "$arm_stdout"');
     expect(converge).not.toContain('cat "$arm_stderr"');
@@ -201,10 +203,19 @@ exit 17
     expect(script).not.toMatch(/systemctl status headscale\b/);
     expect(script).not.toMatch(/journalctl -u headscale\b/);
     expect(script).not.toMatch(/echo "\$CP_ROUTER_HOST/);
-    expect(script).toContain("sudo tailscale status --json");
-    expect(script).toContain("sudo tailscale debug prefs");
-    expect(script).toContain('((.Self.HostName // "") == $h');
-    expect(script).toContain('.ControlURL // ""');
+    expect(script).toContain(
+      "FINAL_STATUS_JSON=$(sudo tailscale status --json 2>/dev/null || true)",
+    );
+    expect(script).toContain(
+      "FINAL_PREFS_JSON=$(sudo tailscale debug prefs 2>/dev/null || true)",
+    );
+    expect(script).toContain('.BackendState == "Running"');
+    expect(script).toContain(
+      '[ "\\$' + '{FINAL_CONTROL_URL%/}" = "\\$' + '{LOGIN_SERVER%/}" ]',
+    );
+    expect(script).toContain("category=cp-router-live-proof-failed");
+    expect(script).toContain("category=cp-router-control-url-mismatch");
+    expect(script).toContain("category=cp-router-durable-proof-failed");
     expect(script).toContain('headscale users create "$user" >/dev/null');
   });
 

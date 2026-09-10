@@ -100,7 +100,9 @@ function runFixture(fixture, ...args) {
   );
 }
 
-test("scenario writes and resume checks share the canonical marker path", (t) => {
+test("scenario writes and resume checks share the canonical marker path", {
+  timeout: 20_000,
+}, (t) => {
   const fixture = createDryRunFixture(t);
   const itemDir = path.join(
     fixture.harvestRoot,

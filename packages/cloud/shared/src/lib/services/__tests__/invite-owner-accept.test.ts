@@ -162,14 +162,6 @@ beforeAll(async () => {
     const { organizations } = await import("../../../db/schemas/organizations");
     const { users } = await import("../../../db/schemas/users");
     const { userIdentities } = await import("../../../db/schemas/user-identities");
-    const { personalAccountConvergences } = await import(
-      "../../../db/schemas/personal-account-convergences"
-    );
-    const {
-      personalSharedGroupBindings,
-      personalSharedGroupJoinChallenges,
-      personalSharedGroupParticipants,
-    } = await import("../../../db/schemas/personal-shared-groups");
     const { organizationInvites } = await import("../../../db/schemas/organization-invites");
     const { userCharacters } = await import("../../../db/schemas/user-characters");
     const { conversations } = await import("../../../db/schemas/conversations");
@@ -190,6 +182,14 @@ beforeAll(async () => {
     const { mcpPricingTypeEnum, mcpStatusEnum, userMcps } = await import(
       "../../../db/schemas/user-mcps"
     );
+    const {
+      personalSharedGroupBindings,
+      personalSharedGroupClaims,
+      personalSharedGroupDeliveryAttempts,
+      personalSharedGroupDeliveryReceipts,
+      personalSharedGroupJoinChallenges,
+      personalSharedGroupParticipants,
+    } = await import("../../../db/schemas/personal-shared-groups");
     schemas = {
       organizations,
       users,
@@ -208,10 +208,6 @@ beforeAll(async () => {
         organizations,
         users,
         userIdentities,
-        personalAccountConvergences,
-        personalSharedGroupBindings,
-        personalSharedGroupJoinChallenges,
-        personalSharedGroupParticipants,
         organizationInvites,
         userCharacters,
         conversations,
@@ -229,6 +225,12 @@ beforeAll(async () => {
         userMcps,
         mcpPricingTypeEnum,
         mcpStatusEnum,
+        personalSharedGroupClaims,
+        personalSharedGroupBindings,
+        personalSharedGroupJoinChallenges,
+        personalSharedGroupDeliveryReceipts,
+        personalSharedGroupParticipants,
+        personalSharedGroupDeliveryAttempts,
         appDeploymentStatusEnum,
         appReviewStatusEnum,
         userDatabaseStatusEnum,

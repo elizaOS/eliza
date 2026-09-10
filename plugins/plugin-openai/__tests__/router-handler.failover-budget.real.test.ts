@@ -36,7 +36,7 @@ beforeEach(() => {
   routing.preferredProvider = {};
 });
 
-function fixture(options: { sdk?: boolean; prefer?: string | null } = {}) {
+function fixture(options: { sdk?: boolean; prefer?: string | null; routerFirst?: boolean } = {}) {
   vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
   vi.stubEnv("ELIZA_TRAJECTORY_STRICT", "0");
   const runtime = new AgentRuntime({
@@ -44,7 +44,7 @@ function fixture(options: { sdk?: boolean; prefer?: string | null } = {}) {
       name: "RetryBudgetFixture",
       bio: "Test request-local provider failover",
       settings: {
-        ELIZA_BRAIN_PROVIDER: options.prefer === null ? "" : (options.prefer ?? "openai"),
+        ELIZA_BRAIN_PROVIDER: options.prefer ?? "",
       },
     },
     adapter: new InMemoryDatabaseAdapter(),
@@ -71,7 +71,17 @@ function fixture(options: { sdk?: boolean; prefer?: string | null } = {}) {
     });
     return result.text;
   });
-  if (options.sdk !== false) runtime.registerModel(ModelType.TEXT_SMALL, exhausted, "openai", 100);
+  if (options.sdk !== false) {
+    // An unpinned call starts with the direct SDK registration, then reaches the
+    // router at the same priority in registration order. Router-first cases
+    // deliberately leave the SDK below the router instead.
+    runtime.registerModel(
+      ModelType.TEXT_SMALL,
+      exhausted,
+      "openai",
+      options.routerFirst ? 100 : Number.MAX_SAFE_INTEGER
+    );
+  }
   installRouterHandler(runtime, {
     skipSlots: ["TEXT_LARGE", "TEXT_EMBEDDING", "TEXT_TO_SPEECH", "TRANSCRIPTION"],
   });
@@ -106,21 +116,26 @@ describe("runtime and router share one exhausted provider budget", () => {
     expect(alternative).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps an explicit provider pin terminal after its own retry budget", async () => {
-    const { runtime, fetch, exhausted } = fixture();
-    const alternative = vi.fn(async () => "Must not replace a pinned provider");
-    runtime.registerModel(ModelType.TEXT_SMALL, alternative, "distinct-provider", 10);
-    await expect(
-      runtime.useModel(
-        ModelType.TEXT_SMALL,
-        { prompt: "Complete request", stream: false },
-        "openai"
-      )
-    ).rejects.toThrow("Failed after 3 attempts");
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(exhausted).toHaveBeenCalledTimes(1);
-    expect(alternative).not.toHaveBeenCalled();
-  });
+  it.each(["argument", "runtime setting"])(
+    "keeps a %s provider pin terminal after its own retry budget",
+    async (pin) => {
+      const { runtime, fetch, exhausted } = fixture({
+        prefer: pin === "runtime setting" ? "openai" : null,
+      });
+      const alternative = vi.fn(async () => "Must not replace a pinned provider");
+      runtime.registerModel(ModelType.TEXT_SMALL, alternative, "distinct-provider", 10);
+      await expect(
+        runtime.useModel(
+          ModelType.TEXT_SMALL,
+          { prompt: "Complete request", stream: false },
+          pin === "argument" ? "openai" : undefined
+        )
+      ).rejects.toThrow("Failed after 3 attempts");
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(exhausted).toHaveBeenCalledTimes(1);
+      expect(alternative).not.toHaveBeenCalled();
+    }
+  );
 
   it("keeps later and concurrent calls independent when they reuse frozen caller input", async () => {
     const { runtime, fetch, exhausted, payloads } = fixture();
@@ -222,7 +237,7 @@ describe("runtime and router share one exhausted provider budget", () => {
   });
 
   it("does not replay a router-first concrete failure in the outer fallback chain", async () => {
-    const { runtime, fetch, exhausted } = fixture({ prefer: null });
+    const { runtime, fetch, exhausted } = fixture({ routerFirst: true });
     await expect(
       runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Complete request", stream: false })
     ).rejects.toThrow("Failed after 3 attempts");

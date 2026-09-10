@@ -34,11 +34,16 @@ let stateData: Record<string, unknown> | null;
 let userInfoBody: Record<string, unknown>;
 let originalFetch: typeof globalThis.fetch;
 
+const cacheClientActualModule = await import("../../../cache/client");
+
 mock.module("../../../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     get: async () => stateData,
     del: async () => {},
     set: async () => {},
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

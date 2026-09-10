@@ -260,6 +260,7 @@ describe("Cloud synthetic command journal on PGlite", () => {
 
     const expiring = await acquire("cloud:journal:expiry");
     const agentId = "00000000-0000-4000-8000-000000000203";
+    let mutationReadbackObserved = false;
     await expect(
       journal.execute(
         expiring,
@@ -269,6 +270,8 @@ describe("Cloud synthetic command journal on PGlite", () => {
             { id: agentId, name: "Expired Agent" },
             tx,
           );
+          mutationReadbackObserved =
+            (await agentsRepository.findById(agentId, tx))?.id === agentId;
           const [lease] = await tx
             .select({ expiresAt: syntheticEnvironmentLeases.expires_at })
             .from(syntheticEnvironmentLeases)
@@ -287,10 +290,20 @@ describe("Cloud synthetic command journal on PGlite", () => {
           }
           return { agentId };
         },
+        {
+          async onCheckpoint(checkpoint) {
+            if (checkpoint.phase !== "EXECUTING") return;
+            await leaseStore.heartbeat({
+              authority: expiring,
+              leaseDurationMs: 500,
+            });
+          },
+        },
       ),
     ).rejects.toMatchObject({
       code: "SYNTHETIC_COMMAND_FAILURE_CLASSIFICATION_FAILED",
     });
+    expect(mutationReadbackObserved).toBe(true);
     expect(await agentsRepository.findById(agentId)).toBeNull();
     expect(
       await dbWrite

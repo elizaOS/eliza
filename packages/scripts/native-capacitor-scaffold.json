@@ -1,0 +1,123 @@
+{
+  "tsconfigFamilies": [
+    {
+      "profile": "strict-es2022",
+      "packages": [
+        "plugin-native-appblocker",
+        "plugin-native-contacts",
+        "plugin-native-location",
+        "plugin-native-messages",
+        "plugin-native-network-policy",
+        "plugin-native-phone",
+        "plugin-native-system",
+        "plugin-native-websiteblocker",
+        "plugin-native-wifi"
+      ]
+    },
+    {
+      "profile": "isolated-es2020",
+      "packages": [
+        "plugin-native-canvas",
+        "plugin-native-eliza-tasks",
+        "plugin-native-mlkit-text",
+        "plugin-native-mobile-signals",
+        "plugin-native-screencapture",
+        "plugin-native-swabble"
+      ]
+    }
+  ],
+  "rollupPackages": [
+    { "packageName": "plugin-native-agent", "globalName": "capacitorAgent" },
+    {
+      "packageName": "plugin-native-appblocker",
+      "globalName": "capacitorAppBlocker"
+    },
+    {
+      "packageName": "plugin-native-browser-surface",
+      "globalName": "capacitorElizaBrowserSurface",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-bun-runtime",
+      "globalName": "capacitorBunRuntime"
+    },
+    {
+      "packageName": "plugin-native-calendar",
+      "globalName": "capacitorAppleCalendar"
+    },
+    {
+      "packageName": "plugin-native-camera",
+      "globalName": "capacitorElizaCamera",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-canvas",
+      "globalName": "capacitorElizaCanvas",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-contacts",
+      "globalName": "capacitorContacts"
+    },
+    {
+      "packageName": "plugin-native-desktop",
+      "globalName": "capacitorDesktop",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-eliza-tasks",
+      "globalName": "capacitorElizaTasks",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-gateway",
+      "globalName": "capacitorGateway"
+    },
+    {
+      "packageName": "plugin-native-location",
+      "globalName": "capacitorLocation"
+    },
+    {
+      "packageName": "plugin-native-messages",
+      "globalName": "capacitorMessages",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-mlkit-text",
+      "globalName": "capacitorMlKitText"
+    },
+    {
+      "packageName": "plugin-native-mobile-agent-bridge",
+      "globalName": "capacitorMobileAgentBridge"
+    },
+    {
+      "packageName": "plugin-native-mobile-signals",
+      "globalName": "capacitorElizaMobileSignals",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-network-policy",
+      "globalName": "capacitorNetworkPolicy"
+    },
+    { "packageName": "plugin-native-phone", "globalName": "capacitorPhone" },
+    {
+      "packageName": "plugin-native-screencapture",
+      "globalName": "capacitorScreenCapture",
+      "nodeResolve": true
+    },
+    {
+      "packageName": "plugin-native-secure-store",
+      "globalName": "capacitorElizaSecureStore"
+    },
+    { "packageName": "plugin-native-system", "globalName": "capacitorSystem" },
+    {
+      "packageName": "plugin-native-talkmode",
+      "globalName": "capacitorTalkMode"
+    },
+    {
+      "packageName": "plugin-native-websiteblocker",
+      "globalName": "capacitorWebsiteBlocker"
+    },
+    { "packageName": "plugin-native-wifi", "globalName": "capacitorWifi" }
+  ]
+}

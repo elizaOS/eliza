@@ -123,6 +123,29 @@ Git branch. Successful results include `provenance` identifying the actual
 metadata are returned when available; unavailable integrity stays `null`, and
 Git installs report the cloned commit.
 
+## Core relationships inventory
+
+`archiveCoreRelationshipsInventory` snapshots the complete legacy Core
+`RelationshipsService` rows for one agent using a
+`CoreRelationshipsInventoryDatabase` whose transaction owns one PostgreSQL-compatible
+session. It reads agent-scoped entities, relationships, identities and merge
+candidates, and contact components scoped to the agent's relationships world
+and source identity. Every complete JSON payload is archived and hash-checked.
+
+This explicit operator operation takes source-table `SHARE ROW EXCLUSIVE` locks
+inside a serializable transaction. Run it during a global maintenance window:
+these locks block source writers across tenants. A successful run reports
+`archived` and replaces that agent's current source snapshot, including removing
+archive rows no longer present in the source. It does not retain immutable history.
+A missing/unreadable source schema or failed archive readback rolls back the
+operation with a typed error, preserving the previous snapshot.
+
+The helper never writes canonical entities, identities, edges, or their provenance,
+and never deletes or updates legacy source rows. It provides no migration,
+projection verification, caller cutover, or authority transfer. The separate
+legacy-schema startup guard remains fail-closed until actual ownership migration
+is designed and performed.
+
 ## x402 at a glance
 
 Paid routes set `x402` on a `Route`. The middleware returns **402** with payment options and accepts on-chain proofs, facilitator payment IDs, or standard payment payloads (`PAYMENT-SIGNATURE` / `X-Payment`), then verifies and settles through a facilitator before running the handler.

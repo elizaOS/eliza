@@ -7,60 +7,43 @@
  * refinement helpers (`requireOpenAllowFrom`, `normalizeAllowFrom`) reused to
  * gate an "open" DM policy behind an explicit `allowFrom: ["*"]`.
  */
-import { isSafeExecutableValue } from "@elizaos/shared";
+import {
+  isSafeExecutableValue,
+  ModelDefinitionInputSchema,
+  ModelApiSchema as SharedModelApiSchema,
+  ModelCompatSchema as SharedModelCompatSchema,
+} from "@elizaos/shared";
 import * as zod from "zod";
 import { DEFAULT_MODEL_CONTEXT_WINDOW } from "./model-metadata.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
-export const ModelApiSchema = z.union([
-  z.literal("openai-completions"),
-  z.literal("openai-responses"),
-  z.literal("anthropic-messages"),
-  z.literal("google-generative-ai"),
-  z.literal("bedrock-converse-stream"),
-]);
+export const ModelApiSchema = SharedModelApiSchema;
+export const ModelCompatSchema = SharedModelCompatSchema;
 
-export const ModelCompatSchema = z
-  .object({
-    supportsStore: z.boolean().optional(),
-    supportsDeveloperRole: z.boolean().optional(),
-    supportsReasoningEffort: z.boolean().optional(),
-    maxTokensField: z
-      .union([z.literal("max_completion_tokens"), z.literal("max_tokens")])
-      .optional(),
-  })
-  .strict()
-  .optional();
+type ValidatedModelDefinition = zod.infer<typeof ModelDefinitionInputSchema>;
 
-export const ModelDefinitionSchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    api: ModelApiSchema.optional(),
-    reasoning: z.boolean().default(false),
-    input: z
-      .array(z.union([z.literal("text"), z.literal("image")]))
-      .default(["text"]),
-    cost: z
-      .object({
-        input: z.number().nonnegative().default(0),
-        output: z.number().nonnegative().default(0),
-        cacheRead: z.number().nonnegative().default(0),
-        cacheWrite: z.number().nonnegative().default(0),
-      })
-      .strict()
-      .default({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }),
-    contextWindow: z
-      .number()
-      .int()
-      .positive()
-      .default(DEFAULT_MODEL_CONTEXT_WINDOW),
-    maxTokens: z.number().int().positive().optional(),
-    headers: z.record(z.string(), z.string()).optional(),
-    compat: ModelCompatSchema,
-  })
-  .strict();
+/** Apply agent-runtime defaults only after shared input validation succeeds. */
+export function materializeRuntimeModelDefinition(
+  input: ValidatedModelDefinition,
+) {
+  return {
+    ...input,
+    reasoning: input.reasoning ?? false,
+    input: input.input ?? ["text"],
+    cost: {
+      input: input.cost?.input ?? 0,
+      output: input.cost?.output ?? 0,
+      cacheRead: input.cost?.cacheRead ?? 0,
+      cacheWrite: input.cost?.cacheWrite ?? 0,
+    },
+    contextWindow: input.contextWindow ?? DEFAULT_MODEL_CONTEXT_WINDOW,
+  };
+}
+
+export const ModelDefinitionSchema = ModelDefinitionInputSchema.transform(
+  materializeRuntimeModelDefinition,
+);
 
 export const ModelProviderSchema = z
   .object({

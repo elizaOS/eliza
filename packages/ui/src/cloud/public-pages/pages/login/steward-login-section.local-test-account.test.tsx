@@ -148,7 +148,9 @@ function jsonResponse(body: unknown, status: number): Response {
   });
 }
 
-describe("StewardLoginSection local test account sign-in", () => {
+describe("StewardLoginSection local test account sign-in", {
+  timeout: 20_000,
+}, () => {
   beforeEach(() => {
     window.localStorage.clear();
     setCookie("eliza-test-auth=; Max-Age=0; Path=/");

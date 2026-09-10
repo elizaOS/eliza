@@ -14,7 +14,10 @@ const selectBuilder = {
   limit: selectLimit,
 };
 
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     getWithOutcome: cacheRead,
     setWithOutcome: cacheWrite,
