@@ -291,10 +291,14 @@ jobs:
   # alone added 15.2 minutes to shard 1 and made it the straggler at 45.5
   # minutes while every sibling finished under 37.
   smoke_lanes:
-    name: Smoke lanes
+    name: Smoke lanes (${{ matrix.lane }})
     needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [cloud, desktop-e2e]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -332,11 +336,11 @@ jobs:
         run: bun run build:core
 
       - name: Desktop startup smoke
-        if: needs.changes.outputs.desktop == 'true'
+        if: matrix.lane == 'desktop-e2e' && needs.changes.outputs.desktop == 'true'
         run: bun run test:dev-startup
 
       - name: Cloud tests
-        if: needs.changes.outputs.cloud == 'true'
+        if: matrix.lane == 'cloud' && needs.changes.outputs.cloud == 'true'
         run: bun run test:cloud
 
       # @elizaos/ui#test:e2e launches a real Chromium. It used to inherit the
@@ -344,14 +348,14 @@ jobs:
       # it needs its own, or it dies at browserType.launch (run 31516767405).
       # packages/ui is the install cwd its own gates use (ui-e2e-gate.yml).
       - name: Install Playwright browsers
-        if: needs.changes.outputs.zero_key == 'true'
+        if: matrix.lane == 'desktop-e2e' && needs.changes.outputs.zero_key == 'true'
         run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
 
       # The complement of the shard job's work: the 16 e2e tasks that cannot be
       # sharded, run once instead of once per shard. These are vitest-backed, so
       # --require-work has real reports to reconcile here.
       - name: Deterministic end-to-end smoke (unshardable tasks)
-        if: needs.changes.outputs.zero_key == 'true'
+        if: matrix.lane == 'desktop-e2e' && needs.changes.outputs.zero_key == 'true'
         run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
 
       - name: No affected smoke lane

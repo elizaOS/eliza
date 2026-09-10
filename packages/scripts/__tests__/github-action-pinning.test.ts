@@ -42,7 +42,17 @@ const liveSmokeCoreCondition =
 
 function assertJobBrowserBootstrap(
   steps: WorkflowStep[],
-  { job, install, e2e }: { job: string; install: string; e2e: string },
+  {
+    job,
+    install,
+    e2e,
+    condition = zeroKeyCondition,
+  }: {
+    job: string;
+    install: string;
+    e2e: string;
+    condition?: string;
+  },
 ): void {
   const installIndex = steps.findIndex((step) => step.run === install);
   const e2eIndex = steps.findIndex((step) => step.run === e2e);
@@ -57,8 +67,8 @@ function assertJobBrowserBootstrap(
     throw new Error(`${job} must install browsers before running E2E`);
   }
   if (
-    steps[installIndex]?.if !== zeroKeyCondition ||
-    steps[e2eIndex]?.if !== zeroKeyCondition
+    steps[installIndex]?.if !== condition ||
+    steps[e2eIndex]?.if !== condition
   ) {
     throw new Error(
       `${job} browser bootstrap and E2E must share the zero-key condition`,
@@ -83,6 +93,8 @@ function assertSmokeE2eBrowserBootstrap(source: string): void {
     job: "Smoke lanes",
     install: smokeLanesBrowserInstallCommand,
     e2e: smokeLanesE2eCommand,
+    condition:
+      "matrix.lane == 'desktop-e2e' && needs.changes.outputs.zero_key == 'true'",
   });
 }
 
