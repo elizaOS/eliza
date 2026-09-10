@@ -71,8 +71,56 @@ describe("direct provider authority", () => {
         ok: true,
         status: 200,
         modelCatalogTruncated: true,
+        modelCatalogUnavailable: true,
       }),
     );
+  });
+
+  it.each(["openrouter-api", "xai-api"] as const)(
+    "keeps %s authentication separate from invalid and empty catalogs",
+    async (provider) => {
+      for (const body of [
+        "{invalid",
+        JSON.stringify({ models: [] }),
+        JSON.stringify({ data: [{ id: "valid/model" }, { id: null }] }),
+        JSON.stringify({ data: [{ id: " " }] }),
+      ]) {
+        vi.stubGlobal(
+          "fetch",
+          async (url: string) =>
+            new Response(url.endsWith("/key") ? "{}" : body),
+        );
+        const result = await probeDirectApiKey(
+          provider,
+          "synthetic-review-key",
+        );
+        expect(result.ok).toBe(true);
+        expect(result.modelCatalogUnavailable).toBe(true);
+        expect(result.modelIds).toBeUndefined();
+      }
+      vi.stubGlobal(
+        "fetch",
+        async (url: string) =>
+          new Response(
+            url.endsWith("/key") ? "{}" : JSON.stringify({ data: [] }),
+          ),
+      );
+      const empty = await probeDirectApiKey(provider, "synthetic-review-key");
+      expect(empty.ok).toBe(true);
+      expect(empty.modelIds).toEqual([]);
+      expect(empty.modelCatalogUnavailable).toBeUndefined();
+    },
+  );
+
+  it("preserves complete model identifiers within the catalog byte boundary", async () => {
+    const id = `vendor/${"long-model-name-".repeat(24)}`;
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response(JSON.stringify({ data: [{ id }, { id }] })),
+    );
+    const result = await probeDirectApiKey("xai-api", "synthetic-review-key");
+    expect(result.modelIds).toEqual([id]);
+    expect(result.modelCatalogUnavailable).toBeUndefined();
   });
 
   it("never reflects a provider failure body that could echo a secret", async () => {

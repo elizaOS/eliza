@@ -35,6 +35,25 @@ export ELIZA_CODEX_ACP_COMMAND="npx -y @agentclientprotocol/codex-acp@1.10.0"
 export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
 ```
 
+For Pi, install the adapter and its coding-agent executable explicitly:
+
+```bash
+bun add --global pi-acp@0.0.33 @earendil-works/pi-coding-agent@0.84.2
+export ELIZA_PI_AGENT_ACP_COMMAND="pi-acp"
+```
+
+Both `pi-acp` and `pi` must be executable on the host's configured PATH. The
+`pi-agent` backend identifier is not the executable installed by these packages;
+the command override above is required unless the host already supplies a
+compatible `pi-agent` launcher. The framework inventory reports a missing
+launcher with an instruction to configure `ELIZA_PI_AGENT_ACP_COMMAND`.
+Installation is explicit; spawning does not install packages or change PATH.
+These versions were checked with the actual ACP handshake, settings consumer,
+and model registry. Their transitive model catalog may change independently.
+A linked Pi session refuses a missing or different provider/model reported by
+the ACP handshake before sending its first prompt. Link a supported account
+separately; installing executables does not authenticate a provider.
+
 Authenticate the underlying agent you plan to use before spawning sessions. Native Codex and Claude defaults use `npx`, so pin or replace those commands in production if you do not want runtime downloads.
 
 Subscription-backed Kimi and Grok sessions use only their official CLI OAuth state and native ACP commands. Run `kimi login` before Kimi Code, or `grok login`/`grok login --device-auth` before Grok Build. Kimi Code has no top-level status/logout command: the adapter validates that its effective default model uses the managed OAuth provider, probes the selected credential file, and ACP verifies it during session creation; logout remains the interactive `/logout` command. Grok supports `grok models` for status/model discovery and `grok logout`. Interactive message, HTTP, and task-control boundaries mint Kimi attendance authorization and persist it with the session so an interrupted attended run can recover. Scheduled, agent-authored, and unspecified Kimi spawns fail before a workspace or coding task is created.

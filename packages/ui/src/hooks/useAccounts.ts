@@ -336,7 +336,9 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       try {
         const result = await client.testAccount(providerId, accountId);
         if (result.ok) {
-          const catalogSuffix = result.modelCatalogUnavailable
+          const catalogUnavailable =
+            result.modelCatalogUnavailable || result.modelCatalogTruncated;
+          const catalogSuffix = catalogUnavailable
             ? "; model catalog unavailable"
             : "";
           setActionNotice?.(
@@ -345,8 +347,8 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
                 ? ` (${result.latencyMs}ms)`
                 : ""
             }${catalogSuffix}`,
-            result.modelCatalogUnavailable ? "info" : "success",
-            result.modelCatalogUnavailable ? 6000 : 3000,
+            catalogUnavailable ? "info" : "success",
+            catalogUnavailable ? 6000 : 3000,
           );
         } else {
           setActionNotice?.(

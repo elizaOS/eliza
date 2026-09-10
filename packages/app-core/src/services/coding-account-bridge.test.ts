@@ -595,6 +595,34 @@ describe("coding-account-bridge", () => {
     },
   );
 
+  it("pins provider-scoped identities when two Pi accounts share an id", async () => {
+    writeAccount("zai-coding", "shared", "zai-key");
+    writeAccount("kimi-coding", "shared", "kimi-key");
+    const pool = getDefaultAccountPool();
+    const zai = pool
+      .list("zai-coding")
+      .find((account) => account.id === "shared");
+    if (!zai) throw new Error("missing fixture account");
+    await pool.upsert({ ...zai, enabled: false });
+    const bridge = getCodingAgentSelectorBridge();
+    const initial = await bridge?.select("pi-agent");
+    expect(initial?.providerId).toBe("kimi-coding");
+    await pool.upsert({ ...zai, enabled: true });
+    const resumed = await bridge?.select("pi-agent", {
+      providerId: initial?.providerId,
+      accountIds: ["shared"],
+    });
+    expect(resumed).toMatchObject({
+      providerId: "kimi-coding",
+      accountId: "shared",
+      envPatch: { KIMI_API_KEY: "kimi-key" },
+    });
+    const alternative = await bridge?.select("pi-agent", {
+      excludeAccounts: [{ providerId: "zai-coding", accountId: "shared" }],
+    });
+    expect(alternative?.providerId).toBe("kimi-coding");
+  });
+
   it("attributes recorded usage to the serving account (per-account delta)", async () => {
     writeAccount("anthropic-subscription", "acct", "sk-ant-oat-acct");
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();

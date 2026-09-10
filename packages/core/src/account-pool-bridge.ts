@@ -144,6 +144,10 @@ export interface CodingAgentSelectorBridge {
 			/** Requested model/display name, used to rank provider-specific weekly buckets. */
 			model?: string;
 			exclude?: string[];
+			/** Restrict provider-scoped account identity for a continuing session. */
+			providerId?: string;
+			/** Exclude only these provider/account pairs during failover. */
+			excludeAccounts?: Array<{ providerId: string; accountId: string }>;
 			/**
 			 * Restrict selection to these account ids. A continuing session pins
 			 * its follow-up token resolves to the spawn-time account with this —

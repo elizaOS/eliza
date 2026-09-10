@@ -877,6 +877,13 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       const candidates = candidatesFor(agentType);
       if (candidates.length === 0) return null;
       for (const providerId of candidates) {
+        if (opts?.providerId && providerId !== opts.providerId) continue;
+        const excluded = [
+          ...(opts?.exclude ?? []),
+          ...(opts?.excludeAccounts ?? [])
+            .filter((account) => account.providerId === providerId)
+            .map((account) => account.accountId),
+        ];
         // Explicit caller override > the app's per-provider
         // config.accountStrategies > ELIZA_CODING_ACCOUNT_STRATEGY env > the
         // provider default (Anthropic drains expiring weekly windows; other
@@ -894,7 +901,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           providerId,
           strategy,
           ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
-          ...(opts?.exclude ? { exclude: opts.exclude } : {}),
+          ...(excluded.length ? { exclude: excluded } : {}),
           ...(opts?.model ? { model: opts.model } : {}),
           // Follow-up pin: a continuing session restricts the pool to its
           // spawn-time account so an expired session-affinity can't strategy-

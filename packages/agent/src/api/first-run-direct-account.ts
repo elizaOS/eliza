@@ -90,6 +90,7 @@ export async function adoptFirstRunDirectAccount(input: {
   try {
     await pool.upsert(account);
   } catch (cause) {
+    // error-policy:J2 undo the staged credential and preserve the adoption failure.
     deleteAccount(input.providerId, id, storagePolicy);
     throw new ElizaError("First-run account adoption failed", {
       code: "FIRST_RUN_ACCOUNT_ADOPTION_FAILED",

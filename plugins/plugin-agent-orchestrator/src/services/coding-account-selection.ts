@@ -105,6 +105,8 @@ export async function selectCodingAccount(
     sessionKey?: string;
     strategy?: CodingAccountStrategy;
     exclude?: string[];
+    providerId?: string;
+    excludeAccounts?: Array<{ providerId: string; accountId: string }>;
     /** Pin selection to these account ids (see the bridge contract in core). */
     accountIds?: string[];
     /** Requested model/display name for model-scoped weekly buckets. */

@@ -9,7 +9,11 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   type AcpJsonRpcMessage,
   type AcpTerminalFailure,
@@ -44,6 +48,8 @@ export type AcpMcpServerConfig =
 export type NativeAcpClientOptions = {
   command: string;
   cwd: string;
+  /** Exact provider/model required by a selected account route, when configured. */
+  expectedModelId?: string;
   env?: NodeJS.ProcessEnv;
   approvalPreset: ApprovalPreset;
   terminal?: boolean;
@@ -297,6 +303,21 @@ export class NativeAcpClient {
     );
     const sessionId = stringValue(result?.sessionId);
     if (!sessionId) throw new Error("ACP agent did not return a sessionId");
+    if (this.opts.expectedModelId) {
+      const actualModel = stringValue(asRecord(result?.models)?.currentModelId);
+      if (actualModel !== this.opts.expectedModelId) {
+        throw new ElizaError(
+          "ACP did not confirm the selected provider/model; update the adapter or choose a supported model before retrying",
+          {
+            code: "ACP_SELECTED_MODEL_UNCONFIRMED",
+            context: {
+              expectedModelId: this.opts.expectedModelId,
+              actualModelId: actualModel ?? null,
+            },
+          },
+        );
+      }
+    }
     const modes = asRecord(result?.modes);
     const advertisedModes = modes?.availableModes;
     const availableModes = Array.isArray(advertisedModes)

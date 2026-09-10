@@ -266,6 +266,19 @@ bun run --cwd plugins/plugin-agent-orchestrator format:check    # Biome format c
 bun run --cwd plugins/plugin-agent-orchestrator clean           # Remove dist/.turbo/tsconfig artifacts
 ```
 
+## Pi executable setup
+
+The verified adapter is `pi-acp@0.0.33` with
+`@earendil-works/pi-coding-agent@0.84.2`; these packages install `pi-acp` and `pi`,
+not `pi-agent`. Install them explicitly and configure
+`ELIZA_PI_AGENT_ACP_COMMAND=pi-acp`, with both executables on the host's existing
+PATH. See the README installation commands. A missing launcher is an explicit
+inventory/setup failure; spawning does not install software. Linked-provider
+credentials are a separate prerequisite. The native Pi handshake must confirm
+the selected provider/model before prompt dispatch; absent or mismatched model
+metadata is an error, including when an independently changing model catalog
+no longer contains the requested model.
+
 ## Config / env vars
 
 All are optional unless noted. Read by `src/services/config-env.ts` and

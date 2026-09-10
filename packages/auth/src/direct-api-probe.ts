@@ -151,37 +151,32 @@ async function readBoundedResponseText(
   return { text: new TextDecoder().decode(merged), truncated: false };
 }
 
-function parseBoundedModelIds(text: string): {
-  modelIds?: string[];
-  truncated: boolean;
-} {
-  if (!text) return { truncated: false };
+function parseBoundedModelIds(text: string): ModelCatalogOutcome {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     // error-policy:J3 provider catalog JSON is untrusted. A malformed optional
     // catalog does not turn a successful authenticated probe into fake models.
-    return { truncated: false };
+    return { modelCatalogUnavailable: true };
   }
   if (!parsed || typeof parsed !== "object" || !("data" in parsed)) {
-    return { truncated: false };
+    return { modelCatalogUnavailable: true };
   }
-  const data = (parsed as { data?: unknown }).data;
-  if (!Array.isArray(data)) return { truncated: false };
+  const data = parsed.data;
+  if (!Array.isArray(data)) return { modelCatalogUnavailable: true };
   const unique = new Set<string>();
   for (const item of data) {
-    if (!item || typeof item !== "object") continue;
-    const id = (item as { id?: unknown }).id;
-    if (typeof id !== "string") continue;
+    if (!item || typeof item !== "object" || !("id" in item)) {
+      return { modelCatalogUnavailable: true };
+    }
+    const id: unknown = item.id;
+    if (typeof id !== "string") return { modelCatalogUnavailable: true };
     const normalized = id.trim();
-    if (!normalized || normalized.length > 256) continue;
+    if (!normalized) return { modelCatalogUnavailable: true };
     unique.add(normalized);
   }
-  return {
-    ...(unique.size > 0 ? { modelIds: [...unique] } : {}),
-    truncated: false,
-  };
+  return { modelIds: [...unique] };
 }
 
 async function readModelCatalog(
@@ -189,13 +184,10 @@ async function readModelCatalog(
 ): Promise<ModelCatalogOutcome> {
   if (!response.ok) return { modelCatalogUnavailable: true };
   const catalogBody = await readBoundedResponseText(response);
-  const catalog = catalogBody.truncated
-    ? { truncated: true }
-    : parseBoundedModelIds(catalogBody.text);
-  return {
-    ...(catalog.modelIds ? { modelIds: catalog.modelIds } : {}),
-    ...(catalog.truncated ? { modelCatalogTruncated: true as const } : {}),
-  };
+  if (catalogBody.truncated) {
+    return { modelCatalogTruncated: true, modelCatalogUnavailable: true };
+  }
+  return parseBoundedModelIds(catalogBody.text);
 }
 
 async function readAuthenticatedModelCatalog(

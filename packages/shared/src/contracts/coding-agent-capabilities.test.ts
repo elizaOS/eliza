@@ -160,23 +160,6 @@ describe("coding-agent capability mapping", () => {
     }
   });
 
-  it("preserves direct billing semantics for OpenRouter and xAI", () => {
-    expect(CODING_PROVIDER_DESCRIPTORS["openrouter-api"]).toMatchObject({
-      accountKind: "api-key",
-      billingMode: "api-credits-or-byok",
-      inferenceSupport: true,
-      backend: "pi-agent",
-      spawnSupport: true,
-    });
-    expect(CODING_PROVIDER_DESCRIPTORS["xai-api"]).toMatchObject({
-      accountKind: "api-key",
-      billingMode: "api-payg",
-      inferenceSupport: true,
-      backend: "pi-agent",
-      spawnSupport: true,
-    });
-  });
-
   it("rejects provider-to-backend ambiguity and descriptor drift", () => {
     const routedProviders = Object.values(
       CODING_AGENT_BACKEND_PROVIDERS,

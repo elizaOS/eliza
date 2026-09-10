@@ -20,6 +20,7 @@ type NativeEventHandler = (
 ) => void;
 type NativeOptions = {
   command: string;
+  expectedModelId?: string;
   cwd: string;
   approvalPreset: ApprovalPreset;
   timeoutMs?: number;
@@ -298,9 +299,11 @@ describe("multi-account coding-agent spawn", () => {
     const previous = {
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       XAI_API_KEY: process.env.XAI_API_KEY,
+      CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY,
     };
     process.env.OPENAI_API_KEY = "ambient-openai-key";
     process.env.XAI_API_KEY = "ambient-xai-key";
+    process.env.CEREBRAS_API_KEY = "ambient-cerebras-key";
     installBridge({
       "pi-agent": {
         providerId: "deepseek-api",
@@ -329,6 +332,10 @@ describe("multi-account coding-agent spawn", () => {
       expect(env.DEEPSEEK_API_KEY).toBeUndefined();
       expect(env.OPENAI_API_KEY).toBeUndefined();
       expect(env.XAI_API_KEY).toBeUndefined();
+      expect(env.CEREBRAS_API_KEY).toBeUndefined();
+      expect(firstNativeClient().opts.expectedModelId).toBe(
+        "deepseek/deepseek-v4-flash",
+      );
       const piHome = env.PI_CODING_AGENT_DIR;
       if (!piHome) throw new Error("missing private Pi home");
       const models = fs.readFileSync(path.join(piHome, "models.json"), "utf8");
@@ -356,6 +363,70 @@ describe("multi-account coding-agent spawn", () => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       }
+    }
+  });
+
+  it("keeps a Pi reconnect on its provider when another account shares its id", async () => {
+    const stateRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-provider-pin-"),
+    );
+    let earlierProviderEnabled = false;
+    const select = vi.fn(
+      async (_agentType: string, opts: { providerId?: string }) => {
+        const kimi =
+          !earlierProviderEnabled || opts.providerId === "kimi-coding";
+        return {
+          providerId: kimi ? "kimi-coding" : "zai-coding",
+          accountId: "shared",
+          label: "Controlled account",
+          source: "coding-plan-key" as const,
+          strategy: "least-used",
+          envPatch: kimi
+            ? { KIMI_API_KEY: "selected-kimi" }
+            : { ZAI_API_KEY: "unselected-zai" },
+        };
+      },
+    );
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({}),
+      select,
+      markRateLimited: vi.fn(),
+      markNeedsReauth: vi.fn(),
+      recordUsage: vi.fn(),
+    };
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_STATE_DIR: stateRoot,
+        ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent",
+      }),
+    );
+    try {
+      await service.start();
+      const spawned = await service.spawnSession({
+        name: "pi-pin",
+        agentType: "pi-agent",
+        workdir: "/tmp/acp-test",
+      });
+      earlierProviderEnabled = true;
+      (
+        service as unknown as { nativeClients: Map<string, MockNativeClient> }
+      ).nativeClients.delete(spawned.sessionId);
+      await service.sendPrompt(spawned.sessionId, "Continue the same task");
+      expect(
+        nativeClientMock.instances[1]?.opts.env?.ELIZA_PI_ROUTE_API_KEY,
+      ).toBe("selected-kimi");
+      expect(
+        (await service.getSession(spawned.sessionId))?.metadata,
+      ).toMatchObject({
+        account: { providerId: "kimi-coding", accountId: "shared" },
+        piProvider: {
+          accountProviderId: "kimi-coding",
+          model: "kimi-for-coding",
+        },
+      });
+    } finally {
+      await service.stop();
+      fs.rmSync(stateRoot, { recursive: true, force: true });
     }
   });
 
@@ -407,10 +478,19 @@ describe("multi-account coding-agent spawn", () => {
       const select = vi.fn(
         async (
           _agentType: string,
-          opts: { accountIds?: string[]; exclude?: string[] },
+          opts: {
+            accountIds?: string[];
+            excludeAccounts?: Array<{ providerId: string; accountId: string }>;
+          },
         ) => {
           if (opts.accountIds?.includes("deepseek-primary")) return null;
-          if (opts.exclude?.includes("deepseek-primary")) {
+          if (
+            opts.excludeAccounts?.some(
+              (account) =>
+                account.providerId === "deepseek-api" &&
+                account.accountId === "deepseek-primary",
+            )
+          ) {
             return {
               providerId: "zai-api",
               accountId: "zai-secondary",
@@ -508,7 +588,7 @@ describe("multi-account coding-agent spawn", () => {
           const refused = await service.getSession(spawned.sessionId);
           expect(refused?.metadata?.piProvider).toMatchObject({
             accountProviderId: "zai-api",
-            model: "glm-5.1",
+            model: "glm-5.3",
           });
           await service.stop();
           return;
@@ -528,14 +608,14 @@ describe("multi-account coding-agent spawn", () => {
         if (transport === "cli") {
           expect(cliCalls).toHaveLength(1);
           const args = cliCalls[0].args;
-          expect(args[args.indexOf("--model") + 1]).toBe("glm-5.1");
+          expect(args[args.indexOf("--model") + 1]).toBe("glm-5.3");
         }
         const reconnectEnv =
           transport === "cli"
             ? cliCalls[0].env
             : (nativeClientMock.instances[1]?.opts.env ?? {});
         expect(reconnectEnv.ELIZA_PI_ROUTE_API_KEY).toBe("selected-zai-key");
-        expect(reconnectEnv.OPENAI_MODEL).toBe("glm-5.1");
+        expect(reconnectEnv.OPENAI_MODEL).toBe("glm-5.3");
         expect(reconnectEnv.ZAI_API_KEY).toBeUndefined();
         expect(reconnectEnv.DEEPSEEK_API_KEY).toBeUndefined();
         const piHome = reconnectEnv.PI_CODING_AGENT_DIR;
@@ -559,7 +639,7 @@ describe("multi-account coding-agent spawn", () => {
           piProvider: {
             accountProviderId: "zai-api",
             piProviderId: "zai",
-            model: "glm-5.1",
+            model: "glm-5.3",
           },
         });
         expect(JSON.stringify(session?.metadata)).not.toContain(
@@ -571,7 +651,11 @@ describe("multi-account coding-agent spawn", () => {
         );
         expect(select).toHaveBeenCalledWith(
           "pi-agent",
-          expect.objectContaining({ exclude: ["deepseek-primary"] }),
+          expect.objectContaining({
+            excludeAccounts: [
+              { providerId: "deepseek-api", accountId: "deepseek-primary" },
+            ],
+          }),
         );
         await service.stop();
       } finally {

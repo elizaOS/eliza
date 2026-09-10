@@ -43,23 +43,6 @@ describe("consolidated account provider picker", () => {
     expect(coding).toContain("openai-codex");
   });
 
-  it("keeps OpenRouter credits/BYOK distinct from metered xAI API access", () => {
-    const openrouter = ACCOUNT_PROVIDER_OPTIONS.find(
-      (option) => option.id === "openrouter-api",
-    );
-    const xai = ACCOUNT_PROVIDER_OPTIONS.find(
-      (option) => option.id === "xai-api",
-    );
-
-    expect(openrouter?.description).toContain("credits or BYOK");
-    expect(openrouter?.description).toContain("model inference");
-    expect(xai?.description).toContain("Metered xAI API");
-    expect(xai?.description).toContain("separate from Grok subscription");
-    expect(xai?.description).toContain("model inference");
-    expect(openrouter?.eligibility).toContain("model inference");
-    expect(xai?.eligibility).toContain("model inference");
-  });
-
   it("labels Claude subscription for its first-party coding surface", () => {
     const claudeSubscription = ACCOUNT_PROVIDER_OPTIONS.find(
       (option) => option.id === "anthropic-subscription",

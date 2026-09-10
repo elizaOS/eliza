@@ -3523,8 +3523,33 @@ export class AcpService extends Service {
     },
   ): { client: NativeAcpClient; command: string } {
     const command = this.nativeAgentCommand(session.agentType);
+    let expectedModelId: string | undefined;
+    if (
+      session.agentType === "pi-agent" &&
+      accountMetaFromSessionMetadata(session.metadata)
+    ) {
+      const piProvider = session.metadata?.piProvider;
+      if (
+        !piProvider ||
+        typeof piProvider !== "object" ||
+        !("piProviderId" in piProvider) ||
+        typeof piProvider.piProviderId !== "string" ||
+        !piProvider.piProviderId ||
+        !opts.model
+      ) {
+        throw new ElizaError(
+          "The linked Pi session has no confirmed provider/model route",
+          {
+            code: "PI_PROVIDER_ROUTE_MISSING",
+            context: { sessionId: session.id },
+          },
+        );
+      }
+      expectedModelId = `${piProvider.piProviderId}/${opts.model}`;
+    }
     const client = new NativeAcpClient({
       command,
+      ...(expectedModelId ? { expectedModelId } : {}),
       cwd: session.workdir,
       approvalPreset: session.approvalPreset,
       timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
@@ -3690,6 +3715,11 @@ export class AcpService extends Service {
       // error-policy:J6 best-effort teardown of the failed client; the start
       // or createSession failure is rethrown or retried below.
       await client.close().catch(() => undefined);
+      if (
+        err instanceof ElizaError &&
+        err.code === "ACP_SELECTED_MODEL_UNCONFIRMED"
+      )
+        throw err;
       let message = stderr.join("").trim() || errorMessage(err);
       if (
         !this.shouldRetryManagedCodexLandlock(
@@ -5129,6 +5159,7 @@ export class AcpService extends Service {
     if (!meta) return undefined;
     const pinned = await selectCodingAccount(session.agentType, {
       sessionKey: session.id,
+      providerId: meta.providerId,
       accountIds: [meta.accountId],
     });
     if (pinned) {
@@ -5142,7 +5173,9 @@ export class AcpService extends Service {
     // token resolve failed), and re-picking it here would just re-fail.
     const failover = await selectCodingAccount(session.agentType, {
       sessionKey: session.id,
-      exclude: [meta.accountId],
+      excludeAccounts: [
+        { providerId: meta.providerId, accountId: meta.accountId },
+      ],
     });
     if (!failover) {
       // This session was explicitly stamped to a linked account. Returning no
