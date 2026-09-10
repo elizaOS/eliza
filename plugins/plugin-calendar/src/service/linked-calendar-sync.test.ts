@@ -18,6 +18,7 @@ import {
   LinkedCalendarReconciler,
   LinkedCalendarRepository,
   type LinkedCalendarSemanticEvent,
+  linkedCalendarSemanticHash,
 } from "./linked-calendar-sync.js";
 
 const baseEvent: LinkedCalendarSemanticEvent = {
@@ -27,6 +28,7 @@ const baseEvent: LinkedCalendarSemanticEvent = {
   startAt: "2026-09-01T19:00:00.000Z",
   endAt: "2026-09-01T20:00:00.000Z",
   timeZone: "America/New_York",
+  isAllDay: false,
   attendees: [],
 };
 
@@ -655,6 +657,63 @@ describe("LinkedCalendarReconciler", () => {
   });
 });
 
+describe("all-day reconciliation", () => {
+  it("repairs an unchanged provider event written with legacy timed semantics once", async () => {
+    const timed = {
+      ...baseEvent,
+      startAt: "2026-11-01T00:00:00.000Z",
+      endAt: "2026-11-02T00:00:00.000Z",
+    };
+    const localEvent = { ...timed, isAllDay: true };
+    const initial = record({
+      providerEventId: "google-event-1",
+      state: "clean",
+      pendingOperation: null,
+      lastCommonSemanticHash: linkedCalendarSemanticHash(timed),
+    });
+    const store = new MemoryStore(initial);
+    const harness = ports({
+      local: { eventId: "local-1", revision: 1, event: localEvent },
+      provider: { eventId: "google-event-1", etag: '"g1"', event: timed },
+    });
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      harness.localPort,
+      harness.providerPort,
+    );
+    expect(await reconciler.reconcile(store.current)).toBe("pushed");
+    expect(await reconciler.reconcile(store.current)).toBe("clean");
+    expect(harness.counts()).toEqual({ creates: 0, updates: 1 });
+    expect(harness.local()?.event.isAllDay).toBe(true);
+  });
+
+  it("pulls a provider-only all-day change without discarding its date semantics", async () => {
+    const store = new MemoryStore(
+      record({
+        providerEventId: "google-event-1",
+        state: "clean",
+        pendingOperation: null,
+        lastCommonSemanticHash: linkedCalendarSemanticHash(baseEvent),
+      }),
+    );
+    const harness = ports({
+      provider: {
+        eventId: "google-event-1",
+        etag: '"g2"',
+        event: { ...baseEvent, isAllDay: true },
+      },
+    });
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      harness.localPort,
+      harness.providerPort,
+    );
+    expect(await reconciler.reconcile(store.current)).toBe("pulled");
+    expect(harness.local()?.event.isAllDay).toBe(true);
+    expect(harness.counts()).toEqual({ creates: 0, updates: 0 });
+  });
+});
+
 describe("GoogleLinkedCalendarProviderPort", () => {
   it("uses the durable link key for idempotent create and the saved etag for update", async () => {
     const calls: Array<Record<string, unknown>> = [];
@@ -696,6 +755,50 @@ describe("GoogleLinkedCalendarProviderPort", () => {
       eventId: "google-event-1",
       expectedEtag: '"g1"',
       sendUpdates: "none",
+    });
+  });
+
+  it("preserves all-day date boundaries through create, update, and readback", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const respond = async (input: Record<string, unknown>) => {
+      calls.push(input);
+      return {
+        id: "school-event",
+        calendarId: "primary",
+        title: input.title,
+        start: `${input.start}T00:00:00.000Z`,
+        end: `${input.end}T00:00:00.000Z`,
+        isAllDay: true,
+        timeZone: "America/New_York",
+        metadata: { etag: '"school-1"' },
+      };
+    };
+    const google = {
+      createEvent: respond,
+      updateEvent: respond,
+    } as unknown as IGoogleWorkspaceService;
+    const port = new GoogleLinkedCalendarProviderPort(google);
+    const school = {
+      ...baseEvent,
+      isAllDay: true,
+      startAt: "2026-10-31T00:00:00.000Z",
+      endAt: "2026-11-03T00:00:00.000Z",
+    };
+    const created = await port.create(record(), school);
+    expect(calls[0]).toMatchObject({ start: "2026-10-31", end: "2026-11-03" });
+    expect(created.event).toMatchObject({
+      isAllDay: true,
+      startAt: school.startAt,
+      endAt: school.endAt,
+    });
+    await port.update(
+      record({ providerEventId: created.eventId, providerEtag: created.etag }),
+      { ...school, endAt: "2026-11-04T00:00:00.000Z" },
+    );
+    expect(calls[1]).toMatchObject({
+      start: "2026-10-31",
+      end: "2026-11-04",
+      expectedEtag: '"school-1"',
     });
   });
 

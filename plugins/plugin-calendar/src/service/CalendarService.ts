@@ -1249,6 +1249,7 @@ export class CalendarService extends Service {
       startAt: event.startAt,
       endAt: event.endAt,
       timeZone: event.timezone,
+      isAllDay: event.isAllDay,
       attendees: event.attendees.flatMap((attendee) =>
         attendee.email
           ? [{ email: attendee.email, optional: attendee.optional === true }]
@@ -1295,6 +1296,7 @@ export class CalendarService extends Service {
           location: providerEvent.location,
           startAt: providerEvent.startAt,
           endAt: providerEvent.endAt,
+          isAllDay: providerEvent.isAllDay,
           ...(providerEvent.timeZone
             ? { timeZone: providerEvent.timeZone }
             : {}),

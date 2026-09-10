@@ -54,6 +54,7 @@ export interface LinkedCalendarSemanticEvent {
   startAt: string;
   endAt: string;
   timeZone: string | null;
+  isAllDay: boolean;
   attendees: ReadonlyArray<{ email: string; optional?: boolean }>;
   deleted?: boolean;
 }
@@ -194,6 +195,8 @@ export function linkedCalendarSemanticHash(
     startAt: event.startAt,
     endAt: event.endAt,
     timeZone: event.timeZone,
+    // Retain timed-event checkpoints; all-day semantics need a distinct hash.
+    ...(event.isAllDay ? { isAllDay: true } : {}),
     attendees: [...event.attendees]
       .map((attendee) => ({
         email: attendee.email.trim().toLowerCase(),
@@ -891,8 +894,8 @@ function googleEventInput(event: LinkedCalendarSemanticEvent) {
     title: event.title,
     description: event.description,
     location: event.location,
-    start: event.startAt,
-    end: event.endAt,
+    start: event.isAllDay ? event.startAt.split("T")[0] : event.startAt,
+    end: event.isAllDay ? event.endAt.split("T")[0] : event.endAt,
     ...(event.timeZone ? { timeZone: event.timeZone } : {}),
     attendees: event.attendees.map((attendee) => ({
       email: attendee.email,
@@ -928,6 +931,7 @@ export function linkedCalendarSnapshotFromGoogle(
       startAt: event.start,
       endAt: event.end,
       timeZone: event.timeZone ?? null,
+      isAllDay: event.isAllDay === true,
       attendees: (event.attendees ?? []).map((attendee) => ({
         email: attendee.email,
       })),
