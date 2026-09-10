@@ -395,7 +395,7 @@ export function listenForConnectRequests(
     };
     const failed = (error: unknown): void => {
       // error-policy:J1 event-owner failures become a typed completion result.
-      logger.warn("[connect-request] connection owner failed", { error });
+      logger.warn({ error }, "[connect-request] connection owner failed");
       complete({
         status: "failed",
         message:
