@@ -6862,8 +6862,11 @@ function deterministicSuccessfulToolRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	for (const step of [...trajectory.steps].reverse()) {
-		if (!step.toolCall || step.result?.success !== true) continue;
-		if (isTerminalToolCall(step.toolCall)) continue;
+		if (!step.toolCall || !step.result || isTerminalToolCall(step.toolCall))
+			continue;
+		// A failed later read or write prevents an earlier success from owning
+		// the final reply when the provider cannot finish the workflow.
+		if (step.result.success !== true) return undefined;
 		const candidate =
 			getNonEmptyString(step.result.userFacingText) ??
 			(step.result.modelReplyRequired === true
@@ -7099,10 +7102,9 @@ function previewWasCommitted(
  * `verifiedUserFacing` opt-in is unambiguous: exactly one completed tool step
  * set `verifiedUserFacing: true` with a non-empty `userFacingText`.
  *
- * Failed steps are intentionally ignored unless they are explicit
- * confirmation-required previews. A plan whose first tool errored and whose
- * second tool emitted a verified canonical reply must still echo the verified
- * reply. LifeOps can draft more than once while refining a request; the latest
+ * Earlier failed steps do not invalidate a later verified canonical reply.
+ * A failure after the successful step does prevent that earlier reply from
+ * owning the turn. Explicit confirmation-required previews retain authority. LifeOps can draft more than once while refining a request; the latest
  * verified preview is the user-complete state even though `success:false`
  * correctly records that nothing was persisted yet. A later canonical commit
  * for every keyed preview operation releases that preview's reply authority.
@@ -7137,10 +7139,22 @@ export function singleVerifiedUserFacingToolResultText(
 		}
 	}
 
-	const successfulToolSteps = allTrajectorySteps(trajectory).filter(
+	const successfulToolSteps = steps.filter(
 		(step) => step.toolCall && step.result?.success === true,
 	);
 	if (successfulToolSteps.length !== 1) return undefined;
+	const successfulIndex = steps.indexOf(successfulToolSteps[0]);
+	if (
+		steps.some(
+			(step, index) =>
+				index > successfulIndex &&
+				step.toolCall &&
+				!isTerminalToolCall(step.toolCall) &&
+				step.result?.success === false,
+		)
+	) {
+		return undefined;
+	}
 	const result = successfulToolSteps[0]?.result;
 	if (result?.verifiedUserFacing !== true) return undefined;
 	if (
