@@ -96,7 +96,7 @@ describe("JoinPage Dedicated credit gate", () => {
     );
   });
 
-  it("retries Dedicated onboarding after credits are added", async () => {
+  it("retries the identity lookup after a server-reported credit error", async () => {
     mocks.runJoinFlow
       .mockRejectedValueOnce(
         Object.assign(
@@ -125,11 +125,14 @@ describe("JoinPage Dedicated credit gate", () => {
     mocks.openCloudBillingConsole.mockResolvedValueOnce(false);
     renderJoin();
     fireEvent.click(await screen.findByRole("button", { name: "Add credits" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Could not open billing",
-    );
+    expect(
+      (await screen.findByText(/Could not open billing/)).getAttribute("role"),
+    ).toBe("alert");
     fireEvent.click(screen.getByRole("button", { name: "Add credits" }));
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByText(/Could not open billing/)).toBeNull(),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("hosting credit");
     expect(mocks.openCloudBillingConsole).toHaveBeenCalledTimes(2);
   });
   it("handles a rejected platform launch without losing credit recovery", async () => {
@@ -138,11 +141,14 @@ describe("JoinPage Dedicated credit gate", () => {
     );
     renderJoin();
     fireEvent.click(await screen.findByRole("button", { name: "Add credits" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Could not open billing",
-    );
+    expect(
+      (await screen.findByText(/Could not open billing/)).getAttribute("role"),
+    ).toBe("alert");
     fireEvent.click(screen.getByRole("button", { name: "Add credits" }));
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByText(/Could not open billing/)).toBeNull(),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("hosting credit");
     expect(mocks.openCloudBillingConsole).toHaveBeenCalledTimes(2);
   });
 

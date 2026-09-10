@@ -6,8 +6,6 @@
  * operations belong to a separate explicit-consent flow, never authentication.
  */
 
-import type { DedicatedAdoptionConfirmationRequester } from "../../../api/client-cloud";
-
 /** The slice of `ElizaClient` the join flow drives. */
 export interface JoinFlowClient {
   getPersonalSharedEliza(options: {
@@ -50,7 +48,6 @@ export interface RunJoinFlowArgs {
   signal?: AbortSignal;
   /** Original account/target guard, checked by the request owner and at publication. */
   revalidate?: () => void;
-  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
 }
 
 export interface JoinFlowResult {

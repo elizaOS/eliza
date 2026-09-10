@@ -14,7 +14,6 @@
 
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
-import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
 import { getCloudAuthToken } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
@@ -129,11 +128,9 @@ export interface FirstRunFinishPorts {
   /**
    * Fires immediately after interactive Cloud login settles successfully so
    * the conductor can retire the OAuth-only recovery deadline before personal
-   * agent activation begins.
+   * agent resolution begins.
    */
   onInteractiveLoginComplete?: () => void;
-  /** Visible first-run quote/consent seam; absent callers stay read-only. */
-  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
 }
 
 type FirstRunRuntimeStateKey =
@@ -755,12 +752,6 @@ export async function listOrAutoProvisionCloudAgent(
         ports.onStatus?.(detail ?? status, status);
         authority.revalidate();
       },
-      ...(ports.requestDedicatedAdoptionConfirmation
-        ? {
-            requestDedicatedAdoptionConfirmation:
-              ports.requestDedicatedAdoptionConfirmation,
-          }
-        : {}),
     });
     authority.revalidate();
     const profile = await addAgentProfileDurably(
