@@ -85,14 +85,8 @@ export async function retireReplacedAccount(
 ): Promise<void> {
   const current = await adapter.load({ forceSync: true });
   reviewAccountTransition(current, selection);
-  for (const calendar of current.calendars) {
-    if (
-      calendar.provider === "google" &&
-      calendar.grantId === selection.previousGrantId &&
-      calendar.includeInFeed
-    )
-      await adapter.setCalendarIncluded(calendar, false);
-  }
+  // Calendar discovery excludes revoked accounts, so retiring an account does
+  // not need to alter saved calendar selections.
   await adapter.disconnectGoogle(selection.previousGrantId);
   const verified = await adapter.load();
   if (

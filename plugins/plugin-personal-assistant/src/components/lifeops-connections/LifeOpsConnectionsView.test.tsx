@@ -583,16 +583,39 @@ describe("account replacement", () => {
     await retireReplacedAccount(local, selection);
     expect(local.load).toHaveBeenCalledWith({ forceSync: true });
     expect(local.disconnectGoogle).toHaveBeenCalledExactlyOnceWith(GRANT_ID);
-    expect(local.setCalendarIncluded).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ grantId: GRANT_ID }),
-      false,
-    );
+    expect(local.setCalendarIncluded).not.toHaveBeenCalled();
     expect(local.purgeImportedData).not.toHaveBeenCalled();
     expect(
       state.googleAccounts.some(
         (account) => account.grant?.id === "replacement",
       ),
     ).toBe(true);
+  });
+
+  it("preserves calendar selections when disconnect fails", async () => {
+    const state = replacementSnapshot();
+    const before = structuredClone(state);
+    const local = adapter();
+    local.load = vi.fn(async () => state);
+    local.disconnectGoogle = vi.fn(async () => {
+      throw new Error("Provider disconnect unavailable");
+    });
+    local.setCalendarIncluded = vi.fn(async (calendar, included) => {
+      const saved = state.calendars.find(
+        (item) =>
+          item.grantId === calendar.grantId &&
+          item.calendarId === calendar.calendarId,
+      );
+      if (!saved) throw new Error("Calendar missing");
+      saved.includeInFeed = included;
+    });
+    await expect(retireReplacedAccount(local, selection)).rejects.toThrow(
+      "Provider disconnect unavailable",
+    );
+    expect(state.calendars).toEqual(before.calendars);
+    expect(state.googleAccounts).toEqual(before.googleAccounts);
+    expect(local.setCalendarIncluded).not.toHaveBeenCalled();
+    expect(local.purgeImportedData).not.toHaveBeenCalled();
   });
 
   it("requires review of the two selected identities before disconnecting from the UI", async () => {
