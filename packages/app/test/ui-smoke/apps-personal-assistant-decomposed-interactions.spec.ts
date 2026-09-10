@@ -127,15 +127,16 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   ).toBeVisible({ timeout: 15_000 });
 
   // Activating a channel chip narrows the server query (?channels=<channel>)
-  // and the rendered list: the active chip is renamed "* <Channel>", its
-  // thread stays, and the other channel's thread disappears.
+  // and the rendered list: the chip flips to its pressed state (aria-pressed,
+  // the solid primary variant since #29779), its thread stays, and the other
+  // channel's thread disappears.
   const emailChip = page
     .getByRole("button", { name: "Email", exact: true })
     .first();
   await expectTopmostAtCenter(emailChip, "Inbox Email filter chip");
   await emailChip.click();
   await expect(
-    page.getByRole("button", { name: "* Email", exact: true }),
+    page.getByRole("button", { name: "Email", exact: true, pressed: true }),
   ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible({
     timeout: 15_000,
@@ -192,9 +193,11 @@ test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
     timeout: 15_000,
   });
 
-  // Toggling the "Active" status chip narrows the groups: the paused goal
-  // disappears, the active goal stays.
-  await page.getByRole("button", { name: "Active", exact: true }).click();
+  // Filtering the Status select to "Active" narrows the groups: the paused
+  // goal disappears, the active goal stays. (#29779 replaced the per-status
+  // chip buttons with a Field select whose trigger is labeled "Status".)
+  await page.getByLabel("Status").click();
+  await page.getByRole("option", { name: "Active", exact: true }).click();
   await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0, {
     timeout: 15_000,
   });
