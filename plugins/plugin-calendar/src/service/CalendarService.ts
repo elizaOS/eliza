@@ -72,6 +72,8 @@ import type {
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
   PurgeLifeOpsCalendarImportedDataRequest,
+  RebindLifeOpsLinkedCalendarRequest,
+  RebindLifeOpsLinkedCalendarResponse,
   ResolveLifeOpsLinkedCalendarConflictRequest,
   RunLifeOpsLinkedCalendarReconciliationRequest,
   SeedLifeOpsCalendarRequest,
@@ -1933,6 +1935,68 @@ export class CalendarService extends Service {
       await this.linkedRepo.getById(this.agentId(), linkId),
     );
     return { link: this.publicLinkedCalendar(current), outcome };
+  }
+
+  async executeLinkedCalendarRebind(
+    requestUrl: URL,
+    linkId: string,
+    request: RebindLifeOpsLinkedCalendarRequest,
+  ): Promise<RebindLifeOpsLinkedCalendarResponse> {
+    if (request.retainPreviousProviderEvent !== true)
+      throw new CalendarServiceError(
+        400,
+        "Confirm that the previous provider event will be retained",
+        "LINKED_CALENDAR_RETENTION_REQUIRED",
+      );
+    const id = requireNonEmptyString(linkId, "linkId");
+    const operationKey = requireNonEmptyString(
+      request.idempotencyKey,
+      "idempotencyKey",
+    );
+    const destination = {
+      connectorAccountId: requireNonEmptyString(
+        request.connectorAccountId,
+        "connectorAccountId",
+      ),
+      providerCalendarId: requireNonEmptyString(
+        request.providerCalendarId,
+        "providerCalendarId",
+      ),
+    };
+    this.requireCurrentLinkedRecord(
+      await this.linkedRepo.getById(this.agentId(), id),
+    );
+    await this.verifyLinkedDestination(requestUrl, destination);
+    try {
+      const result = await this.linkedRepo.rebindWhilePaused({
+        linkId: id,
+        expectedUpdatedAt: requireNonEmptyString(
+          request.expectedUpdatedAt,
+          "expectedUpdatedAt",
+        ),
+        expectedLocalRevision: request.expectedLocalRevision,
+        expectedControlRevision: request.expectedControlRevision,
+        ...destination,
+        operationKey,
+      });
+      return {
+        previous: this.publicLinkedCalendar(result.previous),
+        link: this.publicLinkedCalendar(result.link),
+        controlRevision: result.controlRevision,
+        receipt: { operationKey, replayed: result.replayed },
+        providerMutation: "none",
+      };
+    } catch (error) {
+      // error-policy:J1 A stale or unsafe mapping review is an owner-visible conflict.
+      if (
+        error instanceof ElizaError &&
+        error.code === "LINKED_CALENDAR_REBIND_CONFLICT"
+      )
+        throw new CalendarServiceError(409, error.message, error.code, {
+          cause: error,
+        });
+      throw error;
+    }
   }
 
   async executeLinkedCalendarDisconnect(

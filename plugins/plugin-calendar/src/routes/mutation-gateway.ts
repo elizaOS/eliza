@@ -19,6 +19,8 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsLinkedCalendarControlMutationResult,
   LifeOpsLinkedCalendarMutationResponse,
+  RebindLifeOpsLinkedCalendarRequest,
+  RebindLifeOpsLinkedCalendarResponse,
   ResolveLifeOpsLinkedCalendarConflictRequest,
   RunLifeOpsLinkedCalendarReconciliationRequest,
   UpdateLifeOpsLinkedCalendarControlRequest,
@@ -87,6 +89,11 @@ export interface CalendarOwnerMutationGateway {
     linkId: string,
     request: ResolveLifeOpsLinkedCalendarConflictRequest,
   ): Promise<LifeOpsLinkedCalendarMutationResponse>;
+  rebindLinkedCalendar(
+    requestUrl: URL,
+    linkId: string,
+    request: RebindLifeOpsLinkedCalendarRequest,
+  ): Promise<RebindLifeOpsLinkedCalendarResponse>;
   disconnectLinkedCalendar(
     requestUrl: URL,
     linkId: string,

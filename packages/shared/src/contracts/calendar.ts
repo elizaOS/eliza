@@ -506,6 +506,25 @@ export interface DisconnectLifeOpsLinkedCalendarRequest {
   retainEvents: true;
 }
 
+/** Prepares a reviewed local event for a new provider destination without deleting the old provider event. */
+export interface RebindLifeOpsLinkedCalendarRequest {
+  expectedUpdatedAt: string;
+  expectedLocalRevision: number;
+  expectedControlRevision: number;
+  connectorAccountId: string;
+  providerCalendarId: string;
+  idempotencyKey: string;
+  retainPreviousProviderEvent: true;
+}
+
+export interface RebindLifeOpsLinkedCalendarResponse {
+  previous: LifeOpsLinkedCalendarLink;
+  link: LifeOpsLinkedCalendarLink;
+  controlRevision: number;
+  receipt: { operationKey: string; replayed: boolean };
+  providerMutation: "none";
+}
+
 export interface LifeOpsLinkedCalendarMutationResponse {
   link: LifeOpsLinkedCalendarLink;
   outcome:

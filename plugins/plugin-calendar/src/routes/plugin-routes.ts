@@ -337,6 +337,8 @@ function isCalendarOwnerMutationGateway(
       "function" &&
     typeof (value as CalendarOwnerMutationGateway)
       .resolveLinkedCalendarConflict === "function" &&
+    "rebindLinkedCalendar" in value &&
+    typeof value.rebindLinkedCalendar === "function" &&
     typeof (value as CalendarOwnerMutationGateway).disconnectLinkedCalendar ===
       "function" &&
     typeof (value as CalendarOwnerMutationGateway)
@@ -657,6 +659,11 @@ export function calendarRouteHandler(): LegacyRouteHandler {
             linkId,
             request,
           );
+        },
+        async rebindLinkedCalendar(requestUrl, linkId, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.rebindLinkedCalendar(requestUrl, linkId, request);
         },
         async disconnectLinkedCalendar(requestUrl, linkId, request) {
           const gateway =

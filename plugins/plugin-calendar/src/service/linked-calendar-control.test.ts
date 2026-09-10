@@ -81,6 +81,45 @@ describe("durable linked calendar review", { timeout: 30_000 }, () => {
     return { h, links, previous, control, request };
   }
 
+  it("requires retention confirmation and a connected writable destination through the service", async () => {
+    const { h, links, previous, control, request } = await mappingFixture();
+    const service = new CalendarService(h.runtime());
+    service.setGate({
+      getGoogleConnectorAccounts: async () => [],
+    } as unknown as CalendarHostGate);
+    const input = {
+      ...request,
+      idempotencyKey: request.operationKey,
+      retainPreviousProviderEvent: true as const,
+    };
+    const unconfirmed = { ...input };
+    Reflect.deleteProperty(unconfirmed, "retainPreviousProviderEvent");
+    await expect(
+      service.executeLinkedCalendarRebind(
+        new URL("http://localhost"),
+        previous.id,
+        unconfirmed,
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "LINKED_CALENDAR_RETENTION_REQUIRED",
+    });
+    await expect(
+      service.executeLinkedCalendarRebind(
+        new URL("http://localhost"),
+        previous.id,
+        input,
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+    });
+    expect(await links.getById(h.runtime().agentId, previous.id)).toEqual(
+      previous,
+    );
+    expect(await h.controls().read()).toEqual(control);
+  });
+
   it("rebinds under pause and preserves the old mapping in a durable replay receipt", async () => {
     const { h, links, previous, control, request } = await mappingFixture();
     const result = await links.rebindWhilePaused(request);

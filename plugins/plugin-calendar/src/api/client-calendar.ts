@@ -29,6 +29,8 @@ import type {
   ListLifeOpsCalendarsRequest,
   ListLifeOpsIcsCalendarSourcesResponse,
   PurgeLifeOpsCalendarImportedDataRequest,
+  RebindLifeOpsLinkedCalendarRequest,
+  RebindLifeOpsLinkedCalendarResponse,
   SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
@@ -65,6 +67,10 @@ type CalendarEditorDeleteRequest = Partial<
 };
 
 export interface CalendarClientMethods {
+  rebindLinkedCalendar(
+    linkId: string,
+    request: RebindLifeOpsLinkedCalendarRequest,
+  ): Promise<RebindLifeOpsLinkedCalendarResponse>;
   getLinkedCalendarControl(): Promise<LifeOpsLinkedCalendarControl>;
   updateLinkedCalendarControl(
     request: UpdateLifeOpsLinkedCalendarControlRequest,
@@ -130,6 +136,17 @@ declare module "@elizaos/ui/api/client-base" {
 
 const calendarClientPrototype = ElizaClient.prototype as ElizaClient &
   CalendarClientMethods;
+
+calendarClientPrototype.rebindLinkedCalendar = async function (
+  this: ElizaClient,
+  linkId: string,
+  request: RebindLifeOpsLinkedCalendarRequest,
+) {
+  return this.fetch<RebindLifeOpsLinkedCalendarResponse>(
+    `/api/lifeops/calendar/links/${encodeURIComponent(linkId)}/rebind`,
+    { method: "POST", body: JSON.stringify(request) },
+  );
+};
 
 calendarClientPrototype.getLinkedCalendarControl = async function (
   this: ElizaClient,

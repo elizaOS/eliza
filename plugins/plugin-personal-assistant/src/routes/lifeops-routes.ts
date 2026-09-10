@@ -1358,6 +1358,8 @@ export async function handleLifeOpsRoutes(
     typeof value.reconcileLinkedCalendar === "function" &&
     "resolveLinkedCalendarConflict" in value &&
     typeof value.resolveLinkedCalendarConflict === "function" &&
+    "rebindLinkedCalendar" in value &&
+    typeof value.rebindLinkedCalendar === "function" &&
     "disconnectLinkedCalendar" in value &&
     typeof value.disconnectLinkedCalendar === "function" &&
     "reconcileLinkedCalendarProviderChanges" in value &&
@@ -1419,6 +1421,8 @@ export async function handleLifeOpsRoutes(
             linkId,
             request,
           ),
+        rebindLinkedCalendar: (requestUrl, linkId, request) =>
+          mutationGateway().rebindLinkedCalendar(requestUrl, linkId, request),
         disconnectLinkedCalendar: (requestUrl, linkId, request) =>
           mutationGateway().disconnectLinkedCalendar(
             requestUrl,
