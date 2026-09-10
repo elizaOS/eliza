@@ -337,6 +337,125 @@ describe("account handoff persistence", () => {
     );
   });
 
+  it("retires exactly reviewed approvals and resumes after a partially completed retirement", async () => {
+    const owner = "retirement-owner";
+    const calendar = result.runtime.getService<CalendarService>(
+      CalendarService.serviceType,
+    );
+    if (!calendar) throw new Error("Calendar service is unavailable");
+    const queue = createApprovalQueue(result.runtime, {
+      agentId: result.runtime.agentId,
+    });
+    const enqueue = () =>
+      queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_message",
+        payload: {
+          action: "send_message",
+          recipient: "+15555550101",
+          body: "Synthetic retirement",
+          replyToMessageId: null,
+        },
+        channel: "sms",
+        reason: "No provider used",
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+    const first = await enqueue();
+    const second = await enqueue();
+    const unselected = await enqueue();
+    await queue.approve(second.id, owner, {
+      resolvedBy: owner,
+      resolutionReason: "Synthetic fixture",
+    });
+    const store = new AccountHandoffStore(result.runtime, owner);
+    await store.review("retirement", {
+      ...review,
+      retireApprovalIds: [first.id, second.id, first.id],
+    });
+    const admission = new AccountHandoffAdmission(
+      result.runtime,
+      owner,
+      calendar,
+      new URL("http://localhost"),
+    );
+    const begun = await admission.begin("retirement", 0);
+    const paused = await admission.pause("retirement", begun.revision);
+    const drained = await admission.drain("retirement", paused.revision);
+    await queue.markExpired(first.id, owner);
+    const completed = await new AccountHandoffAdmission(
+      result.runtime,
+      owner,
+      calendar,
+      new URL("http://localhost"),
+    ).retireApprovals("retirement", drained.revision);
+    expect(completed.phase).toBe("applying_mappings");
+    expect(completed.receipt.retiredApprovals).toEqual([
+      { requestId: first.id, state: "expired" },
+      { requestId: second.id, state: "expired" },
+    ]);
+    expect((await queue.byId(unselected.id, owner))?.state).toBe("pending");
+    expect((await queue.byId(second.id, owner))?.state).toBe("expired");
+    await expect(
+      admission.retireApprovals("retirement", drained.revision),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_CONFLICT" });
+  });
+
+  it("checks every selected approval's owner before retiring any", async () => {
+    const owner = "retirement-isolation";
+    const calendar = result.runtime.getService<CalendarService>(
+      CalendarService.serviceType,
+    );
+    if (!calendar) throw new Error("Calendar service is unavailable");
+    const queue = createApprovalQueue(result.runtime, {
+      agentId: result.runtime.agentId,
+    });
+    const enqueue = (subjectUserId: string) =>
+      queue.enqueue({
+        requestedBy: subjectUserId,
+        subjectUserId,
+        action: "send_message",
+        payload: {
+          action: "send_message",
+          recipient: "+15555550101",
+          body: "Synthetic scope fixture",
+          replyToMessageId: null,
+        },
+        channel: "sms",
+        reason: "No provider used",
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+    const own = await enqueue(owner);
+    const foreign = await enqueue("foreign-retirement-owner");
+    const store = new AccountHandoffStore(result.runtime, owner);
+    await store.review("invalid-retirement", {
+      ...review,
+      retireApprovalIds: [own.id, foreign.id],
+    });
+    const admission = new AccountHandoffAdmission(
+      result.runtime,
+      owner,
+      calendar,
+      new URL("http://localhost"),
+    );
+    const begun = await admission.begin("invalid-retirement", 0);
+    const paused = await admission.pause("invalid-retirement", begun.revision);
+    const drained = await admission.drain(
+      "invalid-retirement",
+      paused.revision,
+    );
+    await expect(
+      admission.retireApprovals("invalid-retirement", drained.revision),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_APPROVAL_UNAVAILABLE" });
+    expect((await queue.byId(own.id, owner))?.state).toBe("pending");
+    expect(
+      (await queue.byId(foreign.id, "foreign-retirement-owner"))?.state,
+    ).toBe("pending");
+    expect((await store.read("invalid-retirement"))?.phase).toBe(
+      "retiring_approvals",
+    );
+  });
+
   it("rejects mismatched calendar ownership and duplicate accounts before persisting a review", async () => {
     const store = new AccountHandoffStore(result.runtime, "invalid-owner");
     await expect(store.review(" padded-operation ", review)).rejects.toThrow();

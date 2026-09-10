@@ -184,6 +184,71 @@ export class AccountHandoffAdmission {
     });
   }
 
+  async retireApprovals(
+    operationId: string,
+    expectedRevision: number,
+  ): Promise<AccountHandoffRecord> {
+    const record = await this.requirePhase(
+      operationId,
+      expectedRevision,
+      "retiring_approvals",
+    );
+    const paused = pausedSchema.parse(record.receipt.admissionPaused);
+    const assertPaused = async () => {
+      const approval = await this.approvals.read(this.ownerEntityId);
+      const calendar = await this.calendar.getLinkedCalendarControl();
+      if (
+        !approval.paused ||
+        approval.revision !== paused.approvalRevision ||
+        !calendar.paused ||
+        calendar.revision !== paused.calendarRevision ||
+        calendar.pendingDispatch
+      )
+        throw this.changed();
+    };
+    await assertPaused();
+    const queue = createApprovalQueue(this.runtime, {
+      agentId: this.runtime.agentId,
+    });
+    const selected = [];
+    for (const requestId of new Set(record.review.retireApprovalIds)) {
+      const request = await queue.byId(requestId, this.ownerEntityId);
+      if (!request)
+        throw new ElizaError(
+          "A reviewed approval is unavailable to this owner. Refresh the handoff review.",
+          { code: "ACCOUNT_HANDOFF_APPROVAL_UNAVAILABLE" },
+        );
+      if (
+        request.state === "executing" ||
+        request.state === "reconciliation_required"
+      )
+        throw new ElizaError(
+          "Reconcile the reviewed delivery before retiring its approval",
+          { code: "ACCOUNT_HANDOFF_DRAIN_REQUIRED" },
+        );
+      selected.push(request);
+    }
+    const outcomes = [];
+    for (const request of selected) {
+      await assertPaused();
+      const retired =
+        request.state === "pending" ||
+        request.state === "approved" ||
+        request.state === "retryable"
+          ? await queue.markExpired(request.id, this.ownerEntityId)
+          : request;
+      outcomes.push({ requestId: retired.id, state: retired.state });
+    }
+    await assertPaused();
+    return this.store.advance({
+      operationId,
+      expectedRevision: record.revision,
+      expectedPhase: "retiring_approvals",
+      phase: "applying_mappings",
+      receipt: { retiredApprovals: outcomes },
+    });
+  }
+
   private async requirePhase(
     operationId: string,
     revision: number,
