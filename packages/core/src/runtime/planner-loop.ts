@@ -936,6 +936,7 @@ async function runPlannerLoopIterations(
 							iteration,
 							onUsage: params.onModelUsage,
 							failureAware: true,
+							requireFailureReport: true,
 							instruction:
 								"Planning stopped with PLANNER_SCOPE_DECLARATION_REQUIRED after repeated invalid turn-scope declarations. Do not call any tool or claim the whole request completed. Explain which earlier operations are confirmed by the complete recorded results and which requested work remains unfinished. Every call in the rejected batches did not run. Preserve exact returned identifiers and do not ask the user to repeat already settled mutations.",
 						});
@@ -6367,6 +6368,8 @@ async function finishWithForcedSynthesis(params: {
 	 * with the generic failed-step sentence (#17948).
 	 */
 	failureAware?: boolean;
+	/** Protocol failures require a whole-turn report; a substep reply cannot explain the stop. */
+	requireFailureReport?: boolean;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
 	if (
@@ -6466,6 +6469,9 @@ async function finishWithForcedSynthesis(params: {
 	const failureReport = params.failureAware
 		? userSafeFailureReport(synthOutput.messageToUser, trajectory)
 		: undefined;
+	if (params.requireFailureReport && !failureReport) {
+		return { status: "finished", trajectory };
+	}
 	// Failure-instructed synthesis accounts for the whole turn; a verified
 	// successful substep must not replace its explicit partial-work report.
 	const finalMessage =

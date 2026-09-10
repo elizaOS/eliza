@@ -834,6 +834,10 @@ it.each([
 	["unavailable", false],
 	["available", true],
 	["unavailable", true],
+	["empty", false],
+	["empty", true],
+	["rejected", false],
+	["rejected", true],
 ] as const)(
 	"preserves four completed operations after protocol exhaustion with %s presentation (earlier failure: %s)",
 	async (presentation, earlierFailure) => {
@@ -957,7 +961,11 @@ it.each([
 		responses.push(
 			presentation === "available"
 				? partial
-				: new Error("presentation provider unavailable"),
+				: presentation === "empty"
+					? { text: "", toolCalls: [] }
+					: presentation === "rejected"
+						? "I'm working on the remaining event now."
+						: new Error("presentation provider unavailable"),
 		);
 		if (presentation === "available")
 			responses.push(
