@@ -944,7 +944,7 @@ function MonthDayButton({
       variant={today ? "accentDarkHover" : "selection"}
       size="touch"
       type="button"
-      className="min-w-0 self-start px-1"
+      className="w-11 min-w-0 max-w-full self-start px-1"
       aria-label={label}
       aria-current={today ? "date" : undefined}
       aria-pressed={selected}
