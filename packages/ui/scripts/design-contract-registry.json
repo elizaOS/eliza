@@ -18,7 +18,8 @@
         "atom:nativeSelect",
         "atom:separator",
         "atom:table",
-        "atom:tabs"
+        "atom:tabs",
+        "atom:textarea"
       ],
       "grants": [
         "layout.container",

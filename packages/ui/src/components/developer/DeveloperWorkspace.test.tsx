@@ -346,6 +346,40 @@ describe("developer workspace", () => {
     ).toBeTruthy();
   });
 
+  it("loads complete wire evidence only when expanded and keeps it selectable", async () => {
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
+    await flush();
+    expect(mocks.detail).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Full prompts, tools, results & context",
+      }),
+    );
+    await flush();
+    expect(mocks.detail).toHaveBeenLastCalledWith(
+      "run-1",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(
+      screen.getByRole("textbox", { name: "Full trajectory JSON" }),
+    ).toHaveProperty("value", JSON.stringify(detail, null, 2));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Full prompts, tools, results & context",
+      }),
+    );
+    expect(
+      screen.queryByRole("textbox", { name: "Full trajectory JSON" }),
+    ).toBeNull();
+    expect(mocks.detail).toHaveBeenCalledTimes(2);
+  });
+
   it("loads older reply counts on inspection without calling unloaded counts unavailable", async () => {
     mocks.list.mockImplementation((options) =>
       Promise.resolve({
