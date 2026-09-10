@@ -288,6 +288,48 @@ export class LinkedCalendarRepository {
     controlRevision: number;
     replayed: boolean;
   }> {
+    return this.changeMappingWhilePaused({ ...args, operation: "rebind" });
+  }
+
+  async retainLocalWhilePaused(args: {
+    linkId: string;
+    expectedUpdatedAt: string;
+    expectedLocalRevision: number;
+    expectedControlRevision: number;
+    operationKey: string;
+  }): Promise<{
+    previous: LinkedCalendarEventRecord;
+    link: LinkedCalendarEventRecord;
+    controlRevision: number;
+    replayed: boolean;
+  }> {
+    return this.changeMappingWhilePaused({
+      ...args,
+      operation: "retain_local",
+    });
+  }
+
+  private async changeMappingWhilePaused(
+    args: {
+      linkId: string;
+      expectedUpdatedAt: string;
+      expectedLocalRevision: number;
+      expectedControlRevision: number;
+      operationKey: string;
+    } & (
+      | { operation: "retain_local" }
+      | {
+          operation: "rebind";
+          connectorAccountId: string;
+          providerCalendarId: string;
+        }
+    ),
+  ): Promise<{
+    previous: LinkedCalendarEventRecord;
+    link: LinkedCalendarEventRecord;
+    controlRevision: number;
+    replayed: boolean;
+  }> {
     const invalid = () =>
       new ElizaError(
         "Refresh the paused calendar and review the exact mapping before replacing it",
@@ -297,8 +339,9 @@ export class LinkedCalendarRepository {
       [
         args.linkId,
         args.expectedUpdatedAt,
-        args.connectorAccountId,
-        args.providerCalendarId,
+        ...(args.operation === "rebind"
+          ? [args.connectorAccountId, args.providerCalendarId]
+          : []),
         args.operationKey,
       ].some((value) => !value.trim() || value.includes("\0")) ||
       !Number.isSafeInteger(args.expectedLocalRevision) ||
@@ -311,13 +354,14 @@ export class LinkedCalendarRepository {
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify([
-          "rebind",
+          args.operation,
           args.linkId,
           args.expectedUpdatedAt,
           args.expectedLocalRevision,
           args.expectedControlRevision,
-          args.connectorAccountId,
-          args.providerCalendarId,
+          ...(args.operation === "rebind"
+            ? [args.connectorAccountId, args.providerCalendarId]
+            : []),
         ]),
       )
       .digest("hex");
@@ -343,7 +387,7 @@ export class LinkedCalendarRepository {
         if (receipts[0].fingerprint !== fingerprint) throw invalid();
         const snapshot = object(receipts[0].snapshot);
         if (
-          snapshot.mappingOperation !== "rebind" ||
+          snapshot.mappingOperation !== args.operation ||
           snapshot.revision !== control.revision ||
           typeof snapshot.revision !== "number"
         )
@@ -359,8 +403,9 @@ export class LinkedCalendarRepository {
         control.paused !== true ||
         control.dispatch_token !== null ||
         control.revision !== args.expectedControlRevision ||
-        control.connector_account_id !== args.connectorAccountId ||
-        control.provider_calendar_id !== args.providerCalendarId
+        (args.operation === "rebind" &&
+          (control.connector_account_id !== args.connectorAccountId ||
+            control.provider_calendar_id !== args.providerCalendarId))
       )
         throw invalid();
       const rows = await executeRawSqlTx(
@@ -375,7 +420,8 @@ export class LinkedCalendarRepository {
         previous.localRevision !== args.expectedLocalRevision ||
         !["clean", "dirty", "paused"].includes(previous.state) ||
         previous.pendingOperation === "delete" ||
-        (previous.connectorAccountId === args.connectorAccountId &&
+        (args.operation === "rebind" &&
+          previous.connectorAccountId === args.connectorAccountId &&
           previous.providerCalendarId === args.providerCalendarId)
       )
         throw invalid();
@@ -389,13 +435,16 @@ export class LinkedCalendarRepository {
           ]),
         )
         .digest("hex")}`;
-      const changed = await executeRawSqlTx(
-        tx,
-        `UPDATE app_calendar.linked_calendar_events SET
-        connector_account_id = ${sqlQuote(args.connectorAccountId)}, provider_calendar_id = ${sqlQuote(args.providerCalendarId)},
+      const mappingUpdate =
+        args.operation === "retain_local"
+          ? "state = 'paused', pending_operation = NULL, last_error_code = NULL, last_error_message = NULL"
+          : `connector_account_id = ${sqlQuote(args.connectorAccountId)}, provider_calendar_id = ${sqlQuote(args.providerCalendarId)},
         provider_event_id = NULL, provider_etag = NULL, last_common_semantic_hash = NULL,
         state = 'dirty', pending_operation = 'create', idempotency_key = ${sqlQuote(createKey)},
-        last_error_code = NULL, last_error_message = NULL, updated_at = ${sqlQuote(now)}
+        last_error_code = NULL, last_error_message = NULL`;
+      const changed = await executeRawSqlTx(
+        tx,
+        `UPDATE app_calendar.linked_calendar_events SET ${mappingUpdate}, updated_at = ${sqlQuote(now)}
         WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND id = ${sqlQuote(args.linkId)} RETURNING *`,
       );
       if (!changed[0]) throw invalid();
@@ -411,7 +460,7 @@ export class LinkedCalendarRepository {
         `INSERT INTO app_calendar.linked_calendar_control_mutations
         (id, agent_id, operation_key, fingerprint, snapshot, committed_at) VALUES (
         ${sqlQuote(randomUUID())}, ${sqlQuote(this.runtime.agentId)}, ${sqlQuote(args.operationKey)}, ${sqlQuote(fingerprint)},
-        ${sqlJson({ ...updated[0], mappingOperation: "rebind", mappingBefore: rows[0], mappingAfter: changed[0] })}::jsonb, ${sqlQuote(now)})`,
+        ${sqlJson({ ...updated[0], mappingOperation: args.operation, mappingBefore: rows[0], mappingAfter: changed[0] })}::jsonb, ${sqlQuote(now)})`,
       );
       return {
         previous,
