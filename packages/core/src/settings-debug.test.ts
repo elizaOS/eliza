@@ -3,6 +3,7 @@ import {
 	isElizaSettingsDebugEnabled,
 	MAX_STRING,
 	sanitizeDebugString,
+	sanitizeForSettingsDebug,
 } from "./settings-debug.js";
 
 describe("settings-debug", () => {
@@ -44,5 +45,33 @@ describe("settings-debug", () => {
 		const masked = sanitizeDebugString(long);
 		expect(masked).toContain("chars)");
 		expect(masked).not.toBe(long);
+	});
+});
+
+describe("sanitizeForSettingsDebug reference handling", () => {
+	it("renders a shared (non-cyclic) reference in full at every site", () => {
+		// The same object reached from two keys and twice inside an array is a
+		// DAG, not a cycle; every reference must sanitize to the same snapshot.
+		const shared = { model: "gpt", region: "eu" };
+		const out = sanitizeForSettingsDebug({
+			a: shared,
+			b: shared,
+			list: [shared, shared],
+		}) as Record<string, unknown>;
+		const expected = { model: "gpt", region: "eu" };
+		expect(out.a).toEqual(expected);
+		expect(out.b).toEqual(expected);
+		expect(out.list).toEqual([expected, expected]);
+	});
+
+	it("still collapses a true cycle to [circular] and sanitizes its siblings", () => {
+		const root: Record<string, unknown> = { name: "root" };
+		root.self = root;
+		root.child = { parent: root, tag: "t" };
+		expect(sanitizeForSettingsDebug(root)).toEqual({
+			name: "root",
+			self: "[circular]",
+			child: { parent: "[circular]", tag: "t" },
+		});
 	});
 });

@@ -121,14 +121,21 @@ export function sanitizeForSettingsDebug(
 	if (typeof value === "function") return `[fn ${value.name || "anonymous"}]`;
 	if (typeof value !== "object") return String(value);
 
+	// `seen` is the ancestor path of the value being sanitized, not every
+	// object visited so far: a reference is circular only while its target is
+	// still open above it. The entry is removed once the subtree is done, so a
+	// settings graph that reuses one object from two places renders both in
+	// full instead of collapsing the second one to "[circular]".
 	if (seen.has(value as object)) return "[circular]";
 	seen.add(value as object);
-
-	if (Array.isArray(value)) {
-		return sanitizeDebugArray(value, depth, seen);
+	try {
+		if (Array.isArray(value)) {
+			return sanitizeDebugArray(value, depth, seen);
+		}
+		return sanitizeDebugObject(value as Record<string, unknown>, depth, seen);
+	} finally {
+		seen.delete(value as object);
 	}
-
-	return sanitizeDebugObject(value as Record<string, unknown>, depth, seen);
 }
 
 /** Compact cloud slice for logs (no raw secrets). */
