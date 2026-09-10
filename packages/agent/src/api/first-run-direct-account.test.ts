@@ -438,6 +438,114 @@ describe("POST /api/first-run direct account authority", () => {
     expect(await listAccounts("openrouter-api")).toHaveLength(1);
   });
 
+  it("rejects an incomplete connector before probing or adopting a paid provider", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { context, responses } = firstRunRouteContext({
+      apiKey: "synthetic-provider",
+    });
+    const originalConfig = structuredClone(context.state.config);
+    const originalEnvironment = { ...process.env };
+    context.readJsonBody = async () => ({
+      ...openRouterFirstRunBody("synthetic-provider"),
+      connectors: { blooio: { apiKey: "synthetic-connector" } },
+    });
+
+    await handleFirstRunRoutes(context);
+
+    expect(responses.at(-1)).toMatchObject({ status: 400 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await listAccounts("openrouter-api")).toEqual([]);
+    expect(configFileExists()).toBe(false);
+    expect(context.state.config).toEqual(originalConfig);
+    expect(
+      Object.keys(process.env).length ===
+        Object.keys(originalEnvironment).length &&
+        Object.entries(originalEnvironment).every(
+          ([key, value]) => process.env[key] === value,
+        ),
+    ).toBe(true);
+  });
+
+  it.each([false, true])(
+    "commits connector and paid-provider authority together (save failure: %s)",
+    async (failSave) => {
+      const connector = {
+        apiKey: "synthetic-connector",
+        webhookSecret: "synthetic-webhook",
+        fromNumber: "+15551234567",
+        channelId: "synthetic-channel",
+      };
+      const connectorEnvironment = {
+        IMESSAGE_TRANSPORT: "blooio",
+        IMESSAGE_BLOOIO_API_KEY: connector.apiKey,
+        IMESSAGE_BLOOIO_WEBHOOK_SECRET: connector.webhookSecret,
+        IMESSAGE_BLOOIO_FROM_NUMBER: connector.fromNumber,
+        IMESSAGE_BLOOIO_CHANNEL_ID: connector.channelId,
+        BLOOIO_API_KEY: connector.apiKey,
+        BLOOIO_WEBHOOK_SECRET: connector.webhookSecret,
+        BLOOIO_FROM_NUMBER: connector.fromNumber,
+        BLOOIO_PHONE_NUMBER: connector.fromNumber,
+      };
+      const priorEnvironment = Object.fromEntries(
+        Object.keys(connectorEnvironment).map((key) => [key, process.env[key]]),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async (url: string | URL | Request) =>
+            new Response(
+              JSON.stringify(
+                String(url).includes("/auth/key")
+                  ? { data: { label: "primary" } }
+                  : { data: [{ id: "openai/gpt-5" }] },
+              ),
+              { status: 200 },
+            ),
+        ),
+      );
+      const { context, responses } = firstRunRouteContext({
+        apiKey: "synthetic-provider",
+        saveConfig: (config) => {
+          if (failSave) throw new Error("disk unavailable");
+          saveElizaConfig(config);
+        },
+      });
+      const originalConfig = structuredClone(context.state.config);
+      context.readJsonBody = async () => ({
+        ...openRouterFirstRunBody("synthetic-provider"),
+        connectors: { blooio: connector },
+      });
+      try {
+        await handleFirstRunRoutes(context);
+        const accounts = await listAccounts("openrouter-api");
+        if (failSave) {
+          expect(responses.at(-1)?.status).toBe(500);
+          expect(configFileExists()).toBe(false);
+          expect(accounts).toEqual([]);
+          expect(state.accounts).toEqual([]);
+          expect(context.state.config).toEqual(originalConfig);
+          expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+          for (const [key, value] of Object.entries(priorEnvironment))
+            expect(process.env[key]).toBe(value);
+        } else {
+          expect(responses.at(-1)).toEqual({ status: 200, data: { ok: true } });
+          expect(accounts[0]?.credentials.access).toBe("synthetic-provider");
+          expect(loadElizaConfig().connectors?.blooio).toMatchObject(connector);
+          expect(context.state.config.meta?.firstRunComplete).toBe(true);
+          expect(process.env.OPENROUTER_API_KEY).toBe("synthetic-provider");
+          for (const [key, value] of Object.entries(connectorEnvironment))
+            expect(process.env[key]).toBe(value);
+        }
+      } finally {
+        for (const [key, value] of Object.entries(priorEnvironment)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+    },
+  );
+
   it("reconstructs live exports from persisted authority in the same process", async () => {
     vi.stubGlobal(
       "fetch",
