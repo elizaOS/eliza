@@ -44,4 +44,13 @@ export const WithTrailingAction: Story = {
   args: { right: <Button size="sm">New task</Button> },
 };
 
-export const RootView: Story = { args: { showBack: false, title: "Home" } };
+export const RootView: Story = {
+  tags: ["story-gate-expect-blank"],
+  args: { showBack: false, title: "Home" },
+  play: async ({ canvasElement }) => {
+    assert(
+      canvasElement.childElementCount === 0,
+      "a view without trailing actions leaves no empty header row",
+    );
+  },
+};
