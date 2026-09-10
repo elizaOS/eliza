@@ -13,10 +13,13 @@ import type {
 } from "@elizaos/plugin-google-workspace";
 import {
   executeRawSql,
+  executeRawSqlTx,
+  sqlJson,
   sqlQuote,
   sqlText,
   toNumber,
   toText,
+  withCalendarTransaction,
 } from "../internal/sql.js";
 
 export type LinkedCalendarState =
@@ -268,6 +271,155 @@ export class LinkedCalendarRepository {
       );
     }
     return linked;
+  }
+
+  /** Replaces a reviewed mapping while serializing with resume and dispatch admission. */
+  async rebindWhilePaused(args: {
+    linkId: string;
+    expectedUpdatedAt: string;
+    expectedLocalRevision: number;
+    expectedControlRevision: number;
+    connectorAccountId: string;
+    providerCalendarId: string;
+    operationKey: string;
+  }): Promise<{
+    previous: LinkedCalendarEventRecord;
+    link: LinkedCalendarEventRecord;
+    controlRevision: number;
+    replayed: boolean;
+  }> {
+    const invalid = () =>
+      new ElizaError(
+        "Refresh the paused calendar and review the exact mapping before replacing it",
+        { code: "LINKED_CALENDAR_REBIND_CONFLICT" },
+      );
+    if (
+      [
+        args.linkId,
+        args.expectedUpdatedAt,
+        args.connectorAccountId,
+        args.providerCalendarId,
+        args.operationKey,
+      ].some((value) => !value.trim() || value.includes("\0")) ||
+      !Number.isSafeInteger(args.expectedLocalRevision) ||
+      args.expectedLocalRevision < 0 ||
+      !Number.isSafeInteger(args.expectedControlRevision) ||
+      args.expectedControlRevision < 0 ||
+      args.expectedControlRevision >= 2_147_483_647
+    )
+      throw invalid();
+    const fingerprint = createHash("sha256")
+      .update(
+        JSON.stringify([
+          "rebind",
+          args.linkId,
+          args.expectedUpdatedAt,
+          args.expectedLocalRevision,
+          args.expectedControlRevision,
+          args.connectorAccountId,
+          args.providerCalendarId,
+        ]),
+      )
+      .digest("hex");
+    const object = (value: unknown): Record<string, unknown> => {
+      if (!value || typeof value !== "object" || Array.isArray(value))
+        throw invalid();
+      return value as Record<string, unknown>;
+    };
+    return withCalendarTransaction(this.runtime, async (tx) => {
+      const controls = await executeRawSqlTx(
+        tx,
+        `SELECT * FROM app_calendar.linked_calendar_control
+        WHERE agent_id = ${sqlQuote(this.runtime.agentId)} FOR UPDATE`,
+      );
+      const control = controls[0];
+      if (!control) throw invalid();
+      const receipts = await executeRawSqlTx(
+        tx,
+        `SELECT fingerprint, snapshot FROM app_calendar.linked_calendar_control_mutations
+        WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND operation_key = ${sqlQuote(args.operationKey)}`,
+      );
+      if (receipts[0]) {
+        if (receipts[0].fingerprint !== fingerprint) throw invalid();
+        const snapshot = object(receipts[0].snapshot);
+        if (
+          snapshot.mappingOperation !== "rebind" ||
+          snapshot.revision !== control.revision ||
+          typeof snapshot.revision !== "number"
+        )
+          throw invalid();
+        return {
+          previous: parseRecord(object(snapshot.mappingBefore)),
+          link: parseRecord(object(snapshot.mappingAfter)),
+          controlRevision: snapshot.revision,
+          replayed: true,
+        };
+      }
+      if (
+        control.paused !== true ||
+        control.dispatch_token !== null ||
+        control.revision !== args.expectedControlRevision ||
+        control.connector_account_id !== args.connectorAccountId ||
+        control.provider_calendar_id !== args.providerCalendarId
+      )
+        throw invalid();
+      const rows = await executeRawSqlTx(
+        tx,
+        `SELECT * FROM app_calendar.linked_calendar_events
+        WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND id = ${sqlQuote(args.linkId)} FOR UPDATE`,
+      );
+      if (!rows[0]) throw invalid();
+      const previous = parseRecord(rows[0]);
+      if (
+        previous.updatedAt !== args.expectedUpdatedAt ||
+        previous.localRevision !== args.expectedLocalRevision ||
+        !["clean", "dirty", "paused"].includes(previous.state) ||
+        previous.pendingOperation === "delete" ||
+        (previous.connectorAccountId === args.connectorAccountId &&
+          previous.providerCalendarId === args.providerCalendarId)
+      )
+        throw invalid();
+      const now = new Date().toISOString();
+      const createKey = `linked-calendar:handoff:${createHash("sha256")
+        .update(
+          JSON.stringify([
+            this.runtime.agentId,
+            args.linkId,
+            args.operationKey,
+          ]),
+        )
+        .digest("hex")}`;
+      const changed = await executeRawSqlTx(
+        tx,
+        `UPDATE app_calendar.linked_calendar_events SET
+        connector_account_id = ${sqlQuote(args.connectorAccountId)}, provider_calendar_id = ${sqlQuote(args.providerCalendarId)},
+        provider_event_id = NULL, provider_etag = NULL, last_common_semantic_hash = NULL,
+        state = 'dirty', pending_operation = 'create', idempotency_key = ${sqlQuote(createKey)},
+        last_error_code = NULL, last_error_message = NULL, updated_at = ${sqlQuote(now)}
+        WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND id = ${sqlQuote(args.linkId)} RETURNING *`,
+      );
+      if (!changed[0]) throw invalid();
+      const updated = await executeRawSqlTx(
+        tx,
+        `UPDATE app_calendar.linked_calendar_control SET revision = revision + 1
+        WHERE agent_id = ${sqlQuote(this.runtime.agentId)} RETURNING *`,
+      );
+      if (!updated[0] || typeof updated[0].revision !== "number")
+        throw invalid();
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_calendar.linked_calendar_control_mutations
+        (id, agent_id, operation_key, fingerprint, snapshot, committed_at) VALUES (
+        ${sqlQuote(randomUUID())}, ${sqlQuote(this.runtime.agentId)}, ${sqlQuote(args.operationKey)}, ${sqlQuote(fingerprint)},
+        ${sqlJson({ ...updated[0], mappingOperation: "rebind", mappingBefore: rows[0], mappingAfter: changed[0] })}::jsonb, ${sqlQuote(now)})`,
+      );
+      return {
+        previous,
+        link: parseRecord(changed[0]),
+        controlRevision: updated[0].revision,
+        replayed: false,
+      };
+    });
   }
 
   async getByLocalEvent(

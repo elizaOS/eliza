@@ -49,6 +49,144 @@ afterEach(async () => {
 });
 
 describe("durable linked calendar review", { timeout: 30_000 }, () => {
+  async function mappingFixture() {
+    const h = await harness();
+    const links = new LinkedCalendarRepository(h.runtime());
+    const created = await links.create({
+      agentId: h.runtime().agentId,
+      localEventId: "reviewed-local-event",
+      connectorAccountId: "old-account",
+      providerCalendarId: "old-calendar",
+      localRevision: 3,
+    });
+    const previous = await links.save(created, {
+      state: "clean",
+      pendingOperation: null,
+      providerEventId: "original-provider-event",
+      providerEtag: "old-etag",
+      lastCommonSemanticHash: "old-common",
+    });
+    const initial = await h.controls().read();
+    const control = await h
+      .controls()
+      .selectDestination(initial.revision, destination);
+    const request = {
+      linkId: previous.id,
+      expectedUpdatedAt: previous.updatedAt,
+      expectedLocalRevision: previous.localRevision,
+      expectedControlRevision: control.revision,
+      ...destination,
+      operationKey: "reviewed-rebind",
+    };
+    return { h, links, previous, control, request };
+  }
+
+  it("rebinds under pause and preserves the old mapping in a durable replay receipt", async () => {
+    const { h, links, previous, control, request } = await mappingFixture();
+    const result = await links.rebindWhilePaused(request);
+    expect(result.previous).toEqual(previous);
+    expect(result.link).toMatchObject({
+      localEventId: previous.localEventId,
+      localRevision: previous.localRevision,
+      ...destination,
+      providerEventId: null,
+      providerEtag: null,
+      lastCommonSemanticHash: null,
+      state: "dirty",
+      pendingOperation: "create",
+    });
+    expect(result.link.idempotencyKey).not.toBe(previous.idempotencyKey);
+    expect(result.controlRevision).toBe(control.revision + 1);
+    expect((await h.controls().read()).paused).toBe(true);
+    const reopened = new LinkedCalendarRepository(h.runtime());
+    expect(await reopened.rebindWhilePaused(request)).toEqual({
+      ...result,
+      replayed: true,
+    });
+    expect(await reopened.getById(h.runtime().agentId, previous.id)).toEqual(
+      result.link,
+    );
+    await expect(
+      reopened.rebindWhilePaused({
+        ...request,
+        providerCalendarId: "unreviewed-calendar",
+      }),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_REBIND_CONFLICT" });
+    await h.controls().pause(result.controlRevision);
+    await expect(reopened.rebindWhilePaused(request)).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_REBIND_CONFLICT",
+    });
+  });
+
+  it("does not replace a link while a provider dispatch is unresolved", async () => {
+    const { h, links, previous, control, request } = await mappingFixture();
+    const active = await h.controls().resume(control.revision);
+    await h
+      .controls()
+      .acquireDispatch(active.revision, "pending-link", destination);
+    const paused = await h.controls().pause(active.revision);
+    await expect(
+      links.rebindWhilePaused({
+        ...request,
+        expectedControlRevision: paused.revision,
+      }),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_REBIND_CONFLICT" });
+    expect(await links.getById(h.runtime().agentId, previous.id)).toEqual(
+      previous,
+    );
+    expect(await h.controls().read()).toEqual(paused);
+  });
+
+  it("rolls back both mapping and control revision if receipt persistence fails, then retries", async () => {
+    const { h, links, previous, control, request } = await mappingFixture();
+    await h.pg.exec(
+      "ALTER TABLE app_calendar.linked_calendar_control_mutations ADD CONSTRAINT reject_rebind_receipt CHECK (operation_key <> 'reviewed-rebind')",
+    );
+    await expect(links.rebindWhilePaused(request)).rejects.toThrow();
+    expect(await links.getById(h.runtime().agentId, previous.id)).toEqual(
+      previous,
+    );
+    expect(await h.controls().read()).toEqual(control);
+    await h.pg.exec(
+      "ALTER TABLE app_calendar.linked_calendar_control_mutations DROP CONSTRAINT reject_rebind_receipt",
+    );
+    expect(
+      (await links.rebindWhilePaused(request)).link.providerCalendarId,
+    ).toBe(destination.providerCalendarId);
+  });
+
+  it("rejects another agent's link and a link with unknown delivery without rewriting either", async () => {
+    const { h, links, previous, request } = await mappingFixture();
+    const otherRuntime = h.runtime("owner-b");
+    const otherControls = new LinkedCalendarControlRepository(otherRuntime);
+    const otherInitial = await otherControls.read();
+    const otherControl = await otherControls.selectDestination(
+      otherInitial.revision,
+      destination,
+    );
+    await expect(
+      new LinkedCalendarRepository(otherRuntime).rebindWhilePaused({
+        ...request,
+        expectedControlRevision: otherControl.revision,
+      }),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_REBIND_CONFLICT" });
+    expect(await otherControls.read()).toEqual(otherControl);
+    const quarantined = await links.save(previous, {
+      state: "quarantined",
+      lastErrorCode: "UNKNOWN_DELIVERY",
+      lastErrorMessage: "Synthetic unknown provider result",
+    });
+    await expect(
+      links.rebindWhilePaused({
+        ...request,
+        expectedUpdatedAt: quarantined.updatedAt,
+      }),
+    ).rejects.toMatchObject({ code: "LINKED_CALENDAR_REBIND_CONFLICT" });
+    expect(await links.getById(h.runtime().agentId, previous.id)).toEqual(
+      quarantined,
+    );
+  });
+
   it("returns one durable receipt for concurrent retries and rejects changed request reuse", async () => {
     const h = await harness();
     const first = new CalendarService(h.runtime());
