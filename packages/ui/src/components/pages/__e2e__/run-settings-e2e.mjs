@@ -459,6 +459,8 @@ assert(
   "mobile hub cards align to the shared 16px content rail",
 );
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-hub-mobile`);
+// Hold verified states long enough for a reviewer to follow the recording.
+await mobile.waitForTimeout(1000);
 shotIndex += 1;
 await mobile.locator('[data-testid="settings-hub-row-appearance"]').click();
 await mobile.waitForTimeout(450);
@@ -473,15 +475,18 @@ assert(
   "mobile detail keeps the canvas full bleed and content inset 16px",
 );
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-appearance-mobile`);
+await mobile.waitForTimeout(1000);
 shotIndex += 1;
 await mobile.getByRole("button", { name: "Back to Settings" }).hover();
 await snap(mobile, "appearance-mobile-back-hover");
+await mobile.waitForTimeout(1000);
 await mobile.getByRole("button", { name: "Back to Settings" }).click();
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
 assert(
   await mobile.getByRole("button", { name: "Back to Settings" }).count() === 0,
   "returning to the hub removes the nested navigation control",
 );
+await mobile.waitForTimeout(1000);
 await mobile.locator('[data-testid="settings-hub-row-voice"]').click();
 await mobile.waitForSelector("#voice");
 await assertSectionRendered(mobile, "mobile Voice");
