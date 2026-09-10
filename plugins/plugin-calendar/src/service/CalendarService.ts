@@ -2001,6 +2001,54 @@ export class CalendarService extends Service {
     }
   }
 
+  async executeLinkedCalendarRetainLocal(
+    linkId: string,
+    request: Omit<
+      RebindLifeOpsLinkedCalendarRequest,
+      "connectorAccountId" | "providerCalendarId"
+    >,
+  ): Promise<RebindLifeOpsLinkedCalendarResponse> {
+    if (request.retainPreviousProviderEvent !== true)
+      throw new CalendarServiceError(
+        400,
+        "Confirm that the previous provider event will be retained",
+        "LINKED_CALENDAR_RETENTION_REQUIRED",
+      );
+    try {
+      const operationKey = requireNonEmptyString(
+        request.idempotencyKey,
+        "idempotencyKey",
+      );
+      const result = await this.linkedRepo.retainLocalWhilePaused({
+        linkId: requireNonEmptyString(linkId, "linkId"),
+        expectedUpdatedAt: requireNonEmptyString(
+          request.expectedUpdatedAt,
+          "expectedUpdatedAt",
+        ),
+        expectedLocalRevision: request.expectedLocalRevision,
+        expectedControlRevision: request.expectedControlRevision,
+        operationKey,
+      });
+      return {
+        previous: this.publicLinkedCalendar(result.previous),
+        link: this.publicLinkedCalendar(result.link),
+        controlRevision: result.controlRevision,
+        receipt: { operationKey, replayed: result.replayed },
+        providerMutation: "none",
+      };
+    } catch (error) {
+      // error-policy:J1 Stale or unsafe retention reviews are owner-visible conflicts.
+      if (
+        error instanceof ElizaError &&
+        error.code === "LINKED_CALENDAR_REBIND_CONFLICT"
+      )
+        throw new CalendarServiceError(409, error.message, error.code, {
+          cause: error,
+        });
+      throw error;
+    }
+  }
+
   async executeLinkedCalendarDisconnect(
     linkId: string,
     request: DisconnectLifeOpsLinkedCalendarRequest,

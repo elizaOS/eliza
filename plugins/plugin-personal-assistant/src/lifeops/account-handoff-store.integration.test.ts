@@ -7,16 +7,19 @@ import {
   createApprovalQueue,
 } from "@elizaos/agent";
 import { CalendarService } from "@elizaos/plugin-calendar";
+import { LinkedCalendarRepository } from "@elizaos/plugin-calendar/service/linked-calendar-sync";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
 import { AccountHandoffAdmission } from "./account-handoff-admission.js";
+import { AccountHandoffCalendarMappings } from "./account-handoff-calendar-mappings.js";
 import {
   type AccountHandoffReview,
   AccountHandoffStore,
 } from "./account-handoff-store.js";
+import { executeRawSql, sqlText } from "./sql.js";
 
 const review: AccountHandoffReview = {
   previous: {
@@ -61,6 +64,99 @@ describe("account handoff persistence", () => {
   afterAll(async () => {
     await result.cleanup();
   });
+
+  it("recovers an applied mapping after checkpoint failure and skips completed links on the next step", async () => {
+    const isolated = await createLifeOpsTestRuntime();
+    try {
+      const runtime = isolated.runtime;
+      const owner = "mapping-owner";
+      const service = new CalendarService(runtime);
+      await service.getLinkedCalendarControl();
+      const links = new LinkedCalendarRepository(runtime);
+      const records = [];
+      for (const id of ["first", "second"])
+        records.push(
+          await links.create({
+            agentId: runtime.agentId,
+            localEventId: id,
+            connectorAccountId: "old-account",
+            providerCalendarId: "old-calendar",
+            localRevision: 1,
+          }),
+        );
+      const store = new AccountHandoffStore(runtime, owner);
+      let state = await store.review("mapping-recovery", {
+        ...review,
+        writeCalendar: null,
+        retireApprovalIds: [],
+        calendarLinks: records.map((link) => ({
+          linkId: link.id,
+          expectedUpdatedAt: link.updatedAt,
+          expectedLocalRevision: link.localRevision,
+          disposition: "retain_local" as const,
+        })),
+      });
+      const admission = new AccountHandoffAdmission(
+        runtime,
+        owner,
+        service,
+        new URL("http://localhost"),
+      );
+      state = await admission.begin(state.operationId, state.revision);
+      state = await admission.pause(state.operationId, state.revision);
+      state = await admission.drain(state.operationId, state.revision);
+      state = await admission.retireApprovals(
+        state.operationId,
+        state.revision,
+      );
+      const coordinator = () =>
+        new AccountHandoffCalendarMappings(
+          runtime,
+          owner,
+          new CalendarService(runtime),
+          new URL("http://localhost"),
+        );
+      state = await coordinator().applyNext(state.operationId, state.revision);
+      const before = state;
+      const first = records[0];
+      if (!first) throw new Error("Missing first test link");
+      await executeRawSql(
+        runtime,
+        `ALTER TABLE app_lifeops.life_account_handoffs ADD CONSTRAINT reject_mapping_checkpoint CHECK (NOT (receipt_json::jsonb ? ${sqlText(`mapping:${first.id}`)}))`,
+      );
+      await expect(
+        coordinator().applyNext(state.operationId, state.revision),
+      ).rejects.toThrow();
+      expect(await store.read(state.operationId)).toEqual(before);
+      expect(await links.getById(runtime.agentId, first.id)).toMatchObject({
+        state: "local_only",
+        pendingOperation: null,
+      });
+      const committedControl = await service.getLinkedCalendarControl();
+      await executeRawSql(
+        runtime,
+        "ALTER TABLE app_lifeops.life_account_handoffs DROP CONSTRAINT reject_mapping_checkpoint",
+      );
+      state = await coordinator().applyNext(state.operationId, state.revision);
+      expect((await service.getLinkedCalendarControl()).revision).toBe(
+        committedControl.revision,
+      );
+      const firstReceipt = state.receipt[`mapping:${first.id}`];
+      state = await coordinator().applyNext(state.operationId, state.revision);
+      expect(state.receipt[`mapping:${first.id}`]).toEqual(firstReceipt);
+      expect((await service.getLinkedCalendarControl()).revision).toBe(
+        committedControl.revision + 1,
+      );
+      state = await coordinator().applyNext(state.operationId, state.revision);
+      expect(state.phase).toBe("verifying_replacement");
+      expect((await service.getLinkedCalendarControl()).paused).toBe(true);
+      await expect(
+        coordinator().applyNext(before.operationId, before.revision),
+      ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_CONFLICT" });
+    } finally {
+      await isolated.cleanup();
+    }
+  }, 60_000);
 
   it("admits only one racing review per owner, retaining the exact winner across instances", async () => {
     const store = new AccountHandoffStore(result.runtime, "race-owner");

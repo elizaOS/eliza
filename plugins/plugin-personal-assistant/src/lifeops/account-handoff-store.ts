@@ -269,6 +269,34 @@ export class AccountHandoffStore {
     return this.writeCheckpoint(input);
   }
 
+  async checkpointMappingDestination(input: {
+    operationId: string;
+    expectedRevision: number;
+    receipt: { controlRevision: number; operationKey: string };
+  }): Promise<AccountHandoffRecord> {
+    const receipt = z
+      .object({
+        controlRevision: z.number().int().nonnegative(),
+        operationKey: identity,
+      })
+      .strict()
+      .parse(input.receipt);
+    const record = await this.read(input.operationId);
+    if (
+      !record ||
+      record.revision !== input.expectedRevision ||
+      record.phase !== "applying_mappings"
+    )
+      throw this.conflict();
+    return this.writeCheckpoint({
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      expectedPhase: "applying_mappings",
+      phase: "applying_mappings",
+      receipt: { mappingDestination: receipt },
+    });
+  }
+
   async checkpointMapping(input: {
     operationId: string;
     expectedRevision: number;
