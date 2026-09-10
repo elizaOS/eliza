@@ -176,6 +176,8 @@ export interface ButtonProps
   asChild?: boolean;
   unstyled?: boolean;
   nativeTranscriptSummary?: boolean;
+  /** Filled keyboard focus for recovery controls on ringless surfaces. */
+  focusStyle?: "surface";
   /** Runtime paint data (for example provider palettes) applied by the atom. */
   visualStyle?: Pick<
     React.CSSProperties,
@@ -223,6 +225,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       type,
       unstyled = false,
       nativeTranscriptSummary = false,
+      focusStyle,
       ...props
     },
     ref,
@@ -240,6 +243,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             ? cn(className)
             : cn(
                 buttonVariants({ variant, size, shape, align }),
+                focusStyle === "surface" && "keyboard-focus-surface",
                 nativeTranscriptSummary &&
                   "min-h-11 w-full cursor-pointer list-none justify-start gap-2 px-1 text-xs outline-none [&::-webkit-details-marker]:hidden",
                 className,

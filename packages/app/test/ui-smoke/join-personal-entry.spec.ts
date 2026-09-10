@@ -216,6 +216,7 @@ for (const viewport of [
       ).toHaveCount(0);
       expect(identityReads).toBe(1);
       expect(requests).toEqual([]);
+      await page.evaluate(() => document.fonts.ready);
       await page.screenshot({
         path: testInfo.outputPath("entry-error.jpg"),
         fullPage: true,
@@ -234,12 +235,44 @@ for (const viewport of [
         name: "Try again",
         exact: true,
       });
+      const retryRestBackground = await retry.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      );
+      const signOut = page.getByRole("button", {
+        name: "Sign out",
+        exact: true,
+      });
+      const signOutRestBackground = await signOut.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      );
       await page.keyboard.press("Tab");
       await expect(retry).toBeFocused();
       await page.screenshot({
         path: testInfo.outputPath("entry-retry-focus.jpg"),
         fullPage: true,
       });
+      await expect
+        .poll(() =>
+          retry.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        )
+        .not.toBe(retryRestBackground);
+      await page.keyboard.press("Tab");
+      await expect(signOut).toBeFocused();
+      await expect
+        .poll(() =>
+          signOut.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        )
+        .not.toBe(signOutRestBackground);
+      await page.screenshot({
+        path: testInfo.outputPath("entry-sign-out-focus.jpg"),
+        fullPage: true,
+      });
+      await page.keyboard.press("Shift+Tab");
+      await expect(retry).toBeFocused();
       await retry.press("Enter");
       await expect(page).toHaveURL(/\/chat$/);
       const readBinding = () =>

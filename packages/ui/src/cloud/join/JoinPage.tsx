@@ -223,6 +223,7 @@ export default function JoinPage(): React.JSX.Element {
   const signOutButton = (
     <Button
       variant="ghostMuted"
+      focusStyle="surface"
       size="wide"
       type="button"
       disabled={signingOut}
@@ -285,6 +286,7 @@ export default function JoinPage(): React.JSX.Element {
               <>
                 <Button
                   variant="surface"
+                  focusStyle="surface"
                   size="wide"
                   type="button"
                   disabled={openingBilling}
@@ -306,6 +308,7 @@ export default function JoinPage(): React.JSX.Element {
                 )}
                 <Button
                   variant="ghostMuted"
+                  focusStyle="surface"
                   size="wide"
                   type="button"
                   onClick={handleRetry}
@@ -316,6 +319,7 @@ export default function JoinPage(): React.JSX.Element {
             ) : (
               <Button
                 variant="surface"
+                focusStyle="surface"
                 size="wide"
                 type="button"
                 onClick={handleRetry}

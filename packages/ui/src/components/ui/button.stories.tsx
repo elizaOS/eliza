@@ -61,6 +61,24 @@ export const Small: Story = { args: { size: "sm" } };
 export const Large: Story = { args: { size: "lg" } };
 export const Disabled: Story = { args: { disabled: true } };
 
+/** Tab between recovery actions to inspect the filled, ringless focus state. */
+export const RecoveryFocus: Story = {
+  render: (args) => (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button {...args} variant="surface" focusStyle="surface">
+        Try again
+      </Button>
+      <Button {...args} variant="ghostMuted" focusStyle="surface">
+        Sign out
+      </Button>
+      <Button {...args} variant="surface" focusStyle="surface" disabled>
+        Opening billing…
+      </Button>
+    </div>
+  ),
+  args: { children: undefined },
+};
+
 /** Every variant in one view. */
 export const AllVariants: Story = {
   render: (args) => (
