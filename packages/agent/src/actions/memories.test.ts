@@ -2203,3 +2203,28 @@ describe("promoted MEMORY_UPDATE / MEMORY_DELETE target selection", () => {
     });
   }
 });
+
+describe("MEMORY op:delete by query ignores copied imperatives", () => {
+  it("deletes the fact when the planner's query repeats the user's 'remember that …' sentence", async () => {
+    // Live 2026-09-10 10:45: "forget my favorite tea" reached MEMORY_DELETE as
+    // query "remember that my favorite tea is yerba"; "remember" never appears
+    // in the stored fact, and delete requires every non-stop term to match.
+    const { runtime, rows } = makeRuntime();
+    const factId = seedFact(rows, {
+      text: "User's favorite tea is yerba.",
+      entityId: USER_ID,
+      metadata: { messageId: "msg-yerba", subject: "user", subjectResolved: true },
+    });
+    const message = makeMessage();
+    message.content.text = "forget my favorite tea";
+
+    const result = await runAction(runtime, message, {
+      action: "delete",
+      query: "remember that my favorite tea is yerba",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows.some((row) => row.memory.id === factId)).toBe(false);
+  });
+});

@@ -128,6 +128,27 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "user",
   "users",
   "named",
+  // Imperatives and memory verbs the planner copies from the user's sentence
+  // ("remember that my favorite tea is yerba" → forget-by-query, live
+  // 2026-09-10): they never appear in the stored fact, and delete needs every
+  // remaining term to match, so one such word sank an otherwise exact hit.
+  "remember",
+  "remembered",
+  "forget",
+  "forgot",
+  "recall",
+  "note",
+  "noted",
+  "save",
+  "saved",
+  "store",
+  "stored",
+  "please",
+  "know",
+  "knew",
+  "said",
+  "told",
+  "mentioned",
   "called",
 ]);
 
