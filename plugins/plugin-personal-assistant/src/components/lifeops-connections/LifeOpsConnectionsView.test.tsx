@@ -601,6 +601,28 @@ describe("account replacement", () => {
     ).toBe(true);
   });
 
+  it.each([
+    { identityEmail: " OWNER@example.test " },
+    { connectorAccountId: CONNECTOR_ACCOUNT_ID },
+  ])(
+    "does not disconnect duplicate connections to the same account: %j",
+    async (identity) => {
+      const state = replacementSnapshot();
+      const replacement = state.googleAccounts.find(
+        (account) => account.grant?.id === selection.replacementGrantId,
+      );
+      if (!replacement?.grant) throw new Error("fixture requires replacement");
+      replacement.grant = { ...replacement.grant, ...identity };
+      const local = adapter();
+      local.load = vi.fn(async () => state);
+      await expect(retireReplacedAccount(local, selection)).rejects.toThrow(
+        "same Google account",
+      );
+      expect(local.disconnectGoogle).not.toHaveBeenCalled();
+      expect(local.purgeImportedData).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves calendar selections when disconnect fails", async () => {
     const state = replacementSnapshot();
     const before = structuredClone(state);
