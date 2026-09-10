@@ -139,7 +139,7 @@ import {
   applyOwnerPolicySetReminder,
 } from "./lib/owner-policy-writes.js";
 import {
-  textContradictsExplicitUndatedTodo,
+  resolveUndatedTodoAuthority,
   textStatesExplicitUndatedTodo,
 } from "./lib/undated-todo-intent.js";
 
@@ -3407,6 +3407,7 @@ function shouldRequireLifeCreateConfirmation(args: {
   cadence?: LifeOpsCadence;
   multiStep?: boolean;
   explicitUndated?: boolean;
+  operationScopedUndated?: boolean;
   previewRequested?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
@@ -3433,13 +3434,12 @@ function shouldRequireLifeCreateConfirmation(args: {
   // halves — the item AND that it has no date ("add a todo: X, no deadline") —
   // a preview would ask them to confirm exactly what they just said. Scoped to
   // an EXPLICIT textual no-date statement (the same canonical authority that
-  // guards the unscheduled-cadence wipe), single-step asks only, mirroring the
-  // #16941 over-trigger guard. An extraction-inferred unscheduled cadence
-  // without the explicit statement still previews.
+  // guards the unscheduled-cadence wipe). Multi-step requests need a unique
+  // authored Todo clause; model-only scope cannot bypass confirmation.
   if (
     args.cadence?.kind === "unscheduled" &&
     args.explicitUndated === true &&
-    !args.multiStep
+    (!args.multiStep || args.operationScopedUndated === true)
   ) {
     return false;
   }
@@ -4896,17 +4896,17 @@ async function runLifeOperationHandlerInner(
           await invalidateDeferredLifeDraftCache(runtime, message);
         }
       }
+      const undatedAuthority = resolveUndatedTodoAuthority(currentText, title);
       const confirmsValidatedUndatedDraft =
         deferredDraftReuseMode === "confirm" &&
         deferredDefinitionDraft?.request.cadence?.kind === "unscheduled";
       if (
         (editingDeferredDefinitionDraft &&
           deferredDefinitionDraft.request.cadence?.kind === "unscheduled" &&
-          textContradictsExplicitUndatedTodo(currentText)) ||
+          undatedAuthority.contradicts) ||
         (cadence?.kind === "unscheduled" &&
           (ownerSurfaceActionName !== "OWNER_TODOS" ||
-            (!confirmsValidatedUndatedDraft &&
-              !textStatesExplicitUndatedTodo(currentText))))
+            (!confirmsValidatedUndatedDraft && !undatedAuthority.explicit)))
       ) {
         cadence = undefined;
         if (editingDeferredDefinitionDraft) {
@@ -5193,8 +5193,8 @@ async function runLifeOperationHandlerInner(
           // skip is for the owner's fresh "add a todo: X, no deadline" ask,
           // where the preview would echo back exactly what they just said.
           explicitUndated:
-            !editingDeferredDefinitionDraft &&
-            textStatesExplicitUndatedTodo(currentText),
+            !editingDeferredDefinitionDraft && undatedAuthority.explicit,
+          operationScopedUndated: undatedAuthority.operationScoped,
           previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(currentText),
         })
       ) {
