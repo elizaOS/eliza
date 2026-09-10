@@ -44,9 +44,7 @@ export function resolveBlooioFirstRunConfig(input: {
     input.blooioChannelId,
   ].some((value) => value !== undefined);
   const requested =
-    input.explicitConnectorRequested === true ||
-    (input.current !== null && input.current !== undefined) ||
-    legacyRequested;
+    input.explicitConnectorRequested === true || legacyRequested;
   if (!requested) return { requested: false };
 
   const apiKey = firstNonBlankString(
@@ -112,17 +110,24 @@ export function prepareFirstRunConnectors(
   body: Record<string, unknown>,
 ): FirstRunConnectorPreparation {
   const requested = asRecord(body.connectors);
-  const blooio = resolveBlooioFirstRunConfig({
-    current: asRecord(current.connectors?.blooio),
-    explicit: asRecord(requested?.blooio),
-    explicitConnectorRequested: Boolean(
-      requested && Object.hasOwn(requested, "blooio"),
-    ),
-    blooioApiKey: body.blooioApiKey,
-    blooioWebhookSecret: body.blooioWebhookSecret,
-    blooioPhoneNumber: body.blooioPhoneNumber,
-    blooioChannelId: body.blooioChannelId,
-  });
+  const savedBlooio = asRecord(current.connectors?.blooio);
+  const explicitBlooio = asRecord(requested?.blooio);
+  const blooioDisabled =
+    explicitBlooio?.enabled === false ||
+    (explicitBlooio?.enabled !== true && savedBlooio?.enabled === false);
+  const blooio: BlooioFirstRunResolution = blooioDisabled
+    ? { requested: false }
+    : resolveBlooioFirstRunConfig({
+        current: savedBlooio,
+        explicit: explicitBlooio,
+        explicitConnectorRequested: Boolean(
+          requested && Object.hasOwn(requested, "blooio"),
+        ),
+        blooioApiKey: body.blooioApiKey,
+        blooioWebhookSecret: body.blooioWebhookSecret,
+        blooioPhoneNumber: body.blooioPhoneNumber,
+        blooioChannelId: body.blooioChannelId,
+      });
   if ("error" in blooio) return { ok: false, error: blooio.error };
   const connectors = { ...current.connectors };
   const env: Record<string, string> = {};
@@ -151,7 +156,7 @@ export function prepareFirstRunConnectors(
     if (phoneNumber) env.TWILIO_PHONE_NUMBER = phoneNumber;
   }
   if (blooio.requested) {
-    connectors.blooio = { ...blooio.config };
+    connectors.blooio = { ...connectors.blooio, ...blooio.config };
     Object.assign(env, {
       IMESSAGE_TRANSPORT: "blooio",
       IMESSAGE_BLOOIO_API_KEY: blooio.config.apiKey,

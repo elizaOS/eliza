@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { ElizaConfig } from "@elizaos/shared/config/types.eliza";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { shouldEnable } from "../../../../plugins/plugin-imessage/auto-enable.ts";
 import type { FirstRunRouteContext } from "../../../agent/src/api/first-run-routes.ts";
 import {
   loadElizaConfig,
@@ -236,6 +237,60 @@ describe.each(["agent", "app-core"] as const)(
       expect(readFileSync(configPath, "utf8")).toBe(before);
       expect(credentialPersistence).not.toHaveBeenCalled();
     });
+
+    it.each(["saved-complete", "saved-partial", "explicit-disabled"] as const)(
+      "preserves Blooio opt-out through %s setup and real auto-enable evaluation",
+      async (scenario) => {
+        delete process.env.IMESSAGE_ENABLED;
+        delete process.env.IMESSAGE_TRANSPORT;
+        const saved =
+          scenario === "saved-partial"
+            ? { enabled: false, apiKey: "saved", deliveryPolicy: "manual" }
+            : { ...connector, enabled: false, deliveryPolicy: "manual" };
+        const current = loadElizaConfig();
+        current.connectors = { ...current.connectors, blooio: saved };
+        saveElizaConfig(current);
+        const beforeConfig = loadElizaConfig();
+        const beforeEnabled = shouldEnable({
+          config: { connectors: beforeConfig.connectors },
+          env: process.env,
+          isNativePlatform: false,
+        });
+        const beforeTransport = process.env.IMESSAGE_TRANSPORT;
+        const result = await post(host, {
+          name: "Eliza",
+          ...(scenario === "explicit-disabled"
+            ? {
+                connectors: {
+                  blooio: { enabled: false, channelId: "updated" },
+                },
+              }
+            : {}),
+        });
+        expect(result.res.statusCode).toBe(200);
+        const reloaded = loadElizaConfig();
+        expect(reloaded.connectors?.blooio).toEqual({
+          ...saved,
+          ...(scenario === "explicit-disabled" ? { channelId: "updated" } : {}),
+        });
+        expect(
+          shouldEnable({
+            config: { connectors: reloaded.connectors },
+            env: {},
+            isNativePlatform: false,
+          }),
+        ).toBe(false);
+        // Existing config loading owns ambient transport overrides independently.
+        expect(
+          shouldEnable({
+            config: { connectors: reloaded.connectors },
+            env: process.env,
+            isNativePlatform: false,
+          }),
+        ).toBe(beforeEnabled);
+        expect(process.env.IMESSAGE_TRANSPORT).toBe(beforeTransport);
+      },
+    );
 
     it("completes stored credentials from legacy aliases without losing unrelated connectors", async () => {
       const current: ElizaConfig = loadElizaConfig();

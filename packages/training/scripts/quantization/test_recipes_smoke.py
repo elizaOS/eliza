@@ -162,6 +162,23 @@ def test_qjl_apply_kv_bytes_per_token_analytic_gemma():
     assert base_bpt / quant_bpt >= 4.0
 
 
+def test_qjl_analytic_preserves_homogeneous_decoder_geometry():
+    from types import SimpleNamespace
+
+    from qjl_apply import kv_bytes_per_token_analytic
+
+    config = SimpleNamespace(num_hidden_layers=2, head_dim=64,
+                             num_key_value_heads=2, num_attention_heads=4)
+    baseline, quantized = kv_bytes_per_token_analytic(
+        config, key_quantization_bits=256,
+        key_quantization_bits_initial_layers=512, initial_layers_count=1,
+        outlier_count_general=8, outlier_count_initial_layers=8, value_bits=4,
+    )
+    # Two layers, two heads: bf16 K/V; quantized sketches, norms and group tables.
+    assert baseline == 2 * 2 * 64 * 2 * 2
+    assert quantized == 361
+
+
 def test_common_helpers_handle_text_config_passthrough():
     from _common import full_attention_layer_indices, get_text_config, head_dim_of
 

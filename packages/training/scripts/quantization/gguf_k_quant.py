@@ -159,8 +159,10 @@ def smoke_load_gguf(gguf_path: Path, quantize_bin: Path) -> dict[str, object]:
             timeout=180,
         )
     except subprocess.TimeoutExpired:
+        # error-policy:J1 Translate completion process timeout into failed artifact proof.
         return {"ok": False, "error": "llama-completion timed out (180s)"}
     except OSError as error:
+        # error-policy:J1 Translate process launch failure into failed artifact proof.
         return {"ok": False, "error": f"llama-completion spawn failed: {error}"}
     output = (process.stdout or "").strip()
     if process.returncode != 0 or not output:
