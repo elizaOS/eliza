@@ -1943,7 +1943,12 @@ export async function runV5MessageRuntimeStage1(
 		);
 		if (
 			plannerResult.terminalFailure &&
-			egressActionResults.some((result) => result.replyFailure !== undefined)
+			(egressActionResults.some(
+				(result) => result.replyFailure !== undefined,
+			) ||
+				(plannerResult.terminalFailure.code ===
+					"PLANNER_SCOPE_DECLARATION_REQUIRED" &&
+					!plannerResult.finalMessage?.trim()))
 		) {
 			// There is no model-authored reply to deliver. Preserve every action
 			// outcome and surface the unavailable system status separately; none of
