@@ -11,12 +11,14 @@ import {
 } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
+import { buildOrganizationSubscriptionSnapshot } from "../../lib/services/account-subscription-snapshot";
 import {
   claimSubscriptionNotice,
   dispatchSubscriptionNotice,
   processSubscriptionNotice,
   sweepSubscriptionNotices,
 } from "../../lib/services/subscription-notices";
+import { readPrimaryOrganizationSubscription } from "./account-billing-snapshot-subscription";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -371,6 +373,15 @@ test("crash before submission leaves an expired durable attempt uncertain and ne
   expect(await rows("subscription_notice_attempts")).toEqual([
     expect.objectContaining({ status: "uncertain", reason: "submission_outcome_unrecorded" }),
   ]);
+  expect(await publicSnapshot()).toMatchObject({
+    status: "available",
+    value: {
+      cancellationNotice: {
+        status: "available",
+        value: { state: "uncertain", delivery: "not_observed" },
+      },
+    },
+  });
 });
 test("crash after SMTP acceptance but before receipt commit never blindly resends", async () => {
   const id = await notice();
@@ -420,6 +431,16 @@ test("source advancement suppresses stale submission and preserves an unsent suc
   expect(await rows("subscription_notice_attempts")).toEqual([
     expect.objectContaining({ status: "superseded" }),
   ]);
+  expect(await publicSnapshot()).toMatchObject({
+    status: "available",
+    value: {
+      lifecycleRevision: "3",
+      cancellationNotice: {
+        status: "available",
+        value: { sourceLifecycleRevision: "3", state: "policy_unavailable" },
+      },
+    },
+  });
   const config = approve();
   process.env.SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON = JSON.stringify([
     { ...config, sourceRevision: 3 },
@@ -623,4 +644,78 @@ test("SendGrid remains explicitly unavailable for bounded notice submission", as
       provider: null,
     }),
   ]);
+});
+
+async function publicSnapshot(organizationId = ORG_A) {
+  return client.dbRead.transaction(
+    async (tx) =>
+      buildOrganizationSubscriptionSnapshot(
+        await readPrimaryOrganizationSubscription(tx, organizationId),
+        new Date().toISOString(),
+        { status: "unavailable", code: "subscription_allowance_not_spendable" },
+      ),
+    { isolationLevel: "repeatable read", accessMode: "read only" },
+  );
+}
+test("public current-revision status exposes policy absence without recipient or provider authority", async () => {
+  await notice();
+  const actual = await publicSnapshot();
+  expect(actual).toMatchObject({
+    status: "available",
+    value: {
+      lifecycleRevision: "2",
+      cancellationNotice: {
+        status: "available",
+        value: {
+          sourceLifecycleRevision: "2",
+          state: "policy_unavailable",
+          channel: "email",
+          delivery: "not_observed",
+        },
+      },
+    },
+  });
+  const encoded = JSON.stringify(actual);
+  for (const secret of [ORG_A, SUB_A, "cus_repoa", "sub_repoa", "si_repoa", DIGEST_A])
+    expect(encoded).not.toContain(secret);
+  expect(JSON.stringify(await publicSnapshot(ORG_B))).not.toContain("policy_unavailable");
+  expect(submissions).toBe(0);
+});
+test("public status distinguishes SMTP acceptance from recipient delivery", async () => {
+  const id = await notice();
+  approve();
+  await smtp();
+  await processSubscriptionNotice(id);
+  expect(submissions).toBe(1);
+  const actual = await publicSnapshot();
+  expect(actual).toMatchObject({
+    status: "available",
+    value: {
+      cancellationNotice: {
+        status: "available",
+        value: { state: "accepted", delivery: "not_observed" },
+      },
+    },
+  });
+  const attempt = (await rows("subscription_notice_attempts"))[0];
+  expect(JSON.stringify(actual)).not.toContain(String(attempt.message_id));
+  expect(JSON.stringify(actual)).not.toContain("policy_digest");
+  expect(JSON.stringify(actual)).not.toContain("recipient");
+});
+
+test("a canceled source with missing intent stays unavailable rather than claiming no notice", async () => {
+  const id = await notice();
+  await getPgliteClientForTests().query("DELETE FROM subscription_notice_intents WHERE id=$1", [
+    id,
+  ]);
+  expect(await publicSnapshot()).toMatchObject({
+    status: "available",
+    value: {
+      cancellationNotice: {
+        status: "unavailable",
+        error: { code: "subscription_notice_unavailable" },
+      },
+    },
+  });
+  expect(submissions).toBe(0);
 });
