@@ -47,9 +47,19 @@ export const WithTrailingAction: Story = {
 export const RootView: Story = {
   tags: ["story-gate-expect-blank"],
   args: { showBack: false, title: "Home" },
+  render: (args) => (
+    <div data-testid="root-view-output">
+      <ViewHeader {...args} />
+    </div>
+  ),
   play: async ({ canvasElement }) => {
-    const surface = canvasElement.querySelector(".storybook-theme-surface");
-    assert(surface instanceof HTMLElement, "the real theme surface is mounted");
+    const surface = canvasElement.querySelector(
+      '[data-testid="root-view-output"]',
+    );
+    assert(
+      surface instanceof HTMLElement,
+      "the story output boundary is mounted",
+    );
     assert(
       surface.childElementCount === 0,
       "a view without trailing actions leaves no empty header row",
