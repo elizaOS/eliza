@@ -30,6 +30,7 @@ import {
 } from "../runtime/turn-controller";
 import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
+import type { EffectReceipt } from "../types/effects";
 import type { Room } from "../types/environment";
 import type { Memory } from "../types/memory";
 import {
@@ -676,3 +677,364 @@ describe("planner failure after a promoted stage-1 answer", () => {
 		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
 	});
 });
+
+it.each(["valid", "unknown"])(
+	"repairs native scope before a mutation through the complete message service with %s evaluator receipts",
+	async (receiptSelection) => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const finalText = "I updated the todo to completed.";
+		const receipt: EffectReceipt = {
+			receiptId: "record-completion-receipt",
+			operation: "record.complete",
+			resource: { kind: "record", id: "record-1", version: "2" },
+			artifacts: [],
+			idempotency: { key: null, replayed: false },
+			observedAt: "2026-09-10T00:00:00Z",
+			outcome: "applied",
+			commit: {
+				kind: "provider_accepted",
+				id: "record-1-v2",
+				committedAt: "2026-09-10T00:00:00Z",
+			},
+		};
+		let writes = 0;
+		runtime.actions = [
+			{
+				name: "READ_RECORD",
+				description: "Read the record identifier.",
+				validate: async () => true,
+				handler: async () => ({
+					success: true,
+					text: "Record identifier is record-1.",
+					data: { id: "record-1" },
+				}),
+			},
+			{
+				name: "COMPLETE_RECORD",
+				description: "Mark the selected record complete.",
+				validate: async () => true,
+				parameters: [
+					{
+						name: "id",
+						description: "Record identifier",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				handler: async (_runtime, _message, _state, options) => {
+					expect(options?.parameters).toEqual({ id: "record-1" });
+					writes++;
+					return {
+						success: true,
+						text: "Record record-1 status is complete.",
+						effectReceipts: [receipt],
+					};
+				},
+			},
+		];
+		const plan = (name: string, scope?: string) => ({
+			text: "",
+			toolCalls: [
+				{
+					id: name,
+					name,
+					arguments: {
+						...(name === "COMPLETE_RECORD" ? { id: "record-1" } : {}),
+						...(scope ? { eliza_turn_scope: scope } : {}),
+					},
+				},
+			],
+		});
+		const responses = [
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "handler",
+						name: "HANDLE_RESPONSE",
+						arguments: {
+							shouldRespond: "RESPOND",
+							thought: "Read then complete.",
+							contexts: ["general"],
+							intents: ["read record", "complete record"],
+							candidateActionNames: ["READ_RECORD", "COMPLETE_RECORD"],
+							replyText: "",
+							replyEffectStatus: "pending",
+							facts: [],
+							relationships: [],
+							addressedTo: [],
+						},
+					},
+				],
+			},
+			plan("READ_RECORD", "more_work_pending"),
+			JSON.stringify({
+				thought: "The returned ID grounds the completion.",
+				success: false,
+				decision: "CONTINUE",
+			}),
+			plan("COMPLETE_RECORD"),
+			plan("COMPLETE_RECORD", "final"),
+			JSON.stringify({
+				thought: "The completion receipt proves the requested result.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: finalText,
+				effectReceiptIds: [
+					receiptSelection === "valid"
+						? receipt.receiptId
+						: "unknown-mutated-receipt",
+				],
+			}),
+		];
+		if (receiptSelection === "unknown")
+			responses.push(
+				JSON.stringify({
+					response: finalText,
+					effectReceiptIds: [receipt.receiptId],
+				}),
+			);
+		const modelInputs: unknown[] = [];
+		runtime.useModel = vi.fn(async (type, params) => {
+			if (String(type) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
+			modelInputs.push(params);
+			const output = responses.shift();
+			if (output === undefined)
+				throw new Error("Unexpected additional model call");
+			return output;
+		}) as IAgentRuntime["useModel"];
+		const deliveries: Content[] = [];
+		await new DefaultMessageService().handleMessage(
+			runtime,
+			makeMessage({
+				text: "Read the record, then mark that record complete.",
+				source: "dashboard",
+				channelType: ChannelType.DM,
+			}),
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+		);
+		expect(writes).toBe(1);
+		expect(responses).toEqual([]);
+		expect(JSON.stringify(modelInputs[4])).toContain(
+			"PLANNER_SCOPE_DECLARATION_REQUIRED",
+		);
+		expect(deliveries.map((content) => content.text)).toContain(finalText);
+		expect(
+			deliveries.find((content) => content.text === finalText)
+				?.effectReceiptIds,
+		).toEqual([receipt.receiptId]);
+	},
+);
+
+it.each([
+	["available", false],
+	["unavailable", false],
+	["available", true],
+	["unavailable", true],
+	["empty", false],
+	["empty", true],
+	["rejected", false],
+	["rejected", true],
+] as const)(
+	"preserves four completed operations after protocol exhaustion with %s presentation (earlier failure: %s)",
+	async (presentation, earlierFailure) => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const completed: string[] = [];
+		const names = ["STORE_ONE", "STORE_TWO", "STORE_THREE", "STORE_FOUR"];
+		const receipts: EffectReceipt[] = names.map((name, index) => ({
+			receiptId: `stored-${index}`,
+			operation: "record.store",
+			resource: { kind: "record", id: name },
+			artifacts: [],
+			idempotency: { key: null, replayed: false },
+			observedAt: "2026-09-10T00:00:00Z",
+			outcome: "applied",
+			commit: {
+				kind: "provider_accepted",
+				id: name,
+				committedAt: "2026-09-10T00:00:00Z",
+			},
+		}));
+		runtime.actions = [
+			...(earlierFailure
+				? [
+						{
+							name: "FAILED_READ",
+							description: "Read the initial record.",
+							validate: async () => true,
+							handler: async () => ({
+								success: false,
+								error: "Initial read failed.",
+							}),
+						},
+					]
+				: []),
+			...names.map((name, index) => ({
+				name,
+				description: `Store record ${name}.`,
+				validate: async () => true,
+				handler: async () => {
+					completed.push(name);
+					return {
+						success: true,
+						transcriptVisibility: "internal" as const,
+						data: { id: name, status: "stored" },
+						...(earlierFailure && index === 0
+							? {
+									verifiedUserFacing: true,
+									userFacingText: "Done. The first todo was created.",
+									userFacingEffectReceiptIds: [receipts[index].receiptId],
+								}
+							: {}),
+						effectReceipts: [receipts[index]],
+					};
+				},
+			})),
+			{
+				name: "UPDATE_REMAINING",
+				description: "Update the remaining record.",
+				validate: async () => true,
+				handler: async () => {
+					throw new Error("Rejected batch dispatched unexpectedly");
+				},
+			},
+		];
+		const plan = (name: string, scope?: string) => ({
+			text: "",
+			toolCalls: [
+				{ id: name, name, arguments: scope ? { eliza_turn_scope: scope } : {} },
+			],
+		});
+		const partial =
+			(earlierFailure ? "The initial read failed. " : "") +
+			"I created the todo records STORE_ONE, STORE_TWO, STORE_THREE, and STORE_FOUR. The remaining update did not run because planning stopped on invalid scope declarations.";
+		const responses: unknown[] = [
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "handler",
+						name: "HANDLE_RESPONSE",
+						arguments: {
+							shouldRespond: "RESPOND",
+							thought: "Store four records, then update the remaining one.",
+							contexts: ["general"],
+							intents: ["store four records", "update remaining record"],
+							candidateActionNames: [
+								...(earlierFailure ? ["FAILED_READ"] : []),
+								...names,
+								"UPDATE_REMAINING",
+							],
+							replyText: "",
+							replyEffectStatus: "pending",
+							facts: [],
+							relationships: [],
+							addressedTo: [],
+						},
+					},
+				],
+			},
+		];
+		if (earlierFailure)
+			responses.push(
+				plan("FAILED_READ", "more_work_pending"),
+				JSON.stringify({
+					success: false,
+					decision: "CONTINUE",
+					thought: "The initial read failed; continue independent writes.",
+				}),
+			);
+		for (const name of names) {
+			responses.push(plan(name, "more_work_pending"));
+			responses.push(
+				JSON.stringify({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Continue the explicitly requested work.",
+				}),
+			);
+		}
+		responses.push(plan("UPDATE_REMAINING"), plan("UPDATE_REMAINING"));
+		responses.push(
+			presentation === "available"
+				? partial
+				: presentation === "empty"
+					? { text: "", toolCalls: [] }
+					: presentation === "rejected"
+						? "I'm working on the remaining event now."
+						: new Error("presentation provider unavailable"),
+		);
+		if (presentation === "available")
+			responses.push(
+				JSON.stringify({
+					response: partial,
+					effectReceiptIds: receipts.map((receipt) => receipt.receiptId),
+				}),
+			);
+		const modelInputs: unknown[] = [];
+		runtime.useModel = vi.fn(async (type, params) => {
+			if (String(type) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
+			modelInputs.push(params);
+			const response = responses.shift();
+			if (response instanceof Error) throw response;
+			if (response === undefined)
+				throw new Error("Unexpected extra model call");
+			return response;
+		}) as IAgentRuntime["useModel"];
+		const delivered: Content[] = [];
+		const result = await new DefaultMessageService().handleMessage(
+			runtime,
+			makeMessage({
+				text: "Store four records, then update the remaining record.",
+				source: "dashboard",
+				channelType: ChannelType.DM,
+			}),
+			async (content) => {
+				delivered.push(content);
+				return [];
+			},
+		);
+		expect(completed).toEqual(names);
+		expect(result.actionResults).toHaveLength(earlierFailure ? 5 : 4);
+		expect(
+			result.actionResults
+				?.filter((outcome) => outcome.success)
+				.map((outcome) => outcome.data?.id),
+		).toEqual(names);
+		if (earlierFailure) expect(result.actionResults?.[0].success).toBe(false);
+		expect(
+			result.actionResults?.flatMap(
+				(outcome) =>
+					outcome.effectReceipts?.map((receipt) => receipt.receiptId) ?? [],
+			),
+		).toEqual(receipts.map((receipt) => receipt.receiptId));
+		expect(result.terminalFailure).toMatchObject({
+			code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
+			transient: false,
+		});
+		expect(JSON.stringify(modelInputs[earlierFailure ? 13 : 11])).toContain(
+			"PLANNER_SCOPE_DECLARATION_REQUIRED",
+		);
+		for (const name of names)
+			expect(JSON.stringify(modelInputs[earlierFailure ? 13 : 11])).toContain(
+				name,
+			);
+		if (presentation === "available") {
+			expect(result.terminalFailure?.message).toBe(partial);
+			expect(delivered.map((content) => content.text)).toContain(partial);
+			expect(
+				delivered.find((content) => content.text === partial)?.effectReceiptIds,
+			).toEqual(receipts.map((receipt) => receipt.receiptId));
+		} else {
+			expect(result.terminalFailure?.message).toContain(
+				"Earlier action outcomes are preserved; the rejected batch did not run.",
+			);
+			expect(delivered).toEqual([]);
+			expect(result.responseContent).toBeNull();
+		}
+		expect(responses).toEqual([]);
+	},
+);
