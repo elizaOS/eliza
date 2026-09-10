@@ -3032,7 +3032,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("hard-enforces an umbrella candidate when retrieval exposes only its promoted child", async () => {
+	it("hard-enforces an umbrella candidate through its canonical operation schema", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "A repository review requires delegated coding work.",
@@ -3056,8 +3056,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "spawn-reviewer",
-						name: "TASKS_SPAWN_AGENT",
-						args: { task: "Review PR 18106." },
+						name: "TASKS",
+						args: { action: "spawn_agent", task: "Review PR 18106." },
 					},
 				],
 			},

@@ -1060,6 +1060,11 @@ export async function runV5MessageRuntimeStage1(
 						const expandedTools = collectPlannerTools(
 							plannerContextWithDecision,
 							exposedPlannerActions,
+							{
+								canonicalFamilies: true,
+								candidateActions:
+									getMessageHandlerCandidateActions(messageHandler),
+							},
 						);
 						plannerTools.splice(0, plannerTools.length, ...expandedTools);
 					},
@@ -1180,7 +1185,14 @@ export async function runV5MessageRuntimeStage1(
 				),
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
-		let plannerTools = collectPlannerTools(plannerContextWithDecision);
+		let plannerTools = collectPlannerTools(
+			plannerContextWithDecision,
+			undefined,
+			{
+				canonicalFamilies: true,
+				candidateActions: getMessageHandlerCandidateActions(messageHandler),
+			},
+		);
 		let budgetedPlannerContextWithDecision = plannerContextWithDecision;
 		const plannerProviderAttributionState = plannerState;
 		const preflightConfig = {

@@ -1,4 +1,4 @@
-// Coordinates cloud service fetch behavior behind route handlers.
+/** Retries explicitly replayable proxy requests while preserving caller cancellation. */
 import { logger } from "../../utils/logger";
 
 export interface RetryFetchOptions {
@@ -9,6 +9,7 @@ export interface RetryFetchOptions {
   timeoutMs: number;
   serviceTag: string;
   nonRetriableStatuses?: number[];
+  replayPolicy: "idempotent" | "never";
 }
 
 /**
@@ -25,6 +26,22 @@ function sanitizeUrl(url: string): string {
     .replace(/api-key=[^&]+/gi, "api-key=***") // Helius: ?api-key=xxx
     .replace(/\/v2\/[^/?]+/, "/v2/***") // Alchemy RPC: /v2/{key}
     .replace(/\/v3\/[^/?]+/, "/v3/***"); // Alchemy NFT: /v3/{key}/...
+}
+
+/** Stop the backoff promptly when its caller no longer wants the request. */
+function waitForRetry(delayMs: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -62,10 +79,13 @@ export async function retryFetch(opts: RetryFetchOptions, attempt: number = 1): 
     nonRetriableStatuses = [400, 404],
   } = opts;
 
+  init.signal?.throwIfAborted();
   try {
     const response = await fetch(url, {
       ...init,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: init.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     });
 
     const sanitizedUrl = sanitizeUrl(url);
@@ -79,14 +99,14 @@ export async function retryFetch(opts: RetryFetchOptions, attempt: number = 1): 
       return response;
     }
 
-    if (attempt < maxRetries) {
+    if (opts.replayPolicy === "idempotent" && attempt < maxRetries) {
       const delayMs = initialDelayMs * 2 ** (attempt - 1);
       logger.warn(`[${serviceTag}] Retriable error, retrying`, {
         attempt,
         status: response.status,
         delayMs,
       });
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      await waitForRetry(delayMs, init.signal);
       return retryFetch(opts, attempt + 1);
     }
 
@@ -96,18 +116,19 @@ export async function retryFetch(opts: RetryFetchOptions, attempt: number = 1): 
     // rethrows the original error (and any non-timeout error immediately) so the
     // caller's proxy handler translates it to a typed failure. Fails closed: never
     // returns a fabricated default in place of a failed fetch.
+    init.signal?.throwIfAborted();
     const sanitizedUrl = sanitizeUrl(url);
 
     if (error instanceof Error && error.name === "TimeoutError") {
       logger.warn(`[${serviceTag}] Timeout`, { attempt, url: sanitizedUrl });
 
-      if (attempt < maxRetries) {
+      if (opts.replayPolicy === "idempotent" && attempt < maxRetries) {
         const delayMs = initialDelayMs * 2 ** (attempt - 1);
         logger.info(`[${serviceTag}] Retrying after timeout`, {
           attempt,
           delayMs,
         });
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await waitForRetry(delayMs, init.signal);
         return retryFetch(opts, attempt + 1);
       }
     }
