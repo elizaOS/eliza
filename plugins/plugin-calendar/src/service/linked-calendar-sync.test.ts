@@ -204,6 +204,48 @@ describe("LinkedCalendarRepository with PGlite", () => {
     ).toBe("paused");
   });
 
+  it.each([
+    {
+      connectorAccountId: "replacement-account",
+      providerCalendarId: "primary",
+    },
+    {
+      connectorAccountId: "google-1",
+      providerCalendarId: "replacement-calendar",
+    },
+  ])(
+    "rejects a different destination without reactivating the old mapping: %j",
+    async (destination) => {
+      const args = {
+        agentId: "agent-1",
+        localEventId: "local-1",
+        connectorAccountId: "google-1",
+        providerCalendarId: "primary",
+        localRevision: 1,
+      };
+      const original = await repository.create(args);
+      const paused = await repository.pause(original);
+
+      await expect(
+        repository.create({ ...args, ...destination, localRevision: 9 }),
+      ).rejects.toThrow();
+      expect(
+        await repository.getByLocalEvent(args.agentId, args.localEventId),
+      ).toEqual(paused);
+      expect(await repository.listActionable(args.agentId)).toEqual([]);
+
+      const resumed = await repository.create({ ...args, localRevision: 2 });
+      expect(resumed).toMatchObject({
+        id: original.id,
+        connectorAccountId: args.connectorAccountId,
+        providerCalendarId: args.providerCalendarId,
+        localRevision: 2,
+        state: "dirty",
+        pendingOperation: "create",
+      });
+    },
+  );
+
   it("ignores an out-of-order local revision and keeps one durable operation", async () => {
     await repository.create({
       agentId: "agent-1",

@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type {
   GoogleCalendarEvent,
   IGoogleWorkspaceService,
@@ -240,11 +240,20 @@ export class LinkedCalendarRepository {
           ELSE app_calendar.linked_calendar_events.pending_operation
         END,
         updated_at = EXCLUDED.updated_at
+      WHERE app_calendar.linked_calendar_events.connector_account_id = EXCLUDED.connector_account_id
+        AND app_calendar.linked_calendar_events.provider_calendar_id = EXCLUDED.provider_calendar_id
       RETURNING *`,
     );
     if (!rows[0])
-      throw new Error(
-        "[LinkedCalendarRepository] Link creation returned no row",
+      throw new ElizaError(
+        "An existing link cannot be silently moved to a different Google destination. Review the existing mapping before replacing its account or calendar.",
+        {
+          code: "LINKED_CALENDAR_DESTINATION_CONFLICT",
+          context: {
+            agentId: args.agentId,
+            localEventId: args.localEventId,
+          },
+        },
       );
     const linked = parseRecord(rows[0]);
     if (
