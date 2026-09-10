@@ -8,7 +8,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
-import { collectPluginNames } from "./plugin-collector.ts";
+import {
+  collectPluginNames,
+  withholdPluginsComposedByPersonalAssistant,
+} from "./plugin-collector.ts";
 
 const PA = "@elizaos/plugin-personal-assistant";
 
@@ -89,5 +92,57 @@ describe("collectPluginNames personal-assistant host gate (#17023)", () => {
   it("stays out of slim provisioned cloud containers (#8081 image constraint)", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     expect(collectPluginNames(enabledConfig()).has(PA)).toBe(false);
+  });
+
+  it("withholds the standalone calendar and goals entries when the assistant is enabled (#30943)", () => {
+    const names = Array.from(collectPluginNames(enabledConfig()));
+    expect(names).toContain(PA);
+    // The assistant's init registers both plugins itself with the composed
+    // CALENDAR, CONFLICT_DETECT, and OWNER_GOALS names withheld; a standalone
+    // entry would register concurrently and win first-wins.
+    expect(names).not.toContain("@elizaos/plugin-calendar");
+    expect(names).not.toContain("@elizaos/plugin-goals");
+  });
+
+  it("keeps the calendar plugin in place when the assistant is absent", () => {
+    const names = Array.from(collectPluginNames(emptyConfig));
+    expect(names).not.toContain(PA);
+    expect(names).toContain("@elizaos/plugin-calendar");
+  });
+});
+
+describe("withholdPluginsComposedByPersonalAssistant", () => {
+  it("removes only the composed plugins and keeps every other position", () => {
+    const set = new Set([
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-calendar",
+      "@elizaos/plugin-scheduling",
+      "@elizaos/plugin-goals",
+      PA,
+      "@elizaos/plugin-finances",
+    ]);
+    const tracked: string[] = [];
+    withholdPluginsComposedByPersonalAssistant(set, (name) => {
+      tracked.push(name);
+    });
+    expect(Array.from(set)).toEqual([
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-scheduling",
+      PA,
+      "@elizaos/plugin-finances",
+    ]);
+    expect(tracked).toEqual([
+      "@elizaos/plugin-calendar",
+      "@elizaos/plugin-goals",
+    ]);
+  });
+
+  it("is a no-op when the assistant is absent", () => {
+    const set = new Set(["@elizaos/plugin-calendar", "@elizaos/plugin-goals"]);
+    withholdPluginsComposedByPersonalAssistant(set);
+    expect(Array.from(set)).toEqual([
+      "@elizaos/plugin-calendar",
+      "@elizaos/plugin-goals",
+    ]);
   });
 });
