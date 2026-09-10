@@ -2459,6 +2459,7 @@ function ChatOverlayMount({
       initialMode={initialMode}
       fillHostAtHalf={fillHostAtHalf}
       firstRunOpen={firstRunOpen}
+      acceptPendingFirstRunText={firstRunComplete}
       releaseFirstRunToFull={releaseFirstRunToFull}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
