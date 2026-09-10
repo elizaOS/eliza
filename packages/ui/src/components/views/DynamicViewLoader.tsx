@@ -424,8 +424,20 @@ function resolveSurfaceRealmScopeForHostExternal(
   );
 }
 
-async function importUiRootCompat(
-  boundScope: SurfaceRealmScope | null = getActiveSurfaceRealmScope(),
+function importUiRootCompat(): Promise<Record<string, unknown>> {
+  return importUiRootCompatForScope(getActiveSurfaceRealmScope());
+}
+
+function importUiAppNavigateViewCompat(): Promise<Record<string, unknown>> {
+  return importUiAppNavigateViewCompatForScope(getActiveSurfaceRealmScope());
+}
+
+function importUiBridgeCompat(): Promise<Record<string, unknown>> {
+  return importUiBridgeCompatForScope(getActiveSurfaceRealmScope());
+}
+
+async function importUiRootCompatForScope(
+  boundScope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
   // The root package is deliberately limited to design-system primitives. The
   // brokered navigation and bridge adapters are overlaid for older view bundles
@@ -433,14 +445,14 @@ async function importUiRootCompat(
   // channels are not part of the root namespace and therefore cannot leak here.
   const [rootModule, appNavigateView, bridge] = await Promise.all([
     import("../../index.ts"),
-    importUiAppNavigateViewCompat(boundScope),
-    importUiBridgeCompat(boundScope),
+    importUiAppNavigateViewCompatForScope(boundScope),
+    importUiBridgeCompatForScope(boundScope),
   ]);
   return { ...rootModule, ...appNavigateView, ...bridge };
 }
 
-async function importUiAppNavigateViewCompat(
-  boundScope: SurfaceRealmScope | null = getActiveSurfaceRealmScope(),
+async function importUiAppNavigateViewCompatForScope(
+  boundScope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
   const appNavigateView = await import("../../app-navigate-view.ts");
   return {
@@ -460,8 +472,8 @@ async function importUiAppNavigateViewCompat(
   };
 }
 
-async function importUiBridgeCompat(
-  boundScope: SurfaceRealmScope | null = getActiveSurfaceRealmScope(),
+async function importUiBridgeCompatForScope(
+  boundScope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
   const bridge = await import("../../bridge/index.ts");
   // The bridge barrel carries the shell-privileged raw-global channel for shell
@@ -784,10 +796,11 @@ async function importHostForScope(
   specifier: string,
   scope: SurfaceRealmScope | null,
 ): Promise<Record<string, unknown>> {
-  if (specifier === "@elizaos/ui") return importUiRootCompat(scope);
+  if (specifier === "@elizaos/ui") return importUiRootCompatForScope(scope);
   if (specifier === "@elizaos/ui/app-navigate-view")
-    return importUiAppNavigateViewCompat(scope);
-  if (specifier === "@elizaos/ui/bridge") return importUiBridgeCompat(scope);
+    return importUiAppNavigateViewCompatForScope(scope);
+  if (specifier === "@elizaos/ui/bridge")
+    return importUiBridgeCompatForScope(scope);
   const importer = resolveHostExternalImporter(specifier);
   if (!importer) {
     throw new Error(
