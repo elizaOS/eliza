@@ -13,7 +13,14 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
@@ -37,6 +44,7 @@ import {
   type TrajectoryCacheMetric,
   TrajectoryCacheStats,
 } from "../composites/trajectories/trajectory-cache-stats";
+import { TrajectoryCodeBlock } from "../composites/trajectories/trajectory-code-block";
 import {
   TrajectoryContextDiffList,
   type TrajectoryContextDiffSummary,
@@ -51,6 +59,10 @@ import {
   type PipelineStageId,
   TrajectoryPipelineGraph,
 } from "../composites/trajectories/trajectory-pipeline-graph";
+import {
+  TrajectoryRecordedSteps,
+  trajectoryStageLabel,
+} from "../composites/trajectories/trajectory-recorded-steps";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import {
   getToolCallEventDisplayState,
@@ -117,6 +129,10 @@ function buildPipelineNodes(
 
 interface TrajectoryDetailViewProps {
   trajectoryId: string;
+  /** Refresh an open inspector as recorded calls arrive. */
+  revision?: string;
+  /** The chat inspector starts with a compact list of expandable calls. */
+  collapsibleCalls?: boolean;
 }
 
 function formatTrajectoryStepLabel(
@@ -229,6 +245,54 @@ export function buildTrajectoryCallText(
     ),
     outputText: normalizeTrajectoryCallText(call.response, call.output),
   };
+}
+
+/** Detail responses may omit the list endpoint's usage rollups. Fall back only
+ * to complete recorded call usage, never prompt lengths or a partial sum. */
+export function trajectoryDetailTokenCount(
+  trajectory:
+    | Partial<
+        Pick<
+          TrajectoryDetailResult["trajectory"],
+          "totalPromptTokens" | "totalCompletionTokens" | "llmCallCount"
+        >
+      >
+    | undefined,
+  calls: readonly Pick<
+    TrajectoryLlmCall,
+    "promptTokens" | "completionTokens"
+  >[],
+): number | undefined {
+  const isCount = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
+  const completeCalls =
+    Number.isInteger(trajectory?.llmCallCount) &&
+    trajectory?.llmCallCount === calls.length;
+  const sumUsage = (
+    aggregate: unknown,
+    field: "promptTokens" | "completionTokens",
+  ): number | undefined => {
+    if (isCount(aggregate)) return aggregate;
+    if (!completeCalls) return undefined;
+    if (calls.length === 0) {
+      return trajectory?.llmCallCount === 0 ? 0 : undefined;
+    }
+    let total = 0;
+    for (const call of calls) {
+      const value = call[field];
+      if (!isCount(value)) return undefined;
+      total += value;
+    }
+    return total;
+  };
+  const prompt = sumUsage(trajectory?.totalPromptTokens, "promptTokens");
+  const completion = sumUsage(
+    trajectory?.totalCompletionTokens,
+    "completionTokens",
+  );
+  return prompt === undefined || completion === undefined
+    ? undefined
+    : prompt + completion;
 }
 
 function isNativeToolCallEvent(
@@ -461,8 +525,32 @@ function buildContextDiffSummaries(
   }));
 }
 
+function ExpandableModelCall({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      open={open}
+      className="border-t border-[color:var(--settings-hairline)]"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="min-h-11 cursor-pointer break-words py-3 text-sm">
+        {label}
+      </summary>
+      {open ? children : null}
+    </details>
+  );
+}
+
 export function TrajectoryDetailView({
   trajectoryId,
+  revision,
+  collapsibleCalls = false,
 }: TrajectoryDetailViewProps) {
   const t = useAppSelector((s) => s.t);
   const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
@@ -473,43 +561,51 @@ export function TrajectoryDetailView({
   >(null);
   const [activeStage, setActiveStage] = useState<PipelineStageId | null>(null);
 
-  const loadDetail = useCallback(async () => {
+  const [retry, setRetry] = useState(0);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const instanceId = useId();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Revision and explicit retry invalidate the recorded payload.
+  useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    try {
-      const result = await client.getTrajectoryDetail(trajectoryId);
-      setDetail(result);
-    } catch (err) {
-      const candidate = err as { kind?: unknown; status?: unknown } | null;
-      const status =
-        typeof candidate?.status === "number" ? candidate.status : 0;
-      const kind = typeof candidate?.kind === "string" ? candidate.kind : "";
-      setError(
-        status === 404
-          ? "missing"
-          : status === 401 || status === 403
-            ? "restricted"
-            : kind === "network" ||
-                kind === "timeout" ||
-                status === 202 ||
-                status === 502 ||
-                status === 503 ||
-                status === 504
-              ? "offline"
-              : "error",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [trajectoryId]);
+    void client
+      .getTrajectoryDetail(trajectoryId, { signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) setDetail(result);
+      })
+      .catch((err) => {
+        // error-policy:J4 Optional inspection has a visible failure and retry.
+        if (controller.signal.aborted) return;
+        const candidate = err as { kind?: unknown; status?: unknown } | null;
+        const status =
+          typeof candidate?.status === "number" ? candidate.status : 0;
+        const kind = typeof candidate?.kind === "string" ? candidate.kind : "";
+        setError(
+          status === 404
+            ? "missing"
+            : status === 401 || status === 403
+              ? "restricted"
+              : kind === "network" ||
+                  kind === "timeout" ||
+                  [202, 502, 503, 504].includes(status)
+                ? "offline"
+                : "error",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [trajectoryId, revision, retry]);
 
-  useEffect(() => {
-    void loadDetail();
-  }, [loadDetail]);
-
-  const llmCalls = detail?.llmCalls ?? [];
+  // Never render an old run under a newly selected id. Refreshes of the same
+  // run retain expanded calls and scroll position while new evidence loads.
+  const currentDetail = detail?.trajectory.id === trajectoryId ? detail : null;
+  const llmCalls = currentDetail?.llmCalls ?? [];
   const providerAccesses = detail?.providerAccesses ?? [];
-  const trajectory = detail?.trajectory;
+  const trajectory = currentDetail?.trajectory;
+  const tokenCount = trajectoryDetailTokenCount(trajectory, llmCalls);
   // The whole event pipeline (several O(n) dedupeEvents + the O(n log n)
   // buildTimelineEvents + cache/context derivations) was rebuilt in the render
   // body on EVERY render — filter clicks, hover, any state change — over a
@@ -582,9 +678,10 @@ export function TrajectoryDetailView({
   );
 
   const filteredCalls = useMemo(() => {
-    if (!activeStage || activeStage === "input") return llmCalls;
+    if (collapsibleCalls || !activeStage || activeStage === "input")
+      return llmCalls;
     return llmCalls.filter((call) => stageForCall(call) === activeStage);
-  }, [llmCalls, activeStage]);
+  }, [llmCalls, activeStage, collapsibleCalls]);
 
   const callIndexMap = useMemo(
     () => new Map(llmCalls.map((call, i) => [call.id, i])),
@@ -598,7 +695,7 @@ export function TrajectoryDetailView({
   }, []);
 
   const clearStageFilter = useAgentElement<HTMLButtonElement>({
-    id: "clear-stage-filter",
+    id: `clear-stage-filter-${instanceId}`,
     role: "button",
     label: "Clear pipeline stage filter",
     group: "trajectory-pipeline",
@@ -607,7 +704,7 @@ export function TrajectoryDetailView({
     onActivate: () => setActiveStage(null),
   });
 
-  if (loading) {
+  if (loading && !currentDetail) {
     return (
       <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
         <PagePanel.ContentState
@@ -658,7 +755,7 @@ export function TrajectoryDetailView({
                 type="button"
                 size="touch"
                 variant="outline"
-                onClick={() => void loadDetail()}
+                onClick={() => setRetry((value) => value + 1)}
               >
                 Retry
               </Button>
@@ -691,334 +788,409 @@ export function TrajectoryDetailView({
       ? (orchestrator as Record<string, unknown>)
       : null;
 
+  const modelCallList = (
+    <div className="min-h-0 flex-1">
+      {collapsibleCalls ? (
+        <h3 className="mb-2 text-sm font-semibold">Model calls</h3>
+      ) : null}
+      <div className="space-y-4 pb-1">
+        {llmCalls.length === 0 ? (
+          <PagePanel.Empty
+            variant="surface"
+            className="min-h-[18rem]"
+            title={t("trajectorydetailview.NoCapturedCalls")}
+            description={t("trajectorydetailview.NoLLMCallsRecorde")}
+          />
+        ) : filteredCalls.length === 0 ? (
+          <p role="status" className="py-4 text-sm text-muted">
+            No model calls in this stage. Clear the stage filter to see all
+            calls.
+          </p>
+        ) : (
+          filteredCalls.map((call) => {
+            const { systemPromptText, inputText, outputText } =
+              buildTrajectoryCallText(call);
+            const linesLabel = t("trajectorydetailview.lines");
+            const stage = detail.semanticStages
+              ?.filter(
+                (item) =>
+                  call.timestamp >= item.startedAt &&
+                  call.timestamp <= item.endedAt,
+              )
+              .sort(
+                (a, b) => a.endedAt - a.startedAt - (b.endedAt - b.startedAt),
+              )[0];
+            const callLabel = stage
+              ? trajectoryStageLabel(stage)
+              : formatTrajectoryStepLabel(
+                  call.stepType || call.purpose || call.actionType,
+                  t("trajectorydetailview.Response"),
+                );
+            const card = (
+              <TrajectoryLlmCallCard
+                key={call.id}
+                compact={collapsibleCalls}
+                callLabel={`#${(callIndexMap.get(call.id) ?? 0) + 1}`}
+                model={call.model}
+                purposeLabel={callLabel}
+                latencyLabel={t("trajectorydetailview.Latency", {
+                  defaultValue: "Latency",
+                })}
+                latencyValue={formatTrajectoryDuration(call.latencyMs)}
+                tokensLabel={t("common.tokens")}
+                totalTokensValue={formatTrajectoryTokenCount(
+                  (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
+                  { emptyLabel: "—" },
+                )}
+                tokenBreakdownMeta={`${formatTrajectoryTokenCount(
+                  call.promptTokens ?? 0,
+                  { emptyLabel: "—" },
+                )}↑ • ${formatTrajectoryTokenCount(call.completionTokens ?? 0, {
+                  emptyLabel: "—",
+                })} ↓`}
+                temperatureLabel={t("trajectorydetailview.Temp")}
+                temperatureValue={call.temperature}
+                maxLabel={t("trajectorydetailview.Max")}
+                maxValue={call.maxTokens > 0 ? call.maxTokens : "—"}
+                systemPrompt={
+                  systemPromptText.length > 0 ? systemPromptText : null
+                }
+                systemPromptButtonLabel={t("trajectorydetailview.SystemPrompt")}
+                systemLabel={t("trajectorydetailview.System")}
+                systemLinesLabel={`${countTrajectoryTextLines(
+                  systemPromptText,
+                )} ${linesLabel}`}
+                systemCollapseLabel={t("common.collapse", {
+                  defaultValue: "Collapse",
+                })}
+                systemExpandLabel={t("common.expand", {
+                  defaultValue: "Expand",
+                })}
+                inputLabel={t("trajectorydetailview.InputUser")}
+                outputLabel={t("trajectorydetailview.OutputResponse")}
+                inputLinesLabel={`${countTrajectoryTextLines(
+                  inputText,
+                )} ${linesLabel}`}
+                outputLinesLabel={`${countTrajectoryTextLines(
+                  outputText,
+                )} ${linesLabel}`}
+                tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
+                userPrompt={inputText}
+                response={outputText}
+                copyLabel={t("trajectorydetailview.Copy")}
+                copyToClipboardLabel={t("trajectorydetailview.CopyToClipboard")}
+                onCopy={(content) => {
+                  void copyToClipboard(content);
+                }}
+              />
+            );
+            return collapsibleCalls ? (
+              <ExpandableModelCall
+                key={call.id}
+                label={`#${(callIndexMap.get(call.id) ?? 0) + 1} · ${callLabel} · ${call.model} · ${call.promptTokens == null ? "?" : call.promptTokens.toLocaleString()} in / ${call.completionTokens == null ? "?" : call.completionTokens.toLocaleString()} out · ${formatTrajectoryDuration(call.latencyMs)}`}
+              >
+                {card}
+              </ExpandableModelCall>
+            ) : (
+              card
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex min-h-0 flex-col gap-6">
-      <section>
-        <div className="flex min-h-16 items-center gap-3 py-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-[17px] font-semibold text-[color:var(--settings-foreground)]">
-              {formatTrajectoryTimestamp(trajectory.createdAt, "smart")}
-            </h2>
-            <p className="truncate text-[13px] leading-5 text-[color:var(--settings-muted)]">
-              {trajectory.source}
-              {trajectory.scenarioId ? ` / ${trajectory.scenarioId}` : ""}
-            </p>
-          </div>
-          <span className="inline-flex min-h-7 shrink-0 items-center rounded-full bg-[var(--settings-fill)] px-3 text-xs font-medium capitalize text-[color:var(--settings-muted)]">
-            {trajectory.status}
-          </span>
-        </div>
-        <dl className="grid grid-cols-2 border-y border-[color:var(--settings-hairline)] min-[620px]:grid-cols-4">
-          {[
-            {
-              label: "Duration",
-              value: formatTrajectoryDuration(trajectory.durationMs),
-            },
-            { label: "Model calls", value: trajectory.llmCallCount },
-            {
-              label: "Tokens",
-              value: formatTrajectoryTokenCount(
-                trajectory.totalPromptTokens + trajectory.totalCompletionTokens,
-                { emptyLabel: "0" },
-              ),
-            },
-            { label: "Provider reads", value: trajectory.providerAccessCount },
-          ].map((metric) => (
-            <div
-              key={metric.label}
-              className="border-b border-[color:var(--settings-hairline)] px-3 py-3 first:pl-0 odd:border-r min-[620px]:border-b-0 min-[620px]:border-r min-[620px]:last:border-r-0 min-[620px]:last:pr-0"
-            >
-              <dt className="text-xs text-[color:var(--settings-muted)]">
-                {metric.label}
-              </dt>
-              <dd className="mt-1 text-sm font-semibold text-[color:var(--settings-foreground)]">
-                {metric.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-      {orchestratorData ? (
+    <div className="flex min-h-0 min-w-0 flex-col gap-6" aria-busy={loading}>
+      {!collapsibleCalls ? (
         <section>
-          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
-            Orchestration
-          </h3>
-          <dl className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
+          <div className="flex min-h-16 items-center gap-3 py-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-[17px] font-semibold text-[color:var(--settings-foreground)]">
+                {formatTrajectoryTimestamp(trajectory.createdAt, "smart")}
+              </h2>
+              <p className="truncate text-[13px] leading-5 text-[color:var(--settings-muted)]">
+                {trajectory.source}
+                {trajectory.scenarioId ? ` / ${trajectory.scenarioId}` : ""}
+              </p>
+            </div>
+            <span className="inline-flex min-h-7 shrink-0 items-center rounded-full bg-[var(--settings-fill)] px-3 text-xs font-medium capitalize text-[color:var(--settings-muted)]">
+              {trajectory.status}
+            </span>
+          </div>
+          <dl className="grid grid-cols-2 border-y border-[color:var(--settings-hairline)] min-[620px]:grid-cols-4">
             {[
               {
-                label: t("trajectorydetailview.DecisionType"),
-                value: String(orchestratorData.decisionType ?? "Not recorded"),
+                label: "Duration",
+                value: formatTrajectoryDuration(trajectory.durationMs),
+              },
+              { label: "Model calls", value: trajectory.llmCallCount },
+              {
+                label: "Tokens",
+                value:
+                  tokenCount === undefined
+                    ? "—"
+                    : formatTrajectoryTokenCount(tokenCount, {
+                        emptyLabel: "0",
+                      }),
               },
               {
-                label: t("trajectorydetailview.Task"),
-                value: String(orchestratorData.taskLabel ?? "Not recorded"),
+                label: "Provider reads",
+                value: trajectory.providerAccessCount,
               },
-              {
-                label: t("trajectorydetailview.Session1"),
-                value: String(orchestratorData.sessionId ?? "Not recorded"),
-              },
-            ].map((item) => (
+            ].map((metric) => (
               <div
-                key={item.label}
-                className="flex min-h-12 items-start justify-between gap-4 py-3 text-sm"
+                key={metric.label}
+                className="border-b border-[color:var(--settings-hairline)] px-3 py-3 first:pl-0 odd:border-r min-[620px]:border-b-0 min-[620px]:border-r min-[620px]:last:border-r-0 min-[620px]:last:pr-0"
               >
-                <dt className="text-[color:var(--settings-muted)]">
-                  {item.label}
+                <dt className="text-xs text-[color:var(--settings-muted)]">
+                  {metric.label}
                 </dt>
-                <dd className="min-w-0 max-w-[65%] break-words text-right font-medium text-[color:var(--settings-foreground)]">
-                  {item.value}
+                <dd className="mt-1 text-sm font-semibold text-[color:var(--settings-foreground)]">
+                  {metric.value}
                 </dd>
               </div>
             ))}
           </dl>
         </section>
       ) : null}
+      {collapsibleCalls ? modelCallList : null}
+      {!collapsibleCalls || showDiagnostics ? (
+        <>
+          {orchestratorData ? (
+            <section>
+              <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
+                Orchestration
+              </h3>
+              <dl className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
+                {[
+                  {
+                    label: t("trajectorydetailview.DecisionType"),
+                    value: String(
+                      orchestratorData.decisionType ?? "Not recorded",
+                    ),
+                  },
+                  {
+                    label: t("trajectorydetailview.Task"),
+                    value: String(orchestratorData.taskLabel ?? "Not recorded"),
+                  },
+                  {
+                    label: t("trajectorydetailview.Session1"),
+                    value: String(orchestratorData.sessionId ?? "Not recorded"),
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="flex min-h-12 items-start justify-between gap-4 py-3 text-sm"
+                  >
+                    <dt className="text-[color:var(--settings-muted)]">
+                      {item.label}
+                    </dt>
+                    <dd className="min-w-0 max-w-[65%] break-words text-right font-medium text-[color:var(--settings-foreground)]">
+                      {item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
 
-      {trajectory.metadata &&
-      Object.keys(trajectory.metadata).length > 0 &&
-      formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
-        <details className="group border-y border-[color:var(--settings-hairline)]">
-          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between py-3 text-sm font-medium text-[color:var(--settings-foreground)] hover:text-primary">
-            Run metadata
-            <span className="text-xs text-[color:var(--settings-muted)] group-open:hidden">
-              Show
-            </span>
-            <span className="hidden text-xs text-[color:var(--settings-muted)] group-open:inline">
-              Hide
-            </span>
-          </summary>
-          <pre className="max-h-[20rem] overflow-auto whitespace-pre-wrap break-words border-t border-[color:var(--settings-hairline)] py-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
-            {formatProviderPayload(trajectory.metadata)}
-          </pre>
-        </details>
-      ) : null}
+          {trajectory.metadata &&
+          Object.keys(trajectory.metadata).length > 0 &&
+          formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
+            <details className="group border-y border-[color:var(--settings-hairline)]">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between py-3 text-sm font-medium text-[color:var(--settings-foreground)] hover:text-primary">
+                Run metadata
+                <span className="text-xs text-[color:var(--settings-muted)] group-open:hidden">
+                  Show
+                </span>
+                <span className="hidden text-xs text-[color:var(--settings-muted)] group-open:inline">
+                  Hide
+                </span>
+              </summary>
+              <pre className="max-h-[20rem] overflow-auto whitespace-pre-wrap break-words border-t border-[color:var(--settings-hairline)] py-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
+                {formatProviderPayload(trajectory.metadata)}
+              </pre>
+            </details>
+          ) : null}
 
-      {llmCalls.length > 0 ? (
-        <section>
-          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
-            Pipeline
-          </h3>
-          <TrajectoryPipelineGraph
-            nodes={pipelineNodes}
-            activeStageId={activeStage}
-            onStageClick={handleStageClick}
+          {!collapsibleCalls && llmCalls.length > 0 ? (
+            <section>
+              <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
+                Pipeline
+              </h3>
+              <TrajectoryPipelineGraph
+                nodes={pipelineNodes}
+                activeStageId={activeStage}
+                onStageClick={handleStageClick}
+              />
+              {activeStage && activeStage !== "input" ? (
+                <div className="mt-3 flex min-h-11 items-center gap-2 text-xs text-[color:var(--settings-muted)]">
+                  <span>
+                    {t(
+                      filteredCalls.length === 1
+                        ? "trajectorydetailview.ShowingOneCall"
+                        : "trajectorydetailview.ShowingCalls",
+                      {
+                        defaultValue:
+                          filteredCalls.length === 1
+                            ? "Showing {{count}} {{stage}} call"
+                            : "Showing {{count}} {{stage}} calls",
+                        count: filteredCalls.length,
+                        stage: activeStage.replace(/_/g, " "),
+                      },
+                    )}
+                  </span>
+                  <Button
+                    ref={clearStageFilter.ref}
+                    onClick={() => setActiveStage(null)}
+                    variant="ghostMuted"
+                    size="icon-lg"
+                    aria-label="Clear stage filter"
+                    {...clearStageFilter.agentProps}
+                  >
+                    <X className="size-3" />
+                  </Button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {!collapsibleCalls ? modelCallList : null}
+          <TrajectoryEventTimeline
+            heading={t("trajectorydetailview.EventTimeline", {
+              defaultValue: "Event Timeline",
+            })}
+            emptyLabel={t("trajectorydetailview.NoEventsCaptured", {
+              defaultValue: "No events captured",
+            })}
+            events={timelineEvents}
           />
-          {activeStage && activeStage !== "input" ? (
-            <div className="mt-3 flex min-h-11 items-center gap-2 text-xs text-[color:var(--settings-muted)]">
-              <span>
-                {t("trajectorydetailview.ShowingCalls", {
-                  defaultValue: "Showing {{count}} {{stage}} calls",
-                  count: filteredCalls.length,
-                  stage: activeStage.replace(/_/g, " "),
+
+          {toolEvents.length > 0 ? (
+            <section>
+              <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
+                Tool activity
+              </h3>
+              <div className="space-y-3">
+                {toolEvents.map((event, index) => (
+                  <ToolCallEventLog
+                    event={event}
+                    key={event.id || `${event.type}-${index}`}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {shouldShowNativeEventPanels ? (
+            <div className="grid gap-4 xl:grid-cols-2">
+              <TrajectoryCacheStats
+                heading={t("trajectorydetailview.CacheStats", {
+                  defaultValue: "Cache Stats",
                 })}
-              </span>
-              <Button
-                ref={clearStageFilter.ref}
-                onClick={() => setActiveStage(null)}
-                variant="ghostMuted"
-                size="icon-lg"
-                aria-label="Clear stage filter"
-                {...clearStageFilter.agentProps}
-              >
-                <X className="size-3" />
-              </Button>
+                emptyLabel={t("trajectorydetailview.NoCacheObservations", {
+                  defaultValue: "No cache observations captured",
+                })}
+                metrics={cacheMetrics}
+              />
+              <TrajectoryContextDiffList
+                heading={t("trajectorydetailview.ContextDiffs", {
+                  defaultValue: "Context Diffs",
+                })}
+                emptyLabel={t("trajectorydetailview.NoContextDiffs", {
+                  defaultValue:
+                    "Context diffs are not available for this trajectory",
+                })}
+                diffs={contextDiffSummaries}
+              />
             </div>
           ) : null}
-        </section>
-      ) : null}
 
-      <TrajectoryEventTimeline
-        heading={t("trajectorydetailview.EventTimeline", {
-          defaultValue: "Event Timeline",
-        })}
-        emptyLabel={t("trajectorydetailview.NoEventsCaptured", {
-          defaultValue: "No events captured",
-        })}
-        events={timelineEvents}
-      />
-
-      {toolEvents.length > 0 ? (
-        <section>
-          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
-            Tool activity
-          </h3>
-          <div className="space-y-3">
-            {toolEvents.map((event, index) => (
-              <ToolCallEventLog
-                event={event}
-                key={event.id || `${event.type}-${index}`}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {shouldShowNativeEventPanels ? (
-        <div className="grid gap-4 xl:grid-cols-2">
-          <TrajectoryCacheStats
-            heading={t("trajectorydetailview.CacheStats", {
-              defaultValue: "Cache Stats",
-            })}
-            emptyLabel={t("trajectorydetailview.NoCacheObservations", {
-              defaultValue: "No cache observations captured",
-            })}
-            metrics={cacheMetrics}
-          />
-          <TrajectoryContextDiffList
-            heading={t("trajectorydetailview.ContextDiffs", {
-              defaultValue: "Context Diffs",
-            })}
-            emptyLabel={t("trajectorydetailview.NoContextDiffs", {
-              defaultValue:
-                "Context diffs are not available for this trajectory",
-            })}
-            diffs={contextDiffSummaries}
-          />
-        </div>
-      ) : null}
-
-      {providerAccesses.length > 0 ? (
-        <section>
-          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
-            Provider activity
-          </h3>
-          <div className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
-            {providerAccesses.map((access, index) => (
-              <details key={access.id} className="group overflow-hidden">
-                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 py-3">
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-[color:var(--settings-foreground)]">
-                      {access.providerName || "Unknown provider"}
-                    </span>
-                    <span className="block truncate text-xs text-[color:var(--settings-muted)]">
-                      {access.purpose ||
-                        t("trajectorydetailview.ProviderAccess", {
-                          defaultValue: "Provider access",
-                        })}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-[color:var(--settings-muted)] group-open:hidden">
-                    #{index + 1} Show
-                  </span>
-                  <span className="hidden shrink-0 text-xs text-[color:var(--settings-muted)] group-open:inline">
-                    Hide
-                  </span>
-                </summary>
-                <div className="border-t border-[color:var(--settings-hairline)] py-4">
-                  {access.query ? (
-                    <div>
-                      <div className="text-xs font-medium text-[color:var(--settings-muted)]">
-                        {t("trajectorydetailview.Query", {
-                          defaultValue: "Query",
-                        })}
-                      </div>
-                      <pre className="mt-2 max-h-[18rem] overflow-auto whitespace-pre-wrap break-words rounded-[10px] bg-[var(--settings-panel)] p-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
-                        {formatProviderPayload(access.query)}
-                      </pre>
+          {providerAccesses.length > 0 ? (
+            <section>
+              <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
+                Context providers
+              </h3>
+              <div className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
+                {providerAccesses.map((access, index) => (
+                  <details key={access.id} className="group overflow-hidden">
+                    <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 py-3">
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-[color:var(--settings-foreground)]">
+                          {access.providerName || "Unknown provider"}
+                        </span>
+                        <span className="block truncate text-xs text-[color:var(--settings-muted)]">
+                          {access.purpose ||
+                            t("trajectorydetailview.ProviderAccess", {
+                              defaultValue: "Provider access",
+                            })}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs text-[color:var(--settings-muted)] group-open:hidden">
+                        #{index + 1} Show
+                      </span>
+                      <span className="hidden shrink-0 text-xs text-[color:var(--settings-muted)] group-open:inline">
+                        Hide
+                      </span>
+                    </summary>
+                    <div className="space-y-4 border-t border-[color:var(--settings-hairline)] py-4">
+                      {[
+                        ...(access.query
+                          ? [{ label: "Provider query", value: access.query }]
+                          : []),
+                        { label: "Provider context", value: access.data },
+                      ].map((part) =>
+                        part.value == null ? (
+                          <p key={part.label} className="text-sm text-muted">
+                            No separate provider payload was recorded.
+                          </p>
+                        ) : (
+                          <TrajectoryCodeBlock
+                            key={part.label}
+                            compact={collapsibleCalls}
+                            label={part.label}
+                            content={formatProviderPayload(part.value)}
+                            linesLabel=""
+                            copyLabel="Copy"
+                            collapseLabel="Collapse"
+                            expandLabel="Expand"
+                            onCopy={(content) => void copyToClipboard(content)}
+                          />
+                        ),
+                      )}
                     </div>
-                  ) : null}
-                  <div className={access.query ? "mt-4" : ""}>
-                    <div className="text-xs font-medium text-[color:var(--settings-muted)]">
-                      {t("trajectorydetailview.Data", {
-                        defaultValue: "Data",
-                      })}
-                    </div>
-                    <pre className="mt-2 max-h-[18rem] overflow-auto whitespace-pre-wrap break-words rounded-[10px] bg-[var(--settings-panel)] p-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
-                      {formatProviderPayload(access.data)}
-                    </pre>
-                  </div>
-                </div>
-              </details>
-            ))}
-          </div>
-        </section>
+                  </details>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
       ) : null}
-
-      <div className="min-h-0 flex-1">
-        <div className="space-y-4 pb-1">
-          {llmCalls.length === 0 ? (
-            <PagePanel.Empty
-              variant="surface"
-              className="min-h-[18rem]"
-              title={t("trajectorydetailview.NoCapturedCalls")}
-              description={t("trajectorydetailview.NoLLMCallsRecorde")}
-            />
-          ) : (
-            filteredCalls.map((call) => {
-              const { systemPromptText, inputText, outputText } =
-                buildTrajectoryCallText(call);
-              const linesLabel = t("trajectorydetailview.lines");
-              return (
-                <TrajectoryLlmCallCard
-                  key={call.id}
-                  callLabel={`#${(callIndexMap.get(call.id) ?? 0) + 1}`}
-                  model={call.model}
-                  purposeLabel={formatTrajectoryStepLabel(
-                    call.stepType || call.purpose || call.actionType,
-                    t("trajectorydetailview.Response"),
-                  )}
-                  latencyLabel={t("trajectorydetailview.Latency", {
-                    defaultValue: "Latency",
-                  })}
-                  latencyValue={formatTrajectoryDuration(call.latencyMs)}
-                  tokensLabel={t("common.tokens")}
-                  totalTokensValue={formatTrajectoryTokenCount(
-                    (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
-                    { emptyLabel: "—" },
-                  )}
-                  tokenBreakdownMeta={`${formatTrajectoryTokenCount(
-                    call.promptTokens ?? 0,
-                    { emptyLabel: "—" },
-                  )}↑ • ${formatTrajectoryTokenCount(
-                    call.completionTokens ?? 0,
-                    {
-                      emptyLabel: "—",
-                    },
-                  )} ↓`}
-                  temperatureLabel={t("trajectorydetailview.Temp")}
-                  temperatureValue={call.temperature}
-                  maxLabel={t("trajectorydetailview.Max")}
-                  maxValue={call.maxTokens > 0 ? call.maxTokens : "—"}
-                  systemPrompt={
-                    systemPromptText.length > 0 ? systemPromptText : null
-                  }
-                  systemPromptButtonLabel={t(
-                    "trajectorydetailview.SystemPrompt",
-                  )}
-                  systemLabel={t("trajectorydetailview.System")}
-                  systemLinesLabel={`${countTrajectoryTextLines(
-                    systemPromptText,
-                  )} ${linesLabel}`}
-                  systemCollapseLabel={t("common.collapse", {
-                    defaultValue: "Collapse",
-                  })}
-                  systemExpandLabel={t("common.expand", {
-                    defaultValue: "Expand",
-                  })}
-                  inputLabel={t("trajectorydetailview.InputUser")}
-                  outputLabel={t("trajectorydetailview.OutputResponse")}
-                  inputLinesLabel={`${countTrajectoryTextLines(
-                    inputText,
-                  )} ${linesLabel}`}
-                  outputLinesLabel={`${countTrajectoryTextLines(
-                    outputText,
-                  )} ${linesLabel}`}
-                  tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
-                  userPrompt={inputText}
-                  response={outputText}
-                  copyLabel={t("trajectorydetailview.Copy")}
-                  copyToClipboardLabel={t(
-                    "trajectorydetailview.CopyToClipboard",
-                  )}
-                  onCopy={(content) => {
-                    void copyToClipboard(content);
-                  }}
-                />
-              );
-            })
-          )}
-        </div>
-      </div>
+      {collapsibleCalls ? (
+        <>
+          <TrajectoryRecordedSteps
+            stages={detail.semanticStages ?? []}
+            onCopy={(content) => void copyToClipboard(content)}
+          />
+          <Button
+            size="touch"
+            variant="outline"
+            onClick={() =>
+              void copyToClipboard(JSON.stringify(detail, null, 2))
+            }
+          >
+            Copy entire recorded run
+          </Button>
+          <Button
+            size="touch"
+            variant="outline"
+            onClick={() => setShowDiagnostics((value) => !value)}
+          >
+            {showDiagnostics ? "Hide" : "Show"} context and timeline
+          </Button>
+        </>
+      ) : null}
     </div>
   );
 }

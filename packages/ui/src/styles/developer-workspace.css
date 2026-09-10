@@ -200,3 +200,10 @@
     animation: none;
   }
 }
+
+/* Raw evidence needs a fixed-width text face even under the branded app theme. */
+.eliza-developer-workspace .developer-raw-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
