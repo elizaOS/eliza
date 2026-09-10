@@ -331,6 +331,22 @@ export async function ensureCalendarFeedPreferenceTable(
     $calendar_feed_preference_version$`);
 }
 
+/** Bootstraps the agent's explicit calendar destination and pause decision. */
+export async function ensureLinkedCalendarControlTable(
+  exec: SqlExecutor,
+): Promise<void> {
+  await exec(`CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.linked_calendar_control (
+    agent_id TEXT PRIMARY KEY,
+    revision INTEGER NOT NULL DEFAULT 0 CONSTRAINT linked_calendar_control_revision_valid CHECK (revision >= 0),
+    paused BOOLEAN NOT NULL DEFAULT TRUE,
+    connector_account_id TEXT,
+    provider_calendar_id TEXT,
+    CONSTRAINT linked_calendar_control_destination_valid CHECK ((connector_account_id IS NULL AND provider_calendar_id IS NULL AND paused)
+      OR (connector_account_id IS NOT NULL AND length(trim(connector_account_id)) > 0
+        AND provider_calendar_id IS NOT NULL AND length(trim(provider_calendar_id)) > 0))
+  )`);
+}
+
 /**
  * Linked events are calendar-native and never copied from the legacy LifeOps
  * schema. This bootstrap keeps upgrades safe when Drizzle schema registration
@@ -488,6 +504,7 @@ export async function migrateCalendarTables(
   await ensureCalendarFeedPreferenceTable(exec);
   await ensureGoogleCalendarWatchChannelTable(exec);
   await ensureLinkedCalendarEventTable(exec);
+  await ensureLinkedCalendarControlTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {
     results.push(await migrateCalendarTable(exec, table));
