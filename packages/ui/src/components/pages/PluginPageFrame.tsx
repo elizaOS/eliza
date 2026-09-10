@@ -26,13 +26,15 @@ export function PluginPageFrame({
       }`}
     >
       <ViewHeader title={title} />
-      <div
+      <section
+        aria-label={title}
+        tabIndex={contentOverflow === "auto" ? 0 : undefined}
         className={`min-h-0 min-w-0 flex-1 ${
           contentOverflow === "auto" ? "overflow-y-auto" : "overflow-hidden"
         }`}
       >
         {children}
-      </div>
+      </section>
     </div>
   );
 }

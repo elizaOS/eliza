@@ -60,7 +60,7 @@ export const ClippedCanvas: Story = {
     contentOverflow: "hidden",
     safeAreaTop: true,
     children: (
-      <div className="grid h-full place-items-center bg-muted">
+      <div className="grid h-full place-items-center bg-card text-card-foreground">
         Plugin-owned canvas
       </div>
     ),
