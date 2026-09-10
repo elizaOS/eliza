@@ -425,12 +425,18 @@ export class VisionService extends Service {
           runtime.getSetting("PIXEL_CHANGE_THRESHOLD") ||
             runtime.getSetting("VISION_PIXEL_CHANGE_THRESHOLD"),
         ) || this.DEFAULT_CONFIG.pixelChangeThreshold,
-      enableObjectDetection:
-        runtime.getSetting("ENABLE_OBJECT_DETECTION") === "true" ||
-        runtime.getSetting("VISION_ENABLE_OBJECT_DETECTION") === "true",
-      enablePoseDetection:
-        runtime.getSetting("ENABLE_POSE_DETECTION") === "true" ||
-        runtime.getSetting("VISION_ENABLE_POSE_DETECTION") === "true",
+      // Read through the same helper as face recognition so a boolean stored
+      // in character settings counts the same as the env-file string.
+      enableObjectDetection: getBooleanSetting(
+        "ENABLE_OBJECT_DETECTION",
+        "VISION_ENABLE_OBJECT_DETECTION",
+        false,
+      ),
+      enablePoseDetection: getBooleanSetting(
+        "ENABLE_POSE_DETECTION",
+        "VISION_ENABLE_POSE_DETECTION",
+        false,
+      ),
       enableFaceRecognition: getBooleanSetting(
         "ENABLE_FACE_RECOGNITION",
         "VISION_ENABLE_FACE_RECOGNITION",
