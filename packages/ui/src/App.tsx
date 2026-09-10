@@ -139,6 +139,7 @@ import { useBootConfig } from "./config/boot-config-react.hooks";
 import { useBranding } from "./config/branding";
 import {
   CHAT_OPEN_EVENT,
+  type ConnectRequestResult,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
@@ -2627,7 +2628,7 @@ function AppContent() {
       token?: string;
       completeFirstRun?: boolean;
       skipConfirm?: boolean;
-    }): Promise<void> => {
+    }): Promise<ConnectRequestResult> => {
       const shouldCompleteFirstRun = payload.completeFirstRun === true;
       const skipConfirm = payload.skipConfirm === true;
       if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
@@ -2642,7 +2643,7 @@ function AppContent() {
         });
         if (!approved) {
           setActionNotice("Connection request cancelled.", "info", 4200);
-          return;
+          return { status: "cancelled" };
         }
       }
 
@@ -2656,7 +2657,6 @@ function AppContent() {
         setState("firstRunRuntimeTarget", "remote");
         setState("firstRunRemoteApiBase", connection.apiBase);
         setState("firstRunRemoteToken", connection.token ?? "");
-        setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
         if (shouldCompleteFirstRun) {
           await completeRemoteAgentFirstRun(
@@ -2669,16 +2669,20 @@ function AppContent() {
             completeFirstRun,
           );
         }
+        setState("firstRunRemoteConnected", true);
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
+        return { status: "connected" };
       } catch (err) {
-        setActionNotice(
+        // error-policy:J1 expose failed adoption to both the initiating form and shell notice.
+        const message =
           err instanceof Error
             ? err.message
-            : "Failed to connect remote backend.",
-          "error",
-          8000,
-        );
+            : "Failed to connect remote backend.";
+        setState("firstRunRemoteConnected", false);
+        setState("firstRunRemoteError", message);
+        setActionNotice(message, "error", 8000);
+        return { status: "failed", message };
       }
     };
 

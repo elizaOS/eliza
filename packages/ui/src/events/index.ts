@@ -277,44 +277,93 @@ export interface ConnectRequestDetail {
   skipConfirm?: boolean;
 }
 
+export type ConnectRequestResult =
+  | { status: "connected" }
+  | { status: "cancelled" }
+  | { status: "superseded" }
+  | { status: "failed"; message: string };
+
 type ConnectRequestListener = (
   detail: ConnectRequestDetail,
-) => void | Promise<void>;
+) =>
+  | ConnectRequestResult
+  | void
+  | Promise<ConnectRequestResult | undefined>
+  | Promise<void>;
 
-const connectRequestClaims = new WeakMap<object, () => boolean>();
+type ConnectRequestState = {
+  claimed: boolean;
+  settled: boolean;
+  result: Promise<ConnectRequestResult>;
+  complete: (result: ConnectRequestResult) => void;
+};
+
+const connectRequestStates = new WeakMap<object, ConnectRequestState>();
 let pendingConnectRequest: ConnectRequestDetail | null = null;
+let activeConnectRequest: ConnectRequestDetail | null = null;
+
+function connectRequestState(
+  request: ConnectRequestDetail,
+): ConnectRequestState {
+  const existing = connectRequestStates.get(request);
+  if (existing) return existing;
+  let resolve!: (outcome: ConnectRequestResult) => void;
+  const promise = new Promise<ConnectRequestResult>((complete) => {
+    resolve = complete;
+  });
+  const state: ConnectRequestState = {
+    claimed: false,
+    settled: false,
+    result: promise,
+    complete(outcome) {
+      if (state.settled) return;
+      state.settled = true;
+      resolve(outcome);
+    },
+  };
+  connectRequestStates.set(request, state);
+  return state;
+}
 
 function emitConnectRequest(detail: ConnectRequestDetail): void {
   document.dispatchEvent(new CustomEvent(CONNECT_EVENT, { detail }));
 }
 
-/**
- * Dispatches a connection request without losing native deep links that arrive
- * while React is replacing the startup screen with the live shell. The latest
- * unclaimed request is replayed when a consumer mounts; a synchronous claim
- * guarantees that the startup and shell listeners cannot both adopt it.
- */
-export function dispatchConnectRequest(detail: ConnectRequestDetail): void {
-  let claimed = false;
-  const request: ConnectRequestDetail = {
-    ...detail,
-  };
-  connectRequestClaims.set(request, () => {
-    if (claimed) return false;
-    claimed = true;
-    if (pendingConnectRequest === request) {
-      pendingConnectRequest = null;
-    }
-    return true;
-  });
+function queueConnectRequest(request: ConnectRequestDetail): void {
+  if (pendingConnectRequest && pendingConnectRequest !== request) {
+    connectRequestState(pendingConnectRequest).complete({
+      status: "superseded",
+    });
+  }
   pendingConnectRequest = request;
-  emitConnectRequest(request);
+}
+
+function replayPendingConnectRequest(): void {
+  if (!activeConnectRequest && pendingConnectRequest) {
+    emitConnectRequest(pendingConnectRequest);
+  }
 }
 
 /**
- * Subscribes to connection requests and immediately replays one that arrived
- * before this listener mounted. Legacy CustomEvents outside this helper remain
- * supported for browser tests and third-party in-app producers.
+ * Retains native requests across startup/shell remounts and serializes adoption
+ * against the singleton client. The latest unclaimed request replaces an older
+ * pending request. Results always resolve, so legacy fire-and-forget callers
+ * remain safe while forms can wait for actual owner completion.
+ */
+export function dispatchConnectRequest(
+  detail: ConnectRequestDetail,
+): Promise<ConnectRequestResult> {
+  const request = { ...detail };
+  const state = connectRequestState(request);
+  queueConnectRequest(request);
+  emitConnectRequest(request);
+  return state.result;
+}
+
+/**
+ * Claims one request for the mounted startup or live-shell owner. An active
+ * adoption finishes before another owner can repoint the singleton client.
+ * Legacy CustomEvents use the same claim and pending-request queue.
  */
 export function listenForConnectRequests(
   listener: ConnectRequestListener,
@@ -329,19 +378,51 @@ export function listenForConnectRequests(
     ) {
       return;
     }
-
     const request = detail as ConnectRequestDetail;
-    const claim = connectRequestClaims.get(request);
-    if (claim && !claim()) return;
-    void listener(request);
+    const state = connectRequestState(request);
+    if (state.claimed || state.settled) return;
+    if (activeConnectRequest) {
+      queueConnectRequest(request);
+      return;
+    }
+    state.claimed = true;
+    activeConnectRequest = request;
+    if (pendingConnectRequest === request) pendingConnectRequest = null;
+    const complete = (outcome: ConnectRequestResult): void => {
+      state.complete(outcome);
+      activeConnectRequest = null;
+      queueMicrotask(replayPendingConnectRequest);
+    };
+    const failed = (error: unknown): void => {
+      // error-policy:J1 event-owner failures become a typed completion result.
+      logger.warn("[connect-request] connection owner failed", { error });
+      complete({
+        status: "failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to connect remote backend.",
+      });
+    };
+    try {
+      const result = listener(request);
+      void Promise.resolve(result).then((outcome) => {
+        complete(
+          outcome ?? {
+            status: "failed",
+            message:
+              "The connection handler did not confirm completion. Try connecting again.",
+          },
+        );
+      }, failed);
+    } catch (error) {
+      // error-policy:J1 synchronous owner failures release the same active slot.
+      failed(error);
+    }
   };
 
   document.addEventListener(CONNECT_EVENT, handle);
-  queueMicrotask(() => {
-    if (pendingConnectRequest) {
-      emitConnectRequest(pendingConnectRequest);
-    }
-  });
+  queueMicrotask(replayPendingConnectRequest);
   return () => document.removeEventListener(CONNECT_EVENT, handle);
 }
 
