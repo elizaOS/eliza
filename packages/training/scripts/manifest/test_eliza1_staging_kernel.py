@@ -7,25 +7,10 @@ from pathlib import Path
 from scripts.manifest.eliza1_staging_kernel import (
     StagingProfile,
     ensure_release_dirs,
-    profile_graph,
     stage_file,
     validate_checksum_manifest,
     write_checksum_manifest,
 )
-from scripts.manifest.stage_local_eliza1_bundle import LOCAL_STAGING_PROFILE
-from scripts.manifest.stage_real_eliza1_bundle import REAL_STAGING_PROFILE
-
-
-def test_profiles_share_the_common_graph_and_pin_intentional_policy() -> None:
-    local = set(profile_graph(LOCAL_STAGING_PROFILE, "2b"))
-    real = set(profile_graph(REAL_STAGING_PROFILE, "2b"))
-    assert local - real == {"source"}
-    assert real - local == set()
-    assert "vision" in real
-    assert "embedding" not in real
-    assert profile_graph(REAL_STAGING_PROFILE, "27b-256k") == tuple(
-        path for path in REAL_STAGING_PROFILE.release_dirs if path != "embedding"
-    )
 
 
 def test_profile_graph_drives_directory_creation(tmp_path: Path) -> None:
@@ -63,3 +48,47 @@ def test_shared_stage_and_checksum_kernel_is_replay_safe(tmp_path: Path) -> None
     assert second.method == "existing"
     write_checksum_manifest(tmp_path / "bundle")
     assert validate_checksum_manifest(tmp_path / "bundle") == ()
+
+
+def test_checksum_validation_rejects_deleted_tampered_and_duplicate_entries(tmp_path: Path) -> None:
+    artifact = tmp_path / "model.gguf"
+    artifact.write_bytes(b"complete weights")
+    manifest = write_checksum_manifest(tmp_path)
+    original = manifest.read_text()
+    artifact.unlink()
+    assert validate_checksum_manifest(tmp_path), "deleted recorded artifact must fail"
+    artifact.write_bytes(b"tampered weights")
+    assert validate_checksum_manifest(tmp_path), "changed artifact must fail"
+    artifact.write_bytes(b"complete weights")
+    manifest.write_text(original + original)
+    assert validate_checksum_manifest(tmp_path), "duplicate records must fail"
+    manifest.write_text(original + "0" * 64 + "  model.gguf\n")
+    assert validate_checksum_manifest(tmp_path), "conflicting records must fail"
+    manifest.write_text(original)
+    assert validate_checksum_manifest(tmp_path) == ()
+
+
+def test_checksum_inventory_rejects_external_paths_without_hashing_them(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "model.gguf").write_bytes(b"weights")
+    manifest = write_checksum_manifest(bundle)
+    external = tmp_path / "external"
+    external.mkdir()
+    manifest.write_text(manifest.read_text() + "0" * 64 + "  ../external\n")
+    assert validate_checksum_manifest(bundle), "recorded external directory must be rejected, not opened"
+
+
+def test_checksum_validation_rejects_an_external_artifact_symlink(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "model.gguf").write_bytes(b"weights")
+    write_checksum_manifest(bundle)
+    external = tmp_path / "outside.gguf"
+    external.write_bytes(b"outside weights")
+    (bundle / "outside.gguf").symlink_to(external)
+    external.chmod(0)
+    try:
+        assert validate_checksum_manifest(bundle), "outside artifact must fail without being read"
+    finally:
+        external.chmod(0o600)

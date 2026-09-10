@@ -50,13 +50,13 @@ describe("RemindersMigration", () => {
     expect(r.outcome).toBe("source-missing");
   });
 
-  it("reconciles when the target table is non-empty", async () => {
+  it("preserves ownership when the target table is non-empty", async () => {
     const exec = fakeExec([
       [/to_regclass/, [{ present: true }]],
       [/NOT EXISTS/, [{ empty: false }]],
     ]);
     const r = await migrateReminderTable(exec, "life_reminder_attempts");
-    expect(r.outcome).toBe("copied");
+    expect(r.outcome).toBe("target-non-empty");
   });
 
   it("copies when source exists and target is empty", async () => {
@@ -116,28 +116,6 @@ describe("RemindersMigration", () => {
     });
   });
 
-  it("fails closed when an existing reminder id has different values", async () => {
-    const exec = fakeExec([
-      [/to_regclass/, [{ present: true }]],
-      [
-        /carve-out:verify-projection/,
-        [
-          {
-            missing_count: "0",
-            conflict_count: "1",
-            source_null_key_count: "0",
-            target_null_key_count: "0",
-            source_duplicate_key_count: "0",
-            target_duplicate_key_count: "0",
-          },
-        ],
-      ],
-    ]);
-    await expect(
-      migrateReminderTable(exec, "life_reminder_plans"),
-    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_COLLISION" });
-  });
-
   it("creates the target schema and processes every reminder table", async () => {
     const log: string[] = [];
     const exec = fakeExec(
@@ -152,60 +130,5 @@ describe("RemindersMigration", () => {
     expect(
       log.some((s) => /CREATE SCHEMA IF NOT EXISTS app_reminders/.test(s)),
     ).toBe(true);
-  });
-});
-
-describe("legacy migration marker compatibility", () => {
-  it("does not let an old marker certify a source-only row", async () => {
-    const log: string[] = [];
-    const exec = fakeExec(
-      [
-        [/reminders_migration_state[\s\S]*table_name = /, [{ done: true }]],
-        [/to_regclass/, [{ present: true }]],
-        [/SELECT NOT EXISTS \(SELECT 1 FROM/, [{ empty: true }]],
-      ],
-      log,
-    );
-    const r = await migrateReminderTable(exec, "life_reminder_plans");
-    expect(r.outcome).toBe("copied");
-    expect(log.some((s) => /INSERT INTO .*life_reminder_plans/s.test(s))).toBe(
-      true,
-    );
-  });
-
-  it("writes the compatibility marker only after a verified copy", async () => {
-    const missingLog: string[] = [];
-    await migrateReminderTable(
-      fakeExec([[/to_regclass/, [{ present: false }]]], missingLog),
-      "life_reminder_plans",
-    );
-    expect(
-      missingLog.some((s) => /INSERT INTO .*reminders_migration_state/.test(s)),
-    ).toBe(false);
-
-    const copiedLog: string[] = [];
-    await migrateReminderTable(
-      fakeExec([[/to_regclass/, [{ present: true }]]], copiedLog),
-      "life_reminder_plans",
-    );
-    expect(
-      copiedLog.some((s) =>
-        /INSERT INTO .*reminders_migration_state[\s\S]*ON CONFLICT \(table_name\) DO NOTHING/s.test(
-          s,
-        ),
-      ),
-    ).toBe(true);
-  });
-
-  it("migrateReminderTables creates the marker table before any per-table work", async () => {
-    const log: string[] = [];
-    const exec = fakeExec([[/to_regclass/, [{ present: false }]]], log);
-    await migrateReminderTables(transactionDatabase(exec));
-    const markerCreate = log.findIndex((s) =>
-      /CREATE TABLE IF NOT EXISTS .*reminders_migration_state/s.test(s),
-    );
-    const firstRegclass = log.findIndex((s) => s.includes("to_regclass"));
-    expect(markerCreate).toBeGreaterThanOrEqual(0);
-    expect(markerCreate).toBeLessThan(firstRegclass);
   });
 });

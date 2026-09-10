@@ -9,14 +9,12 @@
  * owner's reminder rows in `app_lifeops`, so on first boot we copy them across —
  * once, idempotently, and WITHOUT ever touching the source.
  *
- * Each source table is reconciled by primary key even when the target already
- * contains live data. Missing rows are copied, same-key value drift fails
- * closed, and complete readback is required before receipt completion.
- * Verification uses `/v2` receipts so unsafe completed `/v1` receipts trigger
- * one repair pass without making later owner deletions replay from the source.
+ * Existing completion markers and populated owner tables remain authoritative.
+ * Only a fresh import into an empty target is copied and verified; the durable
+ * receipt prevents later owner deletions from replaying stale legacy rows.
  *
- * The older package-local marker remains compatibility evidence but is not
- * trusted to skip verification. The source table is NEVER dropped or altered.
+ * The older package-local marker also records completed ownership, including
+ * an empty destination. The source table is never dropped or altered.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -47,7 +45,11 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedReminderTable;
-  outcome: "copied" | "source-missing" | "already-migrated";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated";
 }
 
 function quoteIdent(name: string): string {
@@ -75,6 +77,19 @@ async function ensureMigrationMarkerTable(exec: SqlExecutor): Promise<void> {
   );
 }
 
+async function migrationMarkerExists(
+  exec: SqlExecutor,
+  table: MigratedReminderTable,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT EXISTS (
+       SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(MIGRATION_MARKER_TABLE)}
+       WHERE table_name = '${table}'
+     ) AS done`,
+  );
+  return rows[0]?.done === true || rows[0]?.done === "true";
+}
+
 async function writeMigrationMarker(
   exec: SqlExecutor,
   table: MigratedReminderTable,
@@ -86,12 +101,31 @@ async function writeMigrationMarker(
   );
 }
 
+async function targetTableIsEmpty(
+  exec: SqlExecutor,
+  table: MigratedReminderTable,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
+  );
+  return rows[0]?.empty === true || rows[0]?.empty === "true";
+}
+
 export async function migrateReminderTable(
   exec: SqlExecutor,
   table: MigratedReminderTable,
 ): Promise<TableMigrationResult> {
+  if (await migrationMarkerExists(exec, table)) {
+    return { table, outcome: "already-migrated" };
+  }
   if (!(await sourceTableExists(exec, table))) {
+    await writeMigrationMarker(exec, table);
     return { table, outcome: "source-missing" };
+  }
+
+  if (!(await targetTableIsEmpty(exec, table))) {
+    await writeMigrationMarker(exec, table);
+    return { table, outcome: "target-non-empty" };
   }
 
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
@@ -123,6 +157,7 @@ export async function migrateReminderTables(
   for (const table of MIGRATED_REMINDER_TABLES) {
     const receipt = await runCarveOutMigration(database, {
       key: `reminders/${table}/v2`,
+      previousKeys: [`reminders/${table}/v1`],
       sourceTables: [{ schema: SOURCE_SCHEMA, table }],
       run: (execute) => migrateReminderTable(execute, table),
       outcome: (result) => result.outcome,

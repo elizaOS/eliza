@@ -54,13 +54,13 @@ describe("GoalsMigration", () => {
     expect(r.outcome).toBe("source-missing");
   });
 
-  it("reconciles when the target table is non-empty", async () => {
+  it("preserves ownership when the target table is non-empty", async () => {
     const exec = fakeExec([
       [/to_regclass/, [{ present: true }]],
       [/NOT EXISTS/, [{ empty: false }]],
     ]);
     const r = await migrateGoalTable(exec, "life_goal_links");
-    expect(r.outcome).toBe("copied");
+    expect(r.outcome).toBe("target-non-empty");
   });
 
   it("copies when source exists and target is empty", async () => {
@@ -81,28 +81,6 @@ describe("GoalsMigration", () => {
     ).toBe(true);
     // never touches the source
     expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
-  });
-
-  it("fails closed when an existing goal id has different values", async () => {
-    const exec = fakeExec([
-      [/to_regclass/, [{ present: true }]],
-      [
-        /carve-out:verify-projection/,
-        [
-          {
-            missing_count: "0",
-            conflict_count: "1",
-            source_null_key_count: "0",
-            target_null_key_count: "0",
-            source_duplicate_key_count: "0",
-            target_duplicate_key_count: "0",
-          },
-        ],
-      ],
-    ]);
-    await expect(
-      migrateGoalTable(exec, "life_goal_definitions"),
-    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_COLLISION" });
   });
 
   it("creates the target schema and processes definitions before links", async () => {

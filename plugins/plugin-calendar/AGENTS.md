@@ -26,8 +26,10 @@ behind its OWNER/ADMIN role gate.
   calendar-native tables. `calendarPgSchema = pgSchema("app_calendar")` is
   registered via the plugin `schema` field, and `CalendarMigrationService`
   performs a non-destructive one-time reconciliation of existing `app_lifeops`
-  rows (copy missing keys, fail on same-key drift, verify completeness, and
-  never drop the source). Requires `@elizaos/plugin-sql` loaded first. Raw SQL
+  rows only into empty owner tables without completed migration claims. Fresh
+  imports verify the full projection; established owner rows and deletions remain
+  authoritative, and legacy sources are never dropped. Requires
+  `@elizaos/plugin-sql` loaded first. Raw SQL
   must qualify table names with the `app_calendar.` prefix.
 - **Contract types live in `@elizaos/shared/contracts/calendar`** so `@elizaos/ui`
   (which types its `client` against them) and the plugins can both depend on them

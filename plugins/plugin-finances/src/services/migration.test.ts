@@ -39,7 +39,12 @@ function makeExecutor(opts: {
     if (sql.includes("carve-out:claim")) {
       return [{ holder_token: [...sql.matchAll(/'([^']+)'/g)][1]?.[1] }];
     }
-    if (sql.includes("carve-out:release")) return [];
+    if (
+      sql.includes("carve-out:release") ||
+      sql.includes("carve-out:previous-status") ||
+      sql.includes("carve-out:lock-sources")
+    )
+      return [];
     if (sql.includes("carve-out:complete")) return [{ migration_key: "done" }];
     if (sql.includes("carve-out:verify-projection")) {
       return [
@@ -90,14 +95,14 @@ describe("migrateFinanceTable guards", () => {
     expect(inserts).toHaveLength(0);
   });
 
-  it("reconciles when the target table already has rows", async () => {
+  it("preserves ownership when the target table already has rows", async () => {
     const { exec, inserts } = makeExecutor({
       sourcePresent: true,
       targetEmpty: false,
     });
     const result = await migrateFinanceTable(exec, SAMPLE_TABLE);
-    expect(result.outcome).toBe("copied");
-    expect(inserts).toHaveLength(1);
+    expect(result.outcome).toBe("target-non-empty");
+    expect(inserts).toHaveLength(0);
   });
 
   it("copies when source exists and target is empty", async () => {
@@ -113,19 +118,6 @@ describe("migrateFinanceTable guards", () => {
     expect(insert).toContain('app_lifeops."life_payment_sources"');
     // Never drops/alters the source.
     expect(insert).not.toMatch(/DROP|ALTER|DELETE/i);
-  });
-
-  it("fails closed when an existing finance id has different values", async () => {
-    const { exec } = makeExecutor({
-      sourcePresent: true,
-      targetEmpty: false,
-      conflicts: 1,
-    });
-    await expect(migrateFinanceTable(exec, SAMPLE_TABLE)).rejects.toMatchObject(
-      {
-        code: "CARVE_OUT_MIGRATION_COLLISION",
-      },
-    );
   });
 });
 

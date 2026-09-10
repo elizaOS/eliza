@@ -29,6 +29,27 @@ describe("parseFrontmatterDocument", () => {
 		});
 	});
 
+	it("rejects actual excessive flow and block collection depth before composition", () => {
+		const flow = `value: ${"[".repeat(40)}leaf${"]".repeat(40)}`;
+		const block =
+			Array.from(
+				{ length: 40 },
+				(_, index) => `${" ".repeat(index * 2)}key:`,
+			).join("\n") +
+			"\n" +
+			" ".repeat(80) +
+			"leaf";
+		for (const yaml of [flow, block]) {
+			expect(
+				parseFrontmatterDocument(`---\n${yaml}\n---\nComplete body`),
+			).toMatchObject({
+				kind: "invalid",
+				code: "nest-bound",
+				body: "Complete body",
+			});
+		}
+	});
+
 	it.each([
 		["invalid-delimiter", "---\ntitle: missing closer"],
 		["nul-byte", "---\ntitle: bad\u0000value\n---\nbody"],

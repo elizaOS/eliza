@@ -1,97 +1,14 @@
 /**
- * Wallet API contracts.
- *
- * Pure shapes live beside this module in wallet-types; runtime helpers,
- * normalizers, and constants remain here.
+ * Runtime-owned wallet contracts, RPC builders, and provider normalization.
+ * Pure shapes live in wallet-types; shared import paths forward to this owner.
  */
 
 import type {
-	BscTradeExecuteRequest,
-	BscTradeExecuteResponse,
-	BscTradeExecutionResult,
-	BscTradePreflightRequest,
-	BscTradePreflightResponse,
-	BscTradeQuoteLeg,
-	BscTradeQuoteRequest,
-	BscTradeQuoteResponse,
-	BscTradeReadinessChecks,
-	BscTradeRoutePreference,
-	BscTradeRouteProvider,
-	BscTradeSide,
-	BscTradeTxStatus,
-	BscTradeTxStatusResponse,
-	BscTransferExecuteRequest,
-	BscTransferExecuteResponse,
-	BscTransferExecutionResult,
-	BscUnsignedApprovalTx,
-	BscUnsignedTradeTx,
-	BscUnsignedTransferTx,
-	BscWalletRpcProvider,
-	EvmChainBalance,
-	EvmNft,
-	EvmSigningCapabilityKind,
-	EvmTokenBalance,
-	EvmWalletRpcProvider,
-	KeyValidationResult,
-	SolanaNft,
-	SolanaTokenBalance,
-	SolanaWalletRpcProvider,
-	StewardApprovalInfo,
-	StewardBalanceResponse,
-	StewardPolicyResult,
-	StewardTokenBalance,
-	StewardTokenBalancesResponse,
-	StewardWalletAddressesResponse,
-	StewardWebhookEvent,
-	StewardWebhookEventsResponse,
-	StewardWebhookEventType,
-	TradePermissionMode,
-	WalletAddresses,
-	WalletAddressPair,
-	WalletBalancesResponse,
-	WalletChain,
-	WalletChainKind,
 	WalletConfigStatus,
 	WalletConfigUpdateRequest,
-	WalletEntry,
-	WalletEvmBalances,
-	WalletEvmNftCollection,
-	WalletExportRejection,
-	WalletExportRequestBody,
-	WalletGenerateResult,
-	WalletImportResult,
-	WalletKeys,
-	WalletMarketMover,
-	WalletMarketOverviewProviderId,
-	WalletMarketOverviewResponse,
-	WalletMarketOverviewSource,
-	WalletMarketPrediction,
-	WalletMarketPriceSnapshot,
-	WalletNetworkMode,
-	WalletNftMetadataBase,
-	WalletNftsResponse,
-	WalletPrimaryMap,
-	WalletPrimaryUpdateRequest,
-	WalletPrimaryUpdateResponse,
-	WalletProviderKind,
 	WalletRpcChain,
 	WalletRpcCredentialKey,
 	WalletRpcSelections,
-	WalletSolanaBalances,
-	WalletSolanaNftCollection,
-	WalletSource,
-	WalletTokenBalanceBase,
-	WalletTradeLedgerEntry,
-	WalletTradeLedgerQuoteLeg,
-	WalletTradeLedgerRecordInput,
-	WalletTradeSource,
-	WalletTradingProfileRecentSwap,
-	WalletTradingProfileResponse,
-	WalletTradingProfileSeriesPoint,
-	WalletTradingProfileSourceFilter,
-	WalletTradingProfileSummary,
-	WalletTradingProfileTokenBreakdown,
-	WalletTradingProfileWindow,
 } from "./wallet-types.js";
 
 export type {
@@ -181,32 +98,29 @@ export type {
 	WalletTradingProfileSummary,
 	WalletTradingProfileTokenBreakdown,
 	WalletTradingProfileWindow,
-};
+} from "./wallet-types.js";
 
-// ---------------------------------------------------------------------------
-// Runtime helpers — constants and normalizers over the pure wallet shapes.
-// ---------------------------------------------------------------------------
+// ── Runtime helpers ──────────────────────────────────────────────────────────
+// RPC provider catalog, normalizers, and request builders.
+// These have runtime values and cannot live in the pure-types contracts package.
 
 export const WALLET_RPC_PROVIDER_OPTIONS = {
 	evm: [
-		{ id: "eliza-cloud" as EvmWalletRpcProvider, label: "Eliza Cloud" },
-		{ id: "alchemy" as EvmWalletRpcProvider, label: "Alchemy" },
-		{ id: "infura" as EvmWalletRpcProvider, label: "Infura" },
-		{ id: "ankr" as EvmWalletRpcProvider, label: "Ankr" },
+		{ id: "eliza-cloud", label: "Eliza Cloud" },
+		{ id: "alchemy", label: "Alchemy" },
+		{ id: "infura", label: "Infura" },
+		{ id: "ankr", label: "Ankr" },
 	],
 	bsc: [
-		{ id: "eliza-cloud" as BscWalletRpcProvider, label: "Eliza Cloud" },
-		{ id: "alchemy" as BscWalletRpcProvider, label: "Alchemy" },
-		{ id: "ankr" as BscWalletRpcProvider, label: "Ankr" },
-		{ id: "nodereal" as BscWalletRpcProvider, label: "NodeReal" },
-		{ id: "quicknode" as BscWalletRpcProvider, label: "QuickNode" },
+		{ id: "eliza-cloud", label: "Eliza Cloud" },
+		{ id: "alchemy", label: "Alchemy" },
+		{ id: "ankr", label: "Ankr" },
+		{ id: "nodereal", label: "NodeReal" },
+		{ id: "quicknode", label: "QuickNode" },
 	],
 	solana: [
-		{ id: "eliza-cloud" as SolanaWalletRpcProvider, label: "Eliza Cloud" },
-		{
-			id: "helius-birdeye" as SolanaWalletRpcProvider,
-			label: "Helius + Birdeye",
-		},
+		{ id: "eliza-cloud", label: "Eliza Cloud" },
+		{ id: "helius-birdeye", label: "Helius + Birdeye" },
 	],
 } as const;
 
@@ -221,22 +135,13 @@ const WALLET_RPC_PROVIDER_ALIASES = {
 	helius: "helius-birdeye",
 } as const;
 
-const WALLET_RPC_PROVIDER_IDS: Record<WalletRpcChain, ReadonlySet<string>> = {
-	evm: new Set<EvmWalletRpcProvider>([
-		"eliza-cloud",
-		"alchemy",
-		"infura",
-		"ankr",
-	]),
-	bsc: new Set<BscWalletRpcProvider>([
-		"eliza-cloud",
-		"alchemy",
-		"ankr",
-		"nodereal",
-		"quicknode",
-	]),
-	solana: new Set<SolanaWalletRpcProvider>(["eliza-cloud", "helius-birdeye"]),
-};
+const WALLET_RPC_PROVIDER_IDS = {
+	evm: new Set(WALLET_RPC_PROVIDER_OPTIONS.evm.map((option) => option.id)),
+	bsc: new Set(WALLET_RPC_PROVIDER_OPTIONS.bsc.map((option) => option.id)),
+	solana: new Set(
+		WALLET_RPC_PROVIDER_OPTIONS.solana.map((option) => option.id),
+	),
+} as const;
 
 export function normalizeWalletRpcProviderId<TChain extends WalletRpcChain>(
 	chain: TChain,
@@ -252,7 +157,7 @@ export function normalizeWalletRpcProviderId<TChain extends WalletRpcChain>(
 				trimmed as keyof typeof WALLET_RPC_PROVIDER_ALIASES
 			]
 		: trimmed;
-	if (WALLET_RPC_PROVIDER_IDS[chain].has(normalized)) {
+	if ((WALLET_RPC_PROVIDER_IDS[chain] as ReadonlySet<string>).has(normalized)) {
 		return normalized as WalletRpcSelections[TChain];
 	}
 	return null;
@@ -342,7 +247,6 @@ function isWalletConfigCredentialSet(
 	}
 }
 
-/** Resolve persisted wallet selections, including legacy credential inference. */
 export function resolveInitialWalletRpcSelections(
 	walletConfig: WalletConfigStatus | null | undefined,
 ): WalletRpcSelections {
@@ -387,7 +291,6 @@ function collectSelectedWalletRpcCredentialKeys(
 	return selectedKeys;
 }
 
-/** Build a complete wallet configuration mutation from selected RPC providers. */
 export function buildWalletRpcUpdateRequest(args: {
 	walletConfig?: WalletConfigStatus | null;
 	rpcFieldValues: Partial<Record<WalletRpcCredentialKey, string>>;
@@ -405,7 +308,9 @@ export function buildWalletRpcUpdateRequest(args: {
 
 	for (const key of selectedKeys) {
 		const value = rpcFieldValues[key]?.trim();
-		if (value) credentials[key] = value;
+		if (value) {
+			credentials[key] = value;
+		}
 	}
 
 	const allKnownKeys = new Set<WalletRpcCredentialKey>([
@@ -430,7 +335,9 @@ export function buildWalletRpcUpdateRequest(args: {
 	}
 
 	for (const key of allKnownKeys) {
-		if (selectedKeys.has(key)) continue;
+		if (selectedKeys.has(key)) {
+			continue;
+		}
 		if (
 			isWalletConfigCredentialSet(walletConfig, key) ||
 			rpcFieldValues[key] !== undefined

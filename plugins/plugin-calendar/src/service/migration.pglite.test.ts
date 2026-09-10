@@ -232,7 +232,7 @@ describe("Calendar historical source migration", () => {
     );
   });
 
-  it("upgrades an already canonicalized calendar without duplicate rows or lost sync metadata", async () => {
+  it("preserves an adopted calendar and its live sync metadata without reimporting stale source rows", async () => {
     // Reproduce the prior release: raw table copy followed by source-identity
     // normalization, with no durable carve-out receipt.
     await database.exec(`
@@ -270,14 +270,14 @@ describe("Calendar historical source migration", () => {
     );
 
     await expect(migrateCalendarTables(carveOutDatabase)).resolves.toEqual([
-      { table: "life_calendar_events", outcome: "copied" },
-      { table: "life_calendar_sync_states", outcome: "copied" },
+      { table: "life_calendar_events", outcome: "target-non-empty" },
+      { table: "life_calendar_sync_states", outcome: "target-non-empty" },
     ]);
     expect(
       await exec(
         "SELECT id FROM app_calendar.life_calendar_events ORDER BY id",
       ),
-    ).toEqual([{ id: "event-1" }, { id: "event-2" }]);
+    ).toEqual([{ id: "event-1" }]);
     expect(
       await exec(`SELECT id, grant_id, connector_account_id, next_sync_token
       FROM app_calendar.life_calendar_sync_states`),
@@ -308,30 +308,32 @@ describe("Calendar historical source migration", () => {
     ).toEqual([]);
   });
 
-  it("rolls back canonical normalization and leaves no receipt when source values conflict", async () => {
+  it("rolls back a corrupt fresh calendar projection without recording completion", async () => {
     await database.exec(`
-      INSERT INTO app_calendar.life_calendar_sync_states (
-        id, agent_id, provider, side, calendar_id, window_start_at,
-        window_end_at, synced_at, updated_at
-      ) SELECT * FROM app_lifeops.life_calendar_sync_states;
-      UPDATE app_calendar.life_calendar_sync_states
-        SET window_end_at = '2026-11-01T00:00:00.000Z';
+      CREATE FUNCTION corrupt_calendar_import() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN NEW.title := 'corrupted import'; RETURN NEW; END $$;
+      CREATE TRIGGER corrupt_import BEFORE INSERT ON app_calendar.life_calendar_events
+      FOR EACH ROW EXECUTE FUNCTION corrupt_calendar_import();
     `);
-    const targetBefore = await exec(
-      "SELECT * FROM app_calendar.life_calendar_sync_states",
-    );
     await expect(migrateCalendarTables(carveOutDatabase)).rejects.toMatchObject(
       {
         code: "CARVE_OUT_MIGRATION_COLLISION",
       },
     );
     expect(
-      await exec("SELECT * FROM app_calendar.life_calendar_sync_states"),
-    ).toEqual(targetBefore);
+      await exec("SELECT * FROM app_calendar.life_calendar_events"),
+    ).toEqual([]);
     expect(
       await exec(`SELECT status FROM app_eliza_migrations.carve_out_receipts
-      WHERE migration_key = 'calendar/life_calendar_sync_states/v2'`),
+      WHERE migration_key = 'calendar/life_calendar_events/v2'`),
     ).toEqual([]);
+    await database.exec(
+      "DROP TRIGGER corrupt_import ON app_calendar.life_calendar_events",
+    );
+    await migrateCalendarTables(carveOutDatabase);
+    expect(
+      await exec("SELECT title FROM app_calendar.life_calendar_events"),
+    ).toEqual([{ title: "Historical event" }]);
   });
   it("fails closed on a missing required column without completing its receipt", async () => {
     await database.exec(
@@ -361,7 +363,9 @@ describe("Calendar historical source migration", () => {
     expect(sourceCount.rows[0]?.count).toBe("1");
   });
 
-  it("repairs past a completed v1 receipt exactly once and honors the completed v2 receipt", async () => {
+  it("preserves deletion after an earlier completed calendar import", async () => {
+    await migrateCalendarTable(exec, "life_calendar_events");
+    await database.exec("DELETE FROM app_calendar.life_calendar_events");
     await database.exec(`
       CREATE SCHEMA app_eliza_migrations;
       CREATE TABLE app_eliza_migrations.carve_out_receipts (
@@ -380,9 +384,13 @@ describe("Calendar historical source migration", () => {
     `);
 
     await expect(migrateCalendarTables(carveOutDatabase)).resolves.toEqual([
-      { table: "life_calendar_events", outcome: "copied" },
+      { table: "life_calendar_events", outcome: "already-migrated" },
       { table: "life_calendar_sync_states", outcome: "copied" },
     ]);
+
+    expect(
+      await exec("SELECT * FROM app_calendar.life_calendar_events"),
+    ).toEqual([]);
 
     const receipts = await database.query<{
       migration_key: string;
@@ -399,10 +407,6 @@ describe("Calendar historical source migration", () => {
     expect(receipts.rows).toEqual([
       {
         migration_key: "calendar/life_calendar_events/v1",
-        status: "completed",
-      },
-      {
-        migration_key: "calendar/life_calendar_events/v2",
         status: "completed",
       },
     ]);

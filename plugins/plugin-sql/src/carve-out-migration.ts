@@ -214,6 +214,8 @@ export async function runCarveOutMigration<T>(
   database: CarveOutDatabase,
   options: {
     key: string;
+    /** Completed earlier ownership claims must never trigger a new import. */
+    previousKeys?: readonly string[];
     sourceTables: ReadonlyArray<{ schema: string; table: string }>;
     run: (execute: CarveOutSqlExecutor) => Promise<T>;
     outcome: (value: T) => string;
@@ -258,6 +260,26 @@ export async function runCarveOutMigration<T>(
 
     try {
       await exec(sourceLockStatement(options.sourceTables));
+      if (options.previousKeys?.length) {
+        const previous = await exec(`/* carve-out:previous-status */
+          SELECT migration_key, status FROM ${RECEIPT_SCHEMA}.${RECEIPT_TABLE}
+          WHERE migration_key IN (${options.previousKeys.map(literal).join(", ")})`);
+        if (previous.some((row) => row.status !== "completed")) {
+          throw new ElizaError("An earlier carve-out ownership claim is incomplete", {
+            code: "CARVE_OUT_MIGRATION_IN_PROGRESS",
+            context: { migrationKey: options.key, previousKeys: options.previousKeys },
+            severity: "fatal",
+          });
+        }
+        if (previous.length > 0) {
+          await exec(`/* carve-out:release */
+            DELETE FROM ${RECEIPT_SCHEMA}.${RECEIPT_TABLE}
+            WHERE migration_key = ${literal(options.key)}
+              AND holder_token = ${literal(holderToken)}
+              AND status = 'running'`);
+          return { status: "already-completed" };
+        }
+      }
       const value = await options.run(exec);
       if (options.shouldComplete && !options.shouldComplete(value)) {
         await exec(`/* carve-out:release */

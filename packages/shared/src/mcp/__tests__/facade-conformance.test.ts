@@ -13,7 +13,6 @@ import { validateResourceSelection as validateCloudResource } from "../../../../
 import {
   buildMcpProviderProjection,
   detectMcpModelProvider,
-  toolReasoningTemplate,
 } from "../index.js";
 
 const servers = [
@@ -73,10 +72,6 @@ describe("MCP facade conformance", () => {
     );
   });
 
-  it("keeps the plugin prompt facade on the canonical tool-result template", () => {
-    expect(localToolReasoningTemplate).toBe(toolReasoningTemplate);
-  });
-
   it("frames errored tool results as failures without truncating their detail", () => {
     const errorDetail = `Error from <upstream>: ${"complete-detail&".repeat(1_000)}`;
     const prompt = composePromptFromState({
@@ -91,7 +86,7 @@ describe("MCP facade conformance", () => {
           hasAttachments: false,
         },
       } as never,
-      template: toolReasoningTemplate,
+      template: localToolReasoningTemplate,
     });
 
     expect(prompt).toContain(errorDetail);
@@ -115,7 +110,7 @@ describe("MCP facade conformance", () => {
           hasAttachments: false,
         },
       } as never,
-      template: toolReasoningTemplate,
+      template: localToolReasoningTemplate,
     });
 
     expect(prompt).toContain("requested data");

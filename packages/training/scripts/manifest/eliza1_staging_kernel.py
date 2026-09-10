@@ -139,21 +139,20 @@ def validate_checksum_manifest(bundle_dir: Path) -> tuple[str, ...]:
         if len(parts) != 2:
             errors.append(f"{CHECKSUM_PATH}:{line_number}: expected '<sha>  <path>'")
             continue
-        recorded[parts[1].strip()] = parts[0]
-    for path in all_checksum_inputs(bundle_dir):
-        relative = str(path.relative_to(bundle_dir))
+        relative = parts[1].strip()
+        if relative in recorded:
+            errors.append(f"{CHECKSUM_PATH}:{line_number}: duplicate record for {relative}")
+            continue
+        recorded[relative] = parts[0]
+    actual = {str(path.relative_to(bundle_dir)): path for path in all_checksum_inputs(bundle_dir)}
+    for relative in recorded.keys() - actual.keys():
+        errors.append(f"{CHECKSUM_PATH}: recorded artifact is missing: {relative}")
+    for relative, path in actual.items():
+        if not path.resolve().is_relative_to(bundle_dir.resolve()):
+            errors.append(f"{CHECKSUM_PATH}: artifact resolves outside bundle: {relative}")
+            continue
         if relative not in recorded:
             errors.append(f"{CHECKSUM_PATH}: missing {relative}")
         elif recorded[relative] != sha256_file(path):
             errors.append(f"{CHECKSUM_PATH}: checksum mismatch for {relative}")
     return tuple(errors)
-
-
-def profile_graph(profile: StagingProfile, tier: str) -> tuple[str, ...]:
-    """Return the deterministic directory graph used by drift tests and tooling."""
-    return tuple(
-        relative
-        for relative in profile.release_dirs
-        if profile.conditional_dirs.get(relative) is None
-        or tier in profile.conditional_dirs[relative]
-    )

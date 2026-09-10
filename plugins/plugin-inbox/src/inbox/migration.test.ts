@@ -55,13 +55,13 @@ describe("InboxMigration", () => {
     expect(r.outcome).toBe("source-missing");
   });
 
-  it("reconciles when the target table is non-empty", async () => {
+  it("preserves ownership when the target table is non-empty", async () => {
     const exec = fakeExec([
       [/to_regclass/, [{ present: true }]],
       [/NOT EXISTS/, [{ empty: false }]],
     ]);
     const r = await migrateInboxTable(exec, "life_email_unsubscribes");
-    expect(r.outcome).toBe("copied");
+    expect(r.outcome).toBe("target-non-empty");
   });
 
   it("copies when source exists and target is empty", async () => {
@@ -107,28 +107,6 @@ describe("InboxMigration", () => {
     expect(r.outcome).toBe("copied");
     expect(log.some((s) => /s\."snoozed_until"/.test(s))).toBe(true);
     expect(log.some((s) => /NULL AS snoozed_until/.test(s))).toBe(false);
-  });
-
-  it("fails closed when an existing inbox id has different values", async () => {
-    const exec = fakeExec([
-      [/to_regclass/, [{ present: true }]],
-      [
-        /carve-out:verify-projection/,
-        [
-          {
-            missing_count: "0",
-            conflict_count: "1",
-            source_null_key_count: "0",
-            target_null_key_count: "0",
-            source_duplicate_key_count: "0",
-            target_duplicate_key_count: "0",
-          },
-        ],
-      ],
-    ]);
-    await expect(
-      migrateInboxTable(exec, "life_email_unsubscribes"),
-    ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_COLLISION" });
   });
 
   it("creates the target schema and processes every inbox table", async () => {

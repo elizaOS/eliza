@@ -26,7 +26,7 @@ export function decodeNativeBase64(value: string): ArrayBuffer {
 export function nativeHttpResultBody(
   result: Pick<NativeHttpResult, "body" | "bodyBase64">,
 ): ArrayBuffer | string {
-  return typeof result.bodyBase64 === "string"
+  return typeof result.bodyBase64 === "string" && result.bodyBase64.length > 0
     ? decodeNativeBase64(result.bodyBase64)
     : (result.body ?? "");
 }
@@ -63,6 +63,7 @@ export function classifyNativeFetchRequest(
   try {
     return { kind: "absolute", url: new URL(raw) };
   } catch {
+    // error-policy:J3 Unparseable targets remain explicitly invalid and receive no native route.
     return { kind: "invalid" };
   }
 }

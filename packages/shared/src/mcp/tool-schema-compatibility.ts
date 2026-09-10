@@ -9,8 +9,6 @@ export type McpJsonSchema = Readonly<Record<string, unknown>>;
 
 export interface McpSchemaCompatibilityPolicy {
   readonly applies: boolean;
-  /** Node hosts fail closed on non-JSON/cyclic schemas; diagnostic Cloud tests may inspect malformed values. */
-  readonly enforceBudget?: boolean;
   unsupportedFor(type: string | undefined): readonly string[];
   describe(
     original: string | undefined,
@@ -110,9 +108,9 @@ export function transformMcpToolSchema<TSchema extends McpJsonSchema>(
   schema: TSchema,
   policy: McpSchemaCompatibilityPolicy,
 ): TSchema {
-  if (policy.enforceBudget !== false) assertMcpJsonSchemaBudget(schema);
+  assertMcpJsonSchemaBudget(schema);
   if (!policy.applies) return schema;
   const rewritten = rewriteSchema(schema, policy);
-  if (policy.enforceBudget !== false) assertMcpJsonSchemaBudget(rewritten);
+  assertMcpJsonSchemaBudget(rewritten);
   return rewritten as TSchema;
 }

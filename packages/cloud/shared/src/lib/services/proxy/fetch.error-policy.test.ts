@@ -24,7 +24,6 @@ const baseOpts: RetryFetchOptions = {
   initialDelayMs: 0,
   timeoutMs: 50,
   serviceTag: "TEST",
-  replayPolicy: "safe",
 };
 
 describe("retryFetch error policy", () => {

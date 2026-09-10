@@ -336,9 +336,10 @@ export function chooseSmallerFallbackModel(
   const currentSize =
     catalog.find((model) => model.id === currentModelId)?.sizeGb ??
     Number.POSITIVE_INFINITY;
-  return (
-    rankedCandidates(slot, hardware, catalog, options).find(
-      (model) => model.id !== currentModelId && model.sizeGb < currentSize,
-    ) ?? null
+  // Exclude the failed/current model before ladder selection so an exhausted
+  // primary ladder can still admit a fitting smaller catalog fallback.
+  const smallerCatalog = catalog.filter(
+    (model) => model.id !== currentModelId && model.sizeGb < currentSize,
   );
+  return rankedCandidates(slot, hardware, smallerCatalog, options)[0] ?? null;
 }

@@ -1,6 +1,6 @@
 /**
  * Cloud MCP compatibility facade over the shared schema traversal kernel;
- * malformed-schema diagnostics remain Cloud policy while transports stay out.
+ * the shared preflight rejects malformed or oversized schemas before rewriting.
  */
 
 import { transformMcpToolSchema } from "@elizaos/shared/mcp";
@@ -26,7 +26,6 @@ export abstract class McpToolCompatibility {
   transformToolSchema<TSchema extends JSONSchema7>(toolSchema: TSchema): TSchema {
     return transformMcpToolSchema(toolSchema as Record<string, unknown>, {
       applies: this.shouldApply(),
-      enforceBudget: false,
       unsupportedFor: (type) => this.unsupportedFor(type),
       describe: (original, constraints) => this.mergeDescription(original, { ...constraints }),
     }) as TSchema;
@@ -57,11 +56,7 @@ export abstract class McpToolCompatibility {
   }
 
   protected stringifyConstraints(constraints: Record<string, unknown>): string {
-    return JSON.stringify(constraints, (_key, value) =>
-      typeof value === "number" && !Number.isFinite(value)
-        ? `[non-finite number: ${String(value)}]`
-        : value,
-    );
+    return JSON.stringify(constraints);
   }
 
   protected abstract getUnsupportedStringProperties(): string[];

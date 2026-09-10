@@ -10,11 +10,9 @@
  * still hold the owner's finance rows in `app_lifeops`, so on first boot we
  * copy them across — once, idempotently, and WITHOUT ever touching the source.
  *
- * Each source table is reconciled by primary key even when the target already
- * contains live data. Missing rows are copied, same-key value drift fails
- * closed, and complete readback is required before receipt completion.
- * Verification uses `/v2` receipts so unsafe completed `/v1` receipts trigger
- * one repair pass without making later owner deletions replay from the source.
+ * Existing completion markers and populated owner tables remain authoritative.
+ * Only a fresh import into an empty target is copied and verified; the durable
+ * receipt prevents later owner deletions from replaying stale legacy rows.
  *
  * The source table is never dropped. A security sweep does alter Plaid rows in
  * both schemas after copying: retired plaintext access tokens are removed and
@@ -59,7 +57,11 @@ export type SqlExecutor = (
 export interface TableMigrationResult {
   table: MigratedFinanceTable;
   /** `"copied"` ran the INSERT; otherwise the reason it was skipped. */
-  outcome: "copied" | "source-missing" | "already-migrated";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated";
 }
 
 function quoteIdent(name: string): string {
@@ -83,6 +85,16 @@ async function sourceTableExists(
  * guards. Pure aside from the injected executor — the unit tests drive this
  * directly.
  */
+async function targetTableIsEmpty(
+  exec: SqlExecutor,
+  table: MigratedFinanceTable,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
+  );
+  return rows[0]?.empty === true || rows[0]?.empty === "true";
+}
+
 export async function migrateFinanceTable(
   exec: SqlExecutor,
   table: MigratedFinanceTable,
@@ -90,6 +102,10 @@ export async function migrateFinanceTable(
   if (!(await sourceTableExists(exec, table))) {
     return { table, outcome: "source-missing" };
   }
+  if (!(await targetTableIsEmpty(exec, table))) {
+    return { table, outcome: "target-non-empty" };
+  }
+
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
   const source = `${SOURCE_SCHEMA}.${quoteIdent(table)}`;
   // NOT EXISTS on the primary key is redundant given the empty-target guard,
@@ -124,6 +140,7 @@ export async function migrateFinanceTables(
   for (const table of MIGRATED_FINANCE_TABLES) {
     const receipt = await runCarveOutMigration(database, {
       key: `finances/${table}/v2`,
+      previousKeys: [`finances/${table}/v1`],
       sourceTables: [{ schema: SOURCE_SCHEMA, table }],
       run: (execute) => migrateFinanceTable(execute, table),
       outcome: (result) => result.outcome,

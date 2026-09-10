@@ -9,11 +9,9 @@
  * owner's triage rows in `app_lifeops`, so on first boot we copy them across —
  * once, idempotently, and WITHOUT ever touching the source.
  *
- * Each source table is reconciled by primary key even when the target already
- * contains live data. Missing rows are copied, same-key value drift fails
- * closed, and complete readback is required before receipt completion.
- * Verification uses `/v2` receipts so unsafe completed `/v1` receipts trigger
- * one repair pass without making later owner deletions replay from the source.
+ * Existing completion markers and populated owner tables remain authoritative.
+ * Only a fresh import into an empty target is copied and verified; the durable
+ * receipt prevents later owner deletions from replaying stale legacy rows.
  *
  * The source table is NEVER dropped or altered. `life_inbox_triage_entries`
  * maps columns explicitly so old `app_lifeops` rows copy into the newer
@@ -49,7 +47,11 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedInboxTable;
-  outcome: "copied" | "source-missing" | "already-migrated";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated";
 }
 
 function quoteIdent(name: string): string {
@@ -121,6 +123,16 @@ async function repairTargetTable(
   );
 }
 
+async function targetTableIsEmpty(
+  exec: SqlExecutor,
+  table: MigratedInboxTable,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
+  );
+  return rows[0]?.empty === true || rows[0]?.empty === "true";
+}
+
 export async function migrateInboxTable(
   exec: SqlExecutor,
   table: MigratedInboxTable,
@@ -129,6 +141,10 @@ export async function migrateInboxTable(
   if (!(await sourceTableExists(exec, table))) {
     return { table, outcome: "source-missing" };
   }
+  if (!(await targetTableIsEmpty(exec, table))) {
+    return { table, outcome: "target-non-empty" };
+  }
+
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
   const source = `${SOURCE_SCHEMA}.${quoteIdent(table)}`;
   if (table === "life_inbox_triage_entries") {
@@ -180,6 +196,7 @@ export async function migrateInboxTables(
   for (const table of MIGRATED_INBOX_TABLES) {
     const receipt = await runCarveOutMigration(database, {
       key: `inbox/${table}/v2`,
+      previousKeys: [`inbox/${table}/v1`],
       sourceTables: [{ schema: SOURCE_SCHEMA, table }],
       run: (execute) => migrateInboxTable(execute, table),
       outcome: (result) => result.outcome,

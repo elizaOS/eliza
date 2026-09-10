@@ -18,13 +18,13 @@ describe("native HTTP codec", () => {
     ]);
   });
 
-  it("treats an explicitly empty byte payload as authoritative", async () => {
+  it("preserves legacy text when the native byte field is empty", async () => {
     const response = nativeHttpResultToResponse({
       status: 200,
-      body: "stale text",
+      body: "complete response",
       bodyBase64: "",
     });
-    expect((await response.arrayBuffer()).byteLength).toBe(0);
+    expect(await response.text()).toBe("complete response");
   });
 
   it("preserves text and suppresses forbidden bodies", async () => {

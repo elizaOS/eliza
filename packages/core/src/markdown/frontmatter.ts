@@ -48,49 +48,32 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 	return prototype === Object.prototype || prototype === null;
 }
 
-function exceedsNestBound(text: string, maxDepth: number): boolean {
-	let flowDepth = 0;
-	let inSingle = false;
-	let inDouble = false;
-	let escaped = false;
-	for (let index = 0; index < text.length; index += 1) {
-		const char = text[index];
-		if (inSingle) {
-			if (char === "'" && text[index + 1] === "'") index += 1;
-			else if (char === "'") inSingle = false;
-			continue;
+function preflightFrontmatter(
+	text: string,
+	maxDepth: number,
+): FrontmatterParseErrorCode | undefined {
+	const parser = new YAML.Parser();
+	const lexer = new YAML.Lexer();
+	for (const lexeme of lexer.lex(text)) {
+		for (const token of parser.next(lexeme)) {
+			// A failed CST must never be passed to the recursive composer.
+			if (token.type === "error") return "invalid-yaml";
 		}
-		if (inDouble) {
-			if (escaped) escaped = false;
-			else if (char === "\\") escaped = true;
-			else if (char === '"') inDouble = false;
-			continue;
-		}
-		if (char === "'") inSingle = true;
-		else if (char === '"') inDouble = true;
-		else if (char === "{" || char === "[") {
-			flowDepth += 1;
-			if (flowDepth > maxDepth) return true;
-		} else if (char === "}" || char === "]") {
-			flowDepth = Math.max(0, flowDepth - 1);
-		}
+		const collections = parser.stack.filter(
+			(token) =>
+				token.type === "block-map" ||
+				token.type === "block-seq" ||
+				token.type === "flow-collection",
+		);
+		// Existing callers count nesting below the implicit block root; an explicit
+		// flow collection is itself one nesting level even at the document root.
+		const implicitRoot =
+			collections[0]?.type === "block-map" ||
+			collections[0]?.type === "block-seq";
+		const depth = collections.length - (implicitRoot ? 1 : 0);
+		if (depth > maxDepth) return "nest-bound";
 	}
-
-	let blockScalarIndent: number | null = null;
-	for (const line of text.split("\n")) {
-		const trimmed = line.trim();
-		const indent = line.length - line.trimStart().length;
-		if (blockScalarIndent !== null) {
-			if (trimmed === "" || indent > blockScalarIndent) continue;
-			blockScalarIndent = null;
-		}
-		if (trimmed === "" || trimmed.startsWith("#")) continue;
-		if (Math.floor(indent / 2) > maxDepth) return true;
-		if (/[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(?:#.*)?$/.test(trimmed)) {
-			blockScalarIndent = indent;
-		}
-	}
-	return false;
+	return undefined;
 }
 
 /** Parse one complete Markdown document without truncating its body. */
@@ -119,15 +102,14 @@ export function parseFrontmatterDocument(
 		return { kind: "invalid", code: "nul-byte", body, raw };
 	}
 	const maxDepth = options.maxDepth ?? DEFAULT_FRONTMATTER_MAX_DEPTH;
-	if (
-		!Number.isInteger(maxDepth) ||
-		maxDepth < 1 ||
-		exceedsNestBound(raw, maxDepth)
-	) {
+	if (!Number.isInteger(maxDepth) || maxDepth < 1) {
 		return { kind: "invalid", code: "nest-bound", body, raw };
 	}
 	let parsed: unknown;
 	try {
+		const preflightError = preflightFrontmatter(raw, maxDepth);
+		if (preflightError)
+			return { kind: "invalid", code: preflightError, body, raw };
 		parsed = YAML.parse(raw, { maxAliasCount: 100, uniqueKeys: true });
 	} catch (cause) {
 		// error-policy:J3 malformed untrusted frontmatter is an explicit result.

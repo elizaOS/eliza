@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -170,7 +171,7 @@ def smoke_load_gguf(gguf_path: Path, quantize_bin: Path) -> dict[str, object]:
                 f"{(process.stderr or '')[-300:]}"
             ),
         }
-    return {"ok": True, "output": output[-200:], "cmd": " ".join(command)}
+    return {"ok": True, "output": output, "cmd": " ".join(command)}
 
 
 def run_quant_profile(
@@ -249,6 +250,10 @@ def run_quant_profile(
     f16_path = args.output / basename.replace(f"-{profile.level}.gguf", "-F16.gguf")
     quant_path = args.output / basename
 
+    # A replacement may fail after overwriting weights; retire the prior proof
+    # before any converter/quantizer can mutate its associated artifact.
+    (args.output / profile.sidecar_name).unlink(missing_ok=True)
+
     logger.info("step 1/2: convert HF -> f16 GGUF (%s)", f16_path)
     execute(
         [
@@ -287,6 +292,8 @@ def run_quant_profile(
             "error": "--no-smoke-load was used; no real-artifact recipe test ran",
         }
 
+    with quant_path.open("rb") as artifact:
+        artifact_sha256 = hashlib.file_digest(artifact, "sha256").hexdigest()
     release_eligible = bool(smoke.get("ok"))
     sidecar: dict[str, object] = {
         "method": f"gguf_{profile.level.lower()}",
@@ -307,6 +314,7 @@ def run_quant_profile(
             "status": "passed" if release_eligible else "skipped",
             "release_eligible": release_eligible,
             "artifact": str(quant_path),
+            "artifact_sha256": artifact_sha256,
             "details": smoke,
         },
         "notes": profile.notes,

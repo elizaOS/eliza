@@ -6,8 +6,9 @@
  * live in scheduling-owned `app_scheduling`; this service creates/repairs the
  * target schema and copies existing source rows once without deleting or
  * mutating the old tables.
- * Verification uses `/v2` receipts so unsafe completed `/v1` receipts trigger
- * one repair pass without making later owner deletions replay from the source.
+ * Completed receipts from either generation remain authoritative. Without a
+ * prior receipt, scheduling preserves its existing missing-row adoption policy
+ * and verifies the resulting projection before recording completion.
  */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
@@ -286,6 +287,7 @@ export async function migrateSchedulingTables(
   for (const table of MIGRATED_SCHEDULING_TABLES) {
     const receipt = await runCarveOutMigration(database, {
       key: `scheduling/${table}/v2`,
+      previousKeys: [`scheduling/${table}/v1`],
       sourceTables: [{ schema: SOURCE_SCHEMA, table }],
       run: (execute) => migrateSchedulingTable(execute, table),
       outcome: (result) => result.outcome,

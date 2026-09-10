@@ -69,3 +69,51 @@ def test_smoke_rejects_empty_or_failed_generation(tmp_path, body):
     result = smoke_load_gguf(tmp_path / "model.gguf", tmp_path / "llama-quantize")
 
     assert result["ok"] is False
+
+
+@pytest.mark.parametrize("failure", ["convert", "quantize", "smoke"])
+def test_failed_artifact_replacement_cannot_retain_a_passed_sidecar(tmp_path, failure):
+    import hashlib
+    import json
+    import subprocess
+    from scripts.quantization.gguf_k_quant import QuantProfile, run_quant_profile, write_sidecar
+
+    converter = tmp_path / "convert.py"
+    converter.write_text("import sys\nfrom pathlib import Path\nPath(sys.argv[sys.argv.index('--outfile')+1]).write_bytes(b'f16')\n")
+    quantizer = executable(tmp_path / "llama-quantize", "import sys\nfrom pathlib import Path\nPath(sys.argv[-2]).write_bytes(b'first artifact')")
+    completion = executable(tmp_path / "llama-completion", "print('Paris.')")
+    output = tmp_path / "output"
+    profile = QuantProfile(level="Q4_K_M", sidecar_name="gguf_q4_k_m.json", notes="fixture")
+
+    def run():
+        return run_quant_profile(profile, ["--model", "fixture", "--output", str(output)],
+            find_convert_script=lambda _: converter, find_quantize_binary=lambda _: quantizer, write_sidecar=write_sidecar)
+
+    assert run() == 0
+    sidecar = output / profile.sidecar_name
+    receipt = json.loads(sidecar.read_text())
+    artifact = Path(receipt["output_file"])
+    first_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    if failure == "convert":
+        converter.write_text("raise SystemExit(2)\n")
+    elif failure == "quantize":
+        executable(quantizer, "raise SystemExit(2)")
+    else:
+        executable(quantizer, "import sys\nfrom pathlib import Path\nPath(sys.argv[-2]).write_bytes(b'replacement artifact')")
+        executable(completion, "raise SystemExit(2)")
+    if failure == "smoke":
+        assert run() == 2
+        assert artifact.read_bytes() == b"replacement artifact"
+    else:
+        with pytest.raises(subprocess.CalledProcessError):
+            run()
+    assert not sidecar.exists(), "failed replacement must not leave earlier release eligibility"
+    assert receipt["recipe_test"]["artifact_sha256"] == first_hash
+
+
+def test_smoke_retains_complete_generated_output(tmp_path):
+    generated = "完整输出 🟠 " * 400
+    executable(tmp_path / "llama-completion", f"print({generated!r})")
+    result = smoke_load_gguf(tmp_path / "model.gguf", tmp_path / "llama-quantize")
+    assert result["ok"] is True
+    assert result["output"] == generated.strip()

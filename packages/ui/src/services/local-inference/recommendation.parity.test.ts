@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   assessCatalogModelFit,
+  chooseSmallerFallbackModel,
   selectRecommendedModels,
 } from "./recommendation";
 
@@ -49,6 +50,36 @@ describe("local-inference recommendation parity", () => {
     );
     expect(result.TEXT_SMALL.model?.id).toBe("eliza-1-4b");
     expect(result.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
+  });
+
+  it("finds a fitting smaller model outside the mobile primary ladder after 4B fails", () => {
+    const hardware = probe({ totalRamGb: 8, mobile: { platform: "android" } });
+    const catalog = MODEL_CATALOG.filter((model) =>
+      ["eliza-1-2b", "eliza-1-4b"].includes(model.id),
+    );
+    const fallback = chooseSmallerFallbackModel(
+      "eliza-1-4b",
+      hardware,
+      "TEXT_LARGE",
+      catalog,
+    );
+    expect(fallback?.id).toBe("eliza-1-2b");
+    expect(
+      chooseSmallerFallbackModel(
+        "eliza-1-4b",
+        { ...hardware, totalRamGb: 1 },
+        "TEXT_LARGE",
+        catalog,
+      ),
+    ).toBeNull();
+    expect(
+      chooseSmallerFallbackModel(
+        "eliza-1-4b",
+        { ...hardware, arch: "arm64", cpuFeatures: { neon: false } },
+        "TEXT_LARGE",
+        catalog,
+      ),
+    ).toBeNull();
   });
 
   it("keeps an iOS fallback probe with unknown NEON eligible for RAM-fit models", () => {

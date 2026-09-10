@@ -755,11 +755,7 @@ function runSystemTesseract(bin, input, lang, timeoutMs, mode) {
     const readsStdin = Buffer.isBuffer(input);
     const inputArg = readsStdin ? "stdin" : input;
     const pageSegMode =
-      mode === "control-region"
-        ? "7"
-        : mode.startsWith("sparse-")
-          ? "11"
-          : "3";
+      mode === "control-region" ? "7" : mode.startsWith("sparse-") ? "11" : "3";
     const child = spawn(
       bin,
       [inputArg, "stdout", "-l", lang, "--psm", pageSegMode, "tsv"],

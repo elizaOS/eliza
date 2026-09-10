@@ -210,3 +210,35 @@ describe("runCarveOutMigration transaction", () => {
     120_000
   );
 });
+
+it("rejects an incomplete earlier ownership claim without importing or certifying rows", async () => {
+  const exec = await fixture();
+  const db = transactionalDatabase(exec);
+  await runCarveOutMigration(db, {
+    key: "test/prior-claim/v1",
+    sourceTables: [{ schema: "legacy_domain", table: "items" }],
+    run: async () => undefined,
+    outcome: () => "adopted",
+  });
+  // A committed running claim is an operator/legacy interruption, not authority
+  // for a different generation to restart the copy over mutable owner data.
+  await exec(`UPDATE app_eliza_migrations.carve_out_receipts SET status = 'running'
+    WHERE migration_key = 'test/prior-claim/v1'`);
+  const before = await exec("SELECT * FROM canonical_domain.items ORDER BY id");
+  await expect(
+    runCarveOutMigration(db, {
+      key: "test/prior-claim/v2",
+      previousKeys: ["test/prior-claim/v1"],
+      sourceTables: [{ schema: "legacy_domain", table: "items" }],
+      run: async (execute) => {
+        await execute("DELETE FROM canonical_domain.items");
+      },
+      outcome: () => "copied",
+    })
+  ).rejects.toMatchObject({ code: "CARVE_OUT_MIGRATION_IN_PROGRESS" });
+  expect(await exec("SELECT * FROM canonical_domain.items ORDER BY id")).toEqual(before);
+  expect(
+    await exec(`SELECT migration_key, status FROM app_eliza_migrations.carve_out_receipts
+    WHERE migration_key LIKE 'test/prior-claim/%' ORDER BY migration_key`)
+  ).toEqual([{ migration_key: "test/prior-claim/v1", status: "running" }]);
+}, 120_000);

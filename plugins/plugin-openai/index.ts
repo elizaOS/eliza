@@ -26,7 +26,7 @@ import type {
   TextEmbeddingParams,
   TokenizeTextParams,
 } from "@elizaos/core";
-import { ElizaError, EventType, logger, ModelType, registerProviderModels } from "@elizaos/core";
+import { EventType, logger, ModelType, registerProviderModels } from "@elizaos/core";
 import {
   handleActionPlanner,
   handleImageDescription,

@@ -10,15 +10,10 @@
  * rows in `app_lifeops`, so on first boot we copy them across — once,
  * idempotently, and WITHOUT ever touching the source.
  *
- * Each table is reconciled by primary key and verified before its durable
- * carve-out receipt is committed. Source and target identities are normalized
- * before reconciliation, including
- * grant/account defaults and sync-state IDs from earlier calendar upgrades.
- * Historical source schemas may predate additive connector and purge metadata;
- * absent required columns fail closed.
- * Verification uses `/v2` receipts so completed pre-verification `/v1`
- * receipts cannot bypass repair; after `/v2` completes, owner deletions remain
- * authoritative and are not repopulated on later startups.
+ * Existing completion markers and populated owner tables remain authoritative.
+ * Fresh imports normalize source identities and verify the complete projection
+ * before recording completion. Calendar-native schema repairs run independently
+ * of whether a legacy import is authorized.
  *
  * The source table is NEVER dropped or altered. Copies name the shared columns
  * explicitly so the calendar-owned target can add sync metadata without
@@ -107,7 +102,11 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedCalendarTable;
-  outcome: "copied" | "source-missing" | "already-migrated";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated";
 }
 
 /**
@@ -499,6 +498,16 @@ async function sourceColumnProjection(
     .join(", ");
 }
 
+async function targetTableIsEmpty(
+  exec: SqlExecutor,
+  table: MigratedCalendarTable,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
+  );
+  return rows[0]?.empty === true || rows[0]?.empty === "true";
+}
+
 export async function migrateCalendarTable(
   exec: SqlExecutor,
   table: MigratedCalendarTable,
@@ -506,6 +515,10 @@ export async function migrateCalendarTable(
   if (!(await sourceTableExists(exec, table))) {
     return { table, outcome: "source-missing" };
   }
+  if (!(await targetTableIsEmpty(exec, table))) {
+    return { table, outcome: "target-non-empty" };
+  }
+
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
   const source = `${SOURCE_SCHEMA}.${quoteIdent(table)}`;
   const columns = MIGRATED_CALENDAR_COLUMNS[table];
@@ -564,6 +577,7 @@ export async function migrateCalendarTables(
   for (const table of MIGRATED_CALENDAR_TABLES) {
     const receipt = await runCarveOutMigration(database, {
       key: `calendar/${table}/v2`,
+      previousKeys: [`calendar/${table}/v1`],
       sourceTables: [{ schema: SOURCE_SCHEMA, table }],
       run: (execute) => migrateCalendarTable(execute, table),
       outcome: (result) => result.outcome,
