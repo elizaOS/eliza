@@ -6508,11 +6508,17 @@ async function runLifeOperationHandlerInner(
         };
       }
       const reviewDomain = domain ?? "user_lifeops";
-      const active = (await listCallerDefinitions(service)).filter(
+      const scoped = (await listCallerDefinitions(service)).filter(
         (record) =>
-          record.definition.status === "active" &&
+          (record.definition.status === "active" ||
+            (surface === "OWNER_TODOS" &&
+              record.definition.status === "completed" &&
+              record.definition.id === targetName)) &&
           record.definition.domain === reviewDomain &&
           definitionReviewSurface(record) === surface,
+      );
+      const active = scoped.filter(
+        (record) => record.definition.status === "active",
       );
       let selected = active;
       // A list-shaped review sometimes arrives with the planner's own list
@@ -6527,7 +6533,19 @@ async function runLifeOperationHandlerInner(
           targetName.trim(),
         );
       if (targetName && !isListVerbiageTarget) {
-        const resolved = resolveDefinitionInRecords(active, targetName);
+        // A returned todo ID remains readable after completion. Keep ordinary
+        // lists and fuzzy title resolution restricted to active definitions.
+        const completedTodo =
+          surface === "OWNER_TODOS"
+            ? scoped.find(
+                (record) =>
+                  record.definition.id === targetName &&
+                  record.definition.status === "completed",
+              )
+            : undefined;
+        const resolved = completedTodo
+          ? { match: completedTodo, ambiguousCandidates: [] }
+          : resolveDefinitionInRecords(active, targetName);
         if (resolved.ambiguousCandidates.length > 0) {
           const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
           return {
@@ -6579,13 +6597,18 @@ async function runLifeOperationHandlerInner(
         };
       }
       const listed = selected.map((record) => ({
+        id: record.definition.id,
         title: record.definition.title,
+        status: record.definition.status,
         cadence: summarizeCadence(record.definition.cadence),
         kind: record.definition.kind,
       }));
       const fallback = [
         `You're tracking ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
-        ...listed.map((item) => `- ${item.title} (${item.cadence})`),
+        ...listed.map(
+          (item) =>
+            `- ${item.title} (${item.status}; ${item.cadence}; ID: ${item.id})`,
+        ),
         ...(selected.length > listed.length
           ? [`…and ${selected.length - listed.length} more.`]
           : []),
