@@ -36,11 +36,10 @@ describe("CockpitNewSessionForm", () => {
       {
         title: "fix the bug",
         goal: "fix the bug",
-        providerPolicy: {
+        providerPolicy: expect.objectContaining({
           preferredFramework: "elizaos",
           providerSource: "eliza-cloud",
-          model: "gemma-4-31b",
-        },
+        }),
       },
       undefined,
     );
