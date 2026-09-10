@@ -6,6 +6,7 @@
 // @vitest-environment-options {"url": "https://eliza.app/join"}
 
 import { cleanup, render, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appModeNavigation } from "../app-mode/app-mode";
 
@@ -46,7 +47,11 @@ afterEach(() => {
 
 describe("JoinPage apex app handoff", () => {
   it("replaces to the paired app origin before identity resolution", async () => {
-    render(<JoinPage />);
+    render(
+      <MemoryRouter initialEntries={["/join"]}>
+        <JoinPage />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(replacedUrls).toEqual(["https://cloud.eliza.app/join"]);

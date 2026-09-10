@@ -1,15 +1,21 @@
 /** Exercises app-mode auth, routing and read-only personal entry with a real renderer/client and deterministic HTTP responses; no live provider or account is used. */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state/persistence";
+import JoinPage from "../join/JoinPage";
+import { CloudI18nProvider } from "../shell/CloudI18nProvider";
 import { LocalStewardAuthContext } from "../shell/StewardProviderShared";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
 import { type AppModeAgent, appModeNavigation } from "./app-mode";
@@ -24,11 +30,11 @@ function base64url(value: unknown): string {
 
 // A minimally-valid Steward JWT: readStewardSessionFromStorage only
 // base64-decodes the payload (userId + a future exp); no signature check.
-function stewardToken(): string {
+function stewardToken(userId = "u1"): string {
   return [
     base64url({ alg: "none", typ: "JWT" }),
     base64url({
-      userId: "u1",
+      userId,
       email: "a@b.test",
       exp: Math.floor(Date.now() / 1000) + 3600,
     }),
@@ -68,7 +74,7 @@ interface StubRoutes {
   /** Response for GET /api/v1/eliza/agents. */
   agents: () => Response | Promise<Response>;
   /** Response for GET <cloud>/api/v1/eliza/personal (rowless personal entry). */
-  personal?: () => Response;
+  personal?: () => Response | Promise<Response>;
 }
 
 const realFetch = globalThis.fetch;
@@ -124,11 +130,17 @@ function LoginProbe(): React.JSX.Element {
 
 function renderEntry(
   initialPath = "/",
-  options?: { sessionLoading?: boolean },
+  options?: {
+    sessionLoading?: boolean;
+    queryClient?: QueryClient;
+    realJoin?: boolean;
+  },
 ): void {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+  const queryClient =
+    options?.queryClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
   // The management destination lives INSIDE appElement's route registry (the
   // real shape: AppModeEntryRoute mounts appElement, whose internal router
   // serves /cloud/*). Registering it as an outer sibling would let React
@@ -147,7 +159,18 @@ function renderEntry(
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route path="/login" element={<LoginProbe />} />
-          <Route path="/join" element={<div data-testid="join-page" />} />
+          <Route
+            path="/join"
+            element={
+              options?.realJoin ? (
+                <CloudI18nProvider initialLang="en">
+                  <JoinPage />
+                </CloudI18nProvider>
+              ) : (
+                <div data-testid="join-page" />
+              )
+            }
+          />
           <Route
             path="*"
             element={<AppModeEntryRoute appElement={appElement} />}
@@ -486,6 +509,87 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
       apiBase: `https://api.eliza.app/api/v1/eliza/agents/${encodeURIComponent(id)}`,
     });
   }
+
+  it.each(["session replacement", "page restoration"] as const)(
+    "never boots a late personal identity after %s",
+    async (change) => {
+      signIn();
+      let release!: (response: Response) => void;
+      let identityReads = 0;
+      const nextPersonal = "personal:00000000-0000-5000-8000-000000000003";
+      stubNetwork({
+        agents: agentsOk([]),
+        personal: () => {
+          identityReads += 1;
+          return identityReads === 1
+            ? new Promise((resolve) => {
+                release = resolve;
+              })
+            : personalSharedOk(nextPersonal)();
+        },
+      });
+      renderEntry("/", { realJoin: true });
+      await waitFor(() =>
+        expect(
+          fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
+        ).toHaveLength(1),
+      );
+      await act(async () => {
+        if (change === "session replacement") {
+          localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken("u2"));
+          window.dispatchEvent(new Event(STEWARD_SESSION_CHANGE_EVENT));
+        } else {
+          window.dispatchEvent(
+            new PageTransitionEvent("pagehide", { persisted: true }),
+          );
+          window.dispatchEvent(
+            new PageTransitionEvent("pageshow", { persisted: true }),
+          );
+        }
+        release(personalSharedOk()());
+      });
+      expect(loadPersistedActiveServer()).toBeNull();
+      expect(screen.queryByTestId("agent-app")).toBeNull();
+      await screen.findByRole("alert");
+      expect(identityReads).toBe(1);
+      await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+      await screen.findByTestId("agent-app");
+      expect(identityReads).toBe(2);
+      expect(loadPersistedActiveServer()).toMatchObject({
+        id: `cloud:${nextPersonal}`,
+      });
+      expect(personalDedicatedRequests()).toEqual([]);
+    },
+  );
+
+  it("does not reuse a completed personal-entry cache for a later session", async () => {
+    signIn();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    stubNetwork({ agents: agentsOk([]), personal: personalSharedOk() });
+    renderEntry("/", { queryClient });
+    await screen.findByTestId("agent-app");
+    cleanup();
+    localStorage.clear();
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken("u2"));
+    const nextPersonal = "personal:00000000-0000-5000-8000-000000000003";
+    stubNetwork({
+      agents: agentsOk([]),
+      personal: personalSharedOk(nextPersonal),
+    });
+    renderEntry("/", { queryClient });
+    await screen.findByTestId("agent-app");
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: `cloud:${nextPersonal}`,
+      cloudRuntimeAgentId: nextPersonal,
+    });
+    expect(
+      fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
+    ).toHaveLength(1);
+    expect(personalDedicatedRequests()).toEqual([]);
+    queryClient.clear();
+  });
 
   it("consumes the session-bound /join result without resolving the same personal identity twice", async () => {
     const authToken = signIn();

@@ -150,7 +150,13 @@ export function AppModeEntryRoute({
   if (!isCloudManagementPath) {
     if (route.kind === "create") {
       if (personalEntry.isError) {
-        return <Navigate to="/join" replace />;
+        return (
+          <Navigate
+            to="/join"
+            replace
+            state={{ personalEntryInvalidated: personalEntry.needsRetry }}
+          />
+        );
       }
       if (personalEntry.data === undefined) {
         return <EntryNotice label="Opening your Eliza" />;

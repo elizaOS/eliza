@@ -15,8 +15,13 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  STEWARD_SESSION_CHANGE_EVENT,
+  StewardSessionAuthorityError,
+} from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { client } from "../../api";
 import { Button } from "../../components/ui/button";
 import {
@@ -59,6 +64,12 @@ function describeJoinError(err: unknown): JoinFailure {
 export default function JoinPage(): React.JSX.Element {
   const t = useCloudT();
   const session = useJoinSessionAuth();
+  const entryState: unknown = useLocation().state;
+  const requiresRetry =
+    typeof entryState === "object" &&
+    entryState !== null &&
+    "personalEntryInvalidated" in entryState &&
+    entryState.personalEntryInvalidated === true;
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<JoinFailure | null>(null);
@@ -77,6 +88,7 @@ export default function JoinPage(): React.JSX.Element {
   const activeAttemptRef = useRef<{
     controller: AbortController;
     promise: Promise<void>;
+    revalidate: () => void;
   } | null>(null);
 
   const start = useCallback(async () => {
@@ -92,34 +104,58 @@ export default function JoinPage(): React.JSX.Element {
       new DOMException("Join attempt superseded", "AbortError"),
     );
     const controller = new AbortController();
+    let revalidate = () => controller.signal.throwIfAborted();
     const attempt = (async () => {
       try {
+        const coordinator = getStewardTabSessionAuthorityCoordinator();
+        const snapshot = coordinator.readSnapshot();
+        const cloudApiBase = resolveJoinCloudApiBase();
+        revalidate = () => {
+          controller.signal.throwIfAborted();
+          coordinator.assertSnapshot(snapshot);
+          if (
+            resolveJoinAuthToken() !== authToken ||
+            resolveJoinCloudApiBase() !== cloudApiBase
+          ) {
+            throw new StewardSessionAuthorityError(
+              "Your connection changed. Try again to open your Eliza.",
+              "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+            );
+          }
+        };
         const result = await runJoinFlow({
           client,
           effects: {
             savePersistedActiveServer,
             savePersistedFirstRunComplete,
           },
-          cloudApiBase: resolveJoinCloudApiBase(),
+          cloudApiBase,
           authToken,
           signal: controller.signal,
+          revalidate,
           onProgress: (_status, progressDetail) => {
+            revalidate();
             if (progressDetail) setDetail(progressDetail);
           },
         });
-        controller.signal.throwIfAborted();
+        revalidate();
         publishPersonalEntryHandoff(authToken, result);
         setPhase("ready");
         // The flow has configured the in-memory client and persisted the exact
         // binding. Its session-bound handoff receipt lets app-mode consume the
         // same authoritative result without a duplicate identity request.
       } catch (err) {
+        // error-policy:J4 invalidated or failed entry remains explicitly retryable.
         if (controller.signal.aborted) return;
         setError(describeJoinError(err));
         setPhase("error");
       }
     })();
-    activeAttemptRef.current = { controller, promise: attempt };
+    activeAttemptRef.current = {
+      controller,
+      promise: attempt,
+      revalidate: () => revalidate(),
+    };
     await attempt;
     if (activeAttemptRef.current?.controller === controller) {
       activeAttemptRef.current = null;
@@ -139,6 +175,47 @@ export default function JoinPage(): React.JSX.Element {
     },
     [],
   );
+
+  useEffect(() => {
+    const invalidate = () => {
+      const active = activeAttemptRef.current;
+      if (!active || active.controller.signal.aborted) return;
+      active.controller.abort(
+        new DOMException("Join context changed", "AbortError"),
+      );
+      setError({
+        kind: "generic",
+        message: t("cloud.join.entryChanged", {
+          defaultValue:
+            "Your connection changed. Try again to open your Eliza.",
+        }),
+      });
+      setPhase("error");
+    };
+    const checkSession = () => {
+      try {
+        activeAttemptRef.current?.revalidate();
+      } catch {
+        // error-policy:J4 a superseded session exposes recovery, never automatic replay.
+        invalidate();
+      }
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) invalidate();
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
+    window.addEventListener("token-sync", checkSession);
+    window.addEventListener("storage", checkSession);
+    window.addEventListener("pagehide", invalidate);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
+      window.removeEventListener("token-sync", checkSession);
+      window.removeEventListener("storage", checkSession);
+      window.removeEventListener("pagehide", invalidate);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [t]);
 
   useEffect(() => {
     if (!session.ready) return;
@@ -163,8 +240,26 @@ export default function JoinPage(): React.JSX.Element {
     }
     if (startedRef.current) return;
     startedRef.current = true;
+    if (requiresRetry) {
+      setError({
+        kind: "generic",
+        message: t("cloud.join.entryChanged", {
+          defaultValue:
+            "Your connection changed. Try again to open your Eliza.",
+        }),
+      });
+      setPhase("error");
+      return;
+    }
     void start();
-  }, [session.ready, session.authenticated, appHandoff, start]);
+  }, [
+    session.ready,
+    session.authenticated,
+    appHandoff,
+    start,
+    requiresRetry,
+    t,
+  ]);
 
   const handleRetry = useCallback(() => {
     startedRef.current = true;
