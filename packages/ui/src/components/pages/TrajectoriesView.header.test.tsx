@@ -1,4 +1,4 @@
-/** Verifies the responsive Trajectories header and clearance ownership. */
+/** Tests responsive local navigation, errors, and authority changes with deterministic Trajectories fixtures. */
 // @vitest-environment jsdom
 
 import {
