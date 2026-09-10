@@ -34,6 +34,10 @@ export default defineConfig({
         replacement: path.join(root, "packages/cloud/routing/src/index.ts"),
       },
       {
+        find: /^@elizaos\/plugin-sql$/,
+        replacement: path.join(root, "plugins/plugin-sql/src/index.ts"),
+      },
+      {
         find: /^@elizaos\/ui\/agent-surface$/,
         replacement: path.join(
           root,

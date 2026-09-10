@@ -7,6 +7,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  type AuditOcrControls,
+  bindAuditOcrControls,
+} from "../../scripts/lib/audit-capture-manifest";
 import { readAuditFindings, writeAuditFinding } from "./aesthetic-audit-report";
 import {
   type AestheticMetricBudget,
@@ -333,6 +337,7 @@ interface ViewFinding {
   slug: string;
   viewport: string;
   path: string;
+  ocrControls: AuditOcrControls;
   consoleErrors: string[];
   /** User-visible loading persistence, overlap, or composer legibility failures. */
   renderStateIssues: string[];
@@ -2311,6 +2316,36 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // re-sample a few times so a momentarily-unpainted frame is not recorded
         // as a one-color "broken".
         const restPath = path.join(shotDir, `${view.slug}.png`);
+        const measureControls = () =>
+          page.evaluate(() => ({
+            width: window.innerWidth,
+            height: window.innerHeight,
+            rectangles: Array.from(
+              document.querySelectorAll(
+                'button, a[href], [role="button"], input[type="button"], input[type="submit"]',
+              ),
+            ).flatMap((element) => {
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              if (
+                style.display === "none" ||
+                style.visibility === "hidden" ||
+                Number(style.opacity) === 0 ||
+                rect.width <= 0 ||
+                rect.height <= 0
+              )
+                return [];
+              return [
+                {
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                },
+              ];
+            }),
+          }));
+        let controlGeometry = await measureControls();
         let buffer = await page.screenshot({ path: restPath, fullPage: false });
         let quality = await analyzeScreenshot(buffer).catch(() => null);
         for (
@@ -2319,12 +2354,15 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           attempt += 1
         ) {
           await page.waitForTimeout(800);
+          controlGeometry = await measureControls();
           buffer = await page.screenshot({ path: restPath, fullPage: false });
           quality = await analyzeScreenshot(buffer).catch(() => null);
         }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)
           : [];
+
+        const ocrControls = await bindAuditOcrControls(buffer, controlGeometry);
 
         const blueColors = await collectBlueColors(page).catch(() => []);
         const { violations: hoverViolations, hoverFailures } =
@@ -2375,6 +2413,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           slug: view.slug,
           viewport: vp.name,
           path: view.path,
+          ocrControls,
           viewType: view.viewType,
           bundleProvenance:
             bundleResponse?.headers()["x-eliza-view-bundle-provenance"],
@@ -2426,6 +2465,29 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               `(documentElement.scrollWidth exceeds innerWidth — likely overflow-y ` +
               `without overflow-x:hidden)`,
           ).toBeLessThanOrEqual(HORIZONTAL_OVERFLOW_TOLERANCE_PX);
+        }
+        if (view.slug === "builtin-relationships") {
+          // Measure and capture the rest state above before scrolling. The
+          // actual last-row action must remain reachable beneath the composer.
+          const lastRowAction = viewRoot.getByRole("button", {
+            name: "Open Acme Corp",
+            exact: true,
+          });
+          await lastRowAction.scrollIntoViewIfNeeded();
+          const messageResponse = page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              /\/api\/conversations\/[^/]+\/messages$/.test(
+                new URL(response.url()).pathname,
+              ),
+          );
+          await lastRowAction.click();
+          const response = await messageResponse;
+          expect(response.status()).toBe(200);
+          expect(response.request().postDataJSON()).toMatchObject({
+            text: "Tell me about ent-acme in my relationships graph.",
+            channelType: "DM",
+          });
         }
         if (view.fixtureState === "cloud-signed-out") {
           await viewRoot

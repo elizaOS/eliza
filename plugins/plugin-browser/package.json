@@ -41,6 +41,7 @@
     "build:types": "tsc6 --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/vault": "workspace:*",

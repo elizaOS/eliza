@@ -34,7 +34,7 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     expect(normalizeToolOutput(record)).toBe("$ ls /nope → exit 2");
   });
 
-  it("appends stdout/stderr when present", () => {
+  it("appends a capped stdout/stderr tail when present", () => {
     const record = {
       call_id: "c2",
       command: "echo hi",
@@ -45,7 +45,7 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     expect(out).toBe("$ echo hi → exit 0\nhi there");
   });
 
-  it("preserves a long stdout value completely", () => {
+  it("preserves a long stdout tail completely", () => {
     const record = {
       call_id: "c3",
       command: "cat big",

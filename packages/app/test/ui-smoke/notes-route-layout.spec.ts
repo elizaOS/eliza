@@ -131,6 +131,7 @@ test("Notes keeps readable cards clear of the composer in short landscape", asyn
   await openNotes(page);
 
   const cards = page.getByRole("listitem");
+  await cards.nth(1).scrollIntoViewIfNeeded();
   const first = await cards.nth(0).boundingBox();
   const second = await cards.nth(1).boundingBox();
   const composerInput = page.getByPlaceholder(/Message/);

@@ -59,6 +59,14 @@ export default defineConfig({
         replacement: resolve(rootDir, "test/stubs/ui-tabs.tsx"),
       },
       {
+        find: /^@elizaos\/ui\/components$/,
+        replacement: resolve(rootDir, "test/stubs/ui-components.tsx"),
+      },
+      {
+        find: /^@elizaos\/ui\/events$/,
+        replacement: resolve(rootDir, "../../packages/ui/src/events/index.ts"),
+      },
+      {
         find: /^@elizaos\/ui\/components\/permissions\/PermissionRecoveryCallout$/,
         replacement: resolve(
           rootDir,
@@ -80,6 +88,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/app-core\/(.+)$/,
         replacement: resolve(rootDir, "../../packages/app-core/src/$1"),
+      },
+      {
+        find: /^@elizaos\/ui\/spatial$/,
+        replacement: resolve(rootDir, "../../packages/ui/src/spatial/index.ts"),
       },
     ],
   },

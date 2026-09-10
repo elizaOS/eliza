@@ -12,11 +12,11 @@
  * `life_entity_attributes`. The `(agent_id, entity_id)` pair is unique;
  * `entityId === "self"` is the special user node.
  *
- * `life_relationships_v2` stores typed edges. `(agent_id, from_entity_id,
- * to_entity_id, type)` is unique for active edges (a retired edge of the
- * same triple may co-exist with a new active one). `cadence_days` is
- * surfaced as a column-level shortcut for the cadence-overdue filter even
- * though it also appears inside `metadata_json`.
+ * `life_relationships_v2` stores typed edges. Existing deployments may contain
+ * more than one active edge for an `(agent_id, from_entity_id, to_entity_id,
+ * type)` tuple, so migrations must detect ambiguity rather than impose a new
+ * global constraint. `cadence_days` is surfaced as a column-level shortcut for
+ * the cadence-overdue filter even though it also appears inside `metadata_json`.
  */
 
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/shared";
@@ -169,6 +169,20 @@ export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
   ],
 );
 
+/** Complete current-source snapshots; repeated archival replaces one agent's rows. */
+export const coreRelationshipsSourceRecords = appLifeopsPgSchema.table(
+  "core_relationships_source_records",
+  {
+    agentId: text("agent_id").notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    archivedAt: text("archived_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.sourceKind, t.sourceId)],
+);
+
 /**
  * Aggregate schema registered by the runtime "eliza" plugin so the SQL
  * plugin migrates these tables whenever the runtime runs.
@@ -179,4 +193,5 @@ export const knowledgeGraphSchema = {
   lifeEntityAttributes,
   lifeRelationshipsV2,
   lifeRelationshipAuditEvents,
+  coreRelationshipsSourceRecords,
 } as const;

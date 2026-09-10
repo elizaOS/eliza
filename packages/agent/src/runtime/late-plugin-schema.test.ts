@@ -58,13 +58,40 @@ class PGliteMigrationAdapter extends InMemoryDatabaseAdapter {
   maxConcurrentMigrations = 0;
   migrationBatches: string[][] = [];
   blockInboxMigration = false;
+  transactionCalls = 0;
+  activeTransactions = 0;
+  maxConcurrentTransactions = 0;
+  transactionReceiverWasAdapterDb = true;
 
   constructor(dataDir: string) {
     super();
     this.pglite = new PGlite(dataDir, { extensions: { vector } });
     this.pgliteDb = drizzle(this.pglite);
-    Object.defineProperty(this.db, "execute", {
+    const adapterDb = this.db;
+    const thisAdapter = this;
+    Object.defineProperty(adapterDb, "execute", {
       value: this.pgliteDb.execute.bind(this.pgliteDb),
+    });
+    Object.defineProperty(adapterDb, "transaction", {
+      value: async function <T>(
+        this: typeof adapterDb,
+        operation: (transaction: PgliteDatabase) => Promise<T>,
+      ): Promise<T> {
+        thisAdapter.transactionReceiverWasAdapterDb &&= this === adapterDb;
+        thisAdapter.transactionCalls += 1;
+        thisAdapter.activeTransactions += 1;
+        thisAdapter.maxConcurrentTransactions = Math.max(
+          thisAdapter.maxConcurrentTransactions,
+          thisAdapter.activeTransactions,
+        );
+        try {
+          return await thisAdapter.pgliteDb.transaction((transaction) =>
+            operation(transaction),
+          );
+        } finally {
+          thisAdapter.activeTransactions -= 1;
+        }
+      },
     });
   }
 
@@ -197,6 +224,9 @@ describe("late plugin schema ordering", () => {
         INBOX_MIGRATION_SERVICE_TYPE,
       ),
     ).toBe("registered");
+    expect(harness.adapter.transactionCalls).toBe(3);
+    expect(harness.adapter.transactionReceiverWasAdapterDb).toBe(true);
+    expect(harness.adapter.maxConcurrentTransactions).toBe(1);
   });
 
   it("serializes concurrent late schema migrations on one adapter", async () => {
@@ -232,6 +262,9 @@ describe("late plugin schema ordering", () => {
       },
     ]);
     expect(harness.adapter.maxConcurrentMigrations).toBe(1);
+    expect(harness.adapter.transactionCalls).toBe(3);
+    expect(harness.adapter.transactionReceiverWasAdapterDb).toBe(true);
+    expect(harness.adapter.maxConcurrentTransactions).toBe(1);
     expect(harness.adapter.migrationBatches).toEqual([
       ["@elizaos/plugin-inbox"],
       [CONCURRENT_SCHEMA_PLUGIN],

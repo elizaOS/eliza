@@ -1529,6 +1529,8 @@ describe("FileMessageInteractionSessionStore", () => {
     expect(await store.deleteExpired(now - 1)).toBe(0);
     const reopenedCommitted = new FileMessageInteractionSessionStore({
       stateDirectory,
+      retentionMs: 0,
+      clock: () => now,
     });
     expect(
       await reopenedCommitted.get(created.session.reference),

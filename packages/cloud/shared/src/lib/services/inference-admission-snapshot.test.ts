@@ -32,8 +32,16 @@ const cacheSet = mock(async (_key: string, value: typeof snapshot): Promise<Cach
   cached = value;
   return { kind: "written" as const, backend: "memory" as const };
 });
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
-  cache: { get: cacheGet, setWithOutcome: cacheSet },
+  ...cacheClientActualModule,
+  cache: {
+    get: cacheGet,
+    setWithOutcome: cacheSet,
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
+  },
 }));
 
 const readOrganizationQuotaPolicy = mock(async () => ({

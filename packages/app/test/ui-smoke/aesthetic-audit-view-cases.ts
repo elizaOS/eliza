@@ -15,6 +15,7 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   apps: "/apps",
   views: "/views",
   character: "/character",
+  relationships: "/apps/relationships",
   "character-select": "/character/select",
   automations: "/automations",
   inventory: "/wallet",

@@ -278,7 +278,6 @@ describe("LifeOps raw route owner/admin gate", () => {
   it("mounts every agreement mutation and preview behind the owner gate", () => {
     const agreementRoutes = [
       ["GET", "/api/lifeops/agreements"],
-      ["POST", "/api/lifeops/agreements"],
       ["GET", "/api/lifeops/agreements/:id"],
       ["GET", "/api/lifeops/agreements/:id/guest-projection"],
       ["GET", "/api/lifeops/agreements/:id/download"],

@@ -61,13 +61,15 @@ function makeRuntime(preferCloud: boolean) {
 		character: {
 			name: "LocalAdmissionAgent",
 			bio: "test",
-			settings: preferCloud ? { ELIZA_BRAIN_PROVIDER: "test-cloud" } : {},
+			settings: { ELIZA_BRAIN_PROVIDER: preferCloud ? "test-cloud" : "" },
 		} as Character,
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
 	});
 }
 
+// Direct-first cases register cloud at the router priority before installation.
+// This exercises failover ordering without turning provider choice into a pin.
 function install(runtime: AgentRuntime) {
 	installRouterHandler(runtime, {
 		skipSlots: ["TEXT_EMBEDDING", "TEXT_TO_SPEECH", "TRANSCRIPTION"],
@@ -99,7 +101,12 @@ describe("router and outer runtime share local text admission", () => {
 			const local = vi.fn(async () => {
 				throw new Error("inactive local handler must not run");
 			});
-			runtime.registerModel(ModelType.TEXT_SMALL, cloud, "test-cloud", 100);
+			runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				cloud,
+				"test-cloud",
+				Number.MAX_SAFE_INTEGER,
+			);
 			runtime.registerModel(
 				ModelType.TEXT_SMALL,
 				local,
@@ -132,7 +139,7 @@ describe("router and outer runtime share local text admission", () => {
 			).toBe(false);
 			expect(
 				attempts.some((attempt) => attempt.provider === ROUTER_PROVIDER),
-			).toBe(true);
+			).toBe(!preferCloud);
 			expect(report).not.toHaveBeenCalled();
 		},
 	);
@@ -143,7 +150,7 @@ describe("router and outer runtime share local text admission", () => {
 			readiness.loaded = state === "loaded";
 			if (state === "assigned")
 				readiness.assignments.TEXT_LARGE = "installed-test-model";
-			const runtime = makeRuntime(true);
+			const runtime = makeRuntime(false);
 			const cloud = vi.fn(async () => {
 				throw Object.assign(new Error("rate limit"), { status: 429 });
 			});
@@ -153,7 +160,12 @@ describe("router and outer runtime share local text admission", () => {
 					return "healthy local response";
 				},
 			);
-			runtime.registerModel(ModelType.TEXT_LARGE, cloud, "test-cloud", 100);
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				cloud,
+				"test-cloud",
+				Number.MAX_SAFE_INTEGER,
+			);
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				local,
@@ -172,7 +184,7 @@ describe("router and outer runtime share local text admission", () => {
 	);
 
 	it("keeps a later provider's terminal failure authoritative after local admission is rejected", async () => {
-		const runtime = makeRuntime(true);
+		const runtime = makeRuntime(false);
 		const terminal = new Error("invalid request payload");
 		runtime.registerModel(
 			ModelType.TEXT_LARGE,
@@ -180,7 +192,7 @@ describe("router and outer runtime share local text admission", () => {
 				throw Object.assign(new Error("rate limit"), { status: 429 });
 			},
 			"test-cloud",
-			100,
+			Number.MAX_SAFE_INTEGER,
 		);
 		const local = vi.fn(async () => "must not run");
 		runtime.registerModel(
@@ -250,7 +262,7 @@ describe("router and outer runtime share local text admission", () => {
 		async (reason) => {
 			readiness.policy = "prefer-local";
 			readiness.loaded = true;
-			const runtime = makeRuntime(true);
+			const runtime = makeRuntime(false);
 			const terminal =
 				reason === "auth"
 					? Object.assign(new Error("unauthorized"), { status: 401 })
@@ -266,7 +278,12 @@ describe("router and outer runtime share local text admission", () => {
 				throw terminal;
 			});
 			const healthy = vi.fn(async () => "must not hide terminal failure");
-			runtime.registerModel(ModelType.TEXT_LARGE, cloud, "test-cloud", 100);
+			runtime.registerModel(
+				ModelType.TEXT_LARGE,
+				cloud,
+				"test-cloud",
+				Number.MAX_SAFE_INTEGER,
+			);
 			runtime.registerModel(
 				ModelType.TEXT_LARGE,
 				local,
@@ -323,7 +340,7 @@ describe("router and outer runtime share local text admission", () => {
 	it("does not replace callback output or its failure with another provider", async () => {
 		readiness.policy = "prefer-local";
 		readiness.loaded = true;
-		const runtime = makeRuntime(true);
+		const runtime = makeRuntime(false);
 		const unavailable = new LocalInferenceUnavailableError(
 			ModelType.TEXT_LARGE,
 			"backend_unavailable",
@@ -341,7 +358,12 @@ describe("router and outer runtime share local text admission", () => {
 			},
 		);
 		const healthy = vi.fn(async () => "must not replace output");
-		runtime.registerModel(ModelType.TEXT_LARGE, cloud, "test-cloud", 100);
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			cloud,
+			"test-cloud",
+			Number.MAX_SAFE_INTEGER,
+		);
 		runtime.registerModel(
 			ModelType.TEXT_LARGE,
 			local,
@@ -373,13 +395,18 @@ describe("router and outer runtime share local text admission", () => {
 	])(
 		"rejects inactive direct %s aliases before dispatch",
 		async (modelType) => {
-			const runtime = makeRuntime(true);
+			const runtime = makeRuntime(false);
 			const limited = Object.assign(new Error("rate limit"), { status: 429 });
 			const cloud = vi.fn(async () => {
 				throw limited;
 			});
 			const local = vi.fn(async () => "inactive local alias must not run");
-			runtime.registerModel(modelType, cloud, "test-cloud", 100);
+			runtime.registerModel(
+				modelType,
+				cloud,
+				"test-cloud",
+				Number.MAX_SAFE_INTEGER,
+			);
 			for (const type of [
 				modelType,
 				ModelType.TEXT_SMALL,
