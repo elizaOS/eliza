@@ -106,6 +106,15 @@
         "packages/ui/src/components/composites/sidebar/sidebar-content.tsx:SidebarRailItem"
       ],
       "semanticFingerprint": "sha256:f6d48d195f3dd4ea624645beeb9ab2db5ffd4c892685663a2498a8d0a9bfda91"
+    },
+    "form:button+input+textarea": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Session creation owns model, mode, and initial prompt selection. Family email revision owns immutable draft versions, stale approval rejection, and preservation of unsaved edits. Their shared field and button behavior remains in canonical atoms.",
+      "memberComponentIds": [
+        "packages/ui/src/components/cockpit/CockpitNewSessionForm.tsx:CockpitNewSessionForm",
+        "plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:PacketDraftEditor"
+      ],
+      "semanticFingerprint": "sha256:196ade46f34e4d8113fc4aa4183c97de7758ffccda155b3dd6c5cfcd93ae95d2"
     }
   }
 }

@@ -38,6 +38,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AccountTransitionPanel } from "./AccountTransitionPanel.js";
 import { defaultLifeOpsConnectionsAdapter } from "./adapter.js";
 import type {
   LifeOpsConnectionsAdapter,
@@ -651,6 +652,14 @@ export function LifeOpsConnectionsView({
             </div>
           ) : null}
         </div>
+
+        {snapshot ? (
+          <AccountTransitionPanel
+            snapshot={snapshot}
+            adapter={adapter}
+            refresh={() => refresh(false)}
+          />
+        ) : null}
 
         <div className="lifeops-grid">
           <Section

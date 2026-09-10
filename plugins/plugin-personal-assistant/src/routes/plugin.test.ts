@@ -334,6 +334,33 @@ describe("LifeOps raw route owner/admin gate", () => {
     }
   });
 
+  it.each([
+    ["GET", "/api/lifeops/family-workflows/email-options"],
+    [
+      "POST",
+      "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/revision",
+    ],
+  ] as const)(
+    "denies unauthenticated %s %s before accessing family data",
+    async (method, path) => {
+      const route = findRoute(method, path);
+      const res = createResponse();
+      await route.handler(
+        createRequest(
+          path.replace(":packetId", "packet-1").replace(":draftVersion", "1"),
+          {
+            "x-eliza-entity-id": "owner-1",
+          },
+          { method },
+        ) as never,
+        res as never,
+        createRuntime() as never,
+      );
+      expect(res.statusCode).toBe(401);
+      expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
+    },
+  );
+
   it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
     const route = findRoute("GET", "/api/connectors/google/oauth/callback");
     const res = createResponse();

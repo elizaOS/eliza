@@ -200,31 +200,40 @@ export function ConnectorAccountList({
 
   const handleAdd = async () => {
     setAuthUrlError(null);
-    if (onAddAccount) {
-      const body = await onAddAccount();
-      if (!body) return;
-      await connectorAccounts.add(body);
-      return;
-    }
-    const requestedRole: ConnectorAccountRole =
-      accountRole && accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET
-        ? accountRole
-        : "OWNER";
-    const result = await connectorAccounts.startOAuth({
-      ...(oauthCapabilities.length > 0
-        ? { scopes: [...selectedOAuthCapabilities] }
-        : {}),
-      metadata: {
+    try {
+      if (onAddAccount) {
+        const body = await onAddAccount();
+        if (!body) return;
+        await connectorAccounts.add(body);
+        return;
+      }
+      const requestedRole: ConnectorAccountRole =
+        accountRole && accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET
+          ? accountRole
+          : "OWNER";
+      const result = await connectorAccounts.startOAuth({
         ...(oauthCapabilities.length > 0
-          ? { requestedCapabilities: [...selectedOAuthCapabilities] }
+          ? { scopes: [...selectedOAuthCapabilities] }
           : {}),
-        requestedRole,
-        privacy: requestedRole === "OWNER" ? "owner_only" : "team_visible",
-      },
-    });
-    if (result.authUrl && !openConnectorAuthUrl(result.authUrl)) {
+        metadata: {
+          ...(oauthCapabilities.length > 0
+            ? { requestedCapabilities: [...selectedOAuthCapabilities] }
+            : {}),
+          requestedRole,
+          privacy: requestedRole === "OWNER" ? "owner_only" : "team_visible",
+        },
+      });
+      if (result.authUrl && !openConnectorAuthUrl(result.authUrl)) {
+        setAuthUrlError(
+          "The sign-in link returned by the server is not a valid URL.",
+        );
+      }
+    } catch (cause) {
+      // error-policy:J4 Keep OAuth setup failures visible beside the account control.
       setAuthUrlError(
-        "The sign-in link returned by the server is not a valid URL.",
+        cause instanceof Error
+          ? cause.message
+          : "Account connection failed. Try again.",
       );
     }
   };
@@ -257,6 +266,13 @@ export function ConnectorAccountList({
           "The sign-in link returned by the server is not a valid URL.",
         );
       }
+    } catch (cause) {
+      // error-policy:J4 Reauthorization failures remain visible and retryable.
+      setAuthUrlError(
+        cause instanceof Error
+          ? cause.message
+          : "Account reconnection failed. Try again.",
+      );
     } finally {
       setScopeFlowBusyKey(null);
     }

@@ -278,6 +278,32 @@ describe("CalendarSection", () => {
     cleanup();
   });
 
+  it("renders a school closure on each civil day without leaking into adjacent days", () => {
+    calendarState.current = makeResult({
+      baseDate: new Date(2026, 8, 16, 12),
+      windowStart: new Date(2026, 8, 13),
+      windowEnd: new Date(2026, 8, 20),
+      events: [
+        evt({
+          id: "school-closure",
+          title: "School closure",
+          startAt: "2026-09-16T00:00:00.000Z",
+          endAt: "2026-09-18T00:00:00.000Z",
+          isAllDay: true,
+        }),
+      ],
+    });
+    render(<CalendarSection {...noopProps} />);
+    for (const day of [15, 16, 17, 18]) {
+      const cell = screen.getByLabelText(
+        `All-day events for ${new Date(2026, 8, day).toISOString()}`,
+      );
+      expect(within(cell).queryByText("School closure") !== null).toBe(
+        day === 16 || day === 17,
+      );
+    }
+  });
+
   it("renders week-view events with their titles and times in the time grid", () => {
     // 09:00-10:00 local (built from a local-tz time so the rendered hour is
     // stable regardless of test-runner timezone).

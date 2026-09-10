@@ -4,7 +4,7 @@ import { FAMILY_MONTHLY_SYSTEM_OPERATION } from "../lifeops/family-workflows/run
 import type { DefaultPack } from "./registry-types.js";
 import {
   compileTaskDefinition,
-  type WatcherTaskDefinition,
+  type RecapTaskDefinition,
 } from "./task-definitions.js";
 
 export const FAMILY_COORDINATION_PACK_KEY = "family-coordination-monthly";
@@ -12,8 +12,8 @@ export const FAMILY_COORDINATION_RECORD_IDS = {
   monthly: "default-pack:family-coordination:monthly",
 } as const;
 
-const definition: WatcherTaskDefinition = {
-  definitionKind: "watcher",
+const definition: RecapTaskDefinition = {
+  definitionKind: "recap",
   promptInstructions:
     "Run the structural monthly family coordination workflow. It checks the school calendar source and builds the owner packet; it never sends a draft.",
   trigger: {
@@ -25,7 +25,7 @@ const definition: WatcherTaskDefinition = {
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: FAMILY_COORDINATION_PACK_KEY,
-  ownerVisible: false,
+  ownerVisible: true,
   idempotencyKey: FAMILY_COORDINATION_RECORD_IDS.monthly,
   metadata: {
     packKey: FAMILY_COORDINATION_PACK_KEY,
@@ -39,7 +39,7 @@ export const familyCoordinationPack: DefaultPack = {
   label: "Monthly family coordination",
   description:
     "Checks the configured school calendar and prepares an owner-reviewed monthly family coordination packet at 9:00 AM America/New_York on the first day of each month.",
-  defaultEnabled: true,
+  defaultEnabled: false,
   requiredCapabilities: [],
   records: [compileTaskDefinition(definition)],
   uiHints: {
