@@ -124,7 +124,9 @@ function holdingClaims(reply: string, request: string | undefined): Holding[] {
 				clause,
 			) ||
 			(walletRequest &&
-				/\b(?:balance|holds|contains|(?:you|I)\s+have)\b/i.test(clause)) ||
+				/\b(?:balance|holds|contains|(?:you|I)\s+(?:(?:currently|now|still)\s+)?(?:have|hold|own))\b/i.test(
+					clause,
+				)) ||
 			(walletRequest &&
 				/^\s*\d[\d,.]*\s+[A-Za-z][A-Za-z0-9]*[.!]?\s*$/.test(clause));
 		if (!holdingContext) continue;

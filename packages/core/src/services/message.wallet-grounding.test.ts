@@ -886,6 +886,8 @@ it("passes complete provider evidence to the model when correcting an unsupporte
 
 it.each([
 	["You have 4 SOL.", "What is my SOL balance?"],
+	["Birdeye reports you currently hold 4 SOL.", "What is my SOL balance?"],
+	["You now own 4 SOL.", "Check my wallet balance."],
 	["Your wallet holds 4 SOL worth $600.", "Check my wallet balance."],
 	["You have 4 SOL, if you want to transfer it.", "What is my SOL balance?"],
 	[
@@ -910,17 +912,22 @@ it.each([
 		expect(stored).not.toContain(reply);
 	},
 );
-it("allows an observed holding alongside a separately stated valuation", async () => {
-	const reply = "Your wallet holds 4 SOL worth $600.";
-	const { texts, stored } = await deliver(
-		reply,
-		walletRead(4),
-		undefined,
-		"Check my wallet balance.",
-	);
-	expect(texts).toContain(reply);
-	expect(stored).toContain(reply);
-});
+it.each([
+	"Your wallet holds 4 SOL worth $600.",
+	"Birdeye reports you currently hold 4 SOL, valued at $600.",
+])(
+	"allows an observed holding alongside a separately stated valuation: %s",
+	async (reply) => {
+		const { texts, stored } = await deliver(
+			reply,
+			walletRead(4),
+			undefined,
+			"Check my wallet balance.",
+		);
+		expect(texts).toContain(reply);
+		expect(stored).toContain(reply);
+	},
+);
 
 it("does not trust a quantity retained in an explicitly failed provider read", async () => {
 	const reply = "Your wallet balance is 4 SOL.";
