@@ -1,5 +1,5 @@
 /** Lets the owner review a contact/address pair before recording it as a monthly-email recipient; confirmation never sends a message. */
-import { Button, Input } from "@elizaos/ui";
+import { Button, Checkbox, Input, NativeSelect } from "@elizaos/ui";
 import { type FormEvent, useState } from "react";
 import type {
   FamilyOperationsAdapter,
@@ -112,7 +112,7 @@ export function RecipientSetup({
           style={{ display: "grid", gap: 12 }}
         >
           <label htmlFor="recipient-setup-person">Person</label>
-          <select
+          <NativeSelect
             id="recipient-setup-person"
             value={entityId}
             disabled={busy}
@@ -139,7 +139,7 @@ export function RecipientSetup({
                 {person.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           <label htmlFor="recipient-setup-name">Name</label>
           <Input
             id="recipient-setup-name"
@@ -163,12 +163,12 @@ export function RecipientSetup({
               setReviewed(false);
             }}
           />
-          <label>
-            <input
-              type="checkbox"
+          <label htmlFor="recipient-setup-reviewed">
+            <Checkbox
+              id="recipient-setup-reviewed"
               checked={reviewed}
               disabled={busy || !name.trim() || !address.trim()}
-              onChange={(event) => setReviewed(event.target.checked)}
+              onCheckedChange={(checked) => setReviewed(checked === true)}
             />{" "}
             I have checked that {address.trim() || "this address"} belongs to{" "}
             {name.trim() || "this person"}.

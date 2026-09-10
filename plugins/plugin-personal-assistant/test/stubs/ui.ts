@@ -174,6 +174,9 @@ export const Checkbox = TestCheckbox;
 export const Input = (
   props: InputHTMLAttributes<HTMLInputElement>,
 ): ReactNode => createElement("input", props);
+export const NativeSelect = (
+  props: SelectHTMLAttributes<HTMLSelectElement>,
+): ReactNode => createElement("select", props);
 export const PagePanel = PassthroughComponent;
 export const Select = TestSelect;
 export const SelectContent = PassthroughComponent;
