@@ -131,7 +131,7 @@ describe("durable linked calendar review", { timeout: 30_000 }, () => {
       providerCalendarId: previous.providerCalendarId,
       providerEventId: previous.providerEventId,
       providerEtag: previous.providerEtag,
-      state: "paused",
+      state: "local_only",
       pendingOperation: null,
     });
     expect(result.controlRevision).toBe(control.revision + 1);
@@ -152,6 +152,81 @@ describe("durable linked calendar review", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ code: "LINKED_CALENDAR_REBIND_CONFLICT" });
   });
 
+  it("keeps retained items local after edits, deletion intent and account disconnect, but permits explicit relinking", async () => {
+    const { h, links, request } = await mappingFixture();
+    const retained = await links.retainLocalWhilePaused(request);
+    for (const operation of ["update", "delete"] as const) {
+      const changed = await links.markLocalDirty({
+        agentId: h.runtime().agentId,
+        localEventId: retained.link.localEventId,
+        localRevision: retained.link.localRevision + 1,
+        operation,
+      });
+      expect(changed).toMatchObject({
+        state: "local_only",
+        pendingOperation: null,
+      });
+    }
+    await links.pauseAccount(
+      h.runtime().agentId,
+      retained.link.connectorAccountId,
+    );
+    const reopened = new LinkedCalendarRepository(h.runtime());
+    expect(
+      await reopened.getById(h.runtime().agentId, retained.link.id),
+    ).toMatchObject({ state: "local_only", pendingOperation: null });
+    await h.controls().resume(retained.controlRevision);
+    const service = new CalendarService(h.runtime());
+    const current = await reopened.getById(
+      h.runtime().agentId,
+      retained.link.id,
+    );
+    if (!current) throw new Error("Retained link disappeared");
+    expect(
+      await service.executeLinkedCalendarReconciliation(current.id, {
+        expectedUpdatedAt: current.updatedAt,
+        idempotencyKey: "retained-service-reconcile",
+      }),
+    ).toMatchObject({
+      outcome: "paused",
+      link: { state: "local_only", pendingOperation: null },
+    });
+    const relinked = await reopened.create({
+      agentId: h.runtime().agentId,
+      localEventId: retained.link.localEventId,
+      connectorAccountId: retained.link.connectorAccountId,
+      providerCalendarId: retained.link.providerCalendarId,
+      localRevision: retained.link.localRevision + 2,
+    });
+    expect(relinked).toMatchObject({
+      state: "dirty",
+      pendingOperation: "update",
+      providerEventId: retained.link.providerEventId,
+    });
+  });
+
+  it("upgrades the existing state constraint without losing links and rejects invalid states", async () => {
+    const { h, links, previous, request } = await mappingFixture();
+    await h.pg.exec(
+      "ALTER TABLE app_calendar.linked_calendar_events DROP CONSTRAINT linked_calendar_events_state_valid, ADD CONSTRAINT linked_calendar_events_state_valid CHECK (state IN ('clean', 'dirty', 'conflicted', 'quarantined', 'paused'))",
+    );
+    const execute = async (statement: string) =>
+      (await h.pg.query<Record<string, unknown>>(statement)).rows;
+    await ensureLinkedCalendarEventTable(execute);
+    await ensureLinkedCalendarEventTable(execute);
+    expect(await links.getById(h.runtime().agentId, previous.id)).toEqual(
+      previous,
+    );
+    expect((await links.retainLocalWhilePaused(request)).link.state).toBe(
+      "local_only",
+    );
+    await expect(
+      h.pg.exec(
+        "UPDATE app_calendar.linked_calendar_events SET state = 'invalid_state'",
+      ),
+    ).rejects.toThrow();
+  });
+
   it("rolls back a retain-local decision when its receipt cannot commit", async () => {
     const { h, links, previous, control, request } = await mappingFixture();
     await h.pg.exec(
@@ -166,7 +241,7 @@ describe("durable linked calendar review", { timeout: 30_000 }, () => {
       "ALTER TABLE app_calendar.linked_calendar_control_mutations DROP CONSTRAINT reject_retain",
     );
     expect((await links.retainLocalWhilePaused(request)).link.state).toBe(
-      "paused",
+      "local_only",
     );
   });
 

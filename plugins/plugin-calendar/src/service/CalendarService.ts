@@ -1402,6 +1402,7 @@ export class CalendarService extends Service {
     record: LinkedCalendarEventRecord,
     strategy?: "keep_eliza" | "keep_google",
   ) {
+    if (record.state === "local_only") return "paused" as const;
     const control = await this.linkedControl.read();
     if (control.paused || control.dispatch) return "paused" as const;
     if (!(await this.activeLinkedCalendarTarget())) return "paused" as const;
@@ -1735,6 +1736,7 @@ export class CalendarService extends Service {
           ).some(
             (link) =>
               link.state !== "paused" &&
+              link.state !== "local_only" &&
               (link.connectorAccountId !==
                 current.destination?.connectorAccountId ||
                 link.providerCalendarId !==

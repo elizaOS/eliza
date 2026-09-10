@@ -27,7 +27,8 @@ export type LinkedCalendarState =
   | "dirty"
   | "conflicted"
   | "quarantined"
-  | "paused";
+  | "paused"
+  | "local_only";
 
 export type LinkedCalendarOperation = "create" | "update" | "delete";
 
@@ -145,7 +146,14 @@ function googleMutationFailure(error: unknown): {
 function parseState(value: unknown): LinkedCalendarState {
   const state = toText(value);
   if (
-    ["clean", "dirty", "conflicted", "quarantined", "paused"].includes(state)
+    [
+      "clean",
+      "dirty",
+      "conflicted",
+      "quarantined",
+      "paused",
+      "local_only",
+    ].includes(state)
   ) {
     return state as LinkedCalendarState;
   }
@@ -239,9 +247,9 @@ export class LinkedCalendarRepository {
       )
       ON CONFLICT (agent_id, local_event_id) DO UPDATE SET
         local_revision = GREATEST(app_calendar.linked_calendar_events.local_revision, EXCLUDED.local_revision),
-        state = CASE WHEN app_calendar.linked_calendar_events.state = 'paused' THEN 'dirty' ELSE app_calendar.linked_calendar_events.state END,
+        state = CASE WHEN app_calendar.linked_calendar_events.state IN ('paused', 'local_only') THEN 'dirty' ELSE app_calendar.linked_calendar_events.state END,
         pending_operation = CASE
-          WHEN app_calendar.linked_calendar_events.state = 'paused'
+          WHEN app_calendar.linked_calendar_events.state IN ('paused', 'local_only')
             THEN CASE WHEN app_calendar.linked_calendar_events.provider_event_id IS NULL THEN 'create' ELSE 'update' END
           ELSE app_calendar.linked_calendar_events.pending_operation
         END,
@@ -418,7 +426,7 @@ export class LinkedCalendarRepository {
       if (
         previous.updatedAt !== args.expectedUpdatedAt ||
         previous.localRevision !== args.expectedLocalRevision ||
-        !["clean", "dirty", "paused"].includes(previous.state) ||
+        !["clean", "dirty", "paused", "local_only"].includes(previous.state) ||
         previous.pendingOperation === "delete" ||
         (args.operation === "rebind" &&
           previous.connectorAccountId === args.connectorAccountId &&
@@ -437,7 +445,7 @@ export class LinkedCalendarRepository {
         .digest("hex")}`;
       const mappingUpdate =
         args.operation === "retain_local"
-          ? "state = 'paused', pending_operation = NULL, last_error_code = NULL, last_error_message = NULL"
+          ? "state = 'local_only', pending_operation = NULL, last_error_code = NULL, last_error_message = NULL"
           : `connector_account_id = ${sqlQuote(args.connectorAccountId)}, provider_calendar_id = ${sqlQuote(args.providerCalendarId)},
         provider_event_id = NULL, provider_etag = NULL, last_common_semantic_hash = NULL,
         state = 'dirty', pending_operation = 'create', idempotency_key = ${sqlQuote(createKey)},
@@ -604,7 +612,7 @@ export class LinkedCalendarRepository {
       this.runtime,
       `UPDATE app_calendar.linked_calendar_events SET state = 'paused', pending_operation = NULL,
        updated_at = ${sqlQuote(now.toISOString())}
-       WHERE agent_id = ${sqlQuote(agentId)} AND connector_account_id = ${sqlQuote(connectorAccountId)}
+       WHERE agent_id = ${sqlQuote(agentId)} AND connector_account_id = ${sqlQuote(connectorAccountId)} AND state <> 'local_only'
        RETURNING id`,
     );
     return rows.length;
@@ -617,7 +625,7 @@ export class LinkedCalendarRepository {
     return this.save(
       record,
       {
-        state: "paused",
+        state: record.state === "local_only" ? "local_only" : "paused",
         pendingOperation: null,
         lastErrorCode: null,
         lastErrorMessage: null,
@@ -647,7 +655,8 @@ export class LinkedCalendarReconciler {
   async reconcile(
     record: LinkedCalendarEventRecord,
   ): Promise<LinkedCalendarReconcileOutcome> {
-    if (record.state === "paused") return "paused";
+    if (record.state === "paused" || record.state === "local_only")
+      return "paused";
     if (record.state === "conflicted") return "conflicted";
     if (record.state === "quarantined") return "quarantined";
 

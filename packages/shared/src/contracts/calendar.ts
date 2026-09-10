@@ -430,7 +430,8 @@ export type LifeOpsLinkedCalendarState =
   | "dirty"
   | "conflicted"
   | "quarantined"
-  | "paused";
+  | "paused"
+  | "local_only";
 
 export interface LifeOpsLinkedCalendarLink {
   id: string;

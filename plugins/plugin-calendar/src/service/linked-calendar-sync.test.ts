@@ -276,6 +276,35 @@ describe("LinkedCalendarRepository with PGlite", () => {
 });
 
 describe("LinkedCalendarReconciler", () => {
+  it("never reads or writes the provider for a retained local-only link", async () => {
+    const initial = record({ state: "local_only", pendingOperation: null });
+    const store = new MemoryStore(initial);
+    const unreachable = async (): Promise<never> => {
+      throw new Error(
+        "Local-only reconciliation must not touch an external port",
+      );
+    };
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      {
+        get: unreachable,
+        applyProviderEvent: unreachable,
+        delete: unreachable,
+      },
+      {
+        get: unreachable,
+        create: unreachable,
+        update: unreachable,
+        delete: unreachable,
+      },
+    );
+    expect(await reconciler.reconcile(initial)).toBe("paused");
+    expect(await reconciler.resolveConflict(initial, "keep_google")).toBe(
+      "paused",
+    );
+    expect(store.current).toEqual(initial);
+  });
+
   it("recovers an accepted create from provider state without replaying the write", async () => {
     const store = new MemoryStore(record({ state: "quarantined" }));
     const testPorts = ports({

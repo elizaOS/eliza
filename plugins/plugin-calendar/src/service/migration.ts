@@ -396,10 +396,14 @@ export async function ensureLinkedCalendarEventTable(
           agent_id, connector_account_id, provider_calendar_id, provider_event_id
         ),
       CONSTRAINT linked_calendar_events_state_valid
-        CHECK (state IN ('clean', 'dirty', 'conflicted', 'quarantined', 'paused')),
+        CHECK (state IN ('clean', 'dirty', 'conflicted', 'quarantined', 'paused', 'local_only')),
       CONSTRAINT linked_calendar_events_operation_valid
         CHECK (pending_operation IS NULL OR pending_operation IN ('create', 'update', 'delete'))
     )`);
+  await exec(`ALTER TABLE ${TARGET_SCHEMA}.linked_calendar_events
+    DROP CONSTRAINT IF EXISTS linked_calendar_events_state_valid,
+    ADD CONSTRAINT linked_calendar_events_state_valid
+    CHECK (state IN ('clean', 'dirty', 'conflicted', 'quarantined', 'paused', 'local_only'))`);
   await exec(`
     CREATE INDEX IF NOT EXISTS linked_calendar_events_reconcile_idx
       ON ${TARGET_SCHEMA}.linked_calendar_events (agent_id, state, updated_at)`);
