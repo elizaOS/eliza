@@ -1,22 +1,9 @@
 /**
- * Headless "adopt a remote agent during first-run" use case.
- *
- * Device + desktop remote-connect-at-URL onboarding (deep link and the Settings
- * "Connect a remote agent" entry) funnels through here AFTER the client base has
- * been pointed at the remote (`applyLaunchConnection({ kind: "remote" })`). It
- * makes the connected remote the device's completed first-run target so the
- * startup poll lands on home instead of re-showing onboarding on the next launch.
- *
- * This is the headless equivalent of the legacy `finishRemote` step that used to
- * live in the full-screen onboarding controller, with one deliberate
- * improvement: it PROBES the remote's first-run status first and only writes
- * when the host has not finished its own first-run. Connecting to an
- * already-configured host therefore adopts it as-is instead of clobbering its
- * deployment target — the destructive overwrite the unconditional legacy POST
- * could cause.
- *
- * It is intentionally dependency-injected (the client surface is the only
- * dependency) so it can be unit-tested without the React shell or a live server.
+ * Coordinates device first-run completion after its client connects to a remote
+ * agent. Deep links and the Settings connection flow share this use case.
+ * A successful status probe gates setup writes; transport or authorization
+ * failures must preserve both host state and pending local onboarding intent.
+ * Completed hosts are adopted without another setup write.
  */
 
 import type { UiLanguage } from "../i18n";
@@ -76,23 +63,14 @@ export interface AdoptRemoteAgentFirstRunResult {
  * target. Returns whether the remote was already complete (so callers can skip
  * a redundant "configured" notice).
  *
- * Throws if the remote cannot be reached for the completion write — surfacing a
- * real connection failure rather than silently landing the user on a dead shell.
+ * Status and completion-write failures propagate to the connection UI before
+ * local completion or pending text release.
  */
 export async function adoptRemoteAgentFirstRun(
   client: RemoteFirstRunClient,
   input: AdoptRemoteAgentFirstRunInput,
 ): Promise<AdoptRemoteAgentFirstRunResult> {
-  let alreadyComplete = false;
-  try {
-    alreadyComplete = (await client.getFirstRunStatus()).complete === true;
-  } catch {
-    // error-policy:J4 a fresh host with no persisted first-run state, or one
-    // whose build predates the status route, is the expected "needs adoption"
-    // shape — fall through to the completion write below. A genuinely
-    // unreachable remote re-fails there, so the failure still surfaces.
-    alreadyComplete = false;
-  }
+  const alreadyComplete = (await client.getFirstRunStatus()).complete === true;
 
   if (alreadyComplete) {
     return { alreadyComplete: true };

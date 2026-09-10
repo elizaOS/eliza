@@ -94,18 +94,27 @@ describe("adoptRemoteAgentFirstRun", () => {
     expect(submitFirstRun).not.toHaveBeenCalled();
   });
 
-  it("treats an unreachable status probe as 'needs adoption' and still POSTs", async () => {
+  it("preserves the host and pending intent when its status cannot be read", async () => {
+    const complete = vi.fn();
+    const release = vi.fn();
+    setPendingFirstRunTextReleaseHandler(release);
+    const failure = new Error("network down");
     const { client, submitFirstRun } = makeClient({
       getFirstRunStatus: vi.fn(async () => {
-        throw new Error("network down");
+        throw failure;
       }),
     });
 
-    await adoptRemoteAgentFirstRun(client, {
-      apiBase: "http://127.0.0.1:31337",
-    });
-
-    expect(submitFirstRun).toHaveBeenCalledTimes(1);
+    await expect(
+      completeRemoteAgentFirstRun(
+        client,
+        { apiBase: "http://127.0.0.1:31337" },
+        complete,
+      ),
+    ).rejects.toBe(failure);
+    expect(submitFirstRun).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
   });
 
   it("propagates a completion-write failure instead of faking success", async () => {
