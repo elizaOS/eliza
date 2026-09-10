@@ -431,7 +431,13 @@ export class AppsRepository {
             ...(input.ipAddress != null ? { ip_address: input.ipAddress } : {}),
             ...(input.userAgent != null ? { user_agent: input.userAgent } : {}),
           })
-          .where(eq(appUsers.id, existing.id));
+          .where(
+            and(
+              eq(appUsers.id, existing.id),
+              eq(appUsers.app_id, input.appId),
+              eq(appUsers.user_id, input.userId),
+            ),
+          );
       } else {
         await tx.insert(appUsers).values({
           app_id: input.appId,
@@ -443,7 +449,9 @@ export class AppsRepository {
         await tx
           .update(apps)
           .set({ total_users: sql`COALESCE(${apps.total_users}, 0) + 1` })
-          .where(eq(apps.id, input.appId));
+          .where(
+            and(eq(apps.id, input.appId), eq(apps.is_active, true), eq(apps.is_approved, true)),
+          );
       }
       await materializeAppBillingAccounts(tx, input.appId);
       return existing ? "updated" : "created";
