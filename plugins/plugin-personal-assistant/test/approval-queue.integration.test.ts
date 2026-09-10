@@ -249,6 +249,90 @@ afterAll(async () => {
 });
 
 describe("ApprovalQueue integration (real PGlite)", () => {
+  it("retires a known-undelivered approval without permitting another send", async () => {
+    const request = await queue.enqueue(messageInput());
+    const claim = {
+      requestId: request.id,
+      subjectUserId: request.subjectUserId,
+      provider: "retired-test-account",
+      providerIdempotencyKey: `retirement:${request.id}`,
+    };
+    await queue.approve(request.id, request.subjectUserId, {
+      resolvedBy: request.subjectUserId,
+      resolutionReason: "Synthetic account handoff test",
+    });
+    const executing = await queue.claimExecution(claim);
+    if (!executing.execution) throw new Error("Execution was not persisted");
+    const mutation = { ...claim, attemptId: executing.execution.attemptId };
+    await queue.markDispatchStarted(mutation);
+    const failed = await queue.markRetryableFailure({
+      ...mutation,
+      error: "Provider confirmed non-delivery before account retirement",
+      providerReceipt: { delivered: false },
+    });
+    await expect(
+      queue.markExpired(request.id, "another-owner"),
+    ).rejects.toBeInstanceOf(ApprovalNotFoundError);
+    const retired = await queue.markExpired(request.id, request.subjectUserId);
+    expect(retired.execution).toEqual(failed.execution);
+    const reopened = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    await expect(reopened.claimExecution(claim)).rejects.toBeInstanceOf(
+      ApprovalStateTransitionError,
+    );
+    expect(
+      (await reopened.byId(request.id, request.subjectUserId))?.state,
+    ).toBe("expired");
+  }, 60_000);
+
+  it("keeps an uncertain delivery unresolved until reconciliation permits retirement", async () => {
+    const request = await queue.enqueue(messageInput());
+    await queue.approve(request.id, request.subjectUserId, {
+      resolvedBy: request.subjectUserId,
+      resolutionReason: "Synthetic account handoff test",
+    });
+    const executing = await queue.claimExecution({
+      requestId: request.id,
+      subjectUserId: request.subjectUserId,
+      provider: "retired-test-account",
+      providerIdempotencyKey: `retirement:${request.id}`,
+    });
+    if (!executing.execution) throw new Error("Execution was not persisted");
+    const mutation = {
+      requestId: request.id,
+      subjectUserId: request.subjectUserId,
+      attemptId: executing.execution.attemptId,
+    };
+    await queue.markDispatchStarted(mutation);
+    await expect(
+      queue.markExpired(request.id, request.subjectUserId),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+    const uncertain = await queue.markReconciliationRequired({
+      ...mutation,
+      error: "Connection lost after dispatch",
+    });
+    await expect(
+      queue.markExpired(request.id, request.subjectUserId),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+    expect(await queue.byId(request.id, request.subjectUserId)).toEqual(
+      uncertain,
+    );
+    await queue.reconcileExecution({
+      ...mutation,
+      outcome: "not_delivered",
+      reconciledBy: request.subjectUserId,
+      reconciliationReason: "Provider lookup confirmed no delivery",
+    });
+    await queue.markExpired(request.id, request.subjectUserId);
+    await expect(
+      queue.claimExecution({
+        requestId: request.id,
+        subjectUserId: request.subjectUserId,
+        provider: "replacement-account",
+        providerIdempotencyKey: `replacement:${request.id}`,
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+  }, 60_000);
+
   it("enqueue → approve → durable execution → receipt happy path", async () => {
     const enqueued = await queue.enqueue(messageInput());
     expect(enqueued.state).toBe("pending");

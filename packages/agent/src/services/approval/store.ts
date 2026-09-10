@@ -57,7 +57,7 @@ const ALLOWED_TRANSITIONS: Readonly<
   pending: ["approved", "rejected", "expired"],
   approved: ["executing", "rejected", "expired"],
   executing: ["done", "retryable", "reconciliation_required"],
-  retryable: ["executing", "rejected"],
+  retryable: ["executing", "rejected", "expired"],
   reconciliation_required: ["done", "retryable"],
   done: [],
   rejected: [],
