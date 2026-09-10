@@ -65,4 +65,19 @@ describe("ConnectorAccountList OAuth capabilities", () => {
       });
     });
   });
+  it("shows a failed OAuth start beside the account controls and permits retry", async () => {
+    startOAuth.mockRejectedValueOnce(
+      new Error("Google callback must be configured."),
+    );
+    render(<ConnectorAccountList provider="google" connectorId="google" />);
+    fireEvent.click(screen.getByLabelText("Read Gmail"));
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+    expect(
+      await screen.findByText("Google callback must be configured."),
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Add account" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
 });

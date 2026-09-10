@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -82,6 +83,15 @@ function snapshot(): FamilyOperationsSnapshot {
     },
     school: { status: "unavailable", message: "School API is not installed." },
     packets: { status: "ready", data: [] },
+    emailOptions: {
+      status: "ready",
+      data: {
+        accounts: [{ grantId: "sender-1", label: "owner@example.com" }],
+        recipients: [
+          { entityId: "guest-1", name: "Alex", address: "guest@example.com" },
+        ],
+      },
+    },
   };
 }
 
@@ -117,15 +127,54 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     resolveCalendarConflict: vi.fn(async () => undefined),
     disconnectCalendar: vi.fn(async () => undefined),
     runSchoolWorkflow: vi.fn(async () => undefined),
+    configureSchool: vi.fn(async () => undefined),
     approveSchoolDiff: vi.fn(async () => undefined),
     generatePacket: vi.fn(async () => undefined),
     uploadAgreement: vi.fn(async () => undefined),
     createPacketDraft: vi.fn(async () => undefined),
+    revisePacketDraft: vi.fn(async () => undefined),
     requestPacketApproval: vi.fn(async () => undefined),
   } as FamilyOperationsAdapter;
 }
 
 describe("FamilyOperationsView", () => {
+  it("saves the selected school level and standing update policy before running", async () => {
+    const local = adapter();
+    const data = await local.load();
+    data.school = {
+      status: "ready",
+      data: {
+        sourceId: "concord",
+        label: "Concord calendar",
+        state: "never_run",
+        lastCheckedAt: null,
+        sourceUrl:
+          "https://www.concordps.org/district-resources/school-year-calendars",
+        schoolLevel: "all",
+        updateMode: "review",
+      },
+    };
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "School calendar" }),
+    );
+    fireEvent.change(screen.getByLabelText("School level"), {
+      target: { value: "elementary" },
+    });
+    fireEvent.change(screen.getByLabelText("Calendar updates"), {
+      target: { value: "automatic" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save school settings" }),
+    );
+    await waitFor(() =>
+      expect(local.configureSchool).toHaveBeenCalledWith({
+        schoolLevel: "elementary",
+        updateMode: "automatic",
+      }),
+    );
+    expect(local.runSchoolWorkflow).not.toHaveBeenCalled();
+  });
   it("requires a review reason and delegates approval to the canonical adapter", async () => {
     const local = adapter();
     render(<FamilyOperationsView adapter={local} />);
@@ -262,13 +311,21 @@ describe("FamilyOperationsView", () => {
           version: 1,
           createdAt: "2026-08-30T12:00:00.000Z",
           status: "complete",
-          claims: [{ id: "claim-1", section: "school", text: "No school." }],
+          claims: [
+            { id: "claim-1", section: "school", text: "No school." },
+            {
+              id: "private-claim",
+              section: "owner",
+              text: "Private owner note omitted by the disclosure policy.",
+            },
+          ],
           draft: {
             draftVersion: 2,
-            recipient: "+15551234567",
+            recipient: "guest@example.com",
             recipientEntityId: "guest-1",
             calendarPrivacyMode: "busy_only",
             body: "Family coordination\n\n## school\n- No school.",
+            email: { subject: "Monthly plans", senderGrantId: "sender-1" },
           },
         },
       ],
@@ -278,11 +335,20 @@ describe("FamilyOperationsView", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Monthly packet" }),
     );
-    fireEvent.change(screen.getByLabelText("Recipient Entity ID"), {
-      target: { value: "guest-1" },
+    const download = screen
+      .getByRole("link", {
+        name: "Download draft record",
+      })
+      .getAttribute("href");
+    if (!download) throw new Error("Draft download has no payload");
+    const record = JSON.parse(decodeURIComponent(download.split(",")[1]));
+    expect(record.draft.body).toBe(data.packets.data[0].draft?.body);
+    expect(JSON.stringify(record)).not.toContain("Private owner note");
+    fireEvent.change(screen.getByLabelText("Sending account"), {
+      target: { value: "sender-1" },
     });
-    fireEvent.change(screen.getByLabelText("Verified iMessage address"), {
-      target: { value: "+15551234567" },
+    fireEvent.change(screen.getByLabelText("Email recipient"), {
+      target: { value: JSON.stringify(["guest-1", "guest@example.com"]) },
     });
     fireEvent.click(
       screen.getByRole("button", { name: "Create privacy-filtered draft" }),
@@ -290,9 +356,10 @@ describe("FamilyOperationsView", () => {
     await waitFor(() =>
       expect(local.createPacketDraft).toHaveBeenCalledWith({
         packetId: "packet/1",
-        recipient: "+15551234567",
+        recipient: "guest@example.com",
         recipientEntityId: "guest-1",
         calendarPrivacyMode: "busy_only",
+        email: { subject: expect.any(String), senderGrantId: "sender-1" },
       }),
     );
     expect(screen.getByText(/Family coordination/)).toBeTruthy();
@@ -301,6 +368,61 @@ describe("FamilyOperationsView", () => {
     );
     await waitFor(() =>
       expect(local.requestPacketApproval).toHaveBeenCalledWith("packet/1", 2),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit email draft" }));
+    fireEvent.change(screen.getByLabelText("Email text"), {
+      target: { value: "Please confirm pickup at 3 PM." },
+    });
+    fireEvent.change(
+      within(
+        screen.getByRole("group", { name: "Edit saved email" }),
+      ).getByLabelText("Email subject"),
+      {
+        target: { value: "Updated monthly plans" },
+      },
+    );
+    expect(
+      screen.queryByRole("button", { name: "Request owner approval" }),
+    ).toBeNull();
+    const saved = data.packets.data[0].draft;
+    if (!saved) throw new Error("Fixture omitted saved draft");
+    vi.mocked(local.load).mockResolvedValue({
+      ...data,
+      packets: {
+        status: "ready",
+        data: [
+          {
+            ...data.packets.data[0],
+            draft: {
+              ...saved,
+              draftVersion: 3,
+              body: "Please confirm pickup at 3 PM.",
+              email: {
+                subject: "Updated monthly plans",
+                senderGrantId: "sender-1",
+              },
+            },
+          },
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save new draft" }));
+    await waitFor(() =>
+      expect(local.revisePacketDraft).toHaveBeenCalledWith({
+        packetId: "packet/1",
+        expectedDraftVersion: 2,
+        subject: "Updated monthly plans",
+        body: "Please confirm pickup at 3 PM.",
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Request owner approval" }),
+    );
+    await waitFor(() =>
+      expect(local.requestPacketApproval).toHaveBeenLastCalledWith(
+        "packet/1",
+        3,
+      ),
     );
   });
 });

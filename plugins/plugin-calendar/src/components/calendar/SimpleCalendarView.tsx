@@ -41,6 +41,7 @@ import {
   type CalendarIssue,
   useCalendarWeek,
 } from "../../hooks/useCalendarWeek.js";
+import { calendarEventOccursOn } from "./event-days.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = Array.from({ length: 12 }, (_, month) =>
@@ -120,16 +121,12 @@ function formatAgendaDate(value: string): string {
   }).format(parseLocalDateKey(value));
 }
 
-function eventDateKey(event: LifeOpsCalendarEvent): string {
-  return localDateKey(new Date(event.startAt));
-}
-
 function eventsOnDate(
   events: LifeOpsCalendarEvent[],
   date: string,
 ): LifeOpsCalendarEvent[] {
   return events
-    .filter((event) => eventDateKey(event) === date)
+    .filter((event) => calendarEventOccursOn(event, date, TIME_ZONE))
     .toSorted((left, right) => left.startAt.localeCompare(right.startAt));
 }
 

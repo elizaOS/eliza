@@ -31,6 +31,7 @@ import {
   type CalendarViewMode,
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
+import { calendarEventOccursOn } from "./calendar/event-days.js";
 import { EventEditorDrawer } from "./EventEditorDrawer.js";
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -119,13 +120,15 @@ function buildDays(start: Date, count: number): Date[] {
 
 function groupEventsByDay(
   events: LifeOpsCalendarEvent[],
+  days: Date[],
 ): Map<string, LifeOpsCalendarEvent[]> {
   const map = new Map<string, LifeOpsCalendarEvent[]>();
-  for (const event of events) {
-    const key = toLocalDayKey(new Date(event.startAt));
-    const existing = map.get(key);
-    if (existing) existing.push(event);
-    else map.set(key, [event]);
+  for (const day of days) {
+    const key = toLocalDayKey(day);
+    map.set(
+      key,
+      events.filter((event) => calendarEventOccursOn(event, key, TIME_ZONE)),
+    );
   }
   return map;
 }
@@ -1048,11 +1051,6 @@ export function CalendarSection({
   const [createOpen, setCreateOpen] = useState(false);
   const [createDefaultDate, setCreateDefaultDate] = useState<Date>(new Date());
 
-  const eventsByDay = useMemo(
-    () => groupEventsByDay(calendar.events),
-    [calendar.events],
-  );
-
   const proactiveLine = useMemo(
     () => nextUpcomingLine(calendar.events),
     [calendar.events],
@@ -1068,6 +1066,11 @@ export function CalendarSection({
         return buildDays(calendar.windowStart, 7);
     }
   }, [calendar.viewMode, calendar.windowStart]);
+
+  const eventsByDay = useMemo(
+    () => groupEventsByDay(calendar.events, days),
+    [calendar.events, days],
+  );
 
   const handleSelectEvent = useCallback(
     (event: LifeOpsCalendarEvent) => {
