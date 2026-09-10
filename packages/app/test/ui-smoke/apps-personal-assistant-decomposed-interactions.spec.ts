@@ -406,6 +406,17 @@ for (const width of [1280, 390]) {
         await route.fulfill({ json: { accounts: [] } });
       },
     );
+    await page.route("**/api/permissions/calendar", async (route) => {
+      await route.fulfill({
+        json: {
+          id: "calendar",
+          status: "denied",
+          lastChecked: Date.now(),
+          canRequest: false,
+          platform: "darwin",
+        },
+      });
+    });
     await openAppPath(page, "/lifeops/connections");
     const refresh = page.getByRole("button", {
       name: "Retry all connection checks and synchronization",
