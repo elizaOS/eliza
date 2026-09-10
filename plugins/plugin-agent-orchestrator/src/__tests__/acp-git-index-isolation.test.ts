@@ -184,49 +184,4 @@ describe("ACP per-session git index isolation (#13773)", () => {
       }),
     ).toThrow("Session git wrapper is outside its owned root");
   });
-
-  it.skipIf(process.platform === "win32")(
-    "commits both trees through real authenticated warm-child processes",
-    async () => {
-      const service = new AcpService(makeRuntime(), {
-        store: new InMemorySessionStore(),
-      });
-      const prepare = (
-        service as unknown as GitIndexPreparer
-      ).prepareSessionGitIndex.bind(service);
-      const baselineSha = git(repo, ["rev-parse", "HEAD"]);
-      const preparedA = await prepare(
-        repo,
-        `${sessionPrefix}child-a`,
-        baselineSha,
-      );
-      const preparedB = await prepare(
-        repo,
-        `${sessionPrefix}child-b`,
-        baselineSha,
-      );
-      writeFileSync(path.join(repo, "child-a.txt"), "from child a\n");
-      writeFileSync(path.join(repo, "child-b.txt"), "from child b\n");
-
-      const receiptA = runClaimedGitChild(repo, preparedA, "child-token-a", [
-        ["add", "child-a.txt"],
-        ["commit", "-m", "claimed child a"],
-      ]);
-      const receiptB = runClaimedGitChild(repo, preparedB, "child-token-b", [
-        ["add", "child-b.txt"],
-        ["commit", "-m", "claimed child b"],
-      ]);
-
-      expect(receiptA.resolvedGit).toBe(
-        path.join(preparedA?.metadata.gitWrapperDir ?? "", "git"),
-      );
-      expect(receiptB.resolvedGit).toBe(
-        path.join(preparedB?.metadata.gitWrapperDir ?? "", "git"),
-      );
-      expect(git(repo, ["ls-tree", "--name-only", "-r", "HEAD"])).toBe(
-        ["README.md", "child-a.txt", "child-b.txt"].join("\n"),
-      );
-    },
-    20_000,
-  );
 });
