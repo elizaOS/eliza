@@ -1,4 +1,4 @@
-/*
+/**
  * Shared Tailwind v4 token map for every elizaOS frontend.
  * Host apps own layout-specific CSS, but color/font/radius/shadow tokens
  * must resolve through the same CSS custom properties from base.css.
@@ -68,6 +68,8 @@
   --color-warn-subtle: var(--warn-subtle);
   --color-danger: var(--danger);
   --color-destructive: var(--destructive);
+  --color-destructive-solid: var(--destructive-solid);
+  --color-destructive-solid-hover: var(--destructive-solid-hover);
   --color-destructive-fg: var(--destructive-foreground);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-subtle: var(--destructive-subtle);

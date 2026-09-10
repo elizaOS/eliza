@@ -40,7 +40,7 @@ const buttonVariants = cva(
         surfaceDestructive:
           "bg-destructive-subtle text-danger hover:bg-destructive-subtle/70 disabled:text-muted-strong",
         destructive:
-          "bg-destructive text-destructive-fg hover:bg-destructive/85 disabled:bg-destructive/65 disabled:text-destructive-fg",
+          "bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover disabled:bg-destructive-solid/65 disabled:text-destructive-fg",
         outline:
           "border border-border bg-card text-txt-strong hover:border-border-strong hover:bg-surface hover:text-txt-strong disabled:border-border/60 disabled:bg-card disabled:text-muted-strong",
         secondary:
@@ -53,7 +53,7 @@ const buttonVariants = cva(
         settingsRow:
           "bg-transparent text-muted hover:bg-transparent hover:text-txt-strong data-[state=on]:bg-bg-hover data-[state=on]:hover:bg-bg-hover data-[state=on]:text-txt-strong",
         choice:
-          "border border-border-strong bg-card text-txt-strong hover:border-accent hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
+          "border border-border-strong bg-card text-card-foreground hover:border-accent hover:bg-[color-mix(in_srgb,var(--card)_92%,var(--card-foreground)_8%)] disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
           "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-inverse-foreground whitespace-normal hover:bg-transparent hover:text-inverse",
         publicTile:

@@ -95,7 +95,7 @@ function PipelineNodeButton({
       ? "text-[color:var(--settings-foreground)]"
       : "text-[color:var(--settings-muted)]",
     skipped: "text-[color:var(--settings-muted)] opacity-50",
-    error: "text-danger/80",
+    error: selected ? "text-accent-foreground" : "text-danger",
   };
 
   const countTone = {
@@ -121,7 +121,7 @@ function PipelineNodeButton({
         variant="secondary"
         size="compact"
         tone={countTone[node.status]}
-        className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
+        className={`px-2 py-0.5 text-xs font-medium normal-case leading-none ${node.status === "error" && selected ? "bg-destructive-solid text-destructive-fg" : ""}`}
       >
         <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>
       </Badge>
