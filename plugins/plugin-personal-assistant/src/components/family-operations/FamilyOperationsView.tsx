@@ -179,7 +179,7 @@ function AgreementUploadCard({
   return (
     <Card
       title="Upload signed agreement"
-      detail="Signed PDFs upload in resumable chunks. Eliza reads every page and derives the citation page count."
+      detail="Upload your signed PDF, then review the extracted obligations and their source pages."
     >
       <Button variant="outline" onClick={() => setExpanded((value) => !value)}>
         {expanded ? "Close PDF form" : "Choose a signed PDF"}
