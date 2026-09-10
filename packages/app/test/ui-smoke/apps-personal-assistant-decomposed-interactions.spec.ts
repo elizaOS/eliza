@@ -11,6 +11,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { installRemoteConnectionsView } from "./remote-connections-fixture";
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
@@ -400,6 +401,7 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    const { bundleRequests } = await installRemoteConnectionsView(page);
     await page.route(
       "**/api/lifeops/connectors/google/status**",
       async (route) => {
@@ -438,6 +440,11 @@ for (const width of [1280, 390]) {
     await refresh.click();
     await synchronized;
     await expect(refresh).toBeEnabled();
+    expect(
+      bundleRequests.some(
+        (url) => new URL(url).searchParams.get("hostExternalRuntime") === "1",
+      ),
+    ).toBe(true);
     expect(pageErrors).toEqual([]);
   });
 }
