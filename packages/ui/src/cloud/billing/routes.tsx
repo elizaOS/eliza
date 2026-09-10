@@ -14,6 +14,8 @@
  * - `cloud/billing/success`  — Stripe Checkout return URL
  *   (`/cloud/billing/success?session_id=...&from=settings`).
  * - `cloud/invoices/:id`     — invoice detail sub-view.
+ * - `cloud/billing/payments/:id` — payment-state detail sub-view (#22966
+ *   linked order/receipt surface).
  */
 
 import { lazy } from "react";
@@ -22,6 +24,13 @@ import { registerCloudRoute } from "../shell/cloud-route-registry";
 const BillingPage = lazy(() => import("./BillingPage"));
 const BillingSuccessPage = lazy(() => import("./BillingSuccessPage"));
 const InvoiceDetailPage = lazy(() => import("./InvoiceDetailPage"));
+const PaymentStateDetailPage = lazy(() => import("./PaymentStateDetailPage"));
+
+registerCloudRoute({
+  path: "cloud/billing/payments/:id",
+  element: PaymentStateDetailPage,
+  group: "cloud",
+});
 
 registerCloudRoute({
   path: "cloud/billing",
