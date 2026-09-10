@@ -156,7 +156,7 @@ vi.mock("../state/cloud-login-launch", async (importOriginal) => {
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { DEFAULT_BRANDING } from "../config/branding-base";
 import { BrandingContext } from "../config/branding-react.hooks";
-import { APP_RESUME_EVENT, CHAT_PREFILL_EVENT } from "../events";
+import { APP_RESUME_EVENT } from "../events";
 import { __setAppValueForTests } from "../state/app-store";
 import {
   ConversationMessagesCtx,

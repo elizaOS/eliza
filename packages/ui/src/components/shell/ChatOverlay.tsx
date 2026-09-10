@@ -4297,6 +4297,7 @@ export function ChatOverlay({
   ]);
 
   React.useEffect(() => {
+    if (!acceptPendingFirstRunText || firstRunOpen) return;
     const pending = pendingFirstRunAcknowledgementRef.current;
     if (!pending || pending.text !== draft) return;
     // A committed composer render acknowledges the complete draft; a remount
