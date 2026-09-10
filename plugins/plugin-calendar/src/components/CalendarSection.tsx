@@ -1087,6 +1087,7 @@ export function CalendarSection({
   getPrimedEvent,
 }: CalendarSectionProps) {
   const t = useAppSelector((s) => s.t);
+  const uiAccentId = useAppSelector((s) => s.uiAccentId);
   const calendar = useCalendarWeek();
   useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void calendar.refresh();
@@ -1229,12 +1230,22 @@ export function CalendarSection({
       <section
         className="flex min-h-full flex-col gap-4"
         style={
-          {
-            "--accent": "var(--eliza-brand-orange, #ff5800)",
-            "--accent-foreground": "#111111",
-            "--accent-muted":
-              "color-mix(in srgb, var(--eliza-brand-orange, #ff5800) 75%, #111111)",
-          } as CSSProperties
+          uiAccentId === "default"
+            ? ({
+                "--accent": "var(--eliza-brand-orange, #ff5800)",
+                "--accent-rgb": "255, 88, 0",
+                "--accent-foreground": "#111111",
+                "--accent-hover":
+                  "color-mix(in srgb, var(--accent) 88%, white)",
+                "--accent-muted":
+                  "color-mix(in srgb, var(--accent) 75%, #111111)",
+                "--accent-subtle":
+                  "color-mix(in srgb, var(--accent) 14%, transparent)",
+                "--ring": "var(--accent)",
+                "--border-hover": "var(--accent)",
+                "--primary": "var(--accent)",
+              } as CSSProperties)
+            : undefined
         }
         data-testid="lifeops-calendar-section"
       >

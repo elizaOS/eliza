@@ -28,6 +28,7 @@ import type { UseCalendarWeekResult } from "../hooks/useCalendarWeek.js";
 // ---------------------------------------------------------------------------
 
 const calendarSectionAppValue = vi.hoisted(() => ({
+  uiAccentId: "default",
   t: (_key: string, opts?: { defaultValue?: string }) =>
     opts?.defaultValue ?? _key,
   setActionNotice: vi.fn(),

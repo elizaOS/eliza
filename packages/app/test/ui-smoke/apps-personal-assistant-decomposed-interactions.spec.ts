@@ -52,6 +52,56 @@ async function openPopulatedCalendar(page: Page): Promise<void> {
   });
 }
 
+test("calendar inherits the host accent for current and selected days after a preference change", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("eliza:ui-accent", "green");
+  });
+  await openPopulatedCalendar(page);
+  await page.getByRole("button", { name: "Month", exact: true }).click();
+  const grid = page.getByTestId("calendar-month-grid");
+  const selected = grid
+    .locator(
+      'button[data-agent-id^="calendar-day-"]:not([aria-current="date"])',
+    )
+    .first();
+  await selected.click();
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(300);
+  const colors = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const current = document.querySelector(
+      '[data-testid="calendar-month-grid"] button[aria-current="date"]',
+    );
+    const selection = document.querySelector(
+      '[data-testid="calendar-month-grid"] button[aria-pressed="true"]',
+    );
+    if (!current || !selection)
+      throw new Error("Calendar day controls missing");
+    const probe = document.createElement("span");
+    document.body.append(probe);
+    const resolve = (value: string) => {
+      probe.style.backgroundColor = value;
+      return getComputedStyle(probe).backgroundColor;
+    };
+    const result = {
+      current: getComputedStyle(current).backgroundColor,
+      selected: getComputedStyle(selection).backgroundColor,
+      expectedCurrent: resolve(root.getPropertyValue("--accent")),
+      expectedSelected: resolve(root.getPropertyValue("--accent-subtle")),
+      preferenceApplied:
+        document.documentElement.style.getPropertyValue("--accent") !== "",
+    };
+    probe.remove();
+    return result;
+  });
+  expect(colors.preferenceApplied).toBe(true);
+  expect(colors.current).toBe(colors.expectedCurrent);
+  expect(colors.selected).toBe(colors.expectedSelected);
+});
+
 test("calendar decomposed view: responsive modes and event creation", async ({
   page,
 }) => {
