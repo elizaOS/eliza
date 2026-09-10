@@ -4254,9 +4254,8 @@ async function runLifeOperationHandlerInner(
     | LifeParams
     | undefined;
   const params = rawParams ?? ({} as LifeParams);
-  const currentText = normalizeLifeInputText(
-    extractPrimaryLifeInputText(messageText(message)),
-  );
+  const authoredText = extractPrimaryLifeInputText(messageText(message));
+  const currentText = normalizeLifeInputText(authoredText);
   const details = params.details;
   const stateDeferredDraft = latestDeferredLifeDraft(state);
   const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
@@ -4896,7 +4895,18 @@ async function runLifeOperationHandlerInner(
           await invalidateDeferredLifeDraftCache(runtime, message);
         }
       }
-      const undatedAuthority = resolveUndatedTodoAuthority(currentText, title);
+      const undatedAuthority = resolveUndatedTodoAuthority(authoredText, title);
+      // A uniquely authored no-date directive supplies the cadence even when
+      // the planner omits it; timing on another operation cannot fill this slot.
+      if (
+        ownerSurfaceActionName === "OWNER_TODOS" &&
+        !editingDeferredDefinitionDraft &&
+        cadence === undefined &&
+        undatedAuthority.operationScoped &&
+        undatedAuthority.explicit
+      ) {
+        cadence = { kind: "unscheduled" };
+      }
       const confirmsValidatedUndatedDraft =
         deferredDraftReuseMode === "confirm" &&
         deferredDefinitionDraft?.request.cadence?.kind === "unscheduled";
