@@ -787,7 +787,7 @@ export function AddAccountDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[min(720px,calc(100vh-2rem))] max-w-md overflow-hidden">
+      <DialogContent className="max-h-[min(720px,calc(100dvh_-_2rem_-_var(--eliza-chat-clearance,0px)))] max-w-md overflow-y-auto sm:top-[calc((100dvh_-_var(--eliza-chat-clearance,0px))/2)]">
         <DialogHeader>
           <DialogTitle>
             {activeProviderId
