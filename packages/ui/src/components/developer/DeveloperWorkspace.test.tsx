@@ -14,7 +14,11 @@ import type {
   TrajectoryDetailResult,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
-import { DeveloperTrace, DeveloperWorkspace } from "./DeveloperWorkspace";
+import {
+  callLane,
+  DeveloperTrace,
+  DeveloperWorkspace,
+} from "./DeveloperWorkspace";
 import { useDeveloperTrajectories } from "./useDeveloperTrajectories";
 
 const mocks = vi.hoisted(() => ({
@@ -25,15 +29,23 @@ const mocks = vi.hoisted(() => ({
 }));
 const record = {
   id: "run-1",
+  agentId: "agent-1",
+  entityId: null,
+  conversationId: "conversation-1",
   source: "client_chat",
   roomId: "room-1",
   status: "completed",
   updatedAt: "one",
   llmCallCount: 1,
   startTime: 1,
+  endTime: 1501,
+  providerAccessCount: 0,
+  createdAt: "2026-09-09T00:00:00Z",
   durationMs: 1500,
-  metadata: {},
-} as TrajectoryRecord;
+  totalPromptTokens: 100,
+  totalCompletionTokens: 20,
+  metadata: { messageId: "user-1" },
+} satisfies TrajectoryRecord;
 const detail = {
   trajectory: record,
   llmCalls: [],
@@ -55,12 +67,24 @@ const appState = {
 vi.mock("../../api/client", () => ({
   client: { getTrajectories: mocks.list, getTrajectoryDetail: mocks.detail },
 }));
-vi.mock("../../state/ChatComposerContext.hooks", () => ({
-  useChatComposer: () => ({ chatSending: false }),
-}));
+vi.mock("../../state/ChatComposerContext.hooks", async () => {
+  const { useState } = await import("react");
+  return {
+    useChatComposer: () => {
+      const [chatInput, setChatInput] = useState("");
+      return { chatSending: appState.chatSending, chatInput, setChatInput };
+    },
+  };
+});
 vi.mock("../../state/ConversationMessagesContext.hooks", () => ({
   useConversationMessages: () => ({
     conversationMessages: [
+      {
+        id: "user-1",
+        role: "user",
+        text: "Which view is open?",
+        timestamp: 1000,
+      },
       { id: "reply-1", role: "assistant", text: "You are on Notes." },
     ],
   }),
@@ -76,6 +100,11 @@ vi.mock("../RoleGate", () => ({
   RoleGate: ({ children }: { children: ReactNode }) => children,
   OwnerOnlyNotice: () => null,
 }));
+vi.mock("../chat/MessageContent", () => ({
+  MessageContent: ({ message }: { message: { text: string } }) => (
+    <p>{message.text}</p>
+  ),
+}));
 vi.mock("../accounts/AddAccountDialog", () => ({
   AddAccountDialog: () => null,
 }));
@@ -85,7 +114,9 @@ vi.mock("../settings/ModelConfigurationPanel", () => ({
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.setSystemTime(1000);
   appState.agentStatus.canRespond = true;
+  appState.chatSending = false;
   mocks.list.mockResolvedValue({
     trajectories: [record],
     total: 1,
@@ -111,6 +142,16 @@ const flush = async () => {
 };
 
 describe("developer workspace", () => {
+  it("classifies generic provider calls by their recorded semantic stage", () => {
+    const call = { purpose: "external_llm" };
+    expect(callLane(call, "client_chat", "evaluation")).toBe(
+      "Post-turn evaluation",
+    );
+    expect(callLane(call, "client_chat", "planner")).toBe("Foreground");
+    expect(callLane(call, "background_memory", "evaluation")).toBe(
+      "Background memory",
+    );
+  });
   it("sends through canonical chat without overriding view, authority or conversation", async () => {
     render(
       <DeveloperWorkspace>
@@ -118,12 +159,10 @@ describe("developer workspace", () => {
       </DeveloperWorkspace>,
     );
     await flush();
-    fireEvent.change(screen.getByLabelText(/Prompt Eliza/), {
+    fireEvent.change(screen.getByLabelText("Message Eliza"), {
       target: { value: "Open Calendar without changing anything" },
     });
-    const form = screen
-      .getByRole("button", { name: "Send to Eliza" })
-      .closest("form");
+    const form = screen.getByRole("button", { name: "Send" }).closest("form");
     if (!form) throw new Error("Composer form missing");
     fireEvent.submit(form);
     await flush();
@@ -131,9 +170,70 @@ describe("developer workspace", () => {
       "Open Calendar without changing anything",
     );
     expect(screen.getByText("Existing app")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Exit" }).getAttribute("href"),
+    ).toBe("/notes");
     expect(screen.getByTestId("developer-reply").textContent).toBe(
       "You are on Notes.",
     );
+  });
+
+  it("shows the conversation and tokens, fetching details only after expansion", async () => {
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(screen.getByText("Which view is open?")).toBeTruthy();
+    expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
+    expect(screen.queryByText("Recorded runs")).toBeNull();
+    expect(screen.queryByText("Foreground input")).toBeNull();
+    expect(mocks.detail).not.toHaveBeenCalled();
+    const disclosure = screen.getByText("Details").closest("details");
+    if (!disclosure) throw new Error("Missing reply disclosure");
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    await flush();
+    expect(mocks.detail).toHaveBeenCalledExactlyOnceWith(
+      "run-1",
+      expect.objectContaining({ includePayloads: false }),
+    );
+    expect(screen.getByText("Foreground input")).toBeTruthy();
+    expect(screen.queryByLabelText("Full trajectory JSON")).toBeNull();
+  });
+
+  it("shows live elapsed time before usage arrives without inventing token counts", async () => {
+    appState.chatSending = true;
+    mocks.list.mockResolvedValue({ trajectories: [], total: 0 });
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(screen.getByRole("status").textContent).toContain("Thinking");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByRole("status").textContent).toContain("1.00s");
+    expect(screen.getByText(/Waiting for the run/)).toBeTruthy();
+    expect(screen.queryByText(/tokens in/)).toBeNull();
+    expect(mocks.detail).not.toHaveBeenCalled();
+  });
+
+  it("never attaches another room's token counts to a reply", async () => {
+    mocks.list.mockResolvedValue({
+      trajectories: [{ ...record, roomId: "other-room" }],
+      total: 1,
+    });
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(screen.queryByText(/tokens in/)).toBeNull();
   });
 
   it("polls small evidence, caches settled runs, pauses and resumes without discarding inspection", async () => {
@@ -234,9 +334,7 @@ describe("developer workspace", () => {
     await flush();
     expect(screen.getByText(/Agent unavailable/)).toBeTruthy();
     expect(
-      screen
-        .getByRole("button", { name: "Send to Eliza" })
-        .hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Send" }).hasAttribute("disabled"),
     ).toBe(true);
   });
 });

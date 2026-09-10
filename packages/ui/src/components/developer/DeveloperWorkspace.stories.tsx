@@ -4,7 +4,7 @@ import type {
   TrajectoryDetailResult,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
-import { DeveloperTrace } from "./DeveloperWorkspace";
+import { DeveloperReplyDetails, DeveloperTrace } from "./DeveloperWorkspace";
 
 const record = {
   id: "example-turn",
@@ -65,6 +65,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const Completed: Story = {};
+/** Summary-only fixture; live expanded evidence is verified against the local app. */
+export const ChatReply: Story = {
+  render: () => (
+    <article className="developer-message developer-message-assistant">
+      <p>Notes is open.</p>
+      <DeveloperReplyDetails record={record} />
+    </article>
+  ),
+};
 export const UnknownUsage: Story = {
   args: {
     detail: {
