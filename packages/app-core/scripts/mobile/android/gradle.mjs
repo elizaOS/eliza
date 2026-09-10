@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.mjs";
 import {
   resolvePackageAbsolutePath,
   resolvePackageAbsolutePathCandidates,
@@ -300,6 +301,7 @@ export function patchAndroidGradle({ cloudBuild = false } = {}) {
     patched = injectAndroidSmsGatewayBuildConfigFields(patched);
     patched = injectNoCompressTarGz(patched);
     patched = injectNativeLibLegacyPackaging(patched);
+    patched = injectAndroidRuntimeBytePreservation(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
     patched = injectAndroidBackgroundRunnerAarFlatDir(patched);

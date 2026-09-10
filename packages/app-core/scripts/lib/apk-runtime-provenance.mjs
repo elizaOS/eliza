@@ -1,3 +1,4 @@
+/** Reads final APK payload bytes to verify provenance after native stripping and asset transformation. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
