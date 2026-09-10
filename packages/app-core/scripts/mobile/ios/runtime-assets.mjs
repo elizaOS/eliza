@@ -48,6 +48,7 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "fuzzystrmatch.tar.gz",
   "pg_trgm.tar.gz",
   "plugins-manifest.json",
+  "skills",
 ];
 
 export const IOS_AGENT_ROOT_EXTENSION_ASSETS = [
@@ -187,9 +188,7 @@ export function stageIosAgentRuntime({
   for (const file of filesToStage) {
     const src = path.join(sourceDir, file);
     const dst = path.join(targetDir, file);
-    if (fs.statSync(src).isFile()) {
-      fs.copyFileSync(src, dst);
-    }
+    fs.cpSync(src, dst, { recursive: true });
   }
   // PGlite resolves extension bundles via new URL("../vector.tar.gz",
   // import.meta.url) from public/agent/agent-bundle.js, so iOS must stage

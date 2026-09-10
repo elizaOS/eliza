@@ -338,6 +338,7 @@ public final class ElizaBunRuntime {
                 fullBunEnv["PGLITE_DATA_DIR"] = pgliteDir
                 fullBunEnv["ELIZA_IOS_AGENT_BUNDLE"] = resolvedBundlePath
                 fullBunEnv["ELIZA_IOS_AGENT_ASSET_DIR"] = assetDir
+                fullBunEnv["ELIZAOS_BUNDLED_SKILLS_DIR"] = (assetDir as NSString).appendingPathComponent("skills")
                 fullBunEnv["ELIZA_IOS_AGENT_PUBLIC_DIR"] = publicDir
                 fullBunEnv["ELIZA_IOS_BRIDGE_TRANSPORT"] = "bun-host-ipc"
                 NSLog("[ElizaBunRuntime] full Bun bootstrap bundle=\(resolvedBundlePath) appSupport=\(appSupportDir) pglite=\(pgliteDir) assetDir=\(assetDir)")

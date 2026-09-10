@@ -1181,6 +1181,48 @@ export function stageSeccompShimForAbi({
   return changes;
 }
 
+/** Stages the complete skill bundle and binds every file to Android payload provenance. */
+export function stageAndroidBundledSkills({
+  distMobileDir,
+  assetsAgentDir,
+  androidMainDir,
+}) {
+  const source = path.join(distMobileDir, "skills");
+  const target = path.join(assetsAgentDir, "skills");
+  fs.readdirSync(source); // Fail before replacing an existing stage if the bundle is absent.
+  fs.rmSync(target, { recursive: true, force: true });
+  let stagedCount = 0;
+  const stagedFiles = [];
+  const visit = (relative) => {
+    for (const entry of fs.readdirSync(path.join(source, relative), {
+      withFileTypes: true,
+    })) {
+      const child = path.join(relative, entry.name);
+      if (entry.isDirectory()) {
+        visit(child);
+        continue;
+      }
+      if (!entry.isFile())
+        throw new Error(`Unsupported bundled skill asset: ${child}`);
+      const src = path.join(source, child);
+      const dst = path.join(target, child);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      if (copyIfDifferent(src, dst)) stagedCount += 1;
+      stagedFiles.push(
+        fileProvenanceEntry({
+          filePath: dst,
+          relativePath: path.relative(androidMainDir, dst),
+          source: { kind: "mobile-agent-bundle", path: src },
+        }),
+      );
+    }
+  };
+  visit("");
+  if (!stagedFiles.some((entry) => entry.path.endsWith("/SKILL.md")))
+    throw new Error("Mobile agent bundle contains no bundled skills");
+  return { stagedCount, stagedFiles };
+}
+
 /** Stages database payloads and records their actual bytes in Android runtime provenance. */
 export function stageAndroidPgliteAssets({
   distMobileDir,
@@ -1547,6 +1589,14 @@ export async function stageAndroidAgentRuntime({
       },
     }),
   );
+
+  const skillsStage = stageAndroidBundledSkills({
+    distMobileDir,
+    assetsAgentDir,
+    androidMainDir: path.join(androidDir, "app", "src", "main"),
+  });
+  stagedCount += skillsStage.stagedCount;
+  stagedFiles.push(...skillsStage.stagedFiles);
 
   const pgliteStage = stageAndroidPgliteAssets({
     distMobileDir,

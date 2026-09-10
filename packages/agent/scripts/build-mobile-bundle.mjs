@@ -36,6 +36,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import {
   copyFile,
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -1923,6 +1924,13 @@ for (const asset of [
   const sz = (await stat(src)).size;
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
+
+// Skills are runtime inputs, not imports; bundling JavaScript cannot inline them.
+await cp(
+  path.join(repoRoot, "packages/skills/skills"),
+  path.join(outDir, "skills"),
+  { recursive: true },
+);
 
 const generatedUtc = new Date().toISOString();
 const manifest = {
