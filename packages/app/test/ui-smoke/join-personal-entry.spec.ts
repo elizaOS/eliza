@@ -4,7 +4,7 @@
  * is fulfilled locally; no real provider, account or paid runtime is used.
  */
 import { writeFile } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { installDefaultAppRoutes } from "./helpers";
 import { seedStewardSession } from "./helpers/test-auth";
 import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
@@ -299,32 +299,50 @@ for (const viewport of [
         const signOutRestBackground = await signOut.evaluate(
           (element) => getComputedStyle(element).backgroundColor,
         );
+        const captureSettledFocus = async (
+          control: Locator,
+          restBackground: string,
+          filename: string,
+        ) => {
+          // Focus ownership precedes the CSS color transition. A changed color
+          // alone can still be its first, nearly invisible interpolated frame.
+          await expect
+            .poll(() =>
+              control.evaluate((element, resting) => {
+                const background = getComputedStyle(element).backgroundColor;
+                return {
+                  focused: document.activeElement === element,
+                  changed: background !== resting,
+                  settled: element
+                    .getAnimations()
+                    .every(
+                      (animation) =>
+                        !animation.pending &&
+                        animation.playState === "finished",
+                    ),
+                };
+              }, restBackground),
+            )
+            .toEqual({ focused: true, changed: true, settled: true });
+          await page.screenshot({
+            path: testInfo.outputPath(filename),
+            fullPage: true,
+          });
+        };
         await page.keyboard.press("Tab");
         await expect(retry).toBeFocused();
-        await page.screenshot({
-          path: testInfo.outputPath("entry-retry-focus.jpg"),
-          fullPage: true,
-        });
-        await expect
-          .poll(() =>
-            retry.evaluate(
-              (element) => getComputedStyle(element).backgroundColor,
-            ),
-          )
-          .not.toBe(retryRestBackground);
+        await captureSettledFocus(
+          retry,
+          retryRestBackground,
+          "entry-retry-focus.jpg",
+        );
         await page.keyboard.press("Tab");
         await expect(signOut).toBeFocused();
-        await expect
-          .poll(() =>
-            signOut.evaluate(
-              (element) => getComputedStyle(element).backgroundColor,
-            ),
-          )
-          .not.toBe(signOutRestBackground);
-        await page.screenshot({
-          path: testInfo.outputPath("entry-sign-out-focus.jpg"),
-          fullPage: true,
-        });
+        await captureSettledFocus(
+          signOut,
+          signOutRestBackground,
+          "entry-sign-out-focus.jpg",
+        );
         await page.keyboard.press("Shift+Tab");
         await expect(retry).toBeFocused();
         await retry.press("Enter");
