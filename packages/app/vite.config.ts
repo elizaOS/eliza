@@ -1917,9 +1917,25 @@ function resolveManualChunk(id: string): string | undefined {
   // form the cross-chunk init cycle the crypto pin guards against.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/(uuid|zod)\//.test(normalizedId)
+    /\/node_modules\/(uuid|zod|clsx|eventemitter3)\//.test(normalizedId) ||
+    /\/node_modules\/(bs58|base-x)\/src\/esm\//.test(normalizedId)
   ) {
     return "vendor-boot-leaves";
+  }
+
+  // Dialog scroll locks and query state are shared with wallet modals. Keep
+  // their React-only support graph outside the wallet chunk so opening the app
+  // does not load every wallet adapter. Older CommonJS base-x stays with crypto
+  // because it imports safe-buffer; only the ESM codec is a boot leaf above.
+  if (
+    /\/node_modules\/@tanstack\/(react-query|query-core)\//.test(
+      normalizedId,
+    ) ||
+    /\/node_modules\/(react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar|get-nonce|detect-node-es)\//.test(
+      normalizedId,
+    )
+  ) {
+    return "vendor-ui-support";
   }
 
   if (VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)) {
