@@ -1,4 +1,4 @@
-/** Reproduces financial reply grounding through the real message service with controlled model responses and a failing local WALLET action. */
+/** Exercises financial reply admission through the real runtime and message service with controlled planner drafts, wallet receipts, and provider observations. */
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
@@ -11,6 +11,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	State,
+	StateData,
 	UUID,
 } from "../types";
 import { ModelType } from "../types";
@@ -21,7 +22,7 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000071" as UUID;
 const USER_ID = "00000000-0000-0000-0000-000000000072" as UUID;
 const INTERNAL_DIAGNOSTIC = "The transfer was rejected by the provider.";
 
-function stageOneWalletResponse(actionName: string) {
+function stageOneWalletResponse(actionName: string, directReply?: string) {
 	return {
 		text: "",
 		toolCalls: [
@@ -33,12 +34,12 @@ function stageOneWalletResponse(actionName: string) {
 					thought: "Run the requested transfer.",
 					contexts: ["general"],
 					intents: ["transfer funds"],
-					candidateActionNames: [actionName],
-					replyText: "",
+					candidateActionNames: directReply === undefined ? [actionName] : [],
+					replyText: directReply ?? "",
 					facts: [],
 					relationships: [],
 					addressedTo: [],
-					requiresTool: true,
+					requiresTool: directReply === undefined,
 				},
 			},
 		],
@@ -99,6 +100,7 @@ async function createHarness(
 	actionCallbackText?: string,
 	actionResult?: ActionResult,
 	rewriteText = "The provider did not submit the transfer.",
+	options: { providers?: StateData["providers"]; directReply?: boolean } = {},
 ): Promise<Harness> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({
@@ -130,7 +132,7 @@ async function createHarness(
 	runtime.composeState = vi.fn(async () => {
 		return {
 			values: { availableContexts: "general" },
-			data: {},
+			data: options.providers ? { providers: options.providers } : {},
 			text: "Deterministic wallet-grounding state.",
 		} as State;
 	}) as AgentRuntime["composeState"];
@@ -179,7 +181,10 @@ async function createHarness(
 	runtime.registerAction(walletAction);
 
 	const responseQueue = [
-		stageOneWalletResponse(actionName),
+		stageOneWalletResponse(
+			actionName,
+			options.directReply ? finalText : undefined,
+		),
 		plannerFinish(finalText),
 	];
 	const responseHandler = vi.fn(async () => {
@@ -303,12 +308,14 @@ async function deliver(
 	actionResult?: ActionResult,
 	rewriteText?: string,
 	request = "Transfer 1 SOL to the requested recipient.",
+	options: { providers?: StateData["providers"] } = {},
 ) {
 	const harness = await createHarness(
 		finalText,
 		undefined,
 		actionResult,
 		rewriteText,
+		options,
 	);
 	const result = await new DefaultMessageService().handleMessage(
 		harness.runtime,
@@ -617,4 +624,358 @@ it("preserves a nonfinancial file transfer without requiring a wallet result", a
 	);
 	expect(texts).toContain(reply);
 	expect(stored).toContain(reply);
+});
+
+function walletRead(amount: string | number, symbol = "SOL"): ActionResult {
+	return {
+		success: true,
+		text: "Wallet portfolio lookup succeeded.",
+		data: {
+			actionName: "WALLET",
+			subaction: "search_address",
+			target: "birdeye",
+			results: [
+				{
+					address: "controlled-wallet",
+					chain: "solana",
+					result: {
+						success: true,
+						data: {
+							wallet: "controlled-wallet",
+							items: [{ symbol, uiAmount: amount }],
+						},
+					},
+				},
+			],
+		},
+	};
+}
+const BALANCE_UNVERIFIED = "The wallet balance is not verified.";
+it.each([
+	[
+		"unrelated successful search",
+		{
+			success: true,
+			text: "Public search completed.",
+			data: { actionName: "SEARCH" },
+		},
+	],
+	["different observed amount", walletRead(2)],
+	["different observed asset", walletRead(4, "BTC")],
+	[
+		"raw units without a display quantity",
+		{
+			success: true,
+			text: "Wallet read completed.",
+			data: {
+				actionName: "WALLET",
+				subaction: "search_address",
+				target: "birdeye",
+				results: [
+					{
+						result: {
+							success: true,
+							data: {
+								items: [{ symbol: "SOL", balance: "4000000000", decimals: 9 }],
+							},
+						},
+					},
+				],
+			},
+		},
+	],
+	[
+		"failed upstream observation",
+		{
+			success: true,
+			text: "Wallet read finished with unavailable data.",
+			data: {
+				actionName: "WALLET",
+				subaction: "search_address",
+				target: "birdeye",
+				results: [
+					{
+						result: {
+							success: false,
+							data: { items: [{ symbol: "SOL", uiAmount: 4 }] },
+						},
+					},
+				],
+			},
+		},
+	],
+	[
+		"portfolio valuation instead of holdings",
+		{
+			success: true,
+			text: "Portfolio valuation loaded.",
+			data: {
+				actionName: "WALLET",
+				subaction: "search_address",
+				target: "birdeye",
+				results: [
+					{
+						result: {
+							success: true,
+							data: {
+								totalSol: 4,
+								totalUsd: 400,
+								items: [{ symbol: "USDC", uiAmount: 400 }],
+							},
+						},
+					},
+				],
+			},
+		},
+	],
+] satisfies Array<[string, ActionResult]>)(
+	"does not report a 4 SOL balance after %s",
+	async (_label, result) => {
+		const { harness, texts, stored } = await deliver(
+			"Your wallet balance is 4 SOL.",
+			result,
+			BALANCE_UNVERIFIED,
+			"Check my wallet balance.",
+		);
+		expect(texts).toContain(BALANCE_UNVERIFIED);
+		expect(stored).not.toContain("Your wallet balance is 4 SOL.");
+		expect(harness.sent.map((content) => content.text)).toEqual(texts);
+	},
+);
+it("preserves a matching wallet lookup quantity without float rounding", async () => {
+	const reply = "Your wallet balance is 4 SOL.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead("4.000000"),
+		undefined,
+		"Check my wallet balance.",
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});
+it("does not round distinct large balances into the same number", async () => {
+	const reply = "Your wallet balance is 9007199254740993 SOL.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead("9007199254740992"),
+		BALANCE_UNVERIFIED,
+		"Check my wallet balance.",
+	);
+	expect(texts).toContain(BALANCE_UNVERIFIED);
+	expect(stored).not.toContain(reply);
+});
+it("does not interpret an absent asset as a zero balance", async () => {
+	const reply = "Your wallet balance is 0 SOL.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(10, "USDC"),
+		BALANCE_UNVERIFIED,
+		"Check my wallet balance.",
+	);
+	expect(texts).toContain(BALANCE_UNVERIFIED);
+	expect(stored).not.toContain(reply);
+});
+it.each([
+	[
+		"ERC20 get-balance",
+		{
+			"get-balance": {
+				data: { token: "SOL", balance: "4.000", chain: "controlled-chain" },
+			},
+		},
+	],
+	[
+		"Solana cached holdings",
+		{
+			"solana-wallet": {
+				data: {
+					totalSol: "99",
+					totalUsd: "1000",
+					items: [{ symbol: "SOL", uiAmount: 4 }],
+					prices: { solana: { usd: 100 } },
+					lastUpdated: Date.now(),
+				},
+			},
+		},
+	],
+	[
+		"Birdeye provider portfolio",
+		{
+			BIRDEYE_WALLET_PORTFOLIO: {
+				data: {
+					portfolio: {
+						wallet: "controlled-wallet",
+						items: [{ symbol: "SOL", uiAmount: 4 }],
+					},
+				},
+			},
+		},
+	],
+] satisfies Array<[string, StateData["providers"]]>)(
+	"preserves a provider-only balance from %s without a tool call",
+	async (_label, providers) => {
+		const reply = "Your wallet balance is 4 SOL.";
+		const harness = await createHarness(
+			reply,
+			undefined,
+			undefined,
+			undefined,
+			{ providers, directReply: true },
+		);
+		const result = await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "Check my wallet balance."),
+			harness.callback,
+		);
+		expect(harness.actionHandler).not.toHaveBeenCalled();
+		expect(result.responseContent?.text).toBe(reply);
+		expect(harness.callbacks.map((content) => content.text)).toContain(reply);
+	},
+);
+it("preserves an explicitly observed zero balance", async () => {
+	const reply = "Your wallet balance is 0 SOL.";
+	const providers = {
+		"get-balance": {
+			data: { token: "SOL", balance: "0", chain: "controlled-chain" },
+		},
+	};
+	const harness = await createHarness(reply, undefined, undefined, undefined, {
+		providers,
+		directReply: true,
+	});
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "Check my wallet balance."),
+		harness.callback,
+	);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(reply);
+});
+it("passes complete provider evidence to the model when correcting an unsupported balance", async () => {
+	const providers = {
+		"solana-wallet": {
+			data: {
+				items: [{ symbol: "SOL", uiAmount: 2 }],
+				totalSol: "4",
+				diagnostic: "complete-provider-evidence",
+			},
+		},
+	};
+	const harness = await createHarness(
+		"Your wallet balance is 4 SOL.",
+		undefined,
+		undefined,
+		BALANCE_UNVERIFIED,
+		{ providers, directReply: true },
+	);
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "Check my wallet balance."),
+		harness.callback,
+	);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(BALANCE_UNVERIFIED);
+	expect(
+		harness.voiceHandler.mock.calls.some(
+			(call) =>
+				call[1].prompt.includes("complete-provider-evidence") &&
+				call[1].prompt.includes("financial_holding"),
+		),
+	).toBe(true);
+});
+
+it.each([
+	["You have 4 SOL.", "What is my SOL balance?"],
+	["Your wallet holds 4 SOL worth $600.", "Check my wallet balance."],
+	["You have 4 SOL, if you want to transfer it.", "What is my SOL balance?"],
+	[
+		"Your wallet balance is 4 SOL if you want to transfer it.",
+		"Check my wallet balance.",
+	],
+])(
+	"does not let ordinary wording hide an unsupported holding: %s",
+	async (reply, request) => {
+		const unrelated: ActionResult = {
+			success: true,
+			text: "Public documentation loaded.",
+			data: { actionName: "SEARCH" },
+		};
+		const { texts, stored } = await deliver(
+			reply,
+			unrelated,
+			BALANCE_UNVERIFIED,
+			request,
+		);
+		expect(texts).toContain(BALANCE_UNVERIFIED);
+		expect(stored).not.toContain(reply);
+	},
+);
+it("allows an observed holding alongside a separately stated valuation", async () => {
+	const reply = "Your wallet holds 4 SOL worth $600.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4),
+		undefined,
+		"Check my wallet balance.",
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});
+
+it("does not trust a quantity retained in an explicitly failed provider read", async () => {
+	const reply = "Your wallet balance is 4 SOL.";
+	const harness = await createHarness(
+		reply,
+		undefined,
+		undefined,
+		BALANCE_UNVERIFIED,
+		{
+			providers: {
+				"get-balance": {
+					data: {
+						success: false,
+						token: "SOL",
+						balance: "4",
+						error: "READ_FAILED",
+					},
+				},
+			},
+			directReply: true,
+		},
+	);
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "Check my wallet balance."),
+		harness.callback,
+	);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(BALANCE_UNVERIFIED);
+	expect(harness.sent.map((content) => content.text)).not.toContain(reply);
+});
+
+it("fails closed before delivery when the model invents another unsupported balance", async () => {
+	const draft = "Your wallet balance is 4 SOL.";
+	const harness = await createHarness(
+		draft,
+		undefined,
+		walletRead(2),
+		"Your wallet balance is 5 SOL.",
+	);
+	await expect(
+		new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "Check my wallet balance."),
+			harness.callback,
+		),
+	).rejects.toMatchObject({ code: "REPLY_GROUNDING_FAILED" });
+	expect(harness.actionHandler).toHaveBeenCalledTimes(1);
+	expect(harness.callbacks).toEqual([]);
+	expect(harness.sent).toEqual([]);
+	const stored = await harness.runtime.getMemories({
+		roomId: harness.runtime.agentId,
+		tableName: "messages",
+	});
+	expect(
+		stored.filter((memory) => memory.entityId === harness.runtime.agentId),
+	).toEqual([]);
 });
