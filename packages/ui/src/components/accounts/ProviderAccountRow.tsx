@@ -434,9 +434,9 @@ export function ProviderAccountRow({
               }
             />
           ) : (
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               {sorted.map((account, index) => (
-                <div key={account.id} className="relative">
+                <div key={account.id} className="relative min-w-0">
                   {account.id === selection.accountId ? (
                     <span
                       className="absolute -left-px top-3 h-6 w-0.5 rounded-full bg-accent"

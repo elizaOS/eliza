@@ -223,7 +223,7 @@ export function AccountCard({
           <StatusBadge label={health.label} tone={health.tone} withDot />
           <EditableAccountLabel
             value={account.label}
-            className="basis-40 grow whitespace-normal [&>span]:break-words [&>span]:whitespace-normal"
+            className="basis-40 grow whitespace-normal [&>span]:[overflow-wrap:anywhere] [&>span]:whitespace-normal"
             onSubmit={(label) => onPatch({ label })}
             disabled={saving}
             inputAriaLabel={t("accounts.label.edit", {
