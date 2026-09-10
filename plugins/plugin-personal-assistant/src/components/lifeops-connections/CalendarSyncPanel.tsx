@@ -86,7 +86,9 @@ export function CalendarSyncPanel({
         providerCalendarId: calendar.calendarId,
       }) === selection,
   );
-  async function run(operation: "refresh" | "pause" | "select" | "resume") {
+  async function run(
+    operation: "refresh" | "pause" | "select" | "resume" | "recover",
+  ) {
     const generation = connectionGeneration.current;
     setBusy(true);
     setError(null);
@@ -214,6 +216,11 @@ export function CalendarSyncPanel({
             </SelectContent>
           </Select>
           <div className="flex flex-wrap gap-2 pt-3">
+            {control.paused && control.pendingDispatch ? (
+              <Button disabled={busy} onClick={() => void run("recover")}>
+                Check pending operation
+              </Button>
+            ) : null}
             <Button
               disabled={
                 busy ||

@@ -232,6 +232,145 @@ describe("LinkedCalendarRepository with PGlite", () => {
 });
 
 describe("LinkedCalendarReconciler", () => {
+  it("recovers an accepted create from provider state without replaying the write", async () => {
+    const store = new MemoryStore(record({ state: "quarantined" }));
+    const testPorts = ports({
+      provider: { eventId: "accepted-create", etag: '"g1"', event: baseEvent },
+    });
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      testPorts.localPort,
+      testPorts.providerPort,
+    );
+    expect(await reconciler.recoverDispatch(store.current)).toBe(true);
+    expect(store.current.providerEventId).toBe("accepted-create");
+    expect(store.current.pendingOperation).toBeNull();
+    expect(store.current.state).toBe("clean");
+    expect(testPorts.counts()).toEqual({ creates: 0, updates: 0 });
+  });
+
+  it("keeps an absent create unresolved instead of interpreting absence as permission to retry", async () => {
+    const initial = record({ state: "quarantined" });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({});
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).recoverDispatch(initial),
+    ).toBe(false);
+    expect(store.current).toBe(initial);
+    expect(testPorts.counts()).toEqual({ creates: 0, updates: 0 });
+  });
+
+  it("requires a changed ETag before settling an uncertain conditional update", async () => {
+    const initial = record({
+      state: "quarantined",
+      pendingOperation: "update",
+      providerEventId: "existing",
+      providerEtag: '"g1"',
+    });
+    const store = new MemoryStore(initial);
+    const unchanged = ports({
+      provider: { eventId: "existing", etag: '"g1"', event: baseEvent },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        unchanged.localPort,
+        unchanged.providerPort,
+      ).recoverDispatch(initial),
+    ).toBe(false);
+    expect(store.current).toBe(initial);
+    const changed = ports({
+      provider: { eventId: "existing", etag: '"g2"', event: baseEvent },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        changed.localPort,
+        changed.providerPort,
+      ).recoverDispatch(initial),
+    ).toBe(true);
+    expect(store.current.providerEtag).toBe('"g2"');
+    expect(changed.counts()).toEqual({ creates: 0, updates: 0 });
+  });
+
+  it("settles a pending deletion only after both local and provider events are absent", async () => {
+    const initial = record({
+      state: "quarantined",
+      pendingOperation: "delete",
+      providerEventId: "deleted-event",
+    });
+    const store = new MemoryStore(initial);
+    const stillPresent = ports({
+      local: null,
+      provider: { eventId: "deleted-event", etag: '"g1"', event: baseEvent },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        stillPresent.localPort,
+        stillPresent.providerPort,
+      ).recoverDispatch(initial),
+    ).toBe(false);
+    expect(store.current).toBe(initial);
+    const absent = ports({ local: null, provider: null });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        absent.localPort,
+        absent.providerPort,
+      ).recoverDispatch(initial),
+    ).toBe(true);
+    expect(store.current.state).toBe("paused");
+    expect(store.current.pendingOperation).toBeNull();
+  });
+
+  it("retains the pending checkpoint when provider verification fails", async () => {
+    const initial = record({ state: "quarantined" });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({});
+    const failure = new Error("Calendar access was revoked");
+    const provider = {
+      ...testPorts.providerPort,
+      get: async () => {
+        throw failure;
+      },
+    };
+    await expect(
+      new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        provider,
+      ).recoverDispatch(initial),
+    ).rejects.toBe(failure);
+    expect(store.current).toBe(initial);
+    expect(testPorts.counts()).toEqual({ creates: 0, updates: 0 });
+  });
+
+  it("retains a divergent provider event for explicit conflict review", async () => {
+    const initial = record({ state: "quarantined" });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({
+      provider: {
+        eventId: "existing",
+        etag: '"g2"',
+        event: { ...baseEvent, title: "External edit" },
+      },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).recoverDispatch(initial),
+    ).toBe(false);
+    expect(store.current).toBe(initial);
+    expect(testPorts.local()?.event.title).toBe(baseEvent.title);
+  });
+
   it("pushes local-first exactly once and treats replay as clean", async () => {
     const store = new MemoryStore(record());
     const testPorts = ports({});

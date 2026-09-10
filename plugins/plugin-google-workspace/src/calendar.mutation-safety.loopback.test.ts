@@ -245,6 +245,35 @@ describe("Google Calendar provider mutation safety", () => {
     });
   });
 
+  it("inspects an original create receipt without writing and rejects a foreign marker", async () => {
+    const params = {
+      accountId: "owner-account",
+      calendarId: "disposable-recovery-calendar",
+      idempotencyKey: "recovery-original-create",
+    };
+    expect(await client.findEventByIdempotencyKey(params)).toBeNull();
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+    const created = await client.createEvent({
+      ...params,
+      title: "Synthetic recovery event",
+      start: "2026-08-01T16:00:00.000Z",
+      end: "2026-08-01T17:00:00.000Z",
+      timeZone: "UTC",
+      sendUpdates: "none",
+    });
+    requests = [];
+    const found = await client.findEventByIdempotencyKey(params);
+    expect(found?.id).toBe(created.id);
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+    const stored = events.get(created.id);
+    if (!stored) throw new Error("Expected the provider's persisted create");
+    stored.extendedProperties = { private: { elizaosIdempotencyKeySha256: "foreign" } };
+    await expect(client.findEventByIdempotencyKey(params)).rejects.toMatchObject({
+      code: "GOOGLE_CALENDAR_IDEMPOTENCY_CONFLICT",
+    });
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+  });
+
   it("enforces If-Match and explicit notification policy for update, RSVP, and delete", async () => {
     const created = await client.createEvent({
       accountId: "owner-account",

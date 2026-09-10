@@ -453,6 +453,29 @@ export class GoogleCalendarClient {
     return mapEvent(response.data, calendarId, params.timeZone);
   }
 
+  /** Reads the original create receipt without retrying a provider mutation. */
+  async findEventByIdempotencyKey(
+    params: GoogleAccountRef & { calendarId: string; idempotencyKey: string; timeZone?: string }
+  ): Promise<GoogleCalendarEvent | null> {
+    const idempotency = calendarCreateIdempotency(params.idempotencyKey);
+    if (!idempotency) {
+      throw new ElizaError("An idempotency key is required to inspect a calendar create.", {
+        code: "GOOGLE_CALENDAR_INVALID_IDEMPOTENCY_KEY",
+      });
+    }
+    const calendar = await this.clientFactory.calendar(
+      params,
+      ["calendar.read"],
+      "calendar.findEventByIdempotencyKey"
+    );
+    return recoverIdempotentCreate({
+      calendar,
+      calendarId: params.calendarId,
+      idempotency,
+      timeZone: params.timeZone,
+    });
+  }
+
   async createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {
     const calendar = await this.clientFactory.calendar(
       params,

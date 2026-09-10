@@ -161,14 +161,18 @@ export class LinkedCalendarControlRepository {
   }
 
   /** Release only after the provider result and event checkpoint are reconciled. */
-  async settleDispatch(token: string): Promise<void> {
+  async settleDispatch(
+    token: string,
+    expectedPausedRevision?: number,
+  ): Promise<void> {
     const rows = await executeRawSql(
       this.runtime,
       `
       UPDATE app_calendar.linked_calendar_control
-      SET dispatch_token = NULL, dispatch_link_id = NULL
+      SET dispatch_token = NULL, dispatch_link_id = NULL${expectedPausedRevision === undefined ? "" : ", revision = revision + 1"}
       WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
         AND dispatch_token = ${sqlQuote(token)}
+        ${expectedPausedRevision === undefined ? "" : `AND paused = TRUE AND revision = ${sqlInteger(expectedPausedRevision)}`}
       RETURNING agent_id`,
     );
     if (!rows[0]) {

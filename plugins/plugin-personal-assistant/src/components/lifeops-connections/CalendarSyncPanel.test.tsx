@@ -83,6 +83,41 @@ describe("calendar sync review", () => {
     expect(adapter.updateLinkedCalendarControl).not.toHaveBeenCalled();
   });
 
+  it("checks pending work without resuming and renders only the recovered server state", async () => {
+    const adapter = {
+      getLinkedCalendarControl: vi.fn(async () => ({
+        ...active,
+        paused: true,
+        pendingDispatch: { linkId: "pending" },
+      })),
+      updateLinkedCalendarControl: vi.fn(async () => ({
+        ...active,
+        revision: 8,
+        paused: true,
+      })),
+    };
+    render(<CalendarSyncPanel adapter={adapter} calendars={[]} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Check pending operation" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Check pending operation" }),
+      ).toBeNull(),
+    );
+    expect(screen.getByText("Synchronization is paused.")).toBeTruthy();
+    expect(adapter.updateLinkedCalendarControl).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ operation: "recover", expectedRevision: 7 }),
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Verify and resume sync",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
   it("discards a pending mutation response after switching connections", async () => {
     let finishPause!: (control: LifeOpsLinkedCalendarControl) => void;
     const oldAdapter = {

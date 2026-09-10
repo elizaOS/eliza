@@ -463,7 +463,7 @@ export type UpdateLifeOpsLinkedCalendarControlRequest = {
   expectedRevision: number;
   idempotencyKey: string;
 } & (
-  | { operation: "pause" | "resume" }
+  | { operation: "pause" | "resume" | "recover" }
   | {
       operation: "select";
       destination: LifeOpsLinkedCalendarControl["destination"];

@@ -259,6 +259,38 @@ describe("durable linked calendar review", { timeout: 30_000 }, () => {
     await h.controls().settleDispatch(second);
   });
 
+  it("settles recovery only against the paused revision and invalidates old resume reviews", async () => {
+    const h = await harness();
+    const initial = await h.controls().read();
+    const selected = await h
+      .controls()
+      .selectDestination(initial.revision, destination);
+    const active = await h.controls().resume(selected.revision);
+    const token = await h
+      .controls()
+      .acquireDispatch(active.revision, "recover-event", destination);
+    await expect(
+      h.controls().settleDispatch(token, active.revision),
+    ).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_DISPATCH_RECEIPT_REJECTED",
+    });
+    const paused = await h.controls().pause(active.revision);
+    await expect(
+      h.controls().settleDispatch(token, active.revision),
+    ).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_DISPATCH_RECEIPT_REJECTED",
+    });
+    expect((await h.controls().read()).dispatch?.token).toBe(token);
+    await h.controls().settleDispatch(token, paused.revision);
+    const recovered = await h.controls().read();
+    expect(recovered.paused).toBe(true);
+    expect(recovered.dispatch).toBeNull();
+    await expect(h.controls().resume(paused.revision)).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED",
+    });
+    expect((await h.controls().resume(recovered.revision)).paused).toBe(false);
+  });
+
   it("serializes a pause racing admission across independent repository instances", async () => {
     const h = await harness();
     const initial = await h.controls().read();

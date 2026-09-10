@@ -269,8 +269,12 @@ function snapshot(): LifeOpsConnectionsSnapshot {
 let syncControl: import("@elizaos/shared").LifeOpsLinkedCalendarControl = {
   revision: 0,
   paused: true,
-  destination: null,
-  pendingDispatch: null,
+  destination: params.has("pending-sync")
+    ? { connectorAccountId: ACCOUNT_ID, providerCalendarId: "primary" }
+    : null,
+  pendingDispatch: params.has("pending-sync")
+    ? { linkId: "fixture-pending" }
+    : null,
 };
 const adapter: LifeOpsConnectionsAdapter = {
   async getLinkedCalendarControl() {
@@ -287,6 +291,18 @@ const adapter: LifeOpsConnectionsAdapter = {
       syncControl = {
         ...syncControl,
         destination: request.destination,
+        revision: syncControl.revision + 1,
+      };
+    } else if (request.operation === "recover") {
+      if (failure === "recover")
+        throw new Error(
+          "Provider outcome is still uncertain. Sync remains paused.",
+        );
+      if (!syncControl.paused || !syncControl.pendingDispatch)
+        throw new Error("Pause and load a pending operation before recovery.");
+      syncControl = {
+        ...syncControl,
+        pendingDispatch: null,
         revision: syncControl.revision + 1,
       };
     } else {

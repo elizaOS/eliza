@@ -1192,6 +1192,7 @@ export class CalendarService extends Service {
   private readonly googleWatch: GoogleCalendarWatchLifecycle;
   private readonly linkedRepo: LinkedCalendarRepository;
   private readonly linkedControl: LinkedCalendarControlRepository;
+  private readonly activeLinkedDispatches = new Set<string>();
   private linkedCalendarDrain: Promise<void> | null = null;
   private linkedCalendarDrainRequested = false;
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
@@ -1402,13 +1403,18 @@ export class CalendarService extends Service {
     );
     // A thrown provider/checkpoint error retains the durable receipt. A restart
     // must reconcile its outcome before admitting another operation or cutover.
-    const outcome = strategy
-      ? await reconciler.resolveConflict(record, strategy)
-      : await reconciler.reconcile(record);
-    if (outcome !== "quarantined") {
-      await this.linkedControl.settleDispatch(token);
+    this.activeLinkedDispatches.add(token);
+    try {
+      const outcome = strategy
+        ? await reconciler.resolveConflict(record, strategy)
+        : await reconciler.reconcile(record);
+      if (outcome !== "quarantined") {
+        await this.linkedControl.settleDispatch(token);
+      }
+      return outcome;
+    } finally {
+      this.activeLinkedDispatches.delete(token);
     }
-    return outcome;
   }
 
   private async enqueueBuiltInCalendarMutation(
@@ -1681,10 +1687,55 @@ export class CalendarService extends Service {
           await this.bootstrapActiveLinkedCalendarSync();
           break;
         }
+        case "recover": {
+          if (!current.paused || !current.dispatch || !current.destination) {
+            throw new CalendarServiceError(
+              409,
+              "Pause sync and refresh the pending operation before recovery.",
+              "LINKED_CALENDAR_RECOVERY_NOT_READY",
+            );
+          }
+          if (this.activeLinkedDispatches.has(current.dispatch.token)) {
+            throw new CalendarServiceError(
+              409,
+              "The calendar operation is still running. Wait for it to finish before recovery.",
+              "LINKED_CALENDAR_DISPATCH_ACTIVE",
+            );
+          }
+          await this.verifyLinkedDestination(requestUrl, current.destination);
+          const record = await this.linkedRepo.getById(
+            this.agentId(),
+            current.dispatch.linkId,
+          );
+          if (
+            !record ||
+            record.connectorAccountId !==
+              current.destination.connectorAccountId ||
+            record.providerCalendarId !== current.destination.providerCalendarId
+          ) {
+            throw new CalendarServiceError(
+              409,
+              "The pending operation does not match the reviewed destination.",
+              "LINKED_CALENDAR_RECOVERY_IDENTITY_MISMATCH",
+            );
+          }
+          if (!(await this.linkedReconciler().recoverDispatch(record))) {
+            throw new CalendarServiceError(
+              409,
+              "The provider outcome is still uncertain or the events differ. Sync remains paused; no provider write was retried.",
+              "LINKED_CALENDAR_RECOVERY_UNRESOLVED",
+            );
+          }
+          await this.linkedControl.settleDispatch(
+            current.dispatch.token,
+            current.revision,
+          );
+          break;
+        }
         default:
           throw new CalendarServiceError(
             400,
-            "operation must be pause, select, or resume.",
+            "operation must be pause, select, resume, or recover.",
           );
       }
     } catch (error) {

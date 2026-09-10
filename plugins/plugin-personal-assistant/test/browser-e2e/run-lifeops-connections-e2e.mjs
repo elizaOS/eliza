@@ -356,6 +356,28 @@ try {
   await multiAccount.screenshot({ path: join(outputDir, "calendar-sync-reviewed-desktop.png"), fullPage: true });
   await multiAccount.close();
 
+  for (const unresolved of [true, false]) {
+    const recovery = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await recovery.goto(`${baseURL}?pending-sync=1${unresolved ? "&failure=recover" : ""}`);
+    const resume = recovery.getByRole("button", { name: "Verify and resume sync" });
+    await recovery.getByRole("button", { name: "Check pending operation" }).waitFor();
+    assert(await resume.isDisabled(), "pending operation blocks resume before verification");
+    await recovery.getByRole("button", { name: "Check pending operation" }).click();
+    if (unresolved) {
+      await recovery.getByRole("alert").filter({ hasText: "Provider outcome is still uncertain" }).waitFor();
+      assert(await resume.isDisabled(), "unresolved provider outcome preserves the resume barrier");
+    } else {
+      await recovery.getByRole("button", { name: "Check pending operation" }).waitFor({ state: "detached" });
+      assert(!(await resume.isDisabled()), "provider-confirmed recovery permits a separate resume review");
+    }
+    assert(await recovery.getByText("Synchronization is paused.", { exact: true }).count() === 1,
+      "recovery never resumes synchronization automatically");
+    await recovery.getByRole("heading", { name: "Calendar synchronization" }).scrollIntoViewIfNeeded();
+    await recovery.screenshot({ path: join(outputDir, `calendar-sync-recovery-${unresolved ? "unresolved" : "verified"}-mobile.png`) });
+    await recovery.getByRole("heading", { name: "Calendar synchronization" }).locator("..").screenshot({ path: join(outputDir, `calendar-sync-recovery-${unresolved ? "unresolved" : "verified"}-panel.png`) });
+    await recovery.close();
+  }
+
   const appleOnly = await browser.newPage({
     viewport: { width: 1024, height: 800 },
   });

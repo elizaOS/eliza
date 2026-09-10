@@ -604,6 +604,57 @@ export class LinkedCalendarReconciler {
     return "clean";
   }
 
+  /**
+   * Checkpoints a provider-confirmed outcome without replaying a mutation.
+   * The caller retains the dispatch barrier until this returns true. An absent
+   * create or unchanged update ETag cannot prove a timed-out request finished.
+   */
+  async recoverDispatch(record: LinkedCalendarEventRecord): Promise<boolean> {
+    const local = await this.local.get(record.localEventId);
+    const provider = await this.provider.get(record);
+    if (record.pendingOperation === "delete") {
+      if (
+        !record.providerEventId ||
+        provider ||
+        (local && !local.event.deleted)
+      )
+        return false;
+      await this.repository.save(record, {
+        state: "paused",
+        pendingOperation: null,
+        providerEtag: null,
+        lastErrorCode: "LINKED_CALENDAR_DELETE_RECOVERED",
+        lastErrorMessage: "Google confirmed the pending event deletion.",
+      });
+      return true;
+    }
+    if (!local || !provider || local.event.deleted || provider.event.deleted)
+      return false;
+    if (
+      linkedCalendarSemanticHash(local.event) !==
+      linkedCalendarSemanticHash(provider.event)
+    )
+      return false;
+    if (
+      record.pendingOperation === "update" &&
+      (!record.providerEtag ||
+        !provider.etag ||
+        record.providerEtag === provider.etag)
+    )
+      return false;
+    await this.repository.save(record, {
+      providerEventId: provider.eventId,
+      providerEtag: provider.etag,
+      localRevision: local.revision,
+      lastCommonSemanticHash: linkedCalendarSemanticHash(provider.event),
+      state: "clean",
+      pendingOperation: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    });
+    return true;
+  }
+
   async resolveConflict(
     record: LinkedCalendarEventRecord,
     strategy: "keep_eliza" | "keep_google",
@@ -755,7 +806,14 @@ export class GoogleLinkedCalendarProviderPort
   async get(
     record: LinkedCalendarEventRecord,
   ): Promise<LinkedCalendarProviderSnapshot | null> {
-    if (!record.providerEventId) return null;
+    if (!record.providerEventId) {
+      const recovered = await this.google.findEventByIdempotencyKey({
+        accountId: record.connectorAccountId,
+        calendarId: record.providerCalendarId,
+        idempotencyKey: record.idempotencyKey,
+      });
+      return recovered ? linkedCalendarSnapshotFromGoogle(recovered) : null;
+    }
     try {
       return linkedCalendarSnapshotFromGoogle(
         await this.google.getEvent({
