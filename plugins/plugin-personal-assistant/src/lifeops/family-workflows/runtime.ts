@@ -57,6 +57,31 @@ export interface FamilyEmailOptions {
   accounts: Array<{ grantId: string; label: string }>;
   recipients: Array<{ entityId: string; name: string; address: string }>;
 }
+export interface FamilyDraftApprovalStatus {
+  id: string;
+  state: ApprovalRequest["state"];
+  providerAccepted: boolean | null;
+  providerMessageId: string | null;
+  error: string | null;
+  updatedAt: string;
+}
+
+function draftApprovalStatus(
+  approval: ApprovalRequest,
+): FamilyDraftApprovalStatus {
+  const receipt = approval.execution?.providerReceipt;
+  return {
+    id: approval.id,
+    state: approval.state,
+    providerAccepted:
+      typeof receipt?.accepted === "boolean" ? receipt.accepted : null,
+    providerMessageId:
+      typeof receipt?.messageId === "string" ? receipt.messageId : null,
+    error: approval.execution?.error ?? null,
+    updatedAt: approval.updatedAt.toISOString(),
+  };
+}
+
 export const FAMILY_MONTHLY_SYSTEM_OPERATION =
   "family.monthlyCoordination" as const;
 
@@ -543,6 +568,82 @@ export class FamilyWorkflowRuntimeService extends Service {
         agentId: this.runtime.agentId,
       }),
     });
+  }
+
+  async readDraftApprovalStatus(
+    packetId: string,
+    draftVersion: number,
+    ownerUserId: string,
+  ): Promise<FamilyDraftApprovalStatus | null> {
+    const id = await this.packets.readDraftApprovalId(packetId, draftVersion);
+    if (!id) return null;
+    const queue = createApprovalQueue(this.runtime, {
+      agentId: this.runtime.agentId,
+    });
+    const approval = await queue.byId(id, ownerUserId);
+    if (!approval)
+      throw new ElizaError(
+        "The saved approval status is unavailable. Check delivery before retrying.",
+        { code: "FAMILY_PACKET_APPROVAL_UNAVAILABLE" },
+      );
+    return draftApprovalStatus(approval);
+  }
+
+  async decideDraftApproval(input: {
+    packetId: string;
+    draftVersion: number;
+    approvalId: string;
+    bodySha256: string;
+    decision: "approve" | "reject";
+    ownerUserId: string;
+  }) {
+    const draft = await this.packets.readDraft(
+      input.packetId,
+      input.draftVersion,
+    );
+    const approvalId = await this.packets.readDraftApprovalId(
+      input.packetId,
+      input.draftVersion,
+    );
+    const queue = createApprovalQueue(this.runtime, {
+      agentId: this.runtime.agentId,
+    });
+    const approval = await queue.byId(input.approvalId, input.ownerUserId);
+    if (
+      !draft?.email ||
+      draft.bodySha256 !== input.bodySha256 ||
+      approvalId !== input.approvalId ||
+      !approval ||
+      approval.subjectUserId !== input.ownerUserId ||
+      approval.action !== "send_email"
+    )
+      throw new ElizaError(
+        "The reviewed email approval could not be verified. Reload the draft.",
+        { code: "FAMILY_PACKET_APPROVAL_INVALID" },
+      );
+    if (
+      input.decision === "approve" &&
+      ["pending", "approved", "retryable"].includes(approval.state)
+    ) {
+      await this.packets.validateDraftForDecision(approval);
+      await this.validateRecipientIdentity(draft);
+    }
+    const { resolveExplicitOwnerApproval } = await import(
+      "../../actions/resolve-request.js"
+    );
+    const result = await resolveExplicitOwnerApproval(this.runtime, {
+      subjectUserId: input.ownerUserId,
+      requestId: approval.id,
+      decision: input.decision,
+      reason: "Owner reviewed the exact family email in Family Operations.",
+    });
+    const persisted = await queue.byId(approval.id, input.ownerUserId);
+    if (!persisted)
+      throw new ElizaError(
+        "Approval result could not be read. Check delivery before retrying.",
+        { code: "FAMILY_PACKET_APPROVAL_UNAVAILABLE" },
+      );
+    return { result, approval: draftApprovalStatus(persisted) };
   }
 
   async runMonthly(

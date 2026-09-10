@@ -316,6 +316,7 @@ describe("defaultFamilyOperationsAdapter", () => {
                         transformations: [],
                         createdAt: "2026-08-30T12:01:00.000Z",
                       },
+                      approval: null,
                       approvalId: "approval-1",
                     },
                   ],

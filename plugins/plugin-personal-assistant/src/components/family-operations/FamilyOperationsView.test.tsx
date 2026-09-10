@@ -134,10 +134,114 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     createPacketDraft: vi.fn(async () => undefined),
     revisePacketDraft: vi.fn(async () => undefined),
     requestPacketApproval: vi.fn(async () => undefined),
+    decidePacketApproval: vi.fn(async () => undefined),
   } as FamilyOperationsAdapter;
 }
 
+function pendingEmailSnapshot(): FamilyOperationsSnapshot {
+  const data = snapshot();
+  data.packets = {
+    status: "ready",
+    data: [
+      {
+        packetId: "decision-packet",
+        periodKey: "2026-10",
+        version: 1,
+        createdAt: "2026-09-10T12:00:00Z",
+        status: "complete",
+        sections: [],
+        claims: [],
+        draft: {
+          draftVersion: 1,
+          recipient: "guest@example.test",
+          recipientEntityId: "guest-1",
+          calendarPrivacyMode: "busy_only",
+          body: "Synthetic reviewed email.",
+          bodySha256: "d".repeat(64),
+          email: { subject: "Review", senderGrantId: "sender-1" },
+          approvalId: "approval-1",
+          approval: {
+            id: "approval-1",
+            state: "pending",
+            providerAccepted: null,
+            providerMessageId: null,
+            error: null,
+            updatedAt: "2026-09-10T12:00:00Z",
+          },
+        },
+      },
+    ],
+  };
+  return data;
+}
+
 describe("FamilyOperationsView", () => {
+  it("sends the exact reviewed decision once and renders the persisted provider result", async () => {
+    const data = pendingEmailSnapshot();
+    const local = adapter(data);
+    const pending = Promise.withResolvers<void>();
+    vi.mocked(local.decidePacketApproval).mockReturnValue(pending.promise);
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    const approve = screen.getByRole("button", {
+      name: "Approve and send email",
+    });
+    fireEvent.click(approve);
+    fireEvent.click(approve);
+    expect(local.decidePacketApproval).toHaveBeenCalledTimes(1);
+    expect(local.decidePacketApproval).toHaveBeenCalledWith({
+      packetId: "decision-packet",
+      draftVersion: 1,
+      approvalId: "approval-1",
+      bodySha256: "d".repeat(64),
+      decision: "approve",
+    });
+    if (data.packets.status !== "ready")
+      throw new Error("Packet fixture unavailable");
+    const approval = data.packets.data[0].draft?.approval;
+    if (!approval) throw new Error("Approval fixture unavailable");
+    approval.state = "done";
+    approval.providerAccepted = true;
+    approval.providerMessageId = "provider-message";
+    pending.resolve();
+    await screen.findByText("Accepted by the email provider.");
+    expect(
+      screen.queryByRole("button", { name: "Approve and send email" }),
+    ).toBeNull();
+  });
+
+  it("shows an unknown delivery outcome without offering a blind retry", async () => {
+    const data = pendingEmailSnapshot();
+    const local = adapter(data);
+    vi.mocked(local.decidePacketApproval).mockImplementation(async () => {
+      if (data.packets.status !== "ready")
+        throw new Error("Packet fixture unavailable");
+      const approval = data.packets.data[0].draft?.approval;
+      if (!approval) throw new Error("Approval fixture unavailable");
+      approval.state = "reconciliation_required";
+      throw new Error("Delivery acknowledgement was lost.");
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Approve and send email" }),
+    );
+    await screen.findByText(
+      "Delivery outcome is unknown. Verify the provider record before retrying.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Approve and send email" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Retry reviewed email" }),
+    ).toBeNull();
+    expect(local.decidePacketApproval).toHaveBeenCalledTimes(1);
+  });
+
   it("saves the selected school level and standing update policy before running", async () => {
     const local = adapter();
     const data = await local.load();
@@ -371,6 +475,8 @@ describe("FamilyOperationsView", () => {
           ],
           draft: {
             draftVersion: 2,
+            bodySha256: "d".repeat(64),
+            approval: null,
             recipient: "guest@example.com",
             recipientEntityId: "guest-1",
             calendarPrivacyMode: "busy_only",

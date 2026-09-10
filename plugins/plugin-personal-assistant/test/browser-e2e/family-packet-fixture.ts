@@ -24,6 +24,8 @@ export function createFamilyPacketFixture(
     ],
     draft: {
       draftVersion: 1,
+      bodySha256: "",
+      approval: null,
       recipient: "guest@example.test",
       recipientEntityId: "fixture-guest",
       calendarPrivacyMode: "busy_only",
@@ -34,10 +36,22 @@ export function createFamilyPacketFixture(
   const unsupported = async (): Promise<never> => {
     throw new Error("This operation is outside the synthetic email fixture.");
   };
+  async function digest(body: string): Promise<string> {
+    const bytes = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(body),
+    );
+    return Array.from(new Uint8Array(bytes), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  }
   return {
+    decidePacketApproval: unsupported,
     listRecipientContacts: unsupported,
     confirmEmailRecipient: unsupported,
     async load(): Promise<FamilyOperationsSnapshot> {
+      if (packet.draft)
+        packet.draft.bodySha256 = await digest(packet.draft.body);
       return {
         agreements: { status: "ready", data: [] },
         calendarLinks: { status: "ready", data: [] },
@@ -76,6 +90,8 @@ export function createFamilyPacketFixture(
           ...packet.draft,
           draftVersion: packet.draft.draftVersion + 1,
           body: input.body,
+          bodySha256: await digest(input.body),
+          approval: null,
           email: { ...packet.draft.email, subject: input.subject },
           approvalId: undefined,
         },

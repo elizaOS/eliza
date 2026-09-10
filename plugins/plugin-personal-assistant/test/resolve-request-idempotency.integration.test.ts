@@ -22,7 +22,10 @@ import {
   ApprovalAmbiguousDeliveryError,
   runApprovalDispatch,
 } from "../src/actions/lib/approval-execution.js";
-import { resolveRequestAction } from "../src/actions/resolve-request.js";
+import {
+  resolveExplicitOwnerApproval,
+  resolveRequestAction,
+} from "../src/actions/resolve-request.js";
 import type {
   ApprovalEnqueueInput,
   ApprovalQueue,
@@ -308,6 +311,55 @@ afterAll(async () => {
 });
 
 describe("RESOLVE_REQUEST durable approval execution", () => {
+  it("settles explicit owner decisions and replays the receipt with model inference unavailable", async () => {
+    const model = vi.spyOn(runtime, "useModel").mockImplementation(async () => {
+      throw new Error("Model unavailable");
+    });
+    try {
+      const request = await realQueue.enqueue(sendMessageInput());
+      const decide = () =>
+        resolveExplicitOwnerApproval(runtime, {
+          subjectUserId: OWNER_A,
+          requestId: request.id,
+          decision: "approve",
+          reason: "Reviewed exact content",
+        });
+      expect((await decide()).success).toBe(true);
+      const first = await stored(request.id);
+      expect(first.state).toBe("done");
+      expect(first.provider_receipt).toMatchObject({
+        messageId: "tg-message-42",
+      });
+      expect((await decide()).success).toBe(true);
+      expect(await stored(request.id)).toEqual(first);
+      expect(dispatchState.sends).toBe(1);
+      expect(model).not.toHaveBeenCalled();
+    } finally {
+      model.mockRestore();
+    }
+  });
+
+  it("keeps explicit owner decisions subject-scoped and rejects without dispatch", async () => {
+    const request = await realQueue.enqueue(sendMessageInput(OWNER_A));
+    const deniedResult = await resolveExplicitOwnerApproval(runtime, {
+      subjectUserId: OWNER_B,
+      requestId: request.id,
+      decision: "approve",
+      reason: "Wrong owner",
+    });
+    expect(deniedResult.success).toBe(false);
+    expect((await stored(request.id)).state).toBe("pending");
+    const rejected = await resolveExplicitOwnerApproval(runtime, {
+      subjectUserId: OWNER_A,
+      requestId: request.id,
+      decision: "reject",
+      reason: "Declined",
+    });
+    expect(rejected.success).toBe(true);
+    expect((await stored(request.id)).state).toBe("rejected");
+    expect(dispatchState.sends).toBe(0);
+  });
+
   it("returns indistinguishable not-found for a cross-subject explicit id", async () => {
     const request = await realQueue.enqueue(sendMessageInput(OWNER_A));
 

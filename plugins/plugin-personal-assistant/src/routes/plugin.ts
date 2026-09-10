@@ -503,6 +503,10 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/revision",
   },
   {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/decision",
+  },
+  {
     type: "GET",
     path: "/api/lifeops/connectors/health/:provider/status",
   },

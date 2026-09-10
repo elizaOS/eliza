@@ -4,7 +4,10 @@ import type {
   MonthlyFamilyDraft,
   MonthlyFamilyPacket,
 } from "../../lifeops/family-coordination/index.js";
-import type { FamilyEmailOptions } from "../../lifeops/family-workflows/runtime.js";
+import type {
+  FamilyDraftApprovalStatus,
+  FamilyEmailOptions,
+} from "../../lifeops/family-workflows/runtime.js";
 import type { ParentingAgreementView } from "../../lifeops/household/agreement-knowledge.js";
 import type {
   SchoolCalendarRunReview,
@@ -24,6 +27,7 @@ interface PacketPersistenceState {
   internalVersion: number;
   draft: MonthlyFamilyDraft | null;
   approvalId: string | null;
+  approval: FamilyDraftApprovalStatus | null;
 }
 
 interface AgreementUploadState {
@@ -154,6 +158,8 @@ function packetView(
             recipientEntityId: persistence.draft.recipientEntityId,
             calendarPrivacyMode: persistence.draft.calendarPrivacyMode,
             body: persistence.draft.body,
+            bodySha256: persistence.draft.bodySha256,
+            approval: persistence.approval,
             email: persistence.draft.email,
             approvalId: persistence.approvalId ?? undefined,
           }
@@ -210,6 +216,26 @@ async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
 }
 
 export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
+  async decidePacketApproval(input) {
+    const response = await request<{
+      result: { success?: boolean; text?: string };
+    }>(
+      `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts/${input.draftVersion}/decision`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          approvalId: input.approvalId,
+          bodySha256: input.bodySha256,
+          decision: input.decision,
+        }),
+      },
+    );
+    if (response.result.success !== true)
+      throw new Error(
+        response.result.text ||
+          "Approval did not complete. Check the saved delivery status.",
+      );
+  },
   async listRecipientContacts() {
     const result = await request<{
       entities: Array<{ entityId: string; preferredName: string }>;

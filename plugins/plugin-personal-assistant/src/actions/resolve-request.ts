@@ -2296,6 +2296,58 @@ async function resolveApprovalRequest(
       },
     };
   }
+  return settleApprovalRequest(
+    runtime,
+    queue,
+    subjectUserId,
+    intent,
+    params,
+    {
+      requestId: extracted.requestId,
+      reason: extracted.reason,
+    },
+    callback,
+  );
+}
+
+/**
+ * Resolve an explicit decision from an authenticated owner transport without
+ * model inference. The caller supplies its verified owner identity, never an
+ * identity from the request body; canonical subject and dispatch checks remain
+ * in the same settlement path used by the owner action.
+ */
+export async function resolveExplicitOwnerApproval(
+  runtime: IAgentRuntime,
+  input: {
+    subjectUserId: string;
+    requestId: string;
+    decision: "approve" | "reject";
+    reason: string;
+  },
+): Promise<ActionResult> {
+  if (!input.subjectUserId.trim() || !input.requestId.trim())
+    return denied("MISSING_APPROVAL_IDENTITY");
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  return settleApprovalRequest(
+    runtime,
+    queue,
+    input.subjectUserId,
+    input.decision,
+    { requestId: input.requestId, reason: input.reason },
+    { requestId: input.requestId, reason: input.reason },
+    undefined,
+  );
+}
+
+async function settleApprovalRequest(
+  runtime: IAgentRuntime,
+  queue: ApprovalQueue,
+  subjectUserId: string,
+  intent: ResolveSubaction,
+  params: ResolveRequestParameters,
+  extracted: { requestId: string; reason: string | null },
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
   const resolution = {
     resolvedBy: subjectUserId,
     resolutionReason: extracted.reason ?? `user ${intent}d`,

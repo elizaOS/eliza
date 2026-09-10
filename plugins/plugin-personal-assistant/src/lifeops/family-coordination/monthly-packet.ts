@@ -890,6 +890,24 @@ export class MonthlyFamilyPacketService {
         "approval is not an approved message",
         "FAMILY_PACKET_APPROVAL_INVALID",
       );
+    return this.validateBoundDraft(request);
+  }
+
+  async validateDraftForDecision(
+    request: ApprovalRequest,
+  ): Promise<MonthlyFamilyDraft> {
+    if (!["pending", "approved", "retryable"].includes(request.state))
+      fail(
+        "Approval cannot accept a new decision",
+        "FAMILY_PACKET_APPROVAL_INVALID",
+      );
+    await this.ensureSchema();
+    return this.validateBoundDraft(request);
+  }
+
+  private async validateBoundDraft(
+    request: ApprovalRequest,
+  ): Promise<MonthlyFamilyDraft> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT packet_id,draft_version,draft_sha256 FROM app_lifeops.life_family_packet_approvals WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND approval_id=${sqlQuote(request.id)} LIMIT 1`,

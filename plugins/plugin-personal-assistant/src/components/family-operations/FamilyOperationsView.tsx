@@ -1234,11 +1234,6 @@ function PacketPanel({
                   {packet.draft.body}
                 </pre>
                 <p>
-                  {packet.draft.approvalId
-                    ? "Submitted to the shared approvals queue. Check its result for delivery status."
-                    : "Draft has not been submitted for approval."}
-                </p>
-                <p>
                   <a
                     download={`family-packet-${packet.periodKey}-draft-${packet.draft.draftVersion}.json`}
                     href={`data:application/json;charset=utf-8,${encodeURIComponent(

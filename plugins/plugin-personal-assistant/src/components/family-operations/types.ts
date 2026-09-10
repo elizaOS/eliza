@@ -5,7 +5,10 @@ import type {
   FamilyPacketSection,
   FamilyPacketSectionSummary,
 } from "../../lifeops/family-coordination/index.js";
-import type { FamilyEmailOptions } from "../../lifeops/family-workflows/runtime.js";
+import type {
+  FamilyDraftApprovalStatus,
+  FamilyEmailOptions,
+} from "../../lifeops/family-workflows/runtime.js";
 import type {
   AgreementGuestGrantPreview,
   HouseholdKnowledgeGrant,
@@ -60,6 +63,8 @@ export interface FamilyPacketView {
     recipientEntityId: string;
     calendarPrivacyMode: "full" | "times_only" | "busy_only";
     body: string;
+    bodySha256: string;
+    approval: FamilyDraftApprovalStatus | null;
     approvalId?: string;
     email: FamilyPacketEmailDelivery | null;
   } | null;
@@ -99,6 +104,13 @@ export interface FamilyRecipientContact {
 }
 
 export interface FamilyOperationsAdapter {
+  decidePacketApproval(input: {
+    packetId: string;
+    draftVersion: number;
+    approvalId: string;
+    bodySha256: string;
+    decision: "approve" | "reject";
+  }): Promise<void>;
   listRecipientContacts(): Promise<FamilyRecipientContact[]>;
   confirmEmailRecipient(input: {
     entityId: string | null;

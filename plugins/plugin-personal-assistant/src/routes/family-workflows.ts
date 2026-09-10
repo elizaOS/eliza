@@ -169,6 +169,13 @@ export async function handleFamilyWorkflowRoutes(
               packetId: packet.packetId,
               internalVersion: packet.version,
               draft,
+              approval: draft
+                ? await runtimeService.readDraftApprovalStatus(
+                    packet.packetId,
+                    draft.draftVersion,
+                    String(ctx.state.adminEntityId ?? "self"),
+                  )
+                : null,
               approvalId: draft
                 ? await runtimeService.packets.readDraftApprovalId(
                     packet.packetId,
@@ -301,6 +308,46 @@ export async function handleFamilyWorkflowRoutes(
           subject: body.subject,
         }),
         201,
+      );
+      return true;
+    }
+    const decisionMatch = pathname.match(
+      /^\/api\/lifeops\/family-workflows\/packets\/([^/]+)\/drafts\/(\d+)\/decision$/u,
+    );
+    if (method === "POST" && decisionMatch) {
+      const body = await readJsonBody<{
+        approvalId?: unknown;
+        bodySha256?: unknown;
+        decision?: unknown;
+      }>(req, res);
+      if (!body) return true;
+      const draftVersion = Number(decisionMatch[2]);
+      if (
+        typeof body.approvalId !== "string" ||
+        !body.approvalId.trim() ||
+        typeof body.bodySha256 !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(body.bodySha256) ||
+        (body.decision !== "approve" && body.decision !== "reject") ||
+        !Number.isSafeInteger(draftVersion) ||
+        draftVersion < 1
+      ) {
+        ctx.error(
+          res,
+          "A reviewed draft, approval, and explicit decision are required",
+          400,
+        );
+        return true;
+      }
+      json(
+        res,
+        await runtimeService.decideDraftApproval({
+          packetId: decodeURIComponent(decisionMatch[1] ?? ""),
+          draftVersion,
+          approvalId: body.approvalId,
+          bodySha256: body.bodySha256,
+          decision: body.decision,
+          ownerUserId: String(ctx.state.adminEntityId ?? "self"),
+        }),
       );
       return true;
     }
