@@ -71,10 +71,6 @@ import type {
   LocalAgentBackupMetadata,
 } from "../api";
 import { client } from "../api";
-import type {
-  DedicatedAdoptionConfirmationQuote,
-  DedicatedAdoptionConfirmationRequester,
-} from "../api/client-cloud";
 import {
   getCloudAuthToken,
   refreshCloudStewardSession,
@@ -361,35 +357,6 @@ const CLOUD_ONLY_ERROR_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
-function dedicatedAdoptionConfirmationText(
-  quote: DedicatedAdoptionConfirmationQuote,
-  reason: "initial" | "quote_changed",
-): string {
-  const disposition =
-    quote.stateDisposition === "verified_backup_present"
-      ? "restore its reviewed backup"
-      : quote.stateDisposition === "fresh_boot_no_verified_backup"
-        ? "start fresh because no verified backup is available"
-        : "keep its current state without a reviewed restore";
-  const changed =
-    reason === "quote_changed"
-      ? "The agent or hosting quote changed while you were reviewing it. Please review the updated terms.\n\n"
-      : "";
-  return [
-    `${changed}Use your existing Dedicated agent?`,
-    "",
-    `Current status: ${quote.status}.`,
-    `Hosting: $${quote.hourlyRateUsd.toFixed(2)}/hour ($${quote.dailyRateUsd.toFixed(2)}/day).`,
-    `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway); deficit: $${quote.deficitUsd.toFixed(2)}.`,
-    `This action ${quote.startsCompute ? "starts Dedicated compute" : "does not start new compute"} and will ${disposition}.`,
-    "",
-    "[CHOICE:first-run id=dedicated-adoption]",
-    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=Confirm and continue`,
-    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:cancel=Not now`,
-    "[/CHOICE]",
-  ].join("\n");
-}
-
 /**
  * Turn a raw finish error into a human sentence. The underlying message can be
  * a terse transport string ("Not found" for a 404, "Failed to fetch", …) that
@@ -513,8 +480,7 @@ export function useFirstRunConductor(): void {
     setUiAccent: s.setUiAccent,
     uiLanguage: s.uiLanguage,
   }));
-  const { conversationMessages, setConversationMessages } =
-    useConversationMessages();
+  const { setConversationMessages } = useConversationMessages();
 
   const active = firstRunComplete === false;
 
@@ -548,17 +514,6 @@ export function useFirstRunConductor(): void {
   // flow when it settles late.
   const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
   const cloudPageHiddenRef = React.useRef(false);
-  const pendingDedicatedAdoptionRef = React.useRef<{
-    quote: DedicatedAdoptionConfirmationQuote;
-    choiceText: string;
-    resolve: (
-      confirmation: {
-        action: "adopt_existing_dedicated";
-        quoteId: string;
-      } | null,
-    ) => void;
-    dispose: () => void;
-  } | null>(null);
   // Latched by the first tutorial pick: the store flip unregisters the handler
   // only on the next commit, so a double-tap could otherwise re-fire
   // completeFirstRun/startTutorial in the gap.
@@ -633,66 +588,6 @@ export function useFirstRunConductor(): void {
       });
     },
     [setConversationMessages],
-  );
-
-  const requestDedicatedAdoptionConfirmation =
-    React.useCallback<DedicatedAdoptionConfirmationRequester>(
-      (quote, context) => {
-        context.signal?.throwIfAborted();
-        pendingDedicatedAdoptionRef.current?.resolve(null);
-        pendingDedicatedAdoptionRef.current?.dispose();
-        silentCloudEntryRef.current = false;
-        const choiceText = dedicatedAdoptionConfirmationText(
-          quote,
-          context.reason,
-        );
-        seedFreshChoiceTurn("first-run:dedicated-adoption", choiceText);
-        return new Promise((resolve, reject) => {
-          const onAbort = () => {
-            if (pendingDedicatedAdoptionRef.current?.quote !== quote) return;
-            pendingDedicatedAdoptionRef.current = null;
-            reject(context.signal?.reason);
-          };
-          context.signal?.addEventListener("abort", onAbort, { once: true });
-          const dispose = () =>
-            context.signal?.removeEventListener("abort", onAbort);
-          pendingDedicatedAdoptionRef.current = {
-            quote,
-            choiceText,
-            resolve,
-            dispose,
-          };
-        });
-      },
-      [seedFreshChoiceTurn],
-    );
-
-  React.useEffect(() => {
-    const pending = pendingDedicatedAdoptionRef.current;
-    if (
-      !pending ||
-      conversationMessages.some(
-        (message) =>
-          message.source === "first_run" && message.text === pending.choiceText,
-      )
-    ) {
-      return;
-    }
-    // A Personal binding can start server-history hydration while onboarding
-    // still waits for explicit Dedicated adoption consent. If that hydration
-    // replaces the local transcript, restore the exact pending choice instead
-    // of leaving the provisioning promise parked behind an invisible control.
-    seedFreshChoiceTurn("first-run:dedicated-adoption", pending.choiceText);
-  }, [conversationMessages, seedFreshChoiceTurn]);
-
-  React.useEffect(
-    () => () => {
-      const pending = pendingDedicatedAdoptionRef.current;
-      pendingDedicatedAdoptionRef.current = null;
-      pending?.dispose();
-      pending?.resolve(null);
-    },
-    [],
   );
 
   const seedTutorial = React.useCallback(() => {
@@ -812,7 +707,6 @@ export function useFirstRunConductor(): void {
         }
         seedTurn(makeTurn(`first-run:status:${text}`, text));
       },
-      requestDedicatedAdoptionConfirmation,
     }),
     [
       uiLanguage,
@@ -824,7 +718,6 @@ export function useFirstRunConductor(): void {
       completeCloudOnly,
       seedTurn,
       runtimeChooserEnabled,
-      requestDedicatedAdoptionConfirmation,
     ],
   );
   const portsRef = React.useRef(ports);
@@ -1051,9 +944,8 @@ export function useFirstRunConductor(): void {
       });
     };
     // Idempotent and OAuth-only: arm at the moment the finish flow actually
-    // enters interactive OAuth. An already-authenticated entry can spend up to
-    // six minutes activating Dedicated compute; applying this 90s login guard
-    // to that separate phase aborts healthy provisioning before its own bound.
+    // enters interactive OAuth. Authenticated identity resolution has its own
+    // deadline and must not inherit the separate browser sign-in wait.
     const armRecoveryDeadline = () => {
       if (loginDeadline) return;
       loginDeadline = armCloudLoginWaitDeadline({
@@ -1081,9 +973,8 @@ export function useFirstRunConductor(): void {
       seedWaitingTurn();
     }
     // Pre-open only when this gesture can actually enter OAuth. A usable
-    // stored Steward token takes the silent provisioning path and may spend
-    // the full Dedicated startup budget there; retaining an about:blank popup
-    // for that entire phase is both misleading and unnecessary. Token-less
+    // stored Steward token takes the read-only personal-entry path; retaining
+    // an about:blank popup during that lookup serves no purpose. Token-less
     // entries still claim synchronously because user activation does not
     // survive the network awaits before interactive login (#15143/#17064).
     if (!hasUsableStoredStewardToken()) {
@@ -1308,26 +1199,9 @@ export function useFirstRunConductor(): void {
         return true;
       }
 
-      // The provisioning promise is deliberately still in flight while this
-      // visible quote is on screen, so consent must be handled before the
-      // generic busy guard. Only the exact current quote resolver is released;
-      // stale confirmation widgets become harmless no-ops.
-      if (group === "dedicated-adoption") {
-        if (id !== "confirm" && id !== "cancel") return true;
-        const pending = pendingDedicatedAdoptionRef.current;
-        if (!pending) return true;
-        pendingDedicatedAdoptionRef.current = null;
-        pending.dispose();
-        pending.resolve(
-          id === "confirm"
-            ? {
-                action: "adopt_existing_dedicated",
-                quoteId: pending.quote.quoteId,
-              }
-            : null,
-        );
-        return true;
-      }
+      // Old onboarding transcripts may retain this retired paid-setup choice.
+      // Consume it without starting or resuming an activation.
+      if (group === "dedicated-adoption") return true;
 
       // One provisioning flow at a time. Stale widgets survive in the
       // transcript (error re-seeds, the cloud-agent picker next to a re-offered
