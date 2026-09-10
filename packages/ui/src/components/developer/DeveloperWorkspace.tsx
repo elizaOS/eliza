@@ -4,6 +4,7 @@ import {
   memo,
   type ReactNode,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -31,8 +32,15 @@ import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { ModelConfigurationPanel } from "../settings/ModelConfigurationPanel";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
+import { NativeSelect } from "../ui/native-select";
 import { SemanticForm } from "../ui/semantic-form";
+import { Table } from "../ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Textarea } from "../ui/textarea";
+import {
+  DeveloperTrajectories,
+  useMessageTrajectories,
+} from "./DeveloperTrajectories";
 import {
   trajectoryRevision,
   useDeveloperTrajectories,
@@ -123,7 +131,7 @@ export function DeveloperTrace({
         are not measured here.
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <Table density="compact" className="caption-top text-left">
           <caption className="pb-2 text-left font-medium">
             Model calls · {record.status}
           </caption>
@@ -168,7 +176,7 @@ export function DeveloperTrace({
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
       {detail.semanticStages?.length ? (
         <details>
@@ -206,6 +214,7 @@ export function DeveloperTrace({
 }
 
 function WireEvidence({ record }: { record: TrajectoryRecord }) {
+  const evidenceId = useId();
   const [open, setOpen] = useState(false);
   const [wire, setWire] = useState<TrajectoryDetailResult | null>(null);
   const [error, setError] = useState(false);
@@ -234,6 +243,7 @@ function WireEvidence({ record }: { record: TrajectoryRecord }) {
   }, [wire, part]);
   return (
     <details
+      open={open}
       className="border-t border-border pt-2"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
@@ -248,10 +258,11 @@ function WireEvidence({ record }: { record: TrajectoryRecord }) {
             applied.
           </p>
           {wire ? (
-            <label className="block text-xs text-muted">
+            <label htmlFor={evidenceId} className="block text-xs text-muted">
               Evidence section
-              <select
-                className="mt-2 block min-h-10 w-full rounded-md border border-border bg-bg px-2 text-txt"
+              <NativeSelect
+                id={evidenceId}
+                className="mt-2 block"
                 value={part}
                 onChange={(event) => setPart(event.target.value)}
               >
@@ -261,7 +272,7 @@ function WireEvidence({ record }: { record: TrajectoryRecord }) {
                   </option>
                 ))}
                 <option value="all">Entire recorded run</option>
-              </select>
+              </NativeSelect>
             </label>
           ) : null}
           {error ? (
@@ -340,12 +351,18 @@ function DeveloperSettings() {
 
 /** Counts stay on the reply; model calls and full payloads load only when opened. */
 export function DeveloperReplyDetails({
-  record,
+  record: summaryRecord,
   toolEvents = [],
   reasoning,
   backgrounds = [],
+  relatedRuns = [],
+  roomId,
+  messageId,
 }: {
-  record: TrajectoryRecord;
+  record?: TrajectoryRecord;
+  relatedRuns?: TrajectoryRecord[];
+  roomId?: string;
+  messageId?: string;
   toolEvents?: NativeToolCallEvent[];
   reasoning?: string;
   backgrounds?: TrajectoryRecord[];
@@ -353,14 +370,31 @@ export function DeveloperReplyDetails({
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<TrajectoryDetailResult | null>(null);
   const [error, setError] = useState(false);
-  const revision = trajectoryRevision(record);
+  const [tab, setTab] = useState("details");
+  const history = useMessageTrajectories({
+    records: summaryRecord
+      ? [summaryRecord, ...relatedRuns, ...backgrounds]
+      : [],
+    roomId: roomId ?? summaryRecord?.roomId ?? undefined,
+    messageId:
+      messageId ??
+      (typeof summaryRecord?.metadata?.messageId === "string"
+        ? summaryRecord.metadata.messageId
+        : undefined),
+    enabled: open && (!summaryRecord || tab === "trajectories"),
+  });
+  const record =
+    summaryRecord ??
+    [...history.runs].reverse().find((row) => row.source === "client_chat");
+  const revision = record ? trajectoryRevision(record) : "";
+  const recordId = record?.id;
   useEffect(() => {
-    if (!open || !revision) return;
+    if (!open || tab !== "details" || !recordId || !revision) return;
     const controller = new AbortController();
     setDetail(null);
     setError(false);
     void client
-      .getTrajectoryDetail(record.id, {
+      .getTrajectoryDetail(recordId, {
         signal: controller.signal,
         includePayloads: false,
       })
@@ -372,65 +406,117 @@ export function DeveloperReplyDetails({
         if (!controller.signal.aborted) setError(true);
       });
     return () => controller.abort();
-  }, [open, record.id, revision]);
+  }, [open, tab, recordId, revision]);
   return (
     <details
+      open={open}
       className="developer-reply-details"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
+        {record || open ? (
+          <span
+            className="developer-token-count"
+            title="Recorded input and output tokens for this run. Missing usage can make counts partial; expand for per-call details."
+          >
+            {record &&
+            (record.totalPromptTokens > 0 || record.totalCompletionTokens > 0)
+              ? `${count(record.totalPromptTokens)} tokens in · ${count(record.totalCompletionTokens)} out`
+              : !record
+                ? history.loading
+                  ? "Loading token counts…"
+                  : history.error
+                    ? "Token counts couldn’t load"
+                    : history.runs.length
+                      ? "No foreground counts"
+                      : "No recorded run"
+                : record.status === "active"
+                  ? "Usage pending"
+                  : record.llmCallCount === 0
+                    ? "No recorded model calls"
+                    : "Usage details"}
+            {record?.durationMs == null
+              ? ""
+              : ` · ${duration(record.durationMs)}`}
+            {record?.status === "active" ? " · Working…" : ""}
+          </span>
+        ) : null}{" "}
         <span
-          className="developer-token-count"
-          title="Recorded input and output tokens for this run. Missing usage can make counts partial; expand for per-call details."
+          className="developer-details-label"
+          title={
+            record ? undefined : "Load recorded counts and inspect this reply"
+          }
         >
-          {record.totalPromptTokens > 0
-            ? `${count(record.totalPromptTokens)} tokens in · ${count(record.totalCompletionTokens)} out`
-            : "Token count unavailable"}
-          {record.durationMs == null ? "" : ` · ${duration(record.durationMs)}`}
-          {record.status === "active" ? " · Working…" : ""}
-        </span>
-        <span className="developer-details-label">
           {open ? "Less" : "Details"}
         </span>
       </summary>
       {open ? (
-        <div className="developer-expanded-reply">
-          <p className="text-xs text-muted">
-            Recorded tokens across this run’s model calls, including any
-            post-turn evaluation. Background memory runs separately.
-          </p>
-          {error ? (
-            <p role="alert">Details unavailable. Close and reopen to retry.</p>
-          ) : detail ? (
-            <DeveloperTrace record={record} detail={detail} />
-          ) : (
-            <p role="status">Loading details…</p>
-          )}
-          {toolEvents.length ? (
-            <details>
-              <summary>Tool activity ({toolEvents.length})</summary>
-              {toolEvents.map((event) => (
-                <ToolCallEventLog
-                  key={event.callId || event.id}
-                  event={event}
-                />
-              ))}
-            </details>
-          ) : null}
-          {reasoning ? <ThinkingBlock reasoning={reasoning} /> : null}
-          <WireEvidence record={record} />
-          {backgrounds.length ? (
-            <details>
-              <summary>Background memory ({backgrounds.length} runs)</summary>
-              {backgrounds.map((background) => (
-                <DeveloperReplyDetails
-                  key={background.id}
-                  record={background}
-                />
-              ))}
-            </details>
-          ) : null}
-        </div>
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          className="developer-expanded-reply"
+        >
+          <TabsList aria-label="Reply inspection" className="h-auto">
+            <TabsTrigger value="details" className="min-h-11">
+              Details
+            </TabsTrigger>
+            <TabsTrigger value="trajectories" className="min-h-11">
+              Trajectories
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="details" className="space-y-3">
+            <p className="text-xs text-muted">
+              Recorded tokens across this run’s model calls, including any
+              post-turn evaluation. Background memory runs separately.
+            </p>
+            {error ? (
+              <p role="alert">
+                Details unavailable. Close and reopen to retry.
+              </p>
+            ) : detail && record && detail.trajectory.id === record.id ? (
+              <DeveloperTrace record={record} detail={detail} />
+            ) : (
+              <p role="status">
+                {record
+                  ? "Loading details…"
+                  : history.loading
+                    ? "Loading recorded counts…"
+                    : history.error
+                      ? "Recorded counts could not load. Open Trajectories to retry."
+                      : history.runs.length
+                        ? "No foreground run. Open Trajectories to inspect the other recorded runs."
+                        : "No recorded trajectory matches this message."}
+              </p>
+            )}
+            {toolEvents.length ? (
+              <details>
+                <summary>Tool activity ({toolEvents.length})</summary>
+                {toolEvents.map((event) => (
+                  <ToolCallEventLog
+                    key={event.callId || event.id}
+                    event={event}
+                  />
+                ))}
+              </details>
+            ) : null}
+            {reasoning ? <ThinkingBlock reasoning={reasoning} /> : null}
+            {record ? <WireEvidence record={record} /> : null}
+            {backgrounds.length ? (
+              <details>
+                <summary>Background memory ({backgrounds.length} runs)</summary>
+                {backgrounds.map((background) => (
+                  <DeveloperReplyDetails
+                    key={background.id}
+                    record={background}
+                  />
+                ))}
+              </details>
+            ) : null}
+          </TabsContent>
+          <TabsContent value="trajectories">
+            <DeveloperTrajectories {...history} />
+          </TabsContent>
+        </Tabs>
       ) : null}
     </details>
   );
@@ -441,10 +527,16 @@ const DeveloperMessage = memo(
     message,
     record,
     backgrounds,
+    relatedRuns,
+    roomId,
+    messageId,
   }: {
     message: ConversationMessage;
     record?: TrajectoryRecord;
     backgrounds: TrajectoryRecord[];
+    relatedRuns: TrajectoryRecord[];
+    roomId?: string;
+    messageId?: string;
   }) {
     return (
       <article
@@ -465,12 +557,15 @@ const DeveloperMessage = memo(
             }}
           />
         </div>
-        {record ? (
+        {message.role === "assistant" ? (
           <DeveloperReplyDetails
             record={record}
             toolEvents={message.toolEvents}
             reasoning={message.reasoning}
             backgrounds={backgrounds}
+            relatedRuns={relatedRuns}
+            roomId={roomId}
+            messageId={messageId}
           />
         ) : message.toolEvents?.length ? (
           <details>
@@ -485,6 +580,10 @@ const DeveloperMessage = memo(
   },
   (before, after) =>
     before.message === after.message &&
+    before.roomId === after.roomId &&
+    before.messageId === after.messageId &&
+    before.relatedRuns.map(trajectoryRevision).join("|") ===
+      after.relatedRuns.map(trajectoryRevision).join("|") &&
     (before.record ? trajectoryRevision(before.record) : "") ===
       (after.record ? trajectoryRevision(after.record) : "") &&
     before.backgrounds.map(trajectoryRevision).join("|") ===
@@ -559,6 +658,7 @@ function LiveActivity({
 }
 
 function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
+  const runSelectId = useId();
   const {
     chatSending,
     chatInput: draft,
@@ -610,25 +710,48 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
       .filter((message) => message.transcriptVisibility !== "internal")
       .map((message) => {
         if (message.role === "user") requestId = message.id;
-        const record =
+        // Explicit reply linkage is authoritative even when its user message
+        // has scrolled out of the loaded transcript. Every lookup stays scoped
+        // to this room; only legacy replies without linkage use adjacency.
+        const messageId =
           message.role === "assistant"
+            ? message.replyToMessageId || requestId
+            : undefined;
+        const record =
+          message.role === "assistant" && messageId
             ? telemetry.rows.find(
                 (row) =>
                   row.source === "client_chat" &&
                   row.roomId === conversation?.roomId &&
-                  row.metadata?.messageId === requestId,
+                  row.metadata?.messageId === messageId,
               )
             : undefined;
         const backgrounds =
-          message.role === "assistant"
+          message.role === "assistant" && messageId
             ? telemetry.rows.filter(
                 (row) =>
                   row.source === "background_memory" &&
                   row.roomId === conversation?.roomId &&
-                  row.metadata?.messageId === requestId,
+                  row.metadata?.messageId === messageId,
               )
             : [];
-        return { message, record, backgrounds };
+        const relatedRuns =
+          message.role === "assistant" && messageId
+            ? telemetry.rows.filter(
+                (row) =>
+                  row.id !== record?.id &&
+                  row.source !== "background_memory" &&
+                  row.roomId === conversation?.roomId &&
+                  row.metadata?.messageId === messageId,
+              )
+            : [];
+        return {
+          message,
+          record,
+          backgrounds,
+          relatedRuns,
+          messageId,
+        };
       });
   }, [conversationMessages, telemetry.rows, conversation?.roomId]);
   const submit = async (event: FormEvent) => {
@@ -707,11 +830,15 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
                           : "Pause telemetry"}
                       </Button>
                     </div>
-                    <label className="block text-xs text-muted">
+                    <label
+                      htmlFor={runSelectId}
+                      className="block text-xs text-muted"
+                    >
                       Inspect a run
-                      <select
+                      <NativeSelect
+                        id={runSelectId}
                         aria-label="Inspect a run"
-                        className="mt-2 block min-h-10 w-full min-w-0 rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                        className="mt-2 block min-w-0"
                         value={telemetry.selectedId ?? ""}
                         onChange={(event) =>
                           telemetry.select(event.target.value || null)
@@ -730,7 +857,7 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
                             · {row.id}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </label>
                     <div className="flex items-center justify-between gap-2 text-xs text-muted">
                       <span>
@@ -799,14 +926,25 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
           ) : (
             <>
               {messages.length ? (
-                messages.map(({ message, record, backgrounds }) => (
-                  <DeveloperMessage
-                    key={message.clientRenderId || message.id}
-                    message={message}
-                    record={record}
-                    backgrounds={backgrounds}
-                  />
-                ))
+                messages.map(
+                  ({
+                    message,
+                    record,
+                    backgrounds,
+                    relatedRuns,
+                    messageId,
+                  }) => (
+                    <DeveloperMessage
+                      key={message.clientRenderId || message.id}
+                      message={message}
+                      record={record}
+                      backgrounds={backgrounds}
+                      relatedRuns={relatedRuns}
+                      roomId={conversation?.roomId}
+                      messageId={messageId}
+                    />
+                  ),
+                )
               ) : (
                 <p className="developer-chat-empty">
                   What would you like to do?

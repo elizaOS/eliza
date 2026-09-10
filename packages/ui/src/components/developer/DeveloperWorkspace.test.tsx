@@ -7,15 +7,18 @@ import {
   render,
   renderHook,
   screen,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConversationMessage } from "../../api/client-types-chat";
 import type {
   TrajectoryDetailResult,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
 import {
   callLane,
+  DeveloperReplyDetails,
   DeveloperTrace,
   DeveloperWorkspace,
 } from "./DeveloperWorkspace";
@@ -76,18 +79,9 @@ vi.mock("../../state/ChatComposerContext.hooks", async () => {
     },
   };
 });
+const messageFixtures: ConversationMessage[] = [];
 vi.mock("../../state/ConversationMessagesContext.hooks", () => ({
-  useConversationMessages: () => ({
-    conversationMessages: [
-      {
-        id: "user-1",
-        role: "user",
-        text: "Which view is open?",
-        timestamp: 1000,
-      },
-      { id: "reply-1", role: "assistant", text: "You are on Notes." },
-    ],
-  }),
+  useConversationMessages: () => ({ conversationMessages: messageFixtures }),
 }));
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => "local-agent",
@@ -95,6 +89,17 @@ vi.mock("../../hooks/useActiveAgentAuthority", () => ({
 vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (select: (state: typeof appState) => unknown) =>
     select(appState),
+}));
+vi.mock("../../state", () => ({
+  useAppSelector: (select: (state: unknown) => unknown) =>
+    select({
+      t: (key: string, options?: { defaultValue?: string }) =>
+        options?.defaultValue ?? key,
+      copyToClipboard: vi.fn(),
+    }),
+}));
+vi.mock("../../agent-surface", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 vi.mock("../RoleGate", () => ({
   RoleGate: ({ children }: { children: ReactNode }) => children,
@@ -115,6 +120,22 @@ vi.mock("../settings/ModelConfigurationPanel", () => ({
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(1000);
+  messageFixtures.splice(
+    0,
+    messageFixtures.length,
+    {
+      id: "user-1",
+      role: "user",
+      text: "Which view is open?",
+      timestamp: 1000,
+    },
+    {
+      id: "reply-1",
+      role: "assistant",
+      text: "You are on Notes.",
+      timestamp: 1001,
+    },
+  );
   appState.agentStatus.canRespond = true;
   appState.chatSending = false;
   mocks.list.mockResolvedValue({
@@ -192,6 +213,7 @@ describe("developer workspace", () => {
     expect(mocks.detail).not.toHaveBeenCalled();
     const disclosure = screen.getByText("Details").closest("details");
     if (!disclosure) throw new Error("Missing reply disclosure");
+    if (!disclosure) throw new Error("Reply disclosure missing");
     disclosure.open = true;
     fireEvent(disclosure, new Event("toggle"));
     await flush();
@@ -201,6 +223,234 @@ describe("developer workspace", () => {
     );
     expect(screen.getByText("Foreground input")).toBeTruthy();
     expect(screen.queryByLabelText("Full trajectory JSON")).toBeNull();
+  });
+
+  it("loads full trajectories only in their tab, including older/background runs with exact ownership", async () => {
+    const background = {
+      ...record,
+      id: "memory-run",
+      source: "background_memory",
+      startTime: 2000,
+    };
+    const older = { ...record, id: "older-run", startTime: 0 };
+    mocks.list.mockImplementation((options) =>
+      Promise.resolve(
+        options.search
+          ? {
+              trajectories: options.offset
+                ? [background]
+                : [
+                    older,
+                    record,
+                    { ...record, id: "wrong-room", roomId: "other" },
+                    {
+                      ...record,
+                      id: "wrong-message",
+                      metadata: { messageId: "other" },
+                    },
+                  ],
+              total: 5,
+            }
+          : { trajectories: [record], total: 1 },
+      ),
+    );
+    mocks.detail.mockImplementation((id, options) =>
+      Promise.resolve({
+        ...detail,
+        trajectory: { ...record, id },
+        llmCalls:
+          options.includePayloads === false
+            ? []
+            : [
+                {
+                  id: "call-1",
+                  model: "qwen",
+                  timestamp: 1100,
+                  maxTokens: 0,
+                  temperature: 0,
+                  userPrompt: "Actual model input",
+                  response: "Actual model output",
+                  systemPrompt: "Actual system instructions",
+                },
+              ],
+        semanticStages: [
+          {
+            schemaVersion: 1,
+            stageId: "tool-step",
+            kind: "tool",
+            startedAt: 1000,
+            endedAt: 1200,
+            latencyMs: 200,
+            payload: {
+              tool: {
+                name: "OPEN_NOTES",
+                args: { view: "notes" },
+                result: { success: true, visibleView: "notes" },
+              },
+            },
+          },
+        ],
+      }),
+    );
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    const disclosure = screen.getByText("Details").closest("details");
+    if (!disclosure) throw new Error("Reply disclosure missing");
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    await flush();
+    expect(
+      mocks.detail.mock.calls.every(
+        ([, options]) => options.includePayloads === false,
+      ),
+    ).toBe(true);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Trajectories" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    await flush();
+    const panel = screen.getByRole("tabpanel", { name: "Trajectories" });
+    expect(
+      within(panel).getByText(/Background memory · 1 model call/),
+    ).toBeTruthy();
+    expect(mocks.list).toHaveBeenCalledWith(
+      { search: "user-1", limit: 100, offset: 4 },
+      expect.anything(),
+    );
+    expect(
+      mocks.detail.mock.calls.some(
+        ([id]) => id === "wrong-room" || id === "wrong-message",
+      ),
+    ).toBe(false);
+    const call = within(panel)
+      .getAllByText(/#1 · tool · OPEN_NOTES/)[0]
+      .closest("details");
+    if (!call) throw new Error("Call disclosure missing");
+    call.open = true;
+    fireEvent(call, new Event("toggle"));
+    await flush();
+    expect(within(panel).getByText("Actual model input")).toBeTruthy();
+    fireEvent.mouseDown(within(panel).getByRole("tab", { name: "Output" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(within(panel).getByText("Actual model output")).toBeTruthy();
+    const stepTrigger = within(panel).getAllByRole("button", {
+      name: "tool · OPEN_NOTES · 200ms",
+    })[0];
+    fireEvent.click(stepTrigger);
+    await flush();
+    expect(stepTrigger.getAttribute("aria-expanded")).toBe("true");
+    const step = document.getElementById(
+      stepTrigger.getAttribute("aria-controls") ?? "",
+    );
+    if (!step) throw new Error("Step disclosure content missing");
+    expect(
+      within(step).getByRole("region", { name: "Input" }).textContent,
+    ).toContain('"view": "notes"');
+    expect(
+      within(step).getByRole("region", { name: "Output" }).textContent,
+    ).toContain('"success": true');
+    expect(within(panel).queryByLabelText("Full trajectory JSON")).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Details" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    await flush();
+    expect(screen.queryByRole("tabpanel", { name: "Trajectories" })).toBeNull();
+    expect(
+      screen.getByText("Full prompts, tools, results & context"),
+    ).toBeTruthy();
+  });
+
+  it("loads older reply counts on inspection without calling unloaded counts unavailable", async () => {
+    mocks.list.mockImplementation((options) =>
+      Promise.resolve({
+        trajectories: options.search ? [record] : [],
+        total: options.search ? 1 : 0,
+      }),
+    );
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(screen.queryByText(/Token count unavailable/)).toBeNull();
+    expect(mocks.list.mock.calls.some(([options]) => options.search)).toBe(
+      false,
+    );
+    const disclosure = screen.getByText("Details").closest("details");
+    if (!disclosure) throw new Error("Reply disclosure missing");
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    await flush();
+    expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
+    expect(mocks.list).toHaveBeenCalledWith(
+      { search: "user-1", limit: 100, offset: 0 },
+      expect.anything(),
+    );
+    expect(mocks.detail).toHaveBeenCalledWith(
+      "run-1",
+      expect.objectContaining({ includePayloads: false }),
+    );
+    disclosure.open = false;
+    fireEvent(disclosure, new Event("toggle"));
+    await flush();
+    expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
+  });
+
+  it.each([
+    { input: 0, output: 0, label: "Usage details" },
+    { input: 0, output: 12, label: "0 tokens in · 12 out" },
+  ])(
+    "does not label zero input as missing usage ($output output)",
+    async ({ input, output, label }) => {
+      render(
+        <DeveloperReplyDetails
+          record={{
+            ...record,
+            totalPromptTokens: input,
+            totalCompletionTokens: output,
+          }}
+        />,
+      );
+      await flush();
+      expect(screen.getByText(new RegExp(label))).toBeTruthy();
+      expect(screen.queryByText(/not recorded|unavailable/)).toBeNull();
+    },
+  );
+
+  it("keeps background-only history inspectable without claiming no matching run", async () => {
+    const background = {
+      ...record,
+      id: "memory-only",
+      source: "background_memory",
+    };
+    mocks.list.mockResolvedValue({ trajectories: [background], total: 1 });
+    mocks.detail.mockResolvedValue({ ...detail, trajectory: background });
+    render(<DeveloperReplyDetails roomId="room-1" messageId="user-1" />);
+    const disclosure = screen.getByText("Details").closest("details");
+    if (!disclosure) throw new Error("Reply disclosure missing");
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    await flush();
+    expect(screen.getByText("No foreground counts")).toBeTruthy();
+    expect(screen.queryByText("No recorded run")).toBeNull();
+    expect(
+      screen.getByText(/Open Trajectories to inspect the other recorded runs/),
+    ).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Trajectories" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    await flush();
+    expect(screen.getByText(/Background memory · 1 model call/)).toBeTruthy();
+    expect(mocks.detail).toHaveBeenCalledWith("memory-only", expect.anything());
   });
 
   it("shows live elapsed time before usage arrives without inventing token counts", async () => {
@@ -234,6 +484,58 @@ describe("developer workspace", () => {
     );
     await flush();
     expect(screen.queryByText(/tokens in/)).toBeNull();
+  });
+
+  it("uses explicit reply linkage for interleaved messages, including history lookup", async () => {
+    messageFixtures.splice(
+      0,
+      messageFixtures.length,
+      { id: "user-1", role: "user", text: "First request", timestamp: 1000 },
+      { id: "user-2", role: "user", text: "Second request", timestamp: 1001 },
+      {
+        id: "reply-1",
+        role: "assistant",
+        text: "Reply to first",
+        timestamp: 1002,
+        replyToMessageId: "user-1",
+      },
+    );
+    mocks.list.mockResolvedValue({
+      trajectories: [
+        {
+          ...record,
+          id: "second-run",
+          totalPromptTokens: 700,
+          metadata: { messageId: "user-2" },
+        },
+        record,
+        { ...record, id: "first-memory", source: "background_memory" },
+      ],
+      total: 3,
+    });
+    render(
+      <DeveloperWorkspace>
+        <div>Existing app</div>
+      </DeveloperWorkspace>,
+    );
+    await flush();
+    expect(screen.getByText(/100 tokens in/)).toBeTruthy();
+    expect(screen.queryByText(/700 tokens in/)).toBeNull();
+    const disclosure = screen.getByText("Details").closest("details");
+    if (!disclosure) throw new Error("Reply disclosure missing");
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    await flush();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Trajectories" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    await flush();
+    expect(mocks.list).toHaveBeenCalledWith(
+      { search: "user-1", limit: 100, offset: 0 },
+      expect.anything(),
+    );
+    expect(screen.getByText(/Background memory · 1 model call/)).toBeTruthy();
   });
 
   it("polls small evidence, caches settled runs, pauses and resumes without discarding inspection", async () => {

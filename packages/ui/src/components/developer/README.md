@@ -29,15 +29,21 @@ updates independently of the transcript. Token counts arrive after model calls
 are recorded; unfinished calls do not have final usage. During sending, an
 explicitly labeled latest run in the current room provides provisional run
 details. Completed reply counts require an exact user message ID and room ID
-match. Background memory runs correlate by the same IDs and remain separate.
+match. Canonical `replyToMessageId` takes precedence even when its user message
+is outside the loaded transcript; only replies without that link use adjacency.
+Background memory runs correlate by the same IDs and remain separate.
+
+Replies outside the recent summary window initially show **Details**. Opening
+it loads matching counts and keeps them visible after collapse. Unloaded counts,
+failed reads, absent foreground runs and zero-valued usage have distinct labels;
+background-only results remain inspectable in Trajectories.
 
 Summary polling reads 50 records every 500ms while sending and every five
 seconds while idle. Polls never overlap. Hidden documents, pause, unmount and
-authorization failures stop automatic reads. Detail reads use
-`includePayloads: false` and start only after expansion or advanced inspection.
-Full prompts, tools, results and context load behind another disclosure.
-These payloads can contain private conversation content; they are not truncated
-or included in routine polling. Unavailable evidence stays visibly unavailable.
+authorization failures stop automatic reads. **Details** keeps the raw evidence
+disclosures: initial detail reads use `includePayloads: false` after expansion
+or advanced inspection; full prompts, tools, results and context load behind
+another disclosure. Routine polling remains lightweight and excludes payloads.
 
 Reply token counts include recorded post-turn evaluation. Expanded calls
 distinguish foreground, evaluation and background memory; provider adapters
@@ -47,6 +53,26 @@ estimated per-call usage carries `≈`. Run duration may include evaluation;
 overlapping stage durations must not be added. HTTP attempts, queue time and
 provider first-token timing are not measured here. Configured routing does not
 prove the provider used: recorded calls can show fallback providers.
+
+## Message trajectories
+
+The **Trajectories** tab lazily finds all runs for the reply through the existing
+paginated search API, accepting only exact room and message ID matches. It can
+find runs beyond the live summary window. Foreground, recovery and background
+memory runs expand separately, using the shared `TrajectoryDetailView`.
+
+Compact call rows show recorded input/output tokens and time. Opening a call
+reveals complete **Input**, **Output** and **System** raw text with **Copy**.
+Recorded handler, planner and tool steps expose their input, output and complete
+step record; model stages describe the calls above, not additional calls.
+**Copy entire recorded run** preserves the full returned record. Context and
+timeline remain optional diagnostics.
+
+Inspection makes no model calls. Full payload reads occur only for open runs,
+refresh when the run revision changes and abort on cleanup. These payloads may
+contain private conversation content and remain untruncated. Missing separately
+recorded provider payloads are labeled unavailable; the complete recorded model
+input remains viewable and copyable.
 
 ## Layout and accessibility
 
@@ -63,7 +89,11 @@ controls reuse the shared app design system described in `../../../PRODUCT.md`.
 
 `DeveloperWorkspace.tsx` owns the shell, chat, settings and trace disclosures.
 `useDeveloperTrajectories.ts` owns summary polling and advanced selection.
+`DeveloperTrajectories.tsx` owns message-scoped discovery and run disclosures.
 `../../styles/developer-workspace.css` contains scoped structural styles.
+The design registry identifies reply and run inspectors as lifecycle owners;
+recorded step toggles use the canonical Button and Separator, and NativeSelect
+is registered as the existing native control owner.
 
 ## Local evidence
 
@@ -73,4 +103,25 @@ polling cancellation, normal routes and developer navigation isolation.
 `DeveloperWorkspace.stories.tsx` contains synthetic summary/trace fixtures.
 Real Home and Notes prompts, live counts and route checks are documented in
 `/Users/nubs/Documents/ChatGPT/test/eliza-dev-chat-isolation-20260909.md`.
-These checks establish local UI behavior, not full release or latency acceptance.
+
+The 2026-09-10 Trajectories check used a real Notes turn with three foreground
+model calls, five semantic stages and a separate memory run. Clipboard and DOM
+text matched exactly for 88,994 input characters, 53,759 system characters and
+862 output characters. A separate background input copied all 50,758 characters.
+Opening an older Calendar reply recovered five calls and 82,039 input / 835 output
+tokens; its counts remained after collapse. All 36 focused tests passed.
+The exact previously empty single-call reply also displayed and copied its
+87,116-character input and 679-character output without changes.
+
+The root verification gate remains open: its design graph has 14 pre-existing
+findings in DeveloperTrace, WireEvidence and ModelConfigurationPanel. An
+unchanged-scanner read of HEAD sources found 33 before this work. The final graph
+introduces no findings after comparing the recorded rule, owner and evidence
+without source line numbers. No debt allowance or test expectation was relaxed.
+
+The app capture audit passed 222 checks. Pixel triage reported 204 verified,
+zero broken and 12 needing visual review across 216 captured views. This broad
+capture predates the final developer-only label/control adjustments; the live
+developer view is checked separately. Full release and latency acceptance remain
+open. Evidence lives locally under
+`/Users/nubs/Documents/ChatGPT/test/eliza-trajectories-20260910`.
