@@ -576,10 +576,17 @@ export class GoogleCalendarClient {
       requestBody.location = params.location;
     }
     if (start !== undefined) {
-      requestBody.start = toEventDateTime(start, effectiveTimeZone);
+      // Google patches merge nested fields; clear the incompatible representation.
+      requestBody.start = {
+        ...toEventDateTime(start, effectiveTimeZone),
+        ...(isDateOnly(start) ? { dateTime: null } : { date: null }),
+      };
     }
     if (end !== undefined) {
-      requestBody.end = toEventDateTime(end, effectiveTimeZone);
+      requestBody.end = {
+        ...toEventDateTime(end, effectiveTimeZone),
+        ...(isDateOnly(end) ? { dateTime: null } : { date: null }),
+      };
     }
     if (params.attendees !== undefined) {
       requestBody.attendees = params.attendees.map(toCalendarAttendee);
