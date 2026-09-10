@@ -28,6 +28,11 @@ import {
   SELF_ENTITY_ID,
 } from "@elizaos/shared";
 import {
+  type ConfirmEmailRecipientInput,
+  type ConfirmedEmailRecipient,
+  confirmEmailRecipient,
+} from "./confirmed-email-recipient.ts";
+import {
   executeRawSql,
   parseJsonArray,
   parseJsonValue,
@@ -40,12 +45,6 @@ import {
   toNumber,
   toText,
 } from "./sql.ts";
-
-import {
-  confirmEmailRecipient,
-  type ConfirmEmailRecipientInput,
-  type ConfirmedEmailRecipient,
-} from "./confirmed-email-recipient.ts";
 
 function isoNow(): string {
   return new Date().toISOString();

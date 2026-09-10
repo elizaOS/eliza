@@ -10,6 +10,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { RecipientSetup } from "./RecipientSetup.js";
 import type { FamilyOperationsAdapter } from "./types.js";
+
 afterEach(cleanup);
 
 it("requires a fresh review after an address change and selects only the confirmed result", async () => {

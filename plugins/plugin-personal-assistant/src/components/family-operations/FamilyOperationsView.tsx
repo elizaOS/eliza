@@ -39,8 +39,8 @@ import {
 import type { FamilyPacketSection } from "../../lifeops/family-coordination/index.js";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
-import { RecipientSetup } from "./RecipientSetup.js";
 import { PacketDraftEditor } from "./PacketDraftEditor.js";
+import { RecipientSetup } from "./RecipientSetup.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
