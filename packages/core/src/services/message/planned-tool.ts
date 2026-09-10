@@ -1,5 +1,7 @@
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
+import { normalizeActionJsonSchema } from "../../actions/action-schema";
+import { promotedSubactionParent } from "../../actions/promote-subactions";
 import {
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
@@ -538,7 +540,11 @@ export function subPlannerResultToPlannerToolResult(
 export function collectPlannerTools(
 	context: ContextObject,
 	narrowedActions?: ReadonlyArray<Action>,
-	options: { expandSubActions?: boolean } = {},
+	options: {
+		expandSubActions?: boolean;
+		canonicalFamilies?: boolean;
+		candidateActions?: readonly string[];
+	} = {},
 ): ToolDefinition[] {
 	const hasAnyAction = context.events.some(
 		(event) =>
@@ -551,13 +557,53 @@ export function collectPlannerTools(
 	if (!hasAnyAction) return [];
 	const actions = narrowedActions ?? collectActionsFromContext(context);
 	const tierAParents = readTierAParentsFromContext(context);
-	const actionTools = buildPlannerToolsFromTieredActions(actions, {
+	const wireActions = options.canonicalFamilies
+		? collectCanonicalPlannerActions(actions, options.candidateActions ?? [])
+		: actions;
+	const actionTools = buildPlannerToolsFromTieredActions(wireActions, {
 		tierAParents,
-		expandSubActions: options.expandSubActions,
+		expandSubActions: options.canonicalFamilies
+			? false
+			: options.expandSubActions,
 		actionLookup: new Map(
 			actions.map((action) => [action.name, action] as const),
 		),
 	});
+	if (options.canonicalFamilies) {
+		const wireNames = new Set(wireActions.map((action) => action.name));
+		for (const parentTool of actionTools) {
+			const parent = actions.find((action) => action.name === parentTool.name);
+			if (!parent) continue;
+			const aliases = actions.filter(
+				(action) =>
+					!wireNames.has(action.name) &&
+					promotedSubactionParent(action) === parent.name,
+			);
+			if (aliases.length === 0) continue;
+			const parentSchema = normalizeActionJsonSchema(parent);
+			const aliasContracts = aliases.map((alias) => {
+				const { properties = {}, ...schema } = normalizeActionJsonSchema(alias);
+				return {
+					name: alias.name,
+					description: alias.description,
+					routingHint: alias.routingHint,
+					strict: alias.toolSchemaStrict ?? true,
+					parameters: {
+						...schema,
+						parentParameterNames: Object.keys(properties),
+						propertyOverrides: Object.fromEntries(
+							Object.entries(properties).filter(
+								([name, property]) =>
+									JSON.stringify(property) !==
+									JSON.stringify(parentSchema.properties?.[name]),
+							),
+						),
+					},
+				};
+			});
+			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. Complete alias contracts:\n${JSON.stringify(aliasContracts)}`;
+		}
+	}
 	const terminalNames = new Set(
 		CORE_PLANNER_TERMINALS.map((tool) => normalizeActionIdentifier(tool.name)),
 	);
@@ -571,6 +617,49 @@ export function collectPlannerTools(
 		),
 		...CORE_PLANNER_TERMINALS,
 	];
+}
+
+/**
+ * Represents generated aliases once through their complete authorized umbrella.
+ * Independent child actions and explicitly requested aliases remain direct. The
+ * caller retains every original context action for execution and trajectories.
+ */
+export function collectCanonicalPlannerActions(
+	actions: readonly Action[],
+	candidateActions: readonly string[],
+): Action[] {
+	const lookup = buildRuntimeActionLookup({ actions });
+	const directCandidates = new Set(
+		candidateActions.map((name) => resolveRuntimeAction(lookup, name)?.name),
+	);
+	const authorized = new Map(actions.map((action) => [action.name, action]));
+	return actions.filter((action) => {
+		if (directCandidates.has(action.name)) return true;
+		const parentName = promotedSubactionParent(action);
+		if (!parentName) return true;
+		const parent = authorized.get(parentName);
+		// An umbrella requiring a field absent from this alias cannot represent
+		// that alias's valid calls without manufacturing an extra argument.
+		if (
+			parent?.parameters?.some(
+				(parameter) =>
+					parameter.required &&
+					!action.parameters?.some((entry) => entry.name === parameter.name),
+			)
+		)
+			return true;
+		if (
+			parent?.subActions?.some(
+				(child) =>
+					!authorized.has(typeof child === "string" ? child : child.name),
+			)
+		)
+			return true;
+		return !parent?.subActions?.some(
+			(child) =>
+				(typeof child === "string" ? child : child.name) === action.name,
+		);
+	});
 }
 
 export type UmbrellaPlannerBudgetDecision =
