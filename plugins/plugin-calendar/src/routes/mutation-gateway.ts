@@ -17,7 +17,7 @@ import type {
   LifeOpsCalendarRecurrenceScope,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-  LifeOpsLinkedCalendarControl,
+  LifeOpsLinkedCalendarControlMutationResult,
   LifeOpsLinkedCalendarMutationResponse,
   ResolveLifeOpsLinkedCalendarConflictRequest,
   RunLifeOpsLinkedCalendarReconciliationRequest,
@@ -31,7 +31,7 @@ export interface CalendarOwnerMutationGateway {
   updateLinkedCalendarControl(
     requestUrl: URL,
     request: UpdateLifeOpsLinkedCalendarControlRequest,
-  ): Promise<LifeOpsLinkedCalendarControl>;
+  ): Promise<LifeOpsLinkedCalendarControlMutationResult>;
   create(
     requestUrl: URL,
     request: CreateLifeOpsCalendarEventRequest,

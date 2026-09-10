@@ -19,6 +19,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgSchema,
   primaryKey,
   text,
@@ -309,6 +310,24 @@ export const linkedCalendarControl = calendarPgSchema.table(
   ],
 );
 
+export const linkedCalendarControlMutations = calendarPgSchema.table(
+  "linked_calendar_control_mutations",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    operationKey: text("operation_key").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    committedAt: text("committed_at").notNull(),
+  },
+  (t) => [
+    unique("linked_calendar_control_mutations_operation_unique").on(
+      t.agentId,
+      t.operationKey,
+    ),
+  ],
+);
+
 export const calendarSchema = {
   calendarEvents,
   calendarSyncStates,
@@ -318,4 +337,5 @@ export const calendarSchema = {
   googleCalendarWatchChannels,
   linkedCalendarEvents,
   linkedCalendarControl,
+  linkedCalendarControlMutations,
 };

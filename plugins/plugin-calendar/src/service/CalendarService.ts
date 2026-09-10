@@ -9,6 +9,7 @@
  * hooks; the service never imports the grant registry directly, keeping the
  * dependency direction `plugin-lifeops -> plugin-calendar`.
  */
+import { createHash } from "node:crypto";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -17,6 +18,7 @@ import {
   SECRETS_SERVICE_TYPE,
   Service,
   SsrfBlockedError,
+  stableStringify,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
@@ -64,6 +66,7 @@ import type {
   LifeOpsIcsCalendarSource,
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsLinkedCalendarControl,
+  LifeOpsLinkedCalendarControlMutationResult,
   LifeOpsLinkedCalendarLink,
   LifeOpsLinkedCalendarMutationResponse,
   LifeOpsNextCalendarEventContext,
@@ -202,7 +205,10 @@ import {
   createLifeOpsAuditEvent,
   createLifeOpsReminderPlan,
 } from "./gate.js";
-import { LinkedCalendarControlRepository } from "./linked-calendar-control.js";
+import {
+  type LinkedCalendarControlMutation,
+  LinkedCalendarControlRepository,
+} from "./linked-calendar-control.js";
 import {
   GoogleLinkedCalendarProviderPort,
   type LinkedCalendarEventRecord,
@@ -1607,7 +1613,7 @@ export class CalendarService extends Service {
   async executeLinkedCalendarControl(
     requestUrl: URL,
     request: UpdateLifeOpsLinkedCalendarControlRequest,
-  ): Promise<LifeOpsLinkedCalendarControl> {
+  ): Promise<LifeOpsLinkedCalendarControlMutationResult> {
     if (
       !Number.isSafeInteger(request.expectedRevision) ||
       request.expectedRevision < 0
@@ -1617,7 +1623,46 @@ export class CalendarService extends Service {
         "expectedRevision must be a nonnegative integer.",
       );
     }
+    const key =
+      typeof request.idempotencyKey === "string"
+        ? request.idempotencyKey.trim()
+        : "";
+    if (!key || key.length > 512)
+      throw new CalendarServiceError(
+        400,
+        "A nonempty operation key of at most 512 characters is required.",
+      );
+    request = { ...request, idempotencyKey: key };
+    const fingerprint = createHash("sha256")
+      .update(stableStringify(request))
+      .digest("hex");
     const current = await this.linkedControl.read();
+    let replay: LinkedCalendarControlMutation | null;
+    try {
+      replay = await this.linkedControl.findMutation(key, fingerprint);
+    } catch (error) {
+      // error-policy:J1 Operation-key collisions are owner-review conflicts.
+      if (
+        error instanceof ElizaError &&
+        error.code === "LINKED_CALENDAR_OPERATION_KEY_CONFLICT"
+      )
+        throw new CalendarServiceError(409, error.message, error.code, {
+          cause: error,
+        });
+      throw error;
+    }
+    if (replay) {
+      if (current.revision !== replay.control.revision)
+        throw new CalendarServiceError(
+          409,
+          "A newer calendar review superseded this operation. Refresh sync status.",
+          "LINKED_CALENDAR_OPERATION_SUPERSEDED",
+        );
+      if (request.operation === "resume")
+        await this.bootstrapActiveLinkedCalendarSync();
+      return this.publicLinkedControlMutation(replay);
+    }
+    let committed: LinkedCalendarControlMutation;
     if (current.revision !== request.expectedRevision) {
       throw new CalendarServiceError(
         409,
@@ -1628,7 +1673,10 @@ export class CalendarService extends Service {
     try {
       switch (request.operation) {
         case "pause":
-          await this.linkedControl.pause(request.expectedRevision);
+          committed = await this.linkedControl.commitMutation(
+            request,
+            fingerprint,
+          );
           break;
         case "select": {
           if (request.destination === undefined) {
@@ -1652,9 +1700,9 @@ export class CalendarService extends Service {
                 };
           if (destination)
             await this.verifyLinkedDestination(requestUrl, destination);
-          await this.linkedControl.selectDestination(
-            request.expectedRevision,
-            destination,
+          committed = await this.linkedControl.commitMutation(
+            { ...request, destination },
+            fingerprint,
           );
           break;
         }
@@ -1683,7 +1731,10 @@ export class CalendarService extends Service {
               "LINKED_CALENDAR_MAPPING_REVIEW_REQUIRED",
             );
           }
-          await this.linkedControl.resume(request.expectedRevision);
+          committed = await this.linkedControl.commitMutation(
+            request,
+            fingerprint,
+          );
           await this.bootstrapActiveLinkedCalendarSync();
           break;
         }
@@ -1726,9 +1777,10 @@ export class CalendarService extends Service {
               "LINKED_CALENDAR_RECOVERY_UNRESOLVED",
             );
           }
-          await this.linkedControl.settleDispatch(
+          committed = await this.linkedControl.commitMutation(
+            request,
+            fingerprint,
             current.dispatch.token,
-            current.revision,
           );
           break;
         }
@@ -1742,7 +1794,8 @@ export class CalendarService extends Service {
       // error-policy:J1 Translate a concurrent control transition to a refreshable HTTP conflict.
       if (
         error instanceof ElizaError &&
-        error.code === "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED"
+        (error.code === "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED" ||
+          error.code === "LINKED_CALENDAR_OPERATION_KEY_CONFLICT")
       ) {
         throw new CalendarServiceError(409, error.message, error.code, {
           cause: error,
@@ -1750,7 +1803,21 @@ export class CalendarService extends Service {
       }
       throw error;
     }
-    return this.getLinkedCalendarControl();
+    return this.publicLinkedControlMutation(committed);
+  }
+
+  private publicLinkedControlMutation(
+    mutation: LinkedCalendarControlMutation,
+  ): LifeOpsLinkedCalendarControlMutationResult {
+    return {
+      revision: mutation.control.revision,
+      paused: mutation.control.paused,
+      destination: mutation.control.destination,
+      pendingDispatch: mutation.control.dispatch
+        ? { linkId: mutation.control.dispatch.linkId }
+        : null,
+      receipt: mutation.receipt,
+    };
   }
 
   async getLinkedCalendarEvent(

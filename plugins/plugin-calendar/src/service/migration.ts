@@ -352,6 +352,15 @@ export async function ensureLinkedCalendarControlTable(
       OR (connector_account_id IS NOT NULL AND length(trim(connector_account_id)) > 0
         AND provider_calendar_id IS NOT NULL AND length(trim(provider_calendar_id)) > 0))
   )`);
+  await exec(`CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.linked_calendar_control_mutations (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    operation_key TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    snapshot JSONB NOT NULL,
+    committed_at TEXT NOT NULL,
+    CONSTRAINT linked_calendar_control_mutations_operation_unique UNIQUE (agent_id, operation_key)
+  )`);
 }
 
 /**

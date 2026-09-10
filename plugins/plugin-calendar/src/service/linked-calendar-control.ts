@@ -6,6 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import type { UpdateLifeOpsLinkedCalendarControlRequest } from "@elizaos/shared";
 import { executeRawSql, sqlInteger, sqlQuote } from "../internal/sql.js";
 
 export interface LinkedCalendarDestination {
@@ -18,6 +19,51 @@ export interface LinkedCalendarControl {
   paused: boolean;
   destination: LinkedCalendarDestination | null;
   dispatch: { token: string; linkId: string } | null;
+}
+
+export interface LinkedCalendarControlMutation {
+  control: LinkedCalendarControl;
+  receipt: {
+    id: string;
+    operationKey: string;
+    committedAt: string;
+    revision: number;
+    replayed: boolean;
+  };
+}
+
+function parseMutation(
+  row: Record<string, unknown>,
+  fingerprint: string,
+  replayed: boolean,
+): LinkedCalendarControlMutation {
+  if (row.fingerprint !== fingerprint) {
+    throw new ElizaError(
+      "This calendar operation key was already used for a different review.",
+      { code: "LINKED_CALENDAR_OPERATION_KEY_CONFLICT" },
+    );
+  }
+  if (
+    typeof row.id !== "string" ||
+    typeof row.operation_key !== "string" ||
+    typeof row.committed_at !== "string" ||
+    !Number.isFinite(Date.parse(row.committed_at)) ||
+    !row.snapshot ||
+    typeof row.snapshot !== "object" ||
+    Array.isArray(row.snapshot)
+  )
+    return invalidState();
+  const control = parseControl(row.snapshot as Record<string, unknown>);
+  return {
+    control,
+    receipt: {
+      id: row.id,
+      operationKey: row.operation_key,
+      committedAt: row.committed_at,
+      revision: control.revision,
+      replayed,
+    },
+  };
 }
 
 function invalidState(): never {
@@ -86,6 +132,68 @@ export class LinkedCalendarControlRepository {
     );
     if (!rows[0]) return invalidState();
     return parseControl(rows[0]);
+  }
+
+  async findMutation(
+    operationKey: string,
+    fingerprint: string,
+  ): Promise<LinkedCalendarControlMutation | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_calendar.linked_calendar_control_mutations
+      WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND operation_key = ${sqlQuote(operationKey)}`,
+    );
+    return rows[0] ? parseMutation(rows[0], fingerprint, true) : null;
+  }
+
+  /** The control transition and its replay receipt commit in one SQL statement. */
+  async commitMutation(
+    request: UpdateLifeOpsLinkedCalendarControlRequest,
+    fingerprint: string,
+    recoveryToken?: string,
+  ): Promise<LinkedCalendarControlMutation> {
+    let assignments: string;
+    let condition: string;
+    switch (request.operation) {
+      case "pause":
+        assignments = "paused = TRUE";
+        condition = "TRUE";
+        break;
+      case "resume":
+        assignments = "paused = FALSE";
+        condition =
+          "connector_account_id IS NOT NULL AND provider_calendar_id IS NOT NULL AND dispatch_token IS NULL";
+        break;
+      case "select":
+        assignments = `connector_account_id = ${request.destination ? sqlQuote(request.destination.connectorAccountId) : "NULL"}, provider_calendar_id = ${request.destination ? sqlQuote(request.destination.providerCalendarId) : "NULL"}`;
+        condition = "paused = TRUE AND dispatch_token IS NULL";
+        break;
+      case "recover":
+        if (!recoveryToken) return invalidState();
+        assignments = "dispatch_token = NULL, dispatch_link_id = NULL";
+        condition = `paused = TRUE AND dispatch_token = ${sqlQuote(recoveryToken)}`;
+        break;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `
+      WITH changed AS (
+        UPDATE app_calendar.linked_calendar_control SET ${assignments}, revision = revision + 1
+        WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND revision = ${sqlInteger(request.expectedRevision)} AND (${condition})
+          AND NOT EXISTS (SELECT 1 FROM app_calendar.linked_calendar_control_mutations WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND operation_key = ${sqlQuote(request.idempotencyKey)})
+        RETURNING *
+      )
+      INSERT INTO app_calendar.linked_calendar_control_mutations (id, agent_id, operation_key, fingerprint, snapshot, committed_at)
+      SELECT ${sqlQuote(randomUUID())}, ${sqlQuote(this.runtime.agentId)}, ${sqlQuote(request.idempotencyKey)}, ${sqlQuote(fingerprint)}, to_jsonb(changed), to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') FROM changed
+      RETURNING *`,
+    );
+    if (rows[0]) return parseMutation(rows[0], fingerprint, false);
+    const replay = await this.findMutation(request.idempotencyKey, fingerprint);
+    if (replay) return replay;
+    throw new ElizaError(
+      "Calendar sync changed or is not ready for this transition. Refresh its review.",
+      { code: "LINKED_CALENDAR_CONTROL_TRANSITION_REJECTED" },
+    );
   }
 
   async selectDestination(

@@ -459,6 +459,17 @@ export interface LifeOpsLinkedCalendarControl {
   pendingDispatch: { linkId: string } | null;
 }
 
+export interface LifeOpsLinkedCalendarControlMutationResult
+  extends LifeOpsLinkedCalendarControl {
+  receipt: {
+    id: string;
+    operationKey: string;
+    committedAt: string;
+    revision: number;
+    replayed: boolean;
+  };
+}
+
 export type UpdateLifeOpsLinkedCalendarControlRequest = {
   expectedRevision: number;
   idempotencyKey: string;

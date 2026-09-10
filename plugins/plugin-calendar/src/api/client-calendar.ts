@@ -24,6 +24,7 @@ import type {
   LifeOpsIcsCalendarSourceMutationResponse,
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsLinkedCalendarControl,
+  LifeOpsLinkedCalendarControlMutationResult,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
   ListLifeOpsIcsCalendarSourcesResponse,
@@ -67,7 +68,7 @@ export interface CalendarClientMethods {
   getLinkedCalendarControl(): Promise<LifeOpsLinkedCalendarControl>;
   updateLinkedCalendarControl(
     request: UpdateLifeOpsLinkedCalendarControlRequest,
-  ): Promise<LifeOpsLinkedCalendarControl>;
+  ): Promise<LifeOpsLinkedCalendarControlMutationResult>;
   getLifeOpsCalendarFeed(
     options?: GetLifeOpsCalendarFeedRequest,
     request?: Pick<RequestInit, "signal">,
@@ -142,7 +143,7 @@ calendarClientPrototype.updateLinkedCalendarControl = async function (
   this: ElizaClient,
   request: UpdateLifeOpsLinkedCalendarControlRequest,
 ) {
-  return this.fetch<LifeOpsLinkedCalendarControl>(
+  return this.fetch<LifeOpsLinkedCalendarControlMutationResult>(
     "/api/lifeops/calendar/sync-control",
     {
       method: "POST",

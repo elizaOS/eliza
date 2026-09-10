@@ -49,6 +49,107 @@ afterEach(async () => {
 });
 
 describe("durable linked calendar review", { timeout: 30_000 }, () => {
+  it("returns one durable receipt for concurrent retries and rejects changed request reuse", async () => {
+    const h = await harness();
+    const first = new CalendarService(h.runtime());
+    const second = new CalendarService(h.runtime());
+    const request = {
+      operation: "pause" as const,
+      expectedRevision: 0,
+      idempotencyKey: "review-pause",
+    };
+    const [a, b] = await Promise.all([
+      first.executeLinkedCalendarControl(new URL("http://localhost"), request),
+      second.executeLinkedCalendarControl(new URL("http://localhost"), request),
+    ]);
+    expect(a.receipt.id).toBe(b.receipt.id);
+    expect(a.receipt.committedAt).toBe(b.receipt.committedAt);
+    expect([a.receipt.replayed, b.receipt.replayed].sort()).toEqual([
+      false,
+      true,
+    ]);
+    expect((await h.controls().read()).revision).toBe(1);
+    const saved = await h.pg.query<{ id: string; committed_at: string }>(
+      "SELECT id, committed_at FROM app_calendar.linked_calendar_control_mutations",
+    );
+    expect(saved.rows).toEqual([
+      { id: a.receipt.id, committed_at: a.receipt.committedAt },
+    ]);
+    await expect(
+      first.executeLinkedCalendarControl(new URL("http://localhost"), {
+        ...request,
+        operation: "select",
+        destination: null,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_OPERATION_KEY_CONFLICT",
+    });
+    expect((await h.controls().read()).revision).toBe(1);
+  });
+
+  it("rolls back the control change if its receipt cannot be persisted", async () => {
+    const h = await harness();
+    await h.controls().read();
+    await h.pg.exec(
+      "ALTER TABLE app_calendar.linked_calendar_control_mutations ADD CONSTRAINT reject_test_receipt CHECK (operation_key <> 'reject-receipt')",
+    );
+    const service = new CalendarService(h.runtime());
+    await expect(
+      service.executeLinkedCalendarControl(new URL("http://localhost"), {
+        operation: "pause",
+        expectedRevision: 0,
+        idempotencyKey: "reject-receipt",
+      }),
+    ).rejects.toThrow();
+    expect((await h.controls().read()).revision).toBe(0);
+    expect(
+      (
+        await h.pg.query(
+          "SELECT id FROM app_calendar.linked_calendar_control_mutations",
+        )
+      ).rows,
+    ).toEqual([]);
+  });
+
+  it("replays after restart but refuses to describe a superseded review as current", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "calendar-receipt-"));
+    directories.push(directory);
+    const h = await harness(directory);
+    const request = {
+      operation: "pause" as const,
+      expectedRevision: 0,
+      idempotencyKey: "durable-pause",
+    };
+    const original = await new CalendarService(
+      h.runtime(),
+    ).executeLinkedCalendarControl(new URL("http://localhost"), request);
+    await h.pg.close();
+    databases.splice(databases.indexOf(h.pg), 1);
+    const reopened = await harness(directory);
+    const service = new CalendarService(reopened.runtime());
+    const replay = await service.executeLinkedCalendarControl(
+      new URL("http://localhost"),
+      request,
+    );
+    expect(replay.receipt).toEqual({ ...original.receipt, replayed: true });
+    await service.executeLinkedCalendarControl(new URL("http://localhost"), {
+      operation: "select",
+      destination: null,
+      expectedRevision: replay.revision,
+      idempotencyKey: "new-review",
+    });
+    await expect(
+      service.executeLinkedCalendarControl(
+        new URL("http://localhost"),
+        request,
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_OPERATION_SUPERSEDED",
+    });
+  });
+
   it("exposes pending work without its receipt and returns a conflict for a blocked owner change", async () => {
     const h = await harness();
     const initial = await h.controls().read();

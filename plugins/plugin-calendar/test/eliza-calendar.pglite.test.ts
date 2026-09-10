@@ -141,6 +141,7 @@ beforeAll(async () => {
 }, 30_000);
 
 beforeEach(async () => {
+  await pg.query("DELETE FROM app_calendar.linked_calendar_control_mutations");
   await pg.query("DELETE FROM app_calendar.linked_calendar_control");
   await pg.query("DELETE FROM app_calendar.linked_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
