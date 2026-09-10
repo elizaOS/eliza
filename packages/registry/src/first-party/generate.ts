@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import path, { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type RegistryEntry, registryEntrySchema } from "./schema";
 
@@ -73,6 +73,11 @@ const PROVIDER_MAP_PATH = join(HERE, "provider-plugin-map.json");
 // build OPTIONAL_PLUGIN_MAP instead of hand-maintaining the alias table. Entries
 // opt in by listing bare ids in `shortIds` (e.g. evm/solana/wallet -> wallet).
 const SHORTID_MAP_PATH = join(HERE, "short-id-plugin-map.json");
+// Generated connector truth inventory (#24373): one row per bundled channel
+// claim, derived from the plugin's real MessageConnector registrations in
+// source. Committed and drift-gated like the other artifacts so registry
+// claims cannot outrun first-party code.
+const TRUTH_INVENTORY_PATH = join(HERE, "connector-truth-inventory.json");
 
 interface CuratedAppDefinition {
   slug: string;
@@ -184,6 +189,368 @@ export function collectProviderPluginMap(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Connector truth inventory (#24373)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the balanced object literal that starts at `file[openIdx] === "{"`.
+ * Returns the inner text between the outer braces.
+ */
+function balancedObjectAt(file: string, openIdx: number): string | null {
+  if (file[openIdx] !== "{") return null;
+  let depth = 0;
+  for (let i = openIdx; i < file.length && i < openIdx + 20000; i++) {
+    const ch = file[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return file.slice(openIdx + 1, i);
+    }
+  }
+  return null;
+}
+
+function literalsIn(text: string): string[] {
+  const out: string[] = [];
+  const re = /"([a-zA-Z0-9_.-]+)"|'([a-zA-Z0-9_.-]+)'/g;
+  for (const m of text.matchAll(re)) {
+    out.push((m[1] ?? m[2]) as string);
+  }
+  return out;
+}
+
+/**
+ * Extract string-literal elements of the array assigned to `key:` inside an
+ * extracted registration body, UNIONED across conditional (ternary) branches —
+ * the inventory's claim is the aggregate of what the site may declare, so a
+ * transport-conditional registration must not silently drop one branch's
+ * capabilities. Resolves the `[...CONST]` spread form against the constant's
+ * literal array declaration in the same file.
+ */
+function literalArrayFor(file: string, body: string, key: string): string[] {
+  const keyIdx = body.indexOf(`${key}:`);
+  if (keyIdx === -1) return [];
+  const out = new Set<string>();
+  let cursor = body.indexOf("[", keyIdx);
+  let sawArray = false;
+  // Continue past `? [..] : [..]` ternary alternates only: after a balanced
+  // array, the next non-space token must be `:` (a new property key starts
+  // with an identifier, not a colon, so sibling properties cannot chain in).
+  while (cursor !== -1) {
+    let depth = 0;
+    let end = -1;
+    for (let i = cursor; i < body.length; i++) {
+      const ch = body[i];
+      if (ch === "[") depth++;
+      else if (ch === "]") {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end === -1) break;
+    sawArray = true;
+    const inner = body.slice(cursor + 1, end).trim();
+    if (inner.length > 0) {
+      const spread = inner.match(/^\.\.\.([A-Z][A-Z0-9_]*)$/);
+      if (spread) {
+        const constName = spread[1] as string;
+        const decl = file.match(
+          new RegExp(
+            `(?:const|let) ${constName}\\s*[=:]\\s*\\[([\\s\\S]*?)\\]`,
+          ),
+        );
+        if (!decl) {
+          throw new Error(
+            `[registry/generate] connector truth inventory: cannot resolve array constant ${constName} — extend the extractor or inline the literal`,
+          );
+        }
+        for (const lit of literalsIn(decl[1] ?? "")) out.add(lit);
+      } else {
+        for (const lit of literalsIn(inner)) out.add(lit);
+      }
+    }
+    if (!/^\s*:/.test(body.slice(end + 1))) break;
+    cursor = body.indexOf("[", end + 1);
+  }
+  if (!sawArray) return [];
+  return [...out].sort();
+}
+
+/** Registration `source:` values: literals directly, known constants by map. */
+const KNOWN_SOURCE_CONSTANTS: Record<string, string> = {
+  MATRIX_SERVICE_NAME: "matrix",
+  IMESSAGE_SERVICE_NAME: "imessage",
+  GOOGLE_CHAT_SERVICE_NAME: "google-chat",
+  GMAIL_MESSAGE_SOURCE: "gmail",
+  GOOGLE_SERVICE_NAME: "google",
+};
+
+function registrationSourcesOf(body: string): string[] {
+  const out = new Set<string>();
+  const re = /source:\s*(?:"([^"\n]+)"|'([^'\n]+)'|([A-Z][A-Z0-9_]*))/g;
+  for (const m of body.matchAll(re)) {
+    const literal = m[1] ?? m[2];
+    if (literal) {
+      out.add(literal);
+      continue;
+    }
+    const ident = m[3] as string;
+    const resolved = KNOWN_SOURCE_CONSTANTS[ident];
+    if (!resolved) {
+      throw new Error(
+        `[registry/generate] connector truth inventory: unknown source constant ${ident} — add it to KNOWN_SOURCE_CONSTANTS so the inventory stays complete`,
+      );
+    }
+    out.add(resolved);
+  }
+  return [...out].sort();
+}
+
+interface ExtractedRegistration {
+  site: string;
+  sources: string[];
+  capabilities: string[];
+  supportedTargetKinds: string[];
+}
+
+function extractFromFile(
+  fileText: string,
+  repoRel: string,
+): ExtractedRegistration[] {
+  const out: ExtractedRegistration[] = [];
+  const bodies = new Set<string>();
+
+  const pushBody = (body: string): void => {
+    if (bodies.has(body)) return;
+    bodies.add(body);
+    out.push({
+      site: repoRel,
+      sources: registrationSourcesOf(body),
+      capabilities: literalArrayFor(fileText, body, "capabilities"),
+      supportedTargetKinds: literalArrayFor(
+        fileText,
+        body,
+        "supportedTargetKinds",
+      ),
+    });
+  };
+
+  // Shape-based detection (#24373): production registrations are constructed in
+  // many shapes — inline call arguments, typed const assignments, factory
+  // returns, and helper-parameter indirection (the object literal lives away
+  // from the registerMessageConnector call). Chasing call graphs duplicates the
+  // compiler; instead detect registration-SHAPED object literals directly: any
+  // balanced object declaring `source:`, `capabilities:`, and
+  // `supportedTargetKinds:` is a MessageConnectorRegistration literal. False
+  // positives would need all three keys by accident.
+  for (let i = 0; i < fileText.length; i++) {
+    if (fileText[i] !== "{") continue;
+    const probe = fileText.slice(i, i + 200);
+    if (!probe.includes("source:")) continue;
+    const body = balancedObjectAt(fileText, i);
+    if (!body) continue;
+    if (
+      !body.includes("capabilities:") ||
+      !body.includes("supportedTargetKinds:")
+    )
+      continue;
+    pushBody(body);
+  }
+
+  return out;
+}
+
+function scanRegistrationSites(pluginDir: string): ExtractedRegistration[] {
+  const sites: ExtractedRegistration[] = [];
+  const walk = (dir: string): void => {
+    for (const dirent of readdirSync(dir, { withFileTypes: true })) {
+      if (
+        dirent.name === "node_modules" ||
+        dirent.name === "dist" ||
+        dirent.name === "__tests__" ||
+        dirent.name === "test" ||
+        dirent.name.startsWith("test.") ||
+        dirent.name.includes(".test.")
+      )
+        continue;
+      const full = join(dir, dirent.name);
+      if (dirent.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/[.](?:[cm]?[jt]sx?)$/.test(dirent.name)) continue;
+      const file = readFileSync(full, "utf8");
+      sites.push(...extractFromFile(file, pathRelativeToRepoRoot(full)));
+    }
+  };
+  walk(pluginDir);
+  return sites.sort((a, b) => a.site.localeCompare(b.site));
+}
+
+/**
+ * Repository-relative site-path conversion. `relative` + separator
+ * normalization keeps emitted site paths repository-relative on every
+ * platform: a literal `${REPO_ROOT}/` replace never matches Windows
+ * `\`-joined paths and would commit machine-specific absolute paths into
+ * connector-truth-inventory.json. The path-module and root parameters exist
+ * so the regression test can pin Windows (`path.win32`) semantics on any
+ * host lane against THIS production function.
+ */
+export function pathRelativeToRepoRoot(
+  file: string,
+  pathModule: typeof path = path,
+  root: string = REPO_ROOT,
+): string {
+  return pathModule.relative(root, file).split(pathModule.sep).join("/");
+}
+
+/** Target kinds that imply group-scope conversation surfaces. */
+const MEMBERSHIP_TARGET_KINDS = ["room", "channel", "thread", "group"] as const;
+
+/** Capabilities that only make sense for an outbound send path. */
+const SEND_ONLY_CAPABILITIES = new Set([
+  "send_message",
+  "send_thread_reply",
+  "send_attachment",
+  "send_reaction",
+  "react_to_message",
+  "send_formatted_message",
+  "resolve_targets",
+  "contact_resolution",
+]);
+
+type ConnectorMembership = "send-only" | "group-scope" | "direct-scope";
+
+/**
+ * Derive the connector's conversation scope from its unioned registration
+ * literals. Documented rule (kept mechanical so the inventory cannot editorialize):
+ * - "send-only"  — every declared capability is an outbound-send or
+ *                  target-resolution capability (Gmail: ["send_message"]).
+ * - "group-scope" — at least one group-scope target kind (room/channel/thread/
+ *                  group) is addressable (Discord, Slack, Telegram, ...).
+ * - "direct-scope" — otherwise (X DMs: user/contact targets only).
+ */
+function membershipScope(
+  capabilities: string[],
+  supportedTargetKinds: string[],
+): ConnectorMembership {
+  const hasNonSend =
+    capabilities.filter((c) => !SEND_ONLY_CAPABILITIES.has(c)).length > 0;
+  if (capabilities.length > 0 && !hasNonSend) return "send-only";
+  const hasGroupKind = supportedTargetKinds.some((kind) =>
+    (MEMBERSHIP_TARGET_KINDS as readonly string[]).includes(kind),
+  );
+  return hasGroupKind ? "group-scope" : "direct-scope";
+}
+
+type ConnectorTruthRow = {
+  plugin: string;
+  packageName: string;
+  channels: string[];
+  registrationSites: string[];
+  /** Per-registration-source truth: each source's own capabilities, target kinds, and scope. */
+  registrations: Array<{
+    source: string;
+    capabilities: string[];
+    supportedTargetKinds: string[];
+    scope: ConnectorMembership;
+    sites: string[];
+  }>;
+  /** Union across registrations — convenience for consumers listing one scope per plugin. */
+  capabilities: string[];
+  supportedTargetKinds: string[];
+  scope: ConnectorMembership;
+};
+
+/**
+ * Build the connector truth inventory (#24373): one row per bundled entry that
+ * claims channels, derived from that entry's own plugin source. A channel claim
+ * without a production registration fails loud, and every registration source
+ * constant must be resolvable — the inventory cannot silently rot.
+ */
+export function collectConnectorTruthInventory(
+  entries: RegistryEntry[],
+): ConnectorTruthRow[] {
+  const rows: ConnectorTruthRow[] = [];
+  for (const entry of entries) {
+    if ((entry.channels?.length ?? 0) === 0) continue;
+    if (entry.source === "store") continue; // unreachable after the schema ratchet
+    const packageName = entry.npmName;
+    if (!packageName) {
+      throw new Error(
+        `[registry/generate] connector truth inventory: entry ${entry.id} claims channels without an npmName`,
+      );
+    }
+    const pluginDir = join(
+      REPO_ROOT,
+      "plugins",
+      packageName.replace("@elizaos/", ""),
+    );
+    if (!existsSync(pluginDir)) {
+      throw new Error(
+        `[registry/generate] connector truth inventory: ${entry.id} claims channels but has no first-party plugin directory at ${pathRelativeToRepoRoot(pluginDir)} (#24373)`,
+      );
+    }
+    const sites = scanRegistrationSites(pluginDir);
+    const registrations = sites.filter((s) => s.sources.length > 0);
+    if (registrations.length === 0) {
+      throw new Error(
+        `[registry/generate] connector truth inventory: ${entry.id} claims channels [${entry.channels.join(", ")}] but plugin ${packageName} has no resolvable MessageConnector registration (#24373)`,
+      );
+    }
+    const bySource = new Map<
+      string,
+      { capabilities: Set<string>; kinds: Set<string>; sites: Set<string> }
+    >();
+    for (const reg of registrations) {
+      for (const source of reg.sources) {
+        let bucket = bySource.get(source);
+        if (!bucket) {
+          bucket = {
+            capabilities: new Set(),
+            kinds: new Set(),
+            sites: new Set(),
+          };
+          bySource.set(source, bucket);
+        }
+        for (const c of reg.capabilities) bucket.capabilities.add(c);
+        for (const k of reg.supportedTargetKinds) bucket.kinds.add(k);
+        bucket.sites.add(reg.site);
+      }
+    }
+    const sourceRows = [...bySource.entries()]
+      .map(([source, bucket]) => ({
+        source,
+        capabilities: [...bucket.capabilities].sort(),
+        supportedTargetKinds: [...bucket.kinds].sort(),
+        scope: membershipScope([...bucket.capabilities], [...bucket.kinds]),
+        sites: [...bucket.sites].sort(),
+      }))
+      .sort((a, b) => a.source.localeCompare(b.source));
+    const capabilities = [
+      ...new Set(sourceRows.flatMap((s) => s.capabilities)),
+    ].sort();
+    const supportedTargetKinds = [
+      ...new Set(sourceRows.flatMap((s) => s.supportedTargetKinds)),
+    ].sort();
+    rows.push({
+      plugin: packageName.replace("@elizaos/", ""),
+      packageName,
+      channels: [...entry.channels].sort(),
+      registrationSites: [...new Set(registrations.map((s) => s.site))].sort(),
+      registrations: sourceRows,
+      capabilities,
+      supportedTargetKinds,
+      scope: membershipScope(capabilities, supportedTargetKinds),
+    });
+  }
+  return rows.sort((a, b) => a.plugin.localeCompare(b.plugin));
+}
+
 interface SourcedEntry {
   entry: RegistryEntry;
   file: string;
@@ -255,6 +622,7 @@ export function generateFirstPartyRegistry(): {
   channels: string;
   providers: string;
   shortIds: string;
+  inventory: string;
 } {
   const entries = collectFirstPartyEntries();
   return {
@@ -263,6 +631,14 @@ export function generateFirstPartyRegistry(): {
     channels: `${JSON.stringify(collectChannelPluginMap(entries), null, 2)}\n`,
     providers: `${JSON.stringify(collectProviderPluginMap(entries), null, 2)}\n`,
     shortIds: `${JSON.stringify(collectShortIdPluginMap(entries), null, 2)}\n`,
+    inventory: `${JSON.stringify(
+      {
+        membershipTargetKinds: MEMBERSHIP_TARGET_KINDS,
+        connectors: collectConnectorTruthInventory(entries),
+      },
+      null,
+      2,
+    )}\n`,
   };
 }
 
@@ -275,6 +651,10 @@ function main(): void {
     [CHANNEL_MAP_PATH, biomeFormatJson(next.channels, CHANNEL_MAP_PATH)],
     [PROVIDER_MAP_PATH, biomeFormatJson(next.providers, PROVIDER_MAP_PATH)],
     [SHORTID_MAP_PATH, biomeFormatJson(next.shortIds, SHORTID_MAP_PATH)],
+    [
+      TRUTH_INVENTORY_PATH,
+      biomeFormatJson(next.inventory, TRUTH_INVENTORY_PATH),
+    ],
   ];
   if (check) {
     for (const [path, expected] of artifacts) {

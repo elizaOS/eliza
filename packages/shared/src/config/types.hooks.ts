@@ -32,8 +32,7 @@ export type HookMappingConfig = {
     | "discord"
     | "googlechat"
     | "slack"
-    | "imessage"
-    | "msteams";
+    | "imessage";
   to?: string;
   /** Override model for this hook (provider/model or alias). */
   model?: string;

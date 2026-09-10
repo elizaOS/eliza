@@ -1,0 +1,398 @@
+{
+  "membershipTargetKinds": ["room", "channel", "thread", "group"],
+  "connectors": [
+    {
+      "plugin": "plugin-discord",
+      "packageName": "@elizaos/plugin-discord",
+      "channels": ["discord", "discordLocal"],
+      "registrationSites": ["plugins/plugin-discord/service.ts"],
+      "registrations": [
+        {
+          "source": "discord",
+          "capabilities": [
+            "chat_context",
+            "create_thread",
+            "delete_message",
+            "edit_message",
+            "get_user",
+            "join_channel",
+            "leave_channel",
+            "list_rooms",
+            "list_servers",
+            "manage_server",
+            "pin_message",
+            "post_to_thread",
+            "react_message",
+            "read_messages",
+            "resolve_targets",
+            "rich_components",
+            "rich_embed",
+            "search_messages",
+            "send_message",
+            "typing_indicator",
+            "user_context",
+            "webhook_identity"
+          ],
+          "supportedTargetKinds": ["channel", "thread", "user"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-discord/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "chat_context",
+        "create_thread",
+        "delete_message",
+        "edit_message",
+        "get_user",
+        "join_channel",
+        "leave_channel",
+        "list_rooms",
+        "list_servers",
+        "manage_server",
+        "pin_message",
+        "post_to_thread",
+        "react_message",
+        "read_messages",
+        "resolve_targets",
+        "rich_components",
+        "rich_embed",
+        "search_messages",
+        "send_message",
+        "typing_indicator",
+        "user_context",
+        "webhook_identity"
+      ],
+      "supportedTargetKinds": ["channel", "thread", "user"],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-google-workspace",
+      "packageName": "@elizaos/plugin-google-workspace",
+      "channels": ["googlechat"],
+      "registrationSites": [
+        "plugins/plugin-google-workspace/src/chat/service.ts",
+        "plugins/plugin-google-workspace/src/gmail-message-connector.ts"
+      ],
+      "registrations": [
+        {
+          "source": "gmail",
+          "capabilities": ["send_message"],
+          "supportedTargetKinds": ["contact", "email", "user"],
+          "scope": "send-only",
+          "sites": [
+            "plugins/plugin-google-workspace/src/gmail-message-connector.ts"
+          ]
+        },
+        {
+          "source": "google-chat",
+          "capabilities": [
+            "direct_message",
+            "list_spaces",
+            "send_attachment",
+            "send_message",
+            "send_reaction",
+            "send_thread_reply"
+          ],
+          "supportedTargetKinds": ["channel", "room", "thread", "user"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-google-workspace/src/chat/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "direct_message",
+        "list_spaces",
+        "send_attachment",
+        "send_message",
+        "send_reaction",
+        "send_thread_reply"
+      ],
+      "supportedTargetKinds": [
+        "channel",
+        "contact",
+        "email",
+        "room",
+        "thread",
+        "user"
+      ],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-imessage",
+      "packageName": "@elizaos/plugin-imessage",
+      "channels": ["blooio", "imessage"],
+      "registrationSites": ["plugins/plugin-imessage/src/service.ts"],
+      "registrations": [
+        {
+          "source": "imessage",
+          "capabilities": [
+            "attachments",
+            "chat_context",
+            "contact_resolution",
+            "send_message"
+          ],
+          "supportedTargetKinds": [
+            "contact",
+            "email",
+            "group",
+            "phone",
+            "room",
+            "user"
+          ],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-imessage/src/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "attachments",
+        "chat_context",
+        "contact_resolution",
+        "send_message"
+      ],
+      "supportedTargetKinds": [
+        "contact",
+        "email",
+        "group",
+        "phone",
+        "room",
+        "user"
+      ],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-instagram",
+      "packageName": "@elizaos/plugin-instagram",
+      "channels": ["instagram"],
+      "registrationSites": ["plugins/plugin-instagram/src/service.ts"],
+      "registrations": [
+        {
+          "source": "instagram",
+          "capabilities": [
+            "chat_context",
+            "list_rooms",
+            "resolve_targets",
+            "send_message",
+            "user_context"
+          ],
+          "supportedTargetKinds": ["thread"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-instagram/src/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "chat_context",
+        "list_rooms",
+        "resolve_targets",
+        "send_message",
+        "user_context"
+      ],
+      "supportedTargetKinds": ["thread"],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-matrix",
+      "packageName": "@elizaos/plugin-matrix",
+      "channels": ["matrix"],
+      "registrationSites": ["plugins/plugin-matrix/src/service.ts"],
+      "registrations": [
+        {
+          "source": "matrix",
+          "capabilities": [
+            "join_room",
+            "list_rooms",
+            "react_to_message",
+            "send_formatted_message",
+            "send_message",
+            "send_thread_reply"
+          ],
+          "supportedTargetKinds": ["channel", "room", "thread", "user"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-matrix/src/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "join_room",
+        "list_rooms",
+        "react_to_message",
+        "send_formatted_message",
+        "send_message",
+        "send_thread_reply"
+      ],
+      "supportedTargetKinds": ["channel", "room", "thread", "user"],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-slack",
+      "packageName": "@elizaos/plugin-slack",
+      "channels": ["slack"],
+      "registrationSites": ["plugins/plugin-slack/src/service.ts"],
+      "registrations": [
+        {
+          "source": "slack",
+          "capabilities": [
+            "chat_context",
+            "delete_message",
+            "edit_message",
+            "get_user",
+            "list_rooms",
+            "list_servers",
+            "pin_message",
+            "react_message",
+            "read_messages",
+            "resolve_targets",
+            "search_messages",
+            "send_message",
+            "user_context"
+          ],
+          "supportedTargetKinds": ["channel", "thread", "user"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-slack/src/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "chat_context",
+        "delete_message",
+        "edit_message",
+        "get_user",
+        "list_rooms",
+        "list_servers",
+        "pin_message",
+        "react_message",
+        "read_messages",
+        "resolve_targets",
+        "search_messages",
+        "send_message",
+        "user_context"
+      ],
+      "supportedTargetKinds": ["channel", "thread", "user"],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-telegram",
+      "packageName": "@elizaos/plugin-telegram",
+      "channels": ["telegram"],
+      "registrationSites": ["plugins/plugin-telegram/src/service.ts"],
+      "registrations": [
+        {
+          "source": "telegram",
+          "capabilities": [
+            "chat_context",
+            "create_thread",
+            "edit_message",
+            "list_rooms",
+            "post_to_thread",
+            "react_message",
+            "resolve_targets",
+            "send_message",
+            "user_context"
+          ],
+          "supportedTargetKinds": ["channel", "group", "thread", "user"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-telegram/src/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "chat_context",
+        "create_thread",
+        "edit_message",
+        "list_rooms",
+        "post_to_thread",
+        "react_message",
+        "resolve_targets",
+        "send_message",
+        "user_context"
+      ],
+      "supportedTargetKinds": ["channel", "group", "thread", "user"],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-wechat",
+      "packageName": "@elizaos/plugin-wechat",
+      "channels": ["wechat"],
+      "registrationSites": ["plugins/plugin-wechat/src/index.ts"],
+      "registrations": [
+        {
+          "source": "wechat",
+          "capabilities": [
+            "chat_context",
+            "list_rooms",
+            "resolve_targets",
+            "send_message"
+          ],
+          "supportedTargetKinds": ["group", "room", "user"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-wechat/src/index.ts"]
+        }
+      ],
+      "capabilities": [
+        "chat_context",
+        "list_rooms",
+        "resolve_targets",
+        "send_message"
+      ],
+      "supportedTargetKinds": ["group", "room", "user"],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-whatsapp",
+      "packageName": "@elizaos/plugin-whatsapp",
+      "channels": ["whatsapp"],
+      "registrationSites": ["plugins/plugin-whatsapp/src/runtime-service.ts"],
+      "registrations": [
+        {
+          "source": "whatsapp",
+          "capabilities": [
+            "chat_context",
+            "contact_resolution",
+            "get_user",
+            "read_messages",
+            "search_messages",
+            "send_message",
+            "send_reaction"
+          ],
+          "supportedTargetKinds": ["contact", "group", "phone", "room", "user"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-whatsapp/src/runtime-service.ts"]
+        }
+      ],
+      "capabilities": [
+        "chat_context",
+        "contact_resolution",
+        "get_user",
+        "read_messages",
+        "search_messages",
+        "send_message",
+        "send_reaction"
+      ],
+      "supportedTargetKinds": ["contact", "group", "phone", "room", "user"],
+      "scope": "group-scope"
+    },
+    {
+      "plugin": "plugin-x",
+      "packageName": "@elizaos/plugin-x",
+      "channels": ["twitter", "x"],
+      "registrationSites": ["plugins/plugin-x/src/services/x.service.ts"],
+      "registrations": [
+        {
+          "source": "x",
+          "capabilities": [
+            "fetch_messages",
+            "resolve_targets",
+            "send_message",
+            "user_context"
+          ],
+          "supportedTargetKinds": ["contact", "user"],
+          "scope": "direct-scope",
+          "sites": ["plugins/plugin-x/src/services/x.service.ts"]
+        }
+      ],
+      "capabilities": [
+        "fetch_messages",
+        "resolve_targets",
+        "send_message",
+        "user_context"
+      ],
+      "supportedTargetKinds": ["contact", "user"],
+      "scope": "direct-scope"
+    }
+  ]
+}

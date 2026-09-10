@@ -54,7 +54,6 @@ import {
   ModelDefinitionSchema,
   ModelProviderSchema,
   ModelsConfigSchema,
-  MSTeamsReplyStyleSchema,
   NativeCommandsSettingSchema,
   normalizeAllowFrom,
   ProviderCommandsSchema,
@@ -411,18 +410,10 @@ describe("queue, reply, and policy enums", () => {
     },
   );
 
-  it.each(["thread", "top-level"] as const)(
-    "MSTeamsReplyStyleSchema accepts %s",
-    (value) => {
-      expect(expectOk(MSTeamsReplyStyleSchema, value)).toBe(value);
-    },
-  );
-
   it("rejects values that are not members of those enums", () => {
     expectFail(ReplyToModeSchema, "last");
     expectFail(GroupPolicySchema, "blocklist");
     expectFail(DmPolicySchema, "everyone");
-    expectFail(MSTeamsReplyStyleSchema, "reply");
   });
 });
 
