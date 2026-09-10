@@ -5,6 +5,11 @@
  */
 
 export {
+  type ApprovalDispatchControl,
+  type ApprovalDispatchControlMutation,
+  ApprovalDispatchControlStore,
+} from "./dispatch-control.ts";
+export {
   APPROVAL_SERVICE,
   ApprovalService,
   resolveApprovalService,

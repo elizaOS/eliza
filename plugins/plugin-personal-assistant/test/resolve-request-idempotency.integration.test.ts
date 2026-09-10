@@ -126,6 +126,16 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   updated_at timestamp with time zone NOT NULL
 )`;
 
+const CREATE_DISPATCH_CONTROL_TABLE = `CREATE TABLE approval_dispatch_controls (
+  agent_id uuid NOT NULL,
+  subject_user_id text NOT NULL,
+  revision integer NOT NULL DEFAULT 0,
+  paused boolean NOT NULL DEFAULT false,
+  operation_id text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  PRIMARY KEY (agent_id, subject_user_id)
+)`;
+
 const CREATE_APPROVAL_IDEMPOTENCY_INDEX = `CREATE UNIQUE INDEX approval_requests_agent_idempotency_uidx
   ON approval_requests (agent_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL`;
@@ -278,6 +288,7 @@ beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
   await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
+  await db.execute(sql.raw(CREATE_DISPATCH_CONTROL_TABLE));
   await db.execute(sql.raw(CREATE_APPROVAL_IDEMPOTENCY_INDEX));
 
   const approvalService = {

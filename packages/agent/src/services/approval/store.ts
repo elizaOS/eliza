@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import {
   type AgentNotification,
+  ElizaError,
   type IAgentRuntime,
   logger,
   type NotificationInput,
@@ -16,6 +17,10 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  ApprovalDispatchControlStore,
+  approvalDispatchAdmissionCte,
+} from "./dispatch-control.ts";
 import {
   executeRawSql,
   executeRawSqlTx,
@@ -1213,7 +1218,8 @@ export class PgApprovalQueue implements ApprovalQueue {
     assertTransition(claim.requestId, current.state, "executing");
     const attemptId = randomUUID();
     const now = new Date();
-    const sql = `UPDATE approval_requests
+    const sql = `${approvalDispatchAdmissionCte(this.agentId, claim.subjectUserId)}
+      UPDATE approval_requests
       SET state = ${sqlText("executing")},
           execution_attempt_id = ${sqlText(attemptId)},
           execution_provider = ${sqlText(claim.provider)},
@@ -1230,9 +1236,26 @@ export class PgApprovalQueue implements ApprovalQueue {
         AND agent_id = ${sqlText(this.agentId)}
         AND subject_user_id = ${sqlText(claim.subjectUserId)}
         AND state = ${sqlText(current.state)}
+        AND EXISTS (SELECT 1 FROM approval_admission WHERE NOT paused)
       RETURNING ${SELECT_COLUMNS}`;
     const rows = await executeRawSql(this.runtime, sql);
     if (rows.length === 0) {
+      const control = await new ApprovalDispatchControlStore(
+        this.runtime,
+        this.agentId,
+      ).read(claim.subjectUserId);
+      if (control.paused) {
+        throw new ElizaError(
+          "Dispatch is paused for account handoff; finish or cancel the handoff before sending",
+          {
+            code: "APPROVAL_DISPATCH_PAUSED",
+            context: {
+              subjectUserId: claim.subjectUserId,
+              operationId: control.operationId,
+            },
+          },
+        );
+      }
       return this.throwLostRace(
         claim.requestId,
         claim.subjectUserId,

@@ -14,7 +14,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+import {
+  ApprovalDispatchControlStore,
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/agent";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { AgentEventService, parseInteractionBlocks } from "@elizaos/core";
 import {
@@ -249,6 +253,181 @@ afterAll(async () => {
 });
 
 describe("ApprovalQueue integration (real PGlite)", () => {
+  it("persists an owner pause, rejects stale resumes, and admits claims only after release", async () => {
+    const subjectUserId = "handoff-owner-pause";
+    const control = new ApprovalDispatchControlStore(runtime);
+    const request = await queue.enqueue(messageInput({ subjectUserId }));
+    await queue.approve(request.id, subjectUserId, {
+      resolvedBy: subjectUserId,
+      resolutionReason: "reviewed before handoff",
+    });
+    const claim = {
+      requestId: request.id,
+      subjectUserId,
+      provider: "synthetic-account",
+      providerIdempotencyKey: request.id,
+    };
+    const mutation = {
+      subjectUserId,
+      operationId: "handoff-pause-1",
+      expectedRevision: 0,
+    };
+    const paused = await control.pause(mutation);
+    expect(await control.pause(mutation)).toEqual(paused);
+    const reopened = new ApprovalDispatchControlStore(runtime);
+    expect(await reopened.read(subjectUserId)).toEqual(paused);
+    await expect(queue.claimExecution(claim)).rejects.toMatchObject({
+      code: "APPROVAL_DISPATCH_PAUSED",
+    });
+    expect((await queue.byId(request.id, subjectUserId))?.state).toBe(
+      "approved",
+    );
+    await expect(
+      reopened.resume({
+        ...mutation,
+        expectedRevision: paused.revision,
+        operationId: "another-handoff",
+      }),
+    ).rejects.toMatchObject({ code: "APPROVAL_DISPATCH_CONTROL_CONFLICT" });
+    await expect(reopened.resume(mutation)).rejects.toMatchObject({
+      code: "APPROVAL_DISPATCH_CONTROL_CONFLICT",
+    });
+    const release = { ...mutation, expectedRevision: paused.revision };
+    const resumed = await reopened.resume(release);
+    expect(await reopened.resume(release)).toEqual(resumed);
+    await expect(reopened.pause(mutation)).rejects.toMatchObject({
+      code: "APPROVAL_DISPATCH_CONTROL_CONFLICT",
+    });
+    const pausedAgain = await reopened.pause({
+      ...mutation,
+      operationId: "handoff-pause-2",
+      expectedRevision: resumed.revision,
+    });
+    await expect(queue.claimExecution(claim)).rejects.toMatchObject({
+      code: "APPROVAL_DISPATCH_PAUSED",
+    });
+    await reopened.resume({
+      subjectUserId,
+      operationId: "handoff-pause-2",
+      expectedRevision: pausedAgain.revision,
+    });
+    expect((await queue.claimExecution(claim)).state).toBe("executing");
+  }, 60_000);
+
+  it("blocks handoff resume until in-flight and uncertain delivery is reconciled", async () => {
+    const subjectUserId = "handoff-owner-uncertain";
+    const control = new ApprovalDispatchControlStore(runtime);
+    const request = await queue.enqueue(messageInput({ subjectUserId }));
+    await queue.approve(request.id, subjectUserId, {
+      resolvedBy: subjectUserId,
+      resolutionReason: "reviewed before handoff",
+    });
+    const executing = await queue.claimExecution({
+      requestId: request.id,
+      subjectUserId,
+      provider: "synthetic-account",
+      providerIdempotencyKey: request.id,
+    });
+    if (!executing.execution) throw new Error("Execution was not persisted");
+    const attempt = {
+      requestId: request.id,
+      subjectUserId,
+      attemptId: executing.execution.attemptId,
+    };
+    const paused = await control.pause({
+      subjectUserId,
+      operationId: "handoff-in-flight",
+      expectedRevision: 0,
+    });
+    const release = {
+      subjectUserId,
+      operationId: "handoff-in-flight",
+      expectedRevision: paused.revision,
+    };
+    await expect(control.resume(release)).rejects.toMatchObject({
+      code: "APPROVAL_DISPATCH_DRAIN_REQUIRED",
+    });
+    await queue.markDispatchStarted(attempt);
+    await queue.markReconciliationRequired({
+      ...attempt,
+      error: "Provider response lost",
+    });
+    await expect(
+      new ApprovalDispatchControlStore(runtime).resume(release),
+    ).rejects.toMatchObject({
+      code: "APPROVAL_DISPATCH_DRAIN_REQUIRED",
+      context: {
+        requests: [{ id: request.id, state: "reconciliation_required" }],
+      },
+    });
+    await queue.reconcileExecution({
+      ...attempt,
+      outcome: "not_delivered",
+      reconciledBy: subjectUserId,
+      reconciliationReason: "Provider confirmed no delivery",
+    });
+    await queue.markExpired(request.id, subjectUserId);
+    expect((await control.resume(release)).paused).toBe(false);
+  }, 60_000);
+
+  it("serializes a racing pause and claim without pausing another owner", async () => {
+    const control = new ApprovalDispatchControlStore(runtime);
+    const subjectUserId = "handoff-owner-race";
+    const request = await queue.enqueue(messageInput({ subjectUserId }));
+    await queue.approve(request.id, subjectUserId, {
+      resolvedBy: subjectUserId,
+      resolutionReason: "reviewed before handoff",
+    });
+    const claim = {
+      requestId: request.id,
+      subjectUserId,
+      provider: "synthetic-account",
+      providerIdempotencyKey: request.id,
+    };
+    const [pause, execution] = await Promise.allSettled([
+      control.pause({
+        subjectUserId,
+        operationId: "handoff-race",
+        expectedRevision: 0,
+      }),
+      queue.claimExecution(claim),
+    ]);
+    expect(pause.status).toBe("fulfilled");
+    expect((await control.read(subjectUserId)).paused).toBe(true);
+    if (execution.status === "fulfilled") {
+      await expect(
+        control.resume({
+          subjectUserId,
+          operationId: "handoff-race",
+          expectedRevision: 1,
+        }),
+      ).rejects.toMatchObject({ code: "APPROVAL_DISPATCH_DRAIN_REQUIRED" });
+    } else {
+      expect(execution.reason).toMatchObject({
+        code: "APPROVAL_DISPATCH_PAUSED",
+      });
+      expect((await queue.byId(request.id, subjectUserId))?.state).toBe(
+        "approved",
+      );
+    }
+    const other = await queue.enqueue(
+      messageInput({ subjectUserId: "handoff-unrelated-owner" }),
+    );
+    await queue.approve(other.id, other.subjectUserId, {
+      resolvedBy: other.subjectUserId,
+      resolutionReason: "unrelated account",
+    });
+    expect(
+      (
+        await queue.claimExecution({
+          ...claim,
+          requestId: other.id,
+          subjectUserId: other.subjectUserId,
+        })
+      ).state,
+    ).toBe("executing");
+  }, 60_000);
+
   it("retires a known-undelivered approval without permitting another send", async () => {
     const request = await queue.enqueue(messageInput());
     const claim = {
