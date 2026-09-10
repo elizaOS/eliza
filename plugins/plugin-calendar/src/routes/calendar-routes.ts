@@ -101,6 +101,9 @@ export interface CalendarRouteService {
     request: SeedLifeOpsCalendarRequest,
   ): Promise<unknown>;
   listLinkedCalendarEvents(): Promise<unknown>;
+  getLinkedCalendarControl(): Promise<
+    import("@elizaos/shared").LifeOpsLinkedCalendarControl
+  >;
   getLinkedCalendarEvent(linkId: string): Promise<unknown>;
 }
 
@@ -141,6 +144,28 @@ export async function handleCalendarRoutes(
 ): Promise<boolean> {
   const { method, pathname, url } = deps;
   const q = url.searchParams;
+
+  if (pathname === "/api/lifeops/calendar/sync-control") {
+    if (method === "GET") {
+      if (deps.rateLimit("calendar_link_read")) return true;
+      return deps.runRoute(async (service) => {
+        deps.json(await service.getLinkedCalendarControl());
+      });
+    }
+    if (method === "POST") {
+      if (deps.rateLimit("calendar_link_write")) return true;
+      const body =
+        await deps.readJsonBody<
+          import("@elizaos/shared").UpdateLifeOpsLinkedCalendarControlRequest
+        >();
+      if (!body) return true;
+      return deps.runRoute(async () => {
+        deps.json(
+          await deps.mutationGateway.updateLinkedCalendarControl(url, body),
+        );
+      });
+    }
+  }
 
   if (method === "GET" && pathname === "/api/lifeops/calendar/links") {
     if (deps.rateLimit("calendar_link_read")) return true;

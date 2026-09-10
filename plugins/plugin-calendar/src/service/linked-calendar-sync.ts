@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type {
   GoogleCalendarEvent,
   IGoogleWorkspaceService,
@@ -54,6 +54,7 @@ export interface LinkedCalendarSemanticEvent {
   startAt: string;
   endAt: string;
   timeZone: string | null;
+  isAllDay: boolean;
   attendees: ReadonlyArray<{ email: string; optional?: boolean }>;
   deleted?: boolean;
 }
@@ -193,7 +194,9 @@ export function linkedCalendarSemanticHash(
     location: event.location.trim(),
     startAt: event.startAt,
     endAt: event.endAt,
-    timeZone: event.timeZone,
+    timeZone: event.isAllDay ? null : event.timeZone,
+    // Retain timed-event checkpoints; all-day semantics need a distinct hash.
+    ...(event.isAllDay ? { isAllDay: true } : {}),
     attendees: [...event.attendees]
       .map((attendee) => ({
         email: attendee.email.trim().toLowerCase(),
@@ -240,11 +243,20 @@ export class LinkedCalendarRepository {
           ELSE app_calendar.linked_calendar_events.pending_operation
         END,
         updated_at = EXCLUDED.updated_at
+      WHERE app_calendar.linked_calendar_events.connector_account_id = EXCLUDED.connector_account_id
+        AND app_calendar.linked_calendar_events.provider_calendar_id = EXCLUDED.provider_calendar_id
       RETURNING *`,
     );
     if (!rows[0])
-      throw new Error(
-        "[LinkedCalendarRepository] Link creation returned no row",
+      throw new ElizaError(
+        "An existing link cannot be silently moved to a different Google destination. Review the existing mapping before replacing its account or calendar.",
+        {
+          code: "LINKED_CALENDAR_DESTINATION_CONFLICT",
+          context: {
+            agentId: args.agentId,
+            localEventId: args.localEventId,
+          },
+        },
       );
     const linked = parseRecord(rows[0]);
     if (
@@ -428,6 +440,7 @@ export class LinkedCalendarReconciler {
     private readonly repository: LinkedCalendarCheckpointStore,
     private readonly local: LinkedCalendarLocalPort,
     private readonly provider: LinkedCalendarProviderPort,
+    private readonly onProviderMutation?: () => void,
   ) {}
 
   async reconcile(
@@ -442,7 +455,10 @@ export class LinkedCalendarReconciler {
       if (record.pendingOperation === "delete") {
         const provider = await this.provider.get(record);
         try {
-          if (provider) await this.provider.delete(record);
+          if (provider) {
+            this.onProviderMutation?.();
+            await this.provider.delete(record);
+          }
         } catch (error) {
           const mutationFailure = googleMutationFailure(error);
           if (mutationFailure?.outcome === "not_accepted") {
@@ -581,12 +597,13 @@ export class LinkedCalendarReconciler {
       return "pulled";
     }
 
-    if (!provider || localChanged) {
+    if (!provider || (localChanged && localHash !== providerHash)) {
       return this.push(record, local, provider);
     }
 
     if (
       record.state !== "clean" ||
+      record.lastCommonSemanticHash !== localHash ||
       record.localRevision !== local.revision ||
       record.providerEtag !== provider.etag
     ) {
@@ -602,6 +619,57 @@ export class LinkedCalendarReconciler {
       });
     }
     return "clean";
+  }
+
+  /**
+   * Checkpoints a provider-confirmed outcome without replaying a mutation.
+   * The caller retains the dispatch barrier until this returns true. An absent
+   * create or unchanged update ETag cannot prove a timed-out request finished.
+   */
+  async recoverDispatch(record: LinkedCalendarEventRecord): Promise<boolean> {
+    const local = await this.local.get(record.localEventId);
+    const provider = await this.provider.get(record);
+    if (record.pendingOperation === "delete") {
+      if (
+        !record.providerEventId ||
+        provider ||
+        (local && !local.event.deleted)
+      )
+        return false;
+      await this.repository.save(record, {
+        state: "paused",
+        pendingOperation: null,
+        providerEtag: null,
+        lastErrorCode: "LINKED_CALENDAR_DELETE_RECOVERED",
+        lastErrorMessage: "Google confirmed the pending event deletion.",
+      });
+      return true;
+    }
+    if (!local || !provider || local.event.deleted || provider.event.deleted)
+      return false;
+    if (
+      linkedCalendarSemanticHash(local.event) !==
+      linkedCalendarSemanticHash(provider.event)
+    )
+      return false;
+    if (
+      record.pendingOperation === "update" &&
+      (!record.providerEtag ||
+        !provider.etag ||
+        record.providerEtag === provider.etag)
+    )
+      return false;
+    await this.repository.save(record, {
+      providerEventId: provider.eventId,
+      providerEtag: provider.etag,
+      localRevision: local.revision,
+      lastCommonSemanticHash: linkedCalendarSemanticHash(provider.event),
+      state: "clean",
+      pendingOperation: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    });
+    return true;
   }
 
   async resolveConflict(
@@ -682,7 +750,10 @@ export class LinkedCalendarReconciler {
     }
     try {
       if (operation === "delete") {
-        if (provider) await this.provider.delete(pending);
+        if (provider) {
+          this.onProviderMutation?.();
+          await this.provider.delete(pending);
+        }
         await this.repository.save(pending, {
           providerEventId: provider?.eventId ?? pending.providerEventId,
           providerEtag: null,
@@ -693,6 +764,7 @@ export class LinkedCalendarReconciler {
           lastErrorMessage: null,
         });
       } else {
+        this.onProviderMutation?.();
         const written =
           operation === "create"
             ? await this.provider.create(pending, local.event)
@@ -755,7 +827,14 @@ export class GoogleLinkedCalendarProviderPort
   async get(
     record: LinkedCalendarEventRecord,
   ): Promise<LinkedCalendarProviderSnapshot | null> {
-    if (!record.providerEventId) return null;
+    if (!record.providerEventId) {
+      const recovered = await this.google.findEventByIdempotencyKey({
+        accountId: record.connectorAccountId,
+        calendarId: record.providerCalendarId,
+        idempotencyKey: record.idempotencyKey,
+      });
+      return recovered ? linkedCalendarSnapshotFromGoogle(recovered) : null;
+    }
     try {
       return linkedCalendarSnapshotFromGoogle(
         await this.google.getEvent({
@@ -824,8 +903,8 @@ function googleEventInput(event: LinkedCalendarSemanticEvent) {
     title: event.title,
     description: event.description,
     location: event.location,
-    start: event.startAt,
-    end: event.endAt,
+    start: event.isAllDay ? event.startAt.split("T")[0] : event.startAt,
+    end: event.isAllDay ? event.endAt.split("T")[0] : event.endAt,
     ...(event.timeZone ? { timeZone: event.timeZone } : {}),
     attendees: event.attendees.map((attendee) => ({
       email: attendee.email,
@@ -861,6 +940,7 @@ export function linkedCalendarSnapshotFromGoogle(
       startAt: event.start,
       endAt: event.end,
       timeZone: event.timeZone ?? null,
+      isAllDay: event.isAllDay === true,
       attendees: (event.attendees ?? []).map((attendee) => ({
         email: attendee.email,
       })),

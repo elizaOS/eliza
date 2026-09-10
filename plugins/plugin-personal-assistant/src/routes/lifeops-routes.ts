@@ -1405,6 +1405,8 @@ export async function handleLifeOpsRoutes(
           mutationGateway().cancel(requestUrl, request),
         linkCalendar: (requestUrl, request) =>
           mutationGateway().linkCalendar(requestUrl, request),
+        updateLinkedCalendarControl: (requestUrl, request) =>
+          mutationGateway().updateLinkedCalendarControl(requestUrl, request),
         reconcileLinkedCalendar: (requestUrl, linkId, request) =>
           mutationGateway().reconcileLinkedCalendar(
             requestUrl,

@@ -448,6 +448,39 @@ export interface LifeOpsLinkedCalendarLink {
   updatedAt: string;
 }
 
+/** Owner-visible sync review; internal dispatch receipts never leave the service. */
+export interface LifeOpsLinkedCalendarControl {
+  revision: number;
+  paused: boolean;
+  destination: {
+    connectorAccountId: string;
+    providerCalendarId: string;
+  } | null;
+  pendingDispatch: { linkId: string } | null;
+}
+
+export interface LifeOpsLinkedCalendarControlMutationResult
+  extends LifeOpsLinkedCalendarControl {
+  receipt: {
+    id: string;
+    operationKey: string;
+    committedAt: string;
+    revision: number;
+    replayed: boolean;
+  };
+}
+
+export type UpdateLifeOpsLinkedCalendarControlRequest = {
+  expectedRevision: number;
+  idempotencyKey: string;
+} & (
+  | { operation: "pause" | "resume" | "recover" }
+  | {
+      operation: "select";
+      destination: LifeOpsLinkedCalendarControl["destination"];
+    }
+);
+
 export interface CreateLifeOpsLinkedCalendarLinkRequest {
   localEventId: string;
   connectorAccountId: string;

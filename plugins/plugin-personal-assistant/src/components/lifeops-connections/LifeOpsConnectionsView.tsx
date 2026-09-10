@@ -40,6 +40,7 @@ import {
 } from "react";
 import { AccountTransitionPanel } from "./AccountTransitionPanel.js";
 import { defaultLifeOpsConnectionsAdapter } from "./adapter.js";
+import { CalendarSyncPanel } from "./CalendarSyncPanel.js";
 import type {
   LifeOpsConnectionsAdapter,
   LifeOpsConnectionsSnapshot,
@@ -619,9 +620,8 @@ export function LifeOpsConnectionsView({
             <p className="lifeops-eyebrow">LifeOps connections</p>
             <h1>Bring your inbox and calendars into one trustworthy view.</h1>
             <p>
-              You choose accounts, calendars, history, and permissions. Eliza
-              keeps provider provenance and asks again before any external
-              change.
+              You choose accounts, calendars, history, and permissions. Calendar
+              synchronization uses the destination and settings you approve.
             </p>
           </div>
           <Button
@@ -652,6 +652,10 @@ export function LifeOpsConnectionsView({
             </div>
           ) : null}
         </div>
+
+        {snapshot ? (
+          <CalendarSyncPanel adapter={adapter} calendars={snapshot.calendars} />
+        ) : null}
 
         {snapshot ? (
           <AccountTransitionPanel

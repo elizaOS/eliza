@@ -531,7 +531,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     importHostExternal("@elizaos/capacitor-phone"),
   "@elizaos/capacitor-system": () =>
     importHostExternal("@elizaos/capacitor-system"),
-  "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
+  "@elizaos/shared": () => import("@elizaos/shared"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,
