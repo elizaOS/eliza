@@ -48,8 +48,10 @@ export const RootView: Story = {
   tags: ["story-gate-expect-blank"],
   args: { showBack: false, title: "Home" },
   play: async ({ canvasElement }) => {
+    const surface = canvasElement.querySelector(".storybook-theme-surface");
+    assert(surface instanceof HTMLElement, "the real theme surface is mounted");
     assert(
-      canvasElement.childElementCount === 0,
+      surface.childElementCount === 0,
       "a view without trailing actions leaves no empty header row",
     );
   },
