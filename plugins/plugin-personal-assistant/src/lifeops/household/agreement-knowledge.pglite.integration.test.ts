@@ -1,7 +1,8 @@
 /**
  * Real-PGlite behavioral coverage for immutable agreement knowledge. The
  * runtime uses the production graph, household authorization, migrations, and
- * content-addressed file service; only PDF fixture bytes are synthetic.
+ * content-addressed file service. PDF extraction is a deterministic boundary
+ * fixture, including explicit transcription failures; this is not live OCR proof.
  */
 
 import crypto from "node:crypto";
