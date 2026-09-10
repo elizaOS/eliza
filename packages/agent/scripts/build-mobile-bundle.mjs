@@ -57,7 +57,10 @@ import {
   MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
-import { canUseWorkspaceEntry } from "./mobile-workspace-entry.mjs";
+import {
+  canUseWorkspaceEntry,
+  findWorkspaceSourceEntry,
+} from "./mobile-workspace-entry.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
@@ -1307,45 +1310,12 @@ const workspaceSrcFallbackPlugin = {
         return undefined;
       }
 
-      // Two layouts to handle: packages with a `src/` directory (the
-      // monorepo convention for typescript packages) and packages whose
-      // .ts files sit at the package root (the elizaos-plugins convention,
-      // e.g. plugin-discord, plugin-telegram, plugin-google-workspace).
-      const srcDir = existsSync(path.join(pkgDir, "src"))
-        ? path.join(pkgDir, "src")
-        : pkgDir;
-
-      if (!subpath) {
-        for (const name of [
-          "index.node.ts",
-          "index.ts",
-          "index.tsx",
-          "index.node.tsx",
-        ]) {
-          const candidate = path.join(srcDir, name);
-          if (existsSync(candidate)) {
-            return { path: candidate, namespace: "file" };
-          }
-        }
-        return undefined;
-      }
-
-      // Strip an optional `.js` extension (TS source compiles to `.js` so
-      // imports like `./foo.js` should resolve to `./foo.ts`).
-      const cleaned = subpath.replace(/\.js$/, "");
-      const candidates = [
-        `${cleaned}.ts`,
-        `${cleaned}.tsx`,
-        `${cleaned}/index.ts`,
-        `${cleaned}/index.tsx`,
-        cleaned,
-      ];
-      for (const candidate of candidates) {
-        const full = path.join(srcDir, candidate);
-        if (existsSync(full)) {
-          return { path: full, namespace: "file" };
-        }
-      }
+      const source = findWorkspaceSourceEntry(
+        pkgDir,
+        subpath,
+        TARGET === "ios-jsc" ? "browser" : "bun",
+      );
+      if (source) return { path: source, namespace: "file" };
       return undefined;
     });
   },

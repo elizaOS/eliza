@@ -1,8 +1,8 @@
 /** Owns android gradle using the shared build context and existing platform contracts. */
 
-import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.mjs";
 import fs from "node:fs";
 import path from "node:path";
+import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.mjs";
 import {
   resolvePackageAbsolutePath,
   resolvePackageAbsolutePathCandidates,

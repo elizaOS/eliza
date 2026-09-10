@@ -5,7 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { canUseWorkspaceEntry } from "./mobile-workspace-entry.mjs";
+import {
+  canUseWorkspaceEntry,
+  findWorkspaceSourceEntry,
+} from "./mobile-workspace-entry.mjs";
 
 test("browser builds retain their browser export when Node output is absent", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mobile-browser-entry-"));
@@ -53,7 +56,9 @@ test("browser builds retain their browser export when Node output is absent", as
               (args) =>
                 canUseWorkspaceEntry(args.path, packageDir, "browser")
                   ? undefined
-                  : { path: path.join(packageDir, "src/index.node.ts") },
+                  : {
+                      path: findWorkspaceSourceEntry(packageDir, "", "browser"),
+                    },
             );
           },
         },
@@ -68,74 +73,104 @@ test("browser builds retain their browser export when Node output is absent", as
   }
 });
 
-for (const built of [false, true]) {
-  test(`mobile import uses ${built ? "exported output" : "source when only a view bundle exists"}`, async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "mobile-entry-"));
-    try {
-      const packageDir = path.join(root, "node_modules/@elizaos/entry-fixture");
-      await mkdir(path.join(packageDir, "dist/views"), { recursive: true });
-      await mkdir(path.join(packageDir, "src"));
-      await writeFile(
-        path.join(packageDir, "package.json"),
-        JSON.stringify({
-          name: "@elizaos/entry-fixture",
-          type: "module",
-          exports: {
-            ".": {
-              node: { import: "./dist/node/index.node.js" },
-              default: "./dist/node/index.node.js",
-            },
-          },
-        }),
-      );
-      await writeFile(
-        path.join(packageDir, "dist/views/bundle.js"),
-        "export const view = true;",
-      );
-      await writeFile(
-        path.join(packageDir, "src/index.node.ts"),
-        "export const answer = 41 + 1;",
-      );
-      if (built) {
-        await mkdir(path.join(packageDir, "dist/node"));
-        await writeFile(
-          path.join(packageDir, "dist/node/index.node.js"),
-          "export const answer = 40 + 3;",
-        );
-      }
-      const entry = path.join(root, "entry.ts");
-      await writeFile(
-        entry,
-        'import { answer } from "@elizaos/entry-fixture"; export default answer;',
-      );
-      assert.equal(
-        canUseWorkspaceEntry("@elizaos/entry-fixture", packageDir),
-        built,
-      );
-      const output = await Bun.build({
-        entrypoints: [entry],
-        target: "bun",
-        plugins: [
-          {
-            name: "workspace-entry",
-            setup(build) {
-              build.onResolve(
-                { filter: /^@elizaos\/entry-fixture$/ },
-                (args) =>
-                  canUseWorkspaceEntry(args.path, packageDir)
-                    ? undefined
-                    : { path: path.join(packageDir, "src/index.node.ts") },
-              );
-            },
-          },
-        ],
+for (const subpath of ["", "feature"]) {
+  for (const target of ["bun", "browser"]) {
+    for (const built of [false, true]) {
+      test(`${target} ${subpath || "root"} mobile import uses ${built ? "exported output" : "source when only a view bundle exists"}`, async () => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "mobile-entry-"));
+        try {
+          const packageDir = path.join(
+            root,
+            "node_modules/@elizaos/entry-fixture",
+          );
+          await mkdir(path.join(packageDir, "dist/views"), { recursive: true });
+          await mkdir(path.join(packageDir, "src"));
+          await writeFile(
+            path.join(packageDir, "package.json"),
+            JSON.stringify({
+              name: "@elizaos/entry-fixture",
+              type: "module",
+              exports: {
+                [subpath ? `./${subpath}` : "."]: {
+                  browser: { import: "./dist/node/index.node.js" },
+                  node: { import: "./dist/node/index.node.js" },
+                  default: "./dist/node/index.node.js",
+                },
+              },
+            }),
+          );
+          await writeFile(
+            path.join(packageDir, "dist/views/bundle.js"),
+            "export const view = true;",
+          );
+          await writeFile(
+            path.join(
+              packageDir,
+              subpath
+                ? "src/feature.ts"
+                : target === "browser"
+                  ? "src/index.browser.ts"
+                  : "src/index.node.ts",
+            ),
+            "export const answer = 41 + 1;",
+          );
+          if (built) {
+            await mkdir(path.join(packageDir, "dist/node"));
+            await writeFile(
+              path.join(packageDir, "dist/node/index.node.js"),
+              "export const answer = 40 + 3;",
+            );
+          }
+          const entry = path.join(root, "entry.ts");
+          await writeFile(
+            entry,
+            `import { answer } from "@elizaos/entry-fixture${subpath ? `/${subpath}` : ""}"; globalThis.fixtureResult = answer;`,
+          );
+          assert.equal(
+            canUseWorkspaceEntry(
+              `@elizaos/entry-fixture${subpath ? `/${subpath}` : ""}`,
+              packageDir,
+              target,
+            ),
+            built,
+          );
+          const output = await Bun.build({
+            entrypoints: [entry],
+            target,
+            format: "iife",
+            plugins: [
+              {
+                name: "workspace-entry",
+                setup(build) {
+                  build.onResolve(
+                    { filter: /^@elizaos\/entry-fixture(?:\/feature)?$/ },
+                    (args) =>
+                      canUseWorkspaceEntry(args.path, packageDir, target)
+                        ? undefined
+                        : {
+                            path: findWorkspaceSourceEntry(
+                              packageDir,
+                              subpath,
+                              target,
+                            ),
+                          },
+                  );
+                },
+              },
+            ],
+          });
+          assert.equal(
+            output.success,
+            true,
+            output.logs.map(String).join("\n"),
+          );
+          const realm = {};
+          runInNewContext(await output.outputs[0].text(), realm);
+          assert.equal(realm.fixtureResult, built ? 43 : 42);
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
       });
-      assert.equal(output.success, true, output.logs.map(String).join("\n"));
-      const artifact = path.join(root, "bundle.mjs");
-      await writeFile(artifact, await output.outputs[0].text());
-      assert.equal((await import(artifact)).default, built ? 43 : 42);
-    } finally {
-      await rm(root, { recursive: true, force: true });
     }
-  });
+  }
 }
