@@ -1151,3 +1151,95 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
 });
+
+it.each([
+	["redundant native record metadata", "2026-09-10T00:00:00", true],
+	["different encoded target", "2026-09-12T00:00:00", false],
+	["malformed encoded value", undefined, false],
+] as const)(
+	"retains the correct calendar result after %s",
+	async (_label, encodedStart, recovered) => {
+		const details = {
+			timeMin: "2026-09-10T00:00:00",
+			timeMax: "2026-09-11T00:00:00",
+			timeZone: "America/New_York",
+		};
+		const corrected = {
+			action: "feed",
+			intent: "Read the local calendar for September 10.",
+			details,
+		};
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValue({
+					text: "The failed read remains unresolved.",
+					toolCalls: [],
+				})
+				.mockResolvedValueOnce(
+					plannerToolCall("invalid", "CALENDAR", {
+						...corrected,
+						details: {
+							...details,
+							__eliza_record_entries: [
+								{
+									key: "timemin",
+									value:
+										encodedStart === undefined
+											? "invalid JSON"
+											: JSON.stringify(encodedStart),
+								},
+								{ key: "timemax", value: JSON.stringify(details.timeMax) },
+								{ key: "timezone", value: JSON.stringify(details.timeZone) },
+							],
+						},
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("corrected", "CALENDAR", corrected),
+				),
+		};
+		const verifiedReply =
+			"The calendar read succeeded. Event evt-copper is scheduled for 11:00 to 11:45 AM.";
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "corrected-calendar" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "Unexpected argument 'details.__eliza_record_entries'",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					data: {
+						events: [{ id: "evt-copper", start: "11:00", end: "11:45" }],
+					},
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Remove the rejected representation field and retry.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "The corrected read returned the event.",
+					messageToUser: verifiedReply,
+				}),
+		});
+		if (recovered) {
+			expect(result.finalMessage).toBe(verifiedReply);
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		} else {
+			expect(result.finalMessage).not.toBe(verifiedReply);
+		}
+		const outcomes = result.trajectory.steps
+			.filter((step) => step.result)
+			.map((step) => step.result?.success);
+		expect(outcomes).toContain(false);
+		expect(outcomes).toContain(true);
+	},
+);
