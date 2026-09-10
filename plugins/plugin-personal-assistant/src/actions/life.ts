@@ -6510,6 +6510,10 @@ async function runLifeOperationHandlerInner(
       const reviewDomain = domain ?? "user_lifeops";
       const scoped = (await listCallerDefinitions(service)).filter(
         (record) =>
+          (record.definition.status === "active" ||
+            (surface === "OWNER_TODOS" &&
+              record.definition.status === "completed" &&
+              record.definition.id === targetName)) &&
           record.definition.domain === reviewDomain &&
           definitionReviewSurface(record) === surface,
       );
