@@ -105,6 +105,14 @@ it.each(["sequential", "interleaved"])(
       expect((await service.getDefinition(id)).definition.status).toBe(
         "completed",
       );
+      const reviewed = await dispatch({ action: "review", target: id });
+      expect(reviewed.success).toBe(true);
+      expect(reviewed.data).toMatchObject({
+        definitions: [{ id, status: "completed" }],
+      });
+      const activeList = await dispatch({ action: "review" });
+      expect(activeList.success).toBe(true);
+      expect(activeList.data).toMatchObject({ definitions: [] });
       const repeated = await dispatch({ action: "complete", target: id });
       expect(repeated.effectReceipts?.[0]).toMatchObject({
         outcome: "noop",

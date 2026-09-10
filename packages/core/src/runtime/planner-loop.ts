@@ -608,6 +608,7 @@ async function runPlannerLoopIterations(
 	// An omitted declaration cannot erase work the planner explicitly left
 	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	let consecutiveScopeProtocolRejections = 0;
 	// The successful FINISH most recently rejected by the pending-scope rule. If
 	// the planner repeats settled operations, do not replay them. Repetition
 	// alone is not completion: the planner must explicitly release pending
@@ -882,6 +883,84 @@ async function runPlannerLoopIterations(
 					),
 				};
 			}
+			if (
+				lastPlannerExplicitCompleted === false &&
+				plannerOutput.invalidNativeScopeCalls?.length &&
+				!(
+					plannerOutput.toolCalls.length > 0 &&
+					plannerOutput.toolCalls.every(
+						(call) =>
+							isTerminalToolCall(call) && call.name.toUpperCase() !== "REPLY",
+					)
+				)
+			) {
+				const scopeError = new ElizaError(
+					"A native planner batch must explicitly declare its scope while earlier work remains pending.",
+					{
+						code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
+						context: {
+							iteration,
+							callIds: plannerOutput.invalidNativeScopeCalls.map(
+								(call) => call.id,
+							),
+						},
+					},
+				);
+				appendPlannerModelFeedbackEvent(trajectory, {
+					id: `missing-native-scope:${iteration}`,
+					type: "instruction",
+					source: "planner-loop",
+					createdAt: Date.now(),
+					metadata: { code: scopeError.code, rejectedBeforeExecution: true },
+					content: JSON.stringify({
+						code: scopeError.code,
+						instruction:
+							"This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. Resubmit the intended calls with final or more_work_pending on every call. Use final when this batch covers the remaining requested operations; their results still require evaluation. Do not repeat settled operations. No call in the rejected batch ran.",
+						rejectedModelOutput: plannerOutput.raw,
+					}),
+				});
+				consecutiveScopeProtocolRejections++;
+				if (consecutiveScopeProtocolRejections >= config.maxRepeatedFailures) {
+					const terminalFailure = {
+						kind: "provider_issue" as const,
+						code: scopeError.code,
+						transient: false,
+						message:
+							"The planner stopped after repeated invalid scope declarations. Earlier action outcomes are preserved; the rejected batch did not run.",
+					};
+					try {
+						const summary = await finishWithForcedSynthesis({
+							loop: params,
+							config,
+							trajectory,
+							iteration,
+							onUsage: params.onModelUsage,
+							failureAware: true,
+							requireFailureReport: true,
+							instruction:
+								"Planning stopped with PLANNER_SCOPE_DECLARATION_REQUIRED after repeated invalid turn-scope declarations. Do not call any tool or claim the whole request completed. Explain which earlier operations are confirmed by the complete recorded results and which requested work remains unfinished. Every call in the rejected batches did not run. Preserve exact returned identifiers and do not ask the user to repeat already settled mutations.",
+						});
+						return {
+							...summary,
+							terminalFailure: {
+								...terminalFailure,
+								message: summary.finalMessage?.trim()
+									? summary.finalMessage
+									: terminalFailure.message,
+							},
+						};
+					} catch (error) {
+						// error-policy:J1 Presentation failure preserves settled action evidence at the planner boundary.
+						params.runtime.logger?.warn?.(
+							{ iteration, error, code: scopeError.code },
+							"[planner-loop] protocol failure summary unavailable; preserving recorded outcomes",
+						);
+						return { status: "finished", trajectory, terminalFailure };
+					}
+				}
+				continue;
+			}
+			consecutiveScopeProtocolRejections = 0;
 			// A terminal scope release changes no task evidence. Reuse only the
 			// immediately preceding valid FINISH, with no intervening action or
 			// context replacement. The existing final-message/receipt authority
@@ -2644,13 +2723,14 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
  * `tryGateEvaluator` "planner said the turn is incomplete" veto structurally
  * inert on exactly the lane the action-owned `turnComplete` gate targets — a
  * sequential multi-op request could be truncated after its first terminal
- * action result. Every exposed tool schema therefore accepts this optional
- * enum (`withTurnScopeToolArg`), the planner sets it per call, and
+ * action result. Every exposed tool schema therefore requires this enum
+ * (`withTurnScopeToolArg`), the planner sets it per call, and
  * `parsePlannerOutput` lifts it into the parse result's `completed` field
- * while stripping the argument so no action handler ever sees it. Absence
- * keeps the pre-#17034 behavior (gate eligible); only an explicit
- * "more_work_pending" vetoes, mirroring the JSON lane where only
- * `completed: false` blocks.
+ * while stripping the argument so no action handler ever sees it. An initially
+ * unspecified declaration preserves compatibility. Once the planner explicitly
+ * leaves work pending, a later native batch with missing or invalid scope must
+ * repair its declaration before execution; it cannot erase that pending scope.
+ * JSON callers retain their top-level `completed` contract.
  */
 export const TURN_SCOPE_ARG = "eliza_turn_scope";
 export const TURN_SCOPE_FINAL = "final";
@@ -2774,8 +2854,8 @@ export function withTurnScopeToolArg(
 		// lookup (`list` to find an issue) end the turn before the write the
 		// user asked for ran (live 2026-08-10); schema-forcing the declaration
 		// makes precondition 6 of the evaluator gate actually load-bearing.
-		// Absent values still parse as "unspecified" downstream, so models
-		// that ignore the requirement degrade to today's behavior.
+		// Initial unspecified calls retain compatibility. After explicit pending
+		// scope, the loop rejects a native batch that ignores this requirement.
 		const required = Array.isArray(parameters.required)
 			? parameters.required
 			: [];
@@ -2835,6 +2915,8 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	 * declarations. `undefined` means the planner expressed no opinion.
 	 */
 	completed?: boolean;
+	/** Native calls that violated the required scope protocol; JSON callers retain their existing contract. */
+	invalidNativeScopeCalls?: PlannerToolCall[];
 	raw: Record<string, unknown>;
 } {
 	if (typeof raw === "string") {
@@ -2886,9 +2968,16 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	) {
 		textRecoveredCalls = mergeToolCalls(textRecoveredCalls, embeddedToolCalls);
 	}
-	const merged = extractTurnScopeSignal(
-		mergeToolCalls(nativeToolCalls, textRecoveredCalls),
-	);
+	const mergedCalls = mergeToolCalls(nativeToolCalls, textRecoveredCalls);
+	const invalidNativeScopeCalls =
+		nativeToolCalls.length > 0
+			? mergedCalls.filter(
+					(call) =>
+						call.params?.[TURN_SCOPE_ARG] !== TURN_SCOPE_FINAL &&
+						call.params?.[TURN_SCOPE_ARG] !== TURN_SCOPE_MORE_WORK_PENDING,
+				)
+			: [];
+	const merged = extractTurnScopeSignal(mergedCalls);
 	const toolCalls = merged.toolCalls;
 
 	return {
@@ -2905,6 +2994,7 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 					: text,
 		thought: controlText?.thought,
 		completed: merged.completed ?? controlText?.completed,
+		...(invalidNativeScopeCalls.length > 0 ? { invalidNativeScopeCalls } : {}),
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
@@ -5433,6 +5523,81 @@ function withoutRedundantRejectedRecordEncoding(
 	return projected;
 }
 
+/**
+ * A rejected record wrapper can repeat an explicit target outside the wrapper.
+ * This projection proves raw identifier redundancy; it never decodes malformed
+ * JSON or drops unaccounted content. Every remaining parameter binding must
+ * match the corrected call. The recorded call remains complete.
+ */
+function withoutRepeatedRejectedRecordTargets(
+	params: Record<string, unknown>,
+	result: PlannerToolResult | undefined,
+	corrected: Record<string, unknown>,
+): Record<string, unknown> {
+	const error = typeof result?.error === "string" ? result.error : result?.text;
+	if (typeof error !== "string") return params;
+	const path =
+		/Unexpected argument ['"]([^'"]+\.__eliza_record_entries)['"]/.exec(
+			error,
+		)?.[1];
+	if (!path) return params;
+	const segments = path.split(".");
+	let parent = params;
+	const ancestors: Array<{ parent: Record<string, unknown>; key: string }> = [];
+	for (const key of segments.slice(0, -1)) {
+		if (!Object.hasOwn(parent, key) || !isObjectRecord(parent[key]))
+			return params;
+		ancestors.push({ parent, key });
+		parent = parent[key];
+	}
+	const marker = "__eliza_record_entries";
+	const entries = parent[marker];
+	if (!Array.isArray(entries) || entries.length === 0) return params;
+	let projected = Object.fromEntries(
+		Object.entries(parent).filter(([key]) => key !== marker),
+	);
+	for (const ancestor of [...ancestors].reverse())
+		projected = { ...ancestor.parent, [ancestor.key]: projected };
+	const survivingText = normalizeCorrelationText(
+		correlationLeafStrings(projected).join(" "),
+	);
+	const correctedText = normalizeCorrelationText(
+		correlationLeafStrings(corrected).join(" "),
+	);
+	const keys = new Set<string>();
+	for (const entry of entries) {
+		if (
+			!isObjectRecord(entry) ||
+			Object.keys(entry).length !== 2 ||
+			typeof entry.key !== "string" ||
+			typeof entry.value !== "string" ||
+			!TARGET_PARAMETER_KEY_PATTERN.test(entry.key) ||
+			!/^[\p{L}\p{N}][\p{L}\p{N}_.:/@-]*$/u.test(entry.value)
+		)
+			return params;
+		const key = entry.key.toLowerCase();
+		if (
+			keys.has(key) ||
+			Object.keys(parent).some((name) => name.toLowerCase() === key)
+		)
+			return params;
+		keys.add(key);
+		const identifier = normalizeCorrelationText(entry.value);
+		if (
+			!identifierPresentAtTokenBoundary(identifier, survivingText) ||
+			!identifierPresentAtTokenBoundary(identifier, correctedText)
+		)
+			return params;
+	}
+	const withoutScope = (value: Record<string, unknown>) =>
+		Object.fromEntries(
+			Object.entries(value).filter(([key]) => key !== "eliza_turn_scope"),
+		);
+	if (!correlationValuesEqual(withoutScope(projected), withoutScope(corrected)))
+		return params;
+	return projected;
+}
+
 export function malformedCallSupersededBy(
 	failedCall: PlannerToolCall,
 	failedResult: PlannerToolResult | undefined,
@@ -5463,11 +5628,15 @@ export function malformedCallSupersededBy(
 			),
 		),
 	};
-	// A rejected native-record wrapper may only disappear when every encoded
-	// value duplicates a surviving sibling. The full arguments remain recorded.
-	const failedParams = withoutRedundantRejectedRecordEncoding(
-		failedCall.params ?? {},
+	// Rejected representation metadata is ignored only with independent proof
+	// that all its content remains represented. The full call stays recorded.
+	const failedParams = withoutRepeatedRejectedRecordTargets(
+		withoutRedundantRejectedRecordEncoding(
+			failedCall.params ?? {},
+			failedResult,
+		),
 		failedResult,
+		params,
 	);
 	for (const [name, value] of Object.entries(failedParams)) {
 		if (name === "eliza_turn_scope") continue;
@@ -6199,6 +6368,8 @@ async function finishWithForcedSynthesis(params: {
 	 * with the generic failed-step sentence (#17948).
 	 */
 	failureAware?: boolean;
+	/** Protocol failures require a whole-turn report; a substep reply cannot explain the stop. */
+	requireFailureReport?: boolean;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
 	if (
@@ -6295,10 +6466,17 @@ async function finishWithForcedSynthesis(params: {
 		iteration,
 		onUsage: params.onUsage,
 	});
-	const finalMessage = preferredFinalMessageFromToolOrModel(
-		trajectory,
-		synthOutput.messageToUser,
-	);
+	const failureReport = params.failureAware
+		? userSafeFailureReport(synthOutput.messageToUser, trajectory)
+		: undefined;
+	if (params.requireFailureReport && !failureReport) {
+		return { status: "finished", trajectory };
+	}
+	// Failure-instructed synthesis accounts for the whole turn; a verified
+	// successful substep must not replace its explicit partial-work report.
+	const finalMessage =
+		failureReport ??
+		preferredFinalMessageFromToolOrModel(trajectory, synthOutput.messageToUser);
 	trajectory.steps.push({
 		iteration,
 		thought: synthOutput.thought,
@@ -6309,13 +6487,8 @@ async function finishWithForcedSynthesis(params: {
 		status: "finished",
 		trajectory,
 		finalMessage: userSafeFinalMessage(
-			terminalMessageWithFailureAuthority(
-				trajectory,
-				finalMessage,
-				params.failureAware
-					? userSafeFailureReport(synthOutput.messageToUser, trajectory)
-					: undefined,
-			),
+			failureReport ??
+				terminalMessageWithFailureAuthority(trajectory, finalMessage),
 			trajectory,
 		),
 	};

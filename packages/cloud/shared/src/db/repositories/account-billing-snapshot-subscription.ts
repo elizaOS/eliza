@@ -8,6 +8,7 @@ import {
 } from "../schemas/billing-subscriptions";
 import { organizationEntitlements } from "../schemas/organization-entitlements";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
+import { subscriptionNoticeIntents } from "../schemas/subscription-notices";
 
 export async function readPrimaryOrganizationSubscription(
   tx: DbTransaction,
@@ -97,7 +98,25 @@ export async function readPrimaryOrganizationSubscription(
     )
   )
     return { state: "unavailable" as const, code: "subscription_allowance_revision_conflict" };
-  return { state: "current" as const, subscription, entitlement, periods };
+  const [cancellationNotice] =
+    subscription.status === "canceled"
+      ? await tx
+          .select({
+            sourceRevision: subscriptionNoticeIntents.source_revision,
+            state: subscriptionNoticeIntents.state,
+            updatedAt: subscriptionNoticeIntents.updated_at,
+          })
+          .from(subscriptionNoticeIntents)
+          .where(
+            and(
+              eq(subscriptionNoticeIntents.organization_id, organizationId),
+              eq(subscriptionNoticeIntents.subscription_id, subscription.id),
+              eq(subscriptionNoticeIntents.source_revision, subscription.lifecycle_revision),
+              eq(subscriptionNoticeIntents.kind, "cancel_effective"),
+            ),
+          )
+      : [];
+  return { state: "current" as const, subscription, entitlement, periods, cancellationNotice };
 }
 export type PrimaryOrganizationSubscription = Awaited<
   ReturnType<typeof readPrimaryOrganizationSubscription>
