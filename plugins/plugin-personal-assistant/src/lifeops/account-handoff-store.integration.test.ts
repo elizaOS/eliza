@@ -110,6 +110,17 @@ describe("account handoff persistence", () => {
       result.runtime,
       "checkpoint-owner",
     );
+    const beforeOverwrite = await reopened.read("checkpoint");
+    await expect(
+      reopened.advance({
+        operationId: "checkpoint",
+        expectedRevision: 1,
+        expectedPhase: "pausing",
+        phase: "draining",
+        receipt: { approvalPauseRevision: 99 },
+      }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_HANDOFF_CONFLICT" });
+    expect(await reopened.read("checkpoint")).toEqual(beforeOverwrite);
     const next = await reopened.advance({
       operationId: "checkpoint",
       expectedRevision: 1,

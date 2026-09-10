@@ -1,7 +1,8 @@
 /**
  * Persists an owner's exact account-handoff review and ordered checkpoints.
  * Conditional writes prevent stale tabs from replacing an active review or
- * advancing a step twice. Receipts survive process restarts; connector effects
+ * advancing a step twice. Saved receipt values cannot be overwritten by later
+ * steps. Receipts survive process restarts; connector effects
  * must be verified by the coordinator before it advances their checkpoint.
  */
 import { ElizaError } from "@elizaos/core";
@@ -204,7 +205,12 @@ export class AccountHandoffStore {
       SET phase = ${sqlText(input.phase)}, revision = revision + 1,
         receipt_json = (receipt_json::jsonb || ${sqlJson(receiptSchema.parse(input.receipt))}::jsonb)::text, updated_at = NOW()
       WHERE ${this.scope()} AND operation_id = ${sqlText(input.operationId)}
-        AND revision = ${input.expectedRevision} AND phase = ${sqlText(input.expectedPhase)} RETURNING *`,
+        AND revision = ${input.expectedRevision} AND phase = ${sqlText(input.expectedPhase)}
+        AND NOT EXISTS (
+          SELECT 1 FROM jsonb_each(${sqlJson(receiptSchema.parse(input.receipt))}::jsonb) AS incoming
+          JOIN jsonb_each(receipt_json::jsonb) AS saved USING (key)
+          WHERE incoming.value IS DISTINCT FROM saved.value
+        ) RETURNING *`,
     );
     if (rows.length) return decode(rows[0]);
     throw this.conflict();
