@@ -30,6 +30,7 @@ import {
 } from "../runtime/turn-controller";
 import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
+import type { EffectReceipt } from "../types/effects";
 import type { Room } from "../types/environment";
 import type { Memory } from "../types/memory";
 import {
@@ -676,3 +677,154 @@ describe("planner failure after a promoted stage-1 answer", () => {
 		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
 	});
 });
+
+it.each(["valid", "unknown"])(
+	"repairs native scope before a mutation through the complete message service with %s evaluator receipts",
+	async (receiptSelection) => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const finalText = "I updated the todo to completed.";
+		const receipt: EffectReceipt = {
+			receiptId: "record-completion-receipt",
+			operation: "record.complete",
+			resource: { kind: "record", id: "record-1", version: "2" },
+			artifacts: [],
+			idempotency: { key: null, replayed: false },
+			observedAt: "2026-09-10T00:00:00Z",
+			outcome: "applied",
+			commit: {
+				kind: "provider_accepted",
+				id: "record-1-v2",
+				committedAt: "2026-09-10T00:00:00Z",
+			},
+		};
+		let writes = 0;
+		runtime.actions = [
+			{
+				name: "READ_RECORD",
+				description: "Read the record identifier.",
+				validate: async () => true,
+				handler: async () => ({
+					success: true,
+					text: "Record identifier is record-1.",
+					data: { id: "record-1" },
+				}),
+			},
+			{
+				name: "COMPLETE_RECORD",
+				description: "Mark the selected record complete.",
+				validate: async () => true,
+				parameters: [
+					{
+						name: "id",
+						description: "Record identifier",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				handler: async (_runtime, _message, _state, options) => {
+					expect(options?.parameters).toEqual({ id: "record-1" });
+					writes++;
+					return {
+						success: true,
+						text: "Record record-1 status is complete.",
+						effectReceipts: [receipt],
+					};
+				},
+			},
+		];
+		const plan = (name: string, scope?: string) => ({
+			text: "",
+			toolCalls: [
+				{
+					id: name,
+					name,
+					arguments: {
+						...(name === "COMPLETE_RECORD" ? { id: "record-1" } : {}),
+						...(scope ? { eliza_turn_scope: scope } : {}),
+					},
+				},
+			],
+		});
+		const responses = [
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "handler",
+						name: "HANDLE_RESPONSE",
+						arguments: {
+							shouldRespond: "RESPOND",
+							thought: "Read then complete.",
+							contexts: ["general"],
+							intents: ["read record", "complete record"],
+							candidateActionNames: ["READ_RECORD", "COMPLETE_RECORD"],
+							replyText: "",
+							replyEffectStatus: "pending",
+							facts: [],
+							relationships: [],
+							addressedTo: [],
+						},
+					},
+				],
+			},
+			plan("READ_RECORD", "more_work_pending"),
+			JSON.stringify({
+				thought: "The returned ID grounds the completion.",
+				success: false,
+				decision: "CONTINUE",
+			}),
+			plan("COMPLETE_RECORD"),
+			plan("COMPLETE_RECORD", "final"),
+			JSON.stringify({
+				thought: "The completion receipt proves the requested result.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: finalText,
+				effectReceiptIds: [
+					receiptSelection === "valid"
+						? receipt.receiptId
+						: "unknown-mutated-receipt",
+				],
+			}),
+		];
+		if (receiptSelection === "unknown")
+			responses.push(
+				JSON.stringify({
+					response: finalText,
+					effectReceiptIds: [receipt.receiptId],
+				}),
+			);
+		const modelInputs: unknown[] = [];
+		runtime.useModel = vi.fn(async (type, params) => {
+			if (String(type) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
+			modelInputs.push(params);
+			const output = responses.shift();
+			if (output === undefined)
+				throw new Error("Unexpected additional model call");
+			return output;
+		}) as IAgentRuntime["useModel"];
+		const deliveries: Content[] = [];
+		await new DefaultMessageService().handleMessage(
+			runtime,
+			makeMessage({
+				text: "Read the record, then mark that record complete.",
+				source: "dashboard",
+				channelType: ChannelType.DM,
+			}),
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+		);
+		expect(writes).toBe(1);
+		expect(responses).toEqual([]);
+		expect(JSON.stringify(modelInputs[4])).toContain(
+			"PLANNER_SCOPE_DECLARATION_REQUIRED",
+		);
+		expect(deliveries.map((content) => content.text)).toContain(finalText);
+		expect(
+			deliveries.find((content) => content.text === finalText)
+				?.effectReceiptIds,
+		).toEqual([receipt.receiptId]);
+	},
+);

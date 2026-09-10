@@ -608,6 +608,7 @@ async function runPlannerLoopIterations(
 	// An omitted declaration cannot erase work the planner explicitly left
 	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	let consecutiveScopeProtocolRejections = 0;
 	// The successful FINISH most recently rejected by the pending-scope rule. If
 	// the planner repeats settled operations, do not replay them. Repetition
 	// alone is not completion: the planner must explicitly release pending
@@ -882,6 +883,41 @@ async function runPlannerLoopIterations(
 					),
 				};
 			}
+			if (
+				lastPlannerExplicitCompleted === false &&
+				plannerOutput.invalidNativeScopeCalls?.length
+			) {
+				const scopeError = new ElizaError(
+					"A native planner batch must explicitly declare its scope while earlier work remains pending.",
+					{
+						code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
+						context: {
+							iteration,
+							callIds: plannerOutput.invalidNativeScopeCalls.map(
+								(call) => call.id,
+							),
+						},
+					},
+				);
+				appendPlannerModelFeedbackEvent(trajectory, {
+					id: `missing-native-scope:${iteration}`,
+					type: "instruction",
+					source: "planner-loop",
+					createdAt: Date.now(),
+					metadata: { code: scopeError.code, rejectedBeforeExecution: true },
+					content: JSON.stringify({
+						code: scopeError.code,
+						instruction:
+							"This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. Resubmit the intended calls with final or more_work_pending on every call. Use final when this batch covers the remaining requested operations; their results still require evaluation. Do not repeat settled operations. No call in the rejected batch ran.",
+						rejectedModelOutput: plannerOutput.raw,
+					}),
+				});
+				consecutiveScopeProtocolRejections++;
+				if (consecutiveScopeProtocolRejections >= config.maxRepeatedFailures)
+					throw scopeError;
+				continue;
+			}
+			consecutiveScopeProtocolRejections = 0;
 			// A terminal scope release changes no task evidence. Reuse only the
 			// immediately preceding valid FINISH, with no intervening action or
 			// context replacement. The existing final-message/receipt authority
@@ -2644,13 +2680,14 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
  * `tryGateEvaluator` "planner said the turn is incomplete" veto structurally
  * inert on exactly the lane the action-owned `turnComplete` gate targets — a
  * sequential multi-op request could be truncated after its first terminal
- * action result. Every exposed tool schema therefore accepts this optional
- * enum (`withTurnScopeToolArg`), the planner sets it per call, and
+ * action result. Every exposed tool schema therefore requires this enum
+ * (`withTurnScopeToolArg`), the planner sets it per call, and
  * `parsePlannerOutput` lifts it into the parse result's `completed` field
- * while stripping the argument so no action handler ever sees it. Absence
- * keeps the pre-#17034 behavior (gate eligible); only an explicit
- * "more_work_pending" vetoes, mirroring the JSON lane where only
- * `completed: false` blocks.
+ * while stripping the argument so no action handler ever sees it. An initially
+ * unspecified declaration preserves compatibility. Once the planner explicitly
+ * leaves work pending, a later native batch with missing or invalid scope must
+ * repair its declaration before execution; it cannot erase that pending scope.
+ * JSON callers retain their top-level `completed` contract.
  */
 export const TURN_SCOPE_ARG = "eliza_turn_scope";
 export const TURN_SCOPE_FINAL = "final";
@@ -2774,8 +2811,8 @@ export function withTurnScopeToolArg(
 		// lookup (`list` to find an issue) end the turn before the write the
 		// user asked for ran (live 2026-08-10); schema-forcing the declaration
 		// makes precondition 6 of the evaluator gate actually load-bearing.
-		// Absent values still parse as "unspecified" downstream, so models
-		// that ignore the requirement degrade to today's behavior.
+		// Initial unspecified calls retain compatibility. After explicit pending
+		// scope, the loop rejects a native batch that ignores this requirement.
 		const required = Array.isArray(parameters.required)
 			? parameters.required
 			: [];
@@ -2835,6 +2872,8 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	 * declarations. `undefined` means the planner expressed no opinion.
 	 */
 	completed?: boolean;
+	/** Native calls that violated the required scope protocol; JSON callers retain their existing contract. */
+	invalidNativeScopeCalls?: PlannerToolCall[];
 	raw: Record<string, unknown>;
 } {
 	if (typeof raw === "string") {
@@ -2886,9 +2925,16 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	) {
 		textRecoveredCalls = mergeToolCalls(textRecoveredCalls, embeddedToolCalls);
 	}
-	const merged = extractTurnScopeSignal(
-		mergeToolCalls(nativeToolCalls, textRecoveredCalls),
-	);
+	const mergedCalls = mergeToolCalls(nativeToolCalls, textRecoveredCalls);
+	const invalidNativeScopeCalls =
+		nativeToolCalls.length > 0
+			? mergedCalls.filter(
+					(call) =>
+						call.params?.[TURN_SCOPE_ARG] !== TURN_SCOPE_FINAL &&
+						call.params?.[TURN_SCOPE_ARG] !== TURN_SCOPE_MORE_WORK_PENDING,
+				)
+			: [];
+	const merged = extractTurnScopeSignal(mergedCalls);
 	const toolCalls = merged.toolCalls;
 
 	return {
@@ -2905,6 +2951,7 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 					: text,
 		thought: controlText?.thought,
 		completed: merged.completed ?? controlText?.completed,
+		...(invalidNativeScopeCalls.length > 0 ? { invalidNativeScopeCalls } : {}),
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
