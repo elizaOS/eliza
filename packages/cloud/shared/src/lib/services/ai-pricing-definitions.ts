@@ -167,6 +167,7 @@ export interface SupportedVideoModelDefinition {
   /** Set only when the provider cannot toggle audio generation. */
   fixedAudio?: boolean;
   supportsVoiceControl?: boolean;
+  minDurationSeconds?: number;
 }
 
 export interface SupportedMusicModelDefinition {
@@ -587,6 +588,8 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   },
   {
     modelId: "bytedance/seedance-2.5/text-to-video",
+    minDurationSeconds: 4,
+    supportsVoiceControl: false,
     provider: "fal",
     billingSource: "fal",
     label: "Seedance 2.5 Text to Video",
@@ -600,6 +603,9 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   },
   {
     modelId: "bytedance/seedance-2.5/image-to-video",
+    minDurationSeconds: 4,
+    supportsVoiceControl: false,
+    requiresReferenceImage: true,
     provider: "fal",
     billingSource: "fal",
     label: "Seedance 2.5 Image to Video",

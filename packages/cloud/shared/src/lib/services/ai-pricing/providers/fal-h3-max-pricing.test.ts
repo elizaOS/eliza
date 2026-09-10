@@ -53,7 +53,7 @@ test("resolves published HTML pricing through the same catalog lookup used befor
   const pageUrl = "https://fal.ai/models/minimax/h3-max/image-to-video";
   // The published model page wraps both prices and resolutions in strong tags.
   const pricingHtml =
-    "<p>Video costs <strong>$0.0125</strong> per second at <strong>480p</strong>, <strong>$0.02</strong> per second at <strong>768p</strong>.</p>";
+    "<p>Video costs <strong>$0.0125</strong> per second at <strong>480p</strong>, <strong>$0.02</strong> per second at <strong>768p</strong>, and <strong>$0.04</strong> per second at <strong>1080p</strong>.</p>";
   const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = input instanceof Request ? input.url : String(input);
     return url === pageUrl
@@ -66,6 +66,7 @@ test("resolves published HTML pricing through the same catalog lookup used befor
     for (const [resolution, baseTotalCost, totalCost] of [
       ["480P", 0.0625, 0.075],
       ["768P", 0.1, 0.12],
+      ["1080P", 0.2, 0.24],
     ] as const) {
       const cost = await calculateVideoGenerationCostFromCatalog({
         model: modelId,

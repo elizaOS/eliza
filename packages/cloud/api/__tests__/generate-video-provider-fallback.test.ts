@@ -306,29 +306,128 @@ describe("generate-video — default provider fallback", () => {
     expect(ledger.lastActual).toBeCloseTo(ATLAS_COST, 10);
   });
 
-  test("preserves silent default requests with a model that supports audio controls", async () => {
-    const ledger = makeLedgerReservation(100, ATLAS_COST);
+  test.each([undefined, REFERENCE_URL])(
+    "preserves silent default media with reference %j",
+    async (referenceUrl) => {
+      const ledger = makeLedgerReservation(100, ATLAS_COST);
+      reserve.mockResolvedValue(ledger.reservation);
+      subscribe.mockResolvedValue({
+        data: { video: { url: "https://fal.media/silent.mp4" } },
+        requestId: "fal-silent-request",
+      });
+
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          prompt: "a neon cat",
+          audio: false,
+          voiceControl: false,
+          durationSeconds: 5,
+          referenceUrl,
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(subscribe.mock.calls[0]?.[0]).toBe(
+        referenceUrl
+          ? "bytedance/seedance-2.5/image-to-video"
+          : "bytedance/seedance-2.5/text-to-video",
+      );
+      expect(subscribe.mock.calls[0]?.[1]?.input).toMatchObject({
+        prompt: "a neon cat",
+        duration: "5",
+        resolution: "720p",
+        generate_audio: false,
+        ...(referenceUrl ? { image_url: referenceUrl } : {}),
+      });
+      expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty(
+        "voice_control",
+      );
+      expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty("audio");
+      expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+        model: referenceUrl
+          ? "bytedance/seedance-2.5/image-to-video"
+          : "bytedance/seedance-2.5/text-to-video",
+        provider: "fal",
+      });
+      expect(
+        calculateVideoGenerationCostFromCatalog.mock.calls[0]?.[0],
+      ).toMatchObject({
+        model: referenceUrl
+          ? "bytedance/seedance-2.5/image-to-video"
+          : "bytedance/seedance-2.5/text-to-video",
+        durationSeconds: 5,
+      });
+      expect(ledger.lastActual).toBeCloseTo(ATLAS_COST, 10);
+    },
+  );
+
+  test.each([
+    undefined,
+    "bytedance/seedance-2.5/text-to-video",
+    "bytedance/seedance-2.5/image-to-video",
+  ])(
+    "rejects unsupported voice selection for %j before pricing or billing",
+    async (model) => {
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          prompt: "a neon cat",
+          model,
+          referenceUrl: REFERENCE_URL,
+          audio: false,
+          voiceControl: true,
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("voice control");
+      expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+      expect(reserve).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    },
+  );
+  test.each([
+    undefined,
+    "bytedance/seedance-2.5/text-to-video",
+    "bytedance/seedance-2.5/image-to-video",
+  ])(
+    "rejects a too-short Seedance request %j before credit work",
+    async (model) => {
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          prompt: "a cat",
+          referenceUrl: REFERENCE_URL,
+          model,
+          audio: false,
+          durationSeconds: 3,
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("durationSeconds");
+      expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+      expect(reserve).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    },
+  );
+
+  test("accepts no voice selection without changing the primary model", async () => {
+    const ledger = makeLedgerReservation(100, FAL_COST);
     reserve.mockResolvedValue(ledger.reservation);
     subscribe.mockResolvedValue({
-      data: { video: { url: "https://fal.media/silent.mp4" } },
-      requestId: "fal-silent-request",
+      data: { video: { url: "https://fal.media/out.mp4" } },
+      requestId: "fal-no-voice",
     });
-
     const response = await post(
       { FAL_KEY: "fal-key" },
-      {
-        prompt: "a neon cat",
-        audio: false,
-      },
+      { prompt: "a neon cat", voiceControl: false },
     );
-
     expect(response.status).toBe(200);
-    expect(subscribe.mock.calls[0]?.[0]).toBe("fal-ai/veo3");
-    expect(subscribe.mock.calls[0]?.[1]?.input).toMatchObject({
-      audio: false,
-      generate_audio: false,
-    });
-    expect(ledger.lastActual).toBeCloseTo(ATLAS_COST, 10);
+    expect(subscribe.mock.calls[0]?.[0]).toBe(FAL_MODEL);
+    expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty(
+      "voice_control",
+    );
+    expect(ledger.lastActual).toBeCloseTo(FAL_COST, 10);
   });
 
   test.each([{ audio: false }, { voiceControl: true }])(

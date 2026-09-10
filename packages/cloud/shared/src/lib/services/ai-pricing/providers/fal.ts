@@ -203,6 +203,14 @@ export function parseFalPricingEntries(
           resolution: "768P",
         }),
       );
+      const refinedResolution = paragraph.match(/\$([\d.]+)\s+per second at 1080p/i);
+      if (refinedResolution) {
+        entries.push(
+          buildFalEntry(model, "second", Number(refinedResolution[1]), {
+            resolution: "1080P",
+          }),
+        );
+      }
       break;
     }
     case "kling": {

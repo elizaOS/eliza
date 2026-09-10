@@ -101,6 +101,38 @@ describe("FAL video provider", () => {
     });
   });
 
+  test.each([
+    "minimax/h3-max/image-to-video",
+    "bytedance/seedance-2.5/text-to-video",
+    "bytedance/seedance-2.5/image-to-video",
+  ])("does not send a nonexistent voice control for %s", (model) => {
+    const request = {
+      model,
+      prompt: "motion",
+      referenceUrl: "https://example.com/frame.png",
+      durationSeconds: 5,
+      voiceControl: false,
+      apiKeys: { FAL_KEY: "fal-key" },
+    };
+    expect(buildFalVideoInput(request)).not.toHaveProperty("voice_control");
+    expect(() => buildFalVideoInput({ ...request, voiceControl: true })).toThrow("voice control");
+  });
+
+  test.each(["bytedance/seedance-2.5/text-to-video", "bytedance/seedance-2.5/image-to-video"])(
+    "enforces Seedance duration without rounding for %s",
+    (model) => {
+      const request = { model, prompt: "motion", apiKeys: { FAL_KEY: "fal-key" } };
+      for (const durationSeconds of [3, 31])
+        expect(() => buildFalVideoInput({ ...request, durationSeconds })).toThrow(
+          "durationSeconds",
+        );
+      for (const durationSeconds of [4, 5, 30])
+        expect(buildFalVideoInput({ ...request, durationSeconds }).duration).toBe(
+          String(durationSeconds),
+        );
+    },
+  );
+
   test("normalizes FAL video responses with request id fallback", () => {
     expect(
       normalizeFalVideoResult(
@@ -445,7 +477,7 @@ describe("generateFalVideo — post-enqueue failures never present as refundable
   });
 });
 
-test.each([{ audio: false }, { voiceControl: true }, { voiceControl: false }])(
+test.each([{ audio: false }, { voiceControl: true }])(
   "rejects unsupported H3 Max controls %j before a billable provider submission",
   async (controls) => {
     subscribe.mockClear();

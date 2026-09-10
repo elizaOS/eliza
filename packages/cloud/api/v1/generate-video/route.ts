@@ -107,7 +107,6 @@ function providerDisplayName(
 function requireDefaultVideoModelDefinitions(
   referenceUrl?: string,
   audio?: boolean,
-  voiceControl?: boolean,
 ): SupportedVideoModelDefinition[] {
   const modelIds = referenceUrl
     ? DEFAULT_IMAGE_TO_VIDEO_MODEL_IDS
@@ -118,18 +117,20 @@ function requireDefaultVideoModelDefinitions(
       throw new Error(`Default video model is not supported: ${modelId}`);
     }
     if (
-      (audio !== undefined &&
-        definition.fixedAudio !== undefined &&
-        audio !== definition.fixedAudio) ||
-      (voiceControl !== undefined && definition.supportsVoiceControl === false)
+      audio !== undefined &&
+      definition.fixedAudio !== undefined &&
+      audio !== definition.fixedAudio
     ) {
       // Preserve the existing audio-control contract when the new primary
       // cannot honor a silent request.
-      const compatible = getSupportedVideoModelDefinition("fal-ai/veo3");
+      const compatibleModelId = referenceUrl
+        ? "bytedance/seedance-2.5/image-to-video"
+        : "bytedance/seedance-2.5/text-to-video";
+      const compatible = getSupportedVideoModelDefinition(compatibleModelId);
       if (!compatible)
         throw new ElizaError("The default with media controls is unavailable", {
           code: "VIDEO_DEFAULT_MODEL_UNAVAILABLE",
-          context: { modelId: "fal-ai/veo3" },
+          context: { modelId: compatibleModelId },
         });
       return compatible;
     }
@@ -211,13 +212,18 @@ app.post("/", async (c) => {
           : requireDefaultVideoModelDefinitions(
               request?.referenceUrl,
               request?.audio,
-              request?.voiceControl,
             )
       : [];
     const apiKeys = collectVideoProviderApiKeys(c.env);
-    const providerCandidates = getConfiguredVideoProviderCandidates(
+    const configuredProviderCandidates = getConfiguredVideoProviderCandidates(
       definitions,
       apiKeys,
+    );
+    const providerCandidates = configuredProviderCandidates.filter(
+      ({ definition }) =>
+        request?.durationSeconds === undefined ||
+        definition.minDurationSeconds === undefined ||
+        request.durationSeconds >= definition.minDurationSeconds,
     );
     let pendingResponse: Response | undefined;
     if (!requestResult.success) {
@@ -252,13 +258,29 @@ app.post("/", async (c) => {
         "validation_error",
       );
     } else if (
-      requestedDefinition?.supportsVoiceControl === false &&
-      requestResult.data.voiceControl !== undefined
+      requestResult.data.voiceControl === true &&
+      definitions.some(
+        (definition) => definition.supportsVoiceControl === false,
+      )
     ) {
       pendingResponse = jsonError(
         c,
         400,
         "The selected video model does not support voice control",
+        "validation_error",
+      );
+    } else if (
+      requestResult.data.durationSeconds !== undefined &&
+      ((requestedDefinition?.minDurationSeconds !== undefined &&
+        requestResult.data.durationSeconds <
+          requestedDefinition.minDurationSeconds) ||
+        (configuredProviderCandidates.length > 0 &&
+          providerCandidates.length === 0))
+    ) {
+      pendingResponse = jsonError(
+        c,
+        400,
+        "durationSeconds is below the selected video model's minimum; Seedance 2.5 requires at least 4 seconds",
         "validation_error",
       );
     } else if (providerCandidates.length === 0) {
