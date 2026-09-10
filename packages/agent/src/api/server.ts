@@ -3982,10 +3982,14 @@ export async function startApiServer(opts?: {
     ["system", "plugins"],
   );
 
-  // Warm per-provider model caches in background (non-blocking)
-  void getOrFetchAllProviders().catch((err) => {
-    logger.warn("[api] Provider cache warm-up failed:", err);
-  });
+  if (!opts?.skipDeferredStartupWork) {
+    void getOrFetchAllProviders().catch((err) => {
+      // error-policy:J7 Background catalog discovery must not stop the API host.
+      logger.warn("[api] Provider cache warm-up failed:", err);
+      if (opts?.runtime)
+        opts.runtime.reportError("api.providerCacheWarmup", err);
+    });
+  }
 
   let detachApiLogListener: (() => void) | null = null;
   const captureStructuredLog = (entry: LogEntry): void => {
