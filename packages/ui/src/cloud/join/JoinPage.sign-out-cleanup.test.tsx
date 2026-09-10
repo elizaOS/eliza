@@ -15,7 +15,10 @@ const runJoinFlowMock = vi.hoisted(() => vi.fn());
 const signOutMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const replaceMock = vi.hoisted(() => vi.fn());
 
-vi.mock("react-router-dom", () => ({ Navigate: () => null }));
+vi.mock("react-router-dom", () => ({
+  Navigate: () => null,
+  useLocation: () => ({ state: null }),
+}));
 vi.mock("../../api", () => ({ client: {} }));
 vi.mock("../../config/boot-config-store", () => ({
   getBootConfig: () => ({}),

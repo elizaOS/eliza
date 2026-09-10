@@ -16,6 +16,7 @@ const { authenticatedRef, runJoinFlowMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("react-router-dom", () => ({
+  useLocation: () => ({ state: null }),
   Navigate: ({ to }: { to: string }) => <div data-testid="navigate">{to}</div>,
 }));
 

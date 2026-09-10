@@ -14,7 +14,13 @@
  * to `/join`, which owns the retryable error UI.
  */
 
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  STEWARD_SESSION_CHANGE_EVENT,
+  StewardSessionAuthorityError,
+} from "@elizaos/shared/steward-session-client";
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState } from "react";
 import { client } from "../../api";
 import {
   savePersistedActiveServer,
@@ -61,29 +67,114 @@ export function personalEntryBindingId(result: JoinFlowResult): string {
  * authenticated rowless entry path; `retry: false` so an unavailable identity
  * endpoint fails over to `/join` promptly instead of holding the entry notice.
  */
-export function usePersonalEntry(
-  enabled: boolean,
-): UseQueryResult<JoinFlowResult> {
-  return useQuery<JoinFlowResult>({
-    queryKey: ["app-mode", "personal-entry"],
-    queryFn: async () => {
+export function usePersonalEntry(enabled: boolean): Pick<
+  UseQueryResult<JoinFlowResult>,
+  "data" | "isError"
+> & {
+  needsRetry: boolean;
+} {
+  // Entry is a publication attempt, not a reusable account-data cache. The
+  // one-shot /join handoff owns reuse across the renderer swap instead.
+  const entryId = useId();
+  const active = useRef<{
+    controller: AbortController;
+    revalidate: () => void;
+  } | null>(null);
+  const [invalidated, setInvalidated] = useState<Error | null>(null);
+  const query = useQuery<JoinFlowResult>({
+    queryKey: ["app-mode", "personal-entry", entryId],
+    queryFn: async ({ signal: querySignal }) => {
       const authToken = resolveJoinAuthToken();
       if (!authToken) {
         throw new Error(
           "PersonalEntry: no Steward session token for an authenticated entry.",
         );
       }
+      const coordinator = getStewardTabSessionAuthorityCoordinator();
+      const snapshot = coordinator.readSnapshot();
+      const cloudApiBase = resolveJoinCloudApiBase();
+      const controller = new AbortController();
+      const signal = AbortSignal.any([querySignal, controller.signal]);
+      const revalidate = () => {
+        signal.throwIfAborted();
+        coordinator.assertSnapshot(snapshot);
+        if (
+          resolveJoinAuthToken() !== authToken ||
+          resolveJoinCloudApiBase() !== cloudApiBase
+        ) {
+          throw new StewardSessionAuthorityError(
+            "Personal entry context changed. Try again.",
+            "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+          );
+        }
+      };
+      active.current = { controller, revalidate };
+      revalidate();
       const handedOff = takePersonalEntryHandoff(authToken);
       if (handedOff) return handedOff;
-      return runJoinFlow({
+      const result = await runJoinFlow({
         client,
         effects: { savePersistedActiveServer, savePersistedFirstRunComplete },
-        cloudApiBase: resolveJoinCloudApiBase(),
+        cloudApiBase,
         authToken,
+        signal,
+        revalidate,
       });
+      revalidate();
+      return result;
     },
-    enabled,
+    enabled: enabled && !invalidated,
     retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     staleTime: Number.POSITIVE_INFINITY,
   });
+
+  useEffect(() => {
+    const invalidate = () => {
+      const attempt = active.current;
+      if (!attempt || attempt.controller.signal.aborted) return;
+      const error = new StewardSessionAuthorityError(
+        "Personal entry context changed. Try again.",
+        "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+      );
+      attempt.controller.abort(error);
+      setInvalidated(error);
+    };
+    const checkSession = () => {
+      try {
+        active.current?.revalidate();
+      } catch {
+        // error-policy:J4 withdraw stale entry and let /join own explicit recovery.
+        invalidate();
+      }
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) invalidate();
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
+    window.addEventListener("token-sync", checkSession);
+    window.addEventListener("storage", checkSession);
+    window.addEventListener("pagehide", invalidate);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, checkSession);
+      window.removeEventListener("token-sync", checkSession);
+      window.removeEventListener("storage", checkSession);
+      window.removeEventListener("pagehide", invalidate);
+      window.removeEventListener("pageshow", onPageShow);
+      active.current?.controller.abort(
+        new DOMException("Personal entry unmounted", "AbortError"),
+      );
+    };
+  }, []);
+
+  const needsRetry =
+    invalidated !== null || query.error instanceof StewardSessionAuthorityError;
+  return {
+    data: needsRetry ? undefined : query.data,
+    isError: needsRetry || query.isError,
+    needsRetry,
+  };
 }
