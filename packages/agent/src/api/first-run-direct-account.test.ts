@@ -115,6 +115,7 @@ function openRouterFirstRunBody(apiKey: string): Record<string, unknown> {
 
 function firstRunRouteContext(args: {
   apiKey: string;
+  body?: Record<string, unknown>;
   saveConfig?: typeof saveElizaConfig;
   runtime?: FirstRunRouteContext["state"]["runtime"];
   ensureWalletKeysInEnvAndConfig?: FirstRunRouteContext["ensureWalletKeysInEnvAndConfig"];
@@ -148,7 +149,7 @@ function firstRunRouteContext(args: {
     error: (_res: unknown, message: string, status = 500) => {
       responses.push({ status, data: { error: message } });
     },
-    readJsonBody: async () => openRouterFirstRunBody(args.apiKey),
+    readJsonBody: async () => args.body ?? openRouterFirstRunBody(args.apiKey),
     isCloudProvisionedContainer: () => false,
     hasPersistedFirstRunState: (candidate: {
       meta?: { firstRunComplete?: boolean };
@@ -443,13 +444,13 @@ describe("POST /api/first-run direct account authority", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { context, responses } = firstRunRouteContext({
       apiKey: "synthetic-provider",
+      body: {
+        ...openRouterFirstRunBody("synthetic-provider"),
+        connectors: { blooio: { apiKey: "synthetic-connector" } },
+      },
     });
     const originalConfig = structuredClone(context.state.config);
     const originalEnvironment = { ...process.env };
-    context.readJsonBody = async () => ({
-      ...openRouterFirstRunBody("synthetic-provider"),
-      connectors: { blooio: { apiKey: "synthetic-connector" } },
-    });
 
     await handleFirstRunRoutes(context);
 
@@ -506,16 +507,16 @@ describe("POST /api/first-run direct account authority", () => {
       );
       const { context, responses } = firstRunRouteContext({
         apiKey: "synthetic-provider",
+        body: {
+          ...openRouterFirstRunBody("synthetic-provider"),
+          connectors: { blooio: connector },
+        },
         saveConfig: (config) => {
           if (failSave) throw new Error("disk unavailable");
           saveElizaConfig(config);
         },
       });
       const originalConfig = structuredClone(context.state.config);
-      context.readJsonBody = async () => ({
-        ...openRouterFirstRunBody("synthetic-provider"),
-        connectors: { blooio: connector },
-      });
       try {
         await handleFirstRunRoutes(context);
         const accounts = await listAccounts("openrouter-api");
