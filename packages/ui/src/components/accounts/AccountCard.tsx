@@ -216,13 +216,14 @@ export function AccountCard({
       padding="compact"
       surface={account.enabled ? "card" : "backgroundSubtle"}
       border="subtle"
-      className="py-2.5"
+      className="min-w-0 py-2.5"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 basis-72 flex-wrap items-center gap-2">
           <StatusBadge label={health.label} tone={health.tone} withDot />
           <EditableAccountLabel
             value={account.label}
+            className="basis-40 grow whitespace-normal [&>span]:break-words [&>span]:whitespace-normal"
             onSubmit={(label) => onPatch({ label })}
             disabled={saving}
             inputAriaLabel={t("accounts.label.edit", {
@@ -269,7 +270,7 @@ export function AccountCard({
           </span>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
           <Button
             type="button"
             variant="ghost"

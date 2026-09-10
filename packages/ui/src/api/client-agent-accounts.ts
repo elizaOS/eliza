@@ -42,7 +42,7 @@ export interface AccountTestResult {
   latencyMs?: number;
   status?: number;
   error?: string;
-  /** Bounded official provider catalog sample returned by a direct-key probe. */
+  /** Complete official provider catalog returned by a successful catalog probe. */
   modelIds?: string[];
   modelCatalogTruncated?: boolean;
   modelCatalogUnavailable?: boolean;
