@@ -12,6 +12,7 @@ import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   type AgentRuntime,
   documentsPluginCore,
+  ElizaError,
   type Plugin,
   Service,
   ServiceType,
@@ -47,7 +48,10 @@ class AgreementTestPdfService extends Service {
 
   async stop(): Promise<void> {}
 
+  transcriptionFailure: Error | null = null;
+
   async extractCompleteDocument(bytes: Buffer | Uint8Array) {
+    if (this.transcriptionFailure) throw this.transcriptionFailure;
     const text = Buffer.from(bytes).toString("utf8");
     return {
       complete: true as const,
@@ -571,5 +575,59 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
+  });
+  it("keeps a transcription outage out of persisted agreements and retries the same bytes", async () => {
+    const previous = runtime.services.get(ServiceType.PDF);
+    if (!previous) throw new Error("PDF test service is unavailable");
+    const transcription = new AgreementTestPdfService(runtime);
+    const failure = new ElizaError("Transcription dependency failed", {
+      code: "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE",
+      context: { pageNumber: 2, pageCount: 2 },
+      cause: new Error("upstream unavailable"),
+    });
+    transcription.transcriptionFailure = failure;
+    runtime.services.set(ServiceType.PDF, [transcription]);
+    try {
+      const service = createAgreementKnowledgeService(runtime);
+      const before = await service.listOwnerAgreements({
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      const input = {
+        agreementKey: "transcription-retry",
+        title: "Synthetic retry agreement",
+        originalFilename: "retry.pdf",
+        mimeType: "application/pdf",
+        bytes: pdf("distinct retry fixture"),
+        uploadedByEntityId: SELF_ENTITY_ID,
+      };
+      await expect(service.createAgreementVersion(input)).rejects.toMatchObject(
+        {
+          code: "AGREEMENT_EXTRACTION_UNAVAILABLE",
+          context: { pageNumber: 2, pageCount: 2 },
+          cause: failure,
+        },
+      );
+      expect(
+        await service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID }),
+      ).toEqual(before);
+      transcription.transcriptionFailure = null;
+      const saved = await service.createAgreementVersion(input);
+      expect(
+        (
+          await service.readOwnerPdf({
+            artifactId: saved.id,
+            ownerEntityId: SELF_ENTITY_ID,
+          })
+        ).bytes,
+      ).toEqual(input.bytes);
+      await expect(service.createAgreementVersion(input)).rejects.toMatchObject(
+        { code: "AGREEMENT_DUPLICATE_CONTENT" },
+      );
+      expect(
+        await service.listOwnerAgreements({ ownerEntityId: SELF_ENTITY_ID }),
+      ).toHaveLength(before.length + 1);
+    } finally {
+      runtime.services.set(ServiceType.PDF, previous);
+    }
   });
 });

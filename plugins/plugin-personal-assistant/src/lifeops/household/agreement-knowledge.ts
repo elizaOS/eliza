@@ -191,7 +191,8 @@ type AgreementKnowledgeErrorCode =
   | "AGREEMENT_DUPLICATE_CONTENT"
   | "AGREEMENT_INVALID_CONTRACT"
   | "AGREEMENT_OBLIGATION_CONFLICT"
-  | "AGREEMENT_STORAGE_UNAVAILABLE";
+  | "AGREEMENT_STORAGE_UNAVAILABLE"
+  | "AGREEMENT_EXTRACTION_UNAVAILABLE";
 
 export class AgreementKnowledgeError extends ElizaError {
   override readonly name = "AgreementKnowledgeError";
@@ -928,6 +929,18 @@ export class AgreementKnowledgeService {
           : undefined,
       });
     } catch (error) {
+      // error-policy:J2 keep extraction dependency failures distinct from invalid document input.
+      if (
+        error instanceof ElizaError &&
+        error.code === "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE"
+      ) {
+        throw new AgreementKnowledgeError(
+          "Document reading is temporarily unavailable. Check the model service, then retry this upload.",
+          "AGREEMENT_EXTRACTION_UNAVAILABLE",
+          error.context,
+          error,
+        );
+      }
       throw new AgreementKnowledgeError(
         `The complete parenting-agreement PDF could not be extracted: ${error instanceof Error ? error.message : String(error)}`,
         "AGREEMENT_INVALID_CONTRACT",
