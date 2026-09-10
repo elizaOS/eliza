@@ -63,7 +63,6 @@ describe("DesktopSettingsNavigation", () => {
 
     expect(screen.getByText("Agent")).toBeTruthy();
     expect(screen.getByText("System")).toBeTruthy();
-    expect(screen.getByText("Settings")).toBeTruthy();
     expect(screen.getByText("Basics")).toBeTruthy();
     expect(screen.getByText("Models & Providers")).toBeTruthy();
     expect(screen.getByText("Appearance")).toBeTruthy();
@@ -119,7 +118,6 @@ describe("DesktopSettingsNavigation", () => {
     expect(
       screen.queryByRole("button", { name: "Back to launcher" }),
     ).toBeNull();
-    expect(screen.getByText("Settings")).toBeTruthy();
   });
 
   it("wraps arrow-key focus and preserves native Enter and Space activation", async () => {

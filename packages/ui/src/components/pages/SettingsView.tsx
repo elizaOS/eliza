@@ -67,7 +67,7 @@ import {
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
-import { navigateBackToLauncher, ViewHeader } from "../shared/ViewHeader";
+import { navigateBackToLauncher, ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -109,7 +109,7 @@ function SettingsSectionLoading({ title }: { title: string }) {
 }
 
 /**
- * The active section's body. The uniform `ViewHeader` lives at the view root
+ * The active section's body. Compact navigation lives at the view root
  * (not per-section), so this only renders the lazy section component behind a
  * transparent Suspense + error boundary. One opaque token surface for the whole
  * view — no per-section `theme-cloud bg-black` islands (#13452).
@@ -606,13 +606,18 @@ export function SettingsView({
                 isNativeCompactSettings && "pt-[var(--safe-area-top,0px)]",
               )}
             >
-              <ViewHeader
-                title={headerTitle}
-                onBack={onBack}
-                backLabel={backLabel}
-                showBack={Boolean(activeSectionDef) || !detachedSettingsShell}
-                className="px-1.5 sm:px-1.5"
-              />
+              <nav
+                aria-label={settingsTitle}
+                data-testid="view-header"
+                className="flex shrink-0 items-center gap-3 px-1.5 py-2 sm:px-1.5"
+              >
+                {activeSectionDef || !detachedSettingsShell ? (
+                  <ViewBackButton onBack={onBack} label={backLabel} />
+                ) : null}
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {headerTitle}
+                </span>
+              </nav>
             </div>
           ) : null}
 

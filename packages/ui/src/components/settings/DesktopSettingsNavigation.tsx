@@ -6,6 +6,7 @@
 import { Check } from "lucide-react";
 import { useCallback, useRef } from "react";
 
+import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import type { GroupedSettingsSections } from "./settings-sections";
 
@@ -28,6 +29,7 @@ export function DesktopSettingsNavigation({
   grouped,
   activeId,
   onSelect,
+  onBack,
   settingsLabel,
   label,
 }: DesktopSettingsNavigationProps): React.JSX.Element {
@@ -58,6 +60,11 @@ export function DesktopSettingsNavigation({
       data-testid="desktop-settings-navigation"
       className="flex h-full min-h-0 w-60 min-w-60 max-w-60 shrink-0 flex-col overflow-hidden border-r border-border/60 bg-[var(--settings-panel)]"
     >
+      {onBack ? (
+        <div className="shrink-0 px-3 py-2">
+          <ViewBackButton onBack={onBack} />
+        </div>
+      ) : null}
       <div
         data-scroll-cert-scroller
         className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-3 py-4"
