@@ -211,11 +211,7 @@ describe("developer workspace", () => {
     expect(screen.queryByText("Recorded runs")).toBeNull();
     expect(screen.queryByText("Foreground input")).toBeNull();
     expect(mocks.detail).not.toHaveBeenCalled();
-    const disclosure = screen.getByText("Details").closest("details");
-    if (!disclosure) throw new Error("Missing reply disclosure");
-    if (!disclosure) throw new Error("Reply disclosure missing");
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
     await flush();
     expect(mocks.detail).toHaveBeenCalledExactlyOnceWith(
       "run-1",
@@ -298,10 +294,7 @@ describe("developer workspace", () => {
       </DeveloperWorkspace>,
     );
     await flush();
-    const disclosure = screen.getByText("Details").closest("details");
-    if (!disclosure) throw new Error("Reply disclosure missing");
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
     await flush();
     expect(
       mocks.detail.mock.calls.every(
@@ -326,34 +319,25 @@ describe("developer workspace", () => {
         ([id]) => id === "wrong-room" || id === "wrong-message",
       ),
     ).toBe(false);
-    const call = within(panel)
-      .getAllByText(/#1 · tool · OPEN_NOTES/)[0]
-      .closest("details");
-    if (!call) throw new Error("Call disclosure missing");
-    call.open = true;
-    fireEvent(call, new Event("toggle"));
-    await flush();
+    expect(within(panel).getByLabelText("Model call")).toBeTruthy();
     expect(within(panel).getByText("Actual model input")).toBeTruthy();
     fireEvent.mouseDown(within(panel).getByRole("tab", { name: "Output" }), {
       button: 0,
       ctrlKey: false,
     });
     expect(within(panel).getByText("Actual model output")).toBeTruthy();
-    const stepTrigger = within(panel).getAllByRole("button", {
-      name: "tool · OPEN_NOTES · 200ms",
-    })[0];
-    fireEvent.click(stepTrigger);
+    fireEvent.click(within(panel).getByRole("button", { name: "Steps" }));
     await flush();
-    expect(stepTrigger.getAttribute("aria-expanded")).toBe("true");
-    const step = document.getElementById(
-      stepTrigger.getAttribute("aria-controls") ?? "",
-    );
-    if (!step) throw new Error("Step disclosure content missing");
+    expect(within(panel).getByLabelText("Recorded step")).toBeTruthy();
     expect(
-      within(step).getByRole("region", { name: "Input" }).textContent,
+      within(panel).getByRole("region", { name: "Input" }).textContent,
     ).toContain('"view": "notes"');
+    fireEvent.mouseDown(within(panel).getByRole("tab", { name: "Output" }), {
+      button: 0,
+      ctrlKey: false,
+    });
     expect(
-      within(step).getByRole("region", { name: "Output" }).textContent,
+      within(panel).getByRole("region", { name: "Output" }).textContent,
     ).toContain('"success": true');
     expect(within(panel).queryByLabelText("Full trajectory JSON")).toBeNull();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Details" }), {
@@ -384,10 +368,7 @@ describe("developer workspace", () => {
     expect(mocks.list.mock.calls.some(([options]) => options.search)).toBe(
       false,
     );
-    const disclosure = screen.getByText("Details").closest("details");
-    if (!disclosure) throw new Error("Reply disclosure missing");
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
     await flush();
     expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
     expect(mocks.list).toHaveBeenCalledWith(
@@ -398,8 +379,7 @@ describe("developer workspace", () => {
       "run-1",
       expect.objectContaining({ includePayloads: false }),
     );
-    disclosure.open = false;
-    fireEvent(disclosure, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await flush();
     expect(screen.getByText(/100 tokens in · 20 out/)).toBeTruthy();
   });
@@ -434,10 +414,7 @@ describe("developer workspace", () => {
     mocks.list.mockResolvedValue({ trajectories: [background], total: 1 });
     mocks.detail.mockResolvedValue({ ...detail, trajectory: background });
     render(<DeveloperReplyDetails roomId="room-1" messageId="user-1" />);
-    const disclosure = screen.getByText("Details").closest("details");
-    if (!disclosure) throw new Error("Reply disclosure missing");
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
     await flush();
     expect(screen.getByText("No foreground counts")).toBeTruthy();
     expect(screen.queryByText("No recorded run")).toBeNull();
@@ -521,10 +498,7 @@ describe("developer workspace", () => {
     await flush();
     expect(screen.getByText(/100 tokens in/)).toBeTruthy();
     expect(screen.queryByText(/700 tokens in/)).toBeNull();
-    const disclosure = screen.getByText("Details").closest("details");
-    if (!disclosure) throw new Error("Reply disclosure missing");
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
     await flush();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Trajectories" }), {
       button: 0,

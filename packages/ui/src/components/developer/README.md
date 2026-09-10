@@ -17,7 +17,9 @@ including imperative agent view actions. **Exit** opens the active app route
 without developer chrome.
 
 The default view is a single chat column: messages, recorded token counts,
-expandable **Details**, and a fixed composer. **Settings** contains the existing
+an **Inspect** button on each reply, and a fixed composer. **Inspect** opens a
+viewport-contained dialog with **Details** and **Trajectories**. It does not
+expand the transcript or move the reader's chat position. **Settings** contains the existing
 model configuration and Cerebras credential controls; **Advanced diagnostics**
 contains the full run selector, pagination and pause control. Changing settings
 changes this instance's configuration. Owner role gates remain in place.
@@ -33,8 +35,8 @@ match. Canonical `replyToMessageId` takes precedence even when its user message
 is outside the loaded transcript; only replies without that link use adjacency.
 Background memory runs correlate by the same IDs and remain separate.
 
-Replies outside the recent summary window initially show **Details**. Opening
-it loads matching counts and keeps them visible after collapse. Unloaded counts,
+Replies outside the recent summary window initially show **Inspect**. Opening
+it loads matching counts and keeps them visible after closing. Unloaded counts,
 failed reads, absent foreground runs and zero-valued usage have distinct labels;
 background-only results remain inspectable in Trajectories.
 
@@ -59,14 +61,15 @@ prove the provider used: recorded calls can show fallback providers.
 The **Trajectories** tab lazily finds all runs for the reply through the existing
 paginated search API, accepting only exact room and message ID matches. It can
 find runs beyond the live summary window. Foreground, recovery and background
-memory runs expand separately, using the shared `TrajectoryDetailView`.
+memory runs are selectable separately, using the shared `TrajectoryDetailView`.
 
-Compact call rows show recorded input/output tokens and time. Opening a call
-reveals complete **Input**, **Output** and **System** raw text with **Copy**.
-Recorded handler, planner and tool steps expose their input, output and complete
-step record; model stages describe the calls above, not additional calls.
+The **Model call** selector switches directly between calls, showing recorded
+input/output tokens and time. Complete **Input**, **Output** and **System** text
+stays in a bounded scroll area with **Copy** above it. **Steps** selects handler,
+planner and tool records with **Input**, **Output** and **Full step** tabs;
+model stages describe the same calls, not additional calls.
 **Copy entire recorded run** preserves the full returned record. Context and
-timeline remain optional diagnostics.
+timeline have their own **Context & timeline** section.
 
 Inspection makes no model calls. Full payload reads occur only for open runs,
 refresh when the run revision changes and abort on cleanup. These payloads may
@@ -77,6 +80,8 @@ input remains viewable and copyable.
 ## Layout and accessibility
 
 The transcript follows new replies only while the user is near the bottom.
+The inspection dialog keeps controls outside the raw-text scroll area, traps
+keyboard focus and restores focus to **Inspect** when closed. Escape closes it.
 Unchanged messages are memoized across polls. The composer remains outside the
 scroll region. Enter sends; Shift+Enter inserts a newline; IME composition does
 not submit. Failed sends preserve the draft without replacing newly typed text.

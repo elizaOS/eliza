@@ -207,3 +207,198 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* The inspector owns its viewport. Opening evidence never grows the chat. */
+.developer-reply-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.developer-reply-summary .developer-inspect-trigger {
+  padding: 0 12px;
+  font-size: 12px;
+}
+.developer-reply-inspector {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, calc(100vw - 32px));
+  height: min(900px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  top: 50%;
+  bottom: auto;
+  translate: -50% -50%;
+  padding: 0;
+  gap: 0;
+}
+.developer-inspection-header {
+  padding: 18px 64px 14px 24px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.developer-inspection-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.developer-reply-inspector > button {
+  min-height: 44px;
+  min-width: 44px;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.developer-reply-inspector :is(button, select, summary) {
+  min-height: 44px;
+}
+.developer-reply-inspector [hidden] {
+  display: none;
+}
+.developer-reply-inspector .developer-expanded-reply,
+.developer-trajectories-panel,
+.developer-run-browser,
+.developer-trajectory-detail,
+.developer-call-inspector,
+.developer-selected-call,
+.developer-call-text,
+.developer-raw-panel,
+.developer-step-inspector,
+.developer-code-block {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.developer-reply-inspector .developer-expanded-reply {
+  padding: 12px 24px 0;
+  overflow: hidden;
+}
+.developer-reply-inspector .developer-expanded-reply > * + * {
+  margin-top: 10px;
+}
+.developer-reply-inspector [role="tablist"] {
+  flex-shrink: 0;
+  align-self: flex-start;
+  max-width: 100%;
+  justify-content: flex-start;
+  overflow-x: auto;
+}
+.developer-details-scroll,
+.developer-diagnostics-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 20px;
+}
+.developer-run-selector {
+  flex-shrink: 0;
+  padding-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.developer-run-selector label,
+.developer-call-selector label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.developer-run-selector select,
+.developer-call-selector select {
+  width: 100%;
+  font-size: 13px;
+}
+.developer-evidence-navigation {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  padding-bottom: 10px;
+  overflow-x: auto;
+}
+.developer-evidence-navigation button {
+  white-space: nowrap;
+  font-size: 13px;
+}
+.developer-call-selector {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+.developer-call-selector p {
+  margin-top: 6px;
+}
+.developer-call-text {
+  gap: 8px;
+}
+.developer-raw-panel {
+  margin-top: 0;
+  overflow: hidden;
+}
+.developer-code-block > :first-child {
+  flex-shrink: 0;
+}
+.developer-reply-inspector .developer-code-block > :last-child {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.developer-reply-inspector .developer-raw-text {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.developer-evidence-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0;
+}
+@media (max-width: 600px) {
+  .developer-reply-inspector {
+    width: calc(100vw - 16px);
+    height: calc(
+      100dvh -
+      24px -
+      env(safe-area-inset-top) -
+      env(safe-area-inset-bottom)
+    );
+    max-height: calc(
+      100dvh -
+      24px -
+      env(safe-area-inset-top) -
+      env(safe-area-inset-bottom)
+    );
+  }
+  .developer-inspection-header {
+    padding: 12px 56px 10px 14px;
+  }
+  .developer-reply-inspector .developer-expanded-reply {
+    padding: 8px 12px 0;
+  }
+  .developer-reply-inspector .developer-expanded-reply > * + * {
+    margin-top: 6px;
+  }
+  .developer-evidence-navigation {
+    padding-bottom: 6px;
+  }
+  .developer-evidence-navigation button {
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 12px;
+  }
+}
