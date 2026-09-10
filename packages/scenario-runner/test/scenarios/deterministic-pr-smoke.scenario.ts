@@ -142,18 +142,6 @@ export default scenario({
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         runtime.scenarioModelFixtures?.register(
-          {
-            name: "pr-smoke-contextual-navigation-greeting",
-            match: {
-              modelType: ModelType.TEXT_SMALL,
-              input: /Complete user request: "hello deterministic provider"/,
-            },
-            response: JSON.stringify({
-              disposition: "none",
-              reason: "A greeting does not request a view.",
-            }),
-            times: 1,
-          },
           // The simple-reply path answers straight from the stage-1 router
           // response (`replyText`); no follow-up TEXT_SMALL call fires. The
           // router fixture is therefore the required one, and the direct
@@ -199,7 +187,8 @@ export default scenario({
             response: {
               shouldRespond: "RESPOND",
               contexts: ["simple"],
-              intents: ["hello deterministic provider"],
+              intents: [],
+              replyEffectStatus: "none",
               replyText:
                 "deterministic-test-response: hello deterministic provider",
               candidateActionNames: [],
@@ -312,20 +301,33 @@ export default scenario({
         params: { name: "view-title", value: "Remote Ledger Updated" },
         view: "remote-ledger",
       },
-      responseIncludesAny: [
-        "remote-ledger",
-        "Interacted with view",
-        "Remote Ledger Updated",
-      ],
-      assertTurn: (execution) =>
-        expectViewsAction(execution, {
+      assertTurn: (execution) => {
+        const action = execution.actionsCalled.find(
+          (candidate) => candidate.actionName === "VIEWS",
+        );
+        const data = action?.result?.data;
+        const receipt =
+          data && typeof data === "object" && "result" in data
+            ? data.result
+            : undefined;
+        if (
+          action?.result?.success !== true ||
+          !receipt ||
+          typeof receipt !== "object" ||
+          !("value" in receipt) ||
+          receipt.value !== "Remote Ledger Updated"
+        ) {
+          return "view interaction did not preserve its successful transport receipt";
+        }
+        return expectViewsAction(execution, {
           action: "interact",
           capability: "fill-input",
           paramValue: "Remote Ledger Updated",
-          responseText:
-            'Interacted with view "remote-ledger" — capability "fill-input" (returned ok, capability, value).',
+          // An action-only turn retains the receipt for the planner; it does not fabricate a model-authored answer.
+          responseText: "",
           view: "remote-ledger",
-        }),
+        });
+      },
     },
   ],
   finalChecks: [
