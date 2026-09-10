@@ -1,3 +1,5 @@
+/** Exercises plugin HTTP configuration and runtime activity against deterministic boundaries. */
+
 import { logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +25,8 @@ vi.mock("@elizaos/agent", () => ({
   validatePluginConfig: mocks.validatePluginConfig,
 }));
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -628,6 +631,50 @@ describe("handlePluginRoutes config persistence", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each([
+    [["relationships"], false],
+    [["@elizaos/plugin-relationships"], true],
+    [["relationships", "@elizaos/plugin-relationships"], true],
+  ] as const)(
+    "reports package activity from external registrations: %j",
+    async (names, active) => {
+      const ctx = makeContext(
+        {},
+        { env: {}, plugins: { entries: {} } },
+        {
+          method: "GET",
+          pathname: "/api/plugins",
+          url: new URL("http://localhost/api/plugins"),
+        },
+      );
+      ctx.state.plugins = [
+        makePlugin({
+          id: "relationships",
+          name: "Relationships",
+          npmName: "@elizaos/plugin-relationships",
+          category: "feature",
+          configKeys: [],
+          parameters: [],
+          envKey: undefined,
+        }) as never,
+      ];
+      ctx.buildPluginEvmDiagnosticEntry = vi.fn(() =>
+        makePlugin({ id: "evm", npmName: "@elizaos/plugin-evm" }),
+      ) as never;
+      ctx.state.runtime = {
+        plugins: names.map((name) => ({ name })),
+        getSetting: () => null,
+        getService: () => null,
+      } as never;
+      await handlePluginRoutes(ctx);
+      expect(ctx.json).toHaveBeenCalledWith(ctx.res, {
+        plugins: expect.arrayContaining([
+          expect.objectContaining({ id: "relationships", isActive: active }),
+        ]),
+      });
+    },
+  );
 
   it("uses runtime settings instead of a poisoned process env in the plugin catalog", async () => {
     process.env.DISCORD_API_TOKEN = "host-token-must-not-count";
