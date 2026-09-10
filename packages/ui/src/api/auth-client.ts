@@ -30,6 +30,7 @@ import {
 } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { isPasswordAuthTransportConfidential } from "./password-auth-transport-policy";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
@@ -474,14 +475,16 @@ export async function authMe(): Promise<AuthMeResult> {
   // LoginView). When the agent does return an authoritative 401,
   // its body lands in `unauthorized` and we map to AuthMeResult.
   try {
-    const viaRpc = isDesktopExternalApiBaseUrl(authBase())
-      ? null
-      : await invokeDesktopBridgeRequest<{
-          identity?: AuthIdentity;
-          session?: AuthSessionInfo;
-          access?: AuthAccessInfo;
-          unauthorized?: { reason: string; access: AuthAccessInfo };
-        }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
+    const viaRpc =
+      !isDesktopLocalApiBaseUrl(authBase()) ||
+      isDesktopExternalApiBaseUrl(authBase())
+        ? null
+        : await invokeDesktopBridgeRequest<{
+            identity?: AuthIdentity;
+            session?: AuthSessionInfo;
+            access?: AuthAccessInfo;
+            unauthorized?: { reason: string; access: AuthAccessInfo };
+          }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
     if (viaRpc) {
       if (viaRpc.identity && viaRpc.session) {
         return {

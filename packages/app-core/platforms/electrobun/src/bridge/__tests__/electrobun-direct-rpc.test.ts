@@ -14,6 +14,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { isDesktopLocalApiBaseUrl } from "../../../../../../ui/src/api/desktop-local-api-base";
 import { setBrowserTabsRendererImpl } from "../browser-tabs-renderer-registry.ts";
 import {
   ELECTROBUN_BOOT_CONFIG_STORE_KEY,
@@ -705,4 +706,32 @@ describe("electrobun-direct-rpc preload", () => {
     expect(consoleReports).toHaveLength(1);
     expect(asDiagnostic(consoleReports[0]).message).toBe("once");
   });
+});
+
+it("rotates native local RPC authority and clears it on external or old-host updates", () => {
+  harness.wildcardMessage?.("apiBaseUpdate", {
+    base: "http://127.0.0.1:31337/runtime",
+    localApiBase: "http://127.0.0.1:31337/runtime/",
+  });
+  expect(isDesktopLocalApiBaseUrl("http://127.0.0.1:31337/runtime")).toBe(true);
+  harness.wildcardMessage?.("apiBaseUpdate", {
+    base: "http://127.0.0.1:31338/runtime",
+    localApiBase: "http://127.0.0.1:31338/runtime",
+  });
+  expect(isDesktopLocalApiBaseUrl("http://127.0.0.1:31337/runtime")).toBe(
+    false,
+  );
+  expect(isDesktopLocalApiBaseUrl("http://127.0.0.1:31338/runtime")).toBe(true);
+  harness.wildcardMessage?.("apiBaseUpdate", {
+    base: "https://remote.example/runtime",
+    externalApiBase: "https://remote.example/runtime",
+    localApiBase: null,
+  });
+  expect(isDesktopLocalApiBaseUrl("http://127.0.0.1:31338/runtime")).toBe(
+    false,
+  );
+  harness.wildcardMessage?.("apiBaseUpdate", {
+    base: "http://127.0.0.1:31339",
+  });
+  expect(isDesktopLocalApiBaseUrl("http://127.0.0.1:31339")).toBe(false);
 });

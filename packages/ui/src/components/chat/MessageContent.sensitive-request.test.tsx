@@ -620,56 +620,61 @@ describe("MessageContent sensitive requests", () => {
     window.open = originalOpen;
   });
 
-  it("remote_connect submit dispatches CONNECT_EVENT with the normalized URL and never touches the secret store", async () => {
-    const connectEvents: unknown[] = [];
-    const onConnect = (event: Event) => {
-      connectEvents.push((event as CustomEvent).detail);
-    };
-    document.addEventListener(CONNECT_EVENT, onConnect);
+  it.each(["https://agent.example.com:31337/", "agent.example.com:31337/"])(
+    "remote_connect submits %s without writing the secret store",
+    async (address) => {
+      const connectEvents: unknown[] = [];
+      const onConnect = (event: Event) => {
+        connectEvents.push((event as CustomEvent).detail);
+      };
+      document.addEventListener(CONNECT_EVENT, onConnect);
 
-    render(
-      <MessageContent
-        message={baseMessage({ secretRequest: pendingRemoteConnectRequest() })}
-      />,
-    );
-
-    const urlInput = screen.getByLabelText(
-      "Remote agent URL",
-    ) as HTMLInputElement;
-    expect(urlInput.type).toBe("text");
-    const tokenInput = screen.getByLabelText(
-      "Access token (optional)",
-    ) as HTMLInputElement;
-    expect(tokenInput.type).toBe("password");
-
-    // Trailing slash proves normalizeRemoteAgentUrl ran before dispatch.
-    fireEvent.change(urlInput, {
-      target: { value: "https://agent.example.com:31337/" },
-    });
-    fireEvent.change(tokenInput, { target: { value: "tok-123" } });
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
-        "Saved",
+      render(
+        <MessageContent
+          message={baseMessage({
+            secretRequest: pendingRemoteConnectRequest(),
+          })}
+        />,
       );
-    });
 
-    expect(connectEvents).toEqual([
-      {
-        gatewayUrl: "https://agent.example.com:31337",
-        token: "tok-123",
-        completeFirstRun: true,
-        skipConfirm: true,
-      },
-    ]);
-    // The URL + token point the app at a remote runtime — they must NEVER be
-    // written to the agent secret store or tunneled.
-    expect(updateSecretsMock).not.toHaveBeenCalled();
-    expect(tunnelCredentialMock).not.toHaveBeenCalled();
+      const urlInput = screen.getByLabelText(
+        "Remote agent URL",
+      ) as HTMLInputElement;
+      expect(urlInput.type).toBe("text");
+      const tokenInput = screen.getByLabelText(
+        "Access token (optional)",
+      ) as HTMLInputElement;
+      expect(tokenInput.type).toBe("password");
 
-    document.removeEventListener(CONNECT_EVENT, onConnect);
-  });
+      // Trailing slash proves normalizeRemoteAgentUrl ran before dispatch.
+      fireEvent.change(urlInput, {
+        target: { value: address },
+      });
+      fireEvent.change(tokenInput, { target: { value: "tok-123" } });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+          "Saved",
+        );
+      });
+
+      expect(connectEvents).toEqual([
+        {
+          gatewayUrl: "https://agent.example.com:31337",
+          token: "tok-123",
+          completeFirstRun: true,
+          skipConfirm: true,
+        },
+      ]);
+      // The URL + token point the app at a remote runtime — they must NEVER be
+      // written to the agent secret store or tunneled.
+      expect(updateSecretsMock).not.toHaveBeenCalled();
+      expect(tunnelCredentialMock).not.toHaveBeenCalled();
+
+      document.removeEventListener(CONNECT_EVENT, onConnect);
+    },
+  );
 
   it("remote_connect omits an empty token from the CONNECT_EVENT detail", async () => {
     const connectEvents: unknown[] = [];
@@ -709,41 +714,50 @@ describe("MessageContent sensitive requests", () => {
     document.removeEventListener(CONNECT_EVENT, onConnect);
   });
 
-  it("remote_connect surfaces an invalid-URL error, keeps the form editable, and does not dispatch", async () => {
-    const connectEvents: unknown[] = [];
-    const onConnect = (event: Event) => {
-      connectEvents.push((event as CustomEvent).detail);
-    };
-    document.addEventListener(CONNECT_EVENT, onConnect);
+  it.each([
+    ["ftp://agent.example.com", "Remote agents must use HTTP or HTTPS."],
+    [
+      "https://synthetic-user:synthetic-password@agent.example.com",
+      "Use the access token field instead of credentials in the remote URL.",
+    ],
+  ])(
+    "remote_connect rejects invalid URL %s and keeps the form editable",
+    async (address, message) => {
+      const connectEvents: unknown[] = [];
+      const onConnect = (event: Event) => {
+        connectEvents.push((event as CustomEvent).detail);
+      };
+      document.addEventListener(CONNECT_EVENT, onConnect);
 
-    const { container } = render(
-      <MessageContent
-        message={baseMessage({ secretRequest: pendingRemoteConnectRequest() })}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Remote agent URL"), {
-      target: { value: "ftp://agent.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
-    await waitFor(() => {
-      expect(container.textContent).toContain(
-        "Remote agents must use HTTP or HTTPS.",
+      const { container } = render(
+        <MessageContent
+          message={baseMessage({
+            secretRequest: pendingRemoteConnectRequest(),
+          })}
+        />,
       );
-    });
 
-    // No dispatch, no secret-store write, and the form is still pending +
-    // editable so the user can correct the typo.
-    expect(connectEvents).toEqual([]);
-    expect(updateSecretsMock).not.toHaveBeenCalled();
-    expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
-      "Pending",
-    );
-    expect(screen.getByLabelText("Remote agent URL")).toBeTruthy();
+      fireEvent.change(screen.getByLabelText("Remote agent URL"), {
+        target: { value: address },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    document.removeEventListener(CONNECT_EVENT, onConnect);
-  });
+      await waitFor(() => {
+        expect(container.textContent).toContain(message);
+      });
+
+      // No dispatch, no secret-store write, and the form is still pending +
+      // editable so the user can correct the typo.
+      expect(connectEvents).toEqual([]);
+      expect(updateSecretsMock).not.toHaveBeenCalled();
+      expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+        "Pending",
+      );
+      expect(screen.getByLabelText("Remote agent URL")).toBeTruthy();
+
+      document.removeEventListener(CONNECT_EVENT, onConnect);
+    },
+  );
 
   it("degrades a blocked OAuth popup to same-tab navigation on plain web (#15143)", () => {
     const openMock = vi.fn().mockReturnValue(null);

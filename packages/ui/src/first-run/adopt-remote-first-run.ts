@@ -14,16 +14,18 @@ import { releasePendingFirstRunText } from "./first-run-pending-text";
 
 /**
  * Normalizes a user- or link-supplied remote agent address into a canonical
- * `http(s)://host[:port]` URL, throwing a friendly message on anything invalid.
- * A bare `host:port` is upgraded to `https://`. Trailing slashes, query, and
- * hash are stripped so the same host always yields one identity.
+ * HTTP(S) base URL, preserving deployment path prefixes. A bare `host:port`
+ * is upgraded to HTTPS. Credentials belong in the separate token field;
+ * trailing slashes, query, and hash are removed from the connection identity.
  */
 export function normalizeRemoteAgentUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) throw new Error("Enter a remote agent URL.");
-  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  const bareHostPort = /^[^\s:/?#]+:\d+(?:[/?#]|$)/.test(trimmed);
+  const candidate =
+    !bareHostPort && /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
   let parsed: URL;
   try {
     parsed = new URL(candidate);
@@ -33,6 +35,11 @@ export function normalizeRemoteAgentUrl(value: string): string {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("Remote agents must use HTTP or HTTPS.");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error(
+      "Use the access token field instead of credentials in the remote URL.",
+    );
   }
   parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   parsed.search = "";

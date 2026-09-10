@@ -67,6 +67,7 @@ function dispatchMessage(messageName: string, payload: unknown): void {
       base: string;
       token?: string;
       externalApiBase?: string | null;
+      localApiBase?: string | null;
     };
     if (
       typeof apiBaseUpdate.externalApiBase === "string" &&
@@ -76,6 +77,15 @@ function dispatchMessage(messageName: string, payload: unknown): void {
         apiBaseUpdate.externalApiBase.trim();
     } else {
       Reflect.deleteProperty(window, "__ELIZA_DESKTOP_EXTERNAL_API_BASE__");
+    }
+    if (
+      typeof apiBaseUpdate.localApiBase === "string" &&
+      apiBaseUpdate.localApiBase.trim()
+    ) {
+      window.__ELIZA_DESKTOP_LOCAL_API_BASE__ =
+        apiBaseUpdate.localApiBase.trim();
+    } else {
+      Reflect.deleteProperty(window, "__ELIZA_DESKTOP_LOCAL_API_BASE__");
     }
     // Propagate to boot config so the appClient picks up port changes.
     // We modify it directly instead of importing @elizaos/app-core
@@ -200,6 +210,7 @@ declare global {
   interface Window {
     __ELIZA_API_TOKEN__: string;
     __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: string;
+    __ELIZA_DESKTOP_LOCAL_API_BASE__?: string;
     __ELIZA_ELECTROBUN_RPC__?: typeof electrobunRpc;
   }
 }
