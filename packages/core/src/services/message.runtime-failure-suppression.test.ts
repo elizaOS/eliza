@@ -829,9 +829,14 @@ it.each(["valid", "unknown"])(
 	},
 );
 
-it.each(["available", "unavailable"])(
-	"preserves four completed operations after protocol exhaustion with %s presentation",
-	async (presentation) => {
+it.each([
+	["available", false],
+	["unavailable", false],
+	["available", true],
+	["unavailable", true],
+] as const)(
+	"preserves four completed operations after protocol exhaustion with %s presentation (earlier failure: %s)",
+	async (presentation, earlierFailure) => {
 		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
 		const completed: string[] = [];
 		const names = ["STORE_ONE", "STORE_TWO", "STORE_THREE", "STORE_FOUR"];
@@ -850,6 +855,19 @@ it.each(["available", "unavailable"])(
 			},
 		}));
 		runtime.actions = [
+			...(earlierFailure
+				? [
+						{
+							name: "FAILED_READ",
+							description: "Read the initial record.",
+							validate: async () => true,
+							handler: async () => ({
+								success: false,
+								error: "Initial read failed.",
+							}),
+						},
+					]
+				: []),
 			...names.map((name, index) => ({
 				name,
 				description: `Store record ${name}.`,
@@ -860,6 +878,13 @@ it.each(["available", "unavailable"])(
 						success: true,
 						transcriptVisibility: "internal" as const,
 						data: { id: name, status: "stored" },
+						...(earlierFailure && index === 0
+							? {
+									verifiedUserFacing: true,
+									userFacingText: "Done. The first todo was created.",
+									userFacingEffectReceiptIds: [receipts[index].receiptId],
+								}
+							: {}),
 						effectReceipts: [receipts[index]],
 					};
 				},
@@ -880,6 +905,7 @@ it.each(["available", "unavailable"])(
 			],
 		});
 		const partial =
+			(earlierFailure ? "The initial read failed. " : "") +
 			"I created the todo records STORE_ONE, STORE_TWO, STORE_THREE, and STORE_FOUR. The remaining update did not run because planning stopped on invalid scope declarations.";
 		const responses: unknown[] = [
 			{
@@ -893,7 +919,11 @@ it.each(["available", "unavailable"])(
 							thought: "Store four records, then update the remaining one.",
 							contexts: ["general"],
 							intents: ["store four records", "update remaining record"],
-							candidateActionNames: [...names, "UPDATE_REMAINING"],
+							candidateActionNames: [
+								...(earlierFailure ? ["FAILED_READ"] : []),
+								...names,
+								"UPDATE_REMAINING",
+							],
 							replyText: "",
 							replyEffectStatus: "pending",
 							facts: [],
@@ -904,6 +934,15 @@ it.each(["available", "unavailable"])(
 				],
 			},
 		];
+		if (earlierFailure)
+			responses.push(
+				plan("FAILED_READ", "more_work_pending"),
+				JSON.stringify({
+					success: false,
+					decision: "CONTINUE",
+					thought: "The initial read failed; continue independent writes.",
+				}),
+			);
 		for (const name of names) {
 			responses.push(plan(name, "more_work_pending"));
 			responses.push(
@@ -951,10 +990,13 @@ it.each(["available", "unavailable"])(
 			},
 		);
 		expect(completed).toEqual(names);
-		expect(result.actionResults).toHaveLength(4);
-		expect(result.actionResults?.map((outcome) => outcome.data?.id)).toEqual(
-			names,
-		);
+		expect(result.actionResults).toHaveLength(earlierFailure ? 5 : 4);
+		expect(
+			result.actionResults
+				?.filter((outcome) => outcome.success)
+				.map((outcome) => outcome.data?.id),
+		).toEqual(names);
+		if (earlierFailure) expect(result.actionResults?.[0].success).toBe(false);
 		expect(
 			result.actionResults?.flatMap(
 				(outcome) =>
@@ -965,11 +1007,13 @@ it.each(["available", "unavailable"])(
 			code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
 			transient: false,
 		});
-		expect(JSON.stringify(modelInputs[11])).toContain(
+		expect(JSON.stringify(modelInputs[earlierFailure ? 13 : 11])).toContain(
 			"PLANNER_SCOPE_DECLARATION_REQUIRED",
 		);
 		for (const name of names)
-			expect(JSON.stringify(modelInputs[11])).toContain(name);
+			expect(JSON.stringify(modelInputs[earlierFailure ? 13 : 11])).toContain(
+				name,
+			);
 		if (presentation === "available") {
 			expect(delivered.map((content) => content.text)).toContain(partial);
 			expect(

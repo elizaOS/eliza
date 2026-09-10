@@ -6455,10 +6455,14 @@ async function finishWithForcedSynthesis(params: {
 		iteration,
 		onUsage: params.onUsage,
 	});
-	const finalMessage = preferredFinalMessageFromToolOrModel(
-		trajectory,
-		synthOutput.messageToUser,
-	);
+	const failureReport = params.failureAware
+		? userSafeFailureReport(synthOutput.messageToUser, trajectory)
+		: undefined;
+	// Failure-instructed synthesis accounts for the whole turn; a verified
+	// successful substep must not replace its explicit partial-work report.
+	const finalMessage =
+		failureReport ??
+		preferredFinalMessageFromToolOrModel(trajectory, synthOutput.messageToUser);
 	trajectory.steps.push({
 		iteration,
 		thought: synthOutput.thought,
@@ -6469,13 +6473,8 @@ async function finishWithForcedSynthesis(params: {
 		status: "finished",
 		trajectory,
 		finalMessage: userSafeFinalMessage(
-			terminalMessageWithFailureAuthority(
-				trajectory,
-				finalMessage,
-				params.failureAware
-					? userSafeFailureReport(synthOutput.messageToUser, trajectory)
-					: undefined,
-			),
+			failureReport ??
+				terminalMessageWithFailureAuthority(trajectory, finalMessage),
 			trajectory,
 		),
 	};
