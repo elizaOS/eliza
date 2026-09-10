@@ -1268,7 +1268,10 @@ describe("startLifeOpsActivitySignalCapture", () => {
       resumed,
     );
     expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalledWith(
-      expect.objectContaining({ state: "hidden" }),
+      expect.objectContaining({
+        source: "page_visibility",
+        metadata: expect.objectContaining({ visibilityState: "hidden" }),
+      }),
     );
     expect(h.dispatchStatus).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "capture_error" }),
