@@ -82,6 +82,8 @@ function resolveExportTarget(exportTarget: unknown): string | undefined {
   }
 
   const record = exportTarget as Record<string, unknown>;
+  const sourceTarget = resolveExportTarget(record["eliza-source"]);
+  if (sourceTarget) return sourceTarget;
   for (const key of ["bun", "import", "default", "types"]) {
     const candidate = record[key];
     if (typeof candidate === "string") {
@@ -484,6 +486,12 @@ export function getWorkspacePluginAliases(
 
       return [
         ...getWorkspacePackageExportAliases(pluginName, packageRoot),
+        {
+          // Root-barrel aliases cannot resolve a package subpath by appending
+          // it to index.ts. Preserve exact export overrides, then use source.
+          find: new RegExp(`^@elizaos/${escapeRegExp(pluginName)}/(.+)$`),
+          replacement: toPosix(path.join(sourceRoot, "$1")),
+        },
         ...getPackageSourceAliases(pluginName, sourceRoot, {
           rootReplacement: pluginEntry,
         }),
