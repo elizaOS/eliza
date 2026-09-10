@@ -69,6 +69,25 @@ describe("matchViewCommand — explicit user examples", () => {
 	}
 });
 
+describe("matchViewCommand — Projects navigation", () => {
+	it.each([
+		"open projects",
+		"show my projects",
+		"open the projects view",
+		"go to the project view",
+	])("opens Projects for %s", (text) => {
+		expect(matchViewCommand(text)).toBe("projects");
+	});
+	it.each([
+		"create a project",
+		"work on my projects",
+		"I have projects to finish",
+		"open projects and delete a note",
+	])("leaves domain work to the planner for %s", (text) => {
+		expect(matchViewCommand(text)).toBeNull();
+	});
+});
+
 describe("matchViewCommand — multilingual", () => {
 	const cases: Array<[string, string]> = [
 		// es

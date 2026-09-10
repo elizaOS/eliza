@@ -4,7 +4,8 @@
  * (the PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT sentinel) maps to 503 with the
  * structured transient code the cloud restart orchestrator keys on, while a
  * genuine dump failure stays a terminal 500. Only the database adapter is a
- * stub; server, routes, and snapshot capture are real.
+ * stub; server, routes, and snapshot capture are real. Startup checks use
+ * controlled provider transport to verify the deferred-work opt-out.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -104,6 +105,7 @@ class PgliteFacadeAdapter extends InMemoryDatabaseAdapter {
 async function withSnapshotServer(
   dumpDataDir: () => Promise<unknown>,
   run: (baseUrl: string) => Promise<void>,
+  skipDeferredStartupWork = true,
 ): Promise<void> {
   snapshotEnvironment();
   const root = await mkdtemp(path.join(tmpdir(), "eliza-snapshot-route-"));
@@ -122,7 +124,7 @@ async function withSnapshotServer(
     api = await startApiServer({
       port: 0,
       runtime,
-      skipDeferredStartupWork: true,
+      skipDeferredStartupWork,
     });
     process.env.ELIZA_PORT = String(api.port);
     process.env.ELIZA_API_PORT = String(api.port);
@@ -155,6 +157,48 @@ afterEach(() => {
 });
 
 describe("POST /api/snapshot transient/terminal mapping", () => {
+  it.each([true, false])(
+    "honors the startup discovery opt-out (%s) while serving snapshot requests",
+    async (skipDeferredStartupWork) => {
+      const originalFetch = globalThis.fetch;
+      const discoveryRequests: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const url = new URL(
+          typeof input === "string" || input instanceof URL ? input : input.url,
+        );
+        if (
+          url.hostname === "127.0.0.1" &&
+          !url.pathname.includes("/api/tags")
+        ) {
+          return originalFetch(input, init);
+        }
+        discoveryRequests.push(url.href);
+        return Response.json({ data: [], models: [] });
+      });
+      await withSnapshotServer(
+        async () => {
+          throw new Error("PGlite is closing");
+        },
+        async (baseUrl) => {
+          const response = await postSnapshot(baseUrl);
+          expect(response.status).toBe(503);
+          expect(await response.json()).toMatchObject({
+            code: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
+          });
+          if (skipDeferredStartupWork) {
+            expect(discoveryRequests).toEqual([]);
+          } else {
+            expect(discoveryRequests).toContain(
+              "https://openrouter.ai/api/v1/models?output_modalities=all",
+            );
+          }
+        },
+        skipDeferredStartupWork,
+      );
+    },
+    120_000,
+  );
+
   it("maps a PGlite closing race to 503 with the structured transient code", async () => {
     await withSnapshotServer(
       async () => {
