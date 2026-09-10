@@ -4,6 +4,7 @@
  */
 
 import type { ReactNode } from "react";
+import { FramedPage } from "../../layouts/framed-page";
 import { ViewHeader } from "../shared/ViewHeader";
 import { ScrollArea } from "../ui/scroll-area";
 
@@ -21,15 +22,23 @@ export function PluginPageFrame({
   safeAreaTop = false,
 }: PluginPageFrameProps): React.JSX.Element {
   return (
-    <div
-      className={`flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden${
+    <FramedPage
+      gutterOwner="framed-page"
+      reserveComposer={contentOverflow === "auto"}
+      className={`overflow-hidden${
         safeAreaTop ? " pt-[var(--safe-area-top,0px)]" : ""
       }`}
     >
       <ViewHeader title={title} />
       {contentOverflow === "auto" ? (
         <section aria-label={title} className="min-h-0 min-w-0 flex-1">
-          <ScrollArea className="h-full min-w-0">{children}</ScrollArea>
+          {/* Vertical pages must wrap their content instead of inheriting Radix's intrinsic table width. */}
+          <ScrollArea
+            className="h-full min-w-0"
+            viewportClassName="[&>div]:!block"
+          >
+            {children}
+          </ScrollArea>
         </section>
       ) : (
         <section
@@ -39,6 +48,6 @@ export function PluginPageFrame({
           {children}
         </section>
       )}
-    </div>
+    </FramedPage>
   );
 }

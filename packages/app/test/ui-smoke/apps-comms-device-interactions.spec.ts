@@ -2,11 +2,12 @@
  * Playwright UI-smoke spec for the Apps Comms Device Interactions app flow
  * using the real renderer fixture.
  */
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
   hideChatOverlay,
   installDefaultAppRoutes,
+  openAppPath,
   seedAppStorage,
 } from "./helpers";
 
@@ -389,6 +390,16 @@ async function installDeterministicNativeBridge(
           starred: false,
         },
       ];
+      for (let index = 0; index < 9; index += 1) {
+        contacts.push({
+          id: `contact-qa-${index}`,
+          lookupKey: `lookup-qa-${index}`,
+          displayName: `QA Contact ${index} complete organization reference`,
+          phoneNumbers: [`+1415555020${index}`],
+          emailAddresses: [`qa-contact-${index}-complete-address@example.test`],
+          starred: false,
+        });
+      }
       const recentCalls = [
         {
           id: "call-ada",
@@ -1104,9 +1115,7 @@ test.describe("Android communications app interactions", () => {
     await openAppWindow(page, "messages", "/messages", [
       { selector: '[data-agent-id="messages-refresh"]' },
     ]);
-    await page
-      .locator('[data-agent-id="open-thread-thread-alpha"]')
-      .click();
+    await page.locator('[data-agent-id="open-thread-thread-alpha"]').click();
     await expect(page.getByText("Can you review the build?")).toBeVisible();
     const latestThreadMessage = page.getByText(
       "Yes, checking the deterministic smoke path now.",
@@ -1161,6 +1170,130 @@ test.describe("Android communications app interactions", () => {
       "contacts deterministic controls",
     );
   });
+
+  for (const width of [390, 844]) {
+    for (const view of ["phone", "messages", "contacts"] as const) {
+      test(`${view} normal route keeps native actions reachable above the composer at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({
+          width,
+          height: width === 390 ? 844 : 390,
+        });
+        await installDefaultAppRoutes(page);
+        await openAppPath(page, `/${view}`);
+        const title = view[0].toUpperCase() + view.slice(1);
+        await expect(
+          page.getByRole("region", { name: title, exact: true }),
+        ).toBeVisible();
+        const composer = page.locator('[data-testid="chat-sheet"]');
+        await expect(composer).toBeVisible();
+        const region = page.getByRole("region", { name: title, exact: true });
+        if (view === "contacts") {
+          await expect(
+            page.getByText("QA Contact 8 complete organization reference", {
+              exact: true,
+            }),
+          ).toBeAttached();
+        }
+        await expect
+          .poll(() =>
+            region
+              .locator('[data-slot="scroll-area-viewport"]')
+              .evaluate((element) => element.scrollWidth - element.clientWidth),
+          )
+          .toBeLessThanOrEqual(1);
+        let target: Locator;
+        if (view === "phone") {
+          target = page.locator('[data-agent-id="call:call-grace"]');
+        } else if (view === "messages") {
+          await page
+            .locator('[data-agent-id="compose-address"]')
+            .fill("+14155550103");
+          await page
+            .locator('[data-agent-id="compose-body"]')
+            .fill("Complete message from the composer-clearance regression");
+          target = page.locator('[data-agent-id="messages-send"]');
+        } else {
+          const existingContact = page.locator(
+            '[data-agent-id="select:contact-qa-8"]',
+          );
+          await existingContact.evaluate((element) =>
+            element.scrollIntoView({ block: "center", behavior: "instant" }),
+          );
+          await existingContact.click();
+          await expect(
+            page.getByText("QA Contact 8 complete organization reference", {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("qa-contact-8-complete-address@example.test", {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await page.locator('[data-agent-id="back"]').click();
+          await page.locator('[data-agent-id="new"]').click();
+          await page.locator('[data-agent-id="name"]').fill("Lin Clearance");
+          await page.locator('[data-agent-id="phone"]').fill("+14155550199");
+          await page
+            .locator('[data-agent-id="email"]')
+            .fill("lin.clearance@example.test");
+          target = page.locator('[data-agent-id="save"]');
+        }
+        await expect(target).toBeEnabled();
+        await expect(composer).toBeVisible();
+        await target.evaluate((element) =>
+          element.scrollIntoView({
+            block: "center",
+            inline: "nearest",
+            behavior: "instant",
+          }),
+        );
+        await expect
+          .poll(() =>
+            target.evaluate((element) => {
+              const rect = element.getBoundingClientRect();
+              const hit = document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              );
+              return hit !== null && element.contains(hit);
+            }),
+          )
+          .toBe(true);
+        await target.click();
+        if (view === "phone") {
+          await expect
+            .poll(
+              async () =>
+                (await readFixture(page))?.phone.placedCalls.at(-1)?.number,
+            )
+            .toBe("+14155550102");
+        } else if (view === "messages") {
+          await expect
+            .poll(async () => (await readFixture(page))?.messages.sent.at(-1))
+            .toEqual({
+              address: "+14155550103",
+              body: "Complete message from the composer-clearance regression",
+            });
+        } else {
+          await expect
+            .poll(async () =>
+              (await readFixture(page))?.contacts.created.at(-1),
+            )
+            .toEqual({
+              displayName: "Lin Clearance",
+              phoneNumber: "+14155550199",
+              emailAddress: "lin.clearance@example.test",
+            });
+          await expect(
+            page.getByText("Lin Clearance", { exact: true }),
+          ).toBeVisible();
+        }
+      });
+    }
+  }
 
   test("phone companion pairing form is reachable and deterministic", async ({
     page,
