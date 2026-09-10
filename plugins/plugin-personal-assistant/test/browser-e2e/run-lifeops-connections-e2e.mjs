@@ -772,13 +772,19 @@ try {
     });
     if (width === 1180) {
       await approve.hover();
+      // Measure the settled hover state, not interpolated foreground and fill.
+      await approve.evaluate(async (element) => {
+        await Promise.all(
+          element.getAnimations().map((animation) => animation.finished),
+        );
+      });
       const colors = await approve.evaluate((element) => ({
         foreground: getComputedStyle(element).color,
         background: getComputedStyle(element).backgroundColor,
       }));
       assert(
         contrastRatio(colors.foreground, colors.background) >= 4.5,
-        "email approval hover preserves readable contrast",
+        `email approval hover preserves readable contrast (${colors.foreground} on ${colors.background})`,
       );
       await family.screenshot({
         path: join(outputDir, "family-approval-hover.png"),
