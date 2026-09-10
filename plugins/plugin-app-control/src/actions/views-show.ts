@@ -13,7 +13,6 @@ import type {
 	ViewType,
 } from "@elizaos/core";
 import { getStreamingContext, logger, satisfiesRoleGate } from "@elizaos/core";
-import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import { getAppControlApiBase } from "../loopback-api.js";
 import { describeTargetReference, targetReferenceLogView } from "../params.js";
@@ -28,6 +27,7 @@ import {
 } from "./view-catalog-scope.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import { isRealtimeVoiceTurn } from "./view-delivery.js";
+import { resolveCanonicalViewTarget } from "./view-target.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { scoreView } from "./views-search.js";
@@ -547,11 +547,7 @@ export async function runViewsShow({
 	const catalogBlock = blockedResult();
 	if (catalogBlock) return catalogBlock;
 	// Resolve only the structured destination; other request clauses cannot replace it.
-	const canonicalTarget = Object.entries(SHARED_NAV_TARGETS).find(
-		([id, entry]) =>
-			id.toLowerCase() === target.toLowerCase() ||
-			entry.label.toLowerCase() === target.toLowerCase(),
-	)?.[1];
+	const canonicalTarget = resolveCanonicalViewTarget(target);
 	const resolution = resolveView(target, views, canonicalTarget?.viewId);
 
 	if (resolution.kind === "none") {

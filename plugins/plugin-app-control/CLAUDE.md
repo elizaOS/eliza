@@ -240,4 +240,11 @@ the fresh authorized catalog, with normal planner execution and transport gates.
 Missing, malformed, uncertain, stale or unavailable selections retain the
 separate live-catalog model classifier. No field handler executes navigation.
 
+Known structured Stage-1 aliases such as `Home` reuse the same canonical target
+vocabulary as VIEWS. An alias is accepted only when its canonical destination
+is present in the fresh authorized catalog; it never supplies navigation intent
+from user text or bypasses role, availability, developer-view or transport gates.
+Exact registered IDs retain precedence in Stage-1 selection. Unresolved aliases
+keep the classifier rather than selecting a fuzzy destination.
+
 Explicit VIEWS list/current/search operations remain reads even when the request mentions keeping a split or window visible; layout inference must not turn a read into a mutation or an avoidable planner repair round.

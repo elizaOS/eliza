@@ -13,6 +13,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { navigationDispatchBlock } from "../actions/navigation-execution.js";
+import type { ViewSummary } from "../actions/views-client.js";
 import {
 	parseContextualNavigationIntent,
 	viewContextPlanningEvaluator,
@@ -24,6 +25,7 @@ let catalogStatus: number;
 let requestedPaths: string[];
 let originalPort: string | undefined;
 let prompts: string[];
+let extraViews: ViewSummary[];
 const views = [
 	{
 		id: "observatory",
@@ -46,11 +48,12 @@ beforeEach(async () => {
 	catalogStatus = 200;
 	requestedPaths = [];
 	prompts = [];
+	extraViews = [];
 	originalPort = process.env.ELIZA_API_PORT;
 	server = createServer((req, res) => {
 		requestedPaths.push(req.url ?? "");
 		res.writeHead(catalogStatus, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ views }));
+		res.end(JSON.stringify({ views: [...views, ...extraViews] }));
 	});
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 	process.env.ELIZA_API_PORT = String((server.address() as AddressInfo).port);
@@ -182,6 +185,94 @@ describe("same-turn contextual navigation", () => {
 			"VIEWS",
 		]);
 	});
+	it.each(["home", "Home", "chat"])(
+		"reuses a model-selected %s target through the canonical catalog alias without another call",
+		async (viewId) => {
+			extraViews = [
+				{
+					id: "chat",
+					label: "Messages",
+					pluginName: "builtin",
+					available: true,
+				},
+			];
+			const text = "Go Home without changing any notes or calendar events";
+			const ctx = context(text, {
+				disposition: "none",
+				reason: "must not run",
+			});
+			const result = await runWithField(ctx, {
+				disposition: "requested",
+				viewId,
+				reason: "explicit navigation",
+			});
+			expect(result.errors).toEqual([]);
+			expect(result.navigationBlock).toBeUndefined();
+			expect(prompts).toHaveLength(0);
+			expect(requestedPaths).toEqual(["/api/views"]);
+			expect(ctx.message.content.text).toBe(text);
+			expect(ctx.messageHandler.plan.candidateActions).toEqual([
+				"CALENDAR",
+				"VIEWS",
+			]);
+			expect(ctx.messageHandler.plan.contextSlices?.join("\n")).toContain(
+				'"viewId":"chat"',
+			);
+		},
+	);
+	it.each<{ catalog: ViewSummary[] }>([
+		{ catalog: [] },
+		{
+			catalog: [
+				{
+					id: "chat",
+					label: "Messages",
+					pluginName: "builtin",
+					available: false,
+				},
+			],
+		},
+		{
+			catalog: [
+				{
+					id: "chat",
+					label: "Messages",
+					pluginName: "builtin",
+					available: true,
+					roleGate: { minRole: "OWNER" },
+				},
+			],
+		},
+		{
+			catalog: [
+				{
+					id: "chat",
+					label: "Messages",
+					pluginName: "builtin",
+					available: true,
+					developerOnly: true,
+				},
+			],
+		},
+	])(
+		"keeps inference and denial when an alias target is not authorized: %j",
+		async ({ catalog }) => {
+			extraViews = catalog;
+			const ctx = context("Go Home", {
+				disposition: "none",
+				reason: "unavailable",
+			});
+			const result = await runWithField(ctx, {
+				disposition: "requested",
+				viewId: "home",
+				reason: "requested",
+			});
+			expect(result.errors).toEqual([]);
+			expect(prompts).toHaveLength(1);
+			expect(result.navigationBlock).toBe("forbidden");
+			expect(ctx.messageHandler.plan.candidateActions).toEqual(["CALENDAR"]);
+		},
+	);
 	it.each([
 		undefined,
 		{ disposition: "unresolved", viewId: "", reason: "uncertain" },

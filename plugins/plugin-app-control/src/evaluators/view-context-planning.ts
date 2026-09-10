@@ -16,6 +16,7 @@ import {
 } from "@elizaos/core";
 import { setNavigationConstraint } from "../actions/navigation-execution.js";
 import { VIEW_CATALOG_SCOPE_CONTEXT } from "../actions/view-catalog-scope.js";
+import { resolveCanonicalViewTarget } from "../actions/view-target.js";
 import { messageHasNoViewSurface } from "../actions/views.js";
 import { createViewsClient } from "../actions/views-client.js";
 import { userRequestMessageText } from "../params.js";
@@ -219,6 +220,20 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				],
 			};
 		getStreamingContext()?.abortSignal?.throwIfAborted();
+		// Stage 1 already made the navigation judgment. Resolve its structured
+		// alias through the same vocabulary as VIEWS, then recheck the fresh
+		// authorized catalog. This never reads intent from user text or grants
+		// access to an absent, unavailable, private or developer-only view.
+		const stagedViewId = intent?.viewId;
+		if (intent && !catalog.some((view) => view.id === stagedViewId)) {
+			const canonicalTarget = resolveCanonicalViewTarget(intent.viewId);
+			if (
+				canonicalTarget &&
+				catalog.some((view) => view.id === canonicalTarget.viewId)
+			) {
+				intent = { ...intent, viewId: canonicalTarget.viewId };
+			}
+		}
 		if (
 			!intent ||
 			!catalog.some(
