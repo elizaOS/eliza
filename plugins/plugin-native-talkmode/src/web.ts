@@ -31,6 +31,10 @@ export class TalkModeWeb extends WebPlugin {
   private statusText = "Off";
   private synthesis: SpeechSynthesis | null = null;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
+  private pendingSpeech = new Map<
+    SpeechSynthesisUtterance,
+    { cancelled: boolean }
+  >();
   private recognition: SpeechRecognitionInstance | null = null;
   private enabled = false;
 
@@ -140,8 +144,7 @@ export class TalkModeWeb extends WebPlugin {
     this.enabled = false;
     this.recognition?.stop();
     this.recognition = null;
-    this.synthesis?.cancel();
-    this.currentUtterance = null;
+    this.cancelPendingSpeech();
     this.setState("idle", "Off");
   }
 
@@ -181,6 +184,8 @@ export class TalkModeWeb extends WebPlugin {
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
       this.currentUtterance = utterance;
+      const outcome = { cancelled: false };
+      this.pendingSpeech.set(utterance, outcome);
 
       // Always set language — fallback to en-US if directive doesn't specify.
       // Without this, the browser uses the system locale, which may read
@@ -196,30 +201,34 @@ export class TalkModeWeb extends WebPlugin {
         utterance.rate = options.directive.speed;
       }
 
-      // stop() and stopSpeaking() null `currentUtterance` when they cancel
-      // synthesis, and the browser delivers this utterance's end or error
-      // event afterwards. A stale handler must still settle the promise and
-      // notify listeners, but must not write "listening" or "Speech error"
-      // over the state the caller already set: idle for a teardown, listening
-      // for an interruption of a live session.
+      // Replaced replies may finish normally; explicitly cancelled replies may
+      // not claim successful speech even if the browser later reports an end.
       const isStale = () => this.currentUtterance !== utterance;
 
       utterance.onend = () => {
         const stale = isStale();
+        this.pendingSpeech.delete(utterance);
         if (!stale) this.currentUtterance = null;
-        this.notifyListeners("speakComplete", { completed: true });
+        this.notifyListeners("speakComplete", {
+          completed: !outcome.cancelled,
+        });
         if (!stale) this.setState("listening", "Listening");
-        resolve({ completed: true, interrupted: false, usedSystemTts: true });
+        resolve({
+          completed: !outcome.cancelled,
+          interrupted: outcome.cancelled,
+          usedSystemTts: true,
+        });
       };
 
       utterance.onerror = (event) => {
         const stale = isStale();
+        this.pendingSpeech.delete(utterance);
         if (!stale) this.currentUtterance = null;
         this.notifyListeners("speakComplete", { completed: false });
         if (!stale) this.setState("idle", "Speech error");
         resolve({
           completed: false,
-          interrupted: event.error === "interrupted",
+          interrupted: outcome.cancelled || event.error === "interrupted",
           usedSystemTts: true,
           error: event.error,
         });
@@ -231,8 +240,7 @@ export class TalkModeWeb extends WebPlugin {
 
   async stopSpeaking(): Promise<{ interruptedAt?: number }> {
     if (this.synthesis && this.currentUtterance) {
-      this.synthesis.cancel();
-      this.currentUtterance = null;
+      this.cancelPendingSpeech();
       // The cancelled utterance's own end event is stale from here on, so the
       // resumed listening state is set here rather than by that handler.
       if (this.enabled) {
@@ -241,6 +249,14 @@ export class TalkModeWeb extends WebPlugin {
       return { interruptedAt: undefined };
     }
     return {};
+  }
+
+  private cancelPendingSpeech(): void {
+    // cancel() affects the whole browser queue and may synchronously call back.
+    for (const outcome of this.pendingSpeech.values()) outcome.cancelled = true;
+    this.pendingSpeech.clear();
+    this.currentUtterance = null;
+    this.synthesis?.cancel();
   }
 
   async isSpeaking(): Promise<{ speaking: boolean }> {

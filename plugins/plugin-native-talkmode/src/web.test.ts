@@ -206,6 +206,85 @@ describe("TalkModeWeb fallback", () => {
     expect(complete).toHaveBeenCalledWith({ completed: true });
   });
 
+  it.each(["end", "error"] as const)(
+    "preserves a newer reply when the replaced utterance reports %s",
+    async (completion) => {
+      const utterances: FakeUtterance[] = [];
+      setWindow({
+        SpeechRecognition: FakeRecognition,
+        speechSynthesis: {
+          cancel: vi.fn(),
+          speaking: false,
+          speak: (utterance: FakeUtterance) => utterances.push(utterance),
+        },
+      });
+      setNavigator({});
+      vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+      const plugin = new TalkModeWeb();
+      const states: string[] = [];
+      await plugin.addListener("stateChange", (event) =>
+        states.push(event.state),
+      );
+      await plugin.start();
+      const first = plugin.speak({ text: "First reply" });
+      const next = plugin.speak({ text: "Next reply" });
+      const statesBeforeCompletion = [...states];
+      if (completion === "end") utterances[0]?.onend?.();
+      else utterances[0]?.onerror?.({ error: "interrupted" });
+      await expect(first).resolves.toMatchObject({ usedSystemTts: true });
+      expect(states).toEqual(statesBeforeCompletion);
+      await expect(plugin.getState()).resolves.toEqual({
+        state: "speaking",
+        statusText: "Speaking",
+      });
+      utterances[1]?.onend?.();
+      await expect(next).resolves.toMatchObject({ completed: true });
+      await expect(plugin.getState()).resolves.toEqual({
+        state: "listening",
+        statusText: "Listening",
+      });
+      await plugin.stop();
+    },
+  );
+
+  it.each(["stop", "stopSpeaking"] as const)(
+    "%s marks the complete browser queue interrupted before synchronous cancel callbacks",
+    async (operation) => {
+      const utterances: FakeUtterance[] = [];
+      setWindow({
+        SpeechRecognition: FakeRecognition,
+        speechSynthesis: {
+          cancel: () => {
+            for (const utterance of utterances) utterance.onend?.();
+          },
+          speaking: false,
+          speak: (utterance: FakeUtterance) => utterances.push(utterance),
+        },
+      });
+      setNavigator({});
+      vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+      const plugin = new TalkModeWeb();
+      const completed: boolean[] = [];
+      await plugin.addListener("speakComplete", (event) =>
+        completed.push(event.completed),
+      );
+      await plugin.start();
+      const first = plugin.speak({ text: "Queued first reply" });
+      const second = plugin.speak({ text: "Queued next reply" });
+      await plugin[operation]();
+      expect(await Promise.all([first, second])).toEqual([
+        { completed: false, interrupted: true, usedSystemTts: true },
+        { completed: false, interrupted: true, usedSystemTts: true },
+      ]);
+      expect(completed).toEqual([false, false]);
+      await expect(plugin.getState()).resolves.toEqual(
+        operation === "stop"
+          ? { state: "idle", statusText: "Off" }
+          : { state: "listening", statusText: "Listening" },
+      );
+    },
+  );
+
   it("restarts the recognizer when the session ends mid-utterance while speaking (issue #22369)", async () => {
     const utterances: FakeUtterance[] = [];
     const synthesis = {
@@ -304,11 +383,11 @@ describe("TalkModeWeb fallback", () => {
     // had set, showing a live session that no longer existed.
     utterances[0]?.onend?.();
     await expect(speaking).resolves.toEqual({
-      completed: true,
-      interrupted: false,
+      completed: false,
+      interrupted: true,
       usedSystemTts: true,
     });
-    expect(complete).toHaveBeenCalledWith({ completed: true });
+    expect(complete).toHaveBeenCalledWith({ completed: false });
     await expect(plugin.getState()).resolves.toEqual({
       state: "idle",
       statusText: "Off",
