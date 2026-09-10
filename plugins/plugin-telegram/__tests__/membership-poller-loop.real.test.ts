@@ -10,11 +10,12 @@
  * (per-room memory writes, deterministic-provider model invocations, and the
  * authority's own `authorize` decision), not on a single aggregate count.
  *
- * The `it.fails` tripwire at the bottom pins the KNOWN connector-path
- * recovery deadlock; the first (green) test doubles as its companion proof
- * that the shared harness itself admits messages, so a red tripwire is
- * attributable to the deadlock rather than a broken boot. Deterministic;
- * runs entirely on 127.0.0.1.
+ * The final test pins the connector-path recovery path: after a bot kick
+ * (scope `unavailable`, admission denied) a durable, generation-fenced re-add
+ * watermark restores admission through the real long-poll path. The first
+ * (green) test doubles as its companion proof that the shared harness itself
+ * admits messages, so a failure there is attributable to the recovery path
+ * rather than a broken boot. Deterministic; runs entirely on 127.0.0.1.
  */
 import type { UUID } from "@elizaos/core";
 import { createUniqueUuid, ModelType } from "@elizaos/core";
@@ -669,8 +670,8 @@ let wireRef: WireServer | null = null;
 /**
  * Throws a PRECISE error unless admission resumed for the given message:
  * the EXACT inbound text is persisted AND the authority allows the sender.
- * Used inside the `it.fails` tripwire, where the thrown message is the
- * deadlock evidence.
+ * Used inside the recovery test, where the thrown message is the failure
+ * evidence when the re-add watermark fails to restore admission.
  */
 async function assertAdmissionResumedOrThrow(
   handle: RuntimeHandle,
