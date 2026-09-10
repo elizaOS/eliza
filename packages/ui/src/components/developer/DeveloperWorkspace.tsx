@@ -32,6 +32,13 @@ import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { ModelConfigurationPanel } from "../settings/ModelConfigurationPanel";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
 import { NativeSelect } from "../ui/native-select";
 import { SemanticForm } from "../ui/semantic-form";
 import { Table } from "../ui/table";
@@ -358,7 +365,9 @@ export function DeveloperReplyDetails({
   relatedRuns = [],
   roomId,
   messageId,
+  replyText,
 }: {
+  replyText?: string;
   record?: TrajectoryRecord;
   relatedRuns?: TrajectoryRecord[];
   roomId?: string;
@@ -408,12 +417,8 @@ export function DeveloperReplyDetails({
     return () => controller.abort();
   }, [open, tab, recordId, revision]);
   return (
-    <details
-      open={open}
-      className="developer-reply-details"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <div className="developer-reply-summary">
         {record || open ? (
           <span
             className="developer-token-count"
@@ -440,17 +445,25 @@ export function DeveloperReplyDetails({
               : ` · ${duration(record.durationMs)}`}
             {record?.status === "active" ? " · Working…" : ""}
           </span>
-        ) : null}{" "}
-        <span
-          className="developer-details-label"
-          title={
-            record ? undefined : "Load recorded counts and inspect this reply"
-          }
-        >
-          {open ? "Less" : "Details"}
-        </span>
-      </summary>
-      {open ? (
+        ) : null}
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="touch"
+            className="developer-inspect-trigger"
+          >
+            Inspect
+          </Button>
+        </DialogTrigger>
+      </div>
+      <DialogContent className="developer-reply-inspector">
+        <header className="developer-inspection-header">
+          <DialogTitle>Inspect reply</DialogTitle>
+          <DialogDescription className="developer-inspection-preview">
+            {replyText ||
+              "Recorded usage, model inputs, outputs and context for this reply."}
+          </DialogDescription>
+        </header>
         <Tabs
           value={tab}
           onValueChange={setTab}
@@ -464,7 +477,10 @@ export function DeveloperReplyDetails({
               Trajectories
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="details" className="space-y-3">
+          <TabsContent
+            value="details"
+            className="developer-details-scroll space-y-3"
+          >
             <p className="text-xs text-muted">
               Recorded tokens across this run’s model calls, including any
               post-turn evaluation. Background memory runs separately.
@@ -513,12 +529,15 @@ export function DeveloperReplyDetails({
               </details>
             ) : null}
           </TabsContent>
-          <TabsContent value="trajectories">
+          <TabsContent
+            value="trajectories"
+            className="developer-trajectories-panel"
+          >
             <DeveloperTrajectories {...history} />
           </TabsContent>
         </Tabs>
-      ) : null}
-    </details>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -559,6 +578,7 @@ const DeveloperMessage = memo(
         </div>
         {message.role === "assistant" ? (
           <DeveloperReplyDetails
+            replyText={message.text}
             record={record}
             toolEvents={message.toolEvents}
             reasoning={message.reasoning}

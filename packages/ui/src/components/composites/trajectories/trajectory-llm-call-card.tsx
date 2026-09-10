@@ -104,7 +104,7 @@ export function TrajectoryLlmCallCard({
 
   if (compact)
     return (
-      <Tabs defaultValue="input" className="min-w-0 space-y-2 pb-3">
+      <Tabs defaultValue="input" className="developer-call-text min-w-0">
         <TabsList aria-label="Model call text" className="h-auto">
           <TabsTrigger value="input" className="min-h-11">
             Input
@@ -125,7 +125,11 @@ export function TrajectoryLlmCallCard({
             ? [{ id: "system", label: "System", content: systemPrompt }]
             : []),
         ].map((part) => (
-          <TabsContent key={part.id} value={part.id}>
+          <TabsContent
+            key={part.id}
+            value={part.id}
+            className="developer-raw-panel"
+          >
             <TrajectoryCodeBlock
               compact
               label={part.label}

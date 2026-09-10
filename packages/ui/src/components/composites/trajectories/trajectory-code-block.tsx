@@ -48,7 +48,7 @@ export function TrajectoryCodeBlock({
     );
   if (compact)
     return (
-      <div className="min-w-0 space-y-2">
+      <div className="developer-code-block min-w-0 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
           <span>
             {lines.toLocaleString()} {lines === 1 ? "line" : "lines"} ·{" "}

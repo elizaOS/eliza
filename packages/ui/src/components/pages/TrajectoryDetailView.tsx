@@ -13,14 +13,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
@@ -69,6 +62,7 @@ import {
   getToolCallName,
 } from "../tool-events/ToolCallEventLog.helpers";
 import { Button } from "../ui/button";
+import { NativeSelect } from "../ui/native-select";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
@@ -142,6 +136,24 @@ function formatTrajectoryStepLabel(
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized) return fallback;
   return normalized.replace(/_/g, " ");
+}
+
+function compactCallLabel(
+  call: TrajectoryLlmCall,
+  detail: TrajectoryDetailResult,
+): string {
+  const stage = detail.semanticStages
+    ?.filter(
+      (item) =>
+        call.timestamp >= item.startedAt && call.timestamp <= item.endedAt,
+    )
+    .sort((a, b) => a.endedAt - a.startedAt - (b.endedAt - b.startedAt))[0];
+  return stage
+    ? trajectoryStageLabel(stage)
+    : formatTrajectoryStepLabel(
+        call.stepType || call.purpose || call.actionType,
+        "Model call",
+      );
 }
 
 function formatProviderPayload(value: unknown): string {
@@ -525,28 +537,6 @@ function buildContextDiffSummaries(
   }));
 }
 
-function ExpandableModelCall({
-  label,
-  children,
-}: {
-  label: ReactNode;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <details
-      open={open}
-      className="border-t border-[color:var(--settings-hairline)]"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="min-h-11 cursor-pointer break-words py-3 text-sm">
-        {label}
-      </summary>
-      {open ? children : null}
-    </details>
-  );
-}
-
 export function TrajectoryDetailView({
   trajectoryId,
   revision,
@@ -562,7 +552,8 @@ export function TrajectoryDetailView({
   const [activeStage, setActiveStage] = useState<PipelineStageId | null>(null);
 
   const [retry, setRetry] = useState(0);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [inspectionPart, setInspectionPart] = useState("calls");
+  const [selectedCallId, setSelectedCallId] = useState<string>();
   const instanceId = useId();
   // biome-ignore lint/correctness/useExhaustiveDependencies: Revision and explicit retry invalidate the recorded payload.
   useEffect(() => {
@@ -603,6 +594,8 @@ export function TrajectoryDetailView({
   // run retain expanded calls and scroll position while new evidence loads.
   const currentDetail = detail?.trajectory.id === trajectoryId ? detail : null;
   const llmCalls = currentDetail?.llmCalls ?? [];
+  const selectedCall =
+    llmCalls.find((call) => call.id === selectedCallId) ?? llmCalls[0];
   const providerAccesses = detail?.providerAccesses ?? [];
   const trajectory = currentDetail?.trajectory;
   const tokenCount = trajectoryDetailTokenCount(trajectory, llmCalls);
@@ -789,11 +782,48 @@ export function TrajectoryDetailView({
       : null;
 
   const modelCallList = (
-    <div className="min-h-0 flex-1">
-      {collapsibleCalls ? (
-        <h3 className="mb-2 text-sm font-semibold">Model calls</h3>
+    <div
+      className={
+        collapsibleCalls ? "developer-call-inspector" : "min-h-0 flex-1"
+      }
+    >
+      {collapsibleCalls && selectedCall ? (
+        <div className="developer-call-selector">
+          <label htmlFor={`${instanceId}-call`}>Model call</label>
+          <NativeSelect
+            id={`${instanceId}-call`}
+            value={selectedCall.id}
+            onChange={(event) => setSelectedCallId(event.target.value)}
+          >
+            {llmCalls.map((call, index) => (
+              <option key={call.id} value={call.id}>
+                {index + 1} of {llmCalls.length} ·{" "}
+                {compactCallLabel(call, detail)} · {call.model} ·{" "}
+                {call.promptTokens == null
+                  ? "Unknown"
+                  : call.promptTokens.toLocaleString()}{" "}
+                input tokens
+              </option>
+            ))}
+          </NativeSelect>
+          <p className="text-xs text-muted">
+            {selectedCall.provider || "Provider not recorded"} ·{" "}
+            {selectedCall.promptTokens == null
+              ? "Unknown input"
+              : `${selectedCall.promptTokens.toLocaleString()} in`}{" "}
+            /{" "}
+            {selectedCall.completionTokens == null
+              ? "unknown output"
+              : `${selectedCall.completionTokens.toLocaleString()} out`}{" "}
+            · {formatTrajectoryDuration(selectedCall.latencyMs)}
+          </p>
+        </div>
       ) : null}
-      <div className="space-y-4 pb-1">
+      <div
+        className={
+          collapsibleCalls ? "developer-selected-call" : "space-y-4 pb-1"
+        }
+      >
         {llmCalls.length === 0 ? (
           <PagePanel.Empty
             variant="surface"
@@ -807,7 +837,12 @@ export function TrajectoryDetailView({
             calls.
           </p>
         ) : (
-          filteredCalls.map((call) => {
+          (collapsibleCalls
+            ? selectedCall
+              ? [selectedCall]
+              : []
+            : filteredCalls
+          ).map((call) => {
             const { systemPromptText, inputText, outputText } =
               buildTrajectoryCallText(call);
             const linesLabel = t("trajectorydetailview.lines");
@@ -884,16 +919,7 @@ export function TrajectoryDetailView({
                 }}
               />
             );
-            return collapsibleCalls ? (
-              <ExpandableModelCall
-                key={call.id}
-                label={`#${(callIndexMap.get(call.id) ?? 0) + 1} · ${callLabel} · ${call.model} · ${call.promptTokens == null ? "?" : call.promptTokens.toLocaleString()} in / ${call.completionTokens == null ? "?" : call.completionTokens.toLocaleString()} out · ${formatTrajectoryDuration(call.latencyMs)}`}
-              >
-                {card}
-              </ExpandableModelCall>
-            ) : (
-              card
-            );
+            return card;
           })
         )}
       </div>
@@ -901,7 +927,36 @@ export function TrajectoryDetailView({
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-col gap-6" aria-busy={loading}>
+    <div
+      className={
+        collapsibleCalls
+          ? "developer-trajectory-detail"
+          : "flex min-h-0 min-w-0 flex-col gap-6"
+      }
+      aria-busy={loading}
+    >
+      {collapsibleCalls ? (
+        <fieldset
+          aria-label="Trajectory evidence"
+          className="developer-evidence-navigation"
+        >
+          {[
+            ["calls", "Model calls"],
+            ["steps", "Steps"],
+            ["diagnostics", "Context & timeline"],
+          ].map(([value, label]) => (
+            <Button
+              key={value}
+                variant={inspectionPart === value ? "secondary" : "ghost"}
+              size="touch"
+              aria-pressed={inspectionPart === value}
+              onClick={() => setInspectionPart(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </fieldset>
+      ) : null}
       {!collapsibleCalls ? (
         <section>
           <div className="flex min-h-16 items-center gap-3 py-3">
@@ -954,9 +1009,15 @@ export function TrajectoryDetailView({
           </dl>
         </section>
       ) : null}
-      {collapsibleCalls ? modelCallList : null}
-      {!collapsibleCalls || showDiagnostics ? (
-        <>
+      {collapsibleCalls && inspectionPart === "calls" ? modelCallList : null}
+      {!collapsibleCalls || inspectionPart === "diagnostics" ? (
+        <div
+          className={
+            collapsibleCalls
+              ? "developer-diagnostics-scroll space-y-6"
+              : "contents"
+          }
+        >
           {orchestratorData ? (
             <section>
               <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
@@ -1165,14 +1226,17 @@ export function TrajectoryDetailView({
               </div>
             </section>
           ) : null}
-        </>
+        </div>
+      ) : null}
+      {collapsibleCalls && inspectionPart === "steps" ? (
+        <TrajectoryRecordedSteps
+          selectable
+          stages={detail.semanticStages ?? []}
+          onCopy={(content) => void copyToClipboard(content)}
+        />
       ) : null}
       {collapsibleCalls ? (
-        <>
-          <TrajectoryRecordedSteps
-            stages={detail.semanticStages ?? []}
-            onCopy={(content) => void copyToClipboard(content)}
-          />
+        <div className="developer-evidence-footer">
           <Button
             size="touch"
             variant="outline"
@@ -1182,14 +1246,7 @@ export function TrajectoryDetailView({
           >
             Copy entire recorded run
           </Button>
-          <Button
-            size="touch"
-            variant="outline"
-            onClick={() => setShowDiagnostics((value) => !value)}
-          >
-            {showDiagnostics ? "Hide" : "Show"} context and timeline
-          </Button>
-        </>
+        </div>
       ) : null}
     </div>
   );

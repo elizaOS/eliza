@@ -90,7 +90,7 @@ describe("TrajectoryDetailView recorded usage", () => {
     ).toBe("61");
   });
 
-  it("preserves complete model text and expanded calls while a live run refreshes, and cancels closed reads", async () => {
+  it("preserves complete model text and selected calls while a live run refreshes, and cancels closed reads", async () => {
     const original = detail();
     const input =
       Array.from(
@@ -107,13 +107,8 @@ describe("TrajectoryDetailView recorded usage", () => {
       />,
     );
     await waitFor(() =>
-      expect(screen.getByText(/#1 · external llm/)).toBeTruthy(),
+      expect(screen.getByLabelText("Model call")).toBeTruthy(),
     );
-    const call = screen.getByText(/#1 · external llm/).closest("details");
-    if (!call) throw new Error("Model call disclosure missing");
-    call.open = true;
-    fireEvent(call, new Event("toggle"));
-
     expect(screen.getByRole("region", { name: "Input" }).textContent).toBe(
       input,
     );
@@ -136,10 +131,10 @@ describe("TrajectoryDetailView recorded usage", () => {
         collapsibleCalls
       />,
     );
-    await waitFor(() =>
-      expect(screen.getByText(/#7 · evaluation/)).toBeTruthy(),
-    );
-    expect(call.open).toBe(true);
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(7));
+    expect(
+      (screen.getByLabelText("Model call") as HTMLSelectElement).value,
+    ).toBe(original.llmCalls[0].id);
     expect(screen.getByRole("region", { name: "Input" }).textContent).toBe(
       input,
     );

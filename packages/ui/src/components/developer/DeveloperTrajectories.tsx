@@ -1,44 +1,14 @@
 /** Message-scoped, on-demand access to the shared full trajectory viewer. */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type { TrajectoryRecord } from "../../api/client-types-cloud";
 import { TrajectoryDetailView } from "../pages/TrajectoryDetailView";
 import { Button } from "../ui/button";
+import { NativeSelect } from "../ui/native-select";
 import { trajectoryRevision } from "./useDeveloperTrajectories";
 
-function RecordedRun({
-  record,
-  initialOpen,
-}: {
-  record: TrajectoryRecord;
-  initialOpen: boolean;
-}) {
-  const [open, setOpen] = useState(initialOpen);
-  return (
-    <details
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="min-h-11 cursor-pointer py-3 text-sm">
-        {record.source === "client_chat"
-          ? "Foreground"
-          : record.source === "background_memory"
-            ? "Background memory"
-            : record.source.replace(/_/g, " ")}
-        {" · "}
-        {record.llmCallCount} model{" "}
-        {record.llmCallCount === 1 ? "call" : "calls"} · {record.status}
-      </summary>
-      {open ? (
-        <TrajectoryDetailView
-          trajectoryId={record.id}
-          revision={trajectoryRevision(record)}
-          collapsibleCalls
-        />
-      ) : null}
-    </details>
-  );
-}
+const runLabel = (record: TrajectoryRecord) =>
+  `${record.source === "client_chat" ? "Foreground" : record.source === "background_memory" ? "Background memory" : record.source.replace(/_/g, " ")} · ${record.llmCallCount} model ${record.llmCallCount === 1 ? "call" : "calls"} · ${record.status}`;
 
 export function useMessageTrajectories({
   records,
@@ -120,8 +90,11 @@ export function DeveloperTrajectories({
   error,
   retry,
 }: ReturnType<typeof useMessageTrajectories>) {
+  const [selectedId, setSelectedId] = useState<string>();
+  const selectId = useId();
+  const selected = runs.find((run) => run.id === selectedId) ?? runs[0];
   return (
-    <div className="min-w-0 space-y-3">
+    <div className="developer-run-browser">
       {loading ? (
         <p role="status" className="text-xs text-muted">
           Finding all runs for this message…
@@ -138,13 +111,36 @@ export function DeveloperTrajectories({
       {!loading && !error && !runs.length ? (
         <p role="status">No recorded trajectories for this message.</p>
       ) : null}
-      {runs.map((record, index) => (
-        <RecordedRun
-          key={record.id}
-          record={record}
-          initialOpen={index === 0}
-        />
-      ))}
+      {selected ? (
+        <>
+          <div className="developer-run-selector">
+            {runs.length > 1 ? (
+              <>
+                <label htmlFor={selectId}>Run</label>
+                <NativeSelect
+                  id={selectId}
+                  value={selected.id}
+                  onChange={(event) => setSelectedId(event.target.value)}
+                >
+                  {runs.map((run, index) => (
+                    <option key={run.id} value={run.id}>
+                      {index + 1}. {runLabel(run)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </>
+            ) : (
+              <p>{runLabel(selected)}</p>
+            )}
+          </div>
+          <TrajectoryDetailView
+            key={selected.id}
+            trajectoryId={selected.id}
+            revision={trajectoryRevision(selected)}
+            collapsibleCalls
+          />
+        </>
+      ) : null}
     </div>
   );
 }

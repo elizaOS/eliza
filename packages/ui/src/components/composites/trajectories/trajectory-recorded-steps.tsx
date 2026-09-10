@@ -2,7 +2,9 @@
 import { useId, useState } from "react";
 import type { TrajectoryDetailResult } from "../../../api/client-types-cloud";
 import { Button } from "../../ui/button";
+import { NativeSelect } from "../../ui/native-select";
 import { Separator } from "../../ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import { TrajectoryCodeBlock } from "./trajectory-code-block";
 
 type Stage = NonNullable<TrajectoryDetailResult["semanticStages"]>[number];
@@ -98,11 +100,92 @@ function RecordedStep({
 export function TrajectoryRecordedSteps({
   stages,
   onCopy,
+  selectable = false,
 }: {
+  selectable?: boolean;
   stages: Stage[];
   onCopy: (content: string) => void;
 }) {
-  if (!stages.length) return null;
+  const [selectedId, setSelectedId] = useState<string>();
+  const selectId = useId();
+  const ordered = [...stages].sort((a, b) => a.startedAt - b.startedAt);
+  const selected =
+    ordered.find((stage) => stage.stageId === selectedId) ?? ordered[0];
+  if (!selected)
+    return selectable ? (
+      <p role="status">No recorded steps for this run.</p>
+    ) : null;
+  if (selectable) {
+    const model = object(selected.payload.model);
+    const tool = object(selected.payload.tool);
+    const search = object(selected.payload.toolSearch);
+    return (
+      <section className="developer-step-inspector" aria-label="Recorded steps">
+        <div className="developer-call-selector">
+          <label htmlFor={selectId}>Recorded step</label>
+          <NativeSelect
+            id={selectId}
+            value={selected.stageId}
+            onChange={(event) => setSelectedId(event.target.value)}
+          >
+            {ordered.map((stage, index) => (
+              <option key={stage.stageId} value={stage.stageId}>
+                {index + 1} of {ordered.length} · {trajectoryStageLabel(stage)}{" "}
+                · {stage.latencyMs}ms
+              </option>
+            ))}
+          </NativeSelect>
+          <p className="text-xs text-muted">
+            Handler, planner and action evidence. Model steps are the same
+            calls, not additional usage.
+          </p>
+        </div>
+        <Tabs
+          key={selected.stageId}
+          defaultValue="Input"
+          className="developer-call-text"
+        >
+          <TabsList aria-label="Step content" className="h-auto">
+            <TabsTrigger value="Input">Input</TabsTrigger>
+            <TabsTrigger value="Output">Output</TabsTrigger>
+            <TabsTrigger value="Complete step">Full step</TabsTrigger>
+          </TabsList>
+          {[
+            [
+              "Input",
+              model.messages ?? tool.input ?? tool.args ?? search.query,
+            ],
+            [
+              "Output",
+              model.response ??
+                tool.output ??
+                tool.result ??
+                search.results ??
+                selected.payload.evaluation,
+            ],
+            ["Complete step", selected],
+          ].map(([label, value]) => (
+            <TabsContent
+              key={String(label)}
+              value={String(label)}
+              className="developer-raw-panel"
+            >
+              <TrajectoryCodeBlock
+                compact
+                label={String(label)}
+                content={text(value)}
+                linesLabel=""
+                copyLabel="Copy"
+                collapseLabel="Collapse"
+                expandLabel="Expand"
+                onCopy={onCopy}
+              />
+            </TabsContent>
+          ))}
+        </Tabs>
+      </section>
+    );
+  }
   return (
     <section aria-label="Recorded steps">
       <h3 className="mb-2 text-sm font-semibold">Recorded steps</h3>
