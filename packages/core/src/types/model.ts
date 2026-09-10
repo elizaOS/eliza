@@ -314,6 +314,8 @@ export interface ToolDefinition {
 	contexts?: AgentContext[];
 	metadata?: Record<string, JsonValue | object | undefined>;
 	strict?: boolean;
+	/** Permit strict normalization of a non-strict tool only when optional properties stay optional. */
+	strictWithOptionalProperties?: boolean;
 }
 
 export type ToolChoice =
