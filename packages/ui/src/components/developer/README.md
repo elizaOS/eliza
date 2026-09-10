@@ -1,99 +1,76 @@
-# Local developer workspace
+# Local developer chat
 
-This opt-in technical surface wraps the existing Eliza app with a developer
-inspector. It extends the shared interface described in `../../../PRODUCT.md`;
-it does not establish a separate visual system.
+Open `/dev` in a development build on a loopback host. This separate surface
+uses the existing Eliza app, conversation and theme. Normal `/chat`, `/notes`
+and `/calendar` routes do not mount developer chrome, even when a tab retains
+the old `eliza.developer-workspace` session flag or `?devtools=1` query.
 
-## Entry, exit, and shared state
+## Same app, separate view
 
-The host enables the workspace only in a development build on a loopback host
-with `?devtools=1`. The inspector's **Close** link navigates to the current path
-with `?devtools=0`. Keep this gate at the host entry point.
+The developer chat shares one `AppProvider`, active conversation, composer
+draft, `sendChatText` path and stop handler with the app. Prompts control the
+real app. There is no second agent, runtime or conversation. The app remains
+mounted when hidden; **Show app** reveals it without changing the conversation.
+Navigation stays inside `/dev#/notes`, `/dev#/chat`, etc. Both hash-aware
+navigation and the privileged shell history writer preserve this boundary,
+including imperative agent view actions. **Exit** opens the active app route
+without developer chrome.
 
-The app and inspector share one `AppProvider`, active conversation, and
-`sendChatText` path. The inspector composer therefore controls the real app;
-it does not create a second agent or conversation. It uses the canonical stop
-handler and restores an unsent draft on failure. Changing agent authority
-remounts the panel, clearing its local inspection state.
+The default view is a single chat column: messages, recorded token counts,
+expandable **Details**, and a fixed composer. **Settings** contains the existing
+model configuration and Cerebras credential controls; **Advanced diagnostics**
+contains the full run selector, pagination and pause control. Changing settings
+changes this instance's configuration. Owner role gates remain in place.
 
-## Structure and theme
+## Live activity and recorded evidence
 
-- `DeveloperWorkspace.tsx` owns the shell, composer, settings, recorded trace,
-  and expandable wire evidence. `useDeveloperTrajectories.ts` owns polling and
-  selection. `../../styles/developer-workspace.css` owns structural layout.
-- At widths of 1280px and above, the app remains visible on the left and the
-  inspector occupies 480px on the right; at 1536px it grows to 560px. The app
-  pane contains its layout and paint, keeping its chrome inside its bounds.
-- Below 1280px, **App / Inspector** buttons select the visible pane, initially
-  Inspector. Both panes remain mounted. Switching panes does not itself pause
-  telemetry; the explicit pause control and document visibility govern that.
-- The shell occupies `100dvh`. The inspector header and composer stay outside
-  its scrolling content region, keeping prompt and stop controls reachable.
-- Colors and typography inherit the active app theme: `bg-bg`, `bg-card`,
-  `text-txt`, `text-txt-strong`, `text-muted`, `text-warn`, and `border-border`.
-  Reuse `Button`, `Textarea`, and `SemanticForm`; preserve the existing type,
-  spacing, radius, and focus conventions instead of adding a local palette.
+Server chat status and tool events drive live activity. A local elapsed clock
+updates independently of the transcript. Token counts arrive after model calls
+are recorded; unfinished calls do not have final usage. During sending, an
+explicitly labeled latest run in the current room provides provisional run
+details. Completed reply counts require an exact user message ID and room ID
+match. Background memory runs correlate by the same IDs and remain separate.
 
-## Accessibility and controls
+Summary polling reads 50 records every 500ms while sending and every five
+seconds while idle. Polls never overlap. Hidden documents, pause, unmount and
+authorization failures stop automatic reads. Detail reads use
+`includePayloads: false` and start only after expansion or advanced inspection.
+Full prompts, tools, results and context load behind another disclosure.
+These payloads can contain private conversation content; they are not truncated
+or included in routine polling. Unavailable evidence stays visibly unavailable.
 
-The console and pane navigation have accessible names. Pane and section
-buttons expose selection with `aria-pressed`; the prompt and selects have
-labels. Buttons, selects, disclosure summaries, and the Close link have a 44px
-minimum target height. Native disclosures expose stages and full evidence;
-the labeled JSON region is keyboard-focusable for scrolling. Loading uses
-`role="status"` and failures use `role="alert"`.
+Reply token counts include recorded post-turn evaluation. Expanded calls
+distinguish foreground, evaluation and background memory; provider adapters
+often label every call `external_llm`, so the recorded semantic stage determines
+the evaluation lane. Missing usage is unknown, partial totals are labeled, and
+estimated per-call usage carries `≈`. Run duration may include evaluation;
+overlapping stage durations must not be added. HTTP attempts, queue time and
+provider first-token timing are not measured here. Configured routing does not
+prove the provider used: recorded calls can show fallback providers.
 
-Enter submits, Shift+Enter inserts a newline, and IME composition does not
-submit. Sending requires a nonempty prompt and a ready agent. During a send,
-the composer presents the shared Stop control. Preserve visible focus and
-textual state labels when extending these controls.
+## Layout and accessibility
 
-## Data boundaries
+The transcript follows new replies only while the user is near the bottom.
+Unchanged messages are memoized across polls. The composer remains outside the
+scroll region. Enter sends; Shift+Enter inserts a newline; IME composition does
+not submit. Failed sends preserve the draft without replacing newly typed text.
 
-Owner role gates protect the inspector and settings UI. Existing
-`ModelConfigurationPanel` and `AddAccountDialog` provide the Cerebras model and
-key controls using this instance's server-side credentials and routing. The
-configured route is informational: fallback routing can still apply, so the
-recorded call identifies the provider actually used. These controls modify
-the existing instance configuration.
+The app is hidden initially. When revealed, widths below 1280px show the app
+with **Back to chat** available. Wider screens show the app beside a 480px chat
+column. Buttons and disclosures have 44px targets, visible focus and accessible
+names. The live indicator respects reduced motion. Colors, typography and
+controls reuse the shared app design system described in `../../../PRODUCT.md`.
 
-Polling reads 50 agent-history summaries per page, then detail with
-`includePayloads: false` for one selected run when its revision changes. It
-runs every second while chat is busy and every five seconds while idle,
-without concurrent polls. Pause, hidden documents, and cleanup stop reads;
-401/403 responses stop automatic retries for that polling effect. Other
-failures remain visible and retry. The default selection follows a
-`client_chat` run for the current room on the current page; explicit selection
-can inspect other rooms and sources in agent history.
+`DeveloperWorkspace.tsx` owns the shell, chat, settings and trace disclosures.
+`useDeveloperTrajectories.ts` owns summary polling and advanced selection.
+`../../styles/developer-workspace.css` contains scoped structural styles.
 
-Full prompts, tools, results, and context load only after evidence expansion,
-and refresh if the expanded run's revision changes. This JSON may contain
-private conversation content and is not prompt-truncated. It can be scoped to
-a recorded semantic stage or the entire run. Keep the explicit disclosure and
-privacy notice; do not put these payloads into routine summary polling.
+## Local evidence
 
-## Telemetry limits and evidence
-
-Calls distinguish **Foreground**, **Post-turn evaluation**, and **Background
-memory**. Background runs are separate records and may finish after the reply;
-message IDs support manual correlation. Run duration may include evaluation,
-and overlapping stage spans must not be added together. HTTP attempts, queue
-time, and provider first-token timing are not measured here.
-
-Missing usage stays unknown: foreground input is **Unknown** when no input
-counts are recorded, and a partial sum carries **(partial)** and `+`. Missing
-per-call values display a dash; estimated usage carries `≈`. A configured
-model, empty history, or an unavailable telemetry endpoint is not proof of a
-successful call.
-
-The scoped finish review disposition was **ship after four resolved findings**.
-Local visual evidence is recorded in
-`/Users/nubs/Documents/ChatGPT/test/eliza-developer-view-20260909/`:
-`desktop.png`, `desktop-settings.png`, `mobile.png`, `mobile-app.png`,
-`unavailable-unknown-fixture.png`, and `layout.json`. The layout receipt reports
-1440px desktop and 390px mobile document widths matching their viewports.
-The unavailable/unknown screenshot is a synthetic fixture. Reasoning-setting writes were exercised through the live panel (none → low →
-none), with both shared selectors and the effective server configuration read
-back. Key enrollment was not exercised; the existing credential was retained.
-Settings saves wait for a changed runtime start time before displaying Saved.
-These artifacts do not establish a deployed release.
+Focused tests cover canonical sending, message/room correlation, live elapsed
+time before usage, lazy detail reads, unknown usage, stage classification,
+polling cancellation, normal routes and developer navigation isolation.
+`DeveloperWorkspace.stories.tsx` contains synthetic summary/trace fixtures.
+Real Home and Notes prompts, live counts and route checks are documented in
+`/Users/nubs/Documents/ChatGPT/test/eliza-dev-chat-isolation-20260909.md`.
+These checks establish local UI behavior, not full release or latency acceptance.

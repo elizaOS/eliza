@@ -1,26 +1,35 @@
 /** A local developer shell around the existing App, under its one AppProvider. */
 import {
   type FormEvent,
+  memo,
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { client } from "../../api/client";
+import type { ConversationMessage } from "../../api/client-types-chat";
 import type {
+  NativeToolCallEvent,
   TrajectoryDetailResult,
   TrajectoryLlmCall,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
+import { pathForTab } from "../../navigation";
 import "../../styles/developer-workspace.css";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { useChatTurnStatus } from "../../state/ChatTurnStatusContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { deriveAgentReady } from "../../state/types";
 import { AddAccountDialog } from "../accounts/AddAccountDialog";
+import { MessageContent } from "../chat/MessageContent";
+import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { ModelConfigurationPanel } from "../settings/ModelConfigurationPanel";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import { SemanticForm } from "../ui/semantic-form";
 import { Textarea } from "../ui/textarea";
@@ -34,9 +43,14 @@ const count = (value: number | null | undefined) =>
 const duration = (value: number | null | undefined) =>
   typeof value === "number" ? `${(value / 1000).toFixed(2)}s` : "—";
 
-export function callLane(call: TrajectoryLlmCall, source: string): string {
+export function callLane(
+  call: Pick<TrajectoryLlmCall, "purpose">,
+  source: string,
+  stage = call.purpose,
+): string {
   if (source === "background_memory") return "Background memory";
-  if (call.purpose === "evaluation") return "Post-turn evaluation";
+  if (stage === "evaluation" || call.purpose === "evaluation")
+    return "Post-turn evaluation";
   return source === "client_chat" ? "Foreground" : source;
 }
 
@@ -63,7 +77,9 @@ export function DeveloperTrace({
   detail: TrajectoryDetailResult;
 }) {
   const foreground = detail.llmCalls.filter(
-    (call) => callLane(call, record.source) === "Foreground",
+    (call) =>
+      callLane(call, record.source, recordedStage(call, detail)) ===
+      "Foreground",
   );
   const knownInputs = foreground.reduce(
     (total, call) => total + (call.promptTokens ?? 0),
@@ -133,7 +149,7 @@ export function DeveloperTrace({
                     {call.provider || "Provider not recorded"} / {call.model}
                   </div>
                   <div className="mt-1 text-muted">
-                    {callLane(call, record.source)}
+                    {callLane(call, record.source, recordedStage(call, detail))}
                   </div>
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums">
@@ -322,58 +338,299 @@ function DeveloperSettings() {
   );
 }
 
-function DeveloperLatestReply() {
-  const { conversationMessages } = useConversationMessages();
-  let reply: (typeof conversationMessages)[number] | undefined;
-  for (let index = conversationMessages.length - 1; index >= 0; index--) {
-    const message = conversationMessages[index];
-    if (
-      message.role === "assistant" &&
-      message.transcriptVisibility !== "internal"
-    ) {
-      reply = message;
-      break;
-    }
-  }
-  return reply ? (
-    <details open>
-      <summary className="cursor-pointer text-xs font-medium text-muted">
-        Latest app reply
+/** Counts stay on the reply; model calls and full payloads load only when opened. */
+export function DeveloperReplyDetails({
+  record,
+  toolEvents = [],
+  reasoning,
+  backgrounds = [],
+}: {
+  record: TrajectoryRecord;
+  toolEvents?: NativeToolCallEvent[];
+  reasoning?: string;
+  backgrounds?: TrajectoryRecord[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState<TrajectoryDetailResult | null>(null);
+  const [error, setError] = useState(false);
+  const revision = trajectoryRevision(record);
+  useEffect(() => {
+    if (!open || !revision) return;
+    const controller = new AbortController();
+    setDetail(null);
+    setError(false);
+    void client
+      .getTrajectoryDetail(record.id, {
+        signal: controller.signal,
+        includePayloads: false,
+      })
+      .then((result) => {
+        if (!controller.signal.aborted) setDetail(result);
+      })
+      .catch(() => {
+        // error-policy:J4 A failed optional detail read never interrupts chat.
+        if (!controller.signal.aborted) setError(true);
+      });
+    return () => controller.abort();
+  }, [open, record.id, revision]);
+  return (
+    <details
+      className="developer-reply-details"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        <span
+          className="developer-token-count"
+          title="Recorded input and output tokens for this run. Missing usage can make counts partial; expand for per-call details."
+        >
+          {record.totalPromptTokens > 0
+            ? `${count(record.totalPromptTokens)} tokens in · ${count(record.totalCompletionTokens)} out`
+            : "Token count unavailable"}
+          {record.durationMs == null ? "" : ` · ${duration(record.durationMs)}`}
+          {record.status === "active" ? " · Working…" : ""}
+        </span>
+        <span className="developer-details-label">
+          {open ? "Less" : "Details"}
+        </span>
       </summary>
-      <p
-        className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed"
-        data-testid="developer-reply"
-      >
-        {reply.text}
-      </p>
+      {open ? (
+        <div className="developer-expanded-reply">
+          <p className="text-xs text-muted">
+            Recorded tokens across this run’s model calls, including any
+            post-turn evaluation. Background memory runs separately.
+          </p>
+          {error ? (
+            <p role="alert">Details unavailable. Close and reopen to retry.</p>
+          ) : detail ? (
+            <DeveloperTrace record={record} detail={detail} />
+          ) : (
+            <p role="status">Loading details…</p>
+          )}
+          {toolEvents.length ? (
+            <details>
+              <summary>Tool activity ({toolEvents.length})</summary>
+              {toolEvents.map((event) => (
+                <ToolCallEventLog
+                  key={event.callId || event.id}
+                  event={event}
+                />
+              ))}
+            </details>
+          ) : null}
+          {reasoning ? <ThinkingBlock reasoning={reasoning} /> : null}
+          <WireEvidence record={record} />
+          {backgrounds.length ? (
+            <details>
+              <summary>Background memory ({backgrounds.length} runs)</summary>
+              {backgrounds.map((background) => (
+                <DeveloperReplyDetails
+                  key={background.id}
+                  record={background}
+                />
+              ))}
+            </details>
+          ) : null}
+        </div>
+      ) : null}
     </details>
-  ) : (
-    <p className="text-sm text-muted">
-      Send a prompt below to start inspecting.
-    </p>
   );
 }
 
-function DeveloperPanel() {
-  const { chatSending } = useChatComposer();
+const DeveloperMessage = memo(
+  function DeveloperMessage({
+    message,
+    record,
+    backgrounds,
+  }: {
+    message: ConversationMessage;
+    record?: TrajectoryRecord;
+    backgrounds: TrajectoryRecord[];
+  }) {
+    return (
+      <article
+        className={`developer-message developer-message-${message.role}`}
+        aria-label={message.role === "user" ? "You" : "Eliza"}
+      >
+        <div
+          className="developer-message-body"
+          data-testid={
+            message.role === "assistant" ? "developer-reply" : undefined
+          }
+        >
+          <MessageContent
+            message={{
+              ...message,
+              reasoning: undefined,
+              toolEvents: undefined,
+            }}
+          />
+        </div>
+        {record ? (
+          <DeveloperReplyDetails
+            record={record}
+            toolEvents={message.toolEvents}
+            reasoning={message.reasoning}
+            backgrounds={backgrounds}
+          />
+        ) : message.toolEvents?.length ? (
+          <details>
+            <summary className="text-xs text-muted">Tool activity</summary>
+            {message.toolEvents.map((event) => (
+              <ToolCallEventLog key={event.callId || event.id} event={event} />
+            ))}
+          </details>
+        ) : null}
+      </article>
+    );
+  },
+  (before, after) =>
+    before.message === after.message &&
+    (before.record ? trajectoryRevision(before.record) : "") ===
+      (after.record ? trajectoryRevision(after.record) : "") &&
+    before.backgrounds.map(trajectoryRevision).join("|") ===
+      after.backgrounds.map(trajectoryRevision).join("|"),
+);
+
+/** Local elapsed time and server SSE activity render without repainting the transcript. */
+function LiveActivity({
+  startedAt,
+  record,
+  toolEvents,
+}: {
+  startedAt: number;
+  record?: TrajectoryRecord;
+  toolEvents: NativeToolCallEvent[];
+}) {
+  const { serverTurnStatus } = useChatTurnStatus();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, []);
+  const phase =
+    serverTurnStatus?.label ||
+    {
+      thinking: "Thinking",
+      streaming: "Writing reply",
+      running_action: "Using a tool",
+      running_tool: "Using a tool",
+      evaluating: "Checking results",
+      waking: "Connecting",
+      speaking: "Speaking",
+    }[serverTurnStatus?.kind || "thinking"];
+  const operation = serverTurnStatus?.actionName || serverTurnStatus?.toolName;
+  return (
+    <div className="developer-live-activity">
+      <p role="status" className="text-sm">
+        <span className="developer-live-dot" />
+        {phase}
+        {operation ? ` · ${operation}` : ""}{" "}
+        <span className="text-muted">
+          · {duration(Math.max(0, now - startedAt))}
+        </span>
+      </p>
+      <details>
+        <summary className="text-xs text-muted">
+          Live details{toolEvents.length ? ` · ${toolEvents.length} tools` : ""}
+        </summary>
+        <p className="text-xs text-muted">
+          Tool activity arrives live. Token counts update after model calls
+          finish; an unfinished call has no final usage yet.
+        </p>
+        {toolEvents.map((event) => (
+          <ToolCallEventLog key={event.callId || event.id} event={event} />
+        ))}
+        {record ? (
+          <div className="mt-3">
+            <p className="text-xs text-muted">
+              Latest run in this chat · {record.llmCallCount} recorded model
+              calls
+            </p>
+            <DeveloperReplyDetails record={record} />
+          </div>
+        ) : (
+          <p className="text-xs text-muted">
+            Waiting for the run to be recorded…
+          </p>
+        )}
+      </details>
+    </div>
+  );
+}
+
+function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
+  const {
+    chatSending,
+    chatInput: draft,
+    setChatInput: setDraft,
+  } = useChatComposer();
+  const { conversationMessages } = useConversationMessages();
   const state = useAppSelectorShallow((s) => ({
     activeConversationId: s.activeConversationId,
     conversations: s.conversations,
-    firstToken: s.chatFirstTokenReceived,
     status: s.agentStatus,
     send: s.sendChatText,
     stop: s.handleChatStop,
-    tab: s.tab,
   }));
   const conversation = state.conversations.find(
     (item) => item.id === state.activeConversationId,
   );
-  const telemetry = useDeveloperTrajectories(conversation?.roomId, chatSending);
-  const [draft, setDraft] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const telemetry = useDeveloperTrajectories(
+    conversation?.roomId,
+    chatSending,
+    advancedOpen && section === "settings",
+  );
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [section, setSection] = useState<"trace" | "settings">("trace");
   const busy = chatSending || sending;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const scrollConversation = useRef(state.activeConversationId);
+  useEffect(() => {
+    if (scrollConversation.current !== state.activeConversationId) {
+      following.current = true;
+      scrollConversation.current = state.activeConversationId;
+    }
+    const node = scrollRef.current;
+    if (
+      node &&
+      section === "chat" &&
+      conversationMessages.length &&
+      following.current
+    ) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }, [state.activeConversationId, conversationMessages, section]);
+  const messages = useMemo(() => {
+    let requestId: string | undefined;
+    return conversationMessages
+      .filter((message) => message.transcriptVisibility !== "internal")
+      .map((message) => {
+        if (message.role === "user") requestId = message.id;
+        const record =
+          message.role === "assistant"
+            ? telemetry.rows.find(
+                (row) =>
+                  row.source === "client_chat" &&
+                  row.roomId === conversation?.roomId &&
+                  row.metadata?.messageId === requestId,
+              )
+            : undefined;
+        const backgrounds =
+          message.role === "assistant"
+            ? telemetry.rows.filter(
+                (row) =>
+                  row.source === "background_memory" &&
+                  row.roomId === conversation?.roomId &&
+                  row.metadata?.messageId === requestId,
+              )
+            : [];
+        return { message, record, backgrounds };
+      });
+  }, [conversationMessages, telemetry.rows, conversation?.roomId]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!draft.trim() || busy || !deriveAgentReady(state.status)) return;
@@ -381,266 +638,298 @@ function DeveloperPanel() {
     setSending(true);
     setSendError(null);
     setDraft("");
+    following.current = true;
     telemetry.setOffset(0);
     telemetry.select(null);
     try {
       await state.send(prompt);
     } catch {
-      // error-policy:J4 Canonical chat retains its recovery state; preserve the unsent draft too.
-      setDraft((current) => current || prompt);
-      setSendError(
-        "The prompt could not be sent. Check the app’s connection and retry.",
-      );
+      // error-policy:J4 Canonical chat retains recovery; keep the unsent draft.
+      if (!draftRef.current) setDraft(prompt);
+      setSendError("Couldn’t send. Check the connection and try again.");
     } finally {
       setSending(false);
     }
   };
+  const latestUser = useMemo(() => {
+    for (let index = conversationMessages.length - 1; index >= 0; index--) {
+      if (conversationMessages[index].role === "user")
+        return conversationMessages[index];
+    }
+    return undefined;
+  }, [conversationMessages]);
+  const latestMessage = conversationMessages[conversationMessages.length - 1];
+  const liveTools =
+    latestMessage?.role === "assistant" ? (latestMessage.toolEvents ?? []) : [];
+  // A room-level live preview, not a guessed binding to an optimistic reply ID.
+  const liveRecord = latestUser
+    ? telemetry.rows.find(
+        (row) =>
+          row.source === "client_chat" &&
+          row.roomId === conversation?.roomId &&
+          row.startTime >= latestUser.timestamp,
+      )
+    : undefined;
   const inspection = telemetry.inspection;
   return (
-    <aside
-      aria-label="Eliza developer console"
-      className="developer-console flex h-full min-h-0 min-w-0 flex-col bg-card text-txt"
-    >
-      <header className="shrink-0 border-b border-border p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-base font-semibold text-txt-strong">
-              Eliza developer console
-            </h1>
-            <p className="mt-1 text-xs text-muted">
-              Same conversation. Live app controls.
-            </p>
-          </div>
-          <a
-            className="text-xs text-muted underline"
-            href={`${window.location.pathname}?devtools=0`}
-          >
-            Close
-          </a>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <Button
-            size="sm"
-            variant={section === "trace" ? "default" : "ghost"}
-            aria-pressed={section === "trace"}
-            onClick={() => setSection("trace")}
-          >
-            Inspect
-          </Button>
-          <Button
-            size="sm"
-            variant={section === "settings" ? "default" : "ghost"}
-            aria-pressed={section === "settings"}
-            onClick={() => setSection("settings")}
-          >
-            Models &amp; key
-          </Button>
-        </div>
-      </header>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
-        {section === "settings" ? (
-          <DeveloperSettings />
-        ) : (
-          <>
-            <div>
-              <h2 className="text-sm font-medium">
-                {conversation?.title || "Current conversation"}
-              </h2>
-              <p className="mt-1 text-xs text-muted">
-                App view: {state.tab} ·{" "}
-                {busy
-                  ? state.firstToken
-                    ? "Reply streaming"
-                    : "Working"
-                  : deriveAgentReady(state.status)
-                    ? "Ready"
-                    : "Agent unavailable"}
-              </p>
-            </div>
-            <DeveloperLatestReply />
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-medium">Recorded runs</h2>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => telemetry.setPaused(!telemetry.paused)}
-              >
-                {telemetry.paused ? "Resume telemetry" : "Pause telemetry"}
-              </Button>
-            </div>
-            <label className="block text-xs text-muted">
-              Inspect a run
-              <select
-                aria-label="Inspect a run"
-                className="mt-2 block min-h-10 w-full min-w-0 rounded-md border border-border bg-bg px-2 text-xs text-txt"
-                value={telemetry.selectedId ?? ""}
-                onChange={(event) =>
-                  telemetry.select(event.target.value || null)
-                }
-              >
-                <option value="">
-                  Follow latest turn in this conversation
-                </option>
-                {telemetry.rows.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {new Date(row.startTime).toLocaleTimeString()} ·{" "}
-                    {row.source} · {row.llmCallCount} calls ·{" "}
-                    {row.roomId === conversation?.roomId
-                      ? "this room"
-                      : "other room"}{" "}
-                    · {row.id}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex items-center justify-between gap-2 text-xs text-muted">
-              <span>
-                Agent history · {telemetry.offset + 1}–
-                {telemetry.offset + telemetry.rows.length} of {telemetry.total}
-              </span>
-              <div className="flex gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={telemetry.offset === 0}
-                  onClick={() => {
-                    telemetry.select(null);
-                    telemetry.setOffset(Math.max(0, telemetry.offset - 50));
-                  }}
-                >
-                  Newer
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={telemetry.offset + 50 >= telemetry.total}
-                  onClick={() => {
-                    telemetry.select(null);
-                    telemetry.setOffset(telemetry.offset + 50);
-                  }}
-                >
-                  Older
-                </Button>
-              </div>
-            </div>
-            {telemetry.error ? (
-              <p role="alert" className="text-sm text-warn">
-                {telemetry.error}
-              </p>
-            ) : null}
-            {inspection ? (
-              <>
-                <DeveloperTrace
-                  record={inspection.record}
-                  detail={inspection.detail}
-                />
-                <WireEvidence
-                  key={inspection.record.id}
-                  record={inspection.record}
-                />
-                <p className="text-xs leading-relaxed text-muted">
-                  Background memory runs appear separately above. Match the
-                  message ID to correlate them; they can finish after the reply.
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted">
-                No matching run on this page yet. Recording appears as stages
-                finish.
-              </p>
-            )}
-          </>
-        )}
-      </div>
-      <SemanticForm
-        className="shrink-0 space-y-2 border-t border-border p-4"
-        onSubmit={(event) => void submit(event)}
+    <section aria-label="Eliza chat" className="developer-console">
+      <div
+        className="developer-chat-scroll"
+        ref={scrollRef}
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          following.current =
+            node.scrollHeight - node.scrollTop - node.clientHeight < 96;
+        }}
       >
-        <label htmlFor="developer-prompt" className="text-xs font-medium">
-          Prompt Eliza · controls the app beside this panel
-        </label>
-        <Textarea
-          id="developer-prompt"
-          placeholder="Open Notes, then tell me what you can see…"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          rows={3}
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !event.nativeEvent.isComposing
-            ) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
-        />
-        {sendError ? (
-          <p role="alert" className="text-xs text-warn">
-            {sendError}
-          </p>
-        ) : null}
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-muted">
-            Enter to send · Shift+Enter for a new line
-          </span>
-          {busy ? (
-            <Button type="button" variant="outline" onClick={state.stop}>
-              Stop
-            </Button>
+        <div className="developer-chat-content">
+          {section === "settings" ? (
+            <>
+              <h2 className="text-lg font-semibold">Settings</h2>
+              <DeveloperSettings />
+              <details
+                onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+              >
+                <summary className="cursor-pointer text-sm">
+                  Advanced diagnostics
+                </summary>
+                {advancedOpen ? (
+                  <div className="space-y-4 py-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="text-sm font-medium">Recorded runs</h2>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => telemetry.setPaused(!telemetry.paused)}
+                      >
+                        {telemetry.paused
+                          ? "Resume telemetry"
+                          : "Pause telemetry"}
+                      </Button>
+                    </div>
+                    <label className="block text-xs text-muted">
+                      Inspect a run
+                      <select
+                        aria-label="Inspect a run"
+                        className="mt-2 block min-h-10 w-full min-w-0 rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                        value={telemetry.selectedId ?? ""}
+                        onChange={(event) =>
+                          telemetry.select(event.target.value || null)
+                        }
+                      >
+                        <option value="">
+                          Follow latest turn in this conversation
+                        </option>
+                        {telemetry.rows.map((row) => (
+                          <option key={row.id} value={row.id}>
+                            {new Date(row.startTime).toLocaleTimeString()} ·{" "}
+                            {row.source} · {row.llmCallCount} calls ·{" "}
+                            {row.roomId === conversation?.roomId
+                              ? "this room"
+                              : "other room"}{" "}
+                            · {row.id}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                      <span>
+                        Agent history · {telemetry.offset + 1}–
+                        {telemetry.offset + telemetry.rows.length} of{" "}
+                        {telemetry.total}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={telemetry.offset === 0}
+                          onClick={() => {
+                            telemetry.select(null);
+                            telemetry.setOffset(
+                              Math.max(0, telemetry.offset - 50),
+                            );
+                          }}
+                        >
+                          Newer
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={telemetry.offset + 50 >= telemetry.total}
+                          onClick={() => {
+                            telemetry.select(null);
+                            telemetry.setOffset(telemetry.offset + 50);
+                          }}
+                        >
+                          Older
+                        </Button>
+                      </div>
+                    </div>
+                    {telemetry.error ? (
+                      <p role="alert" className="text-sm text-warn">
+                        {telemetry.error}
+                      </p>
+                    ) : null}
+                    {inspection ? (
+                      <>
+                        <DeveloperTrace
+                          record={inspection.record}
+                          detail={inspection.detail}
+                        />
+                        <WireEvidence
+                          key={inspection.record.id}
+                          record={inspection.record}
+                        />
+                        <p className="text-xs leading-relaxed text-muted">
+                          Background memory runs appear separately above. Match
+                          the message ID to correlate them; they can finish
+                          after the reply.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted">
+                        No matching run on this page yet. Recording appears as
+                        stages finish.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </details>
+            </>
           ) : (
-            <Button
-              type="submit"
-              disabled={!draft.trim() || !deriveAgentReady(state.status)}
-            >
-              Send to Eliza
-            </Button>
+            <>
+              {messages.length ? (
+                messages.map(({ message, record, backgrounds }) => (
+                  <DeveloperMessage
+                    key={message.clientRenderId || message.id}
+                    message={message}
+                    record={record}
+                    backgrounds={backgrounds}
+                  />
+                ))
+              ) : (
+                <p className="developer-chat-empty">
+                  What would you like to do?
+                </p>
+              )}
+              {busy ? (
+                <LiveActivity
+                  startedAt={latestUser?.timestamp || Date.now()}
+                  record={liveRecord}
+                  toolEvents={liveTools}
+                />
+              ) : null}
+              {!deriveAgentReady(state.status) ? (
+                <p role="status" className="text-sm text-muted">
+                  Agent unavailable. Reconnecting…
+                </p>
+              ) : null}
+              {telemetry.error ? (
+                <p className="text-xs text-muted">
+                  Token counts are temporarily unavailable.
+                </p>
+              ) : null}
+            </>
           )}
         </div>
-      </SemanticForm>
-    </aside>
+      </div>
+      {section === "chat" ? (
+        <SemanticForm
+          className="developer-chat-composer"
+          onSubmit={(event) => void submit(event)}
+        >
+          <label htmlFor="developer-prompt" className="sr-only">
+            Message Eliza
+          </label>
+          <Textarea
+            id="developer-prompt"
+            placeholder="Message Eliza…"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            rows={2}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          <div className="developer-composer-footer">
+            <span className="text-xs text-muted">
+              Enter to send · Shift+Enter for a new line
+            </span>
+            {busy ? (
+              <Button type="button" variant="outline" onClick={state.stop}>
+                Stop
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={!draft.trim() || !deriveAgentReady(state.status)}
+              >
+                Send
+              </Button>
+            )}
+          </div>
+          {sendError ? (
+            <p role="alert" className="text-xs text-warn">
+              {sendError}
+            </p>
+          ) : null}
+        </SemanticForm>
+      ) : null}
+    </section>
   );
 }
 
 export function DeveloperWorkspace({ children }: { children: ReactNode }) {
   const authority = useActiveAgentAuthority();
-  const [mobilePane, setMobilePane] = useState<"app" | "inspector">(
-    "inspector",
-  );
+  const { activeTab } = useAppSelectorShallow((state) => ({
+    activeTab: state.tab,
+  }));
+  const [showApp, setShowApp] = useState(false);
+  const [section, setSection] = useState<"chat" | "settings">("chat");
   return (
-    <div
-      data-mobile-pane={mobilePane}
-      className="eliza-developer-workspace flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-bg"
-    >
-      <nav
-        aria-label="Developer workspace panes"
-        className="developer-pane-navigation flex shrink-0 gap-2 border-b border-border p-2"
-      >
-        <Button
-          size="sm"
-          variant={mobilePane === "app" ? "default" : "ghost"}
-          aria-pressed={mobilePane === "app"}
-          onClick={() => setMobilePane("app")}
-        >
-          App
-        </Button>
-        <Button
-          size="sm"
-          variant={mobilePane === "inspector" ? "default" : "ghost"}
-          aria-pressed={mobilePane === "inspector"}
-          onClick={() => setMobilePane("inspector")}
-        >
-          Inspector
-        </Button>
-      </nav>
-      <div className="flex min-h-0 flex-1">
+    <div className="eliza-developer-workspace" data-show-app={showApp}>
+      <header className="developer-chat-header">
+        <h1>Eliza</h1>
+        <nav aria-label="Chat options">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={showApp}
+            onClick={() => {
+              setShowApp(!showApp);
+              setSection("chat");
+            }}
+          >
+            {showApp ? "Back to chat" : "Show app"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={section === "settings"}
+            onClick={() => {
+              setSection(section === "settings" ? "chat" : "settings");
+              setShowApp(false);
+            }}
+          >
+            {section === "settings" ? "Back to chat" : "Settings"}
+          </Button>
+          <a href={pathForTab(activeTab)}>Exit</a>
+        </nav>
+      </header>
+      <div className="developer-workspace-body">
         <div data-testid="developer-app-pane" className="developer-app-pane">
           {children}
         </div>
-        <div className="developer-inspector-pane border-l border-border">
+        <div className="developer-inspector-pane">
           <RoleGate minRole="OWNER" fallback={<OwnerOnlyNotice />}>
-            <DeveloperPanel key={authority} />
+            <DeveloperPanel key={authority} section={section} />
           </RoleGate>
         </div>
       </div>

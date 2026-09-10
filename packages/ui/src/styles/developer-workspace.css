@@ -1,48 +1,202 @@
-/* Structural shell only; color, type and controls inherit the active app theme. */
-.eliza-developer-workspace .developer-console :is(button, select, summary),
-.eliza-developer-workspace .developer-pane-navigation button {
-  min-height: 44px;
+/* A chat first; the existing app and diagnostics open only on request. */
+.eliza-developer-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--txt);
 }
-.eliza-developer-workspace .developer-console summary,
-.eliza-developer-workspace .developer-console header a {
-  min-height: 44px;
+.developer-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.developer-chat-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.developer-chat-header nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.developer-chat-header a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 44px;
-  align-content: center;
+  min-height: 44px;
+  font-size: 12px;
+  color: var(--muted);
 }
-.eliza-developer-workspace .developer-app-pane {
+.developer-workspace-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.developer-app-pane {
+  display: none;
   position: relative;
   contain: layout paint;
   isolation: isolate;
+  flex: 1;
   min-width: 0;
   min-height: 0;
-  flex: 1;
   overflow: hidden;
 }
-.eliza-developer-workspace .developer-inspector-pane {
-  width: 100%;
+.developer-inspector-pane {
+  flex: 1;
   min-width: 0;
   min-height: 0;
-  height: 100%;
-  flex-shrink: 0;
 }
-.eliza-developer-workspace[data-mobile-pane="inspector"] .developer-app-pane,
-.eliza-developer-workspace[data-mobile-pane="app"] .developer-inspector-pane {
+.developer-console {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.developer-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.developer-chat-content {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+.developer-chat-content > * + * {
+  margin-top: 24px;
+}
+.developer-message {
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.developer-message-user {
+  width: fit-content;
+  max-width: 88%;
+  margin-left: auto;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--bg-hover);
+}
+.developer-message-body {
+  white-space: pre-wrap;
+}
+.developer-reply-details > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+.developer-reply-details > summary::-webkit-details-marker {
+  display: none;
+}
+.developer-token-count {
+  font-variant-numeric: tabular-nums;
+}
+.developer-details-label {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.developer-expanded-reply {
+  padding: 12px 0;
+}
+.developer-expanded-reply > * + * {
+  margin-top: 16px;
+}
+.developer-chat-empty {
+  padding: 20vh 0;
+  text-align: center;
+  font-size: 20px;
+}
+.developer-chat-composer {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 12px 24px max(16px, env(safe-area-inset-bottom));
+}
+.developer-chat-composer textarea {
+  min-height: 72px;
+  resize: vertical;
+  max-height: 25dvh;
+}
+.developer-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+}
+.eliza-developer-workspace :is(button, select, summary) {
+  min-height: 44px;
+}
+.eliza-developer-workspace[data-show-app="true"] .developer-app-pane {
+  display: block;
+}
+.eliza-developer-workspace[data-show-app="true"] .developer-inspector-pane {
   display: none;
 }
 @media (min-width: 1280px) {
-  .eliza-developer-workspace .developer-pane-navigation {
-    display: none;
-  }
-  .eliza-developer-workspace[data-mobile-pane] .developer-app-pane,
-  .eliza-developer-workspace[data-mobile-pane] .developer-inspector-pane {
+  .eliza-developer-workspace[data-show-app="true"] .developer-inspector-pane {
     display: block;
-  }
-  .eliza-developer-workspace .developer-inspector-pane {
-    width: 480px;
+    flex: 0 0 480px;
+    border-left: 1px solid var(--border);
   }
 }
-@media (min-width: 1536px) {
-  .eliza-developer-workspace .developer-inspector-pane {
-    width: 560px;
+@media (max-width: 600px) {
+  .developer-chat-header {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .developer-chat-header nav {
+    gap: 0;
+  }
+  .developer-chat-content {
+    padding: 24px 16px;
+  }
+  .developer-chat-composer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+.developer-live-activity {
+  padding: 8px 0;
+}
+.developer-live-activity > p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.developer-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: developer-working 1.5s ease-in-out infinite alternate;
+}
+@keyframes developer-working {
+  to {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .developer-live-dot {
+    animation: none;
   }
 }

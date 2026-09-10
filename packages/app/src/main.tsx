@@ -129,6 +129,7 @@ import { createTranslator } from "@elizaos/ui/i18n";
 import {
   getWindowNavigationPath,
   isAppWindowRoute,
+  isDeveloperWorkspaceRoute,
 } from "@elizaos/ui/navigation";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { isStandalonePwa } from "@elizaos/ui/platform";
@@ -2835,35 +2836,14 @@ const ChatWidgetHarness = lazy(async () => {
   return { default: mod.ChatWidgetHarness };
 });
 
-// Explicit, tab-local opt-in. Ordinary app bundles never import the inspector.
+// Only /dev mounts the inspector; normal routes ignore the old session opt-in.
 const DeveloperWorkspace = lazy(async () => {
   const mod = await import(
     "@elizaos/ui/components/developer/DeveloperWorkspace"
   );
   return { default: mod.DeveloperWorkspace };
 });
-const developerWorkspaceEnabled = (() => {
-  if (
-    !import.meta.env.DEV ||
-    !["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname)
-  )
-    return false;
-  const flag = new URLSearchParams(window.location.search).get("devtools");
-  try {
-    if (flag === "0")
-      window.sessionStorage.removeItem("eliza.developer-workspace");
-    if (flag === "1")
-      window.sessionStorage.setItem("eliza.developer-workspace", "1");
-    return (
-      flag === "1" ||
-      (flag !== "0" &&
-        window.sessionStorage.getItem("eliza.developer-workspace") === "1")
-    );
-  } catch {
-    // error-policy:J4 Storage-disabled tabs can still explicitly opt in by URL.
-    return flag === "1";
-  }
-})();
+const developerWorkspaceEnabled = isDeveloperWorkspaceRoute();
 
 /**
  * The shell owns the parametric cloud / public / auth / payment routes and

@@ -21,6 +21,7 @@ export function trajectoryRevision(run: TrajectoryRecord): string {
 export function useDeveloperTrajectories(
   roomId: string | undefined,
   busy: boolean,
+  loadInspection = true,
 ) {
   const [offset, setOffset] = useState(0);
   const [selectedId, select] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export function useDeveloperTrajectories(
               (row) =>
                 roomId && row.roomId === roomId && row.source === "client_chat",
             );
-        if (record) {
+        if (record && loadInspection) {
           const revision = trajectoryRevision(record);
           if (cache.current?.revision !== revision) {
             const detail = await client.getTrajectoryDetail(record.id, {
@@ -95,7 +96,7 @@ export function useDeveloperTrajectories(
       } finally {
         inFlight = false;
         if (!controller.signal.aborted && !paused && !denied) {
-          timer = setTimeout(() => void poll(), busy ? 1000 : 5000);
+          timer = setTimeout(() => void poll(), busy ? 500 : 5000);
         }
       }
     };
@@ -111,7 +112,7 @@ export function useDeveloperTrajectories(
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [roomId, offset, selectedId, paused, busy, scope]);
+  }, [roomId, offset, selectedId, paused, busy, scope, loadInspection]);
 
   return {
     rows,
