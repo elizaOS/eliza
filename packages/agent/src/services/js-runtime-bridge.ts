@@ -74,13 +74,30 @@ export interface JsRuntimeBridge {
 interface MarshalContext {
   functionTable: Map<string, (...args: unknown[]) => unknown>;
   nextFunctionId: number;
-}
-
-function newMarshalContext(): MarshalContext {
-  return { functionTable: new Map(), nextFunctionId: 0 };
+  /** Remaining {@link JsValue} nodes this marshal may still emit. */
+  nodeBudget: number;
 }
 
 const MAX_MARSHAL_DEPTH = 32;
+
+/**
+ * Hard ceiling on the number of {@link JsValue} nodes one marshal may emit.
+ * The wire shape carries no reference identity, so a value that reuses one
+ * object from many paths (a diamond-shaped graph) is emitted once per path;
+ * without a ceiling that is exponential in the sharing depth even though the
+ * input holds only a handful of objects. Ordinary results and module export
+ * graphs are far below this; a crafted return value hits the marker instead
+ * of the host's heap.
+ */
+const MAX_MARSHAL_NODES = 100_000;
+
+function newMarshalContext(): MarshalContext {
+  return {
+    functionTable: new Map(),
+    nextFunctionId: 0,
+    nodeBudget: MAX_MARSHAL_NODES,
+  };
+}
 
 /**
  * Convert a host JS value into the wire {@link JsValue} shape. Cycles, BigInts,
@@ -88,7 +105,9 @@ const MAX_MARSHAL_DEPTH = 32;
  * the bridge contract is intentionally narrow so the iOS/Android sides have a
  * minimal surface to implement. Only a reference back to an ancestor is a
  * cycle; an object reached twice through different paths is duplicated, since
- * the wire shape carries no reference identity.
+ * the wire shape carries no reference identity. Duplication is bounded by
+ * {@link MAX_MARSHAL_NODES}: once a marshal has emitted that many nodes every
+ * further value collapses to the "[size-limit]" marker.
  */
 export function toJsValue(input: unknown, ctx?: MarshalContext): JsValue {
   const c = ctx ?? newMarshalContext();
@@ -104,6 +123,13 @@ function marshalValue(
   if (depth > MAX_MARSHAL_DEPTH) {
     return { kind: "string", value: "[depth-limit]" };
   }
+  // Every emitted node, including this marker, spends budget, so the total
+  // output (and the function table, which grows once per encounter) stays
+  // bounded regardless of how many paths reach the same object.
+  if (ctx.nodeBudget <= 0) {
+    return { kind: "string", value: "[size-limit]" };
+  }
+  ctx.nodeBudget -= 1;
   if (input === undefined) return { kind: "undefined" };
   if (input === null) return { kind: "null" };
 

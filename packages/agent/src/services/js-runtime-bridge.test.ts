@@ -116,4 +116,59 @@ describe("js-runtime-bridge (host-node)", () => {
       ],
     });
   });
+
+  it("bounds a diamond-shaped shared graph instead of expanding it exponentially", async () => {
+    // 21 distinct objects inside the depth cap, each holding the same next
+    // level under two keys: 2^20 paths. The marshal must stop at the node
+    // ceiling (100 000 emitted values), not at the heap.
+    const started = performance.now();
+    const result = await bridge.evaluate({
+      code: "(() => { let level = { leaf: true }; for (let i = 0; i < 20; i++) level = { l: level, r: level }; return level; })()",
+    });
+    const elapsedMs = performance.now() - started;
+    let budgeted = 0;
+    let sizeLimits = 0;
+    const walk = (value: unknown): void => {
+      const node = value as {
+        kind: string;
+        value?: unknown;
+        entries?: unknown[];
+        items?: unknown[];
+      };
+      if (node.kind === "string" && node.value === "[size-limit]") {
+        sizeLimits += 1;
+        return;
+      }
+      budgeted += 1;
+      for (const [, child] of (node.entries ?? []) as Array<[string, unknown]>)
+        walk(child);
+      for (const child of node.items ?? []) walk(child);
+    };
+    walk(result);
+    expect(sizeLimits).toBeGreaterThan(0);
+    expect(budgeted).toBeLessThanOrEqual(100_000);
+    expect(elapsedMs).toBeLessThan(5_000);
+  });
+
+  it("does not mint one function id per path once the node ceiling is reached", async () => {
+    const result = await bridge.evaluate({
+      code: "(() => { const fn = () => 1; let level = { fn }; for (let i = 0; i < 20; i++) level = { l: level, r: level }; return level; })()",
+    });
+    const ids = new Set<string>();
+    const walk = (value: unknown): void => {
+      const node = value as {
+        kind: string;
+        functionId?: string;
+        entries?: unknown[];
+        items?: unknown[];
+      };
+      if (node.kind === "function" && node.functionId) ids.add(node.functionId);
+      for (const [, child] of (node.entries ?? []) as Array<[string, unknown]>)
+        walk(child);
+      for (const child of node.items ?? []) walk(child);
+    };
+    walk(result);
+    expect(ids.size).toBeGreaterThan(0);
+    expect(ids.size).toBeLessThanOrEqual(100_000);
+  });
 });
