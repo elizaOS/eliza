@@ -30,6 +30,7 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   // Exact develop branch alias for staging QA. Do not add a broad *.pages.dev
   // wildcard here; session-capable routes must remain first-party-only.
   "https://develop.eliza-app.pages.dev",
+  "https://staging.eliza-app.pages.dev",
   "https://elizaos.ai",
   "https://www.elizaos.ai",
   "https://os.elizacloud.ai",

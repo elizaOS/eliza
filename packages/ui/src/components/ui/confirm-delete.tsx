@@ -69,7 +69,7 @@ export function ConfirmDelete({
         type="button"
         className={
           confirmClassName ??
-          "rounded-sm border border-destructive bg-destructive px-2 py-0.5 text-2xs font-medium text-destructive-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+          "rounded-sm border border-destructive-solid bg-destructive-solid px-2 py-0.5 text-2xs font-medium text-destructive-fg transition-opacity hover:opacity-90 disabled:opacity-50"
         }
         onClick={() => {
           onConfirm();

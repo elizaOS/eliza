@@ -16,6 +16,7 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
+import { Field } from "../../spatial/primitives";
 import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
@@ -874,6 +875,84 @@ describe("DynamicViewLoader", () => {
       success: true,
       result: { filled: false, reason: "value must be a string" },
     });
+  });
+
+  it("filters a spatial view through the real agent-fill bridge", async () => {
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function StatusPanel() {
+        const [status, setStatus] = useState<string>();
+        return (
+          <section>
+            <Field
+              kind="select"
+              label="Status"
+              agent="goal-status-filter"
+              value={status}
+              options={["All goals", "Active", "Paused"]}
+              onChange={setStatus}
+            />
+            {status !== "Paused" && <p>Run a half marathon</p>}
+            {status !== "Active" && <p>Learn conversational Spanish</p>}
+          </section>
+        );
+      },
+    }));
+    render(
+      <DynamicViewLoader
+        bundleUrl="https://capability.example.test/assets/status.js"
+        viewId="status.view"
+        surface={AGENT_SURFACE_MANIFEST}
+      />,
+    );
+    await screen.findByText("Learn conversational Spanish");
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "status.view",
+      "gui",
+      "list-elements",
+      undefined,
+      "req-status-unselected",
+    );
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-status-unselected",
+      success: true,
+      result: expect.arrayContaining([
+        expect.objectContaining({
+          id: "goal-status-filter",
+          value: "",
+          fillable: true,
+        }),
+      ]),
+    });
+    await act(async () => {
+      await dispatchViewInteract(
+        "status.view",
+        "gui",
+        "agent-fill",
+        { id: "goal-status-filter", value: "Active" },
+        "req-status-active",
+      );
+    });
+    expect(screen.queryByText("Learn conversational Spanish")).toBeNull();
+    expect(screen.getByText("Run a half marathon")).toBeTruthy();
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-status-active",
+      success: true,
+      result: { ok: true, id: "goal-status-filter", value: "Active" },
+    });
+    await act(async () => {
+      await dispatchViewInteract(
+        "status.view",
+        "gui",
+        "agent-fill",
+        { id: "goal-status-filter", value: "Paused" },
+        "req-status-paused",
+      );
+    });
+    expect(screen.queryByText("Run a half marathon")).toBeNull();
+    expect(screen.getByText("Learn conversational Spanish")).toBeTruthy();
   });
 
   it("redacts and refuses raw DOM sensitive fields", async () => {

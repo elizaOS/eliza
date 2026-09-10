@@ -51,6 +51,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      actions: read
       packages: write
       attestations: write
       id-token: write
@@ -68,6 +69,8 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == develop || "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]] || { echo "::error::Image publication requires a canonical branch"; exit 1; }
+          [ "$GITHUB_SHA" = "$SOURCE_SHA" ] || { echo "::error::Workflow source differs from image source"; exit 1; }
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
           [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
           [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ] || { echo "::error::Checkout does not match reconciled source"; exit 1; }
@@ -368,21 +371,22 @@ jobs:
       # `docker push` it, so the published bytes are byte-for-byte the image
       # that just booted cleanly. No rebuild means no chance of shipping a
       # different image than the one that was verified.
-      - name: Fence current develop SHA before publication
+      - name: Fence current branch SHA before publication
         if: ${{ inputs.effect_digest != '' }}
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          current_sha="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk 'NR == 1 { print $1 }')"
           [ "$current_sha" = "$SOURCE_SHA" ] || {
-            echo "::error::Develop advanced from reconciled source $SOURCE_SHA to ${current_sha:-unresolved}; refusing publication"
+            echo "::error::$GITHUB_REF_NAME advanced from reconciled source $SOURCE_SHA to ${current_sha:-unresolved}; refusing publication"
             exit 1
           }
 
       - name: Push exact verified image
         id: push
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           LOCAL_IMAGE: ${{ steps.image.outputs.name }}:ci-boot-verify
           PUBLISH_REPOSITORY: ${{ steps.image.outputs.name }}
           TAGS: ${{ steps.meta.outputs.tags }}
@@ -410,6 +414,9 @@ jobs:
             if [ "$tagged_image_id" != "$verified_image_id" ]; then
               echo "::error::The publication tag does not identify the boot-verified local image." >&2
               exit 1
+            fi
+            if [ "$GITHUB_REF_NAME" = main ]; then
+              node packages/cloud/scripts/production-effect-certification.mjs "$GITHUB_SHA"
             fi
             docker push "$tag"
           done <<< "$TAGS"

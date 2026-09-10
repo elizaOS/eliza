@@ -121,7 +121,7 @@ describe("Android Play manifest policy", () => {
   it("places permissions before the application and disables all backup transfer", () => {
     const hardened = applyAndroidPlayManifestHardening(`<manifest>
     <queries />
-    <application android:allowBackup="false"></application>
+    <application android:name=".ElizaApplication" android:allowBackup="false"></application>
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>`);
 
@@ -135,6 +135,7 @@ describe("Android Play manifest policy", () => {
       'android:dataExtractionRules="@xml/data_extraction_rules"',
     );
     expect(hardened).toContain('android:fullBackupContent="false"');
+    expect(hardened).not.toContain('android:name=".ElizaApplication"');
     expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain(
       '<exclude domain="sharedpref" path="." />',
     );

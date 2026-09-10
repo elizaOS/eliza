@@ -9,7 +9,7 @@ import {
 } from "./staging-standing-capability.mjs";
 
 const config = {
-  sourceRef: "refs/heads/develop",
+  sourceRef: "refs/heads/staging",
   sourceSha: "a".repeat(40),
   expectedDeploySha: "b".repeat(40),
   apiKey: "private-test-credential",

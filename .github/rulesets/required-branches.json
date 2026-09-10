@@ -1,22 +1,33 @@
 {
-  "name": "required-main-and-develop",
+  "name": "required-develop",
   "target": "branch",
   "enforcement": "active",
   "bypass_actors": [],
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/develop", "refs/heads/main"],
+      "include": [
+        "refs/heads/develop"
+      ],
       "exclude": []
     }
   },
   "rules": [
-    { "type": "deletion" },
-    { "type": "non_fast_forward" },
-    { "type": "required_linear_history" },
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "required_linear_history"
+    },
     {
       "type": "pull_request",
       "parameters": {
-        "allowed_merge_methods": ["squash", "rebase"],
+        "allowed_merge_methods": [
+          "squash",
+          "rebase"
+        ],
         "dismiss_stale_reviews_on_push": true,
         "require_code_owner_review": false,
         "require_last_push_approval": true,
@@ -28,7 +39,11 @@
       "type": "required_status_checks",
       "parameters": {
         "do_not_enforce_on_create": true,
-        "required_status_checks": [{ "context": "All Tests Passed" }],
+        "required_status_checks": [
+          {
+            "context": "All Tests Passed"
+          }
+        ],
         "strict_required_status_checks_policy": true
       }
     }
