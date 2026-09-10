@@ -266,7 +266,40 @@ function snapshot(): LifeOpsConnectionsSnapshot {
   };
 }
 
+let syncControl: import("@elizaos/shared").LifeOpsLinkedCalendarControl = {
+  revision: 0,
+  paused: true,
+  destination: null,
+  pendingDispatch: null,
+};
 const adapter: LifeOpsConnectionsAdapter = {
+  async getLinkedCalendarControl() {
+    return syncControl;
+  },
+  async updateLinkedCalendarControl(request) {
+    if (request.expectedRevision !== syncControl.revision)
+      throw new Error("Calendar sync changed; refresh the review.");
+    if (request.operation === "select") {
+      if (!syncControl.paused)
+        throw new Error(
+          "Pause synchronization before selecting a destination.",
+        );
+      syncControl = {
+        ...syncControl,
+        destination: request.destination,
+        revision: syncControl.revision + 1,
+      };
+    } else {
+      if (request.operation === "resume" && !syncControl.destination)
+        throw new Error("Select a destination before resuming.");
+      syncControl = {
+        ...syncControl,
+        paused: request.operation === "pause",
+        revision: syncControl.revision + 1,
+      };
+    }
+    return syncControl;
+  },
   async load({ forceSync = false } = {}) {
     if (failure === "load" && !initialLoadFailed) {
       initialLoadFailed = true;

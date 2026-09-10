@@ -341,6 +341,19 @@ try {
       !multiSeed.calendarKeys.some((key) => key.endsWith('"primary"]')),
     "account switching excludes hidden calendars from another Google grant",
   );
+  await multiAccount.getByRole("combobox", { name: "Destination for built-in calendar events" }).click();
+  await multiAccount.getByRole("option", { name: "Second work — fixture-second@example.test", exact: true }).click();
+  await multiAccount.getByRole("button", { name: "Verify and save destination" }).click();
+  await multiAccount.getByText("Current destination: Second work — fixture-second@example.test", { exact: true }).waitFor();
+  assert(await multiAccount.getByText("Synchronization is paused.", { exact: true }).count() === 1,
+    "saving a reviewed destination does not resume synchronization");
+  await multiAccount.getByRole("button", { name: "Verify and resume sync" }).click();
+  await multiAccount.getByText("Synchronization is enabled.", { exact: true }).waitFor();
+  assert(await multiAccount.getByRole("combobox", { name: "Destination for built-in calendar events" }).isDisabled(),
+    "active synchronization prevents changing the reviewed destination");
+  await multiAccount.getByRole("button", { name: "Pause sync" }).click();
+  await multiAccount.getByText("Synchronization is paused.", { exact: true }).waitFor();
+  await multiAccount.screenshot({ path: join(outputDir, "calendar-sync-reviewed-desktop.png"), fullPage: true });
   await multiAccount.close();
 
   const appleOnly = await browser.newPage({

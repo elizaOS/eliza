@@ -224,6 +224,15 @@ function snapshot(): LifeOpsConnectionsSnapshot {
 
 function adapter(): LifeOpsConnectionsAdapter {
   return {
+    getLinkedCalendarControl: vi.fn(async () => ({
+      revision: 0,
+      paused: true,
+      destination: null,
+      pendingDispatch: null,
+    })),
+    updateLinkedCalendarControl: vi.fn(async () => {
+      throw new Error("Sync mutation must be configured by this test.");
+    }),
     load: vi.fn(async () => snapshot()),
     connectGoogle: vi.fn(async () => undefined),
     disconnectGoogle: vi.fn(async () => undefined),
