@@ -1029,3 +1029,52 @@ it("attributes a public address lookup to the queried wallet", async () => {
 	expect(texts).toContain(reply);
 	expect(stored).toContain(reply);
 });
+
+it("does not deliver a false zero holding phrased as no holdings", async () => {
+	const reply =
+		"I didn't find any SOL holdings in the third-party wallet you queried.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4),
+		"The queried wallet holds 4 SOL.",
+		"Look up this third-party wallet portfolio.",
+	);
+	expect(texts).toContain("The queried wallet holds 4 SOL.");
+	expect(stored).not.toContain(reply);
+});
+
+it("preserves an explicitly observed zero with ordinary no-holdings wording", async () => {
+	const reply = "The queried wallet has no SOL holdings.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(0),
+		undefined,
+		"Look up this third-party wallet portfolio.",
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});
+
+it("does not confuse the lookup requester with wallet ownership", async () => {
+	const reply = "The third-party wallet you queried holds 4 SOL.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4),
+		undefined,
+		"Look up this third-party wallet portfolio.",
+	);
+	expect(texts).toContain(reply);
+	expect(stored).toContain(reply);
+});
+
+it("does not infer no SOL holdings from a different observed asset", async () => {
+	const reply = "The queried wallet has no SOL holdings.";
+	const { texts, stored } = await deliver(
+		reply,
+		walletRead(4, "USDC"),
+		BALANCE_UNVERIFIED,
+		"Look up this third-party wallet portfolio.",
+	);
+	expect(texts).toContain(BALANCE_UNVERIFIED);
+	expect(stored).not.toContain(reply);
+});

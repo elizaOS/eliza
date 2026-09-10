@@ -133,6 +133,21 @@ function holdingClaims(
 			(walletRequest &&
 				/^\s*\d[\d,.]*\s+[A-Za-z][A-Za-z0-9]*[.!]?\s*$/.test(clause));
 		if (!holdingContext) continue;
+		const personal =
+			/\b(?:your|my)\s+(?:wallet|holdings|portfolio|balance)\b|\b(?:you|I)\s+(?:(?:currently|now|still)\s+)?(?:have|hold|own)\b/i.test(
+				clause,
+			);
+		// Ordinary named-asset absence is a zero claim, not a statement of unknown data.
+		for (const match of clause.matchAll(
+			/\b(?:no|(?:didn't|did not|don't|do not|doesn't|does not)\s+(?:find|have|hold|own)\s+any)\s+([A-Za-z][A-Za-z0-9]*)(?=\s+(?:holdings|tokens|balance)\b|[.!]?\s*$)/gi,
+		)) {
+			if (
+				NON_ASSET_UNITS.test(match[1]) ||
+				UNVERIFIED.test(clause.slice(0, match.index))
+			)
+				continue;
+			claims.push({ symbol: match[1].toUpperCase(), amount: "0", personal });
+		}
 		for (const match of clause.matchAll(
 			/(?<![\w.+-])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z0-9]*)\b/g,
 		)) {
@@ -149,7 +164,7 @@ function holdingClaims(
 			if (claim)
 				claims.push({
 					...claim,
-					personal: /\b(?:you|your|my|I)\b/i.test(clause),
+					personal,
 				});
 		}
 	}
