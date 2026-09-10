@@ -760,6 +760,45 @@ try {
       )) === "2",
       `${width}px approval uses the saved new version`,
     );
+    const approve = family.getByRole("button", {
+      name: "Approve and send email",
+      exact: true,
+    });
+    await approve.waitFor();
+    await family.screenshot({
+      path: join(outputDir, `family-approval-pending-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+    if (width === 1180) {
+      await approve.hover();
+      const colors = await approve.evaluate((element) => ({
+        foreground: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+      }));
+      assert(
+        contrastRatio(colors.foreground, colors.background) >= 4.5,
+        "email approval hover preserves readable contrast",
+      );
+      await family.screenshot({
+        path: join(outputDir, "family-approval-hover.png"),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    await approve.click();
+    await family
+      .getByText("Accepted by the email provider.", { exact: true })
+      .waitFor();
+    assert(
+      (await approve.count()) === 0,
+      `${width}px completed approval does not offer another send`,
+    );
+    await family.screenshot({
+      path: join(outputDir, `family-approval-accepted-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
     const downloading = family.waitForEvent("download");
     await family.getByRole("link", { name: "Download draft record" }).click();
     const download = await downloading;
@@ -788,6 +827,81 @@ try {
       `${width}px family editing has no page errors`,
     );
     await family.close();
+  }
+  for (const width of [1180, 390]) {
+    for (const decisionCase of ["reject", "unknown"]) {
+      const page = await browser.newPage({ viewport: { width, height: 850 } });
+      const errors = [];
+      page.on("pageerror", (error) => errors.push(String(error)));
+      await page.goto(
+        `${baseURL}?scenario=family-packet${decisionCase === "unknown" ? "&failure=decision" : ""}`,
+      );
+      await page
+        .getByRole("button", { name: "Monthly packet", exact: true })
+        .click();
+      await page.getByText(/Review guest-shareable draft/).click();
+      await page
+        .getByRole("button", { name: "Request owner approval" })
+        .click();
+      await page
+        .getByRole("button", {
+          name:
+            decisionCase === "reject"
+              ? "Reject email"
+              : "Approve and send email",
+          exact: true,
+        })
+        .click();
+      await page
+        .getByText(
+          decisionCase === "reject"
+            ? "Rejected. This approval will not send the email."
+            : "Delivery outcome is unknown. Verify the provider record before retrying.",
+          { exact: true },
+        )
+        .waitFor();
+      assert(
+        (await page
+          .getByRole("button", {
+            name: /Approve and send email|Retry reviewed email/,
+          })
+          .count()) === 0,
+        `${width}px ${decisionCase} result does not offer an unsafe send`,
+      );
+      if (decisionCase === "unknown") {
+        assert(
+          await page
+            .getByRole("button", { name: "Edit email draft" })
+            .isDisabled(),
+          `${width}px unknown delivery cannot be edited into a competing send`,
+        );
+        await page
+          .getByRole("button", { name: "Refresh delivery status" })
+          .click();
+        await page
+          .getByText(
+            "Delivery outcome is unknown. Verify the provider record before retrying.",
+            { exact: true },
+          )
+          .waitFor();
+      }
+      assert(
+        errors.length === 0,
+        `${width}px ${decisionCase} decision has no page errors`,
+      );
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+        ),
+        `${width}px ${decisionCase} decision has no horizontal overflow`,
+      );
+      await page.screenshot({
+        path: join(outputDir, `family-approval-${decisionCase}-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+      await page.close();
+    }
   }
   const failedEdit = await browser.newPage();
   await failedEdit.goto(`${baseURL}?scenario=family-packet&failure=revision`);

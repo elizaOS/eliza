@@ -1,4 +1,4 @@
-/** Synthetic browser state for editing monthly email; no method can call a live provider. */
+/** Synthetic browser state for email review and approval outcomes; no method can call a live provider. */
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
@@ -7,6 +7,7 @@ import type {
 
 export function createFamilyPacketFixture(
   failRevision: boolean,
+  uncertainDecision = false,
 ): FamilyOperationsAdapter {
   let packet: FamilyPacketView = {
     packetId: "fixture-packet",
@@ -46,7 +47,31 @@ export function createFamilyPacketFixture(
     ).join("");
   }
   return {
-    decidePacketApproval: unsupported,
+    async decidePacketApproval(input) {
+      const draft = packet.draft;
+      if (
+        input.packetId !== packet.packetId ||
+        !draft?.approval ||
+        input.draftVersion !== draft.draftVersion ||
+        input.approvalId !== draft.approvalId ||
+        input.bodySha256 !== draft.bodySha256
+      )
+        throw new Error("Fixture decision does not match the reviewed draft.");
+      if (draft.approval.state !== "pending")
+        throw new Error("Fixture approval already has a decision.");
+      document.documentElement.dataset.familyDecision = input.decision;
+      if (input.decision === "reject") {
+        draft.approval.state = "rejected";
+      } else if (uncertainDecision) {
+        draft.approval.state = "reconciliation_required";
+        draft.approval.error = "Fixture provider outcome is unknown.";
+        throw new Error("Check the provider record before retrying.");
+      } else {
+        draft.approval.state = "done";
+        draft.approval.providerAccepted = true;
+        draft.approval.providerMessageId = "synthetic-provider-receipt";
+      }
+    },
     listRecipientContacts: unsupported,
     confirmEmailRecipient: unsupported,
     async load(): Promise<FamilyOperationsSnapshot> {
@@ -104,6 +129,15 @@ export function createFamilyPacketFixture(
       )
         throw new Error("Fixture approval is stale.");
       document.documentElement.dataset.familyApprovalVersion = String(version);
+      packet.draft.approvalId = `fixture-approval-${version}`;
+      packet.draft.approval = {
+        id: packet.draft.approvalId,
+        state: "pending",
+        providerAccepted: null,
+        providerMessageId: null,
+        error: null,
+        updatedAt: "2026-09-20T12:01:00Z",
+      };
     },
     uploadAgreement: unsupported,
     decideObligation: unsupported,

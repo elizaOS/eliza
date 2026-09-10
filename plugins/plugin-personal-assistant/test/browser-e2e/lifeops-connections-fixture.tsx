@@ -428,7 +428,10 @@ if (!root) throw new Error("LifeOps fixture requires #root.");
 createRoot(root).render(
   scenario === "family-packet" ? (
     <FamilyOperationsView
-      adapter={createFamilyPacketFixture(failure === "revision")}
+      adapter={createFamilyPacketFixture(
+        failure === "revision",
+        failure === "decision",
+      )}
     />
   ) : (
     <LifeOpsConnectionsView adapter={adapter} />
