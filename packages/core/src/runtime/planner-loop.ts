@@ -5433,6 +5433,81 @@ function withoutRedundantRejectedRecordEncoding(
 	return projected;
 }
 
+/**
+ * A rejected record wrapper can repeat an explicit target outside the wrapper.
+ * This projection proves raw identifier redundancy; it never decodes malformed
+ * JSON or drops unaccounted content. Every remaining parameter binding must
+ * match the corrected call. The recorded call remains complete.
+ */
+function withoutRepeatedRejectedRecordTargets(
+	params: Record<string, unknown>,
+	result: PlannerToolResult | undefined,
+	corrected: Record<string, unknown>,
+): Record<string, unknown> {
+	const error = typeof result?.error === "string" ? result.error : result?.text;
+	if (typeof error !== "string") return params;
+	const path =
+		/Unexpected argument ['"]([^'"]+\.__eliza_record_entries)['"]/.exec(
+			error,
+		)?.[1];
+	if (!path) return params;
+	const segments = path.split(".");
+	let parent = params;
+	const ancestors: Array<{ parent: Record<string, unknown>; key: string }> = [];
+	for (const key of segments.slice(0, -1)) {
+		if (!Object.hasOwn(parent, key) || !isObjectRecord(parent[key]))
+			return params;
+		ancestors.push({ parent, key });
+		parent = parent[key];
+	}
+	const marker = "__eliza_record_entries";
+	const entries = parent[marker];
+	if (!Array.isArray(entries) || entries.length === 0) return params;
+	let projected = Object.fromEntries(
+		Object.entries(parent).filter(([key]) => key !== marker),
+	);
+	for (const ancestor of [...ancestors].reverse())
+		projected = { ...ancestor.parent, [ancestor.key]: projected };
+	const survivingText = normalizeCorrelationText(
+		correlationLeafStrings(projected).join(" "),
+	);
+	const correctedText = normalizeCorrelationText(
+		correlationLeafStrings(corrected).join(" "),
+	);
+	const keys = new Set<string>();
+	for (const entry of entries) {
+		if (
+			!isObjectRecord(entry) ||
+			Object.keys(entry).length !== 2 ||
+			typeof entry.key !== "string" ||
+			typeof entry.value !== "string" ||
+			!TARGET_PARAMETER_KEY_PATTERN.test(entry.key) ||
+			!/^[\p{L}\p{N}][\p{L}\p{N}_.:/@-]*$/u.test(entry.value)
+		)
+			return params;
+		const key = entry.key.toLowerCase();
+		if (
+			keys.has(key) ||
+			Object.keys(parent).some((name) => name.toLowerCase() === key)
+		)
+			return params;
+		keys.add(key);
+		const identifier = normalizeCorrelationText(entry.value);
+		if (
+			!identifierPresentAtTokenBoundary(identifier, survivingText) ||
+			!identifierPresentAtTokenBoundary(identifier, correctedText)
+		)
+			return params;
+	}
+	const withoutScope = (value: Record<string, unknown>) =>
+		Object.fromEntries(
+			Object.entries(value).filter(([key]) => key !== "eliza_turn_scope"),
+		);
+	if (!correlationValuesEqual(withoutScope(projected), withoutScope(corrected)))
+		return params;
+	return projected;
+}
+
 export function malformedCallSupersededBy(
 	failedCall: PlannerToolCall,
 	failedResult: PlannerToolResult | undefined,
@@ -5463,11 +5538,15 @@ export function malformedCallSupersededBy(
 			),
 		),
 	};
-	// A rejected native-record wrapper may only disappear when every encoded
-	// value duplicates a surviving sibling. The full arguments remain recorded.
-	const failedParams = withoutRedundantRejectedRecordEncoding(
-		failedCall.params ?? {},
+	// Rejected representation metadata is ignored only with independent proof
+	// that all its content remains represented. The full call stays recorded.
+	const failedParams = withoutRepeatedRejectedRecordTargets(
+		withoutRedundantRejectedRecordEncoding(
+			failedCall.params ?? {},
+			failedResult,
+		),
 		failedResult,
+		params,
 	);
 	for (const [name, value] of Object.entries(failedParams)) {
 		if (name === "eliza_turn_scope") continue;
