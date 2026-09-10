@@ -85,7 +85,7 @@ interface PromotedAction extends Action {
 
 /**
  * The umbrella parent's `routingHint` for a promoted virtual, carried on the
- * non-enumerable promotion marker rather than on the virtual itself so tool
+ * symbol promotion marker rather than on the virtual itself so tool
  * rendering (which prepends `routingHint` to each tool's description) never
  * duplicates it across every virtual. The planner's routing-hints block reads
  * it through this accessor and dedupes by parent, so a promoted family like
@@ -97,6 +97,11 @@ export function promotedParentRoutingHint(
 	const marker = (action as PromotedAction)[PROMOTED_MARKER];
 	const hint = marker?.parentRoutingHint?.trim();
 	return marker && hint ? { parent: marker.parent, hint } : undefined;
+}
+
+/** Returns the registered umbrella identity for a generated dispatch alias. */
+export function promotedSubactionParent(action: Action): string | undefined {
+	return (action as PromotedAction)[PROMOTED_MARKER]?.parent;
 }
 
 /**
@@ -441,15 +446,17 @@ export function promoteSubactionsToActions(
 			connectorAccountPolicy: parent.connectorAccountPolicy,
 			accountPolicy: parent.accountPolicy,
 		};
+		// Symbol metadata survives owner/context gate object spreads while JSON
+		// serializers still omit it from model-facing action descriptions.
 		Object.defineProperty(virtual, PROMOTED_MARKER, {
 			value: {
 				parent: parent.name,
 				virtuals: [virtualName],
 				parentRoutingHint: parent.routingHint,
 			},
-			enumerable: false,
+			enumerable: true,
 			configurable: false,
-			writable: false,
+			writable: true,
 		});
 		return virtual;
 	});

@@ -16,6 +16,7 @@ afterEach(() => {
 });
 
 const baseOpts: RetryFetchOptions = {
+  replayPolicy: "idempotent",
   url: "https://api.example.com/v2/secret-key",
   init: { method: "POST" },
   maxRetries: 3,
