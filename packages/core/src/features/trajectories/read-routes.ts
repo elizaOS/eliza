@@ -291,7 +291,9 @@ function detailToUi(
 			const { parameters, result, reasoning, ...actionMetadata } = action;
 			toolEvents.push({
 				...actionMetadata,
-				...(includePayloads ? { parameters, result, reasoning } : {}),
+				...(includePayloads
+					? { parameters, args: parameters, result, reasoning }
+					: {}),
 				id: action.attemptId,
 				stepId: step.stepId,
 				trajectoryId: id,

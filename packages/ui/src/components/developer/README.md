@@ -67,7 +67,10 @@ The **Model call** selector switches directly between calls, showing recorded
 input/output tokens and time. Complete **Input**, **Output** and **System** text
 stays in a bounded scroll area with **Copy** above it. **Steps** selects handler,
 planner and tool records with **Input**, **Output** and **Full step** tabs;
-model stages describe the same calls, not additional calls.
+model stages describe the same calls, not additional calls. Tool activity
+shows recorded action parameters as arguments. Valid preview-only effect receipts
+are labeled **Preview · no changes**; explicit errors and invalid receipts retain
+failure status. Full raw results remain available for inspection.
 **Copy entire recorded run** preserves the full returned record. Context and
 timeline have their own **Context & timeline** section.
 
@@ -106,7 +109,26 @@ Focused tests cover canonical sending, message/room correlation, live elapsed
 time before usage, lazy detail reads, unknown usage, stage classification,
 polling cancellation, normal routes and developer navigation isolation.
 `DeveloperWorkspace.stories.tsx` contains synthetic summary/trace fixtures.
-Original local validation exercised real Home and Notes prompts, live counts,
-route isolation, and desktop/mobile layouts. The pull request tracks validation
-on the current branch and any remaining evidence requirements. Local behavior
-checks do not establish full release or latency acceptance.
+Real Home and Notes prompts, live counts and route checks are documented in
+`/Users/nubs/Documents/ChatGPT/test/eliza-dev-chat-isolation-20260909.md`.
+
+The 2026-09-10 Trajectories check used a real Notes turn with three foreground
+model calls, five semantic stages and a separate memory run. Clipboard and DOM
+text matched exactly for 88,994 input characters, 53,759 system characters and
+862 output characters. A separate background input copied all 50,758 characters.
+Opening an older Calendar reply recovered five calls and 82,039 input / 835 output
+tokens; its counts remained after collapse. All 36 focused tests passed.
+The exact previously empty single-call reply also displayed and copied its
+87,116-character input and 679-character output without changes.
+
+The developer inspector and model settings now use the canonical controls;
+their 14 previously recorded design findings were resolved. The latest root
+verification still reports three unrelated NativeSelect overrides in
+WorkflowTriggerPanel. No debt allowance or test expectation was relaxed.
+
+The app capture audit passed 222 checks. Pixel triage reported 204 verified,
+zero broken and 12 needing visual review across 216 captured views. This broad
+capture predates the final developer-only label/control adjustments; the live
+developer view is checked separately. Full release and latency acceptance remain
+open. Evidence lives locally under
+`/Users/nubs/Documents/ChatGPT/test/eliza-trajectories-20260910`.
